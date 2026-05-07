@@ -644,25 +644,32 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 ];
 
 /**
- * Subset used when building the v5 `ContextObject`. RECENT_MESSAGES is dropped
- * here because the canonical user turn already lands as a `message:user:`
- * segment inside the planner/evaluator user message — re-injecting the same
- * text via the RECENT_MESSAGES provider produced a duplicate `# Received
- * Message` block alongside `message:user:` on every Stage 2/3 call. Multi-turn
- * conversation history can land as proper assistant/user chat turns in a
- * follow-up; we do NOT currently render it as text in the user turn.
+ * Provider names that must NEVER be rendered as text blocks in the v5
+ * ContextObject because they're already conveyed through another channel:
+ *   - ACTIONS / EVALUATORS / PROVIDERS / ACTION_STATE: meta-listings — the
+ *     planner sees actions as native function tools, so a parallel text block
+ *     is duplicative and confusing.
+ *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
+ *     includes system + bio + role) so the text-block CHARACTER provider
+ *     would duplicate the same content.
+ *   - RECENT_MESSAGES: prior dialogue is rendered as proper assistant/user
+ *     chat-message events (see `appendPriorDialogueEvents`), not as a
+ *     `# Conversation Messages` text block. Re-emitting it as text duplicates
+ *     the current message and breaks the append-only chat protocol the
+ *     planner loop relies on.
  */
-const V5_RESPONSE_STATE_PROVIDERS = CORE_RESPONSE_STATE_PROVIDERS.filter(
-	(name) => name !== "RECENT_MESSAGES",
-);
-
-const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = new Set([
+const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"ACTIONS",
 	"ACTION_STATE",
 	"CHARACTER",
 	"EVALUATORS",
 	"PROVIDERS",
-]);
+	"RECENT_MESSAGES",
+] as const;
+
+const V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
+	V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+);
 
 const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
 const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
@@ -736,7 +743,7 @@ function selectV5PlannerStateProviderNames(args: {
 		if (!name || provider.private) {
 			continue;
 		}
-		if (V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS.has(name.toUpperCase())) {
+		if (V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
 			continue;
 		}
 		providerNames.add(name);
@@ -1076,14 +1083,71 @@ function asProviderRecord(value: unknown):
 	};
 }
 
+function appendPriorDialogueEvents(
+	events: ContextEvent[],
+	runtime: IAgentRuntime,
+	state: State,
+	currentMessage: Memory,
+): void {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") {
+		return;
+	}
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") {
+		return;
+	}
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) {
+		return;
+	}
+	const dialogue = recentMessages
+		.filter((memory): memory is Memory => {
+			if (!memory || typeof memory !== "object") return false;
+			const m = memory as Memory;
+			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			const contentType =
+				m.content && typeof m.content === "object"
+					? (m.content as { type?: string }).type
+					: undefined;
+			if (contentType === "action_result") return false;
+			const text =
+				typeof m.content?.text === "string" ? m.content.text.trim() : "";
+			return text.length > 0;
+		})
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+	for (const memory of dialogue) {
+		const isAgent = memory.entityId === runtime.agentId;
+		events.push({
+			id: `history:${memory.id}`,
+			type: "message",
+			source: isAgent ? "agent" : "user",
+			createdAt: memory.createdAt,
+			message: {
+				id: memory.id,
+				role: isAgent ? "assistant" : "user",
+				content: memory.content,
+				metadata: {
+					roomId: memory.roomId,
+					entityId: memory.entityId,
+				},
+			},
+		});
+	}
+}
+
 function appendStateProviderEvents(
 	events: ContextEvent[],
 	state: State,
-	allowedProviderNames?: readonly string[],
+	excludedProviderNames?: readonly string[],
 ): void {
 	const providers = state.data?.providers;
-	const allowed = allowedProviderNames
-		? new Set(allowedProviderNames.map((name) => name.toUpperCase()))
+	const excluded = excludedProviderNames
+		? new Set(excludedProviderNames.map((name) => name.toUpperCase()))
 		: null;
 	if (!providers || typeof providers !== "object") {
 		const fallbackText =
@@ -1109,7 +1173,7 @@ function appendStateProviderEvents(
 			continue;
 		}
 		seen.add(providerName);
-		if (allowed && !allowed.has(providerName.toUpperCase())) {
+		if (excluded?.has(providerName.toUpperCase())) {
 			continue;
 		}
 		const provider = asProviderRecord(
@@ -1162,23 +1226,13 @@ function createV5MessageContextObject(args: {
 		});
 	};
 
-	const availableContexts =
-		args.availableContexts?.map((definition) => definition.id) ??
-		parseContextList(args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY]);
-	addInstruction(
-		"available_contexts",
-		`available_contexts: ${
-			availableContexts.length > 0 ? availableContexts.join(", ") : "general"
-		}`,
-		true,
-	);
 	appendStateProviderEvents(
 		events,
 		args.state,
-		hasInboundBenchmarkContext(args.message)
-			? [...V5_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
-			: V5_RESPONSE_STATE_PROVIDERS,
+		V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
 	);
+
+	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -1261,15 +1315,9 @@ function createV5MessageContextObject(args: {
 						stable: true,
 					}
 				: undefined,
-			contextRegistryDigest: availableContexts.join(","),
 		},
 		trajectoryPrefix: {
 			selectedContexts: [...(args.selectedContexts ?? [])],
-			// Pass the rich definitions (id + description + selectionGuidance)
-			// for the selected contexts so the downstream planner can reason
-			// about each selected context, not just its bare id. The renderer
-			// at context-renderer.ts:420 emits these as JSON in a stable
-			// prompt segment.
 			contextDefinitions:
 				args.selectedContexts && args.availableContexts
 					? args.availableContexts.filter((def) =>
@@ -1352,17 +1400,8 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
-			const selectionGuidance = definition.selectionGuidance?.trim();
-			const covers = definition.covers?.length
-				? definition.covers.join(", ")
-				: "";
-			const parts = [
-				description,
-				selectionGuidance ? `select_when: ${selectionGuidance}` : "",
-				covers ? `covers: ${covers}` : "",
-			].filter(Boolean);
-			return parts.length > 0
-				? `- ${definition.id}: ${parts.join(" ")}`
+			return description
+				? `- ${definition.id}: ${description}`
 				: `- ${definition.id}`;
 		})
 		.join("\n");
@@ -1803,11 +1842,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
-		messageHandler.contexts = filterSelectedContextsForRole(
+		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		messageHandler.plan.contexts = messageHandler.contexts;
 		const route = routeMessageHandlerOutput(messageHandler);
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -5126,7 +5164,7 @@ export class DefaultMessageService implements IMessageService {
 						parallelHookCtx,
 					),
 				]);
-				const routedContexts = v5Outcome.messageHandler.contexts;
+				const routedContexts = v5Outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
 						? {
@@ -5799,7 +5837,7 @@ export class DefaultMessageService implements IMessageService {
 				skipEvaluation: true,
 				reason: "explicit self-modification request",
 				primaryContext: "social",
-				secondaryContexts: ["system"],
+				secondaryContexts: ["admin"],
 			};
 		}
 

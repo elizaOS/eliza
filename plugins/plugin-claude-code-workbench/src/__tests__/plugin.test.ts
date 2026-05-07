@@ -30,7 +30,7 @@ describe("claudeCodeWorkbenchPlugin", () => {
     expect(claudeCodeWorkbenchPlugin.name).toBe("claude-code-workbench");
     expect(claudeCodeWorkbenchPlugin.description).toContain("Claude Code");
     expect(claudeCodeWorkbenchPlugin.services?.length).toBe(1);
-    expect(claudeCodeWorkbenchPlugin.actions?.length).toBe(1);
+    expect(claudeCodeWorkbenchPlugin.actions?.length).toBe(2);
     expect(claudeCodeWorkbenchPlugin.providers?.[0]?.name).toBe(
       "CLAUDE_CODE_WORKBENCH_STATUS",
     );

@@ -10,6 +10,7 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserAutofillLoginAction } from "../actions/browser-autofill-login.js";
 import { browserSessionAction } from "../actions/browser-session.js";
+import { codeAction } from "../actions/code-umbrella.js";
 import {
   disconnectConnectorAction,
   listConnectorsAction,
@@ -23,11 +24,14 @@ import {
   searchVectorsAction,
 } from "../actions/database.js";
 import {
+  createContactAction,
+  deleteContactAction,
   getRelationshipActivityAction,
   linkEntityAction,
   readEntityAction,
   resolveMergeCandidateAction,
   searchEntityAction,
+  updateContactAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
 import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
@@ -38,6 +42,7 @@ import {
 } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import {
+  createMemoryAction,
   editMemoryAction,
   forgetMemoryAction,
   recallMemoryFilteredAction,
@@ -45,6 +50,7 @@ import {
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { readMessagesAction } from "../actions/read-messages.js";
+import { readPluginConfigAction } from "../actions/read-plugin-config.js";
 import { restartAction } from "../actions/restart.js";
 import {
   describeRegisteredActionsAction,
@@ -293,6 +299,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       readEntityAction,
       resolveMergeCandidateAction,
       getRelationshipActivityAction,
+      createContactAction,
+      updateContactAction,
+      deleteContactAction,
       updateOwnerNameAction,
       readMessagesAction,
       updateIdentityAction,
@@ -303,6 +312,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       toggleConnectorAction,
       saveConnectorConfigAction,
       disconnectConnectorAction,
+      readPluginConfigAction,
       // Observability / introspection actions
       queryLogsAction,
       exportLogsAction,
@@ -318,6 +328,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       queryTrajectoriesAction,
       exportTrajectoryDatasetAction,
       annotateTrajectoryAction,
+      createMemoryAction,
       recallMemoryFilteredAction,
       forgetMemoryAction,
       editMemoryAction,
@@ -328,6 +339,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       scratchpadDeleteAction,
       archiveCodingTaskAction,
       reopenCodingTaskAction,
+      codeAction,
     ],
   };
 

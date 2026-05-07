@@ -34,7 +34,7 @@ function buildRouteContext(runtime: IAgentRuntime): RouteContext {
     workspaceService: runtime.getService(
       "CODING_WORKSPACE_SERVICE",
     ) as unknown as CodingWorkspaceService | null,
-    coordinator: getCoordinator(runtime as AgentRuntime),
+    coordinator: getCoordinator(runtime),
   };
 }
 
@@ -46,7 +46,7 @@ function codingAgentRouteHandler(): PluginRouteHandler {
   ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
-    const agentRuntime = runtime as AgentRuntime;
+    const agentRuntime = runtime as IAgentRuntime;
     const url = new URL(
       httpReq.url ?? "/",
       `http://${httpReq.headers?.host ?? "localhost"}`,
@@ -86,7 +86,7 @@ function codingAgentRouteHandler(): PluginRouteHandler {
     //    orchestrator services are not wired.
     if (pathname.startsWith("/api/coding-agents")) {
       const fallbackHandled = await handleCodingAgentsFallback(
-        agentRuntime,
+        agentRuntime as unknown as AgentRuntime,
         pathname,
         method,
         httpReq,

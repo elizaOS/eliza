@@ -88,7 +88,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(availableToolsProvider.contexts).toEqual([...CODING_TOOLS_CONTEXTS]);
   });
 
-  it("validate returns false everywhere when CODING_TOOLS_DISABLE is set", async () => {
+  it("validate ignores CODING_TOOLS_DISABLE — kill switch was removed", async () => {
     const runtime = {
       agentId: "00000000-0000-0000-0000-000000000000",
       getSetting: (key: string) =>
@@ -98,7 +98,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     const message = { roomId: "r" } as unknown as Memory;
     for (const action of codingToolsPlugin.actions ?? []) {
       const ok = await action.validate!(runtime, message);
-      expect(ok, action.name).toBe(false);
+      expect(ok, action.name).toBe(true);
     }
   });
 });

@@ -200,7 +200,7 @@ async function loadRequiredPluginSql(): Promise<
       throw err;
     }
     logger.warn(
-      `[eliza] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${sourceEntry}`,
+      `[eliza] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${sourceEntry} (orig err: ${err instanceof Error ? err.message : String(err)})`,
     );
     return (await import(
       pathToFileURL(sourceEntry).href

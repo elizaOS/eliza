@@ -7,86 +7,86 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AC5A57EB2FACEB4300F52610 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57EA2FACEB4300F52610 /* AppDelegate.swift */; };
-		AC5A57ED2FACEB4300F52610 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57EC2FACEB4300F52610 /* SceneDelegate.swift */; };
-		AC5A57F02FACEB4300F52610 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57EE2FACEB4300F52610 /* LaunchScreen.storyboard */; };
-		AC5A57F32FACEB4300F52610 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57F12FACEB4300F52610 /* Main.storyboard */; };
-		AC5A57FC2FACEB4300F52610 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57FB2FACEB4300F52610 /* AppDelegate.swift */; };
-		AC5A57FF2FACEB4300F52610 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57FD2FACEB4300F52610 /* Main.storyboard */; };
-		AC5A58062FACEB4300F52610 /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC5A58052FACEB4300F52610 /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		AC5A58102FACEB4300F52610 /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC5A580F2FACEB4300F52610 /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		AC5A58152FACEB4300F52610 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DA2FACEB3B00F52610 /* Main.html */; };
-		AC5A58162FACEB4300F52610 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DA2FACEB3B00F52610 /* Main.html */; };
-		AC5A58172FACEB4300F52610 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DC2FACEB3B00F52610 /* Icon.png */; };
-		AC5A58182FACEB4300F52610 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DC2FACEB3B00F52610 /* Icon.png */; };
-		AC5A58192FACEB4300F52610 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DD2FACEB3B00F52610 /* Style.css */; };
-		AC5A581A2FACEB4300F52610 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DD2FACEB3B00F52610 /* Style.css */; };
-		AC5A581B2FACEB4300F52610 /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DE2FACEB3B00F52610 /* Script.js */; };
-		AC5A581C2FACEB4300F52610 /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57DE2FACEB3B00F52610 /* Script.js */; };
-		AC5A581D2FACEB4300F52610 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57DF2FACEB3B00F52610 /* ViewController.swift */; };
-		AC5A581E2FACEB4300F52610 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57DF2FACEB3B00F52610 /* ViewController.swift */; };
-		AC5A581F2FACEB4300F52610 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57E02FACEB4300F52610 /* Assets.xcassets */; };
-		AC5A58202FACEB4300F52610 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC5A57E02FACEB4300F52610 /* Assets.xcassets */; };
-		AC5A58212FACEB4300F52610 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57E22FACEB4300F52610 /* SafariWebExtensionHandler.swift */; };
-		AC5A58222FACEB4300F52610 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5A57E22FACEB4300F52610 /* SafariWebExtensionHandler.swift */; };
-		AC5A583F2FACEB4400F52610 /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58342FACEB4400F52610 /* offscreen.html */; };
-		AC5A58402FACEB4400F52610 /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58352FACEB4400F52610 /* dist */; };
-		AC5A58412FACEB4400F52610 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58362FACEB4400F52610 /* popup.html */; };
-		AC5A58422FACEB4400F52610 /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58372FACEB4400F52610 /* node_modules */; };
-		AC5A58432FACEB4400F52610 /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58382FACEB4400F52610 /* package.json */; };
-		AC5A58442FACEB4400F52610 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583A2FACEB4400F52610 /* icons */; };
-		AC5A58452FACEB4400F52610 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583B2FACEB4400F52610 /* manifest.json */; };
-		AC5A58462FACEB4400F52610 /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583C2FACEB4400F52610 /* tsconfig.json */; };
-		AC5A58472FACEB4400F52610 /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583D2FACEB4400F52610 /* popup.css */; };
-		AC5A58482FACEB4400F52610 /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583E2FACEB4400F52610 /* src */; };
-		AC5A58492FACEB4400F52610 /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58342FACEB4400F52610 /* offscreen.html */; };
-		AC5A584A2FACEB4400F52610 /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58352FACEB4400F52610 /* dist */; };
-		AC5A584B2FACEB4400F52610 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58362FACEB4400F52610 /* popup.html */; };
-		AC5A584C2FACEB4400F52610 /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58372FACEB4400F52610 /* node_modules */; };
-		AC5A584D2FACEB4400F52610 /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A58382FACEB4400F52610 /* package.json */; };
-		AC5A584E2FACEB4400F52610 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583A2FACEB4400F52610 /* icons */; };
-		AC5A584F2FACEB4400F52610 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583B2FACEB4400F52610 /* manifest.json */; };
-		AC5A58502FACEB4400F52610 /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583C2FACEB4400F52610 /* tsconfig.json */; };
-		AC5A58512FACEB4400F52610 /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583D2FACEB4400F52610 /* popup.css */; };
-		AC5A58522FACEB4400F52610 /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC5A583E2FACEB4400F52610 /* src */; };
+		AC34EF672FACFDAE00A6161C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF662FACFDAE00A6161C /* AppDelegate.swift */; };
+		AC34EF692FACFDAE00A6161C /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF682FACFDAE00A6161C /* SceneDelegate.swift */; };
+		AC34EF6C2FACFDAE00A6161C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF6A2FACFDAE00A6161C /* LaunchScreen.storyboard */; };
+		AC34EF6F2FACFDAE00A6161C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF6D2FACFDAE00A6161C /* Main.storyboard */; };
+		AC34EF782FACFDAE00A6161C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF772FACFDAE00A6161C /* AppDelegate.swift */; };
+		AC34EF7B2FACFDAE00A6161C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF792FACFDAE00A6161C /* Main.storyboard */; };
+		AC34EF822FACFDAE00A6161C /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC34EF812FACFDAE00A6161C /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AC34EF8C2FACFDAF00A6161C /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC34EF8B2FACFDAF00A6161C /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AC34EF912FACFDAF00A6161C /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF562FACFD9E00A6161C /* Main.html */; };
+		AC34EF922FACFDAF00A6161C /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF562FACFD9E00A6161C /* Main.html */; };
+		AC34EF932FACFDAF00A6161C /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF582FACFD9E00A6161C /* Icon.png */; };
+		AC34EF942FACFDAF00A6161C /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF582FACFD9E00A6161C /* Icon.png */; };
+		AC34EF952FACFDAF00A6161C /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF592FACFD9E00A6161C /* Style.css */; };
+		AC34EF962FACFDAF00A6161C /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF592FACFD9E00A6161C /* Style.css */; };
+		AC34EF972FACFDAF00A6161C /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF5A2FACFD9F00A6161C /* Script.js */; };
+		AC34EF982FACFDAF00A6161C /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF5A2FACFD9F00A6161C /* Script.js */; };
+		AC34EF992FACFDAF00A6161C /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF5B2FACFD9F00A6161C /* ViewController.swift */; };
+		AC34EF9A2FACFDAF00A6161C /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF5B2FACFD9F00A6161C /* ViewController.swift */; };
+		AC34EF9B2FACFDAF00A6161C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF5C2FACFDAE00A6161C /* Assets.xcassets */; };
+		AC34EF9C2FACFDAF00A6161C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC34EF5C2FACFDAE00A6161C /* Assets.xcassets */; };
+		AC34EF9D2FACFDAF00A6161C /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF5E2FACFDAE00A6161C /* SafariWebExtensionHandler.swift */; };
+		AC34EF9E2FACFDAF00A6161C /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC34EF5E2FACFDAE00A6161C /* SafariWebExtensionHandler.swift */; };
+		AC34EFBB2FACFDB000A6161C /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB02FACFDB000A6161C /* offscreen.html */; };
+		AC34EFBC2FACFDB000A6161C /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB12FACFDB000A6161C /* dist */; };
+		AC34EFBD2FACFDB000A6161C /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB22FACFDB000A6161C /* popup.html */; };
+		AC34EFBE2FACFDB000A6161C /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB32FACFDB000A6161C /* node_modules */; };
+		AC34EFBF2FACFDB000A6161C /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB42FACFDB000A6161C /* package.json */; };
+		AC34EFC02FACFDB000A6161C /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB62FACFDB000A6161C /* icons */; };
+		AC34EFC12FACFDB000A6161C /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB72FACFDB000A6161C /* manifest.json */; };
+		AC34EFC22FACFDB000A6161C /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB82FACFDB000A6161C /* tsconfig.json */; };
+		AC34EFC32FACFDB000A6161C /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB92FACFDB000A6161C /* popup.css */; };
+		AC34EFC42FACFDB000A6161C /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFBA2FACFDB000A6161C /* src */; };
+		AC34EFC52FACFDB000A6161C /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB02FACFDB000A6161C /* offscreen.html */; };
+		AC34EFC62FACFDB000A6161C /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB12FACFDB000A6161C /* dist */; };
+		AC34EFC72FACFDB000A6161C /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB22FACFDB000A6161C /* popup.html */; };
+		AC34EFC82FACFDB000A6161C /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB32FACFDB000A6161C /* node_modules */; };
+		AC34EFC92FACFDB000A6161C /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB42FACFDB000A6161C /* package.json */; };
+		AC34EFCA2FACFDB000A6161C /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB62FACFDB000A6161C /* icons */; };
+		AC34EFCB2FACFDB000A6161C /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB72FACFDB000A6161C /* manifest.json */; };
+		AC34EFCC2FACFDB000A6161C /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB82FACFDB000A6161C /* tsconfig.json */; };
+		AC34EFCD2FACFDB000A6161C /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFB92FACFDB000A6161C /* popup.css */; };
+		AC34EFCE2FACFDB000A6161C /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC34EFBA2FACFDB000A6161C /* src */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		AC5A58072FACEB4300F52610 /* PBXContainerItemProxy */ = {
+		AC34EF832FACFDAE00A6161C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = AC5A57D42FACEB3A00F52610 /* Project object */;
+			containerPortal = AC34EF502FACFD9D00A6161C /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = AC5A58042FACEB4300F52610;
+			remoteGlobalIDString = AC34EF802FACFDAE00A6161C;
 			remoteInfo = "Chat with Webpage Extension (iOS)";
 		};
-		AC5A58112FACEB4300F52610 /* PBXContainerItemProxy */ = {
+		AC34EF8D2FACFDAF00A6161C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = AC5A57D42FACEB3A00F52610 /* Project object */;
+			containerPortal = AC34EF502FACFD9D00A6161C /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = AC5A580E2FACEB4300F52610;
+			remoteGlobalIDString = AC34EF8A2FACFDAF00A6161C;
 			remoteInfo = "Chat with Webpage Extension (macOS)";
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		AC5A58282FACEB4300F52610 /* Embed Foundation Extensions */ = {
+		AC34EFA42FACFDAF00A6161C /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				AC5A58062FACEB4300F52610 /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
+				AC34EF822FACFDAE00A6161C /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A582F2FACEB4300F52610 /* Embed Foundation Extensions */ = {
+		AC34EFAB2FACFDAF00A6161C /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				AC5A58102FACEB4300F52610 /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
+				AC34EF8C2FACFDAF00A6161C /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -94,63 +94,63 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		AC5A57DB2FACEB3B00F52610 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
-		AC5A57DC2FACEB3B00F52610 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
-		AC5A57DD2FACEB3B00F52610 /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
-		AC5A57DE2FACEB3B00F52610 /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
-		AC5A57DF2FACEB3B00F52610 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		AC5A57E02FACEB4300F52610 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		AC5A57E22FACEB4300F52610 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
-		AC5A57E72FACEB4300F52610 /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC5A57EA2FACEB4300F52610 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		AC5A57EC2FACEB4300F52610 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		AC5A57EF2FACEB4300F52610 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		AC5A57F22FACEB4300F52610 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
-		AC5A57F42FACEB4300F52610 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AC5A57F92FACEB4300F52610 /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC5A57FB2FACEB4300F52610 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		AC5A57FE2FACEB4300F52610 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
-		AC5A58002FACEB4300F52610 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AC5A58052FACEB4300F52610 /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC5A580A2FACEB4300F52610 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AC5A580F2FACEB4300F52610 /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC5A58142FACEB4300F52610 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AC5A58342FACEB4400F52610 /* offscreen.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = offscreen.html; path = ../../../chrome/offscreen.html; sourceTree = "<group>"; };
-		AC5A58352FACEB4400F52610 /* dist */ = {isa = PBXFileReference; lastKnownFileType = folder; name = dist; path = ../../../chrome/dist; sourceTree = "<group>"; };
-		AC5A58362FACEB4400F52610 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = ../../../chrome/popup.html; sourceTree = "<group>"; };
-		AC5A58372FACEB4400F52610 /* node_modules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = node_modules; path = ../../../chrome/node_modules; sourceTree = "<group>"; };
-		AC5A58382FACEB4400F52610 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = package.json; path = ../../../chrome/package.json; sourceTree = "<group>"; };
-		AC5A58392FACEB4400F52610 /* tsup.config.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; name = tsup.config.ts; path = ../../../chrome/tsup.config.ts; sourceTree = "<group>"; };
-		AC5A583A2FACEB4400F52610 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../chrome/icons; sourceTree = "<group>"; };
-		AC5A583B2FACEB4400F52610 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../chrome/manifest.json; sourceTree = "<group>"; };
-		AC5A583C2FACEB4400F52610 /* tsconfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = tsconfig.json; path = ../../../chrome/tsconfig.json; sourceTree = "<group>"; };
-		AC5A583D2FACEB4400F52610 /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = ../../../chrome/popup.css; sourceTree = "<group>"; };
-		AC5A583E2FACEB4400F52610 /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; name = src; path = ../../../chrome/src; sourceTree = "<group>"; };
+		AC34EF572FACFD9E00A6161C /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		AC34EF582FACFD9E00A6161C /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		AC34EF592FACFD9E00A6161C /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		AC34EF5A2FACFD9F00A6161C /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		AC34EF5B2FACFD9F00A6161C /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		AC34EF5C2FACFDAE00A6161C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AC34EF5E2FACFDAE00A6161C /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		AC34EF632FACFDAE00A6161C /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC34EF662FACFDAE00A6161C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AC34EF682FACFDAE00A6161C /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		AC34EF6B2FACFDAE00A6161C /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		AC34EF6E2FACFDAE00A6161C /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		AC34EF702FACFDAE00A6161C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC34EF752FACFDAE00A6161C /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC34EF772FACFDAE00A6161C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AC34EF7A2FACFDAE00A6161C /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		AC34EF7C2FACFDAE00A6161C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC34EF812FACFDAE00A6161C /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC34EF862FACFDAE00A6161C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC34EF8B2FACFDAF00A6161C /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC34EF902FACFDAF00A6161C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC34EFB02FACFDB000A6161C /* offscreen.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = offscreen.html; path = ../../../chrome/offscreen.html; sourceTree = "<group>"; };
+		AC34EFB12FACFDB000A6161C /* dist */ = {isa = PBXFileReference; lastKnownFileType = folder; name = dist; path = ../../../chrome/dist; sourceTree = "<group>"; };
+		AC34EFB22FACFDB000A6161C /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = ../../../chrome/popup.html; sourceTree = "<group>"; };
+		AC34EFB32FACFDB000A6161C /* node_modules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = node_modules; path = ../../../chrome/node_modules; sourceTree = "<group>"; };
+		AC34EFB42FACFDB000A6161C /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = package.json; path = ../../../chrome/package.json; sourceTree = "<group>"; };
+		AC34EFB52FACFDB000A6161C /* tsup.config.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; name = tsup.config.ts; path = ../../../chrome/tsup.config.ts; sourceTree = "<group>"; };
+		AC34EFB62FACFDB000A6161C /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../chrome/icons; sourceTree = "<group>"; };
+		AC34EFB72FACFDB000A6161C /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../chrome/manifest.json; sourceTree = "<group>"; };
+		AC34EFB82FACFDB000A6161C /* tsconfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = tsconfig.json; path = ../../../chrome/tsconfig.json; sourceTree = "<group>"; };
+		AC34EFB92FACFDB000A6161C /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = ../../../chrome/popup.css; sourceTree = "<group>"; };
+		AC34EFBA2FACFDB000A6161C /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; name = src; path = ../../../chrome/src; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		AC5A57E42FACEB4300F52610 /* Frameworks */ = {
+		AC34EF602FACFDAE00A6161C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A57F62FACEB4300F52610 /* Frameworks */ = {
+		AC34EF722FACFDAE00A6161C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A58022FACEB4300F52610 /* Frameworks */ = {
+		AC34EF7E2FACFDAE00A6161C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A580C2FACEB4300F52610 /* Frameworks */ = {
+		AC34EF882FACFDAF00A6161C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -160,112 +160,112 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		AC5A57D32FACEB3A00F52610 = {
+		AC34EF4F2FACFD9D00A6161C = {
 			isa = PBXGroup;
 			children = (
-				AC5A57D82FACEB3B00F52610 /* Shared (App) */,
-				AC5A57E12FACEB4300F52610 /* Shared (Extension) */,
-				AC5A57E92FACEB4300F52610 /* iOS (App) */,
-				AC5A57FA2FACEB4300F52610 /* macOS (App) */,
-				AC5A58092FACEB4300F52610 /* iOS (Extension) */,
-				AC5A58132FACEB4300F52610 /* macOS (Extension) */,
-				AC5A57E82FACEB4300F52610 /* Products */,
+				AC34EF542FACFD9E00A6161C /* Shared (App) */,
+				AC34EF5D2FACFDAE00A6161C /* Shared (Extension) */,
+				AC34EF652FACFDAE00A6161C /* iOS (App) */,
+				AC34EF762FACFDAE00A6161C /* macOS (App) */,
+				AC34EF852FACFDAE00A6161C /* iOS (Extension) */,
+				AC34EF8F2FACFDAF00A6161C /* macOS (Extension) */,
+				AC34EF642FACFDAE00A6161C /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		AC5A57D82FACEB3B00F52610 /* Shared (App) */ = {
+		AC34EF542FACFD9E00A6161C /* Shared (App) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A57DF2FACEB3B00F52610 /* ViewController.swift */,
-				AC5A57E02FACEB4300F52610 /* Assets.xcassets */,
-				AC5A57D92FACEB3B00F52610 /* Resources */,
+				AC34EF5B2FACFD9F00A6161C /* ViewController.swift */,
+				AC34EF5C2FACFDAE00A6161C /* Assets.xcassets */,
+				AC34EF552FACFD9E00A6161C /* Resources */,
 			);
 			path = "Shared (App)";
 			sourceTree = "<group>";
 		};
-		AC5A57D92FACEB3B00F52610 /* Resources */ = {
+		AC34EF552FACFD9E00A6161C /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A57DA2FACEB3B00F52610 /* Main.html */,
-				AC5A57DC2FACEB3B00F52610 /* Icon.png */,
-				AC5A57DD2FACEB3B00F52610 /* Style.css */,
-				AC5A57DE2FACEB3B00F52610 /* Script.js */,
+				AC34EF562FACFD9E00A6161C /* Main.html */,
+				AC34EF582FACFD9E00A6161C /* Icon.png */,
+				AC34EF592FACFD9E00A6161C /* Style.css */,
+				AC34EF5A2FACFD9F00A6161C /* Script.js */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		AC5A57E12FACEB4300F52610 /* Shared (Extension) */ = {
+		AC34EF5D2FACFDAE00A6161C /* Shared (Extension) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A58332FACEB4400F52610 /* Resources */,
-				AC5A57E22FACEB4300F52610 /* SafariWebExtensionHandler.swift */,
+				AC34EFAF2FACFDB000A6161C /* Resources */,
+				AC34EF5E2FACFDAE00A6161C /* SafariWebExtensionHandler.swift */,
 			);
 			path = "Shared (Extension)";
 			sourceTree = "<group>";
 		};
-		AC5A57E82FACEB4300F52610 /* Products */ = {
+		AC34EF642FACFDAE00A6161C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A57E72FACEB4300F52610 /* Chat with Webpage.app */,
-				AC5A57F92FACEB4300F52610 /* Chat with Webpage.app */,
-				AC5A58052FACEB4300F52610 /* Chat with Webpage Extension.appex */,
-				AC5A580F2FACEB4300F52610 /* Chat with Webpage Extension.appex */,
+				AC34EF632FACFDAE00A6161C /* Chat with Webpage.app */,
+				AC34EF752FACFDAE00A6161C /* Chat with Webpage.app */,
+				AC34EF812FACFDAE00A6161C /* Chat with Webpage Extension.appex */,
+				AC34EF8B2FACFDAF00A6161C /* Chat with Webpage Extension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		AC5A57E92FACEB4300F52610 /* iOS (App) */ = {
+		AC34EF652FACFDAE00A6161C /* iOS (App) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A57EA2FACEB4300F52610 /* AppDelegate.swift */,
-				AC5A57EC2FACEB4300F52610 /* SceneDelegate.swift */,
-				AC5A57EE2FACEB4300F52610 /* LaunchScreen.storyboard */,
-				AC5A57F12FACEB4300F52610 /* Main.storyboard */,
-				AC5A57F42FACEB4300F52610 /* Info.plist */,
+				AC34EF662FACFDAE00A6161C /* AppDelegate.swift */,
+				AC34EF682FACFDAE00A6161C /* SceneDelegate.swift */,
+				AC34EF6A2FACFDAE00A6161C /* LaunchScreen.storyboard */,
+				AC34EF6D2FACFDAE00A6161C /* Main.storyboard */,
+				AC34EF702FACFDAE00A6161C /* Info.plist */,
 			);
 			path = "iOS (App)";
 			sourceTree = "<group>";
 		};
-		AC5A57FA2FACEB4300F52610 /* macOS (App) */ = {
+		AC34EF762FACFDAE00A6161C /* macOS (App) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A57FB2FACEB4300F52610 /* AppDelegate.swift */,
-				AC5A57FD2FACEB4300F52610 /* Main.storyboard */,
-				AC5A58002FACEB4300F52610 /* Info.plist */,
+				AC34EF772FACFDAE00A6161C /* AppDelegate.swift */,
+				AC34EF792FACFDAE00A6161C /* Main.storyboard */,
+				AC34EF7C2FACFDAE00A6161C /* Info.plist */,
 			);
 			path = "macOS (App)";
 			sourceTree = "<group>";
 		};
-		AC5A58092FACEB4300F52610 /* iOS (Extension) */ = {
+		AC34EF852FACFDAE00A6161C /* iOS (Extension) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A580A2FACEB4300F52610 /* Info.plist */,
+				AC34EF862FACFDAE00A6161C /* Info.plist */,
 			);
 			path = "iOS (Extension)";
 			sourceTree = "<group>";
 		};
-		AC5A58132FACEB4300F52610 /* macOS (Extension) */ = {
+		AC34EF8F2FACFDAF00A6161C /* macOS (Extension) */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A58142FACEB4300F52610 /* Info.plist */,
+				AC34EF902FACFDAF00A6161C /* Info.plist */,
 			);
 			path = "macOS (Extension)";
 			sourceTree = "<group>";
 		};
-		AC5A58332FACEB4400F52610 /* Resources */ = {
+		AC34EFAF2FACFDB000A6161C /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				AC5A58342FACEB4400F52610 /* offscreen.html */,
-				AC5A58352FACEB4400F52610 /* dist */,
-				AC5A58362FACEB4400F52610 /* popup.html */,
-				AC5A58372FACEB4400F52610 /* node_modules */,
-				AC5A58382FACEB4400F52610 /* package.json */,
-				AC5A58392FACEB4400F52610 /* tsup.config.ts */,
-				AC5A583A2FACEB4400F52610 /* icons */,
-				AC5A583B2FACEB4400F52610 /* manifest.json */,
-				AC5A583C2FACEB4400F52610 /* tsconfig.json */,
-				AC5A583D2FACEB4400F52610 /* popup.css */,
-				AC5A583E2FACEB4400F52610 /* src */,
+				AC34EFB02FACFDB000A6161C /* offscreen.html */,
+				AC34EFB12FACFDB000A6161C /* dist */,
+				AC34EFB22FACFDB000A6161C /* popup.html */,
+				AC34EFB32FACFDB000A6161C /* node_modules */,
+				AC34EFB42FACFDB000A6161C /* package.json */,
+				AC34EFB52FACFDB000A6161C /* tsup.config.ts */,
+				AC34EFB62FACFDB000A6161C /* icons */,
+				AC34EFB72FACFDB000A6161C /* manifest.json */,
+				AC34EFB82FACFDB000A6161C /* tsconfig.json */,
+				AC34EFB92FACFDB000A6161C /* popup.css */,
+				AC34EFBA2FACFDB000A6161C /* src */,
 			);
 			name = Resources;
 			path = "Shared (Extension)";
@@ -274,55 +274,55 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AC5A57E62FACEB4300F52610 /* Chat with Webpage (iOS) */ = {
+		AC34EF622FACFDAE00A6161C /* Chat with Webpage (iOS) */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AC5A58292FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */;
+			buildConfigurationList = AC34EFA52FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */;
 			buildPhases = (
-				AC5A57E32FACEB4300F52610 /* Sources */,
-				AC5A57E42FACEB4300F52610 /* Frameworks */,
-				AC5A57E52FACEB4300F52610 /* Resources */,
-				AC5A58282FACEB4300F52610 /* Embed Foundation Extensions */,
+				AC34EF5F2FACFDAE00A6161C /* Sources */,
+				AC34EF602FACFDAE00A6161C /* Frameworks */,
+				AC34EF612FACFDAE00A6161C /* Resources */,
+				AC34EFA42FACFDAF00A6161C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				AC5A58082FACEB4300F52610 /* PBXTargetDependency */,
+				AC34EF842FACFDAE00A6161C /* PBXTargetDependency */,
 			);
 			name = "Chat with Webpage (iOS)";
 			packageProductDependencies = (
 			);
 			productName = "Chat with Webpage (iOS)";
-			productReference = AC5A57E72FACEB4300F52610 /* Chat with Webpage.app */;
+			productReference = AC34EF632FACFDAE00A6161C /* Chat with Webpage.app */;
 			productType = "com.apple.product-type.application";
 		};
-		AC5A57F82FACEB4300F52610 /* Chat with Webpage (macOS) */ = {
+		AC34EF742FACFDAE00A6161C /* Chat with Webpage (macOS) */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AC5A58302FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */;
+			buildConfigurationList = AC34EFAC2FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */;
 			buildPhases = (
-				AC5A57F52FACEB4300F52610 /* Sources */,
-				AC5A57F62FACEB4300F52610 /* Frameworks */,
-				AC5A57F72FACEB4300F52610 /* Resources */,
-				AC5A582F2FACEB4300F52610 /* Embed Foundation Extensions */,
+				AC34EF712FACFDAE00A6161C /* Sources */,
+				AC34EF722FACFDAE00A6161C /* Frameworks */,
+				AC34EF732FACFDAE00A6161C /* Resources */,
+				AC34EFAB2FACFDAF00A6161C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				AC5A58122FACEB4300F52610 /* PBXTargetDependency */,
+				AC34EF8E2FACFDAF00A6161C /* PBXTargetDependency */,
 			);
 			name = "Chat with Webpage (macOS)";
 			packageProductDependencies = (
 			);
 			productName = "Chat with Webpage (macOS)";
-			productReference = AC5A57F92FACEB4300F52610 /* Chat with Webpage.app */;
+			productReference = AC34EF752FACFDAE00A6161C /* Chat with Webpage.app */;
 			productType = "com.apple.product-type.application";
 		};
-		AC5A58042FACEB4300F52610 /* Chat with Webpage Extension (iOS) */ = {
+		AC34EF802FACFDAE00A6161C /* Chat with Webpage Extension (iOS) */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AC5A58252FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */;
+			buildConfigurationList = AC34EFA12FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */;
 			buildPhases = (
-				AC5A58012FACEB4300F52610 /* Sources */,
-				AC5A58022FACEB4300F52610 /* Frameworks */,
-				AC5A58032FACEB4300F52610 /* Resources */,
+				AC34EF7D2FACFDAE00A6161C /* Sources */,
+				AC34EF7E2FACFDAE00A6161C /* Frameworks */,
+				AC34EF7F2FACFDAE00A6161C /* Resources */,
 			);
 			buildRules = (
 			);
@@ -332,16 +332,16 @@
 			packageProductDependencies = (
 			);
 			productName = "Chat with Webpage Extension (iOS)";
-			productReference = AC5A58052FACEB4300F52610 /* Chat with Webpage Extension.appex */;
+			productReference = AC34EF812FACFDAE00A6161C /* Chat with Webpage Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		AC5A580E2FACEB4300F52610 /* Chat with Webpage Extension (macOS) */ = {
+		AC34EF8A2FACFDAF00A6161C /* Chat with Webpage Extension (macOS) */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AC5A582C2FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */;
+			buildConfigurationList = AC34EFA82FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */;
 			buildPhases = (
-				AC5A580B2FACEB4300F52610 /* Sources */,
-				AC5A580C2FACEB4300F52610 /* Frameworks */,
-				AC5A580D2FACEB4300F52610 /* Resources */,
+				AC34EF872FACFDAF00A6161C /* Sources */,
+				AC34EF882FACFDAF00A6161C /* Frameworks */,
+				AC34EF892FACFDAF00A6161C /* Resources */,
 			);
 			buildRules = (
 			);
@@ -351,199 +351,199 @@
 			packageProductDependencies = (
 			);
 			productName = "Chat with Webpage Extension (macOS)";
-			productReference = AC5A580F2FACEB4300F52610 /* Chat with Webpage Extension.appex */;
+			productReference = AC34EF8B2FACFDAF00A6161C /* Chat with Webpage Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		AC5A57D42FACEB3A00F52610 /* Project object */ = {
+		AC34EF502FACFD9D00A6161C /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
-					AC5A57E62FACEB4300F52610 = {
+					AC34EF622FACFDAE00A6161C = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
-					AC5A57F82FACEB4300F52610 = {
+					AC34EF742FACFDAE00A6161C = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
-					AC5A58042FACEB4300F52610 = {
+					AC34EF802FACFDAE00A6161C = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
-					AC5A580E2FACEB4300F52610 = {
+					AC34EF8A2FACFDAF00A6161C = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
 			};
-			buildConfigurationList = AC5A57D72FACEB3A00F52610 /* Build configuration list for PBXProject "Chat with Webpage" */;
+			buildConfigurationList = AC34EF532FACFD9D00A6161C /* Build configuration list for PBXProject "Chat with Webpage" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = AC5A57D32FACEB3A00F52610;
+			mainGroup = AC34EF4F2FACFD9D00A6161C;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = AC5A57E82FACEB4300F52610 /* Products */;
+			productRefGroup = AC34EF642FACFDAE00A6161C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AC5A57E62FACEB4300F52610 /* Chat with Webpage (iOS) */,
-				AC5A57F82FACEB4300F52610 /* Chat with Webpage (macOS) */,
-				AC5A58042FACEB4300F52610 /* Chat with Webpage Extension (iOS) */,
-				AC5A580E2FACEB4300F52610 /* Chat with Webpage Extension (macOS) */,
+				AC34EF622FACFDAE00A6161C /* Chat with Webpage (iOS) */,
+				AC34EF742FACFDAE00A6161C /* Chat with Webpage (macOS) */,
+				AC34EF802FACFDAE00A6161C /* Chat with Webpage Extension (iOS) */,
+				AC34EF8A2FACFDAF00A6161C /* Chat with Webpage Extension (macOS) */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		AC5A57E52FACEB4300F52610 /* Resources */ = {
+		AC34EF612FACFDAE00A6161C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A58172FACEB4300F52610 /* Icon.png in Resources */,
-				AC5A57F02FACEB4300F52610 /* LaunchScreen.storyboard in Resources */,
-				AC5A58152FACEB4300F52610 /* Main.html in Resources */,
-				AC5A581B2FACEB4300F52610 /* Script.js in Resources */,
-				AC5A581F2FACEB4300F52610 /* Assets.xcassets in Resources */,
-				AC5A57F32FACEB4300F52610 /* Main.storyboard in Resources */,
-				AC5A58192FACEB4300F52610 /* Style.css in Resources */,
+				AC34EF932FACFDAF00A6161C /* Icon.png in Resources */,
+				AC34EF6C2FACFDAE00A6161C /* LaunchScreen.storyboard in Resources */,
+				AC34EF912FACFDAF00A6161C /* Main.html in Resources */,
+				AC34EF972FACFDAF00A6161C /* Script.js in Resources */,
+				AC34EF9B2FACFDAF00A6161C /* Assets.xcassets in Resources */,
+				AC34EF6F2FACFDAE00A6161C /* Main.storyboard in Resources */,
+				AC34EF952FACFDAF00A6161C /* Style.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A57F72FACEB4300F52610 /* Resources */ = {
+		AC34EF732FACFDAE00A6161C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A58182FACEB4300F52610 /* Icon.png in Resources */,
-				AC5A581A2FACEB4300F52610 /* Style.css in Resources */,
-				AC5A57FF2FACEB4300F52610 /* Main.storyboard in Resources */,
-				AC5A581C2FACEB4300F52610 /* Script.js in Resources */,
-				AC5A58202FACEB4300F52610 /* Assets.xcassets in Resources */,
-				AC5A58162FACEB4300F52610 /* Main.html in Resources */,
+				AC34EF942FACFDAF00A6161C /* Icon.png in Resources */,
+				AC34EF962FACFDAF00A6161C /* Style.css in Resources */,
+				AC34EF7B2FACFDAE00A6161C /* Main.storyboard in Resources */,
+				AC34EF982FACFDAF00A6161C /* Script.js in Resources */,
+				AC34EF9C2FACFDAF00A6161C /* Assets.xcassets in Resources */,
+				AC34EF922FACFDAF00A6161C /* Main.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A58032FACEB4300F52610 /* Resources */ = {
+		AC34EF7F2FACFDAE00A6161C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A584A2FACEB4400F52610 /* dist in Resources */,
-				AC5A584F2FACEB4400F52610 /* manifest.json in Resources */,
-				AC5A58502FACEB4400F52610 /* tsconfig.json in Resources */,
-				AC5A584B2FACEB4400F52610 /* popup.html in Resources */,
-				AC5A584C2FACEB4400F52610 /* node_modules in Resources */,
-				AC5A58512FACEB4400F52610 /* popup.css in Resources */,
-				AC5A584E2FACEB4400F52610 /* icons in Resources */,
-				AC5A58492FACEB4400F52610 /* offscreen.html in Resources */,
-				AC5A584D2FACEB4400F52610 /* package.json in Resources */,
-				AC5A58522FACEB4400F52610 /* src in Resources */,
+				AC34EFC62FACFDB000A6161C /* dist in Resources */,
+				AC34EFCB2FACFDB000A6161C /* manifest.json in Resources */,
+				AC34EFCC2FACFDB000A6161C /* tsconfig.json in Resources */,
+				AC34EFC72FACFDB000A6161C /* popup.html in Resources */,
+				AC34EFC82FACFDB000A6161C /* node_modules in Resources */,
+				AC34EFCD2FACFDB000A6161C /* popup.css in Resources */,
+				AC34EFCA2FACFDB000A6161C /* icons in Resources */,
+				AC34EFC52FACFDB000A6161C /* offscreen.html in Resources */,
+				AC34EFC92FACFDB000A6161C /* package.json in Resources */,
+				AC34EFCE2FACFDB000A6161C /* src in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A580D2FACEB4300F52610 /* Resources */ = {
+		AC34EF892FACFDAF00A6161C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A58402FACEB4400F52610 /* dist in Resources */,
-				AC5A58452FACEB4400F52610 /* manifest.json in Resources */,
-				AC5A58462FACEB4400F52610 /* tsconfig.json in Resources */,
-				AC5A58412FACEB4400F52610 /* popup.html in Resources */,
-				AC5A58422FACEB4400F52610 /* node_modules in Resources */,
-				AC5A58472FACEB4400F52610 /* popup.css in Resources */,
-				AC5A58442FACEB4400F52610 /* icons in Resources */,
-				AC5A583F2FACEB4400F52610 /* offscreen.html in Resources */,
-				AC5A58432FACEB4400F52610 /* package.json in Resources */,
-				AC5A58482FACEB4400F52610 /* src in Resources */,
+				AC34EFBC2FACFDB000A6161C /* dist in Resources */,
+				AC34EFC12FACFDB000A6161C /* manifest.json in Resources */,
+				AC34EFC22FACFDB000A6161C /* tsconfig.json in Resources */,
+				AC34EFBD2FACFDB000A6161C /* popup.html in Resources */,
+				AC34EFBE2FACFDB000A6161C /* node_modules in Resources */,
+				AC34EFC32FACFDB000A6161C /* popup.css in Resources */,
+				AC34EFC02FACFDB000A6161C /* icons in Resources */,
+				AC34EFBB2FACFDB000A6161C /* offscreen.html in Resources */,
+				AC34EFBF2FACFDB000A6161C /* package.json in Resources */,
+				AC34EFC42FACFDB000A6161C /* src in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		AC5A57E32FACEB4300F52610 /* Sources */ = {
+		AC34EF5F2FACFDAE00A6161C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A581D2FACEB4300F52610 /* ViewController.swift in Sources */,
-				AC5A57EB2FACEB4300F52610 /* AppDelegate.swift in Sources */,
-				AC5A57ED2FACEB4300F52610 /* SceneDelegate.swift in Sources */,
+				AC34EF992FACFDAF00A6161C /* ViewController.swift in Sources */,
+				AC34EF672FACFDAE00A6161C /* AppDelegate.swift in Sources */,
+				AC34EF692FACFDAE00A6161C /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A57F52FACEB4300F52610 /* Sources */ = {
+		AC34EF712FACFDAE00A6161C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A581E2FACEB4300F52610 /* ViewController.swift in Sources */,
-				AC5A57FC2FACEB4300F52610 /* AppDelegate.swift in Sources */,
+				AC34EF9A2FACFDAF00A6161C /* ViewController.swift in Sources */,
+				AC34EF782FACFDAE00A6161C /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A58012FACEB4300F52610 /* Sources */ = {
+		AC34EF7D2FACFDAE00A6161C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A58212FACEB4300F52610 /* SafariWebExtensionHandler.swift in Sources */,
+				AC34EF9D2FACFDAF00A6161C /* SafariWebExtensionHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AC5A580B2FACEB4300F52610 /* Sources */ = {
+		AC34EF872FACFDAF00A6161C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC5A58222FACEB4300F52610 /* SafariWebExtensionHandler.swift in Sources */,
+				AC34EF9E2FACFDAF00A6161C /* SafariWebExtensionHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		AC5A58082FACEB4300F52610 /* PBXTargetDependency */ = {
+		AC34EF842FACFDAE00A6161C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = AC5A58042FACEB4300F52610 /* Chat with Webpage Extension (iOS) */;
-			targetProxy = AC5A58072FACEB4300F52610 /* PBXContainerItemProxy */;
+			target = AC34EF802FACFDAE00A6161C /* Chat with Webpage Extension (iOS) */;
+			targetProxy = AC34EF832FACFDAE00A6161C /* PBXContainerItemProxy */;
 		};
-		AC5A58122FACEB4300F52610 /* PBXTargetDependency */ = {
+		AC34EF8E2FACFDAF00A6161C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = AC5A580E2FACEB4300F52610 /* Chat with Webpage Extension (macOS) */;
-			targetProxy = AC5A58112FACEB4300F52610 /* PBXContainerItemProxy */;
+			target = AC34EF8A2FACFDAF00A6161C /* Chat with Webpage Extension (macOS) */;
+			targetProxy = AC34EF8D2FACFDAF00A6161C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
-		AC5A57DA2FACEB3B00F52610 /* Main.html */ = {
+		AC34EF562FACFD9E00A6161C /* Main.html */ = {
 			isa = PBXVariantGroup;
 			children = (
-				AC5A57DB2FACEB3B00F52610 /* Base */,
+				AC34EF572FACFD9E00A6161C /* Base */,
 			);
 			name = Main.html;
 			sourceTree = "<group>";
 		};
-		AC5A57EE2FACEB4300F52610 /* LaunchScreen.storyboard */ = {
+		AC34EF6A2FACFDAE00A6161C /* LaunchScreen.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
-				AC5A57EF2FACEB4300F52610 /* Base */,
+				AC34EF6B2FACFDAE00A6161C /* Base */,
 			);
 			name = LaunchScreen.storyboard;
 			sourceTree = "<group>";
 		};
-		AC5A57F12FACEB4300F52610 /* Main.storyboard */ = {
+		AC34EF6D2FACFDAE00A6161C /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
-				AC5A57F22FACEB4300F52610 /* Base */,
+				AC34EF6E2FACFDAE00A6161C /* Base */,
 			);
 			name = Main.storyboard;
 			sourceTree = "<group>";
 		};
-		AC5A57FD2FACEB4300F52610 /* Main.storyboard */ = {
+		AC34EF792FACFDAE00A6161C /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
-				AC5A57FE2FACEB4300F52610 /* Base */,
+				AC34EF7A2FACFDAE00A6161C /* Base */,
 			);
 			name = Main.storyboard;
 			sourceTree = "<group>";
@@ -551,7 +551,7 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
-		AC5A58232FACEB4300F52610 /* Debug */ = {
+		AC34EF9F2FACFDAF00A6161C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -612,7 +612,7 @@
 			};
 			name = Debug;
 		};
-		AC5A58242FACEB4300F52610 /* Release */ = {
+		AC34EFA02FACFDAF00A6161C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -665,7 +665,7 @@
 			};
 			name = Release;
 		};
-		AC5A58262FACEB4300F52610 /* Debug */ = {
+		AC34EFA22FACFDAF00A6161C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -698,7 +698,7 @@
 			};
 			name = Debug;
 		};
-		AC5A58272FACEB4300F52610 /* Release */ = {
+		AC34EFA32FACFDAF00A6161C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -732,7 +732,7 @@
 			};
 			name = Release;
 		};
-		AC5A582A2FACEB4300F52610 /* Debug */ = {
+		AC34EFA62FACFDAF00A6161C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -772,7 +772,7 @@
 			};
 			name = Debug;
 		};
-		AC5A582B2FACEB4300F52610 /* Release */ = {
+		AC34EFA72FACFDAF00A6161C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -813,7 +813,7 @@
 			};
 			name = Release;
 		};
-		AC5A582D2FACEB4300F52610 /* Debug */ = {
+		AC34EFA92FACFDAF00A6161C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -848,7 +848,7 @@
 			};
 			name = Debug;
 		};
-		AC5A582E2FACEB4300F52610 /* Release */ = {
+		AC34EFAA2FACFDAF00A6161C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -883,7 +883,7 @@
 			};
 			name = Release;
 		};
-		AC5A58312FACEB4300F52610 /* Debug */ = {
+		AC34EFAD2FACFDAF00A6161C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -924,7 +924,7 @@
 			};
 			name = Debug;
 		};
-		AC5A58322FACEB4300F52610 /* Release */ = {
+		AC34EFAE2FACFDAF00A6161C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -968,52 +968,52 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AC5A57D72FACEB3A00F52610 /* Build configuration list for PBXProject "Chat with Webpage" */ = {
+		AC34EF532FACFD9D00A6161C /* Build configuration list for PBXProject "Chat with Webpage" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AC5A58232FACEB4300F52610 /* Debug */,
-				AC5A58242FACEB4300F52610 /* Release */,
+				AC34EF9F2FACFDAF00A6161C /* Debug */,
+				AC34EFA02FACFDAF00A6161C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AC5A58252FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */ = {
+		AC34EFA12FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AC5A58262FACEB4300F52610 /* Debug */,
-				AC5A58272FACEB4300F52610 /* Release */,
+				AC34EFA22FACFDAF00A6161C /* Debug */,
+				AC34EFA32FACFDAF00A6161C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AC5A58292FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */ = {
+		AC34EFA52FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AC5A582A2FACEB4300F52610 /* Debug */,
-				AC5A582B2FACEB4300F52610 /* Release */,
+				AC34EFA62FACFDAF00A6161C /* Debug */,
+				AC34EFA72FACFDAF00A6161C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AC5A582C2FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */ = {
+		AC34EFA82FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AC5A582D2FACEB4300F52610 /* Debug */,
-				AC5A582E2FACEB4300F52610 /* Release */,
+				AC34EFA92FACFDAF00A6161C /* Debug */,
+				AC34EFAA2FACFDAF00A6161C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AC5A58302FACEB4300F52610 /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */ = {
+		AC34EFAC2FACFDAF00A6161C /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AC5A58312FACEB4300F52610 /* Debug */,
-				AC5A58322FACEB4300F52610 /* Release */,
+				AC34EFAD2FACFDAF00A6161C /* Debug */,
+				AC34EFAE2FACFDAF00A6161C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = AC5A57D42FACEB3A00F52610 /* Project object */;
+	rootObject = AC34EF502FACFD9D00A6161C /* Project object */;
 }

@@ -617,10 +617,7 @@ async function buildRuntime(
     id: "broken_action",
     label: "Broken Action",
     description:
-      "Testing-only context that exposes BROKEN_ACTION for failure-path validation.",
-    selectionGuidance:
-      "Select when the user explicitly asks to run BROKEN_ACTION or validate action failure handling.",
-    covers: ["BROKEN_ACTION", "failure-path validation"],
+      "Testing-only context that exposes BROKEN_ACTION for failure-path validation. Select only when the user explicitly asks to run BROKEN_ACTION.",
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",
@@ -630,10 +627,7 @@ async function buildRuntime(
     id: "research_workflow",
     label: "Research Workflow",
     description:
-      "Bundled umbrella research workflows that combine web lookup with saving findings as a document. Distinct from raw web search.",
-    selectionGuidance:
-      "Select when the user explicitly asks for a titled or labeled research artifact (e.g. 'with title X', 'save findings as Y', 'research and store under name Z'). Do NOT select for plain 'search and save' requests.",
-    covers: ["RESEARCH", "titled research output", "umbrella research workflow"],
+      "Bundled umbrella research workflows that combine web lookup with saving findings as a document, when the user asks for a titled or labeled research artifact. Distinct from raw web search.",
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",

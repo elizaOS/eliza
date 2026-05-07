@@ -21,9 +21,9 @@ import {
   type Action,
   type ActionResult,
   annotateActiveTrajectoryStep,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
-  logger as coreLogger,
   type Memory,
   resolveTrajectoryLogger,
   type State,
@@ -67,8 +67,7 @@ const EXECUTE_CODE_KEYWORDS = [
   "실행",
 ] as const;
 
-const AsyncFunction = Object.getPrototypeOf(async function () {})
-  .constructor as new (
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...callArgs: unknown[]) => Promise<unknown>;
 
@@ -153,7 +152,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function hasSelectedContext(state: State | undefined, contexts: readonly string[]): boolean {
+function hasSelectedContext(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
   const selected = new Set<string>();
   const collect = (value: unknown) => {
     if (!Array.isArray(value)) return;
@@ -161,24 +163,39 @@ function hasSelectedContext(state: State | undefined, contexts: readonly string[
       if (typeof item === "string") selected.add(item);
     }
   };
-  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
-  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
-  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
-    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
 }
 
-function hasExecuteCodeIntent(message: Memory, state: State | undefined): boolean {
+function hasExecuteCodeIntent(
+  message: Memory,
+  state: State | undefined,
+): boolean {
   const text = [
     typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
   ]
     .join("\n")
     .toLowerCase();
-  return EXECUTE_CODE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+  return EXECUTE_CODE_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
 }
 
 export const executeCodeAction: Action = {
@@ -188,9 +205,9 @@ export const executeCodeAction: Action = {
   roleGate: { minRole: "USER" },
   similes: ["RUN_SCRIPT", "EXECUTE_TOOL_SCRIPT"],
   description:
-    "Run a short JS-style script that calls multiple agent actions through `tools.<actionName>(args)` and reads runtime context via `context`. Use when the same turn needs three or more sequential tool calls with simple control flow or data passing between them. Not for single-call work.",
+    "Execute a short async JavaScript script in-process that orchestrates multiple registered actions via `await tools.<actionName>(args)` and reads runtime state via `context.{agentId,roomId,entityId,getMemories,searchMemories}`. The script's return value is rendered as plain text. Optional allowedActions narrows the callable set; optional timeoutMs overrides the default 30s ceiling (enforced via Promise.race). Use when the same turn needs three or more sequential tool calls with simple control flow or data passed between them — not for single-call work.",
   descriptionCompressed:
-    "Run multi-step JS script that calls actions sequentially via tools.<name>(args).",
+    "execute-code:async-js script with tools.<action>(args) + context; allowedActions + timeoutMs",
   parameters: [
     {
       name: "script",
@@ -219,7 +236,10 @@ export const executeCodeAction: Action = {
     if (disable === true || disable === "true" || disable === "1") {
       return false;
     }
-    return hasSelectedContext(state, EXECUTE_CODE_CONTEXTS) || hasExecuteCodeIntent(message, state);
+    return (
+      hasSelectedContext(state, EXECUTE_CODE_CONTEXTS) ||
+      hasExecuteCodeIntent(message, state)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

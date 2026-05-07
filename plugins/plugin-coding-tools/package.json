@@ -103,13 +103,6 @@
         "required": false,
         "default": 250,
         "sensitive": false
-      },
-      "CODING_TOOLS_DISABLE": {
-        "type": "boolean",
-        "description": "Set to disable all actions in this plugin even when loaded.",
-        "required": false,
-        "default": false,
-        "sensitive": false
       }
     }
   },

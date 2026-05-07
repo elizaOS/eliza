@@ -12,7 +12,7 @@ import { N8N_WORKFLOW_SERVICE_TYPE } from '../services/index';
 import { createWorkflowAction } from './createWorkflow';
 import { modifyExistingWorkflowAction } from './modifyExistingWorkflow';
 import { getExecutionsAction } from './getExecutions';
-import { workflowLifecycleOpAction } from './workflowLifecycleOp';
+import { workflowAction } from './workflow';
 
 const VALID_OPS = [
   'create',
@@ -209,7 +209,7 @@ export const n8nAction: Action = {
       op === 'create' ? createWorkflowAction
         : op === 'modify' ? modifyExistingWorkflowAction
           : op === 'executions' ? getExecutionsAction
-            : workflowLifecycleOpAction;
+            : workflowAction;
 
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('n8n action timeout')), N8N_TIMEOUT_MS),

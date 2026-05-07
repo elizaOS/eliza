@@ -65,7 +65,7 @@ function groupContactsByName(contacts: ReadonlyMap<string, { name: string }>): C
   return groups;
 }
 
-export const contactsProvider: Provider = {
+export const contactsProvider = {
   name: "imessageContacts",
   description:
     "Exposes the user's Apple Contacts (name → phone/email) so the agent can resolve a person's name to a handle for unified SEND_MESSAGE.",
@@ -147,4 +147,4 @@ export const contactsProvider: Provider = {
       };
     }
   },
-};
+} as Provider;

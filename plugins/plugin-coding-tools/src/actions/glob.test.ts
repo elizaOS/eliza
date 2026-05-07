@@ -10,6 +10,7 @@ import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { globAction } from "./glob.js";
 
 let tmpRoot: string;
+let blockedPath: string;
 
 interface RuntimeBundle {
   runtime: IAgentRuntime;
@@ -18,7 +19,7 @@ interface RuntimeBundle {
 
 async function buildRuntime(): Promise<RuntimeBundle> {
   const settings: Record<string, unknown> = {
-    CODING_TOOLS_WORKSPACE_ROOTS: tmpRoot,
+    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
   };
   const stub = {
     getSetting: (key: string) => settings[key],
@@ -62,7 +63,7 @@ const state: State | undefined = undefined;
 describe("GLOB", () => {
   it("matches **/*.ts and returns expected count", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: { pattern: "**/*.ts" },
     });
 
@@ -81,30 +82,25 @@ describe("GLOB", () => {
 
   it("rejects a relative path", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toMatch(/invalid_param|path_outside_roots/);
+    expect(result.text).toContain("invalid_param");
   });
 
-  it("rejects a path outside the workspace roots", async () => {
+  it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();
-    const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-other-"));
-    try {
-      const result = await globAction.handler!(runtime, message, state, {
-        parameters: { pattern: "**/*.ts", path: otherDir },
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("path_outside_roots");
-    } finally {
-      await fs.rm(otherDir, { recursive: true, force: true });
-    }
+    const result = await globAction.handler?.(runtime, message, state, {
+      parameters: { pattern: "**/*", path: blockedPath },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
   });
 
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
-    const result = await globAction.handler!(runtime, {} as Memory, state, {
+    const result = await globAction.handler?.(runtime, {} as Memory, state, {
       parameters: { pattern: "**/*.ts" },
     });
     expect(result.success).toBe(false);
@@ -113,7 +109,7 @@ describe("GLOB", () => {
 
   it("fails when pattern is missing", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: {},
     });
     expect(result.success).toBe(false);

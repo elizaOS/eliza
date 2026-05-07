@@ -3,7 +3,7 @@ import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isElizaSettingsDebugEnabled,
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
@@ -498,7 +498,7 @@ export async function handleConfigRoutes(
       ? normalizeDeploymentTargetConfig(filtered.deploymentTarget)
       : undefined;
     const normalizedLinkedAccounts = canonicalLinkedAccountsRequested
-      ? normalizeLinkedAccountsConfig(filtered.linkedAccounts)
+      ? normalizeLinkedAccountFlagsConfig(filtered.linkedAccounts)
       : undefined;
     const normalizedServiceRouting = canonicalServiceRoutingRequested
       ? normalizeServiceRoutingConfig(filtered.serviceRouting)

@@ -2,6 +2,7 @@ import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
+	Action,
 	ActionResult,
 	Entity,
 	Evaluator,
@@ -10,6 +11,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
+import { ActionMode } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
@@ -52,117 +54,142 @@ interface MentionedPerson {
 	attributes: Record<string, unknown>;
 }
 
+const relationshipExtractionValidate = async (
+	_runtime: IAgentRuntime,
+	message: Memory,
+	_state?: State,
+): Promise<boolean> => {
+	return !!(message.content?.text && message.content.text.length > 0);
+};
+
+const relationshipExtractionHandler = async (
+	runtime: IAgentRuntime,
+	message: Memory,
+	_state?: State,
+): Promise<ActionResult | undefined> => {
+	const relationshipsService = runtime.getService(
+		"relationships",
+	) as RelationshipsService;
+	if (!relationshipsService) {
+		logger.warn("[RelationshipExtraction] RelationshipsService not available");
+		return;
+	}
+
+	// Get recent messages for context
+	const recentMessages = await runtime.getMemories({
+		roomId: message.roomId,
+		tableName: "messages",
+		limit: 10,
+		unique: false,
+	});
+
+	if (!message.content?.text) {
+		return;
+	}
+
+	// Extract platform identities from the current message
+	const identities = extractPlatformIdentities(message.content.text);
+	if (identities.length > 0) {
+		await storePlatformIdentities(runtime, message.entityId, identities);
+		await upsertEntityIdentities(
+			relationshipsService,
+			message.entityId,
+			identities,
+			message.id ? [message.id] : [],
+		);
+	}
+
+	// Check for disputes or corrections
+	const disputeInfo = detectDispute(message.content.text, recentMessages);
+	if (disputeInfo) {
+		await handleDispute(runtime, disputeInfo, message);
+	}
+
+	// Analyze relationships between participants
+	if (recentMessages.length > 1) {
+		await analyzeRelationships(runtime, recentMessages, relationshipsService);
+	}
+
+	// Extract information about mentioned third parties
+	const mentionedPeople = extractMentionedPeople(message.content.text);
+	for (const person of mentionedPeople) {
+		await createOrUpdateMentionedEntity(runtime, person, message.entityId);
+	}
+
+	// Assess trust and behavior patterns
+	await assessTrustIndicators(runtime, message.entityId, recentMessages);
+
+	// Detect privacy boundaries
+	const privacyInfo = detectPrivacyBoundaries(message.content.text);
+	if (privacyInfo) {
+		await handlePrivacyBoundary(runtime, privacyInfo, message);
+	}
+
+	// Handle admin user updates
+	await handleAdminUpdates(runtime, message, recentMessages);
+
+	logger.info(
+		{
+			src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
+			agentId: runtime.agentId,
+			messageId: message.id,
+			identitiesFound: identities.length,
+			disputeDetected: !!disputeInfo,
+			mentionedPeople: mentionedPeople.length,
+		},
+		"Completed extraction for message",
+	);
+
+	return {
+		success: true,
+		values: {
+			identitiesFound: identities.length,
+			disputeDetected: !!disputeInfo,
+			mentionedPeopleCount: mentionedPeople.length,
+		},
+		data: {
+			identitiesCount: identities.length,
+			hasDispute: !!disputeInfo,
+			mentionedPeopleCount: mentionedPeople.length,
+		},
+		text: `Extracted ${identities.length} identities, ${mentionedPeople.length} mentioned people, and ${disputeInfo ? "1 dispute" : "0 disputes"}.`,
+	};
+};
+
+/**
+ * Relationship extraction as an `ALWAYS_BEFORE` action — runs heuristics
+ * (platform identities, disputes, mentioned people, trust signals, privacy
+ * markers, admin updates) before Stage 1 routes the message. Outputs are
+ * available to the messageHandler when it composes its prompt. Runs even on
+ * IGNORE/STOP routes so observation-only learning continues.
+ *
+ * Migration target: fold these heuristics into Stage 1 prompt construction
+ * (sender identity / room membership pre-compute) so the messageHandler
+ * sees them inline. At that point this action can be deleted.
+ */
+export const relationshipExtractionAction: Action = {
+	name: spec.name,
+	description: spec.description,
+	similes: spec.similes ? [...spec.similes] : [],
+	mode: ActionMode.ALWAYS_BEFORE,
+	modePriority: 50,
+	examples: [],
+	validate: relationshipExtractionValidate as Action["validate"],
+	handler: relationshipExtractionHandler as Action["handler"],
+};
+
+/**
+ * @deprecated Re-exported as an evaluator only so legacy registrations don't
+ * break during migration. New code should register `relationshipExtractionAction`.
+ */
 export const relationshipExtractionEvaluator: Evaluator = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? false,
 	examples: toEvaluationExamples(spec.examples),
-
-	validate: async (
-		_runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-	): Promise<boolean> => {
-		// Always run for messages in conversations
-		return !!(message.content?.text && message.content.text.length > 0);
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-	): Promise<ActionResult | undefined> => {
-		const relationshipsService = runtime.getService(
-			"relationships",
-		) as RelationshipsService;
-		if (!relationshipsService) {
-			logger.warn(
-				"[RelationshipExtraction] RelationshipsService not available",
-			);
-			return;
-		}
-
-		// Get recent messages for context
-		const recentMessages = await runtime.getMemories({
-			roomId: message.roomId,
-			tableName: "messages",
-			limit: 10,
-			unique: false,
-		});
-
-		if (!message.content?.text) {
-			return;
-		}
-
-		// Extract platform identities from the current message
-		const identities = extractPlatformIdentities(message.content.text);
-		if (identities.length > 0) {
-			await storePlatformIdentities(runtime, message.entityId, identities);
-			await upsertEntityIdentities(
-				relationshipsService,
-				message.entityId,
-				identities,
-				message.id ? [message.id] : [],
-			);
-		}
-
-		// Check for disputes or corrections
-		const disputeInfo = detectDispute(message.content.text, recentMessages);
-		if (disputeInfo) {
-			await handleDispute(runtime, disputeInfo, message);
-		}
-
-		// Analyze relationships between participants
-		if (recentMessages.length > 1) {
-			await analyzeRelationships(runtime, recentMessages, relationshipsService);
-		}
-
-		// Extract information about mentioned third parties
-		const mentionedPeople = extractMentionedPeople(message.content.text);
-		for (const person of mentionedPeople) {
-			await createOrUpdateMentionedEntity(runtime, person, message.entityId);
-		}
-
-		// Assess trust and behavior patterns
-		await assessTrustIndicators(runtime, message.entityId, recentMessages);
-
-		// Detect privacy boundaries
-		const privacyInfo = detectPrivacyBoundaries(message.content.text);
-		if (privacyInfo) {
-			await handlePrivacyBoundary(runtime, privacyInfo, message);
-		}
-
-		// Handle admin user updates
-		await handleAdminUpdates(runtime, message, recentMessages);
-
-		logger.info(
-			{
-				src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
-				agentId: runtime.agentId,
-				messageId: message.id,
-				identitiesFound: identities.length,
-				disputeDetected: !!disputeInfo,
-				mentionedPeople: mentionedPeople.length,
-			},
-			"Completed extraction for message",
-		);
-
-		return {
-			success: true,
-			values: {
-				identitiesFound: identities.length,
-				disputeDetected: !!disputeInfo,
-				mentionedPeopleCount: mentionedPeople.length,
-			},
-			data: {
-				identitiesCount: identities.length,
-				hasDispute: !!disputeInfo,
-				mentionedPeopleCount: mentionedPeople.length,
-			},
-			text: `Extracted ${identities.length} identities, ${mentionedPeople.length} mentioned people, and ${disputeInfo ? "1 dispute" : "0 disputes"}.`,
-		};
-	},
+	validate: relationshipExtractionValidate,
+	handler: relationshipExtractionHandler,
 };
 
 function extractPlatformIdentities(text: string): PlatformIdentity[] {

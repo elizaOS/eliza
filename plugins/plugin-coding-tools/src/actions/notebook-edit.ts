@@ -127,8 +127,6 @@ export const notebookEditAction: Action = {
     },
   ],
   validate: async (runtime: IAgentRuntime) => {
-    const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (d === true || d === "true" || d === "1") return false;
     return true;
   },
   handler: async (
@@ -201,11 +199,7 @@ export const notebookEditAction: Action = {
     const validated = await sandbox.validatePath(conversationId, notebookPath);
     if (!validated.ok) {
       const reason =
-        validated.reason === "outside_roots"
-          ? "path_outside_roots"
-          : validated.reason === "blocked"
-            ? "path_blocked"
-            : "invalid_param";
+        validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
     }
 

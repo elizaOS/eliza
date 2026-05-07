@@ -1,9 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-import { readAction } from "./read.js";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { readAction } from "./read.js";
 
 describe("READ", () => {
   let env: TestEnv;
@@ -20,9 +19,14 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "hello.txt");
     await fs.writeFile(file, "line one\nline two\nline three", "utf8");
 
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain(file);
@@ -38,9 +42,14 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "lines.txt");
     await fs.writeFile(file, "alpha\nbeta", "utf8");
 
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("     1\talpha");
@@ -52,9 +61,14 @@ describe("READ", () => {
     const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
     await fs.writeFile(file, lines.join("\n"), "utf8");
 
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 10, limit: 5 },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, offset: 10, limit: 5 },
+      },
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("\tline 11");
@@ -69,9 +83,14 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "track.txt");
     await fs.writeFile(file, "hello", "utf8");
 
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
     expect(result.success).toBe(true);
 
     const data = result.data as Record<string, unknown> | undefined;
@@ -82,22 +101,32 @@ describe("READ", () => {
   });
 
   it("rejects relative paths", async () => {
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: "relative/path.txt" },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: "relative/path.txt" },
+      },
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("invalid_param");
   });
 
-  it("rejects paths outside the configured workspace root", async () => {
-    const outside = "/etc/passwd";
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: outside },
-    });
-
+  it("rejects paths under the blocklist", async () => {
+    const file = path.join(env.blockedPath, "secret.txt");
+    await fs.writeFile(file, "data");
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
     expect(result.success).toBe(false);
-    expect(result.text).toContain("path_outside_roots");
+    expect(result.text).toContain("path_blocked");
   });
 
   it("rejects files larger than CODING_TOOLS_MAX_FILE_SIZE_BYTES", async () => {
@@ -107,9 +136,14 @@ describe("READ", () => {
     try {
       const file = path.join(env2.tmpDir, "big.txt");
       await fs.writeFile(file, "x".repeat(64), "utf8");
-      const result = await readAction.handler!(env2.runtime, env2.message, undefined, {
-        parameters: { file_path: file },
-      });
+      const result = await readAction.handler?.(
+        env2.runtime,
+        env2.message,
+        undefined,
+        {
+          parameters: { file_path: file },
+        },
+      );
       expect(result.success).toBe(false);
       expect(result.text).toContain("io_error");
       expect(result.text).toContain("offset/limit");
@@ -122,16 +156,21 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "binary.bin");
     await fs.writeFile(file, Buffer.from([0x68, 0x69, 0x00, 0x21]));
 
-    const result = await readAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file },
-    });
+    const result = await readAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("binary file");
   });
 
   it("fails when roomId is missing", async () => {
-    const result = await readAction.handler!(
+    const result = await readAction.handler?.(
       env.runtime,
       {} as unknown as typeof env.message,
       undefined,

@@ -310,15 +310,22 @@ function renderEvent(
 	}
 
 	if (isInstructionEvent(event)) {
+		// System-role instruction events are part of the agent's stable system
+		// prompt and their content is already self-labeled (e.g. starts with
+		// `available_contexts:`). Use label="admin" so segmentBlock emits the
+		// raw content without an extra `instruction:system:\n` header. Non-
+		// system roles keep the label so the model can spot them.
+		const role = event.role ?? "system";
+		const label = role === "system" ? "system" : `instruction:${role}`;
 		appendPromptSegment(
 			rendered,
 			{
 				id: event.id,
-				label: `instruction:${event.role ?? "system"}`,
+				label,
 				content: event.content,
 				stable: Boolean(event.stable),
 			},
-			event.role,
+			role,
 		);
 		return;
 	}
@@ -393,18 +400,14 @@ export function renderContextObject(
 	for (const segment of context.staticPrefix?.staticProviders ?? []) {
 		appendPromptSegment(rendered, segment, "system");
 	}
-	if (context.staticPrefix?.contextRegistryDigest) {
-		appendSyntheticSegment(rendered, {
-			id: "context-registry-digest",
-			label: "context-registry",
-			content: `context_registry_digest: ${context.staticPrefix.contextRegistryDigest}`,
-			stable: true,
-		});
-	}
+	// Synthetic system segments use label="system" so segmentBlock emits the
+	// raw content without a redundant `<label>:\n` header — every content body
+	// below is already self-labeled (e.g. `selected_contexts: ...`,
+	// `contexts:\n- ...`).
 	if (context.trajectoryPrefix?.messageHandlerThought) {
 		appendSyntheticSegment(rendered, {
 			id: "message-handler-thought",
-			label: "message-handler",
+			label: "system",
 			content: `message_handler_thought: ${context.trajectoryPrefix.messageHandlerThought}`,
 			stable: true,
 		});
@@ -412,21 +415,24 @@ export function renderContextObject(
 	if (context.trajectoryPrefix?.selectedContexts?.length) {
 		appendSyntheticSegment(rendered, {
 			id: "selected-contexts",
-			label: "selected-contexts",
+			label: "system",
 			content: `selected_contexts: ${context.trajectoryPrefix.selectedContexts.join(", ")}`,
 			stable: true,
 		});
 	}
 	if (context.trajectoryPrefix?.contextDefinitions?.length) {
+		const lines = context.trajectoryPrefix.contextDefinitions.map(
+			(definition) => {
+				const description = definition.description?.trim();
+				return description
+					? `- ${definition.id}: ${description}`
+					: `- ${definition.id}`;
+			},
+		);
 		appendSyntheticSegment(rendered, {
 			id: "context-definitions",
-			label: "context-definitions",
-			content: `context_definitions: ${JSON.stringify(
-				context.trajectoryPrefix.contextDefinitions.map((definition) => ({
-					id: definition.id,
-					description: definition.description,
-				})),
-			)}`,
+			label: "system",
+			content: `contexts:\n${lines.join("\n")}`,
 			stable: true,
 		});
 	}

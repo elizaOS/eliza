@@ -20,7 +20,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "../services/auth-store";
 import { _resetAuthRateLimiter } from "./auth";
-import { _resetLegacyBearerState } from "./auth/legacy-bearer";
 import { SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   _resetAuthSessionRoutesLimiter,
@@ -179,17 +178,14 @@ describe("P1 session routes (real pglite)", () => {
     harness = await open();
     _resetAuthRateLimiter();
     _resetAuthSessionRoutesLimiter();
-    _resetLegacyBearerState();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
-    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
     await harness.cleanup();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
-    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   });
 
   it("setup -> me -> logout flow", async () => {
@@ -423,83 +419,6 @@ describe("P1 session routes (real pglite)", () => {
       harness.state,
     );
     expect(newLogin.status()).toBe(200);
-  });
-
-  it("legacy bearer migration: pre-grace use emits deprecation header; password setup retires it", async () => {
-    process.env.ELIZA_API_TOKEN = "legacy-token-value-1234567890";
-
-    // First request with legacy bearer is allowed in-window. Use a route
-    // that goes through the auth context; the cookie-aware async helper.
-    const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
-      await import("./auth");
-    reset();
-
-    const req = fakeReq({
-      method: "GET",
-      pathname: "/api/some-thing",
-      bearer: "legacy-token-value-1234567890",
-      ip: "10.0.0.8",
-      headers: { host: "10.0.0.2:31337" },
-    });
-    const res = fakeRes();
-    const ok = await ensureCompatApiAuthorizedAsync(req, res.res, {
-      store: harness.store,
-    });
-    expect(ok).toBe(true);
-    expect(res.headers()["x-eliza-legacy-token-deprecated"]).toBe("1");
-
-    // Now set up a real auth method — legacy bearer is invalidated.
-    await handleAuthSessionRoutes(
-      fakeReq({
-        method: "POST",
-        pathname: "/api/auth/setup",
-        body: {
-          password: "post-setup secure 99!",
-          displayName: "alice",
-        },
-      }),
-      fakeRes().res,
-      harness.state,
-    );
-
-    const post = fakeRes();
-    const okAfter = await ensureCompatApiAuthorizedAsync(
-      fakeReq({
-        method: "GET",
-        pathname: "/api/some-thing",
-        bearer: "legacy-token-value-1234567890",
-        ip: "10.0.0.8",
-        headers: { host: "10.0.0.2:31337" },
-      }),
-      post.res,
-      { store: harness.store },
-    );
-    expect(okAfter).toBe(false);
-    expect(post.status()).toBe(401);
-  });
-
-  it("legacy bearer migration: post-grace use is rejected", async () => {
-    process.env.ELIZA_API_TOKEN = "legacy-token-value-1234567890";
-    process.env.ELIZA_LEGACY_GRACE_UNTIL = "1"; // ms epoch in the past
-
-    const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
-      await import("./auth");
-    reset();
-
-    const res = fakeRes();
-    const ok = await ensureCompatApiAuthorizedAsync(
-      fakeReq({
-        method: "GET",
-        pathname: "/api/some-thing",
-        bearer: "legacy-token-value-1234567890",
-        ip: "10.0.0.8",
-        headers: { host: "10.0.0.2:31337" },
-      }),
-      res.res,
-      { store: harness.store },
-    );
-    expect(ok).toBe(false);
-    expect(res.status()).toBe(401);
   });
 
   it("route auth trusts localhost only, not remote or cloud loopback", async () => {

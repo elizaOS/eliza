@@ -165,7 +165,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // standalone engine.
     if (loader?.generate) {
       return loader.generate({
-        prompt: params.prompt,
+        prompt: params.prompt ?? "",
         stopSequences: params.stopSequences,
       });
     }
@@ -180,7 +180,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       );
     }
     return localInferenceEngine.generate({
-      prompt: params.prompt,
+      prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
     });
   };

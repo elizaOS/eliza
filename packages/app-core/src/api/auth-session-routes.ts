@@ -29,7 +29,6 @@ import {
   createBrowserSession,
   ensureSessionForRequest,
   hashPassword,
-  markLegacyBearerInvalidated,
   parseSessionCookie,
   revokeSession,
   SESSION_COOKIE_NAME,
@@ -284,17 +283,6 @@ async function handleSetup(
   });
   setSessionCookies(res, session);
 
-  // A real auth method just landed — invalidate the legacy static bearer.
-  await markLegacyBearerInvalidated(store, {
-    actorIdentityId: identityId,
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-  }).catch((err) => {
-    logger.error(
-      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
-
   await appendAuditEvent(
     {
       actorIdentityId: identityId,
@@ -406,16 +394,6 @@ async function handleLoginPassword(
   });
   setSessionCookies(res, session);
 
-  await markLegacyBearerInvalidated(store, {
-    actorIdentityId: identity.id,
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-  }).catch((err) => {
-    logger.error(
-      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
-
   await appendAuditEvent(
     {
       actorIdentityId: identity.id,
@@ -510,36 +488,8 @@ async function handleMe(
 
   const ctx = await ensureSessionForRequest(req, res, {
     store,
-    allowLegacyBearer: true,
     allowBootstrapBearer: false,
   });
-  // Bearer-only auth: the caller presented a valid API token but has no
-  // browser session. Surface the existing owner identity if one is configured;
-  // otherwise represent the bearer as a machine identity so ownership-gated UI
-  // doesn't mistake it for an account owner.
-  if (ctx?.legacy && !ctx.session && !ctx.identity) {
-    const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
-    sendJsonResponse(res, 200, {
-      identity: owner
-        ? {
-            id: owner.id,
-            displayName: owner.displayName,
-            kind: owner.kind,
-          }
-        : {
-            id: "bearer",
-            displayName: "API Token",
-            kind: "machine" as const,
-          },
-      session: { id: "bearer", kind: "machine" as const, expiresAt: null },
-      access: {
-        mode: "bearer" as const,
-        passwordConfigured: Boolean(owner?.passwordHash),
-        ownerConfigured: Boolean(owner),
-      },
-    });
-    return true;
-  }
   if (!ctx?.session || !ctx.identity) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
     sendJsonResponse(res, 401, {
@@ -614,7 +564,6 @@ async function handleChangePassword(
     ? null
     : await ensureSessionForRequest(req, res, {
         store,
-        allowLegacyBearer: false,
         allowBootstrapBearer: false,
       });
 
@@ -705,7 +654,6 @@ async function handleListSessions(
 
   const ctx = await ensureSessionForRequest(req, res, {
     store,
-    allowLegacyBearer: false,
     allowBootstrapBearer: false,
   });
   if (!ctx?.identity) {
@@ -739,7 +687,6 @@ async function handleRevoke(
 ): Promise<boolean> {
   const ctx = await ensureSessionForRequest(req, res, {
     store,
-    allowLegacyBearer: false,
     allowBootstrapBearer: false,
   });
   if (!ctx?.identity) {

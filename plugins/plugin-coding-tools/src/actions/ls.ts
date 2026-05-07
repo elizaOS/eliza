@@ -103,8 +103,6 @@ export const lsAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (d === true || d === "true" || d === "1") return false;
     return true;
   },
   handler: async (
@@ -144,13 +142,7 @@ export const lsAction: Action = {
     const validation = await sandbox.validatePath(conversationId, targetPath);
     if (!validation.ok) {
       const reason =
-        validation.reason === "outside_roots"
-          ? "path_outside_roots"
-          : validation.reason === "blocked"
-            ? "path_blocked"
-            : validation.reason === "not_absolute"
-              ? "invalid_param"
-              : "invalid_param";
+        validation.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validation.message });
     }
     const dir = validation.resolved;

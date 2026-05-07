@@ -29,9 +29,8 @@ let AgentRuntimeCtor:
       opts: Record<string, unknown>,
     ) => IAgentRuntime)
   | null = null;
-let InMemoryDatabaseAdapterCtor:
-  | (new () => Record<string, unknown>)
-  | null = null;
+let InMemoryDatabaseAdapterCtor: (new () => Record<string, unknown>) | null =
+  null;
 let secretsManagerPlugin: Plugin | null = null;
 let pluginManagerPlugin: Plugin | null = null;
 let SECRETS_SERVICE_TYPE: string = "SECRETS";

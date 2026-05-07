@@ -50,14 +50,6 @@
       "label": "OS-level sandbox",
       "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
       "advanced": true
-    },
-    "CODING_TOOLS_DISABLE": {
-      "type": "boolean",
-      "required": false,
-      "sensitive": false,
-      "label": "Disable",
-      "help": "Disable all actions in this plugin even when loaded.",
-      "advanced": false
     }
   },
   "render": {

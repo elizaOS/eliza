@@ -1,0 +1,26 @@
+{
+  "id": "todos",
+  "name": "Todos",
+  "description": "TODO_WRITE action and currentTodosProvider. Per-conversation in-memory todo list, mirroring Claude Code's TodoWrite tool. The provider keeps the list in the planner's context each turn.",
+  "npmName": "@elizaos/plugin-todos",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": ["todos", "tasks", "agent", "claude-code"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ListChecks",
+    "group": "devtools",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

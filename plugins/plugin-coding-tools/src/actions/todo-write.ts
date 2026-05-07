@@ -102,9 +102,9 @@ export const todoWriteAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["UPDATE_TODOS", "SET_TODOS"],
   description:
-    "Replace the conversation's todo list with the provided array. Each todo has content, status (pending|in_progress|completed), and an optional activeForm describing the in-progress phrasing. The full list is replaced on every call. Use to plan multi-step work and track progress within a session.",
+    "Replace the per-conversation coding-agent todo list (keyed by roomId, kept in process memory) with the provided array. Each item is { id?: string, content: string, status: pending|in_progress|completed, activeForm?: string }; missing ids are auto-generated, missing activeForm falls back to content. The full list is overwritten on every call — pass the complete updated list, not a delta. Use to plan multi-step coding work and track progress within a session.",
   descriptionCompressed:
-    "Replace conversation todo list with {content,status,activeForm}[].",
+    "todo-write:replace conversation list [{id?,content,status:pending|in_progress|completed,activeForm?}]",
   parameters: [
     {
       name: "todos",
@@ -130,12 +130,10 @@ export const todoWriteAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ) => {
-    const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (disable === true || disable === "true" || disable === "1") return false;
     return true;
   },
   handler: async (
@@ -147,38 +145,47 @@ export const todoWriteAction: Action = {
   ): Promise<ActionResult> => {
     const conversationId = message.roomId ? String(message.roomId) : undefined;
     if (!conversationId) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "missing roomId",
-      }, {
-        actionName: "TODO_WRITE",
-        reason: "missing_room_id",
-      });
+      return failureToActionResult(
+        {
+          reason: "missing_param",
+          message: "missing roomId",
+        },
+        {
+          actionName: "TODO_WRITE",
+          reason: "missing_room_id",
+        },
+      );
     }
 
     const rawTodos = readArrayParam(options, "todos");
     if (rawTodos === undefined) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "todos is required and must be an array",
-      }, {
-        actionName: "TODO_WRITE",
-        reason: "missing_todos",
-      });
+      return failureToActionResult(
+        {
+          reason: "missing_param",
+          message: "todos is required and must be an array",
+        },
+        {
+          actionName: "TODO_WRITE",
+          reason: "missing_todos",
+        },
+      );
     }
 
     const newTodos: Todo[] = [];
     for (let i = 0; i < rawTodos.length; i++) {
       const parsed = parseTodo(rawTodos[i], i);
       if ("error" in parsed) {
-        return failureToActionResult({
-          reason: "invalid_param",
-          message: parsed.error,
-        }, {
-          actionName: "TODO_WRITE",
-          reason: "invalid_todo",
-          index: i,
-        });
+        return failureToActionResult(
+          {
+            reason: "invalid_param",
+            message: parsed.error,
+          },
+          {
+            actionName: "TODO_WRITE",
+            reason: "invalid_todo",
+            index: i,
+          },
+        );
       }
       newTodos.push(parsed.todo);
     }

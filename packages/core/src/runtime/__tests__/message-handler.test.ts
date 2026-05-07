@@ -76,11 +76,8 @@ describe("v5 message handler routing", () => {
 }`);
 		expect(parsed).toMatchObject({
 			processMessage: "RESPOND",
-			action: "RESPOND",
 			thought: "Direct.",
 			plan: { contexts: ["simple"], reply: "Done." },
-			contexts: ["simple"],
-			reply: "Done.",
 		});
 	});
 
@@ -93,8 +90,7 @@ describe("v5 message handler routing", () => {
   "simple": true
 }`);
 		expect(parsed?.plan.contexts).toEqual([SIMPLE_CONTEXT_ID]);
-		expect(parsed?.contexts).toEqual([SIMPLE_CONTEXT_ID]);
-		expect(parsed?.reply).toBe("Done.");
+		expect(parsed?.plan.reply).toBe("Done.");
 	});
 
 	it("ignores legacy simple:true when contexts is non-empty", () => {

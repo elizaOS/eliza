@@ -14,6 +14,7 @@ import {
 } from "../../types";
 import { splitChunks } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
+import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
 import { addKnowledgeFromFilePath, loadDocsFromPath } from "./docs-loader";
 import {
@@ -22,13 +23,13 @@ import {
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
 import type {
-	KnowledgeConfig,
-	KnowledgeDocumentMemoryMetadata,
-	KnowledgeFragmentMemoryMetadata,
+	AddDocumentOptions,
+	DocumentFragmentMemoryMetadata,
+	DocumentMemoryMetadata,
+	DocumentsConfig,
 	LoadResult,
-	StoredKnowledgeItem,
-} from "./types";
-import type { AddKnowledgeOptions } from "./types.ts";
+	StoredDocument,
+} from "./types.ts";
 import {
 	createKnowledgeNoteFilename,
 	deriveKnowledgeTitle,
@@ -38,6 +39,22 @@ import {
 	looksLikeBase64,
 	stripKnowledgeFilenameExtension,
 } from "./utils.ts";
+
+/**
+ * Controls how SEARCH_DOCUMENTS combines vector and keyword scores.
+ *
+ * - "hybrid"  — (default) vector cosine + BM25, weighted 0.6/0.4.
+ *               Falls back to "keyword" automatically when no TEXT_EMBEDDING
+ *               model is registered (e.g. the cerebras runner).
+ * - "vector"  — Pure vector / cosine-similarity search (original behaviour).
+ * - "keyword" — Pure BM25 keyword search; does not require an embedding model.
+ */
+export type SearchMode = "hybrid" | "vector" | "keyword";
+
+/** Weight given to the normalized vector score in hybrid mode. */
+const HYBRID_VECTOR_WEIGHT = 0.6;
+/** Weight given to the normalized BM25 score in hybrid mode. */
+const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 
 function describeEmbeddingConfig(config: {
 	EMBEDDING_PROVIDER?: string;
@@ -59,7 +76,7 @@ export class KnowledgeService extends Service {
 
 	private knowledgeProcessingSemaphore: Semaphore;
 
-	constructor(runtime?: IAgentRuntime, _config?: Partial<KnowledgeConfig>) {
+	constructor(runtime?: IAgentRuntime, _config?: Partial<DocumentsConfig>) {
 		super(runtime);
 		this.knowledgeProcessingSemaphore = new Semaphore(10);
 	}
@@ -200,7 +217,7 @@ export class KnowledgeService extends Service {
 		);
 	}
 
-	async addKnowledge(options: AddKnowledgeOptions): Promise<{
+	async addKnowledge(options: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
 		fragmentCount: number;
@@ -233,7 +250,7 @@ export class KnowledgeService extends Service {
 				const relatedFragments = fragments.filter(
 					(f) =>
 						f.metadata?.type === MemoryType.FRAGMENT &&
-						(f.metadata as KnowledgeFragmentMemoryMetadata | undefined)
+						(f.metadata as DocumentFragmentMemoryMetadata | undefined)
 							?.documentId === contentBasedId,
 				);
 
@@ -265,7 +282,7 @@ export class KnowledgeService extends Service {
 		roomId,
 		entityId,
 		metadata,
-	}: AddKnowledgeOptions): Promise<{
+	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
 		fragmentCount: number;
@@ -426,25 +443,56 @@ export class KnowledgeService extends Service {
 	async getKnowledge(
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-	): Promise<StoredKnowledgeItem[]> {
+		searchMode?: SearchMode,
+	): Promise<StoredDocument[]> {
 		if (!message?.content?.text || message?.content?.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for knowledge query");
 			return [];
 		}
 
-		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: message.content.text,
-		});
-
+		const queryText = message.content.text;
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;
 		if (scope?.entityId) filterScope.entityId = scope.entityId;
 
+		// Determine effective mode, falling back to keyword when no embedding model
+		const hasEmbeddingModel = Boolean(
+			this.runtime.getModel(ModelType.TEXT_EMBEDDING),
+		);
+		let effectiveMode: SearchMode = searchMode ?? "hybrid";
+		if (!hasEmbeddingModel && effectiveMode !== "keyword") {
+			logger.debug(
+				"No TEXT_EMBEDDING model registered — falling back to keyword search",
+			);
+			effectiveMode = "keyword";
+		}
+
+		if (effectiveMode === "keyword") {
+			return this._keywordSearch(queryText, filterScope);
+		}
+
+		if (effectiveMode === "vector") {
+			return this._vectorSearch(queryText, filterScope);
+		}
+
+		// hybrid: vector + BM25 combined
+		return this._hybridSearch(queryText, filterScope);
+	}
+
+	/** Pure vector (cosine-similarity) search — original behaviour. */
+	private async _vectorSearch(
+		queryText: string,
+		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+	): Promise<StoredDocument[]> {
+		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+			text: queryText,
+		});
+
 		const fragments = await this.runtime.searchMemories({
 			tableName: "knowledge",
 			embedding,
-			query: message.content.text,
+			query: queryText,
 			...filterScope,
 			limit: 20,
 			match_threshold: 0.1,
@@ -458,7 +506,116 @@ export class KnowledgeService extends Service {
 				similarity: fragment.similarity,
 				metadata: fragment.metadata,
 				worldId: fragment.worldId,
-			})) as StoredKnowledgeItem[];
+			})) as StoredDocument[];
+	}
+
+	/**
+	 * Pure BM25 keyword search over all stored fragments.
+	 * Does not require an embedding model.
+	 */
+	private async _keywordSearch(
+		queryText: string,
+		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+	): Promise<StoredDocument[]> {
+		const allFragments = await this.runtime.getMemories({
+			tableName: "knowledge",
+			agentId: this.runtime.agentId,
+			...filterScope,
+			count: 1000,
+		});
+
+		const valid = allFragments.filter(
+			(f) => f.id !== undefined && f.content?.text,
+		);
+		if (valid.length === 0) return [];
+
+		const docs = valid.map((f) => ({
+			id: f.id as string,
+			text: f.content.text ?? "",
+		}));
+
+		const rawScores = bm25Scores(queryText, docs);
+		const normScores = normalizeBm25Scores(rawScores);
+		const scoreMap = new Map(normScores.map((s) => [s.id, s.score]));
+
+		return valid
+			.map((fragment) => ({
+				id: fragment.id as UUID,
+				content: fragment.content as Content,
+				similarity: scoreMap.get(fragment.id as string) ?? 0,
+				metadata: fragment.metadata,
+				worldId: fragment.worldId,
+			}))
+			.filter((item) => item.similarity > 0)
+			.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+			.slice(0, 20) as StoredDocument[];
+	}
+
+	/**
+	 * Hybrid search: vector top-K re-ranked with BM25, combined as
+	 *   score = 0.6 * normalised_vector + 0.4 * normalised_bm25
+	 */
+	private async _hybridSearch(
+		queryText: string,
+		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+	): Promise<StoredDocument[]> {
+		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+			text: queryText,
+		});
+
+		// Fetch a larger candidate set so BM25 can re-rank meaningfully
+		const candidates = await this.runtime.searchMemories({
+			tableName: "knowledge",
+			embedding,
+			query: queryText,
+			...filterScope,
+			limit: 40,
+			match_threshold: 0.05,
+		});
+
+		const valid = candidates.filter(
+			(f) => f.id !== undefined && f.content?.text,
+		);
+		if (valid.length === 0) return [];
+
+		// Normalise vector scores to [0, 1]
+		const rawSimilarities = valid.map((f) =>
+			typeof f.similarity === "number" ? f.similarity : 0,
+		);
+		const maxSim = Math.max(...rawSimilarities);
+		const minSim = Math.min(...rawSimilarities);
+		const simRange = maxSim - minSim;
+
+		const normVectorScore = (raw: number): number =>
+			simRange === 0 ? 1 : (raw - minSim) / simRange;
+
+		// BM25 over candidate set
+		const docs = valid.map((f) => ({
+			id: f.id as string,
+			text: f.content.text ?? "",
+		}));
+		const rawBm25 = bm25Scores(queryText, docs);
+		const normBm25 = normalizeBm25Scores(rawBm25);
+		const bm25Map = new Map(normBm25.map((s) => [s.id, s.score]));
+
+		return valid
+			.map((fragment) => {
+				const vectorNorm = normVectorScore(
+					typeof fragment.similarity === "number" ? fragment.similarity : 0,
+				);
+				const bm25Norm = bm25Map.get(fragment.id as string) ?? 0;
+				const combined =
+					HYBRID_VECTOR_WEIGHT * vectorNorm + HYBRID_BM25_WEIGHT * bm25Norm;
+				return {
+					id: fragment.id as UUID,
+					content: fragment.content as Content,
+					similarity: combined,
+					metadata: fragment.metadata,
+					worldId: fragment.worldId,
+				};
+			})
+			.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+			.slice(0, 20) as StoredDocument[];
 	}
 
 	async enrichConversationMemoryWithRAG(
@@ -678,7 +835,7 @@ export class KnowledgeService extends Service {
 							contentType: "text/plain",
 							fileSize: Buffer.byteLength(trimmedItem, "utf8"),
 							textBacked: true,
-						} satisfies KnowledgeDocumentMemoryMetadata,
+						} satisfies DocumentMemoryMetadata,
 					},
 					undefined,
 					{
@@ -712,7 +869,7 @@ export class KnowledgeService extends Service {
 		}
 
 		const existingMetadata = (existingDocument.metadata ??
-			{}) as KnowledgeDocumentMemoryMetadata;
+			{}) as DocumentMemoryMetadata;
 		const filename =
 			typeof existingMetadata.filename === "string" &&
 			existingMetadata.filename.trim().length > 0
@@ -738,7 +895,7 @@ export class KnowledgeService extends Service {
 			existingMetadata.contentType.trim().length > 0
 				? existingMetadata.contentType.trim()
 				: "text/plain";
-		const updatedMetadata: KnowledgeDocumentMemoryMetadata = {
+		const updatedMetadata: DocumentMemoryMetadata = {
 			...existingMetadata,
 			type: MemoryType.DOCUMENT,
 			documentId: options.documentId,
@@ -825,7 +982,7 @@ export class KnowledgeService extends Service {
 	}
 
 	async _internalAddKnowledge(
-		item: StoredKnowledgeItem,
+		item: StoredDocument,
 		options = {
 			targetTokens: 1500,
 			overlap: 200,
@@ -852,7 +1009,7 @@ export class KnowledgeService extends Service {
 				item.metadata.source.trim().length > 0
 					? item.metadata.source.trim()
 					: "unknown",
-		} satisfies KnowledgeDocumentMemoryMetadata;
+		} satisfies DocumentMemoryMetadata;
 
 		const documentMemory: Memory = {
 			id: item.id,
@@ -906,7 +1063,7 @@ export class KnowledgeService extends Service {
 	}
 
 	private async splitAndCreateFragments(
-		document: StoredKnowledgeItem,
+		document: StoredDocument,
 		targetTokens: number,
 		overlap: number,
 		scope: { roomId: UUID; worldId: UUID; entityId: UUID },
@@ -921,7 +1078,7 @@ export class KnowledgeService extends Service {
 		return chunks.map((chunk, index) => {
 			const fragmentIdContent = `${document.id}-fragment-${index}-${Date.now()}`;
 			const fragmentId = createUniqueUuid(this.runtime, fragmentIdContent);
-			const fragmentMetadata: KnowledgeFragmentMemoryMetadata = {
+			const fragmentMetadata: DocumentFragmentMemoryMetadata = {
 				...(document.metadata || {}),
 				type: MemoryType.FRAGMENT,
 				documentId: document.id,

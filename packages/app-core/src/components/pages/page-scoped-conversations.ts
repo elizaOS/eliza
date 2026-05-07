@@ -44,7 +44,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
       "page-character",
       "character",
       "knowledge",
-      "social",
+      "social_posting",
     ],
   },
   "page-automations": {
@@ -57,15 +57,20 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   },
   "page-connectors": {
     primaryContext: "connectors",
-    secondaryContexts: ["page", "page-connectors", "connectors", "social"],
+    secondaryContexts: [
+      "page",
+      "page-connectors",
+      "connectors",
+      "social_posting",
+    ],
   },
   "page-phone": {
     primaryContext: "phone",
-    secondaryContexts: ["page", "page-phone", "phone", "social"],
+    secondaryContexts: ["page", "page-phone", "phone", "social_posting"],
   },
   "page-plugins": {
     primaryContext: "plugins",
-    secondaryContexts: ["page", "page-plugins", "plugins", "system"],
+    secondaryContexts: ["page", "page-plugins", "plugins", "admin"],
   },
   "page-lifeops": {
     primaryContext: "lifeops",
@@ -74,12 +79,12 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
       "page-lifeops",
       "lifeops",
       "automation",
-      "social",
+      "social_posting",
     ],
   },
   "page-settings": {
     primaryContext: "settings",
-    secondaryContexts: ["page", "page-settings", "settings", "system"],
+    secondaryContexts: ["page", "page-settings", "settings", "admin"],
   },
   "page-wallet": {
     primaryContext: "wallet",

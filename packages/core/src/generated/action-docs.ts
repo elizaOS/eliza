@@ -2496,7 +2496,7 @@ export const allActionsSpec = {
 		{
 			name: "ATTACK_NPC",
 			description:
-				"Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
+				"Engage a nearby NPC in the SCAPE world in combat by its instance id (taken from the SCAPE_NEARBY provider's npcs list). The game server pathfinds the agent into attack range and starts combat via PlayerManager.attackNpcAsAgent. Use only when an enemy id is known and combat is desired; this is a write action that mutates world state.",
 			parameters: [
 				{
 					name: "npcId",
@@ -2508,7 +2508,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "NPC id.",
 				},
 			],
-			descriptionCompressed: "Attack NPC by id.",
+			descriptionCompressed: "scape:attack-npc by-id (paths-into-range)",
 			similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
 			exampleCalls: [
 				{
@@ -2604,7 +2604,7 @@ export const allActionsSpec = {
 		{
 			name: "BLOCK_UNTIL_TASK_COMPLETE",
 			description:
-				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. ",
+				"Create a website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (e.g. 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, the todo is created first; an optional unlockDurationMinutes re-locks the same hosts after the gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking') — those belong to OWNER_WEBSITE_BLOCK.",
 			parameters: [
 				{
 					name: "websites",
@@ -2661,7 +2661,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Optional profile label for the block rule.",
 				},
 			],
-			descriptionCompressed: "Block websites until a named todo is completed.",
+			descriptionCompressed:
+				"block-websites-until-todo-complete: websites + todoId|todoName + optional unlockDurationMinutes",
 			similes: [
 				"BLOCK_SITES_UNTIL_TODO_DONE",
 				"BLOCK_WEBSITE_UNTIL_TASK",
@@ -3814,6 +3815,34 @@ export const allActionsSpec = {
 							baseBranch: "example",
 							useWorktree: false,
 							parentWorkspaceId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DELETE_LINEAR_COMMENT",
+			description: "Delete a Linear comment by id",
+			parameters: [
+				{
+					name: "commentId",
+					description: "Linear comment id to delete.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear comment id to delete.",
+				},
+			],
+			descriptionCompressed: "delete Linear comment id",
+			similes: ["remove-linear-comment", "erase-linear-comment"],
+			exampleCalls: [
+				{
+					user: "Use DELETE_LINEAR_COMMENT with the provided parameters.",
+					actions: ["DELETE_LINEAR_COMMENT"],
+					params: {
+						DELETE_LINEAR_COMMENT: {
+							commentId: "example",
 						},
 					},
 				},
@@ -5240,22 +5269,22 @@ export const allActionsSpec = {
 		{
 			name: "LINEAR",
 			description:
-				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
 					name: "op",
 					description:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from...",
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments...",
 				},
 			],
 			descriptionCompressed:
-				"Linear: create/get/update/delete issue, create comment, search issues, get/clear activity.",
+				"Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
 			similes: [
 				"LINEAR_ISSUE",
 				"LINEAR_ISSUES",
@@ -5272,6 +5301,9 @@ export const allActionsSpec = {
 				"MANAGE_LINEAR_ISSUES",
 				"CREATE_LINEAR_COMMENT",
 				"COMMENT_LINEAR_ISSUE",
+				"UPDATE_LINEAR_COMMENT",
+				"DELETE_LINEAR_COMMENT",
+				"LIST_LINEAR_COMMENTS",
 				"GET_LINEAR_ACTIVITY",
 				"CLEAR_LINEAR_ACTIVITY",
 				"SEARCH_LINEAR_ISSUES",
@@ -5292,7 +5324,7 @@ export const allActionsSpec = {
 		{
 			name: "LIST_ACTIVE_BLOCKS",
 			description:
-				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+				"Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with the LifeOps-managed block rules (id, gateType, websites, gate target — todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus / includeManagedRules. Only for website/app blocking status — do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
 			parameters: [
 				{
 					name: "includeLiveStatus",
@@ -5318,7 +5350,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"List live website blocker status and active block rules.",
+				"list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
 			similes: [
 				"LIST_BLOCK_RULES",
 				"SHOW_ACTIVE_BLOCKS",
@@ -5354,6 +5386,50 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"List active task agents together with current task progress so the main agent can keep user updated while work continues asynchronously.",
+		},
+		{
+			name: "LIST_LINEAR_COMMENTS",
+			description: "List comments on a Linear issue",
+			parameters: [
+				{
+					name: "issueId",
+					description: "Linear issue id or identifier to list comments for.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear issue id or id to list comments for.",
+				},
+				{
+					name: "limit",
+					description:
+						"Maximum number of comments to return (default 25, max 100).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"max number of comments to return (default 25, max 100).",
+				},
+			],
+			descriptionCompressed: "list comment Linear issue",
+			similes: [
+				"get-linear-comments",
+				"show-linear-comments",
+				"fetch-linear-comments",
+			],
+			exampleCalls: [
+				{
+					user: "Use LIST_LINEAR_COMMENTS with the provided parameters.",
+					actions: ["LIST_LINEAR_COMMENTS"],
+					params: {
+						LIST_LINEAR_COMMENTS: {
+							issueId: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "LIST_OVERDUE_FOLLOWUPS",
@@ -7167,26 +7243,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Post to social network: x, bluesky, farcaster, nostr.",
-			similes: [
-				"POST",
-				"PUBLISH",
-				"BROADCAST",
-				"SHARE",
-				"SOCIAL_POST",
-				"PUBLISH_POST",
-				"SEND_X_POST",
-				"POST_X",
-				"TWEET",
-				"POST_BLUESKY",
-				"POST_TO_BLUESKY",
-				"BLUESKY_POST",
-				"FARCASTER_CAST",
-				"SEND_CAST",
-				"POST_CAST",
-				"NOSTR_PUBLISH_NOTE",
-				"NOSTR_NOTE",
-				"POST_NOSTR_NOTE",
-			],
 			exampleCalls: [
 				{
 					user: "Use POST_TO_SOCIAL with the provided parameters.",
@@ -8091,36 +8147,21 @@ export const allActionsSpec = {
 		{
 			name: "SHOPIFY",
 			description:
-				"Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers), search (catalog-wide search). Op is inferred from the message text when not explicitly provided.",
+				"Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided. For read-only catalog browsing use SEARCH_SHOPIFY_STORE.",
 			parameters: [
 				{
 					name: "op",
 					description:
-						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from message text when omitted.",
+						"Operation to perform. One of: products, inventory, orders, customers. Inferred from message text when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from msg text when omitted.",
+						"Operation to perform. One of: products, inventory, orders, customers. Inferred from msg text when omitted.",
 				},
 			],
-			descriptionCompressed:
-				"Shopify: products, inventory, orders, customers, search.",
-			similes: [
-				"STORE",
-				"SHOPIFY_STORE",
-				"MANAGE_SHOPIFY_PRODUCTS",
-				"MANAGE_SHOPIFY_INVENTORY",
-				"MANAGE_SHOPIFY_ORDERS",
-				"MANAGE_SHOPIFY_CUSTOMERS",
-				"SEARCH_SHOPIFY_STORE",
-				"SEARCH_SHOPIFY",
-				"SHOPIFY_PRODUCTS",
-				"SHOPIFY_ORDERS",
-				"SHOPIFY_INVENTORY",
-				"SHOPIFY_CUSTOMERS",
-			],
+			descriptionCompressed: "Shopify: products, inventory, orders, customers.",
 			exampleCalls: [
 				{
 					user: "Use SHOPIFY with the provided parameters.",
@@ -8189,21 +8230,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
-			similes: [
-				"SKILLS",
-				"SKILL_CATALOG",
-				"SEARCH_SKILLS",
-				"GET_SKILL_DETAILS",
-				"SYNC_SKILL_CATALOG",
-				"TOGGLE_SKILL",
-				"INSTALL_SKILL",
-				"UNINSTALL_SKILL",
-				"BROWSE_SKILLS",
-				"LIST_SKILLS",
-				"REFRESH_SKILLS",
-				"ENABLE_SKILL",
-				"DISABLE_SKILL",
-			],
 			exampleCalls: [
 				{
 					user: "Use SKILL with the provided parameters.",
@@ -8309,39 +8335,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Slack message ops: send, edit, delete, react, pin, unpin.",
-			similes: [
-				"SLACK_SEND_MESSAGE",
-				"SEND_SLACK_MESSAGE",
-				"POST_TO_SLACK",
-				"MESSAGE_SLACK",
-				"SLACK_POST",
-				"SEND_TO_CHANNEL",
-				"SLACK_EDIT_MESSAGE",
-				"UPDATE_SLACK_MESSAGE",
-				"MODIFY_MESSAGE",
-				"CHANGE_MESSAGE",
-				"SLACK_UPDATE",
-				"SLACK_DELETE_MESSAGE",
-				"REMOVE_SLACK_MESSAGE",
-				"DELETE_MESSAGE",
-				"SLACK_REMOVE",
-				"SLACK_REACT_TO_MESSAGE",
-				"ADD_SLACK_REACTION",
-				"REACT_SLACK",
-				"SLACK_EMOJI",
-				"ADD_EMOJI",
-				"REMOVE_REACTION",
-				"SLACK_PIN_MESSAGE",
-				"PIN_SLACK_MESSAGE",
-				"PIN_MESSAGE",
-				"SLACK_PIN",
-				"SAVE_MESSAGE",
-				"SLACK_UNPIN_MESSAGE",
-				"UNPIN_SLACK_MESSAGE",
-				"UNPIN_MESSAGE",
-				"SLACK_UNPIN",
-				"REMOVE_PIN",
-			],
 			exampleCalls: [
 				{
 					user: "Use SLACK_MESSAGE_OP with the provided parameters.",
@@ -8643,18 +8636,6 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
-			similes: [
-				"TAILSCALE_OP",
-				"START_TAILSCALE",
-				"STOP_TAILSCALE",
-				"START_TUNNEL",
-				"STOP_TUNNEL",
-				"OPEN_TUNNEL",
-				"CLOSE_TUNNEL",
-				"CREATE_TUNNEL",
-				"TAILSCALE_UP",
-				"TAILSCALE_DOWN",
-			],
 			exampleCalls: [
 				{
 					user: "Use TAILSCALE with the provided parameters.",
@@ -8671,7 +8652,7 @@ export const allActionsSpec = {
 		{
 			name: "TASK_CONTROL",
 			description:
-				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+				"Apply a control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a session, optional follow-up instruction + agentType override), continue (send a follow-up instruction to the existing or a new session), archive (hide from active lists), reopen (restore from archive). The target thread is resolved from threadId, sessionId, or a free-text search; resume/continue accept an optional instruction.",
 			parameters: [
 				{
 					name: "operation",
@@ -8745,7 +8726,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Pause/stop/resume/archive/reopen coordinator task thread.",
+				"task-control:op=pause|stop|resume|continue|archive|reopen coordinator-task-thread (threadId|sessionId|search; +note|instruction|agentType)",
 			similes: [
 				"CONTROL_TASK",
 				"PAUSE_TASK",
@@ -8776,7 +8757,7 @@ export const allActionsSpec = {
 		{
 			name: "TASK_HISTORY",
 			description:
-				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+				"Query the agent-orchestrator coordinator's task threads as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for 'what am I working on right now', date-range summaries, topic search, task counts, or a single thread's detail — never to dump raw conversation history into context.",
 			parameters: [
 				{
 					name: "metric",
@@ -8847,7 +8828,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Query task history: active work, summaries, search, thread details.",
+				"task-history:metric=list|count|detail + window + statuses + search + limit (no raw transcripts)",
 			similes: [
 				"LIST_TASK_HISTORY",
 				"GET_TASK_HISTORY",
@@ -9137,7 +9118,7 @@ export const allActionsSpec = {
 		{
 			name: "TODO_WRITE",
 			description:
-				"Replace the conversation's todo list with the provided array. Each todo has content, status (pending|in_progress|completed), and an optional activeForm describing the in-progress phrasing. The full list is replaced on every call. Use to plan multi-step work and track progress within a session.",
+				"Replace the per-conversation coding-agent todo list (keyed by roomId, kept in process memory) with the provided array. Each item is { id?: string, content: string, status: pending|in_progress|completed, activeForm?: string }; missing ids are auto-generated, missing activeForm falls back to content. The full list is overwritten on every call — pass the complete updated list, not a delta. Use to plan multi-step coding work and track progress within a session.",
 			parameters: [
 				{
 					name: "todos",
@@ -9170,7 +9151,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Replace conversation todo list with {content,status,activeForm}[].",
+				"todo-write:replace conversation list [{id?,content,status:pending|in_progress|completed,activeForm?}]",
 			similes: ["UPDATE_TODOS", "SET_TODOS"],
 			exampleCalls: [
 				{
@@ -9306,12 +9287,53 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "UPDATE_LINEAR_COMMENT",
+			description: "Update (edit) the body of an existing Linear comment",
+			parameters: [
+				{
+					name: "commentId",
+					description: "Linear comment id to update.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear comment id to update.",
+				},
+				{
+					name: "body",
+					description: "New comment body text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "New comment body text.",
+				},
+			],
+			descriptionCompressed: "update (edit) body exist Linear comment",
+			similes: [
+				"edit-linear-comment",
+				"modify-linear-comment",
+				"change-linear-comment",
+			],
+			exampleCalls: [
+				{
+					user: "Use UPDATE_LINEAR_COMMENT with the provided parameters.",
+					actions: ["UPDATE_LINEAR_COMMENT"],
+					params: {
+						UPDATE_LINEAR_COMMENT: {
+							commentId: "example",
+							body: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 			parameters: [],
 			descriptionCompressed: "Invoke an enabled skill by slug.",
-			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 		},
 		{
 			name: "WALLET_PREPARE",
@@ -9483,7 +9505,7 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "WORKFLOW_LIFECYCLE_OP",
+			name: "WORKFLOW",
 			description:
 				'n8n workflow lifecycle operation. Pass `op` ("activate", "deactivate", or "delete") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.',
 			parameters: [
@@ -9531,10 +9553,10 @@ export const allActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: "Use WORKFLOW_LIFECYCLE_OP with the provided parameters.",
-					actions: ["WORKFLOW_LIFECYCLE_OP"],
+					user: "Use WORKFLOW with the provided parameters.",
+					actions: ["WORKFLOW"],
 					params: {
-						WORKFLOW_LIFECYCLE_OP: {
+						WORKFLOW: {
 							op: "example",
 							workflowId: "example",
 						},

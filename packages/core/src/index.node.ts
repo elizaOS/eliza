@@ -34,7 +34,10 @@ export * from "./entities";
 // dropped some of these when they were only re-exported transitively through
 // the basic-capabilities barrel, which leaves dangling exports in dist.
 export {
+	factExtractorAction,
 	factExtractorEvaluator,
+	reflectionAction,
+	relationshipExtractionAction,
 	skillExtractionEvaluator,
 	skillRefinementEvaluator,
 } from "./features/advanced-capabilities/evaluators/index";
@@ -193,6 +196,16 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
+export type {
+	ConfirmationDecision,
+	ConfirmationStatus,
+	RequireConfirmationArgs,
+} from "./utils/confirmation";
+// Unified two-phase confirmation helper for destructive actions.
+export {
+	clearPendingConfirmation,
+	requireConfirmation,
+} from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities

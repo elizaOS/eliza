@@ -123,9 +123,9 @@ export const walletSearchAddressAction = {
     "TOKEN_SEARCH",
   ],
   description:
-    "Look up Birdeye intel for a wallet, token contract, or token symbol via { kind: 'wallet-address' | 'token-address' | 'token-symbol', query }.",
+    "Fetch Birdeye on-chain analytics for a wallet, token contract, or token symbol. With kind='wallet-address' returns a portfolio report (top holdings + USD totals) for each detected address; with kind='token-address' or kind='token-symbol' returns matching token search results from the Birdeye token search API. Use for crypto wallet/token research; the kind is auto-inferred from the query when omitted (explicit address → wallet-address, otherwise → token-symbol).",
   descriptionCompressed:
-    "Birdeye lookup: token-symbol, token-address, wallet-address.",
+    "birdeye-lookup:kind=wallet-address|token-address|token-symbol → portfolio|token-search",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "USER" },

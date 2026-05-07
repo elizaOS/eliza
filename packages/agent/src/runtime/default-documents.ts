@@ -394,12 +394,3 @@ export async function seedBundledDocuments(
   }
 }
 
-/** @deprecated Use seedBundledDocuments */
-export const seedBundledKnowledge = seedBundledDocuments;
-
-// Legacy type aliases
-export type DefaultKnowledgeFragmentDefinition =
-  DefaultDocumentFragmentDefinition;
-export type DefaultKnowledgeDocumentDefinition = DefaultDocumentDefinition;
-/** @deprecated Use DEFAULT_DOCUMENTS */
-export const DEFAULT_KNOWLEDGE_DOCUMENTS = DEFAULT_DOCUMENTS;

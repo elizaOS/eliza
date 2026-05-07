@@ -67,17 +67,14 @@ export function parseMessageHandlerOutput(
 			contexts,
 			reply,
 		},
-		action: processMessage,
-		contexts,
 		thought: typeof parsed.thought === "string" ? parsed.thought : "",
-		reply,
 	};
 }
 
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
 ): MessageHandlerRoute {
-	const processMessage = output.processMessage ?? output.action;
+	const processMessage = output.processMessage;
 	if (processMessage === "IGNORE") {
 		return { type: "ignored", output };
 	}
@@ -85,7 +82,7 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const allContexts = [...(output.plan?.contexts ?? output.contexts ?? [])];
+	const allContexts = [...(output.plan?.contexts ?? [])];
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
 	// is empty), Stage 1 owns the reply and we never enter the planner.
@@ -110,7 +107,7 @@ export function routeMessageHandlerOutput(
 }
 
 export function getMessageHandlerReply(output: V5MessageHandlerOutput): string {
-	return String(output.plan?.reply ?? output.reply ?? "").trim();
+	return String(output.plan?.reply ?? "").trim();
 }
 
 function normalizeMessageHandlerAction(value: unknown): MessageHandlerAction {

@@ -13,15 +13,15 @@
 
 import { describe, test, expect, afterEach, mock } from "bun:test";
 import type { State } from "@elizaos/core";
-import { workflowLifecycleOpAction } from "../../src/actions/workflowLifecycleOp";
+import { workflowAction } from "../../src/actions/workflow";
 
 const activateWorkflowAction = {
   handler: (
-    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
-    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
-    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
-    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
-    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+    runtime: Parameters<typeof workflowAction.handler>[0],
+    message: Parameters<typeof workflowAction.handler>[1],
+    state: Parameters<typeof workflowAction.handler>[2],
+    options: Parameters<typeof workflowAction.handler>[3],
+    callback: Parameters<typeof workflowAction.handler>[4],
   ) => {
     const merged = {
       ...((options as Record<string, unknown> | undefined) ?? {}),
@@ -30,16 +30,16 @@ const activateWorkflowAction = {
         op: "activate",
       },
     };
-    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+    return workflowAction.handler(runtime, message, state, merged, callback);
   },
 };
 const deactivateWorkflowAction = {
   handler: (
-    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
-    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
-    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
-    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
-    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+    runtime: Parameters<typeof workflowAction.handler>[0],
+    message: Parameters<typeof workflowAction.handler>[1],
+    state: Parameters<typeof workflowAction.handler>[2],
+    options: Parameters<typeof workflowAction.handler>[3],
+    callback: Parameters<typeof workflowAction.handler>[4],
   ) => {
     const merged = {
       ...((options as Record<string, unknown> | undefined) ?? {}),
@@ -48,16 +48,16 @@ const deactivateWorkflowAction = {
         op: "deactivate",
       },
     };
-    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+    return workflowAction.handler(runtime, message, state, merged, callback);
   },
 };
 const deleteWorkflowAction = {
   handler: (
-    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
-    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
-    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
-    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
-    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+    runtime: Parameters<typeof workflowAction.handler>[0],
+    message: Parameters<typeof workflowAction.handler>[1],
+    state: Parameters<typeof workflowAction.handler>[2],
+    options: Parameters<typeof workflowAction.handler>[3],
+    callback: Parameters<typeof workflowAction.handler>[4],
   ) => {
     const merged = {
       ...((options as Record<string, unknown> | undefined) ?? {}),
@@ -66,7 +66,7 @@ const deleteWorkflowAction = {
         op: "delete",
       },
     };
-    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+    return workflowAction.handler(runtime, message, state, merged, callback);
   },
 };
 import { getExecutionsAction } from "../../src/actions/getExecutions";

@@ -2,6 +2,7 @@ import { actionToJsonSchema } from "../actions/action-schema";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
+import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -135,6 +136,15 @@ export async function runSubPlanner(
 	}
 
 	const childActionNames = new Set(childActions.map((action) => action.name));
+	const tools: ToolDefinition[] = childActions.map((action) => ({
+		name: action.name,
+		description:
+			action.descriptionCompressed ??
+			action.compressedDescription ??
+			action.description,
+		parameters: actionToJsonSchema(action) as JSONSchema,
+		type: "function",
+	}));
 	const execute = params.execute ?? executePlannedToolCall;
 	const context = buildSubPlannerContext(
 		params.context,
@@ -163,6 +173,8 @@ export async function runSubPlanner(
 		modelType: params.modelType,
 		evaluatorEffects: params.evaluatorEffects,
 		provider: params.provider,
+		tools,
+		toolChoice: "auto",
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: subPlannerStageId ?? params.parentStageId,
@@ -255,7 +267,7 @@ function buildSubPlannerContext(
 						action.descriptionCompressed ??
 						action.compressedDescription ??
 						action.description,
-					parameters: actionToJsonSchema(action),
+					parameters: actionToJsonSchema(action) as JSONSchema,
 					action,
 					metadata: {
 						parentAction: parentAction.name,

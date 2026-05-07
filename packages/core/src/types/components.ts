@@ -147,20 +147,7 @@ export interface MessageHandlerPlan {
 export interface MessageHandlerResult {
 	processMessage: MessageHandlerAction;
 	plan: MessageHandlerPlan;
-	/**
-	 * @deprecated Use processMessage. Kept as a normalized compatibility alias
-	 * while older callers/tests and recorded trajectories are migrated.
-	 */
-	action: MessageHandlerAction;
-	/**
-	 * @deprecated Use plan.contexts.
-	 */
-	contexts: AgentContext[];
 	thought: string;
-	/**
-	 * @deprecated Use plan.reply.
-	 */
-	reply?: string;
 }
 
 export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE";

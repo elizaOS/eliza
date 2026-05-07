@@ -242,7 +242,19 @@ export const phoneActionsGroupAction = createPageActionGroupAction({
 
 export const lifeOpsActionsGroupAction = createPageActionGroupAction({
   name: "LIFEOPS_ACTIONS",
-  contexts: ["lifeops"],
+  // Expanded from the legacy "lifeops" alias (see context-registry.ts) so this
+  // action is gated by the actual canonical contexts the LifeOps page covers.
+  contexts: [
+    "tasks",
+    "calendar",
+    "email",
+    "contacts",
+    "health",
+    "subscriptions",
+    "screen_time",
+    "automation",
+    "messaging",
+  ],
   similes: ["LIFEOPS_TOOLS", "LIFEOPS_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for LifeOps page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",

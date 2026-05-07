@@ -43,7 +43,9 @@ export const listTodosAction: Action = {
 	description: "List todo items for the current user.",
 	similes: ["SHOW_TODOS", "GET_TODOS", "MY_TODOS"],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return Boolean(getTodosService(runtime));
+	},
 
 	handler: async (
 		runtime: IAgentRuntime,
