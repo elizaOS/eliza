@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/elizaos-eliza-badge.png)](https://mseep.ai/app/elizaos-eliza)
+
 <div align="center">
   <h1>elizaOS</h1>
   <p><strong>An open-source framework for building autonomous AI agents.</strong></p>
