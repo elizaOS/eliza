@@ -188,11 +188,7 @@ export const grepAction: Action = {
       const validation = await sandbox.validatePath(conversationId, targetPath);
       if (!validation.ok) {
         const reason =
-          validation.reason === "outside_roots"
-            ? "path_outside_roots"
-            : validation.reason === "blocked"
-              ? "path_blocked"
-              : "invalid_param";
+          validation.reason === "blocked" ? "path_blocked" : "invalid_param";
         return failureToActionResult({ reason, message: validation.message });
       }
       const resolved = validation.resolved;

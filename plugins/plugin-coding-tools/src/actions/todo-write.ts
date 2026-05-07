@@ -147,38 +147,47 @@ export const todoWriteAction: Action = {
   ): Promise<ActionResult> => {
     const conversationId = message.roomId ? String(message.roomId) : undefined;
     if (!conversationId) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "missing roomId",
-      }, {
-        actionName: "TODO_WRITE",
-        reason: "missing_room_id",
-      });
+      return failureToActionResult(
+        {
+          reason: "missing_param",
+          message: "missing roomId",
+        },
+        {
+          actionName: "TODO_WRITE",
+          reason: "missing_room_id",
+        },
+      );
     }
 
     const rawTodos = readArrayParam(options, "todos");
     if (rawTodos === undefined) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "todos is required and must be an array",
-      }, {
-        actionName: "TODO_WRITE",
-        reason: "missing_todos",
-      });
+      return failureToActionResult(
+        {
+          reason: "missing_param",
+          message: "todos is required and must be an array",
+        },
+        {
+          actionName: "TODO_WRITE",
+          reason: "missing_todos",
+        },
+      );
     }
 
     const newTodos: Todo[] = [];
     for (let i = 0; i < rawTodos.length; i++) {
       const parsed = parseTodo(rawTodos[i], i);
       if ("error" in parsed) {
-        return failureToActionResult({
-          reason: "invalid_param",
-          message: parsed.error,
-        }, {
-          actionName: "TODO_WRITE",
-          reason: "invalid_todo",
-          index: i,
-        });
+        return failureToActionResult(
+          {
+            reason: "invalid_param",
+            message: parsed.error,
+          },
+          {
+            actionName: "TODO_WRITE",
+            reason: "invalid_todo",
+            index: i,
+          },
+        );
       }
       newTodos.push(parsed.todo);
     }

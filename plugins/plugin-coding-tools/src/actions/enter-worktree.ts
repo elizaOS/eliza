@@ -121,11 +121,7 @@ export const enterWorktreeAction: Action = {
       );
       if (!validation.ok) {
         const reason =
-          validation.reason === "outside_roots"
-            ? "path_outside_roots"
-            : validation.reason === "blocked"
-              ? "path_blocked"
-              : "invalid_param";
+          validation.reason === "blocked" ? "path_blocked" : "invalid_param";
         return failureToActionResult({ reason, message: validation.message });
       }
       worktreePath = validation.resolved;

@@ -74,13 +74,16 @@ export const webSearchAction: Action = {
   ): Promise<ActionResult> => {
     const query = readStringParam(options, "query");
     if (!query || query.trim().length === 0) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "query is required",
-      }, {
-        actionName: ACTION_NAME,
-        reason: "missing_query",
-      });
+      return failureToActionResult(
+        {
+          reason: "missing_param",
+          message: "query is required",
+        },
+        {
+          actionName: ACTION_NAME,
+          reason: "missing_query",
+        },
+      );
     }
 
     const allowedDomains = asStringArray(
