@@ -38,7 +38,7 @@ const examples: ActionExample[][] = [
       name: '{{agent}}',
       content: {
         text: "I'll activate that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ['WORKFLOW'],
       },
     },
   ],
@@ -51,7 +51,7 @@ const examples: ActionExample[][] = [
       name: '{{agent}}',
       content: {
         text: "I'll deactivate that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ['WORKFLOW'],
       },
     },
   ],
@@ -64,7 +64,7 @@ const examples: ActionExample[][] = [
       name: '{{agent}}',
       content: {
         text: "I'll delete that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ['WORKFLOW'],
       },
     },
   ],
@@ -288,7 +288,7 @@ async function runDelete(
   const decision = await requireConfirmation({
     runtime,
     message,
-    actionName: 'WORKFLOW_LIFECYCLE_OP',
+    actionName: 'WORKFLOW',
     pendingKey: `delete:${matchedId}`,
     prompt: `Permanently delete workflow "${workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
     callback,
@@ -372,8 +372,8 @@ async function resolveWorkflowId(
   return matchResult.matchedWorkflowId;
 }
 
-export const workflowLifecycleOpAction: Action = {
-  name: 'WORKFLOW_LIFECYCLE_OP',
+export const workflowAction: Action = {
+  name: 'WORKFLOW',
   contexts: ['automation', 'connectors', 'tasks'],
   contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
   roleGate: { minRole: 'USER' },
