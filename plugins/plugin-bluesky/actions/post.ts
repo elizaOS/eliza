@@ -24,6 +24,8 @@ interface ReplyTo {
 	cid: string;
 }
 
+const MAX_BLUESKY_ACTION_TEXT_CHARS = 300;
+const BLUESKY_ACTION_TIMEOUT_MS = 30_000;
 const BLUESKY_CONTEXTS = ["social_posting", "connectors"] as const;
 const BLUESKY_KEYWORDS = [
 	"bluesky",
@@ -65,6 +67,10 @@ function readStringParam(
 ): string {
 	const value = readParam(options, key);
 	return typeof value === "string" ? value : "";
+}
+
+function truncateActionText(text: string, maxChars: number): string {
+	return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
 }
 
 function readReplyTo(
@@ -185,8 +191,12 @@ export const postBlueskyAction: Action = {
 			return { success: false, error: "post_service_unavailable" };
 		}
 
-		const text = readStringParam(options, "text");
+		const text = truncateActionText(
+			readStringParam(options, "text"),
+			MAX_BLUESKY_ACTION_TEXT_CHARS,
+		);
 		const replyTo = readReplyTo(options);
+		const timeoutMs = BLUESKY_ACTION_TIMEOUT_MS;
 
 		logger.info(
 			{
@@ -216,14 +226,14 @@ export const postBlueskyAction: Action = {
 				await callback({
 					text: summary,
 					actions: ["POST_BLUESKY"],
-					data: { uri: post.uri, cid: post.cid },
+					data: { uri: post.uri, cid: post.cid, timeoutMs },
 				});
 			}
 
 			return {
 				success: true,
 				text: summary,
-				data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null },
+				data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null, timeoutMs },
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

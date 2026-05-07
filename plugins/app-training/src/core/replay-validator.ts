@@ -5,7 +5,7 @@
  * 1. Parses correctly with the same Eliza parser
  * 2. References only valid contexts/actions/providers
  * 3. Would survive round-trip through the real runtime
- * 4. Has proper structure for Gemini supervised tuning
+ * 4. Has proper structure for eliza_native_v1 supervised tuning
  *
  * Also computes dataset quality metrics:
  * - Decision balance (RESPOND/IGNORE/STOP distribution)
@@ -15,15 +15,34 @@
  */
 
 import {
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  type ElizaNativeTrajectoryRow,
+} from "@elizaos/core";
+import {
   ACTION_CONTEXT_MAP,
   ALL_CONTEXTS,
   PROVIDER_CONTEXT_MAP,
 } from "./context-catalog.js";
 import type { AgentContext } from "./context-types.js";
 import type {
-  GeminiTuningExample,
+  ElizaNativeTrainingExample,
   TrainingSample,
 } from "./dataset-generator.js";
+
+type TuningMessage = { role?: string; content?: unknown; parts?: unknown };
+
+function getTuningMessages(
+  parsed: ElizaNativeTrainingExample,
+): TuningMessage[] | null {
+  const row = parsed as ElizaNativeTrajectoryRow & {
+    messages?: TuningMessage[];
+  };
+  if (row.format === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
+    const msgs = row.request?.messages;
+    return Array.isArray(msgs) ? (msgs as TuningMessage[]) : null;
+  }
+  return null;
+}
 
 // ==================== Validation types ====================
 
@@ -100,9 +119,9 @@ export interface DatasetQualityReport {
   /** Top warnings */
   topWarnings: Array<{ type: string; count: number }>;
 
-  /** Gemini format validation */
-  geminiFormatValid: number;
-  geminiFormatInvalid: number;
+  /** Native model-boundary format validation */
+  nativeFormatValid: number;
+  nativeFormatInvalid: number;
 }
 
 // ==================== Validators ====================
@@ -200,41 +219,53 @@ export function validateSample(sample: TrainingSample): ValidationResult {
 }
 
 /**
- * Validate a Gemini tuning example JSONL line.
+ * Validate an eliza_native_v1 tuning example JSONL line.
  */
-export function validateGeminiExample(jsonLine: string): {
+export function validateElizaNativeExample(jsonLine: string): {
   valid: boolean;
   errors: string[];
 } {
   const errors: string[] = [];
 
-  let parsed: GeminiTuningExample;
+  let parsed: ElizaNativeTrainingExample;
   try {
     parsed = JSON.parse(jsonLine);
   } catch {
     return { valid: false, errors: ["Invalid JSON"] };
   }
 
-  if (!parsed.messages || !Array.isArray(parsed.messages)) {
-    errors.push("Missing or invalid 'messages' array");
+  const messages = getTuningMessages(parsed);
+  if (!messages) {
+    errors.push("Missing eliza_native_v1.request.messages");
     return { valid: false, errors };
   }
 
-  if (parsed.messages.length < 2) {
-    errors.push("Need at least 2 messages (user + model)");
+  const native = parsed as ElizaNativeTrajectoryRow;
+  if (native.format !== ELIZA_NATIVE_TRAJECTORY_FORMAT) {
+    errors.push(`format must be ${ELIZA_NATIVE_TRAJECTORY_FORMAT}`);
+    return { valid: false, errors };
   }
 
-  const lastMessage = parsed.messages[parsed.messages.length - 1];
-  if (lastMessage?.role !== "model") {
-    errors.push("Last message must have role 'model'");
+  if (messages.length < 2) {
+    errors.push("Need at least 2 request messages (e.g. system + user)");
   }
-
-  for (const msg of parsed.messages) {
-    if (!msg.role || !["system", "user", "model"].includes(msg.role)) {
+  const text = native.response?.text;
+  const toolCalls = native.response?.toolCalls;
+  if (
+    (typeof text !== "string" || text.trim().length === 0) &&
+    !Array.isArray(toolCalls)
+  ) {
+    errors.push("Missing response.text or response.toolCalls");
+  }
+  for (const msg of messages) {
+    if (
+      !msg.role ||
+      !["system", "developer", "user", "assistant", "tool"].includes(msg.role)
+    ) {
       errors.push(`Invalid role: ${msg.role}`);
     }
-    if (!msg.content || typeof msg.content !== "string") {
-      errors.push("Missing or invalid content");
+    if (msg.content === undefined && msg.parts === undefined) {
+      errors.push("Missing message content/parts");
     }
   }
 
@@ -342,8 +373,8 @@ export function validateDataset(
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
 
-    geminiFormatValid: 0, // filled by separate JSONL validation
-    geminiFormatInvalid: 0,
+    nativeFormatValid: 0, // filled by separate JSONL validation
+    nativeFormatInvalid: 0,
   };
 }
 

@@ -137,7 +137,11 @@ export const writeAction: Action = {
     const bytes = Buffer.byteLength(content, "utf8");
     coreLogger.debug(`${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`);
 
-    const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`;
+    const maxActionResultBytes = 2000;
+    const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`.slice(
+      0,
+      maxActionResultBytes,
+    );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

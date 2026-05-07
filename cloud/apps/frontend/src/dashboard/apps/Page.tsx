@@ -7,7 +7,6 @@ import {
 } from "@elizaos/cloud-ui";
 import { Activity, ChevronDown, Grid3x3, TrendingUp, Users } from "lucide-react";
 import { Helmet } from "react-helmet-async";
-import type { AppDto } from "@/types/cloud-api";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApps } from "../../lib/data/apps";
 import { AppsEmptyState } from "./_components/apps-empty-state";
@@ -88,7 +87,7 @@ export default function AppsPage() {
               action={<AdvancedRegisterApp />}
             />
           ) : (
-            <AppsTable apps={apps as unknown as AppDto[]} />
+            <AppsTable apps={apps} />
           )}
         </DashboardPageContainer>
       </AppsPageWrapper>

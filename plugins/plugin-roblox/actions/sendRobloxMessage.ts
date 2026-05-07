@@ -13,6 +13,9 @@ import type { RobloxService } from "../services/RobloxService";
 import { type JsonValue, ROBLOX_SERVICE_NAME } from "../types";
 
 const actionName = "SEND_ROBLOX_MESSAGE";
+const ROBLOX_MESSAGE_TIMEOUT_MS = 15_000;
+const MAX_ROBLOX_TARGET_IDS = 25;
+const MAX_ROBLOX_MESSAGE_LENGTH = 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -74,14 +77,25 @@ function readTargetPlayerIds(params: Record<string, unknown>, text: string): num
         typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
       )
       .filter((value) => Number.isInteger(value) && value > 0);
-    if (ids.length) return ids;
+    if (ids.length) return ids.slice(0, MAX_ROBLOX_TARGET_IDS);
   }
 
   const single = readNumber(params, "targetPlayerId", "playerId", "userId");
   if (single !== null && Number.isInteger(single) && single > 0) return [single];
 
   const matches = [...text.matchAll(/\bplayer\s*(\d+)\b/gi)];
-  return matches.length ? matches.map((match) => Number.parseInt(match[1], 10)) : undefined;
+  return matches.length
+    ? matches.map((match) => Number.parseInt(match[1], 10)).slice(0, MAX_ROBLOX_TARGET_IDS)
+    : undefined;
+}
+
+function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_MESSAGE_TIMEOUT_MS),
+    ),
+  ]);
 }
 
 export const sendRobloxMessage: Action = {
@@ -149,7 +163,11 @@ export const sendRobloxMessage: Action = {
     }
 
     const targetPlayerIds = readTargetPlayerIds(params, content);
-    await service.sendMessage(runtime.agentId, content, targetPlayerIds);
+    const cappedContent = content.slice(0, MAX_ROBLOX_MESSAGE_LENGTH);
+    await withRobloxTimeout(
+      service.sendMessage(runtime.agentId, cappedContent, targetPlayerIds),
+      "roblox message",
+    );
 
     const targetText =
       targetPlayerIds && targetPlayerIds.length > 0
@@ -159,7 +177,7 @@ export const sendRobloxMessage: Action = {
     return {
       success: true,
       text: `Sent Roblox message ${targetText}`,
-      data: { targetPlayerIds, messageLength: content.length },
+      data: { targetPlayerIds, messageLength: cappedContent.length },
     };
   },
   examples: [

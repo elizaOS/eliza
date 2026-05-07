@@ -53,6 +53,7 @@ const onboardingTemplate = `
 {{receivedMessageHeader}}`;
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const ONBOARDING_OUTPUT_MAX_CHARS = 4_000;
 const ONBOARDING_KEYWORDS = [
   "hi",
   "hello",
@@ -127,6 +128,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateOnboardingText(text: string): string {
+  if (text.length <= ONBOARDING_OUTPUT_MAX_CHARS) return text;
+  return `${text.slice(0, ONBOARDING_OUTPUT_MAX_CHARS)}\n\n[truncated onboarding response]`;
 }
 
 export const guideOnboardingAction = {
@@ -214,19 +220,29 @@ After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
     }
 
     await markOnboarded(runtime, entityId);
+    const responseText = truncateOnboardingText(parsed.text);
 
     await callback({
-      text: parsed.text,
+      text: responseText,
       thought: parsed.thought,
       metadata: {
         action: "GUIDE_ONBOARDING",
+        outputTruncated: responseText !== parsed.text,
       },
     });
     return {
       success: true,
-      text: parsed.text,
-      values: { success: true, onboarded: true },
-      data: { actionName: "GUIDE_ONBOARDING", thought: parsed.thought },
+      text: responseText,
+      values: {
+        success: true,
+        onboarded: true,
+        outputTruncated: responseText !== parsed.text,
+      },
+      data: {
+        actionName: "GUIDE_ONBOARDING",
+        thought: parsed.thought,
+        outputTruncated: responseText !== parsed.text,
+      },
     };
   },
   examples: [

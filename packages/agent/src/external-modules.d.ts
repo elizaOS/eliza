@@ -271,7 +271,6 @@ declare module "@elizaos/app-training/core/roleplay-executor" {}
 declare module "@elizaos/app-training/core/roleplay-trajectories" {}
 declare module "@elizaos/app-training/core/scenario-blueprints" {}
 declare module "@elizaos/app-training/core/trajectory-task-datasets" {}
-declare module "@elizaos/app-training/core/vertex-tuning" {}
 
 declare module "abitype" {
   export type TypedData = Record<

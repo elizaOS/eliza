@@ -20,7 +20,12 @@ interface WhatsAppOpParams {
   text?: string;
   messageId?: string;
   emoji?: string;
+  timeoutMs?: number;
 }
+
+const MAX_WHATSAPP_TEXT_CHARS = 4_000;
+const MAX_WHATSAPP_RESULT_MESSAGES = 1;
+const WHATSAPP_ACTION_TIMEOUT_MS = 30_000;
 
 const MESSAGE_OP_TEMPLATE = `# Task: Extract WhatsApp message op parameters.
 
@@ -73,7 +78,9 @@ function normalizeParams(params: Record<string, unknown>): WhatsAppOpParams | nu
   return {
     op: params.op,
     to: params.to ? String(params.to) : undefined,
-    text: params.text ? String(params.text) : undefined,
+    text: params.text
+      ? String(params.text).slice(0, MAX_WHATSAPP_TEXT_CHARS)
+      : undefined,
     messageId: params.messageId ? String(params.messageId) : undefined,
     emoji: params.emoji ? String(params.emoji) : undefined,
   };
@@ -111,7 +118,10 @@ async function postToWhatsApp(
     const errorData = (await response.json()) as { error?: { message?: string } };
     throw new Error(errorData.error?.message || `HTTP ${response.status}`);
   }
-  return response.json() as Promise<{ messages?: Array<{ id: string }> }>;
+  const data = (await response.json()) as { messages?: Array<{ id: string }> };
+  return {
+    messages: data.messages?.slice(0, MAX_WHATSAPP_RESULT_MESSAGES),
+  };
 }
 
 async function handleSend(
@@ -144,6 +154,7 @@ async function handleSend(
   }
 
   try {
+    const timeoutMs = params.timeoutMs ?? WHATSAPP_ACTION_TIMEOUT_MS;
     const data = await postToWhatsApp(creds, {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -159,6 +170,7 @@ async function handleSend(
         op: "send",
         to,
         messageId,
+        timeoutMs,
         suppressVisibleCallback: true,
         suppressActionResultClipboard: true,
       },
@@ -195,6 +207,7 @@ async function handleReact(
   }
 
   try {
+    const timeoutMs = params.timeoutMs ?? WHATSAPP_ACTION_TIMEOUT_MS;
     await postToWhatsApp(creds, {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -209,6 +222,7 @@ async function handleReact(
         op: "react",
         messageId,
         emoji,
+        timeoutMs,
         suppressVisibleCallback: true,
         suppressActionResultClipboard: true,
       },
@@ -330,6 +344,11 @@ export const messageOpAction: Action = {
         /\b(react|reaction|emoji)\b/.test(text) && !/\bsend\b/.test(text) ? "react" : "send";
       params = { op: inferred };
     }
+    params = {
+      ...params,
+      text: params.text?.slice(0, MAX_WHATSAPP_TEXT_CHARS),
+      timeoutMs: WHATSAPP_ACTION_TIMEOUT_MS,
+    };
 
     if (params.op === "react") {
       return handleReact(message, params, creds, callback);

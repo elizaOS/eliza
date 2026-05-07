@@ -472,3 +472,4 @@ test/**/*.js
 test/**/*.d.ts
 test_output/
 research/
+trajectories-eliza-cerebras/

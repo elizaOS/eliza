@@ -140,7 +140,8 @@ export const manageWindowAction: Action = {
     params.action ??= "list";
 
     const result = await service.executeWindowAction(params);
-    const text = formatWindowResultText(params, result);
+    const maxWindowRows = 50;
+    const text = formatWindowResultText(params, result).slice(0, maxWindowRows * 120);
 
     if (callback) {
       await callback({ text });

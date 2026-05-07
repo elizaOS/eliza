@@ -42,7 +42,6 @@ export * from "./input";
 export * from "./input-group";
 export * from "./label";
 export * from "./layout";
-export { DashboardShell, type DashboardShellProps } from "./layout/dashboard-shell";
 export * from "./list-skeleton";
 export {
   Button as MovingBorderButton,

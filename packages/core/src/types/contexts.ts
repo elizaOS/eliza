@@ -89,6 +89,10 @@ export interface ContextDefinition {
 	id: AgentContext;
 	label?: string;
 	description?: string;
+	/** Stage 1 routing guidance: when the messageHandler should select this context. */
+	selectionGuidance?: string;
+	/** Compact coverage terms shown to the messageHandler and trajectory viewer. */
+	covers?: string[];
 	parent?: AgentContext;
 	parents?: AgentContext[];
 	subcontexts?: AgentContext[];

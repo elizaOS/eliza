@@ -39,7 +39,11 @@ import type {
   TrajectoryStatus,
   TrajectoryStep,
 } from "@elizaos/agent/types/trajectory";
-import type { AgentRuntime, TrajectoryJsonShape } from "@elizaos/core";
+import {
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  type AgentRuntime,
+  type TrajectoryJsonShape,
+} from "@elizaos/core";
 import {
   listTrajectoryCallEntries,
 } from "../core/trajectory-consumer.js";
@@ -1911,13 +1915,13 @@ async function handleExportTrajectories(
   const jsonShape =
     body.jsonShape === "legacy" ||
     body.jsonShape === "context_object_events_v5" ||
-    body.jsonShape === "harness_v1"
+    body.jsonShape === ELIZA_NATIVE_TRAJECTORY_FORMAT
       ? body.jsonShape
       : undefined;
   if (body.jsonShape !== undefined && !jsonShape) {
     sendJsonError(
       res,
-      "jsonShape must be 'legacy', 'context_object_events_v5', or 'harness_v1'",
+      "jsonShape must be 'legacy', 'context_object_events_v5', or 'eliza_native_v1'",
       400,
     );
     return;

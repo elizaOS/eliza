@@ -15,7 +15,6 @@ export { scheduleFollowUpAction } from "./scheduleFollowUp.ts";
 export { searchContactsAction } from "./searchContacts.ts";
 export { sendMessageAction } from "./sendMessage.ts";
 export { updateSettingsAction } from "./settings.ts";
-export { thinkAction } from "./think.ts";
 export { unfollowRoomAction } from "./unfollowRoom.ts";
 export { unmuteRoomAction } from "./unmuteRoom.ts";
 export { updateContactAction } from "./updateContact.ts";

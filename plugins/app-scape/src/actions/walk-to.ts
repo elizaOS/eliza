@@ -92,15 +92,21 @@ export const walkTo: Action = {
     }
 
     try {
-      const result = await service.executeAction({
-        action: "walkTo",
-        x,
-        z,
-        run,
-      });
+      const timeoutMs = 15_000;
+      const result = await Promise.race([
+        service.executeAction({
+          action: "walkTo",
+          x,
+          z,
+          run,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("walk timed out")), timeoutMs),
+        ),
+      ]);
 
       const displayText =
-        result.message ?? (result.success ? "walking..." : "walk failed");
+        (result.message ?? (result.success ? "walking..." : "walk failed")).slice(0, 2000);
       callback?.({ text: displayText, action: "WALK_TO" });
       return { success: result.success, text: displayText };
     } catch (error) {

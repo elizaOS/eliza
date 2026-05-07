@@ -5,11 +5,9 @@
  * DELETE /api/v1/agents/[agentId]/publish — make private + disable monetization
  */
 
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/client";
-import { userCharacters } from "@/db/schemas/user-characters";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import { ForbiddenError, failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
@@ -74,20 +72,7 @@ app.post("/", async (c) => {
       });
     }
 
-    await dbWrite
-      .update(userCharacters)
-      .set({
-        is_public: true,
-        a2a_enabled: body.a2aEnabled,
-        mcp_enabled: body.mcpEnabled,
-        monetization_enabled: body.enableMonetization,
-        inference_markup_percentage: String(body.markupPercentage),
-        ...(body.payoutWalletAddress && {
-          payout_wallet_address: body.payoutWalletAddress,
-        }),
-        updated_at: new Date(),
-      })
-      .where(eq(userCharacters.id, agentId));
+    await userCharactersRepository.publish(agentId, body);
 
     await charactersService.invalidateCache(agentId);
 
@@ -122,14 +107,7 @@ app.delete("/", async (c) => {
     if (!agent) throw NotFoundError("Agent not found");
     if (agent.user_id !== user.id) throw ForbiddenError("Not authorized");
 
-    await dbWrite
-      .update(userCharacters)
-      .set({
-        is_public: false,
-        monetization_enabled: false,
-        updated_at: new Date(),
-      })
-      .where(eq(userCharacters.id, agentId));
+    await userCharactersRepository.unpublish(agentId);
 
     await charactersService.invalidateCache(agentId);
 

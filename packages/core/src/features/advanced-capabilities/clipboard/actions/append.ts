@@ -53,6 +53,13 @@ function extractAppendInfo(
 }
 
 const spec = requireActionSpec("CLIPBOARD_APPEND");
+const MAX_CONTEXT_ENTRIES = 20;
+const MAX_TITLE_CHARS = 120;
+const MAX_APPEND_CHARS = 12000;
+
+function truncateText(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated]`;
+}
 
 export const clipboardAppendAction: Action = {
 	name: spec.name,
@@ -90,8 +97,13 @@ export const clipboardAppendAction: Action = {
 		// Get list of available entries for context
 		const entries = await service.list();
 		const entriesContext = entries
+			.slice(0, MAX_CONTEXT_ENTRIES)
 			.map((e) => `- ${e.id}: "${e.title}"`)
 			.join("\n");
+		const omittedContext =
+			entries.length > MAX_CONTEXT_ENTRIES
+				? `\n…${entries.length - MAX_CONTEXT_ENTRIES} more entries omitted.`
+				: "";
 
 		if (entries.length === 0) {
 			if (callback) {
@@ -109,7 +121,7 @@ export const clipboardAppendAction: Action = {
 		if (!appendInfo) {
 			if (callback) {
 				await callback({
-					text: `I couldn't determine which note to update or what to add. Available entries:\n${entriesContext}`,
+					text: `I couldn't determine which note to update or what to add. Available entries:\n${entriesContext}${omittedContext}`,
 					actions: ["CLIPBOARD_APPEND_FAILED"],
 					source: message.content.source,
 				});
@@ -123,7 +135,7 @@ export const clipboardAppendAction: Action = {
 			if (!exists) {
 				if (callback) {
 					await callback({
-						text: `Clipboard entry "${appendInfo.id}" not found. Available entries:\n${entriesContext}`,
+						text: `Clipboard entry "${appendInfo.id}" not found. Available entries:\n${entriesContext}${omittedContext}`,
 						actions: ["CLIPBOARD_APPEND_NOT_FOUND"],
 						source: message.content.source,
 					});
@@ -137,7 +149,7 @@ export const clipboardAppendAction: Action = {
 			// Write with append option
 			const entry = await service.write(
 				existingEntry.title,
-				appendInfo.content,
+				truncateText(appendInfo.content, MAX_APPEND_CHARS),
 				{
 					append: true,
 					tags: existingEntry.tags,
@@ -154,7 +166,16 @@ export const clipboardAppendAction: Action = {
 				});
 			}
 
-			return { success: true, text: successMessage, entry };
+			return {
+				success: true,
+				text: successMessage,
+				data: {
+					entryId: entry.id,
+					title: truncateText(entry.title, MAX_TITLE_CHARS),
+					appendedChars: Math.min(appendInfo.content.length, MAX_APPEND_CHARS),
+					truncated: appendInfo.content.length > MAX_APPEND_CHARS,
+				},
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error("[ClipboardAppend] Error:", errorMsg);

@@ -26,6 +26,7 @@ import { hasOwnerAccess } from "../security/access.js";
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 const TERMINAL_ACTION_NAME = "SHELL_COMMAND";
+const MAX_TERMINAL_DATA_CHARS = 16000;
 
 const FAIL = { success: false, text: "" } as const;
 
@@ -167,6 +168,10 @@ function buildOutputPreview(content: string, maxLength = 3_000): string {
     return formatOutputBlock(trimmed);
   }
   return `${trimmed.slice(0, maxLength).trimEnd()}\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
+}
+
+function truncateForData(text: string, max = MAX_TERMINAL_DATA_CHARS): string {
+  return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated]`;
 }
 
 async function createCommandOutputAttachment(
@@ -324,6 +329,11 @@ export const terminalAction: Action = {
 
       const responseBody = (await response.json()) as JsonValue;
       const capturedRun = normalizeCapturedRun(command, responseBody);
+      const boundedRun = {
+        ...capturedRun,
+        stdout: truncateForData(capturedRun.stdout),
+        stderr: truncateForData(capturedRun.stderr),
+      };
       const outputAttachment = await createCommandOutputAttachment(
         runtime,
         message,
@@ -335,7 +345,7 @@ export const terminalAction: Action = {
         success: true,
         data: {
           actionName: TERMINAL_ACTION_NAME,
-          ...capturedRun,
+          ...boundedRun,
           outputAttachment: outputAttachment?.attachment,
           outputAttachmentMemoryId: outputAttachment?.memoryId,
           suppressVisibleCallback: true,

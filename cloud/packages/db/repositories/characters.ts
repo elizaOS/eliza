@@ -140,6 +140,15 @@ export class UserCharactersRepository {
     });
   }
 
+  async findOrganizationIdById(id: string): Promise<string | undefined> {
+    const [character] = await dbRead
+      .select({ organizationId: userCharacters.organization_id })
+      .from(userCharacters)
+      .where(eq(userCharacters.id, id))
+      .limit(1);
+    return character?.organizationId;
+  }
+
   /**
    * Finds a character by ID within an organization.
    */
@@ -576,6 +585,43 @@ export class UserCharactersRepository {
       .where(and(...conditions));
 
     return result[0]?.count || 0;
+  }
+
+  async publish(
+    id: string,
+    options: {
+      enableMonetization: boolean;
+      markupPercentage: number;
+      payoutWalletAddress?: string;
+      a2aEnabled: boolean;
+      mcpEnabled: boolean;
+    },
+  ): Promise<void> {
+    await dbWrite
+      .update(userCharacters)
+      .set({
+        is_public: true,
+        a2a_enabled: options.a2aEnabled,
+        mcp_enabled: options.mcpEnabled,
+        monetization_enabled: options.enableMonetization,
+        inference_markup_percentage: String(options.markupPercentage),
+        ...(options.payoutWalletAddress && {
+          payout_wallet_address: options.payoutWalletAddress,
+        }),
+        updated_at: new Date(),
+      })
+      .where(eq(userCharacters.id, id));
+  }
+
+  async unpublish(id: string): Promise<void> {
+    await dbWrite
+      .update(userCharacters)
+      .set({
+        is_public: false,
+        monetization_enabled: false,
+        updated_at: new Date(),
+      })
+      .where(eq(userCharacters.id, id));
   }
 }
 

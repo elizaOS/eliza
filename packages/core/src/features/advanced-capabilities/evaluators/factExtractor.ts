@@ -800,9 +800,10 @@ async function handler(
 		template: FACT_EXTRACTION_JSON_TEMPLATE,
 	});
 
-	const response = await runtime.useModel(ModelType.OBJECT_SMALL, {
+	const response = await runtime.useModel(ModelType.RESPONSE_HANDLER, {
 		prompt,
-		schema: FACT_EXTRACTION_SCHEMA,
+		responseFormat: { type: "json_object" },
+		responseSchema: FACT_EXTRACTION_SCHEMA,
 		temperature: 0,
 	});
 

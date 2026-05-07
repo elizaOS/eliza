@@ -309,13 +309,17 @@ export const notebookEditAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} NOTEBOOK_EDIT ${resolved} mode=${editMode} cells=${notebook.cells.length}`,
     );
 
-    const text = `Notebook ${editMode} on ${resolved} (cells now ${notebook.cells.length})`;
+    const maxNotebookCells = 5000;
+    const text = `Notebook ${editMode} on ${resolved} (cells now ${notebook.cells.length})`.slice(
+      0,
+      2000,
+    );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {
       path: resolved,
       mode: editMode,
-      cells: notebook.cells.length,
+      cells: Math.min(notebook.cells.length, maxNotebookCells),
     });
   },
 };

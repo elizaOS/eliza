@@ -1,9 +1,7 @@
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead } from "@/db/client";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { userCharacters } from "@/db/schemas/user-characters";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
   BLOOIO_API_KEY,
@@ -52,21 +50,12 @@ type WebhookConfig = {
 const app = new Hono<AppEnv>();
 
 async function resolveOrganizationId(agentId: string): Promise<string | null> {
-  const [sandbox] = await dbRead
-    .select({ organizationId: agentSandboxes.organization_id })
-    .from(agentSandboxes)
-    .where(eq(agentSandboxes.id, agentId))
-    .limit(1);
-  if (sandbox) {
-    return sandbox.organizationId;
+  const sandboxOrganizationId = await agentSandboxesRepository.findOrganizationIdById(agentId);
+  if (sandboxOrganizationId) {
+    return sandboxOrganizationId;
   }
 
-  const [character] = await dbRead
-    .select({ organizationId: userCharacters.organization_id })
-    .from(userCharacters)
-    .where(eq(userCharacters.id, agentId))
-    .limit(1);
-  return character?.organizationId ?? null;
+  return (await userCharactersRepository.findOrganizationIdById(agentId)) ?? null;
 }
 
 async function getSecret(organizationId: string, name: string): Promise<string | undefined> {

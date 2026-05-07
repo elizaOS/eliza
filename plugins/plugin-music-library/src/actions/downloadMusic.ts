@@ -121,8 +121,10 @@ export const downloadMusic: Action = {
     options: Record<string, unknown> | undefined,
     callback: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    const timeoutMs = 120_000;
+    const maxQueryLength = 200;
     const messageText = message.content.text || "";
-    const query = messageText.trim();
+    const query = messageText.trim().slice(0, maxQueryLength);
 
     if (!query || query.length < 3) {
       await callback({
@@ -167,12 +169,17 @@ export const downloadMusic: Action = {
         }
       };
 
-      const result = await smartFetch.fetchMusic({
-        query,
-        requestedBy: message.entityId,
-        onProgress,
-        preferredQuality: preferredQuality as "flac" | "mp3_320" | "any",
-      });
+      const result = await Promise.race([
+        smartFetch.fetchMusic({
+          query,
+          requestedBy: message.entityId,
+          onProgress,
+          preferredQuality: preferredQuality as "flac" | "mp3_320" | "any",
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("music download timed out")), timeoutMs),
+        ),
+      ]);
 
       if (!result.success || !result.url) {
         await callback({

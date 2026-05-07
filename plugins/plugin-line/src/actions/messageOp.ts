@@ -40,7 +40,12 @@ interface LineOpInfo {
   latitude?: number;
   longitude?: number;
   to?: string;
+  timeoutMs?: number;
 }
+
+const MAX_LINE_TEXT_CHARS = 4_000;
+const MAX_LINE_FIELD_CHARS = 1_000;
+const LINE_ACTION_TIMEOUT_MS = 30_000;
 
 const messageOpTemplate = `# Task: Extract LINE message operation parameters.
 
@@ -177,7 +182,7 @@ async function handleText(
   }
   logger.debug(`Sent LINE message to ${targetId}`);
   callback?.({ text: "Message sent successfully.", source });
-  return { success: true, text: "Message sent successfully" };
+  return { success: true, text: "Message sent successfully", data: { timeoutMs: info.timeoutMs } };
 }
 
 async function handleFlex(
@@ -214,7 +219,11 @@ async function handleFlex(
   }
   logger.debug(`Sent LINE flex message to ${targetId}`);
   callback?.({ text: "Card message sent successfully.", source });
-  return { success: true, text: "Card message sent successfully" };
+  return {
+    success: true,
+    text: "Card message sent successfully",
+    data: { timeoutMs: info.timeoutMs },
+  };
 }
 
 async function handleLocation(
@@ -253,7 +262,11 @@ async function handleLocation(
   }
   logger.debug(`Sent LINE location to ${targetId}`);
   callback?.({ text: "Location sent successfully.", source });
-  return { success: true, text: "Location sent successfully" };
+  return {
+    success: true,
+    text: "Location sent successfully",
+    data: { timeoutMs: info.timeoutMs },
+  };
 }
 
 export const messageOp: Action = {
@@ -342,6 +355,15 @@ export const messageOp: Action = {
       });
       return { success: false, error: "Could not extract op parameters" };
     }
+    info = {
+      ...info,
+      text: info.text?.slice(0, MAX_LINE_TEXT_CHARS),
+      altText: info.altText?.slice(0, MAX_LINE_FIELD_CHARS),
+      title: info.title?.slice(0, MAX_LINE_FIELD_CHARS),
+      body: info.body?.slice(0, MAX_LINE_TEXT_CHARS),
+      address: info.address?.slice(0, MAX_LINE_FIELD_CHARS),
+      timeoutMs: LINE_ACTION_TIMEOUT_MS,
+    };
 
     const sourceLabel =
       typeof message.content.source === "string" ? message.content.source : "line";

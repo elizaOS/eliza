@@ -33,7 +33,11 @@ interface SignalOpInfo {
   targetTimestamp?: number;
   targetAuthor?: string;
   remove: boolean;
+  timeoutMs?: number;
 }
+
+const MAX_SIGNAL_TEXT_CHARS = 4_000;
+const SIGNAL_ACTION_TIMEOUT_MS = 30_000;
 
 const messageOpTemplate = `# Task: Extract Signal message operation parameters.
 
@@ -166,6 +170,7 @@ async function handleSend(
       op: "send",
       timestamp: result.timestamp,
       recipient: targetRecipient,
+      timeoutMs: info.timeoutMs,
       suppressVisibleCallback: true,
       suppressActionResultClipboard: true,
     },
@@ -205,6 +210,7 @@ async function handleReact(
       targetTimestamp: info.targetTimestamp,
       targetAuthor: info.targetAuthor,
       action: info.remove ? "removed" : "added",
+      timeoutMs: info.timeoutMs,
       suppressVisibleCallback: true,
       suppressActionResultClipboard: true,
     },
@@ -334,6 +340,11 @@ export const messageOp: Action = {
       });
       return { success: false, error: "Could not extract op parameters" };
     }
+    info = {
+      ...info,
+      text: info.text?.slice(0, MAX_SIGNAL_TEXT_CHARS),
+      timeoutMs: SIGNAL_ACTION_TIMEOUT_MS,
+    };
 
     if (info.op === "react") {
       return handleReact(service, runtime, composedState, message, info, callback);

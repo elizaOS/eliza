@@ -15,6 +15,9 @@ import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@eli
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
 
+const MAX_MATRIX_ROOM_REF_CHARS = 255;
+const MATRIX_JOIN_ACTION_TIMEOUT_MS = 30_000;
+
 const JOIN_ROOM_TEMPLATE = `You are helping to extract a Matrix room identifier.
 
 The user wants to join a Matrix room.
@@ -94,7 +97,7 @@ export const joinRoom: Action = {
 
       const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
       if (parsed?.room) {
-        const roomStr = String(parsed.room).trim();
+        const roomStr = String(parsed.room).trim().slice(0, MAX_MATRIX_ROOM_REF_CHARS);
         if (isValidMatrixRoomId(roomStr) || isValidMatrixRoomAlias(roomStr)) {
           room = roomStr;
           break;
@@ -114,6 +117,7 @@ export const joinRoom: Action = {
 
     // Join room
     try {
+      const timeoutMs = MATRIX_JOIN_ACTION_TIMEOUT_MS;
       const roomId = await matrixService.joinRoom(room);
 
       if (callback) {
@@ -128,6 +132,7 @@ export const joinRoom: Action = {
         data: {
           roomId,
           joined: room,
+          timeoutMs,
         },
       };
     } catch (err) {

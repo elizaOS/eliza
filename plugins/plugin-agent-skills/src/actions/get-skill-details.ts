@@ -22,6 +22,14 @@ type GetSkillDetailsOptions = {
 	slug?: unknown;
 };
 
+const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
+
+function truncateSkillDetailsText(text: string): string {
+	return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS
+		? text
+		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
+}
+
 export const getSkillDetailsAction: Action = {
 	name: "GET_SKILL_DETAILS",
 	contexts: ["knowledge", "automation", "settings"],
@@ -93,13 +101,18 @@ ${details.skill.summary}
 ${details.owner ? `**Author:** ${details.owner.displayName} (@${details.owner.handle})` : ""}
 
 ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.changelog}` : ""}`;
+			const boundedText = truncateSkillDetailsText(text);
 
-			if (callback) await callback({ text });
+			if (callback) await callback({ text: boundedText });
 
 			return {
 				success: true,
-				text,
-				data: { details, isInstalled },
+				text: boundedText,
+				data: {
+					details,
+					isInstalled,
+					outputTruncated: boundedText !== text,
+				},
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);

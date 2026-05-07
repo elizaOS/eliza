@@ -45,6 +45,12 @@ function extractDeleteInfo(
 }
 
 const spec = requireActionSpec("CLIPBOARD_DELETE");
+const MAX_CONTEXT_ENTRIES = 20;
+const MAX_TITLE_CHARS = 120;
+
+function truncateText(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
 
 export const clipboardDeleteAction: Action = {
 	name: spec.name,
@@ -82,8 +88,13 @@ export const clipboardDeleteAction: Action = {
 		// Get list of available entries for context
 		const entries = await service.list();
 		const entriesContext = entries
-			.map((e) => `- ${e.id}: "${e.title}"`)
+			.slice(0, MAX_CONTEXT_ENTRIES)
+			.map((e) => `- ${e.id}: "${truncateText(e.title, MAX_TITLE_CHARS)}"`)
 			.join("\n");
+		const omittedContext =
+			entries.length > MAX_CONTEXT_ENTRIES
+				? `\n…${entries.length - MAX_CONTEXT_ENTRIES} more entries omitted.`
+				: "";
 
 		if (entries.length === 0) {
 			if (callback) {
@@ -101,7 +112,7 @@ export const clipboardDeleteAction: Action = {
 		if (!deleteInfo) {
 			if (callback) {
 				await callback({
-					text: `I couldn't determine which note to delete. Available entries:\n${entriesContext}`,
+					text: `I couldn't determine which note to delete. Available entries:\n${entriesContext}${omittedContext}`,
 					actions: ["CLIPBOARD_DELETE_FAILED"],
 					source: message.content.source,
 				});

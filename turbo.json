@@ -233,6 +233,23 @@
       ],
       "outputs": []
     },
+    "@elizaos/example-farcaster#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-farcaster#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/gcp-examples#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/plugin-streaming#typecheck": {
       "dependsOn": ["@elizaos/core#build"],
       "outputs": []

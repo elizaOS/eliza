@@ -1,10 +1,9 @@
 """APOLLO optimizer factories for full-parameter SFT.
 
 APOLLO ("Approximated Gradient Scaling for Memory-Efficient LLM Optimization",
-Zhu et al., MLSys 2025, arXiv:2412.05270) gives SGD-like optimizer-state
-memory with AdamW-level performance. We use it as the default optimizer for
-full-parameter fine-tuning so we can train Qwen sizes that would otherwise
-need LoRA on the same VRAM budget.
+Zhu et al., MLSys 2025, arXiv:2412.05270) gives low optimizer-state memory
+while retaining adaptive optimizer behavior. It is the only optimizer exposed
+by the local eliza-1 training entrypoints.
 
 The two factories below produce parameter groups matching the recipe used in
 the reference implementation (https://github.com/zhuhanqing/APOLLO,
@@ -14,8 +13,8 @@ the reference implementation (https://github.com/zhuhanqing/APOLLO,
     APOLLO-Mini  — tensor-wise scaling,  rank=1,   scale=128
 
 Only 2-D weight matrices (q/k/v/o, gate/up/down) are routed through the
-low-rank projector; biases, embeddings, lm_head, and norms stay on plain
-AdamW (per the paper's reference recipe — projecting them is useless).
+low-rank projector; biases, embeddings, lm_head, and norms stay in APOLLO's
+unprojected parameter group.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ import torch
 from torch import nn
 
 
-# Module-name fragments whose parameters always stay on plain AdamW.
+# Module-name fragments whose parameters always stay in the unprojected group.
 # Embeddings + lm_head dominate the parameter count of small LLMs but the
 # projector cannot shape them; biases and norms are tiny and 1-D.
 _NON_LOWRANK_NAME_HINTS: tuple[str, ...] = (
@@ -104,7 +103,7 @@ def _build_param_groups(
     if not lowrank:
         raise ValueError(
             "APOLLO: no 2-D weight matrices found to project — refusing to "
-            "fall back to plain AdamW silently."
+            "train without a projected APOLLO group."
         )
 
     return [
@@ -226,25 +225,6 @@ def build_apollo_mini_optimizer(
     )
 
 
-def build_adamw_optimizer(
-    model: nn.Module,
-    *,
-    lr: float,
-    weight_decay: float,
-    betas: tuple[float, float] = (0.9, 0.999),
-    eps: float = 1e-8,
-) -> torch.optim.Optimizer:
-    """Plain AdamW baseline (used by the comparison test)."""
-
-    return torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=lr,
-        betas=betas,
-        eps=eps,
-        weight_decay=weight_decay,
-    )
-
-
 def _build_param_groups_from_lists(
     lowrank: list[nn.Parameter], other: list[nn.Parameter],
     *, weight_decay: float, recipe: _ApolloRecipe,
@@ -343,6 +323,5 @@ __all__ = [
     "build_apollo_mini_optimizer",
     "build_apollo_optimizer_from_groups",
     "build_apollo_mini_optimizer_from_groups",
-    "build_adamw_optimizer",
     "optimizer_state_bytes",
 ]

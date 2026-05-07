@@ -214,6 +214,8 @@ export const manageZones = {
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    const timeoutMs = 10_000;
+    const maxCommandBytes = 2000;
     const source = message.content.source || "unknown";
     const effectiveCallback: HandlerCallback = callback ?? (async () => []);
     try {
@@ -236,13 +238,18 @@ export const manageZones = {
       }
 
       const text =
-        zoneTextFromOptions(_options)?.toLowerCase() ||
-        message.content.text?.toLowerCase() ||
-        "";
+        (zoneTextFromOptions(_options)?.toLowerCase() ||
+          message.content.text?.toLowerCase() ||
+          "").slice(0, maxCommandBytes);
 
       // Parse command
       if (text.includes("create zone")) {
-        return handleCreateZone(zoneManager, text, effectiveCallback, source);
+        return Promise.race([
+          handleCreateZone(zoneManager, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("zone operation timed out")), timeoutMs),
+          ),
+        ]);
       } else if (text.includes("delete zone") || text.includes("remove zone")) {
         return handleDeleteZone(zoneManager, text, effectiveCallback, source);
       } else if (/\b(?:list|show)\s+zones?\b/.test(text)) {

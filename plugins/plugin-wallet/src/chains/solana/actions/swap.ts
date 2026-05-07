@@ -19,6 +19,9 @@ import type { SolanaService, SolanaSwapParams, SolanaSwapResult } from "../servi
 import type { Item } from "../types";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
+const SOLANA_SWAP_TIMEOUT_MS = 30_000;
+const WALLET_TOKEN_LOOKUP_LIMIT = 100;
+
 async function getTokenFromWallet(
   runtime: IAgentRuntime,
   tokenSymbol: string
@@ -34,7 +37,7 @@ async function getTokenFromWallet(
       return null;
     }
 
-    const token = walletData.items.find(
+    const token = walletData.items.slice(0, WALLET_TOKEN_LOOKUP_LIMIT).find(
       (item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase()
     );
 
@@ -234,13 +237,18 @@ export const executeSwap: Action = {
         });
       }
 
-      const swapResult = (await solanaService.handleWalletAction({
-        subaction: "swap",
-        chain: "solana",
-        ...swapParams,
-        mode: options?.dryRun === true ? "prepare" : "execute",
-        dryRun: options?.dryRun === true,
-      })) as SolanaSwapResult;
+      const swapResult = (await Promise.race([
+        solanaService.handleWalletAction({
+          subaction: "swap",
+          chain: "solana",
+          ...swapParams,
+          mode: options?.dryRun === true ? "prepare" : "execute",
+          dryRun: options?.dryRun === true,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Solana swap timeout")), SOLANA_SWAP_TIMEOUT_MS)
+        ),
+      ])) as SolanaSwapResult;
 
       callback?.({
         text: swapResult.dryRun

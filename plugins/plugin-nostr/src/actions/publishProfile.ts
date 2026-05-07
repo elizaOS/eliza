@@ -33,6 +33,16 @@ Respond with JSON only, no prose or fences, listing only the fields to update:
   "website": "optional website URL"
 }`;
 
+const MAX_NOSTR_PROFILE_FIELD_CHARS = 500;
+const MAX_NOSTR_PROFILE_RELAYS = 10;
+const NOSTR_PROFILE_ACTION_TIMEOUT_MS = 30_000;
+
+function truncateProfileField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, MAX_NOSTR_PROFILE_FIELD_CHARS)
+    : undefined;
+}
+
 export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
   similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
@@ -103,14 +113,14 @@ export const publishProfile: Action = {
       > | null;
       if (actionParams) {
         profileInfo = {
-          name: actionParams.name ? String(actionParams.name) : undefined,
-          displayName: actionParams.displayName ? String(actionParams.displayName) : undefined,
-          about: actionParams.about ? String(actionParams.about) : undefined,
-          picture: actionParams.picture ? String(actionParams.picture) : undefined,
-          banner: actionParams.banner ? String(actionParams.banner) : undefined,
-          nip05: actionParams.nip05 ? String(actionParams.nip05) : undefined,
-          lud16: actionParams.lud16 ? String(actionParams.lud16) : undefined,
-          website: actionParams.website ? String(actionParams.website) : undefined,
+          name: truncateProfileField(actionParams.name),
+          displayName: truncateProfileField(actionParams.displayName),
+          about: truncateProfileField(actionParams.about),
+          picture: truncateProfileField(actionParams.picture),
+          banner: truncateProfileField(actionParams.banner),
+          nip05: truncateProfileField(actionParams.nip05),
+          lud16: truncateProfileField(actionParams.lud16),
+          website: truncateProfileField(actionParams.website),
         };
         break;
       }
@@ -127,6 +137,7 @@ export const publishProfile: Action = {
     }
 
     // Publish profile
+    const timeoutMs = NOSTR_PROFILE_ACTION_TIMEOUT_MS;
     const result = await nostrService.publishProfile(profileInfo);
 
     if (!result.success) {
@@ -150,8 +161,9 @@ export const publishProfile: Action = {
       success: true,
       data: {
         eventId: result.eventId,
-        relays: result.relays,
+        relays: result.relays?.slice(0, MAX_NOSTR_PROFILE_RELAYS),
         profile: profileInfo,
+        timeoutMs,
       },
     };
   },

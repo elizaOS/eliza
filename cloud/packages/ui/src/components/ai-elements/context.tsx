@@ -14,7 +14,7 @@
 import type { LanguageModelUsage } from "ai";
 import { type ComponentProps, createContext, useContext, useMemo } from "react";
 import { estimateCost, type ModelId } from "tokenlens";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import { Button } from "../button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../hover-card";
 import { Progress } from "../progress";

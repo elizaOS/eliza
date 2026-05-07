@@ -126,7 +126,11 @@ export const enterWorktreeAction: Action = {
     const cwd = session.getCwd(conversationId);
 
     try {
-      await execFileAsync("git", ["worktree", "add", "-b", name, worktreePath, base], { cwd });
+      const timeoutMs = 30_000;
+      await execFileAsync("git", ["worktree", "add", "-b", name, worktreePath, base], {
+        cwd,
+        timeout: timeoutMs,
+      });
     } catch (err) {
       const stderr =
         err && typeof err === "object" && "stderr" in err
@@ -146,7 +150,11 @@ export const enterWorktreeAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} ENTER_WORKTREE branch=${name} path=${worktreePath} base=${base}`,
     );
 
-    const text = `Entered worktree ${worktreePath} on branch ${name} (from ${base})`;
+    const maxActionResultBytes = 2000;
+    const text = `Entered worktree ${worktreePath} on branch ${name} (from ${base})`.slice(
+      0,
+      maxActionResultBytes,
+    );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

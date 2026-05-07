@@ -15,6 +15,9 @@ import type { DeleteIssueParameters } from "../types/index.js";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
+const LINEAR_MODEL_TIMEOUT_MS = 15_000;
+const LINEAR_ISSUE_TITLE_MAX_CHARS = 300;
+
 export const deleteIssueAction: Action = {
   name: "DELETE_LINEAR_ISSUE",
   contexts: ["tasks", "connectors", "automation"],
@@ -125,9 +128,14 @@ export const deleteIssueAction: Action = {
       } else {
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);
 
-        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: prompt,
-        });
+        const response = await Promise.race([
+          runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: prompt,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Linear issue extraction timeout")), LINEAR_MODEL_TIMEOUT_MS)
+          ),
+        ]);
 
         if (!response) {
           throw new Error("Failed to extract issue identifier");
@@ -164,7 +172,7 @@ export const deleteIssueAction: Action = {
       }
 
       const issue = await linearService.getIssue(issueId);
-      const issueTitle = issue.title;
+      const issueTitle = issue.title.slice(0, LINEAR_ISSUE_TITLE_MAX_CHARS);
       const issueIdentifier = issue.identifier;
 
       logger.info(`Archiving issue ${issueIdentifier}: ${issueTitle}`);

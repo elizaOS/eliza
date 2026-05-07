@@ -6,7 +6,6 @@ import {
   type TrajectoryExportOptions as CoreTrajectoryExportOptions,
   type TrajectoryExportResult as CoreTrajectoryExportResult,
   type TrajectoryFlattenedLlmCallRecord as CoreTrajectoryFlattenedLlmCallRecord,
-  type TrajectoryHarnessExportRow as CoreTrajectoryHarnessExportRow,
   type TrajectoryJsonShape as CoreTrajectoryJsonShape,
   type TrajectoryListOptions as CoreTrajectoryListOptions,
   type TrajectoryListResult as CoreTrajectoryListResult,
@@ -17,8 +16,6 @@ import {
   type TrajectoryStepKind as CoreTrajectoryStepKind,
   type TrajectoryStepRecord as CoreTrajectoryStepRecord,
   type TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
-  type TrajectoryTrainingExampleRecord as CoreTrajectoryTrainingExampleRecord,
-  type TrajectoryTrainingMessageRecord as CoreTrajectoryTrainingMessageRecord,
   type TrajectoryUsageTotalsRecord as CoreTrajectoryUsageTotalsRecord,
 } from "@elizaos/core";
 
@@ -35,9 +32,6 @@ export type TrajectoryStepKind = CoreTrajectoryStepKind;
 export type TrajectoryUsageTotals = CoreTrajectoryUsageTotalsRecord;
 export type TrajectoryCacheStats = CoreTrajectoryCacheStatsRecord;
 export type TrajectoryFlattenedLlmCall = CoreTrajectoryFlattenedLlmCallRecord;
-export type TrajectoryTrainingMessage = CoreTrajectoryTrainingMessageRecord;
-export type TrajectoryTrainingExample = CoreTrajectoryTrainingExampleRecord;
-export type TrajectoryHarnessExportRow = CoreTrajectoryHarnessExportRow;
 
 export type TrajectoryListItem = CoreTrajectorySummaryRecord;
 export type TrajectoryListResult =

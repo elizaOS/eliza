@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   exportTrajectoryTaskDatasets,
@@ -57,11 +58,15 @@ describe("trajectory task datasets", () => {
     if (!example) {
       throw new Error("Expected one should_respond example");
     }
-    const assistantMessage = example.messages[2];
-    if (!assistantMessage) {
-      throw new Error("Expected assistant output message");
-    }
-    expect(JSON.parse(assistantMessage.content)).toEqual({
+    expect(example.format).toBe(ELIZA_NATIVE_TRAJECTORY_FORMAT);
+    expect(example.request).toMatchObject({
+      prompt: "final message",
+      messages: [
+        { role: "system", content: "Return messageHandler JSON." },
+        { role: "user", content: "final message" },
+      ],
+    });
+    expect(JSON.parse(example.response.text)).toEqual({
       messageHandler: {
         action: "RESPOND",
         simple: true,
@@ -72,14 +77,14 @@ describe("trajectory task datasets", () => {
     });
     expect(example.metadata).toMatchObject({
       task_type: "should_respond",
-      source_dataset: "harness/should_respond",
+      source_dataset: "eliza_native/should_respond",
       trajectory_id: "traj-1",
       call_id: "call-1",
       agent_id: "agent-1",
     });
   });
 
-  it("skips legacy should_respond rows with a warning", async () => {
+  it("skips non-native should_respond rows with a warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const outputDir = await mkdtemp(
       join(tmpdir(), "trajectory-task-datasets-"),
@@ -101,15 +106,15 @@ describe("trajectory task datasets", () => {
       );
       const summary = JSON.parse(
         await readFile(exported.paths.summaryPath, "utf8"),
-      ) as { skippedLegacyRows: number; warnings: string[] };
+      ) as { skippedNonNativeRows: number; warnings: string[] };
 
       expect(exported.counts.should_respond).toBe(0);
-      expect(summary.skippedLegacyRows).toBe(1);
+      expect(summary.skippedNonNativeRows).toBe(1);
       expect(summary.warnings[0]).toContain(
-        "skipped legacy should_respond row",
+        "skipped non-native should_respond row",
       );
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining("skipped legacy should_respond row"),
+        expect.stringContaining("skipped non-native should_respond row"),
       );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
@@ -136,7 +141,7 @@ describe("trajectory task datasets", () => {
     expect(examples.should_respond).toHaveLength(1);
   });
 
-  it("accepts multi-line harness JSONL export text as input", () => {
+  it("accepts multi-line native JSONL export text as input", () => {
     const response = JSON.stringify({
       messageHandler: {
         action: "RESPOND",
@@ -148,27 +153,45 @@ describe("trajectory task datasets", () => {
     });
     const exportText = [
       {
-        format: "trajectory_harness_v1",
+        format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+        schemaVersion: 1,
+        boundary: "vercel_ai_sdk.generateText",
         trajectoryId: "traj-1",
         agentId: "agent-1",
         source: "chat",
         status: "completed",
-        startTime: 1,
         stepId: "step-1",
         stepIndex: 0,
-        stepTimestamp: 1,
+        timestamp: 1,
         callId: "call-1",
         callIndex: 0,
         purpose: "should_respond",
-        systemPrompt: "Return messageHandler JSON.",
-        userPrompt: "final message",
-        response,
+        request: {
+          prompt: "final message",
+          messages: [
+            { role: "system", content: "Return messageHandler JSON." },
+            { role: "user", content: "final message" },
+          ],
+        },
+        response: {
+          text: response,
+          usage: {
+            promptTokens: 10,
+            completionTokens: 5,
+            totalTokens: 15,
+            cacheReadInputTokens: 2,
+            cacheCreationInputTokens: 0,
+          },
+        },
+        metadata: {
+          task_type: "should_respond",
+          source_dataset: "runtime_trajectory_boundary",
+          trajectory_id: "traj-1",
+          step_id: "step-1",
+          call_id: "call-1",
+          agent_id: "agent-1",
+        },
         tags: ["llm", "purpose:should_respond"],
-        promptTokens: 10,
-        completionTokens: 5,
-        cacheReadInputTokens: 2,
-        cacheCreationInputTokens: 0,
-        tokenUsageEstimated: false,
         trajectoryTotals: {
           stepCount: 1,
           llmCallCount: 1,
@@ -191,27 +214,45 @@ describe("trajectory task datasets", () => {
         },
       },
       {
-        format: "trajectory_harness_v1",
+        format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+        schemaVersion: 1,
+        boundary: "vercel_ai_sdk.generateText",
         trajectoryId: "traj-1",
         agentId: "agent-1",
         source: "chat",
         status: "completed",
-        startTime: 1,
         stepId: "step-1",
         stepIndex: 0,
-        stepTimestamp: 1,
+        timestamp: 2,
         callId: "call-2",
         callIndex: 1,
         purpose: "response",
-        systemPrompt: "Reply directly.",
-        userPrompt: "hello",
-        response: "hello",
+        request: {
+          prompt: "hello",
+          messages: [
+            { role: "system", content: "Reply directly." },
+            { role: "user", content: "hello" },
+          ],
+        },
+        response: {
+          text: "hello",
+          usage: {
+            promptTokens: 3,
+            completionTokens: 1,
+            totalTokens: 4,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        },
+        metadata: {
+          task_type: "response",
+          source_dataset: "runtime_trajectory_boundary",
+          trajectory_id: "traj-1",
+          step_id: "step-1",
+          call_id: "call-2",
+          agent_id: "agent-1",
+        },
         tags: ["llm", "purpose:response"],
-        promptTokens: 3,
-        completionTokens: 1,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        tokenUsageEstimated: false,
         trajectoryTotals: {
           stepCount: 1,
           llmCallCount: 2,

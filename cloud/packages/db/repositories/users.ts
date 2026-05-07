@@ -1,4 +1,4 @@
-import { and, eq, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization } from "../schemas/organizations";
@@ -176,6 +176,47 @@ export class UsersRepository {
     });
     if (!identity) return undefined;
     return this.findWithOrganization(identity.user_id);
+  }
+
+  async listForAdminDashboard(limit: number): Promise<
+    Array<
+      Pick<
+        User,
+        | "id"
+        | "email"
+        | "email_verified"
+        | "wallet_address"
+        | "wallet_chain_type"
+        | "name"
+        | "avatar"
+        | "organization_id"
+        | "role"
+        | "is_active"
+        | "is_anonymous"
+        | "created_at"
+        | "updated_at"
+      >
+    >
+  > {
+    return dbRead
+      .select({
+        id: users.id,
+        email: users.email,
+        email_verified: users.email_verified,
+        wallet_address: users.wallet_address,
+        wallet_chain_type: users.wallet_chain_type,
+        name: users.name,
+        avatar: users.avatar,
+        organization_id: users.organization_id,
+        role: users.role,
+        is_active: users.is_active,
+        is_anonymous: users.is_anonymous,
+        created_at: users.created_at,
+        updated_at: users.updated_at,
+      })
+      .from(users)
+      .orderBy(desc(users.created_at))
+      .limit(limit);
   }
 
   /**

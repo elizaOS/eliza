@@ -294,6 +294,13 @@ const unavailableExamples: ActionExample[][] = [
     },
   ],
 ];
+function stringifyInvalidDelegateResult(value: unknown): string {
+  return typeof value === "string"
+    ? value
+    : JSON.stringify(value, (_key, nestedValue) =>
+        typeof nestedValue === "bigint" ? String(nestedValue) : nestedValue,
+      );
+}
 
 export const computerUseAction: Action & {
   suppressPostActionContinuation?: boolean;
@@ -530,7 +537,11 @@ export const computerUseAction: Action & {
         error: "COMPUTER_USE_INVALID_RESULT",
         delegate: base.name,
       },
-      data: { actionName: ACTION_NAME, delegate: base.name, raw: result },
+      data: {
+        actionName: ACTION_NAME,
+        delegate: base.name,
+        raw: stringifyInvalidDelegateResult(result),
+      },
     };
   },
 };

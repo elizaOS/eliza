@@ -11,7 +11,15 @@ import type {
 import type { JsonValue } from "../protocol.js";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
 import { WAYPOINTS_SERVICE_TYPE, type WaypointsService } from "../services/waypoints-service.js";
-import { emit, mergedInput, parseVec3, readBoolean, readNumber, readString } from "./helpers.js";
+import {
+  emit,
+  mergedInput,
+  parseVec3,
+  readBoolean,
+  readNumber,
+  readString,
+  withMinecraftTimeout,
+} from "./helpers.js";
 
 const ACTION_NAME = "MC_LOCOMOTE_OP";
 
@@ -208,7 +216,7 @@ export const minecraftLocomoteOpAction: Action = {
     try {
       switch (op) {
         case "stop": {
-          await service.request("stop", {});
+          await withMinecraftTimeout(service.request("stop", {}), "minecraft stop");
           return await emit(ACTION_NAME, callback, "Stopped movement.", message.content.source, {
             success: true,
           });
@@ -220,7 +228,10 @@ export const minecraftLocomoteOpAction: Action = {
               success: false,
             });
           }
-          await service.request("look", { yaw: req.yaw, pitch: req.pitch });
+          await withMinecraftTimeout(
+            service.request("look", { yaw: req.yaw, pitch: req.pitch }),
+            "minecraft look",
+          );
           return await emit(ACTION_NAME, callback, "Adjusted view.", message.content.source, {
             success: true,
           });
@@ -232,11 +243,14 @@ export const minecraftLocomoteOpAction: Action = {
               success: false,
             });
           }
-          await service.request("control", {
-            control: req.control,
-            state: req.state,
-            ...(typeof req.durationMs === "number" ? { durationMs: req.durationMs } : {}),
-          });
+          await withMinecraftTimeout(
+            service.request("control", {
+              control: req.control,
+              state: req.state,
+              ...(typeof req.durationMs === "number" ? { durationMs: Math.min(req.durationMs, 10_000) } : {}),
+            }),
+            "minecraft control",
+          );
           return await emit(
             ACTION_NAME,
             callback,
@@ -272,7 +286,10 @@ export const minecraftLocomoteOpAction: Action = {
               { success: false }
             );
           }
-          await service.request("goto", { x: wp.x, y: wp.y, z: wp.z });
+          await withMinecraftTimeout(
+            service.request("goto", { x: wp.x, y: wp.y, z: wp.z }),
+            "minecraft waypoint goto",
+          );
           return await emit(
             ACTION_NAME,
             callback,
@@ -292,7 +309,10 @@ export const minecraftLocomoteOpAction: Action = {
               { success: false }
             );
           }
-          await service.request("goto", { x: vec.x, y: vec.y, z: vec.z });
+          await withMinecraftTimeout(
+            service.request("goto", { x: vec.x, y: vec.y, z: vec.z }),
+            "minecraft goto",
+          );
           return await emit(
             ACTION_NAME,
             callback,

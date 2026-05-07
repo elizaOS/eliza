@@ -1,89 +1,157 @@
-/**
- * Full-screen overlay view for the Trajectory Logger app.
- *
- * Shows two stacked cards:
- *   1. Pending — the in-flight trajectory (status === "active")
- *   2. Last completed — the most recently finished/error trajectory
- *
- * Each card surfaces a HANDLE / PLAN / ACTION / EVALUATE phase strip with
- * a thin status indicator. Clicking a phase opens a drilldown panel for
- * that phase. Updates poll the existing /api/trajectories endpoints, so
- * opening the app and chatting with the agent shows phases activating in
- * real time.
- */
-
 import { Button, type OverlayAppContext } from "@elizaos/app-core";
-import { ChevronLeft, RefreshCw } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
+import { useState } from "react";
+import type { TrajectoryListItem } from "../api-client";
+import { type PhaseName, type PhaseSummary, summarizePhases } from "../phases";
 import { usePollingTrajectories } from "../usePollingTrajectories";
-import { TrajectoryCard } from "./TrajectoryCard";
+import { PhaseChip } from "./PhaseChip";
+import { PhaseDrilldown } from "./PhaseDrilldown";
+
+type Slot = "now" | "last";
+type Selection = { slot: Slot; phase: PhaseName } | null;
 
 export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
   const state = usePollingTrajectories(true);
+  const [sel, setSel] = useState<Selection>(null);
+
+  const nowPhases = summarizePhases(state.activeDetail, {
+    trajectoryActive: true,
+  });
+  const lastPhases = summarizePhases(state.lastDetail, {
+    trajectoryActive: false,
+  });
+  const selected: PhaseSummary | null = !sel
+    ? null
+    : ((sel.slot === "now" ? nowPhases : lastPhases).find(
+        (p) => p.phase === sel.phase,
+      ) ?? null);
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg">
-      <header className="flex items-center justify-between gap-3 border-b border-border/24 px-4 py-3">
-        <div className="flex items-center gap-2">
+    <div className="flex h-full w-full flex-col bg-bg text-xs">
+      <header className="flex items-center justify-between gap-2 border-b border-border/24 px-3 py-2">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={exitToApps}
-            aria-label="Back to apps"
+            aria-label="Back"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="text-base font-semibold text-txt">
+          <span className="text-sm font-semibold text-txt">
             Trajectory Logger
-          </div>
+          </span>
         </div>
-        <div className="flex items-center gap-2 text-2xs text-muted/70">
-          <RefreshCw
-            className={[
-              "h-3.5 w-3.5",
-              state.ready && state.error === null ? "" : "opacity-40",
-            ].join(" ")}
-          />
-          <span>polling</span>
-        </div>
+        {state.error ? (
+          <span className="text-2xs text-red-400">{state.error}</span>
+        ) : !state.ready ? (
+          <span className="text-2xs text-muted/60">loading…</span>
+        ) : null}
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-        {!state.ready ? (
-          <div className="rounded-xl border border-dashed border-border/24 bg-card/20 px-4 py-6 text-center text-sm text-muted">
-            Loading trajectories…
-          </div>
-        ) : null}
-
-        {state.error ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400">
-            {state.error}
-          </div>
-        ) : null}
-
-        <TrajectoryCard
-          title="Pending"
-          subtitle={
-            state.active
-              ? "currently in flight"
-              : "waiting for the next agent turn"
-          }
-          trajectory={state.active}
-          detail={state.activeDetail}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+        <PhaseStrip
+          label="NOW"
           live
-        />
-
-        <TrajectoryCard
-          title="Last trajectory"
-          subtitle={
-            state.last
-              ? `${state.last.status} · ${state.last.llmCallCount} llm calls`
-              : "no recent turns"
+          trajectory={state.active}
+          phases={nowPhases}
+          selectedPhase={sel?.slot === "now" ? sel.phase : null}
+          onSelect={(phase) =>
+            setSel((p) =>
+              p?.slot === "now" && p.phase === phase
+                ? null
+                : { slot: "now", phase },
+            )
           }
-          trajectory={state.last}
-          detail={state.lastDetail}
-          live={false}
         />
+        <PhaseStrip
+          label="LAST"
+          live={false}
+          trajectory={state.last}
+          phases={lastPhases}
+          selectedPhase={sel?.slot === "last" ? sel.phase : null}
+          onSelect={(phase) =>
+            setSel((p) =>
+              p?.slot === "last" && p.phase === phase
+                ? null
+                : { slot: "last", phase },
+            )
+          }
+        />
+        {selected ? (
+          <div className="rounded border border-border/24 bg-card/30 p-2">
+            <PhaseDrilldown phase={selected} />
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function PhaseStrip({
+  label,
+  live,
+  trajectory,
+  phases,
+  selectedPhase,
+  onSelect,
+}: {
+  label: string;
+  live: boolean;
+  trajectory: TrajectoryListItem | null;
+  phases: PhaseSummary[];
+  selectedPhase: PhaseName | null;
+  onSelect: (phase: PhaseName) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Label live={live}>{label}</Label>
+      {trajectory ? (
+        <>
+          <div className="flex flex-1 gap-1">
+            {phases.map((p) => (
+              <PhaseChip
+                key={p.phase}
+                phase={p.phase}
+                status={p.status}
+                summary={p.summary}
+                selected={selectedPhase === p.phase}
+                onClick={() => onSelect(p.phase)}
+              />
+            ))}
+          </div>
+          <Meta trajectory={trajectory} />
+        </>
+      ) : (
+        <span className="text-2xs text-muted/60">
+          {live ? "no active turn" : "no past turns"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Label({
+  live,
+  children,
+}: {
+  live: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="flex w-12 shrink-0 items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-muted/70">
+      {live ? (
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+      ) : null}
+      {children}
+    </span>
+  );
+}
+
+function Meta({ trajectory }: { trajectory: TrajectoryListItem }) {
+  return (
+    <span className="hidden shrink-0 font-mono text-2xs text-muted/50 sm:inline">
+      {trajectory.id.slice(0, 6)} · {trajectory.llmCallCount}llm
+    </span>
   );
 }

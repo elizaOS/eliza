@@ -17,6 +17,8 @@ import { DRAFT_TTL_MS } from '../utils/constants';
 
 const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
 const VALID_OPS = ['activate', 'deactivate', 'delete'] as const;
+const N8N_WORKFLOW_MATCH_LIMIT = 25;
+const N8N_LIFECYCLE_TIMEOUT_MS = 30_000;
 type LifecycleOp = (typeof VALID_OPS)[number];
 
 interface PendingDeletion {
@@ -287,7 +289,7 @@ async function runDelete(
   }
 
   // No pending — start a new deletion flow
-  const workflows = await service.listWorkflows(userId);
+  const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
   if (workflows.length === 0) {
     if (callback) {
@@ -350,7 +352,7 @@ async function resolveWorkflowId(
   callback?: HandlerCallback
 ): Promise<string | null> {
   const userId = message.entityId;
-  const workflows = await service.listWorkflows(userId);
+  const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
   if (workflows.length === 0) {
     if (callback) {
@@ -483,13 +485,25 @@ export const workflowLifecycleOpAction: Action = {
         : null;
 
     try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('n8n workflow lifecycle timeout')), N8N_LIFECYCLE_TIMEOUT_MS)
+      );
       switch (op) {
         case 'activate':
-          return await runActivate(runtime, service, message, state, workflowIdParam, callback);
+          return await Promise.race([
+            runActivate(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
         case 'deactivate':
-          return await runDeactivate(runtime, service, message, state, workflowIdParam, callback);
+          return await Promise.race([
+            runDeactivate(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
         case 'delete':
-          return await runDelete(runtime, service, message, state, workflowIdParam, callback);
+          return await Promise.race([
+            runDelete(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

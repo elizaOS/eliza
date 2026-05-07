@@ -73,6 +73,13 @@ function extractWriteInfo(
 }
 
 const spec = requireActionSpec("CLIPBOARD_WRITE");
+const MAX_TITLE_CHARS = 120;
+const MAX_TAGS = 12;
+const MAX_TAG_CHARS = 48;
+
+function truncateText(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
 
 export const clipboardWriteAction: Action = {
 	name: spec.name,
@@ -127,8 +134,10 @@ export const clipboardWriteAction: Action = {
 
 		try {
 			const service = createClipboardService(runtime);
-			const entry = await service.write(writeInfo.title, writeInfo.content, {
-				tags: writeInfo.tags,
+			const entry = await service.write(truncateText(writeInfo.title, MAX_TITLE_CHARS), writeInfo.content, {
+				tags: writeInfo.tags
+					?.slice(0, MAX_TAGS)
+					.map((tag) => truncateText(tag, MAX_TAG_CHARS)),
 			});
 
 			const successMessage = `I've saved a note titled "${entry.title}" (ID: ${entry.id}).${
@@ -143,7 +152,11 @@ export const clipboardWriteAction: Action = {
 				});
 			}
 
-			return { success: true, text: successMessage, entryId: entry.id };
+			return {
+				success: true,
+				text: successMessage,
+				data: { entryId: entry.id, title: entry.title },
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error("[ClipboardWrite] Error:", errorMsg);

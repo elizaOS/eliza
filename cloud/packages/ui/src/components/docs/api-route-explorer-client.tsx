@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import type { DiscoveredApiRouteDto, HttpMethod } from "@/types/cloud-api";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 
 type RouteGroup = {
   group: string;

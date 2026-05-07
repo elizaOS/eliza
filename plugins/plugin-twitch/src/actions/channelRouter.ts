@@ -18,6 +18,9 @@ import { parseJSONObjectFromText } from "@elizaos/core";
 
 type TwitchChannelOp = "join" | "leave";
 
+const MAX_TWITCH_CHANNEL_NAME_CHARS = 80;
+const TWITCH_CHANNEL_ACTION_TIMEOUT_MS = 30_000;
+
 const CHANNEL_TEMPLATE = `You are helping to extract Twitch channel join/leave parameters.
 
 Recent conversation:
@@ -47,6 +50,10 @@ function normalizeOp(value: string | null): TwitchChannelOp | null {
     return normalized;
   }
   return null;
+}
+
+function truncateActionText(text: string, maxChars: number): string {
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
 }
 
 function inferOp(text: string): TwitchChannelOp | null {
@@ -142,6 +149,7 @@ export const twitchChannelAction: Action = {
 
     const optionOp = normalizeOp(readStringOption(options, "op"));
     const optionChannel = readStringOption(options, "channel");
+    const timeoutMs = TWITCH_CHANNEL_ACTION_TIMEOUT_MS;
     const inferredOp = inferOp(message.content.text ?? "");
     const extracted =
       optionOp && optionChannel
@@ -150,9 +158,9 @@ export const twitchChannelAction: Action = {
 
     const op = optionOp ?? inferredOp ?? extracted?.op ?? null;
     const channel = optionChannel
-      ? normalizeChannel(optionChannel)
+      ? normalizeChannel(truncateActionText(optionChannel, MAX_TWITCH_CHANNEL_NAME_CHARS))
       : extracted?.channel
-        ? normalizeChannel(extracted.channel)
+        ? normalizeChannel(truncateActionText(extracted.channel, MAX_TWITCH_CHANNEL_NAME_CHARS))
         : null;
 
     if (!op) {
@@ -179,7 +187,7 @@ export const twitchChannelAction: Action = {
         });
         return {
           success: true,
-          data: { op, channel, alreadyJoined: true },
+          data: { op, channel, alreadyJoined: true, timeoutMs },
         };
       }
 
@@ -188,7 +196,7 @@ export const twitchChannelAction: Action = {
         text: `Joined channel #${channel}.`,
         source: String(message.content.source ?? "twitch"),
       });
-      return { success: true, data: { op, channel } };
+      return { success: true, data: { op, channel, timeoutMs } };
     }
 
     const joinedChannels = twitchService.getJoinedChannels();
@@ -213,7 +221,7 @@ export const twitchChannelAction: Action = {
       text: `Left channel #${channel}.`,
       source: String(message.content.source ?? "twitch"),
     });
-    return { success: true, data: { op, channel } };
+    return { success: true, data: { op, channel, timeoutMs } };
   },
   examples: [
     [

@@ -35,8 +35,8 @@ import {
 
 export interface NativeBackendOptions {
   /**
-   * JSONL dataset produced by exportTrajectoryTaskDatasets. Each line is a
-   * Gemini-style `{ messages: [{ role, content }, …] }` row.
+   * JSONL dataset produced by exportTrajectoryTaskDatasets. Each line is an
+   * `eliza_native_v1` model-boundary row.
    */
   datasetPath: string;
   task: TrajectoryTrainingTask;
@@ -62,12 +62,20 @@ export interface NativeBackendResult {
 }
 
 interface JsonlMessage {
-  role: "system" | "user" | "model";
+  role: "system" | "developer" | "user" | "assistant" | "tool";
   content: string;
 }
 
 interface JsonlRow {
-  messages: JsonlMessage[];
+  format: "eliza_native_v1";
+  request?: {
+    prompt?: string;
+    messages?: JsonlMessage[];
+  };
+  response?: {
+    text?: string;
+    toolCalls?: unknown[];
+  };
 }
 
 function parseJsonlDataset(path: string): OptimizationExample[] {
@@ -82,7 +90,7 @@ function parseJsonlDataset(path: string): OptimizationExample[] {
     const parsedJson: unknown = JSON.parse(line);
     if (!isJsonlRow(parsedJson)) {
       throw new Error(
-        `[native-backend] dataset line ${index + 1} is not a {messages: [...]} row`,
+        `[native-backend] dataset line ${index + 1} is not an eliza_native_v1 row`,
       );
     }
     const example = rowToExample(parsedJson, index);
@@ -94,8 +102,8 @@ function parseJsonlDataset(path: string): OptimizationExample[] {
 
 function isJsonlRow(value: unknown): value is JsonlRow {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { messages?: unknown };
-  return Array.isArray(candidate.messages);
+  const candidate = value as JsonlRow;
+  return candidate.format === "eliza_native_v1";
 }
 
 function rowToExample(
@@ -105,7 +113,8 @@ function rowToExample(
   let system: string | undefined;
   let user: string | undefined;
   let expected: string | undefined;
-  for (const msg of row.messages) {
+  const messages = row.request?.messages ?? [];
+  for (const msg of messages) {
     if (msg.role === "system" && typeof msg.content === "string") {
       system = msg.content;
     }
@@ -114,8 +123,18 @@ function rowToExample(
       // exporter already collapses these for single-turn tasks.
       user = user ? `${user}\n${msg.content}` : msg.content;
     }
-    if (msg.role === "model" && typeof msg.content === "string") {
+    if (msg.role === "assistant" && typeof msg.content === "string") {
       expected = msg.content;
+    }
+  }
+  if (!user && typeof row.request?.prompt === "string") {
+    user = row.request.prompt;
+  }
+  if (row.response) {
+    if (typeof row.response.text === "string" && row.response.text.length > 0) {
+      expected = row.response.text;
+    } else if (Array.isArray(row.response.toolCalls)) {
+      expected = JSON.stringify({ toolCalls: row.response.toolCalls });
     }
   }
   if (!user || !expected) return null;

@@ -31,6 +31,19 @@ type GatewayChatMessage = OpenAIChatRequest["messages"][number];
 type GatewayModelMetadata = Awaited<
   ReturnType<GatewayProvider["getAvailableModels"]>
 >["models"][number];
+type OpenAIPromptTokenDetails = {
+  cached_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
+type OpenAIUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_tokens_details?: OpenAIPromptTokenDetails;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
 
 export class VercelAIGatewayProvider implements AIProvider {
   name = "gateway";
@@ -535,7 +548,7 @@ export const __nativeToolingTestHooks = {
   toOpenAIUsage,
 };
 
-function toOpenAIUsage(usage: LanguageModelUsage | undefined) {
+function toOpenAIUsage(usage: LanguageModelUsage | undefined): OpenAIUsage {
   const promptTokens = usage?.inputTokens ?? 0;
   const completionTokens = usage?.outputTokens ?? 0;
   const cacheReadInputTokens = firstNumber(
@@ -558,7 +571,7 @@ function toOpenAIUsage(usage: LanguageModelUsage | undefined) {
     (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
       ?.cacheWriteTokens,
   );
-  const out: Record<string, unknown> = {
+  const out: OpenAIUsage = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: usage?.totalTokens ?? promptTokens + completionTokens,

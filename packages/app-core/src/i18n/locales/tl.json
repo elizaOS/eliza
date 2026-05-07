@@ -3029,6 +3029,7 @@
   "trajectoriesview.FailedToDelete": "Hindi matanggal ang trajectory",
   "trajectoriesview.FailedToExport": "Nabigong i-export ang mga trajectory",
   "trajectoriesview.FailedToLoad": "Nabigong mag-load ng mga trajectory",
+  "trajectoriesview.JSONLNativeTraining": "JSONL (native training)",
   "trajectoriesview.JSONRedacted": "JSON (redacted)",
   "trajectoriesview.JSONWithPrompts": "JSON (may mga prompt)",
   "trajectoriesview.LoadingTrajectories": "Naglo-load ng mga trajectory...",

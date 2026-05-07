@@ -39,8 +39,8 @@ import {
 import { type JSX, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import type { AppDto as App } from "@/types/cloud-api";
 import { cn } from "@/lib/utils";
+import type { App } from "../../../lib/data/apps";
 
 interface AppOverviewProps {
   app: App;

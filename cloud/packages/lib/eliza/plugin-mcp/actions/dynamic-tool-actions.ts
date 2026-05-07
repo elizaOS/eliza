@@ -49,6 +49,12 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
 }
 
 const MCP_ACTION_CONTEXTS = ["connectors", "automation", "knowledge"];
+const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
+
+function truncateMcpToolOutput(output: string): string {
+  if (output.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return output;
+  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+}
 
 function hasSelectedContext(state: State | undefined): boolean {
   const selected = [
@@ -186,19 +192,21 @@ export function createMcpToolAction(
         runtime,
         String(message.entityId ?? ""),
       );
+      const boundedToolOutput = truncateMcpToolOutput(toolOutput);
 
       if (result.isError) {
-        logger.error({ serverName, toolName: tool.name, output: toolOutput }, "[MCP] Tool error");
+        logger.error({ serverName, toolName: tool.name, output: boundedToolOutput }, "[MCP] Tool error");
         return {
           success: false,
-          error: toolOutput || "Tool execution failed",
-          text: toolOutput,
+          error: boundedToolOutput || "Tool execution failed",
+          text: boundedToolOutput,
           data: {
             actionName,
             serverName,
             toolName: tool.name,
             toolArguments: params,
             isError: true,
+            outputTruncated: boundedToolOutput !== toolOutput,
           },
         };
       }
@@ -212,20 +220,22 @@ export function createMcpToolAction(
 
       return {
         success: true,
-        text: toolOutput,
+        text: boundedToolOutput,
         values: {
           success: true,
           serverName,
           toolName: tool.name,
           hasAttachments,
-          output: toolOutput,
+          output: boundedToolOutput,
+          outputTruncated: boundedToolOutput !== toolOutput,
         },
         data: {
           actionName,
           serverName,
           toolName: tool.name,
           toolArguments: params,
-          output: toolOutput,
+          output: boundedToolOutput,
+          outputTruncated: boundedToolOutput !== toolOutput,
           attachments: attachments.length > 0 ? attachments : undefined,
         },
       };

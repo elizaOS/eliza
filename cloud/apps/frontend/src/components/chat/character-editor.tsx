@@ -18,8 +18,8 @@ import type { PreUploadedFile } from "@/lib/types/knowledge";
 import {
   CharacterForm,
   type FormTab,
-} from "@elizaos/cloud-ui/components/character-builder/character-form";
-import { JsonEditor } from "@elizaos/cloud-ui/components/character-builder/json-editor";
+} from "../character-builder/character-form";
+import { JsonEditor } from "../character-builder/json-editor";
 import { PluginsTab } from "./plugins-tab";
 import { UploadsTab } from "./uploads-tab";
 

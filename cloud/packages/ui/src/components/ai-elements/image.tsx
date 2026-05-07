@@ -10,7 +10,7 @@
 // Native img used for framework agnosticism
 
 import type { Experimental_GeneratedImage } from "ai";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 
 export type ImageProps = Experimental_GeneratedImage & {
   className?: string;

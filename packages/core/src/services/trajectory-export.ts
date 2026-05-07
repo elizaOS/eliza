@@ -8,11 +8,9 @@ import type {
 	TrajectoryExportOptions,
 	TrajectoryExportResult,
 	TrajectoryFlattenedLlmCallRecord,
-	TrajectoryHarnessExportRow,
 	TrajectoryJsonShape,
 	TrajectoryLlmCallRecord,
 	TrajectoryStepRecord,
-	TrajectoryTrainingMessageRecord,
 	TrajectoryUsageTotalsRecord,
 } from "./trajectory-types";
 import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
@@ -273,55 +271,6 @@ export function iterateTrajectoryLlmCalls(
 	return out;
 }
 
-export function buildTrajectoryTrainingMessages(
-	call: Pick<
-		TrajectoryLlmCallRecord,
-		"systemPrompt" | "userPrompt" | "response"
-	>,
-): TrajectoryTrainingMessageRecord[] | null {
-	const systemPrompt = toOptionalString(call.systemPrompt);
-	const userPrompt = toOptionalString(call.userPrompt);
-	const response = toOptionalString(call.response);
-	if (!systemPrompt || !userPrompt || !response) {
-		return null;
-	}
-	return [
-		{ role: "system", content: systemPrompt },
-		{ role: "user", content: userPrompt },
-		{ role: "model", content: response },
-	];
-}
-
-export function buildTrajectoryHarnessRows(
-	trajectories: readonly TrajectoryDetailRecord[],
-	options: { includePrompts?: boolean } = {},
-): TrajectoryHarnessExportRow[] {
-	const includePrompts = options.includePrompts !== false;
-	const out: TrajectoryHarnessExportRow[] = [];
-
-	for (const trajectory of trajectories) {
-		const trajectoryTotals =
-			trajectory.totals ?? summarizeTrajectoryUsage(trajectory);
-		const cacheStats = summarizeTrajectoryCache(trajectory);
-		for (const call of iterateTrajectoryLlmCalls(trajectory)) {
-			out.push({
-				...call,
-				format: "trajectory_harness_v1",
-				systemPrompt: includePrompts ? call.systemPrompt : undefined,
-				userPrompt: includePrompts ? call.userPrompt : undefined,
-				response: includePrompts ? call.response : undefined,
-				messages: includePrompts
-					? (buildTrajectoryTrainingMessages(call) ?? [])
-					: [],
-				trajectoryTotals,
-				cacheStats,
-			});
-		}
-	}
-
-	return out;
-}
-
 function inferNativeTaskType(call: TrajectoryFlattenedLlmCallRecord): string {
 	const tokens = [
 		call.purpose,
@@ -579,7 +528,9 @@ export function resolveJsonShape(
 	if (jsonShape) {
 		return jsonShape;
 	}
-	return format === "jsonl" ? ELIZA_NATIVE_TRAJECTORY_FORMAT : "legacy";
+	return format === "json" || format === "jsonl"
+		? ELIZA_NATIVE_TRAJECTORY_FORMAT
+		: "legacy";
 }
 
 function serializeLegacyJson(
@@ -698,19 +649,6 @@ export function serializeTrajectoryExport(
 				mimeType: "application/json",
 			};
 		}
-		if (jsonShape === "harness_v1") {
-			return {
-				filename: `trajectories-${stamp}.harness.json`,
-				data: JSON.stringify(
-					buildTrajectoryHarnessRows(trajectories, {
-						includePrompts: options.includePrompts,
-					}),
-					null,
-					2,
-				),
-				mimeType: "application/json",
-			};
-		}
 		return {
 			filename: `trajectories-${stamp}.json`,
 			data: serializeLegacyJson(trajectories, {
@@ -767,9 +705,9 @@ export function serializeTrajectoryExport(
 			};
 		}
 		return {
-			filename: `trajectories-${stamp}.harness.jsonl`,
+			filename: `trajectories-${stamp}.eliza-native.jsonl`,
 			data: serializeJsonLines(
-				buildTrajectoryHarnessRows(trajectories, {
+				buildElizaNativeTrajectoryRows(trajectories, {
 					includePrompts: options.includePrompts,
 				}),
 			),

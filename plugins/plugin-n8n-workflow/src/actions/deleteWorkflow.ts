@@ -17,6 +17,7 @@ import { matchWorkflow } from '../utils/generation';
 import { validateN8nWorkflowIntent } from './validation';
 
 const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
+const N8N_WORKFLOW_MATCH_LIMIT = 25;
 
 interface PendingDeletion {
   workflowId: string;
@@ -182,7 +183,7 @@ export const deleteWorkflowAction: Action = {
       }
 
       // No pending — start a new deletion flow
-      const workflows = await service.listWorkflows(userId);
+      const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
       if (workflows.length === 0) {
         if (callback) {

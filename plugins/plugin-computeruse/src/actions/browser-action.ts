@@ -220,7 +220,8 @@ export const browserAction: Action = {
     }
 
     const result = await executeBrowserActionWithAutoOpen(service, params);
-    const text = formatBrowserResultText(result);
+    const maxActionResultBytes = 4000;
+    const text = formatBrowserResultText(result).slice(0, maxActionResultBytes);
 
     if (callback) {
       if (result.screenshot) {

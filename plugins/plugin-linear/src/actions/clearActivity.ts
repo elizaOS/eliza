@@ -11,6 +11,8 @@ import {
 import type { LinearService } from "../services/linear";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
+const CLEAR_ACTIVITY_TIMEOUT_MS = 10_000;
+
 export const clearActivityAction: Action = {
   name: "CLEAR_LINEAR_ACTIVITY",
   contexts: ["tasks", "connectors", "automation"],
@@ -73,7 +75,12 @@ export const clearActivityAction: Action = {
         throw new Error("Linear service not available");
       }
 
-      await linearService.clearActivityLog();
+      await Promise.race([
+        linearService.clearActivityLog(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Linear clear activity timeout")), CLEAR_ACTIVITY_TIMEOUT_MS)
+        ),
+      ]);
 
       const successMessage = "✅ Linear activity log has been cleared.";
       await callback?.({

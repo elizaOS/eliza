@@ -91,6 +91,7 @@
     "test:playwright": "playwright test",
     "test:playwright:auth": "PLAYWRIGHT_REAL_AUTH=true playwright test packages/tests/playwright/auth-real.spec.ts --grep @auth-real --headed",
     "cf:bootstrap": "bash packages/scripts/cf-bootstrap.sh",
+    "provisioning-worker:bootstrap": "node packages/scripts/bootstrap-provisioning-worker-host.mjs",
     "deploy:api": "bun run --cwd apps/api deploy",
     "deploy:web": "bun run build:web && cd apps/frontend && bunx wrangler pages deploy dist --project-name=eliza-cloud",
     "deploy": "bun run deploy:api && bun run deploy:web",

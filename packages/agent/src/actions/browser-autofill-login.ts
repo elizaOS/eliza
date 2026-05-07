@@ -58,6 +58,8 @@ interface BrowserAutofillLoginParameters {
   /** When true, attempt to submit the form after filling. Default: false. */
   submit?: boolean;
 }
+const MAX_BROWSER_TAB_SCAN = 100;
+const MAX_FILL_REASON_CHARS = 240;
 
 function tabUrlMatchesDomain(tabUrl: string, domain: string): boolean {
   if (!tabUrl) return false;
@@ -298,7 +300,9 @@ export const browserAutofillLoginAction: Action = {
 
     // ── Locate the open tab ──────────────────────────────────────
     const tabs = await listBrowserWorkspaceTabs();
-    const matchingTab = tabs.find((t) => tabUrlMatchesDomain(t.url, domain));
+    const matchingTab = tabs
+      .slice(0, MAX_BROWSER_TAB_SCAN)
+      .find((t) => tabUrlMatchesDomain(t.url, domain));
     if (!matchingTab) {
       return {
         text: `No open browser tab on ${domain}. Open one with BROWSER_SESSION first.`,
@@ -336,7 +340,7 @@ export const browserAutofillLoginAction: Action = {
       rawResult &&
       typeof rawResult === "object" &&
       typeof (rawResult as { reason?: unknown }).reason === "string"
-        ? (rawResult as { reason: string }).reason
+        ? (rawResult as { reason: string }).reason.slice(0, MAX_FILL_REASON_CHARS)
         : null;
 
     logger.info(

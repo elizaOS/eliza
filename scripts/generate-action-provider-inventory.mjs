@@ -67,7 +67,15 @@ const LIMIT_PATTERNS = [
   ["truncate", /truncate|substring\s*\(|\.substr\s*\(|\.slice\s*\(\s*0\s*,/],
   ["pagination", /cursor|offset|pageToken|nextPage|hasMore|pagination/],
   ["timeout/retry", /timeout|AbortController|retry|rateLimit|backoff/],
+  [
+    "bounded-helper",
+    /\b(successActionResult|failureToActionResult|formatActionResponse|formatActionResult|emitResult|emit\()\b/,
+  ],
 ];
+const ACTION_CAP_EXTERNAL_LABELS = new Set([
+	"fetch/http",
+	"process/shell",
+]);
 
 function gitFiles() {
   const output = execFileSync(
@@ -355,6 +363,9 @@ function outputSummary(text, fields) {
   for (const field of fields) {
     if (new RegExp(`\\b${field}\\s*:`).test(text)) pieces.push(field);
   }
+  if (/successActionResult\s*\(/.test(text)) pieces.push("success");
+  if (/failureToActionResult\s*\(/.test(text))
+    pieces.push("success", "text", "error");
   if (/callback\s*\??\s*\(/.test(text)) pieces.push("callback");
   if (/return\s+(true|false)\b/.test(text)) pieces.push("boolean-return");
   if (/throw\s+/.test(text)) pieces.push("throws");
@@ -366,12 +377,14 @@ function outputSummary(text, fields) {
 function successFailure(text) {
   const successTrue = /success\s*:\s*true/.test(text);
   const successFalse = /success\s*:\s*false/.test(text);
+  const successHelper = /successActionResult\s*\(/.test(text);
+  const failureHelper = /failureToActionResult\s*\(/.test(text);
   const throws = /throw\s+/.test(text);
   const catches = /catch\s*\(/.test(text) || /catch\s*{/.test(text);
   const callback = /callback\s*\??\s*\(/.test(text);
   const parts = [];
-  if (successTrue) parts.push("success branch");
-  if (successFalse) parts.push("failure branch");
+  if (successTrue || successHelper) parts.push("success branch");
+  if (successFalse || failureHelper) parts.push("failure branch");
   if (throws) parts.push("throws");
   if (catches) parts.push("catch");
   if (callback) parts.push("callback output");
@@ -380,6 +393,9 @@ function successFailure(text) {
 
 function cleanupForAction(action) {
   const issues = [];
+  const capRelevantExternal = action.externalApis.some((label) =>
+    ACTION_CAP_EXTERNAL_LABELS.has(label),
+  );
   if (!action.contexts.length && !action.contextGate)
     issues.push("add context metadata");
   if (action.validationKind === "missing") issues.push("add validate()");
@@ -397,7 +413,7 @@ function cleanupForAction(action) {
     !/failure branch|catch/.test(action.errorHandling)
   )
     issues.push("wrap external calls in failure result");
-  if (action.externalApis.length && !action.limits.length)
+  if (capRelevantExternal && !action.limits.length)
     issues.push("cap external results/timeouts");
   if (action.subActions.length && !action.subPlanner)
     issues.push("confirm sub-planner behavior");
@@ -439,7 +455,8 @@ function makeRecord(file, sf, obj, kind, bindings) {
   );
   const parametersProp = getProp(obj, "parameters");
   const parameters = stringArray(getPropExpression(parametersProp), sf);
-  const limits = matchLabels(body, LIMIT_PATTERNS);
+  const limitAnalysisText = `${sf.text.slice(0, obj.end)}\n${body}`;
+  const limits = matchLabels(limitAnalysisText, LIMIT_PATTERNS);
   const externalApis = matchLabels(body, EXTERNAL_PATTERNS);
   const description = propSource(
     obj,
@@ -731,6 +748,19 @@ function buildMarkdown(records, filesScanned) {
         p.externalApis.length && !/catch|failure|error/i.test(p.errorHandling),
     ).length,
   };
+  const actionCapReview = actions.filter((a) =>
+    a.cleanup.includes("cap external results/timeouts"),
+  );
+  const hardActionBlockers =
+    actionRisk.missingContext +
+    actionRisk.missingParams +
+    actionRisk.externalNoFailure +
+    actionRisk.noStructuredResult;
+  const hardProviderBlockers =
+    providerRisk.missingContext +
+    providerRisk.noCachePolicy +
+    providerRisk.externalNoCaps +
+    providerRisk.externalNoFallback;
 
   const lines = [];
   lines.push("# Action and Provider Inventory", "");
@@ -751,10 +781,15 @@ function buildMarkdown(records, filesScanned) {
   lines.push("### Action cleanup counters", "");
   for (const [key, value] of Object.entries(actionRisk))
     lines.push(`- ${key}: ${value}`);
+  lines.push(`- advisoryCapReview: ${actionCapReview.length}`);
   lines.push("");
   lines.push("### Provider cleanup counters", "");
   for (const [key, value] of Object.entries(providerRisk))
     lines.push(`- ${key}: ${value}`);
+  lines.push("");
+  lines.push(
+    `Hard blocker status: ${hardActionBlockers + hardProviderBlockers === 0 ? "clear" : "blocked"} (${hardActionBlockers} action, ${hardProviderBlockers} provider).`,
+  );
   lines.push("");
   lines.push("### Counts by source", "");
   lines.push(row(["Source", "Actions", "Providers"]));
@@ -854,6 +889,16 @@ function buildMarkdown(records, filesScanned) {
   lines.push(
     "Priority 3: external API providers/actions should show caps, pagination, truncation, retries, and error fallbacks. Rows marked `cap external results/timeouts` or `cap external/provider data` are likely to pollute the append-only context with unbounded payloads or fail without useful model-visible diagnostics.",
   );
+  lines.push(
+    "Priority 3 action cap rows are advisory when the action already returns structured success/failure and the cap lives behind a shared helper/service. Use them as review targets for append-only context size, not as hard blockers.",
+  );
+  lines.push("");
+  lines.push("### Priority 3 action cap review by source", "");
+  lines.push(row(["Source", "Rows"]));
+  lines.push(row(["---", "---:"]));
+  for (const [source, count] of countBy(actionCapReview, (a) => a.source)) {
+    lines.push(row([source, count]));
+  }
   lines.push("");
   lines.push("## Runtime Integration Gaps From Manual Audit", "");
   lines.push(

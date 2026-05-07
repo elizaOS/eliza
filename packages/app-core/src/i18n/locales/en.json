@@ -3029,6 +3029,7 @@
   "trajectoriesview.FailedToDelete": "Failed to delete trajectory",
   "trajectoriesview.FailedToExport": "Failed to export trajectories",
   "trajectoriesview.FailedToLoad": "Failed to load trajectories",
+  "trajectoriesview.JSONLNativeTraining": "JSONL (native training)",
   "trajectoriesview.JSONRedacted": "JSON (redacted)",
   "trajectoriesview.JSONWithPrompts": "JSON (with prompts)",
   "trajectoriesview.LoadingTrajectories": "Loading trajectories...",

@@ -7,6 +7,8 @@ import {
 import { isSelfEditEnabled } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 
+const MAX_PROMPT_KEY_CHARS = 160;
+
 export const updateCorePromptAction: Action = {
   name: "UPDATE_CORE_PROMPT",
   contexts: ["admin", "settings", "agent_internal"],
@@ -30,7 +32,10 @@ export const updateCorePromptAction: Action = {
       const params = options.parameters as
         | { promptKey?: string; promptText?: string }
         | undefined;
-      const promptKey = params?.promptKey;
+      const promptKey =
+        typeof params?.promptKey === "string"
+          ? params.promptKey.slice(0, MAX_PROMPT_KEY_CHARS)
+          : undefined;
       const promptText = params?.promptText;
 
       if (!promptKey || typeof promptText !== "string") {

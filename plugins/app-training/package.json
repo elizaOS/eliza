@@ -124,11 +124,6 @@
       "import": "./dist/core/trajectory-task-datasets.js",
       "default": "./dist/core/trajectory-task-datasets.js"
     },
-    "./core/vertex-tuning": {
-      "types": "./src/core/vertex-tuning.ts",
-      "import": "./dist/core/vertex-tuning.js",
-      "default": "./dist/core/vertex-tuning.js"
-    },
     "./core/cli": {
       "types": "./src/core/cli.ts",
       "import": "./dist/core/cli.js",

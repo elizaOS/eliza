@@ -7,7 +7,6 @@ import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   iterateTrajectoryLlmCalls,
   type ElizaNativeTrajectoryRow,
-  type TrajectoryHarnessExportRow,
 } from "@elizaos/core";
 
 export interface TrajectoryCallEntry {
@@ -37,16 +36,6 @@ export function isTrajectoryLike(value: unknown): value is Trajectory {
   );
 }
 
-function isHarnessExportRow(value: unknown): value is TrajectoryHarnessExportRow {
-  return (
-    isRecord(value) &&
-    value.format === "trajectory_harness_v1" &&
-    typeof value.trajectoryId === "string" &&
-    typeof value.agentId === "string" &&
-    typeof value.stepId === "string"
-  );
-}
-
 function isElizaNativeExportRow(value: unknown): value is ElizaNativeTrajectoryRow {
   return (
     isRecord(value) &&
@@ -54,107 +43,6 @@ function isElizaNativeExportRow(value: unknown): value is ElizaNativeTrajectoryR
     isRecord(value.request) &&
     isRecord(value.response)
   );
-}
-
-function reconstructTrajectoriesFromHarnessRows(
-  rows: readonly TrajectoryHarnessExportRow[],
-): Trajectory[] {
-  const trajectories = new Map<
-    string,
-    {
-      trajectory: Trajectory;
-      steps: Map<string, TrajectoryStep>;
-    }
-  >();
-
-  for (const row of rows) {
-    let entry = trajectories.get(row.trajectoryId);
-    if (!entry) {
-      entry = {
-        trajectory: {
-          trajectoryId: row.trajectoryId as Trajectory["trajectoryId"],
-          agentId: row.agentId as Trajectory["agentId"],
-          source: row.source,
-          status: row.status,
-          startTime: row.startTime,
-          endTime: row.endTime ?? row.startTime,
-          durationMs: row.durationMs ?? 0,
-          scenarioId: row.scenarioId,
-          batchId: row.batchId,
-          steps: [],
-          metrics: {
-            finalStatus:
-              row.status === "error" || row.status === "timeout"
-                ? row.status
-                : "completed",
-          },
-          metadata: {
-            source: row.source,
-          },
-        },
-        steps: new Map<string, TrajectoryStep>(),
-      };
-      trajectories.set(row.trajectoryId, entry);
-    }
-
-    const stepKey = row.stepId;
-    let step = entry.steps.get(stepKey);
-    if (!step) {
-      step = {
-        stepId: row.stepId as TrajectoryStep["stepId"],
-        timestamp: row.stepTimestamp,
-        llmCalls: [],
-        providerAccesses: [],
-      };
-      entry.steps.set(stepKey, step);
-      (entry.trajectory.steps ||= []).push(step);
-    }
-
-    (step.llmCalls ??= []).push({
-      callId:
-        typeof row.callId === "string" && row.callId.trim().length > 0
-          ? row.callId
-          : `${row.stepId}-call-${row.callIndex + 1}`,
-      timestamp: row.timestamp ?? row.stepTimestamp,
-      model: row.model ?? "unknown",
-      modelVersion: row.modelVersion,
-      systemPrompt: row.systemPrompt ?? "",
-      userPrompt: row.userPrompt ?? "",
-      response: row.response ?? "",
-      reasoning: row.reasoning,
-      temperature: row.temperature ?? 0,
-      maxTokens: row.maxTokens ?? 0,
-      topP: row.topP,
-      purpose: row.purpose ?? "response",
-      actionType: row.actionType,
-      stepType: row.stepType,
-      tags: Array.isArray(row.tags) ? row.tags : [],
-      latencyMs: row.latencyMs,
-      promptTokens: row.promptTokens,
-      completionTokens: row.completionTokens,
-      cacheReadInputTokens: row.cacheReadInputTokens,
-      cacheCreationInputTokens: row.cacheCreationInputTokens,
-      modelSlot: row.modelSlot,
-      runId: row.runId,
-      roomId: row.roomId,
-      messageId: row.messageId,
-      executionTraceId: row.executionTraceId,
-    });
-  }
-
-  return [...trajectories.values()].map(({ trajectory }) => {
-    const trajectorySteps = trajectory.steps ?? [];
-    trajectorySteps.sort((left, right) => left.timestamp - right.timestamp);
-    for (const step of trajectorySteps) {
-      const calls = step.llmCalls ?? [];
-      calls.sort(
-        (left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0),
-      );
-      step.llmCalls = calls;
-    }
-    trajectory.steps = trajectorySteps;
-    return trajectory;
-  });
 }
 
 export function parseTrajectoryExportText(payload: string): unknown[] {
@@ -189,15 +77,7 @@ export function parseTrajectoryExportText(payload: string): unknown[] {
 
 export function extractTrajectoriesFromExportText(payload: string): Trajectory[] {
   const records = parseTrajectoryExportText(payload);
-  const trajectories = records.filter(isTrajectoryLike);
-  if (trajectories.length > 0) {
-    return trajectories;
-  }
-  const harnessRows = records.filter(isHarnessExportRow);
-  if (harnessRows.length > 0) {
-    return reconstructTrajectoriesFromHarnessRows(harnessRows);
-  }
-  return [];
+  return records.filter(isTrajectoryLike);
 }
 
 export function extractElizaNativeRowsFromExportText(

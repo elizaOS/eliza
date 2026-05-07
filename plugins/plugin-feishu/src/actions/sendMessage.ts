@@ -13,6 +13,13 @@ import type { FeishuService } from "../service";
 
 export const SEND_MESSAGE_ACTION = "SEND_FEISHU_MESSAGE";
 
+const MAX_FEISHU_ACTION_TEXT_CHARS = 4_000;
+const FEISHU_ACTION_TIMEOUT_MS = 30_000;
+
+function truncateActionText(text: string, maxChars: number): string {
+	return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
+}
+
 export const sendMessageAction: Action = {
 	name: SEND_MESSAGE_ACTION,
 	similes: [
@@ -98,7 +105,11 @@ export const sendMessageAction: Action = {
 		}
 
 		const currentState = state ?? (await runtime.composeState(message));
-		const responseText = currentState.values?.response?.toString() || "";
+		const responseText = truncateActionText(
+			currentState.values?.response?.toString() || "",
+			MAX_FEISHU_ACTION_TEXT_CHARS,
+		);
+		const timeoutMs = FEISHU_ACTION_TIMEOUT_MS;
 		const chatId = message.content?.chatId as string | undefined;
 
 		if (!chatId) {
@@ -124,6 +135,7 @@ export const sendMessageAction: Action = {
 				chatId,
 				text: responseText,
 				replyToMessageId: message.content?.messageId,
+				timeoutMs,
 			},
 		};
 	},

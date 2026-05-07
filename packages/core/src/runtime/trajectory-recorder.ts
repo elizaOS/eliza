@@ -5,8 +5,7 @@
  * Spec: PLAN.md §18.1 (`RecordedStage` / `RecordedTrajectory` schemas) and
  * §18.2 (`TrajectoryRecorder` interface).
  *
- * Output shape MUST match `scripts/run-cerebras.ts` `LocalRecorder` byte for
- * byte so a single CLI (`scripts/trajectory.ts`) can read both.
+ * Output shape is read by `scripts/trajectory.ts` and `scripts/run-eliza-cerebras.ts`.
  *
  * Persistence model:
  * - One JSON file per trajectory at

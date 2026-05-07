@@ -34,6 +34,14 @@ function textFromUnknown(value: unknown): string {
 	return JSON.stringify(value) ?? "";
 }
 
+function renderProviderContent(event: ContextProviderEvent): string {
+	const parts: string[] = [`provider: ${event.name}`];
+	if (event.text?.trim()) {
+		parts.push(event.text.trim());
+	}
+	return parts.join("\n");
+}
+
 function toChatRole(role: string | undefined): ChatMessageRole {
 	if (
 		role === "system" ||
@@ -141,11 +149,15 @@ function renderEvent(
 		return;
 	}
 
-	if (isProviderEvent(event) && event.text) {
+	if (isProviderEvent(event)) {
+		const content = renderProviderContent(event);
+		if (!content.trim()) {
+			return;
+		}
 		appendPromptSegment(rendered, {
 			id: event.id,
 			label: `provider:${event.name}`,
-			content: event.text,
+			content,
 			stable: false,
 		});
 		return;

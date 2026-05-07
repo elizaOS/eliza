@@ -73,12 +73,18 @@ export const attackNpc: Action = {
     }
 
     try {
-      const result = await service.executeAction({
-        action: "attackNpc",
-        npcId,
-      });
+      const timeoutMs = 15_000;
+      const result = await Promise.race([
+        service.executeAction({
+          action: "attackNpc",
+          npcId,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("attack timed out")), timeoutMs),
+        ),
+      ]);
       const displayText =
-        result.message ?? (result.success ? "engaging" : "attack failed");
+        (result.message ?? (result.success ? "engaging" : "attack failed")).slice(0, 2000);
       callback?.({ text: displayText, action: "ATTACK_NPC" });
       return { success: result.success, text: displayText };
     } catch (error) {

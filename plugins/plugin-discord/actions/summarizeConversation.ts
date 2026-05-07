@@ -223,6 +223,10 @@ const getDateRange = async (
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
 const spec = requireActionSpec("DISCORD_SUMMARIZE_CONVERSATION");
+const MAX_DISCORD_SUMMARY_MEMORIES = 1_000;
+const MAX_DISCORD_SUMMARY_CHUNKS = 20;
+const MAX_DISCORD_SUMMARY_TEXT_CHARS = 20_000;
+const DISCORD_SUMMARY_TIMEOUT_MS = 60_000;
 
 export const summarize: Action = {
 	name: spec.name,
@@ -395,6 +399,7 @@ export const summarize: Action = {
 		}
 
 		const { objective, start, end } = dateRange;
+		const timeoutMs = DISCORD_SUMMARY_TIMEOUT_MS;
 
 		// 2. get these memories from the database (start/end are absolute ms timestamps)
 		const memories = await runtime.getMemories({
@@ -402,7 +407,7 @@ export const summarize: Action = {
 			roomId,
 			start,
 			end,
-			count: 10000,
+			count: MAX_DISCORD_SUMMARY_MEMORIES,
 			unique: false,
 		});
 
@@ -433,7 +438,10 @@ export const summarize: Action = {
 
 		const chunkSize = 8000;
 
-		const chunks = await splitChunks(formattedMemories, chunkSize, 0);
+		const chunks = (await splitChunks(formattedMemories, chunkSize, 0)).slice(
+			0,
+			MAX_DISCORD_SUMMARY_CHUNKS,
+		);
 
 		//const _datestr = new Date().toUTCString().replace(/:/g, "-");
 
@@ -459,7 +467,10 @@ export const summarize: Action = {
 				prompt,
 			});
 
-			currentSummary = `${currentSummary}\n${summary}`;
+			currentSummary = `${currentSummary}\n${summary}`.slice(
+				0,
+				MAX_DISCORD_SUMMARY_TEXT_CHARS,
+			);
 		}
 
 		if (!currentSummary) {
@@ -504,7 +515,7 @@ ${currentSummary.trim()}
 			if (callback) {
 				await callback?.(callbackData);
 			}
-			return { success: true, text: callbackData.text };
+			return { success: true, text: callbackData.text, data: { timeoutMs } };
 		} else if (currentSummary.trim()) {
 			const summaryDir = "cache";
 			const summaryFilename = `${summaryDir}/conversation_summary_${Date.now()}`;
@@ -529,7 +540,11 @@ ${currentSummary.trim()}
 					],
 				});
 			}
-			return { success: true, text: `Summary saved to ${summaryFilename}` };
+			return {
+				success: true,
+				text: `Summary saved to ${summaryFilename}`,
+				data: { timeoutMs },
+			};
 		} else {
 			runtime.logger.warn(
 				{
