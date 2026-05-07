@@ -10,6 +10,7 @@ import { logger } from "@elizaos/core";
 import { GOOGLE_CHAT_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
 import { googleChatSpacesProvider } from "./providers/index.js";
 import { GoogleChatService } from "./service.js";
+import { GoogleChatN8nCredentialProvider } from "./n8n-credential-provider.js";
 
 // Export types
 export * from "./types.js";
@@ -23,7 +24,7 @@ const googleChatPlugin: Plugin = {
   name: "google-chat",
   description: "Google Chat integration plugin for ElizaOS agents",
 
-  services: [GoogleChatService],
+  services: [GoogleChatService, GoogleChatN8nCredentialProvider],
 
   actions: [messageOp],
 
