@@ -100,11 +100,16 @@ jobs:
 
             # cloud/ is a separate bun project (not a sub-workspace of the
             # outer monorepo, whose `workspaces` is `packages/*`). Install from
-            # /opt/eliza/cloud so the worker's deps (drizzle-orm, @neondatabase
-            # /serverless, etc.) end up in /opt/eliza/cloud/node_modules.
+            # /opt/eliza/cloud so the worker's deps end up in cloud/node_modules.
+            #
+            # No --frozen-lockfile: cloud/bun.lock currently has a duplicate
+            # package path for @elizaos/plugin-n8n-workflow (workspace + registry
+            # entries for the same name) that bun rejects under frozen mode.
+            # Cloud-CF deploys hit the same upstream bug; until the lockfile is
+            # cleaned at source, allow bun to recompute the deps tree.
             cd /opt/eliza/cloud
             for attempt in 1 2 3; do
-              if bun install --frozen-lockfile; then
+              if bun install; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then exit 1; fi
