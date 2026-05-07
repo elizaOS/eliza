@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "../logger";
 import { Session } from "electrobun/bun";
 import { resolveMainWindowPartition } from "../main-window-session";
 import {

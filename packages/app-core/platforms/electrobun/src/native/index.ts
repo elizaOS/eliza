@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "../logger";
 import type { BrowserWindow } from "electrobun/bun";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager } from "./agent";

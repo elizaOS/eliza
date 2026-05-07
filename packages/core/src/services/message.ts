@@ -39,6 +39,10 @@ import {
 	routeMessageHandlerOutput,
 } from "../runtime/message-handler";
 import {
+	buildModelInputBudget,
+	withModelInputBudgetProviderOptions,
+} from "../runtime/model-input-budget";
+import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	type PlannerRuntime,
@@ -1726,22 +1730,31 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1PrefixHash =
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
+		const messageHandlerTools = [
+			createV5MessageHandlerTool({
+				directMessage: directMessageChannel,
+			}),
+		];
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
 				prompt: messageHandlerPrompt,
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
-				tools: [
-					createV5MessageHandlerTool({
-						directMessage: directMessageChannel,
-					}),
-				],
+				tools: messageHandlerTools,
 				toolChoice: "required",
-				providerOptions: cacheProviderOptions({
-					prefixHash: stage1PrefixHash,
-					segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-				}),
+				providerOptions: withModelInputBudgetProviderOptions(
+					cacheProviderOptions({
+						prefixHash: stage1PrefixHash,
+						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+					}),
+					buildModelInputBudget({
+						prompt: messageHandlerPrompt,
+						messages: messageHandlerInput.messages,
+						promptSegments: messageHandlerInput.promptSegments,
+						tools: messageHandlerTools,
+					}),
+				),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
@@ -1758,9 +1771,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				recorder,
 				trajectoryId,
 				prompt: messageHandlerPrompt,
+				messages: messageHandlerInput.messages,
+				tools: messageHandlerTools,
+				toolChoice: "required",
 				raw: rawMessageHandler,
+				parsed: messageHandler,
 				startedAt: messageHandlerStartedAt,
 				endedAt: messageHandlerEndedAt,
+				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+				prefixHash: stage1PrefixHash,
 				logger: args.runtime.logger,
 			});
 		}
@@ -1933,18 +1952,24 @@ async function recordMessageHandlerStage(args: {
 	recorder: TrajectoryRecorder;
 	trajectoryId: string;
 	prompt: string;
+	messages?: ChatMessage[];
+	tools?: ToolDefinition[];
+	toolChoice?: unknown;
 	raw: string | GenerateTextResult;
+	parsed?: MessageHandlerResult;
 	startedAt: number;
 	endedAt: number;
+	segmentHashes?: string[];
+	prefixHash?: string;
 	logger?: IAgentRuntime["logger"];
 }): Promise<void> {
 	try {
-		const responseText =
-			typeof args.raw === "string" ? args.raw : (args.raw.text ?? "");
+		const responseText = getMessageHandlerResponseText(args.raw, args.parsed);
 		const usage =
 			typeof args.raw === "string"
 				? undefined
 				: extractMessageHandlerUsage(args.raw);
+		const modelName = extractMessageHandlerModelName(args.raw);
 		await args.recorder.recordStage(args.trajectoryId, {
 			stageId: `stage-msghandler-${args.startedAt}`,
 			kind: "messageHandler",
@@ -1953,11 +1978,22 @@ async function recordMessageHandlerStage(args: {
 			latencyMs: args.endedAt - args.startedAt,
 			model: {
 				modelType: String(ModelType.RESPONSE_HANDLER),
+				modelName,
 				provider: "default",
 				prompt: args.prompt,
+				messages: args.messages,
+				tools: args.tools,
+				toolChoice: args.toolChoice,
 				response: responseText,
+				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
 			},
+			cache: args.prefixHash
+				? {
+						segmentHashes: args.segmentHashes ?? [],
+						prefixHash: args.prefixHash,
+					}
+				: undefined,
 		});
 	} catch (err) {
 		args.logger?.warn?.(
@@ -1965,6 +2001,69 @@ async function recordMessageHandlerStage(args: {
 			"[TrajectoryRecorder] failed to record messageHandler stage",
 		);
 	}
+}
+
+function extractMessageHandlerModelName(
+	raw: string | GenerateTextResult,
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+		const direct = (meta as Record<string, unknown>).modelName;
+		if (typeof direct === "string") return direct;
+		const model = (meta as Record<string, unknown>).model;
+		if (typeof model === "string") return model;
+	}
+	return undefined;
+}
+
+function getMessageHandlerResponseText(
+	raw: string | GenerateTextResult,
+	parsed?: MessageHandlerResult,
+): string {
+	if (typeof raw === "string") {
+		return raw;
+	}
+	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
+		return raw.text;
+	}
+	return parsed ? JSON.stringify(parsed) : "";
+}
+
+function extractMessageHandlerToolCalls(
+	raw: string | GenerateTextResult,
+): Array<{ id?: string; name?: string; args?: Record<string, unknown> }> {
+	if (typeof raw === "string" || !Array.isArray(raw.toolCalls)) {
+		return [];
+	}
+	const toolCalls: Array<{
+		id?: string;
+		name?: string;
+		args?: Record<string, unknown>;
+	}> = [];
+	for (const entry of raw.toolCalls) {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+			continue;
+		}
+		const record = entry as unknown as Record<string, unknown>;
+		const name = String(
+			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+		).trim();
+		const args = parseToolArguments(
+			record.arguments ?? record.args ?? record.input ?? record.params,
+		);
+		toolCalls.push({
+			id:
+				typeof record.id === "string"
+					? record.id
+					: typeof record.toolCallId === "string"
+						? record.toolCallId
+						: undefined,
+			name: name || undefined,
+			args: args ?? undefined,
+		});
+	}
+	return toolCalls;
 }
 
 function extractMessageHandlerUsage(raw: GenerateTextResult):

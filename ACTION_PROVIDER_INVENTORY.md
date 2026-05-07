@@ -1,13 +1,13 @@
 # Action and Provider Inventory
 
-Generated: 2026-05-07T11:47:21.147Z
+Generated: 2026-05-07T12:37:54.716Z
 
 Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `cloud/`. Excludes tests, templates, generated output, build/dist folders, declarations, and dependency folders. This is static analysis, so runtime-generated MCP tools and dynamic registrations are called out only when their factory objects are visible in source.
 
 ## Summary
 
-- Files scanned: 6217
-- Actions detected: 389
+- Files scanned: 6213
+- Actions detected: 388
 - Providers detected: 202
 - Sources with actions/providers: agent, cloud:advanced-memory, cloud:plugin-affiliate, cloud:plugin-character-builder, cloud:plugin-cloud-bootstrap, cloud:plugin-mcp, cloud:plugin-oauth, cloud:plugin-web-search, cloud:providers, cloud:shared, core, native-plugin:macosalarm, plugin:app-2004scape, plugin:app-browser, plugin:app-companion, plugin:app-contacts, plugin:app-lifeops, plugin:app-phone, plugin:app-polymarket, plugin:app-scape, plugin:app-steward, plugin:app-wifi, plugin:plugin-agent-orchestrator, plugin:plugin-agent-skills, plugin:plugin-app-control, plugin:plugin-bluebubbles, plugin:plugin-bluesky, plugin:plugin-browser-bridge, plugin:plugin-calendly, plugin:plugin-claude-code-workbench, plugin:plugin-coding-tools, plugin:plugin-commands, plugin:plugin-computeruse, plugin:plugin-discord, plugin:plugin-elizacloud, plugin:plugin-executecode, plugin:plugin-farcaster, plugin:plugin-feishu, plugin:plugin-form, plugin:plugin-github, plugin:plugin-google-chat, plugin:plugin-imessage, plugin:plugin-instagram, plugin:plugin-line, plugin:plugin-linear, plugin:plugin-matrix, plugin:plugin-mcp, plugin:plugin-minecraft, plugin:plugin-music-library, plugin:plugin-music-player, plugin:plugin-mysticism, plugin:plugin-n8n-workflow, plugin:plugin-nostr, plugin:plugin-roblox, plugin:plugin-shell, plugin:plugin-shopify, plugin:plugin-signal, plugin:plugin-slack, plugin:plugin-social-alpha, plugin:plugin-streaming, plugin:plugin-suno, plugin:plugin-tailscale, plugin:plugin-tee, plugin:plugin-twitch, plugin:plugin-vision, plugin:plugin-wallet, plugin:plugin-whatsapp, plugin:plugin-x
 
@@ -50,7 +50,7 @@ Hard blocker status: clear (0 action, 0 provider).
 | plugin:app-browser | 1 | 1 |
 | plugin:app-companion | 1 | 0 |
 | plugin:app-contacts | 0 | 1 |
-| plugin:app-lifeops | 38 | 8 |
+| plugin:app-lifeops | 37 | 8 |
 | plugin:app-phone | 1 | 1 |
 | plugin:app-polymarket | 2 | 1 |
 | plugin:app-scape | 4 | 5 |
@@ -123,7 +123,7 @@ Hard blocker status: clear (0 action, 0 provider).
 | plugin:app-browser | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
 | plugin:app-companion | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | plugin:app-contacts | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| plugin:app-lifeops | 38 | 0 | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 | 0 |
+| plugin:app-lifeops | 37 | 0 | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 | 0 |
 | plugin:app-phone | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
 | plugin:app-polymarket | 2 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
 | plugin:app-scape | 4 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
@@ -401,7 +401,6 @@ These are not per-action/provider defects, but they determine whether the rows b
 | CHECK_AVAILABILITY | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671) | calendar, contacts, tasks | conditional: message/content gate | 2 declared | - | - | success, data, error, throws, delegated-return | slice, limit, truncate, pagination | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CHECKIN | plugin:app-lifeops | [plugins/app-lifeops/src/actions/checkin.ts:100](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/checkin.ts:100) | tasks, calendar, contacts, messaging, health | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, data, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | COMPUTE_TRAVEL_BUFFER | plugin:app-lifeops | [plugins/app-lifeops/src/travel-time/action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/travel-time/action.ts:27) | calendar, tasks, contacts | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| COMPUTER_USE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/computer-use.ts:307](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:307) | ...COMPUTER_USE_CONTEXTS | conditional: owner gate, message/content gate | 10 declared | - | browser/device | success, text, values, data, error | - | failure branch | looks aligned; verify runtime trajectory event |
 | CONNECTOR | plugin:app-lifeops | [plugins/app-lifeops/src/actions/connector.ts:1325](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/connector.ts:1325) | connectors, settings, calendar, email, messaging, contacts, health, browser | conditional: owner gate, message/content gate | 15 declared | - | - | success, text, data, error, throws, delegated-return | limit | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | DEVICE_INTENT | plugin:app-lifeops | [plugins/app-lifeops/src/actions/device-intent.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/device-intent.ts:88) | automation, tasks, screen_time, settings | conditional: owner gate, message/content gate | 8 declared | - | - | success, text, values, data, delegated-return | - | success branch | looks aligned; verify runtime trajectory event |
 | HEALTH | plugin:app-lifeops | [plugins/app-lifeops/src/actions/health.ts:279](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/health.ts:279) | health, tasks, calendar | conditional: owner gate, message/content gate | 5 declared | - | - | success, values, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
@@ -483,10 +482,10 @@ These are not per-action/provider defects, but they determine whether the rows b
 | WRITE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/write.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/write.ts:29) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 2 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | slice, limit, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | COMMAND | plugin:plugin-commands | [plugins/plugin-commands/src/actions/command.ts:273](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-commands/src/actions/command.ts:273) | general, settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, data | slice, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | BROWSER_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/browser-action.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/browser-action.ts:83) | browser, automation | conditional: service gate, message/content gate | 10 declared | - | runtime-service, browser/device | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| COMPUTER_USE | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160) | browser, files, terminal, screen_time, automation, admin | conditional: message/content gate | 10 declared | - | browser/device | success, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
 | FILE_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/file-action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/file-action.ts:27) | files, automation | conditional: service gate, message/content gate | 12 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate | failure branch, callback output | looks aligned; verify runtime trajectory event |
 | MANAGE_WINDOW | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/manage-window.ts:41](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/manage-window.ts:41) | browser, screen_time, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, error, callback, delegated-return | slice, limit, truncate | failure branch, callback output | looks aligned; verify runtime trajectory event |
 | TERMINAL_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/terminal-action.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/terminal-action.ts:20) | terminal, code, automation | conditional: service gate, message/content gate | 8 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, callback output | looks aligned; verify runtime trajectory event |
-| USE_COMPUTER | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160) | browser, files, terminal, screen_time, automation | conditional: message/content gate | 10 declared | - | browser/device | success, error, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
 | DISCORD_CHANNEL_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/channelOp.ts:1062](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/channelOp.ts:1062) | messaging, connectors | conditional: message/content gate | 4 declared | - | - | success, text, error, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
 | DISCORD_CREATE_POLL | plugin:plugin-discord | [plugins/plugin-discord/actions/createPoll.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/createPoll.ts:82) | messaging, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | DISCORD_GET_USER_INFO | plugin:plugin-discord | [plugins/plugin-discord/actions/getUserInfo.ts:114](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/getUserInfo.ts:114) | messaging, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 1 declared | - | fetch/http, runtime-service | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
@@ -733,7 +732,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 | workbenchWorkflows | plugin:plugin-claude-code-workbench | [plugins/plugin-claude-code-workbench/src/providers/workflows.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/providers/workflows.ts:18) | code, automation, agent_internal | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | AVAILABLE_CODING_TOOLS | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/providers/available-tools.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/providers/available-tools.ts:34) | ...CODING_TOOLS_CONTEXTS | cacheStable=true, cacheScope=agent | - | text, data | slice | not statically obvious | looks aligned; verify segment hashing |
 | COMMAND_REGISTRY | plugin:plugin-commands | [plugins/plugin-commands/src/index.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-commands/src/index.ts:59) | general, automation | cacheStable=true, cacheScope=agent | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
-| computerState | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/providers/computer-state.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/providers/computer-state.ts:18) | browser, files, terminal | cacheStable=false, cacheScope=turn | runtime-service, filesystem, browser/device | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
+| computerState | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/providers/computer-state.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/providers/computer-state.ts:18) | browser, files, terminal, automation, admin | cacheStable=false, cacheScope=turn | runtime-service, filesystem, browser/device | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | discordChannels | plugin:plugin-discord | [plugins/plugin-discord/providers/discordChannels.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/providers/discordChannels.ts:22) | messaging, connectors | cacheScope=conversation | fetch/http, runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | discordServerInfo | plugin:plugin-discord | [plugins/plugin-discord/providers/discordServerInfo.ts:32](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/providers/discordServerInfo.ts:32) | messaging, connectors | cacheScope=conversation | fetch/http, sdk/client, runtime-service, cache | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | guildInfo | plugin:plugin-discord | [plugins/plugin-discord/providers/guildInfo.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/providers/guildInfo.ts:30) | messaging, connectors | cacheScope=conversation | fetch/http, sdk/client, runtime-service, cache | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
@@ -828,7 +827,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 
 | Cleanup assessment | Count |
 | --- | ---: |
-| looks aligned; verify runtime trajectory event | 389 |
+| looks aligned; verify runtime trajectory event | 388 |
 | looks aligned; verify segment hashing | 202 |
 
 ## Action Output Details
@@ -12999,82 +12998,6 @@ const text = `Travel buffer ${result.bufferMinutes} min (Maps API) — ${result.
 
 </details>
 
-<details><summary>COMPUTER_USE - plugin:app-lifeops - plugins/app-lifeops/src/actions/computer-use.ts:307</summary>
-
-- Description: "Control the owner's full desktop / OS at the machine level via " + "@elizaos/plugin-computeruse. This is the ONLY action for OS-level desktop " + "operations: take a screenshot of the desktop / screen, click at " + "...
-- Contexts: ...COMPUTER_USE_CONTEXTS
-- Context gate: `{ anyOf: [...COMPUTER_USE_CONTEXTS] }`
-- Role gate: `{ minRole: "OWNER" }`
-- Validation: conditional - owner gate, message/content gate
-- Parameters: {surface}, {action}, {url}, {selector}, {path}, {command}, {windowId}, {coordinate}, {text}, {key}
-- Sub-actions: -
-- External APIs: browser/device
-- Stack output: success, text, values, data, error
-- Limits/caps: -
-- Error/success handling: failure branch
-- Cleanup assessment: looks aligned; verify runtime trajectory event
-- Source: [plugins/app-lifeops/src/actions/computer-use.ts:307](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:307)
-
-Output / return cases observed:
-
-```ts
-if (!isComputerUseEnabled()) {
-      return {
-        text: "Computer use is disabled (ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0).",
-        success: false,
-        values: { success: false, error: "COMPUTER_USE_DISABLED" },
-```
-
-```ts
-if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may drive computer use.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-```
-
-```ts
-if (!actions) {
-      return {
-        text: "The @elizaos/plugin-computeruse package is not installed. Install it and restart the agent to enable desktop automation.",
-        success: false,
-        values: { success: false, error: "COMPUTER_USE_NOT_INSTALLED" },
-```
-
-```ts
-if (!base) {
-      return {
-        text: `The ${surface} computer-use delegate is not available.`,
-        success: false,
-        values: {
-```
-
-```ts
-if (typeof base.handler !== "function") {
-      return {
-        text: `Computer-use delegate ${base.name} does not expose a handler.`,
-        success: false,
-        values: {
-```
-
-```ts
-) {
-      return result as ActionResult;
-    }
-    return {
-      text: `Computer-use delegate ${base.name} returned an invalid action result.`,
-```
-
-```ts
-}
-    return {
-      text: `Computer-use delegate ${base.name} returned an invalid action result.`,
-      success: false,
-      values: {
-```
-
-</details>
-
 <details><summary>CONNECTOR - plugin:app-lifeops - plugins/app-lifeops/src/actions/connector.ts:1325</summary>
 
 - Description: "Manage LifeOps connector lifecycle and active verification probes. " + `Connectors: ${VALID_CONNECTORS.join(" | ")}. ` + `Subactions: ${VALID_SUBACTIONS.join(" | ")}.`
@@ -19102,6 +19025,50 @@ return toComputerUseActionResult({
 
 </details>
 
+<details><summary>COMPUTER_USE - plugin:plugin-computeruse - plugins/plugin-computeruse/src/actions/use-computer.ts:160</summary>
+
+- Description: "computer_use:\n purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n guidance: Take a screenshot before acting....
+- Contexts: browser, files, terminal, screen_time, automation, admin
+- Context gate: `{ anyOf: ["browser", "files", "terminal", "screen_time", "automation", "admin"], }`
+- Role gate: `{ minRole: "OWNER" }`
+- Validation: conditional - message/content gate
+- Parameters: {action}, {coordinate}, {startCoordinate}, {text}, {modifiers}, {key}, {button}, {clicks}, {scrollDirection}, {scrollAmount}
+- Sub-actions: -
+- External APIs: browser/device
+- Stack output: success, error, delegated-return
+- Limits/caps: -
+- Error/success handling: failure branch
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160)
+
+Output / return cases observed:
+
+```ts
+if (!isMockComputerUseEnabled()) {
+        return { success: false, error: "ComputerUseService not available" };
+      }
+      const mockResult = buildMockDesktopResult(params);
+      const text = formatDesktopResultText(params, mockResult);
+```
+
+```ts
+await deliverResult(params, mockResult, text, callback);
+      return toComputerUseActionResult({
+        action: params.action,
+        result: mockResult,
+        text,
+```
+
+```ts
+await deliverResult(params, result, text, callback);
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+```
+
+</details>
+
 <details><summary>FILE_ACTION - plugin:plugin-computeruse - plugins/plugin-computeruse/src/actions/file-action.ts:27</summary>
 
 - Description: "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n" + "Why this ex...
@@ -19248,50 +19215,6 @@ if (callback) {
 
 ```ts
 return toComputerUseActionResult({
-      action: params.action,
-      result,
-      text,
-```
-
-</details>
-
-<details><summary>USE_COMPUTER - plugin:plugin-computeruse - plugins/plugin-computeruse/src/actions/use-computer.ts:160</summary>
-
-- Description: "use_computer_action:\n purpose: Control the local desktop for real application interaction when direct computer operation is required.\n guidance: Take a screenshot before acting. After each desktop action, the resul...
-- Contexts: browser, files, terminal, screen_time, automation
-- Context gate: `{ anyOf: ["browser", "files", "terminal", "screen_time", "automation"] }`
-- Role gate: `{ minRole: "USER" }`
-- Validation: conditional - message/content gate
-- Parameters: {action}, {coordinate}, {startCoordinate}, {text}, {modifiers}, {key}, {button}, {clicks}, {scrollDirection}, {scrollAmount}
-- Sub-actions: -
-- External APIs: browser/device
-- Stack output: success, error, delegated-return
-- Limits/caps: slice, limit, truncate
-- Error/success handling: failure branch
-- Cleanup assessment: looks aligned; verify runtime trajectory event
-- Source: [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160)
-
-Output / return cases observed:
-
-```ts
-if (!isMockComputerUseEnabled()) {
-        return { success: false, error: "ComputerUseService not available" };
-      }
-      const mockResult = buildMockDesktopResult(params);
-      const maxActionResultBytes = 4000;
-```
-
-```ts
-await deliverResult(params, mockResult, text, callback);
-      return toComputerUseActionResult({
-        action: params.action,
-        result: mockResult,
-        text,
-```
-
-```ts
-await deliverResult(params, result, text, callback);
-    return toComputerUseActionResult({
       action: params.action,
       result,
       text,
@@ -33562,8 +33485,8 @@ return {
 <details><summary>computerState - plugin:plugin-computeruse - plugins/plugin-computeruse/src/providers/computer-state.ts:18</summary>
 
 - Description: "Current computer state: platform, screen size, available tools, recent computer-use actions, and approval queue"
-- Contexts: browser, files, terminal
-- Context gate: `{ anyOf: ["browser", "files", "terminal"] }`
+- Contexts: browser, files, terminal, automation, admin
+- Context gate: `{ anyOf: ["browser", "files", "terminal", "automation", "admin"] }`
 - Cache: cacheStable=false, cacheScope=turn
 - Companion/sub-actions: -
 - External APIs: runtime-service, filesystem, browser/device

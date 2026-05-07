@@ -4,7 +4,6 @@ export { bookTravelAction } from "./actions/book-travel.ts";
 export { calendarAction } from "./actions/calendar.ts";
 export { chatThreadAction } from "./actions/chat-thread.ts";
 export { checkinAction } from "./actions/checkin.ts";
-export { computerUseAction } from "./actions/computer-use.ts";
 export { connectorAction } from "./actions/connector.ts";
 export { deviceIntentAction } from "./actions/device-intent.ts";
 export { healthAction } from "./actions/health.ts";

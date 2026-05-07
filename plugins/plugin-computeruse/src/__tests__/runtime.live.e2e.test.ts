@@ -184,7 +184,7 @@ describe.runIf(runE2E)("computer-use runtime registration (live e2e)", () => {
     expect(pluginNames).toContain("@elizaos/plugin-computeruse");
     expect(actionNames).toEqual(
       expect.arrayContaining([
-        "USE_COMPUTER",
+        "COMPUTER_USE",
         "BROWSER_ACTION",
         "MANAGE_WINDOW",
         "FILE_ACTION",

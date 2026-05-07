@@ -175,4 +175,44 @@ describe("cloud native tool pass-through", () => {
     expect(usage.cache_read_input_tokens).toBe(60);
     expect(usage.cache_creation_input_tokens).toBe(40);
   });
+
+  test("chat completions bridge preserves caller schema and cache usage details", async () => {
+    const schema = {
+      type: "object",
+      additionalProperties: false,
+      properties: { success: { type: "boolean" } },
+      required: ["success"],
+    };
+    const output = chatHooks.mapResponseFormat({
+      type: "json_schema",
+      json_schema: {
+        name: "evaluation",
+        description: "Evaluator result",
+        schema,
+      },
+    } as never) as { responseFormat: Promise<Record<string, unknown>> };
+
+    await expect(output.responseFormat).resolves.toMatchObject({
+      type: "json",
+      schema,
+      name: "evaluation",
+      description: "Evaluator result",
+    });
+
+    const usage = chatHooks.formatOpenAIUsage(
+      { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      {
+        inputTokens: 100,
+        outputTokens: 20,
+        cachedInputTokens: 64,
+        inputTokenDetails: { cacheCreationTokens: 32 },
+      },
+    );
+
+    expect(usage.prompt_tokens_details?.cached_tokens).toBe(64);
+    expect(usage.prompt_tokens_details?.cache_read_input_tokens).toBe(64);
+    expect(usage.prompt_tokens_details?.cache_creation_input_tokens).toBe(32);
+    expect(usage.cache_read_input_tokens).toBe(64);
+    expect(usage.cache_creation_input_tokens).toBe(32);
+  });
 });

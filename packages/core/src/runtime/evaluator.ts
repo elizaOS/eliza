@@ -12,6 +12,10 @@ import { computePrefixHashes } from "./context-hash";
 import { renderContextObject } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
 import { parseJsonObject, stringifyForModel } from "./json-output";
+import {
+	buildModelInputBudget,
+	withModelInputBudgetProviderOptions,
+} from "./model-input-budget";
 import type {
 	ContextObject,
 	PlannerToolCall,
@@ -37,7 +41,9 @@ export interface EvaluatorRuntime {
 			providerOptions?: Record<string, unknown>;
 		},
 		provider?: string,
-	): Promise<string | { text?: string; object?: unknown }>;
+	): Promise<
+		string | { text?: string; object?: unknown; providerMetadata?: unknown }
+	>;
 	logger?: {
 		warn?: (context: unknown, message?: string) => void;
 		debug?: (context: unknown, message?: string) => void;
@@ -99,6 +105,11 @@ export async function runEvaluator(
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
+	const modelInputBudget = buildModelInputBudget({
+		prompt,
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+	});
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
 	const raw = await params.runtime.useModel(
@@ -108,15 +119,21 @@ export async function runEvaluator(
 			messages: renderedInput.messages,
 			responseSchema: v5EvaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
-			providerOptions: cacheProviderOptions({
-				prefixHash,
-				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-			}),
+			providerOptions: withModelInputBudgetProviderOptions(
+				cacheProviderOptions({
+					prefixHash,
+					segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+				}),
+				modelInputBudget,
+			),
 		},
 		params.provider,
 	);
 	const endedAt = Date.now();
-	const output = parseEvaluatorOutput(raw);
+	const output = repairMissingEvaluatorSuccess(
+		parseEvaluatorOutput(raw),
+		params.trajectory,
+	);
 	const streamingContext = getStreamingContext();
 	await emitStreamingHook(streamingContext, "onEvaluation", {
 		evaluation: output,
@@ -154,7 +171,7 @@ async function recordEvaluationStage(args: {
 	provider?: string;
 	prompt: string;
 	messages?: ChatMessage[];
-	raw: string | { text?: string; object?: unknown };
+	raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
 	output: EvaluatorOutput;
 	startedAt: number;
 	endedAt: number;
@@ -171,6 +188,7 @@ async function recordEvaluationStage(args: {
 					? args.raw.text
 					: JSON.stringify(args.raw.object ?? {});
 		const usage = extractEvaluatorUsage(args.raw);
+		const modelName = extractEvaluatorModelName(args.raw);
 		const stage: RecordedStage = {
 			stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}`,
 			kind: "evaluation",
@@ -181,12 +199,15 @@ async function recordEvaluationStage(args: {
 			latencyMs: args.endedAt - args.startedAt,
 			model: {
 				modelType: args.modelType,
+				modelName,
 				provider: args.provider ?? "default",
 				prompt: args.prompt,
 				messages: args.messages,
+				tools: [],
+				toolCalls: [],
 				response: responseText,
 				usage,
-				costUsd: usage ? computeCallCostUsd(undefined, usage) : undefined,
+				costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
 			},
 			evaluation: {
 				success: args.output.success,
@@ -208,6 +229,20 @@ async function recordEvaluationStage(args: {
 			"[TrajectoryRecorder] failed to record evaluation stage",
 		);
 	}
+}
+
+function extractEvaluatorModelName(
+	raw: string | { providerMetadata?: unknown },
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+		const direct = (meta as Record<string, unknown>).modelName;
+		if (typeof direct === "string") return direct;
+		const model = (meta as Record<string, unknown>).model;
+		if (typeof model === "string") return model;
+	}
+	return undefined;
 }
 
 function extractEvaluatorUsage(
@@ -420,6 +455,28 @@ export function parseEvaluatorOutput(
 				? parsed.recommendedToolCallId
 				: undefined,
 		raw: parsed as Record<string, unknown>,
+	};
+}
+
+function repairMissingEvaluatorSuccess(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.raw && Object.hasOwn(output.raw, "success")) {
+		return output;
+	}
+	if (output.decision !== "FINISH") {
+		return output;
+	}
+	const latestStep = [...trajectory.steps]
+		.reverse()
+		.find((step) => step.toolCall && step.result);
+	if (latestStep?.result?.success !== true) {
+		return output;
+	}
+	return {
+		...output,
+		success: true,
 	};
 }
 

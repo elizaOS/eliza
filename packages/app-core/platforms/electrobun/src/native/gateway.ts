@@ -6,7 +6,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import { logger } from "@elizaos/core";
+import { logger } from "../logger";
 import { getBrandConfig } from "../brand-config";
 import type {
 	DiscoveryOptions,

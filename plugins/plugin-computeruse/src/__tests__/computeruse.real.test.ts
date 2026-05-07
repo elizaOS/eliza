@@ -54,12 +54,14 @@ describe("computer-use live parity", () => {
 
   it("exports the full public action surface", () => {
     expect(computerUsePlugin.actions?.map((action) => action.name)).toEqual([
-      "USE_COMPUTER",
+      "COMPUTER_USE",
       "BROWSER_ACTION",
       "MANAGE_WINDOW",
       "FILE_ACTION",
       "TERMINAL_ACTION",
     ]);
+    expect(useComputerAction.similes).toContain("USE_COMPUTER");
+    expect(useComputerAction.roleGate).toMatchObject({ minRole: "OWNER" });
   });
 
   it("publishes the upstream desktop/browser/window/file/terminal action surfaces", () => {

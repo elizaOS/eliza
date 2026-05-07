@@ -89,7 +89,7 @@ describe("OpenAI native text plumbing", () => {
     } as never)) as unknown as Record<string, unknown>;
 
     const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
-    expect(call.messages).toBe(messages);
+    expect(call.messages).toEqual(messages);
     expect(call).not.toHaveProperty("prompt");
     expect(call.tools).toBe(tools);
     expect(call.toolChoice).toBe(toolChoice);
@@ -119,5 +119,115 @@ describe("OpenAI native text plumbing", () => {
         cacheReadInputTokens: 5,
       },
     });
+  }, 60_000);
+
+  it("normalizes core tool arrays and tool choice into AI SDK tool sets", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "",
+      toolCalls: [{ toolName: "WEB_SEARCH", input: { q: "eliza" } }],
+      finishReason: "tool-calls",
+      usage: { inputTokens: 11, outputTokens: 2 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const coreTools = [
+      {
+        name: "WEB_SEARCH",
+        description: "Search the web",
+        type: "function",
+        strict: true,
+        parameters: {
+          properties: {
+            q: { description: "Query", type: "string" },
+          },
+          required: ["q"],
+          additionalProperties: false,
+        },
+      },
+    ];
+
+    await handleTextSmall(createRuntime(), {
+      prompt: "use native tool",
+      messages: [{ role: "user", content: "search eliza" }],
+      tools: coreTools,
+      toolChoice: { type: "tool", name: "WEB_SEARCH" },
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.tools).not.toBe(coreTools);
+    expect(Object.keys(call.tools as Record<string, unknown>)).toEqual(["WEB_SEARCH"]);
+    expect(call.toolChoice).toEqual({ type: "tool", toolName: "WEB_SEARCH" });
+
+    const webSearch = (call.tools as Record<string, { inputSchema: { jsonSchema: unknown } }>)
+      .WEB_SEARCH;
+    expect(webSearch.inputSchema.jsonSchema).toEqual({
+      type: "object",
+      properties: {
+        q: { description: "Query", type: "string" },
+      },
+      required: ["q"],
+      additionalProperties: false,
+    });
+  }, 60_000);
+
+  it("normalizes core assistant/tool history into AI SDK model messages", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: JSON.stringify({ decision: "FINISH", success: true }),
+      finishReason: "stop",
+      usage: { inputTokens: 17, outputTokens: 4 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "evaluate",
+      messages: [
+        { role: "user", content: "search eliza" },
+        {
+          role: "assistant",
+          content: null,
+          toolCalls: [
+            {
+              id: "tool-1",
+              type: "function",
+              name: "WEB_SEARCH",
+              arguments: JSON.stringify({ q: "eliza" }),
+            },
+          ],
+        },
+        {
+          role: "tool",
+          toolCallId: "tool-1",
+          name: "WEB_SEARCH",
+          content: JSON.stringify({ success: true, text: "found results" }),
+        },
+      ],
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.messages).toEqual([
+      { role: "user", content: "search eliza" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "tool-1",
+            toolName: "WEB_SEARCH",
+            input: { q: "eliza" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tool-1",
+            toolName: "WEB_SEARCH",
+            output: { type: "json", value: { success: true, text: "found results" } },
+          },
+        ],
+      },
+    ]);
   }, 60_000);
 });

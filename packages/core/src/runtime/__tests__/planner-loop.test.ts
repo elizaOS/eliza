@@ -103,6 +103,10 @@ describe("v5 planner loop skeleton", () => {
 		// message pairs, NOT as a JSON dump in the user message. The user message
 		// (messages[1]) should no longer contain "trajectory:\n[".
 		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
+		expect(plannerParams.providerOptions.eliza.modelInputBudget).toMatchObject({
+			reserveTokens: 10_000,
+			shouldCompact: false,
+		});
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
 			expect.objectContaining({ iteration: 1 }),

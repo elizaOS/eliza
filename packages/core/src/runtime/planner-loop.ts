@@ -27,6 +27,10 @@ import {
 	type FailureLike,
 	mergeChainingLoopConfig,
 } from "./limits";
+import {
+	buildModelInputBudget,
+	withModelInputBudgetProviderOptions,
+} from "./model-input-budget";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -281,7 +285,10 @@ export async function runPlannerLoop(
 				status: "finished",
 				trajectory,
 				evaluator,
-				finalMessage: evaluator.messageToUser,
+				finalMessage:
+					evaluator.messageToUser ??
+					latestToolResultText(trajectory) ??
+					evaluator.thought,
 			};
 		}
 
@@ -575,6 +582,12 @@ async function callPlanner(params: {
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
 	const hasTools = Array.isArray(params.tools) && params.tools.length > 0;
+	const modelInputBudget = buildModelInputBudget({
+		prompt,
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: params.tools,
+	});
 	const modelParams: {
 		prompt: string;
 		messages: ChatMessage[];
@@ -587,10 +600,13 @@ async function callPlanner(params: {
 		prompt,
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		providerOptions: cacheProviderOptions({
-			prefixHash,
-			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-		}),
+		providerOptions: withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash,
+				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			}),
+			modelInputBudget,
+		),
 	};
 	if (hasTools) {
 		modelParams.tools = params.tools;
@@ -1010,6 +1026,18 @@ function terminalMessageFromToolCalls(
 		getNonEmptyString(params?.text ?? params?.message ?? params?.reply) ??
 		fallback
 	);
+}
+
+function latestToolResultText(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [...trajectory.steps].reverse()) {
+		const text = step.result?.text?.trim();
+		if (text) {
+			return text;
+		}
+	}
+	return undefined;
 }
 
 function preferRecommendedToolCall(

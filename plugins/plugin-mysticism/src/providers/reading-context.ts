@@ -253,7 +253,10 @@ function buildIChingContext(state: IChingReadingState): string {
   if (changingCount > 0) {
     lines.push(`**Changing Lines:** ${revealedCount} of ${changingCount} revealed`);
     lines.push(
-      `**Changing positions:** ${state.castResult.changingLines.slice(0, MAX_CHANGING_LINES).map((l) => `Line ${l}`).join(", ")}`
+      `**Changing positions:** ${state.castResult.changingLines
+        .slice(0, MAX_CHANGING_LINES)
+        .map((l) => `Line ${l}`)
+        .join(", ")}`
     );
   } else {
     lines.push("**No changing lines** — the reading is stable.");

@@ -12,7 +12,6 @@ import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { chatThreadAction } from "./actions/chat-thread.js";
 import { checkinAction } from "./actions/checkin.js";
-import { computerUseAction } from "./actions/computer-use.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
 import { healthAction } from "./actions/health.js";
@@ -218,7 +217,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     screenTimeAction,
     voiceCallAction,
     remoteDesktopAction,
-    computerUseAction,
     scheduleAction,
     deviceIntentAction,
     passwordManagerAction,

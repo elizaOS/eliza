@@ -93,7 +93,7 @@ export const minecraftConnectAction: Action = {
     try {
       const session = await withMinecraftTimeout(
         service.createBot(parseConnectOverrides(params)),
-        "minecraft connect",
+        "minecraft connect"
       );
       return await emit(
         ACTION_NAME,

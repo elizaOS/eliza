@@ -95,6 +95,12 @@ describe("v5 evaluator skeleton", () => {
 		// After the stacking fix, trajectory steps are conveyed as assistant/tool
 		// message pairs, NOT as a JSON dump in the user message.
 		expect(evaluatorParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
+		expect(
+			evaluatorParams.providerOptions.eliza.modelInputBudget,
+		).toMatchObject({
+			reserveTokens: 10_000,
+			shouldCompact: false,
+		});
 		expect(result.decision).toBe("FINISH");
 		expect(copyToClipboard).toHaveBeenCalledWith({
 			title: "Artifact",
@@ -102,5 +108,52 @@ describe("v5 evaluator skeleton", () => {
 			tags: ["test"],
 		});
 		expect(messageToUser).toHaveBeenCalledWith("Sent.");
+	});
+
+	it("repairs missing success only when FINISH follows a successful tool result", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "route": "FINISH",
+  "thought": "The tool result satisfies the request.",
+  "messageToUser": "Done."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: {
+						content: "agent_name: Eliza",
+						stable: true,
+					},
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "LOOKUP",
+							params: { q: "eliza" },
+						},
+						result: {
+							success: true,
+							text: "Found results.",
+						},
+					},
+				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("FINISH");
+		expect(result.success).toBe(true);
 	});
 });

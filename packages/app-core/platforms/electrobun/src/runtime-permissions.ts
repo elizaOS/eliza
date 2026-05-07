@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "./logger";
 import { getBrandConfig } from "./brand-config";
 import type {
 	AllPermissionsState,

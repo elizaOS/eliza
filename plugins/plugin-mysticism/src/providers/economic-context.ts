@@ -125,7 +125,7 @@ function buildEconomicText(
     const totalPaid = completedPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
     const systems = [...new Set(completedPayments.map((p) => p.system))].slice(
       0,
-      MAX_SYSTEMS_LISTED,
+      MAX_SYSTEMS_LISTED
     );
     parts.push("### This User");
     parts.push(`- ${completedPayments.length} previous paid reading(s)`);

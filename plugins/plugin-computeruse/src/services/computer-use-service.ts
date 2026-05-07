@@ -27,6 +27,7 @@ import {
   typeBrowser,
   waitBrowser,
 } from "../platform/browser.js";
+import { detectPlatformCapabilities } from "../platform/capabilities.js";
 import {
   driverCaptureScreenshot,
   driverClick,
@@ -1515,73 +1516,11 @@ export class ComputerUseService extends Service {
   }
 
   private detectCapabilities(): PlatformCapabilities {
-    const osName = currentPlatform();
-    const caps: PlatformCapabilities = {
-      screenshot: { available: false, tool: "none" },
-      computerUse: { available: false, tool: "none" },
-      windowList: { available: false, tool: "none" },
-      browser: { available: false, tool: "none" },
-      terminal: { available: false, tool: "none" },
-      fileSystem: { available: true, tool: "node:fs" },
-    };
-
-    if (osName === "darwin") {
-      caps.screenshot = { available: true, tool: "screencapture (built-in)" };
-      caps.computerUse = commandExists("cliclick")
-        ? { available: true, tool: "cliclick" }
-        : {
-            available: true,
-            tool: "AppleScript / Swift fallbacks (mouse_move requires cliclick)",
-          };
-      caps.windowList = {
-        available: true,
-        tool: "AppleScript System Events",
-      };
-    } else if (osName === "linux") {
-      if (commandExists("import")) {
-        caps.screenshot = { available: true, tool: "ImageMagick import" };
-      } else if (commandExists("scrot")) {
-        caps.screenshot = { available: true, tool: "scrot" };
-      } else if (commandExists("gnome-screenshot")) {
-        caps.screenshot = { available: true, tool: "gnome-screenshot" };
-      } else {
-        caps.screenshot = {
-          available: false,
-          tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
-        };
-      }
-
-      caps.computerUse = commandExists("xdotool")
-        ? { available: true, tool: "xdotool" }
-        : { available: false, tool: "none (install xdotool)" };
-
-      if (commandExists("wmctrl")) {
-        caps.windowList = { available: true, tool: "wmctrl" };
-      } else if (commandExists("xdotool")) {
-        caps.windowList = { available: true, tool: "xdotool" };
-      } else {
-        caps.windowList = {
-          available: false,
-          tool: "none (install wmctrl or xdotool)",
-        };
-      }
-    } else if (osName === "win32") {
-      caps.screenshot = { available: true, tool: "PowerShell System.Drawing" };
-      caps.computerUse = { available: true, tool: "PowerShell user32.dll" };
-      caps.windowList = { available: true, tool: "PowerShell Get-Process" };
-    }
-
-    caps.browser = isBrowserAvailable()
-      ? { available: true, tool: "puppeteer-core (Chromium detected)" }
-      : { available: false, tool: "none (no Chrome/Edge/Brave found)" };
-
-    caps.terminal =
-      osName === "win32"
-        ? { available: true, tool: "powershell.exe" }
-        : commandExists(process.env.SHELL ?? "/bin/bash")
-          ? { available: true, tool: process.env.SHELL ?? "/bin/bash" }
-          : { available: true, tool: process.env.SHELL ?? "/bin/sh" };
-
-    return caps;
+    return detectPlatformCapabilities({
+      osName: currentPlatform(),
+      commandExists,
+      isBrowserAvailable,
+      shell: process.env.SHELL,
+    });
   }
 }

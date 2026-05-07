@@ -42,7 +42,6 @@ import type {
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type AgentRuntime,
-  type TrajectoryJsonShape,
 } from "@elizaos/core";
 import {
   listTrajectoryCallEntries,
@@ -260,8 +259,16 @@ interface UICacheStats {
   sizeBytes?: number;
 }
 
-type RouteTrajectoryExportOptions = TrajectoryExportOptions & {
-  jsonShape?: TrajectoryJsonShape;
+type RouteTrajectoryJsonShape =
+  | "legacy"
+  | "context_object_events_v5"
+  | typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+
+type RouteTrajectoryExportOptions = Omit<
+  TrajectoryExportOptions,
+  "jsonShape"
+> & {
+  jsonShape?: RouteTrajectoryJsonShape;
 };
 
 // ============================================================================
