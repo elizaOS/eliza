@@ -1,7 +1,6 @@
 import { describe, expect, test, beforeEach, vi } from "vitest";
 import twitchPlugin, {
   TwitchService,
-  sendMessage,
   twitchChannelAction,
   twitchChannelsProvider,
   userContextProvider,
@@ -89,11 +88,10 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.description).toContain("Twitch");
   });
 
-  test("registers the channel router and send-message actions", () => {
-    expect(twitchPlugin.actions).toHaveLength(2);
+  test("registers the channel router action (sends route through SEND_MESSAGE connector)", () => {
+    expect(twitchPlugin.actions).toHaveLength(1);
     const names = twitchPlugin.actions!.map((a) => a.name);
     expect(names).toContain("TWITCH_CHANNEL_OP");
-    expect(names).toContain("TWITCH_SEND_MESSAGE");
   });
 
   test("registers the user context and channels providers", () => {
@@ -335,88 +333,12 @@ describe("twitchChannelAction", () => {
 });
 
 // ===========================================================================
-// 7. sendMessage Action
+// 7. sendMessage path
 // ===========================================================================
-
-describe("sendMessage action", () => {
-  test("has correct metadata", () => {
-    expect(sendMessage.name).toBe("TWITCH_SEND_MESSAGE");
-    expect(sendMessage.description).toBe("Send a message to a Twitch channel");
-    expect(sendMessage.similes).toContain("SEND_TWITCH_MESSAGE");
-    expect(sendMessage.similes).toContain("TWITCH_CHAT");
-    expect(sendMessage.similes).toContain("CHAT_TWITCH");
-    expect(sendMessage.similes).toContain("SAY_IN_TWITCH");
-    expect(sendMessage.similes).toHaveLength(4);
-  });
-
-  test("has examples", () => {
-    expect(sendMessage.examples!.length).toBeGreaterThan(0);
-  });
-
-  test("validate returns true for twitch source", async () => {
-    const runtime = makeMockRuntime();
-    const memory = makeMemory("twitch");
-    expect(await sendMessage.validate!(runtime, memory)).toBe(true);
-  });
-
-  test("validate returns false for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await sendMessage.validate!(runtime, makeMemory("discord"))).toBe(
-      false,
-    );
-    expect(await sendMessage.validate!(runtime, makeMemory("telegram"))).toBe(
-      false,
-    );
-    expect(await sendMessage.validate!(runtime, makeMemory(""))).toBe(false);
-  });
-
-  test("handler returns error when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    let callbackPayload: any = null;
-    const callback = (resp: any) => {
-      callbackPayload = resp;
-    };
-
-    const result = await sendMessage.handler!(
-      runtime,
-      memory,
-      makeState(),
-      {},
-      callback,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Twitch service not available");
-    expect(callbackPayload).not.toBeNull();
-    expect(callbackPayload.text).toBe("Twitch service is not available.");
-  });
-
-  test("handler returns error when service not connected", async () => {
-    const service = makeMockTwitchService({ connected: false });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = makeMemory("twitch");
-    let callbackPayload: any = null;
-    const callback = (resp: any) => {
-      callbackPayload = resp;
-    };
-
-    const result = await sendMessage.handler!(
-      runtime,
-      memory,
-      makeState(),
-      {},
-      callback,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Twitch service not available");
-    expect(callbackPayload.text).toBe("Twitch service is not available.");
-  });
-});
+// TWITCH_SEND_MESSAGE used to be a standalone action; now the Twitch
+// MessageConnector (registered by TwitchService.registerSendHandlers) is the
+// canonical send path through SEND_MESSAGE. Action-shape and handler tests
+// retired with the action.
 
 // ===========================================================================
 // 7. twitchChannelsProvider
