@@ -23,6 +23,23 @@ import { requireTaskAgentAccess } from "../services/task-policy.js";
 const STOP_AGENT_SESSION_LIMIT = 25;
 const STOP_AGENT_TIMEOUT_MS = 10_000;
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
+
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx stopAgentAction / stopTaskAgentAction or cancelTaskAction instead. This action remains during the migration window.
+ */
 export const stopAgentAction: Action = {
   name: "STOP_AGENT",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -104,6 +121,10 @@ export const stopAgentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "stopAgentAction / stopTaskAgentAction",
+      "@elizaos/plugin-acpx stopAgentAction / stopTaskAgentAction or cancelTaskAction",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {
@@ -259,4 +280,7 @@ export const stopAgentAction: Action = {
   ],
 };
 
+/**
+ * @deprecated Use @elizaos/plugin-acpx stopTaskAgentAction or cancelTaskAction instead.
+ */
 export const stopTaskAgentAction = stopAgentAction;
