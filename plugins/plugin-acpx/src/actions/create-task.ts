@@ -209,7 +209,8 @@ export const createTaskAction = {
   ): Promise<ActionResult> => {
     const service = getAcpService(runtime);
     if (!service) {
-      const text = "PTY Service is not available. Cannot create the task.";
+      const text =
+        "ACP subprocess service is not available. Install acpx and ensure @elizaos/plugin-acpx is loaded.";
       await callbackText(callback, text);
       return errorResult("SERVICE_UNAVAILABLE");
     }
@@ -240,15 +241,12 @@ export const createTaskAction = {
     );
     const timeoutMs = getTimeoutMs(params, content);
     const baseLabel = pickString(params, content, "label");
-    const results: Array<Record<string, unknown>> = [];
-    const sessions: SpawnResult[] = [];
-
-    for (const [index, part] of tasks.entries()) {
-      const parsed = parseAgentPrefix(part, baseAgentType);
-      const task = parsed.task;
-      const agentType = parsed.agentType as AgentType;
-      const label = baseLabel ?? labelFrom(task, index);
-      try {
+    const settled = await Promise.allSettled(
+      tasks.map(async (part, index) => {
+        const parsed = parseAgentPrefix(part, baseAgentType);
+        const task = parsed.task;
+        const agentType = parsed.agentType as AgentType;
+        const label = baseLabel ?? labelFrom(task, index);
         const session = await service.spawnSession({
           agentType,
           workdir,
@@ -266,8 +264,17 @@ export const createTaskAction = {
             source: content.source,
           },
         });
-        sessions.push(session);
         await runPromptAndClose(service, session, task, timeoutMs, model);
+        return { session, label, agentType };
+      }),
+    );
+
+    const results: Array<Record<string, unknown>> = [];
+    const sessions: SpawnResult[] = [];
+    for (const [index, outcome] of settled.entries()) {
+      if (outcome.status === "fulfilled") {
+        const { session, label } = outcome.value;
+        sessions.push(session);
         results.push({
           id: session.sessionId,
           sessionId: session.sessionId,
@@ -277,23 +284,27 @@ export const createTaskAction = {
           label,
           status: "completed",
         });
-      } catch (error) {
-        const msg = failureMessage(error);
-        logger(runtime).error?.("CREATE_TASK launch failed", {
-          error: msg,
-          agentType,
-          workdir,
-        });
-        results.push({
-          sessionId: "",
-          id: "",
-          agentType,
-          workdir,
-          label,
-          status: "failed",
-          error: msg,
-        });
+        continue;
       }
+      const part = tasks[index];
+      const parsed = parseAgentPrefix(part, baseAgentType);
+      const agentType = parsed.agentType as AgentType;
+      const label = baseLabel ?? labelFrom(parsed.task, index);
+      const msg = failureMessage(outcome.reason);
+      logger(runtime).error?.("CREATE_TASK launch failed", {
+        error: msg,
+        agentType,
+        workdir,
+      });
+      results.push({
+        sessionId: "",
+        id: "",
+        agentType,
+        workdir,
+        label,
+        status: "failed",
+        error: msg,
+      });
     }
 
     setCurrentSessions(state, sessions);

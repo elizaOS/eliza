@@ -22,7 +22,7 @@ export type SessionStatus =
   | "completed"
   | "stopped"
   | "errored"
-  | "error"
+  | "cancelled"
   | "tool_running"
   | string;
 
