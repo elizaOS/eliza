@@ -4,7 +4,12 @@ import type {
   ModelTypeName,
   TextStreamResult,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  dropDuplicateLeadingSystemMessage,
+  ModelType,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import {
   generateText,
   type JSONSchema7,
@@ -42,12 +47,19 @@ type ChatAttachment = {
   filename?: string;
 };
 
+interface OpenRouterPromptCacheOptions {
+  promptCacheKey?: string;
+}
+
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
   toolChoice?: ToolChoice<ToolSet>;
   responseSchema?: unknown;
+  providerOptions?: Record<string, object | unknown> & {
+    openrouter?: OpenRouterPromptCacheOptions;
+  };
 };
 
 type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
@@ -226,16 +238,44 @@ function buildGenerateParams(
   const temperature = params.temperature ?? 0.7;
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
+  const systemPrompt = resolveEffectiveSystemPrompt({
+    params: paramsWithAttachments,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
 
+  const wireMessages = dropDuplicateLeadingSystemMessage(
+    paramsWithAttachments.messages,
+    systemPrompt
+  );
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
-    ? { messages: paramsWithAttachments.messages }
+    ? wireMessages && wireMessages.length > 0
+      ? { messages: wireMessages }
+      : userContent
+        ? { messages: [{ role: "user" as const, content: userContent }] }
+        : { prompt }
     : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
       : { prompt };
+  // Resolve providerOptions: forward any caller-supplied options and merge in
+  // the openrouter.promptCacheKey when present. OpenRouter passes prompt_cache_key
+  // through to the underlying model provider for prefix caching.
+  const rawProviderOptions = paramsWithAttachments.providerOptions;
+  const { openrouter: rawOpenrouterOptions, ...restProviderOptions } = rawProviderOptions ?? {};
+  const openrouterOptions: Record<string, unknown> = {
+    ...(rawOpenrouterOptions ?? {}),
+  };
+  const mergedProviderOptions: Record<string, unknown> = {
+    ...restProviderOptions,
+    ...(Object.keys(openrouterOptions).length > 0 ? { openrouter: openrouterOptions } : {}),
+  };
+  const resolvedProviderOptions =
+    Object.keys(mergedProviderOptions).length > 0 ? mergedProviderOptions : undefined;
+
+  type NativeProviderOptions = NativeTextParams["providerOptions"];
   const generateParams: NativeTextParams = {
     model: openrouter.chat(modelName) as LanguageModel,
     ...promptOrMessages,
-    system: runtime.character?.system ?? undefined,
+    system: systemPrompt,
     ...(supportsSampling
       ? {
           temperature: temperature,
@@ -249,6 +289,9 @@ function buildGenerateParams(
     ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
     ...(paramsWithAttachments.responseSchema
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
+      : {}),
+    ...(resolvedProviderOptions
+      ? { providerOptions: resolvedProviderOptions as NativeProviderOptions }
       : {}),
   };
 
