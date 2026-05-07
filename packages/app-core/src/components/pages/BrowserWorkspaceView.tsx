@@ -2,6 +2,7 @@ import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser-bridge/contracts";
+import { Capacitor } from "@capacitor/core";
 import {
   Button,
   ConfirmDialog,
@@ -28,6 +29,8 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
@@ -372,6 +375,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   >([]);
   const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
     useState<BrowserBridgeCompanionPackageStatus | null>(null);
+  const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
+    readPersistedMobileRuntimeMode,
+  );
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
@@ -487,6 +493,8 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
     [plugins],
   );
+  const browserBridgeUnsupportedInNativeLocalMode =
+    Capacitor.isNativePlatform() && mobileRuntimeMode === "local";
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -503,6 +511,23 @@ export function BrowserWorkspaceView(): JSX.Element {
     walletAddresses,
     walletConfig,
   ]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const syncRuntimeMode = () => {
+      setMobileRuntimeMode(readPersistedMobileRuntimeMode());
+    };
+    document.addEventListener(
+      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+      syncRuntimeMode,
+    );
+    return () => {
+      document.removeEventListener(
+        MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+        syncRuntimeMode,
+      );
+    };
+  }, []);
 
   const loadBrowserWalletState = useCallback(async () => {
     try {
@@ -544,6 +569,13 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const loadBrowserBridgeState = useCallback(
     async (options?: { silent?: boolean }) => {
+      if (browserBridgeUnsupportedInNativeLocalMode) {
+        setBrowserBridgeCompanions([]);
+        setBrowserBridgePackageStatus(null);
+        setBrowserBridgeAvailable(false);
+        setBrowserBridgeLoading(false);
+        return;
+      }
       if (!options?.silent) {
         setBrowserBridgeLoading(true);
       }
@@ -573,7 +605,7 @@ export function BrowserWorkspaceView(): JSX.Element {
         setBrowserBridgeLoading(false);
       }
     },
-    [],
+    [browserBridgeUnsupportedInNativeLocalMode],
   );
 
   const loadWorkspace = useCallback(
@@ -1780,7 +1812,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   const browserChatActions =
-    !browserBridgeSupported || browserBridgeConnected ? null : (
+    !browserBridgeSupported ||
+    browserBridgeUnsupportedInNativeLocalMode ||
+    browserBridgeConnected ? null : (
       <>
         <Button
           size="sm"
@@ -2242,7 +2276,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                 })}
               </Button>
             ) : null}
-            {!loading && workspace.mode === "web" && browserBridgeSupported ? (
+            {!loading &&
+            workspace.mode === "web" &&
+            browserBridgeSupported &&
+            !browserBridgeUnsupportedInNativeLocalMode ? (
               <div className="mt-3 flex w-full flex-col gap-3 rounded-md border border-border/40 bg-card/35 p-3 text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

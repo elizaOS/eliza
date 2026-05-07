@@ -7,11 +7,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -109,9 +106,7 @@ function normalizeValidationResponse(
 }
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
-  return normalizeValidationResponse(
-    parseToonKeyValue<Record<string, unknown>>(raw),
-  );
+  return normalizeValidationResponse(parseJsonObjectResponse(raw));
 }
 
 function getValidationRootDir(): string {
@@ -643,13 +638,17 @@ function buildValidationPrompt(
 
   return [
     "You are validating whether an orchestrated task is actually finished.",
-    "Return TOON only with this shape:",
-    "verdict: pass",
-    "summary: short summary",
-    "followUpPrompt: only if verdict=revise",
-    "checklist[2]:",
-    "  optional evidence note",
-    "  optional evidence note",
+    "Return JSON only with this shape:",
+    JSON.stringify(
+      {
+        verdict: "pass",
+        summary: "short summary",
+        followUpPrompt: "only if verdict=revise",
+        checklist: ["optional evidence note", "optional evidence note"],
+      },
+      null,
+      2,
+    ),
     "",
     `Task title: ${task.label}`,
     `Original request: ${task.originalTask}`,

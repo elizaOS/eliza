@@ -18,6 +18,7 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { wrapUntrustedEmailContent } from "./service-normalize-gmail.js";
 
 export type EmailCategory =
@@ -296,16 +297,8 @@ export function classifyEmailByRules(
 function buildLlmPrompt(message: EmailLikeMessage): string {
   return [
     "Classify this email into one of: promotional, bill, transactional, personal.",
-    "Return ONLY TOON with fields:",
-    "category: one of promotional, bill, transactional, personal",
-    "- confidence: number from 0 to 1",
-    "- signals: short strings naming the cues you used; use signals[0], signals[1]",
-    "",
-    "TOON example:",
-    "category: transactional",
-    "confidence: 0.72",
-    "signals[0]: account alert",
-    "signals[1]: no-reply sender",
+    "Return ONLY a JSON object with fields category, confidence, and signals.",
+    'Example: {"category":"transactional","confidence":0.72,"signals":["account alert","no-reply sender"]}',
     "",
     "Definitions:",
     "- promotional: marketing, newsletters, promotions, list mail.",

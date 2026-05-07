@@ -3,8 +3,8 @@
  *
  * ElizaOS core only shows exampleCalls from its static action-docs registry,
  * which doesn't include custom plugin actions. This provider bridges the gap
- * by formatting our task-agent action examples in the TOON-style format
- * the model sees for core actions.
+ * by formatting our task-agent action examples in the same compact plain-text
+ * style the model sees for core actions.
  *
  * @module providers/action-examples
  */

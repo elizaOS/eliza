@@ -105,7 +105,7 @@ async function resolveChatThreadPlan(args: {
   });
   const prompt = [
     "Plan a targeted local chat-thread control action.",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "  operation: mute_chat, unmute_chat, or null",
     "  platform: connector name like telegram or discord",
     "  chatName: exact chat/channel title when present",
@@ -115,10 +115,7 @@ async function resolveChatThreadPlan(args: {
     "  response: short follow-up if shouldAct is false or details are missing",
     "",
     "Use this action for targeted connector chat mute/unmute, especially when the user names a Telegram or Discord room that is not the current chat.",
-    "Examples:",
-    '  "Mute the crypto signals Telegram group for 24 hours." -> operation: mute_chat; platform: telegram; chatName: crypto signals; roomId: null; durationMinutes: 1440; shouldAct: true; response: null',
-    '  "Unmute the Telegram group crypto signals." -> operation: unmute_chat; platform: telegram; chatName: crypto signals; roomId: null; durationMinutes: null; shouldAct: true; response: null',
-    '  "Mute that room." -> operation: null; platform: null; chatName: null; roomId: null; durationMinutes: null; shouldAct: false; response: Which chat should I mute, and on which platform?',
+    'Example: {"operation":"mute_chat","platform":"telegram","chatName":"crypto signals","roomId":null,"durationMinutes":1440,"shouldAct":true,"response":null}',
     "",
     formatPromptSection("Current request", currentText),
     formatPromptSection("Recent conversation", recent.join("\n")),

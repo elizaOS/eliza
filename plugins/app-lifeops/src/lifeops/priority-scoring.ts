@@ -21,6 +21,7 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 
 export type PriorityCategory = "important" | "planning" | "casual";
 
@@ -133,14 +134,14 @@ function buildPrompt(
   if (opts.ownerName && opts.ownerName.trim().length > 0) {
     lines.push(
       "",
-      "Owner TOON:",
+      "Owner context:",
       `ownerName: ${promptValue(opts.ownerName, 160)}`,
     );
   }
   if (opts.topRelationships && opts.topRelationships.length > 0) {
     lines.push(
       "",
-      "Important contacts TOON (treat their messages as higher priority):",
+      "Important contacts (treat their messages as higher priority):",
       opts.topRelationships
         .slice(0, 12)
         .map(
@@ -150,7 +151,7 @@ function buildPrompt(
         .join("\n"),
     );
   }
-  lines.push("", "Messages TOON:");
+  lines.push("", "Messages:");
   for (const [index, message] of batch.entries()) {
     lines.push(
       `messages[${index}]:`,
@@ -168,21 +169,19 @@ function buildPrompt(
   }
   lines.push(
     "",
-    "Return TOON only. No prose, markdown, code fences, or hidden reasoning.",
+    "Return JSON only as a single object. No prose, markdown, code fences, or hidden reasoning.",
     `Return exactly ${batch.length} zero-based scores records aligned to messages[0] through messages[${
       batch.length - 1
     }].`,
-    "Use this row format:",
-    "scores[0]{score,category,flags}: 82, important, question|deadline",
-    "score: integer 0-100",
-    "category: important | planning | casual",
-    "flags: pipe-separated tags from mention|question|deadline|meeting|money|urgent|group_call|ask, or empty",
+    'Use this shape: {"scores":[{"score":82,"category":"important","flags":["question","deadline"]}]}',
+    "score is an integer 0-100. category is important, planning, or casual.",
+    "flags is an array of tags from mention, question, deadline, meeting, money, urgent, group_call, ask.",
   );
   return lines.join("\n");
 }
 
 const STRUCTURED_CODE_FENCE_PATTERN =
-  /^\s*```(?:toon|json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+  /^\s*```(?:json|json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
 function stripModelWrapper(raw: string): string {
   let candidate = raw.trim();
@@ -270,7 +269,7 @@ function parseScoresFromJsonObject(
   }
   if (!Array.isArray(parsed.scores)) {
     throw new Error(
-      "priority scoring TOON response did not include scores records",
+      "priority scoring JSON response did not include scores records",
     );
   }
   const out: PriorityScore[] = [];
@@ -295,7 +294,7 @@ function parseLegacyJsonScores(
 ): PriorityScore[] {
   if (!candidate.startsWith("[")) {
     throw new Error(
-      "priority scoring did not return TOON scores or a legacy JSON array",
+      "priority scoring did not return JSON scores or a legacy JSON array",
     );
   }
   const parsed = JSON.parse(candidate) as unknown;

@@ -610,11 +610,8 @@ export const formatTimestamp = (messageDate: number) => {
 };
 
 /**
- * Parses structured LLM output from TOON only.
- *
- * Use this for action/evaluator/provider LLM responses so model-visible output
- * stays in TOON and action code never accepts XML as a structured response
- * contract.
+ * Legacy TOON structured-output parser retained for compatibility with older
+ * feature code. New runtime-owned prompt paths should use JSON parsing instead.
  */
 export function parseToonKeyValue<T = Record<string, unknown>>(
 	text: string,
@@ -639,9 +636,9 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 /**
  * Legacy structured-response parser.
  *
- * Prefer `parseToonKeyValue` for new prompts. This compatibility helper keeps
- * older XML-based cloud prompts working while still accepting the newer TOON
- * response shape first.
+ * Prefer JSON structured output for new prompts. This compatibility helper keeps
+ * older XML-based cloud prompts working while still accepting legacy TOON
+ * response shapes first.
  */
 export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,

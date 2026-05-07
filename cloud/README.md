@@ -1772,7 +1772,6 @@ DATABASE_URL=postgres://prod-url bun run db:migrate
 - Test AWS credentials: `aws sts get-caller-identity`
 - Check quota: `GET /api/v1/containers/quota`
 - View logs in AWS CloudWatch or ECS console
-- Ensure shared infrastructure is deployed: `cd scripts/cloudformation && ./deploy-shared.sh`
 
 See `docs/DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting.
 
@@ -1867,23 +1866,7 @@ elizaos deploy
 
 ### AWS Infrastructure Setup (Platform Maintainers)
 
-**1. Deploy Shared Infrastructure**
-
-The platform uses CloudFormation to provision per-user infrastructure. First, deploy shared resources:
-
-```bash
-cd scripts/cloudformation
-./deploy-shared.sh
-```
-
-This creates:
-
-- VPC with public subnets
-- Application Load Balancer (ALB) for routing
-- IAM roles for ECS tasks
-- Security groups
-
-**2. Configure Environment Variables**
+**1. Configure Environment Variables**
 
 ```bash
 # AWS Credentials
@@ -1891,7 +1874,7 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret
 
-# Network Configuration (from CloudFormation outputs)
+# Network Configuration
 AWS_VPC_ID=vpc-xxxxx
 AWS_SUBNET_IDS=subnet-xxxxx,subnet-yyyyy
 AWS_SECURITY_GROUP_IDS=sg-xxxxx
@@ -1909,7 +1892,7 @@ ECS_SHARED_LISTENER_ARN=arn:aws:elasticloadbalancing:...
 ENVIRONMENT=production
 ```
 
-**3. Start the Platform**
+**2. Start the Platform**
 
 ```bash
 npm run dev  # Development
@@ -2031,7 +2014,6 @@ Container deployments are billed **daily**:
 - [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
 - [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
 - [AWS SDK for JavaScript](https://docs.aws.amazon.com/sdk-for-javascript/)
-- [AWS CloudFormation](https://docs.aws.amazon.com/cloudformation/)
 
 ### UI & Styling
 

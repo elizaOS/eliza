@@ -127,10 +127,6 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   return `${hours}h${minutes}m`;
 }
 
-function isPromptRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function formatPromptScalar(value: unknown): string {
   if (value === null || value === undefined) {
     return "null";
@@ -143,46 +139,18 @@ function formatPromptScalar(value: unknown): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function appendPromptToonValue(
-  lines: string[],
-  key: string,
-  value: unknown,
-  indent = 0,
-): void {
-  const prefix = "  ".repeat(indent);
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      lines.push(`${prefix}${key}: []`);
-      return;
-    }
-    value.forEach((entry, index) => {
-      appendPromptToonValue(lines, `${key}[${index}]`, entry, indent);
-    });
-    return;
-  }
-  if (isPromptRecord(value)) {
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-      lines.push(`${prefix}${key}: {}`);
-      return;
-    }
-    lines.push(`${prefix}${key}:`);
-    for (const [childKey, childValue] of entries) {
-      appendPromptToonValue(lines, childKey, childValue, indent + 1);
-    }
-    return;
-  }
-  lines.push(`${prefix}${key}: ${formatPromptScalar(value)}`);
-}
-
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
-  const lines: string[] = [];
-  for (const [key, value] of Object.entries(report)) {
-    appendPromptToonValue(lines, key, value);
-  }
-  return lines.join("\n");
+  return JSON.stringify(report, (_key, value: unknown) => {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === "string") {
+      return formatPromptScalar(value);
+    }
+    return value;
+  });
 }
 
 /**
@@ -229,7 +197,7 @@ export function buildCheckinSummaryPrompt(
 
   lines.push(
     "",
-    "Report TOON:",
+    "Report JSON:",
     formatCheckinReportForPrompt(report),
     "",
     "Summary:",

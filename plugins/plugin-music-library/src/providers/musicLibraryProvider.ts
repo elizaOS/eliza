@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -54,7 +53,7 @@ export const musicLibraryProvider: Provider = {
         const recentSongs = await getRecentSongs(runtime, 10);
 
         return {
-          text: encodeToonValue({
+          text: JSON.stringify({
             music_library: {
               total_tracks: stats.totalSongs,
               total_plays: stats.totalPlays,
@@ -78,7 +77,7 @@ export const musicLibraryProvider: Provider = {
                   ? "Library is empty. Tracks are added as they are played."
                   : 'References like "it", "that", or "this song" usually mean the most recent track.',
             },
-          }),
+          }, null, 2),
         };
       }
 
@@ -88,7 +87,7 @@ export const musicLibraryProvider: Provider = {
       }
 
       return {
-        text: encodeToonValue({
+        text: JSON.stringify({
           recent_music: recentSongs.map((song, index) => ({
             rank: index + 1,
             title: song.title,
@@ -98,7 +97,7 @@ export const musicLibraryProvider: Provider = {
           })),
           reference_note:
             'References like "it", "that", or "this song" usually mean the most recent track.',
-        }),
+        }, null, 2),
       };
     } catch (error) {
       logger.error(

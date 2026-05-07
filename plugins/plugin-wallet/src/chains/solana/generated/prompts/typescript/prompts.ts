@@ -8,7 +8,7 @@
  * - {{#if condition}}...{{/if}} for conditionals
  */
 
-export const swapTemplate = `Respond using TOON like this. Use null for any value that cannot be determined.
+export const swapTemplate = `Respond using plain key/value text like this. Use null for any value that cannot be determined.
 
 Example response:
 inputTokenSymbol: SOL
@@ -30,13 +30,13 @@ Extract the following information about the requested token swap:
 - Output token contract address if provided
 - Amount to swap
 
-Respond using TOON with only the extracted values. Use null for any value that cannot be determined.
+Respond using plain key/value text with only the extracted values. Use null for any value that cannot be determined.
 
-IMPORTANT: Your response must ONLY contain the TOON document. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields. No preamble or explanation.`;
 
 export const SWAP_TEMPLATE = swapTemplate;
 
-export const transferTemplate = `Respond using TOON with only the extracted values. Use null for any value that cannot be determined.
+export const transferTemplate = `Respond using plain key/value text with only the extracted values. Use null for any value that cannot be determined.
 
 Example responses:
 For SPL tokens:
@@ -56,6 +56,6 @@ Extract the following information about the requested transfer:
 - Recipient wallet address
 - Amount to transfer
 
-IMPORTANT: Your response must ONLY contain the TOON document. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields. No preamble or explanation.`;
 
 export const TRANSFER_TEMPLATE = transferTemplate;

@@ -9,7 +9,7 @@ import {
 	type TextGenerationModelType,
 	type UUID,
 } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
+import { composePromptFromState, parseJSONObjectFromText } from "../../../utils.ts";
 import {
 	initialSummarizationTemplate,
 	updateSummarizationTemplate,
@@ -78,7 +78,7 @@ function toStringArray(value: unknown): string[] {
 }
 
 function parseSummaryResponse(text: string): SummaryResult {
-	const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+	const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
 	if (parsed) {
 		const summary =
 			typeof parsed.text === "string" && parsed.text.trim().length > 0

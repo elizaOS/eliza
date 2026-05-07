@@ -12,7 +12,6 @@ import {
 	truncateMiddle,
 } from "../../../utils/action-results.js";
 import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.js";
-import { encodeToonValue } from "../../../utils/toon";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -29,7 +28,7 @@ type WorkingMemoryEntry = {
 
 function formatDataForPrompt(data: unknown): string {
 	try {
-		return encodeToonValue(data);
+		return JSON.stringify(data, null, 2);
 	} catch {
 		return String(data);
 	}

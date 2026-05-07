@@ -239,7 +239,7 @@ async function extractBookTravelPlanWithLlm(args: {
 
   const prompt = [
     "Extract structured booking data for the BOOK_TRAVEL action.",
-    "Return TOON only with exactly these keys:",
+    "Return JSON only as a single object with exactly these keys:",
     "offerId: string or null",
     "origin: IATA airport code or null",
     "destination: IATA airport code or null",
@@ -247,7 +247,8 @@ async function extractBookTravelPlanWithLlm(args: {
     "returnDate: YYYY-MM-DD or null",
     "passengerCount: number or null",
     "passengers: passenger records if known; each record may include offerPassengerId, givenName, familyName, bornOn, email, phoneNumber, title, gender",
-    "calendarSync: calendar sync fields if known; may include enabled, calendarId, title, description, location, timeZone",
+    "calendarSync: calendar sync object if known; may include enabled, calendarId, title, description, location, timeZone",
+    'Example: {"offerId":null,"origin":"SFO","destination":"JFK","departureDate":"2026-06-01","returnDate":null,"passengerCount":1,"passengers":[],"calendarSync":null}',
     "",
     "Rules:",
     "- Do not invent airports, dates, or passenger birthdays.",

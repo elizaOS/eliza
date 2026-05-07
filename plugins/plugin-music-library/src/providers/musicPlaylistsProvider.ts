@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -15,7 +14,7 @@ const DEFAULT_LIMIT = 20;
 
 export const musicPlaylistsProvider: Provider = {
   name: "musicPlaylists",
-  description: "Saved playlists for the requesting user (TOON-encoded).",
+  description: "Saved playlists for the requesting user as JSON context.",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -33,13 +32,17 @@ export const musicPlaylistsProvider: Provider = {
       const playlists = await musicLibrary.loadPlaylists(userId);
       if (playlists.length === 0) {
         return {
-          text: encodeToonValue({
-            music_playlists: {
-              count: 0,
-              items: [],
-              note: "No saved playlists.",
+          text: JSON.stringify(
+            {
+              music_playlists: {
+                count: 0,
+                items: [],
+                note: "No saved playlists.",
+              },
             },
-          }),
+            null,
+            2,
+          ),
         };
       }
 
@@ -52,13 +55,17 @@ export const musicPlaylistsProvider: Provider = {
       }));
 
       return {
-        text: encodeToonValue({
-          music_playlists: {
-            count: sorted.length,
-            items,
-            truncated: sorted.length > DEFAULT_LIMIT,
+        text: JSON.stringify(
+          {
+            music_playlists: {
+              count: sorted.length,
+              items,
+              truncated: sorted.length > DEFAULT_LIMIT,
+            },
           },
-        }),
+          null,
+          2,
+        ),
       };
     } catch (error) {
       logger.error(

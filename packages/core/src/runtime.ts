@@ -165,10 +165,7 @@ import type {
 	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import {
-	parseJSONObjectFromText,
-	stringToUuid,
-} from "./utils";
+import { parseJSONObjectFromText, stringToUuid } from "./utils";
 import {
 	collectActionResultSizeWarnings,
 	getActionResultActionName,
@@ -189,10 +186,7 @@ import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import { resolveStateDir } from "./utils/state-dir";
-import {
-	ActionStreamFilter,
-	ToonFieldStreamExtractor,
-} from "./utils/streaming";
+import { ActionStreamFilter } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -226,9 +220,6 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 	"PROVIDERS",
 ]);
 const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
-const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
-const TOON_FIELD_PATTERN =
-	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 const WEB_SEARCH_SERVICE_TYPE = "web_search";
@@ -278,7 +269,19 @@ type StructuredResponseCandidate = {
 	source: string;
 };
 
-type DynamicPromptStreamExtractor = ToonFieldStreamExtractor;
+type DynamicPromptStreamExtractor = {
+	push(chunk: string): void;
+	flush(): void;
+	reset(): void;
+	signalError(message: string): void;
+	signalRetry(retry: number): { validatedFields: string[] };
+	diagnose(): {
+		missingFields: string[];
+		invalidFields: string[];
+		incompleteFields: string[];
+	};
+	getValidatedFields(): Map<string, string>;
+};
 
 function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -3306,7 +3309,7 @@ export class AgentRuntime implements IAgentRuntime {
 										? result
 										: result === null
 											? null
-												: stringifyStructuredForPrompt({ result });
+											: stringifyStructuredForPrompt({ result });
 						actionResult = {
 							success: true,
 							data: {
@@ -3582,7 +3585,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.stateCache.set(`${message.id}_action_results`, {
 					values: { actionResults },
 					data: { actionResults, actionPlan },
-						text: stringifyStructuredForPrompt({ actionResults }),
+					text: stringifyStructuredForPrompt({ actionResults }),
 				});
 			}
 		}
@@ -5120,7 +5123,7 @@ export class AgentRuntime implements IAgentRuntime {
 			isTextStreamResult(rawResponse)
 		) {
 			// WHY undefined for accumulated: raw LLM tokens have no field-level
-			// extraction; accumulated text is only meaningful after a TOON field
+			// extraction; accumulated text is only meaningful after a structured
 			// extractor has parsed and isolated a field. Passing undefined is
 			// honest; consumers that need
 			// accumulated data get it from the extractor's onChunk bridge in
@@ -5951,64 +5954,6 @@ ${section_end}`;
 				`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
 			);
 
-			// Create a structured extractor on first iteration if streaming.
-			// Legacy TOON output needed field-aware extraction; raw structured tokens must not be
-			// forwarded to user-visible streaming callbacks.
-			if (
-				currentRetry === 0 &&
-				options.onStreamChunk &&
-				!extractor &&
-				format === "TOON"
-			) {
-				const streamFields = schema
-					.filter((row) => {
-						if (row.streamField !== undefined) return row.streamField;
-						return row.field === "text";
-					})
-					.map((row) => row.field);
-
-				// Only use fallback if no explicit streamField settings exist
-				// Don't override explicit streamField: false on "text" field
-				const hasExplicitStreamSettings = schema.some(
-					(r) => r.streamField !== undefined,
-				);
-				const finalStreamFields =
-					streamFields.length > 0
-						? streamFields
-						: !hasExplicitStreamSettings &&
-								schema.some((r) => r.field === "text")
-							? ["text"]
-							: [];
-
-				const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-				// WHY accumulated is forwarded: the extractor tracks the full extracted text
-				// per field internally (`content` in emitFieldContent). Surfacing it
-				// here means consumers like first-sentence voice detection or Eliza's
-				// streaming-text resolver can use the authoritative value instead of
-				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
-				// re-accumulating from deltas — which broke when two extractors ran
-				// concurrently (the dual-extractor garbling bug).
-				const onChunk = (
-					chunk: string,
-					_field?: string,
-					accumulated?: string,
-				) => options.onStreamChunk?.(chunk, streamMessageId, accumulated);
-				const onEvent = options.onStreamEvent
-					? (event: StreamEvent) =>
-							options.onStreamEvent?.(event, streamMessageId)
-					: undefined;
-
-				extractor = new ToonFieldStreamExtractor({
-					level: contextLevel,
-					schema,
-					streamFields: finalStreamFields,
-					onChunk,
-					onEvent,
-					abortSignal: options.abortSignal,
-				});
-			}
-
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
 			const modelParams = {
 				...params,
@@ -6817,14 +6762,11 @@ ${section_end}`;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
-		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
-				isJsonLike
-					? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
-					: "",
+				'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".',
 			);
 		}
 
@@ -6835,17 +6777,13 @@ ${section_end}`;
 			}
 
 			lines.push(
-				isJsonLike
-					? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
-					: "",
+				`For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
-				isJsonLike
-					? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
-					: "",
+				'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".',
 			);
 		}
 
@@ -7353,95 +7291,6 @@ ${section_end}`;
 			trimmed.includes("}") &&
 			JSON_OBJECT_KEY_PATTERN.test(trimmed)
 		);
-	}
-
-	private looksLikeToonDocument(text: string): boolean {
-		const lines = text
-			.trim()
-			.split(/\r?\n/)
-			.filter((line) => line.trim().length > 0);
-		if (lines.length === 0) {
-			return false;
-		}
-
-		const firstLine = lines[0]?.trim() ?? "";
-		if (TOON_HEADER_PATTERN.test(firstLine)) {
-			return lines
-				.slice(1)
-				.some((line) => TOON_FIELD_PATTERN.test(line.trim()));
-		}
-
-		if (!TOON_FIELD_PATTERN.test(firstLine)) {
-			return false;
-		}
-
-		if (lines.length === 1) {
-			const [, value = ""] = firstLine.split(/:(.*)/s);
-			const trimmedValue = value.trim();
-			return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
-		}
-
-		let structuredFieldCount = 0;
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (TOON_FIELD_PATTERN.test(trimmed)) {
-				structuredFieldCount += 1;
-				continue;
-			}
-			if (/^[\t ]+/.test(line)) {
-				continue;
-			}
-			return false;
-		}
-
-		return structuredFieldCount > 0;
-	}
-
-	private extractEmbeddedToonDocument(text: string): string | null {
-		const lines = text.trim().split(/\r?\n/);
-		const startIndex = lines.findIndex((line) => {
-			const trimmed = line.trim();
-			return (
-				TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
-			);
-		});
-
-		if (startIndex === -1) {
-			return null;
-		}
-
-		const collected: string[] = [];
-		let sawStructuredField = false;
-
-		for (let index = startIndex; index < lines.length; index++) {
-			const line = lines[index] ?? "";
-			const trimmed = line.trim();
-			const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
-			const isIndented = /^[\t ]+/.test(line);
-			const isHeader = TOON_HEADER_PATTERN.test(trimmed);
-
-			if (isHeader && !sawStructuredField) {
-				collected.push(line);
-				continue;
-			}
-
-			if (isStructuredField) {
-				sawStructuredField = true;
-				collected.push(line);
-				continue;
-			}
-
-			if (trimmed.length === 0 || isIndented) {
-				if (collected.length > 0) {
-					collected.push(line);
-					continue;
-				}
-			}
-
-			break;
-		}
-
-		return sawStructuredField ? collected.join("\n").trim() : null;
 	}
 
 	private extractEmbeddedJsonObject(text: string): string | null {

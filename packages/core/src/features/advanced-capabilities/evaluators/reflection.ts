@@ -15,7 +15,6 @@ import type {
 } from "../../../types/index.ts";
 import { asUUID, ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
-import { encodeToonValue } from "../../../utils/toon";
 import { composePrompt, parseJSONObjectFromText } from "../../../utils.ts";
 import {
 	formatTaskCompletionStatus,
@@ -79,7 +78,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatPromptData(value: unknown): string {
 	try {
-		return encodeToonValue(value);
+		return JSON.stringify(value, null, 2);
 	} catch {
 		return String(value);
 	}

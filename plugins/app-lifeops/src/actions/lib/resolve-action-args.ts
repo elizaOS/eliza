@@ -201,7 +201,7 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
     );
   }
   lines.push(
-    "Return ONLY TOON with these fields:",
+    "Return ONLY a JSON object with these fields:",
     "  subaction: one of the subaction keys above, or null if the request does not match any subaction",
     "  params: record containing the required and any obvious optional parameter values you extracted",
     "  missing: list of required parameter keys you could NOT extract from the request or context",
@@ -221,15 +221,15 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
     "Recent conversation (most recent last):",
     args.recentConversation.length > 0 ? args.recentConversation : "(none)",
     "",
-    "Return ONLY the TOON record. No prose, markdown, or code fences.",
+    'Return ONLY the JSON object. Example: {"subaction":null,"params":{},"missing":["subaction"],"confidence":0.0}. No prose, markdown, or code fences.',
   );
   return lines.join("\n");
 }
 
 function buildRepairPromptForExtraction(rawFirstPass: string): string {
   return [
-    "Your previous reply was not valid TOON for the action argument extractor.",
-    "Return ONLY TOON with exactly these fields: subaction, params, missing, confidence.",
+    "Your previous reply was not valid JSON for the action argument extractor.",
+    "Return ONLY a JSON object with exactly these fields: subaction, params, missing, confidence.",
     "subaction: string or null. params: record. missing: list of strings. confidence: number 0.0-1.0.",
     "No prose, no markdown, no code fences.",
     "",

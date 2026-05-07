@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 
@@ -91,12 +91,16 @@ export const musicInfoProvider: Provider = {
       `[MUSIC_INFO Provider] Found ${musicInfo.length} music info item(s)`,
     );
 
-    const text = encodeToonValue({
-      music_info: musicInfo.map((item) => ({
-        type: item.type,
-        ...item.info,
-      })),
-    });
+    const text = JSON.stringify(
+      {
+        music_info: musicInfo.map((item) => ({
+          type: item.type,
+          ...item.info,
+        })),
+      },
+      null,
+      2,
+    );
 
     logger.debug(
       `[MUSIC_INFO Provider] Returning ${text.length} characters of music info text`,

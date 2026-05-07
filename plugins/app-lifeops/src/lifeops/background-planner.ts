@@ -3,7 +3,7 @@
  *
  * Single shared LLM planner entry-point for every LifeOps background job.
  * Mirrors the chat planner pattern used in `actions/inbox.ts` (`resolveSubactionPlan`)
- * and `actions/life.ts`: structured TOON model output, no English keyword
+ * and `actions/life.ts`: structured JSON model output, no English keyword
  * routing, no regex, multilingual-safe.
  *
  * Every job calls `planJob({...})` to get a typed `{action, payload,
@@ -84,6 +84,7 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   ApprovalAction,
   ApprovalChannel,
@@ -265,28 +266,16 @@ function buildPrompt(jobContext: BackgroundJobContext): string {
     "calendar, books travel, makes a call, runs a workflow, or spends money",
     "returns requiresApproval=true so the user can confirm.",
     "",
-    "Return ONLY TOON with exactly these top-level fields:",
+    "Return ONLY a JSON object with exactly these top-level fields:",
     `action: one of ${ALL_ACTIONS.join(", ")}`,
     `channel: one of ${ALL_CHANNELS.join(", ")}`,
-    "requiresApproval: true or false",
+    "requiresApproval: boolean",
     "reason: short justification",
-    "payload: action-specific fields, or leave blank when action=noop",
+    "payload: action-specific object, or null when action=noop",
     "",
-    "TOON examples:",
-    "action: noop",
-    "channel: internal",
-    "requiresApproval: false",
-    "reason: Nothing is overdue on this tick.",
-    "payload:",
+    'Example noop: {"action":"noop","channel":"internal","requiresApproval":false,"reason":"Nothing is overdue on this tick.","payload":null}',
     "",
-    "action: send_email",
-    "channel: email",
-    "requiresApproval: true",
-    "reason: The contact is overdue and email is the enabled channel.",
-    "payload:",
-    "  to[0]: person@example.com",
-    "  subject: Follow-up",
-    "  body: Short draft for user approval.",
+    'Example email: {"action":"send_email","channel":"email","requiresApproval":true,"reason":"The contact is overdue and email is the enabled channel.","payload":{"to":["person@example.com"],"subject":"Follow-up","body":"Short draft for user approval."}}',
     "",
     "Rules:",
     "- Choose action=noop when no action is warranted this tick (e.g. nothing overdue).",

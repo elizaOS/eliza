@@ -88,10 +88,11 @@ async function extractToggleWithLlm(args: {
 
   const prompt = [
     "Decide which LifeOps feature flag the owner is asking to toggle, if any.",
-    "Return TOON only with exactly these keys:",
+    "Return JSON only as a single object with exactly these keys:",
     "featureKey: string|null",
     "enabled: boolean|null",
     "reason: string|null",
+    'Example: {"featureKey":"browser.automation","enabled":false,"reason":"wants manual control"}',
     "",
     "Allowed featureKey values (use null when no good match):",
     buildFeatureCatalog(),
