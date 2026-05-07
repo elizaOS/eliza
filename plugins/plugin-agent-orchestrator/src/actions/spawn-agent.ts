@@ -22,16 +22,17 @@ import {
 import type { AgentCredentials, ApprovalPreset } from "coding-agent-adapters";
 import {
   buildAgentCredentials,
+  buildOpencodeSpawnConfig,
   isAnthropicOAuthToken,
   sanitizeCustomCredentials,
 } from "../services/agent-credentials.js";
 import { readConfigEnvKey } from "../services/config-env.js";
+import type { PTYService } from "../services/pty-service.js";
+import { getCoordinator } from "../services/pty-service.js";
 import {
   detectAuthFailureKind,
   getOrchestratorAccountPoolShim,
 } from "../services/pty-spawn.js";
-import type { PTYService } from "../services/pty-service.js";
-import { getCoordinator } from "../services/pty-service.js";
 import {
   type CodingAgentType,
   isOpencodeAgentType,
@@ -41,7 +42,6 @@ import {
   toOpencodeCommand,
   toPiCommand,
 } from "../services/pty-types.js";
-import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import { looksLikeTaskAgentRequest } from "../services/task-agent-frameworks.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
@@ -54,6 +54,18 @@ import {
   startCodingTaskAction,
 } from "./start-coding-task.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
 /**
  * Once-per-process warn when CODING_AGENT_SANDBOX=off is in effect, so
  * operators tailing logs can see the app-level workdir check has been
@@ -114,6 +126,10 @@ function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx spawnAgentAction / spawnTaskAgentAction instead. This action remains during the migration window.
+ */
 export const spawnAgentAction: Action = {
   name: "SPAWN_AGENT",
 
@@ -210,6 +226,10 @@ export const spawnAgentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "spawnAgentAction / spawnTaskAgentAction",
+      "@elizaos/plugin-acpx spawnAgentAction / spawnTaskAgentAction",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "create");
     if (!access.allowed) {
       if (callback) {
@@ -754,4 +774,7 @@ export const spawnAgentAction: Action = {
   ],
 };
 
+/**
+ * @deprecated Use @elizaos/plugin-acpx spawnTaskAgentAction instead.
+ */
 export const spawnTaskAgentAction = spawnAgentAction;

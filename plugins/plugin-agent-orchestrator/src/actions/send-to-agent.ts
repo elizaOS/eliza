@@ -21,6 +21,22 @@ import { normalizeAgentType } from "../services/pty-types.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import { mergeTaskThreadEvalMetadata } from "./eval-metadata.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx sendToAgentAction / sendToTaskAgentAction instead. This action remains during the migration window.
+ */
 export const sendToAgentAction: Action = {
   name: "SEND_TO_AGENT",
 
@@ -102,6 +118,10 @@ export const sendToAgentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "sendToAgentAction / sendToTaskAgentAction",
+      "@elizaos/plugin-acpx sendToAgentAction / sendToTaskAgentAction",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {
@@ -135,6 +155,7 @@ export const sendToAgentAction: Action = {
 
     // Get session ID from content or state
     let sessionId = (params?.sessionId as string) ?? content.sessionId;
+
     if (!sessionId && state?.codingSession) {
       sessionId = (state.codingSession as { id: string }).id;
     }
@@ -313,4 +334,7 @@ export const sendToAgentAction: Action = {
   ],
 };
 
+/**
+ * @deprecated Use @elizaos/plugin-acpx sendToTaskAgentAction instead.
+ */
 export const sendToTaskAgentAction = sendToAgentAction;

@@ -43,6 +43,18 @@ import {
   splitAgentSpecsParam,
 } from "./coding-task-handlers.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
 /**
  * Caller-supplied retry policy for the custom validator path. Stored on
  * the task's session metadata under `validator` / `maxRetries` /
@@ -279,6 +291,10 @@ type BackgroundAction = Action & {
 
 const START_CODING_TASK_ACTION_NAME = "START_CODING_TASK";
 
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx createTaskAction / startCodingTaskAction instead. This action remains during the migration window.
+ */
 export const startCodingTaskAction: BackgroundAction = {
   name: START_CODING_TASK_ACTION_NAME,
 
@@ -410,6 +426,10 @@ export const startCodingTaskAction: BackgroundAction = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "startCodingTaskAction",
+      "@elizaos/plugin-acpx createTaskAction / startCodingTaskAction",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "create");
     if (!access.allowed) {
       if (callback) {
@@ -759,7 +779,7 @@ export const startCodingTaskAction: BackgroundAction = {
       name: "metadata",
       description:
         "Optional caller-supplied metadata persisted onto the task's session record. " +
-        "Currently recognized keys: `originRoomId` — the roomId where the verification " +
+        "Currently recognized keys: `originRoomId` - the roomId where the verification " +
         "result should be posted back when this task completes; used by plugin-app-control's " +
         "verification-room-bridge.",
       required: false,
@@ -768,4 +788,7 @@ export const startCodingTaskAction: BackgroundAction = {
   ],
 };
 
+/**
+ * @deprecated Use @elizaos/plugin-acpx createTaskAction instead.
+ */
 export const createTaskAction = startCodingTaskAction;
