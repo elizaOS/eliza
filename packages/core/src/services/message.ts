@@ -17,11 +17,13 @@ import {
 } from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
 import { filterByContextGate } from "../runtime/context-gates";
+import { hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
 	createContextObject,
 } from "../runtime/context-object";
 import type { ContextRegistry } from "../runtime/context-registry";
+import { renderContextObject } from "../runtime/context-renderer";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -38,6 +40,7 @@ import {
 } from "../runtime/message-handler";
 import {
 	actionResultToPlannerToolResult,
+	cacheProviderOptions,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -614,7 +617,6 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ENTITIES",
 	"CHARACTER",
 	"RECENT_MESSAGES",
-	"ACTIONS",
 	"PROVIDERS",
 ];
 
@@ -983,6 +985,90 @@ function createV5ReplyStrategyResult(args: {
 	};
 }
 
+function asProviderRecord(value: unknown):
+	| {
+			text?: unknown;
+			values?: unknown;
+			data?: unknown;
+			providerName?: unknown;
+	  }
+	| undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as {
+		text?: unknown;
+		values?: unknown;
+		data?: unknown;
+		providerName?: unknown;
+	};
+}
+
+function toJsonRecord(
+	value: unknown,
+): Record<string, JsonValue | undefined> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as Record<string, JsonValue | undefined>;
+}
+
+function appendStateProviderEvents(events: ContextEvent[], state: State): void {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") {
+		const fallbackText =
+			typeof state.text === "string" ? state.text.trim() : "";
+		if (fallbackText) {
+			events.push({
+				id: "state:fallback",
+				type: "provider",
+				source: "composeState",
+				name: "COMPOSED_STATE",
+				text: fallbackText,
+			});
+		}
+		return;
+	}
+
+	const providerOrder = Array.isArray(state.data.providerOrder)
+		? state.data.providerOrder.map((name) => String(name))
+		: Object.keys(providers).sort();
+	const seen = new Set<string>();
+	for (const providerName of providerOrder) {
+		if (seen.has(providerName)) {
+			continue;
+		}
+		seen.add(providerName);
+		const provider = asProviderRecord(
+			(providers as Record<string, unknown>)[providerName],
+		);
+		if (!provider) {
+			continue;
+		}
+		const text = typeof provider.text === "string" ? provider.text.trim() : "";
+		const values = toJsonRecord(provider.values);
+		const data =
+			provider.data && typeof provider.data === "object"
+				? (provider.data as Record<string, unknown>)
+				: undefined;
+		if (!text && !values && !data) {
+			continue;
+		}
+		events.push({
+			id: `provider:${providerName}`,
+			type: "provider",
+			source: "composeState",
+			name:
+				typeof provider.providerName === "string"
+					? provider.providerName
+					: providerName,
+			text,
+			values,
+			data,
+		});
+	}
+}
+
 function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -990,6 +1076,7 @@ function createV5MessageContextObject(args: {
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
 	userRoles?: readonly RoleGateRole[];
+	availableContexts?: readonly ContextDefinition[];
 }): ContextObject {
 	const events: ContextEvent[] = [];
 	const addInstruction = (
@@ -1009,9 +1096,9 @@ function createV5MessageContextObject(args: {
 		});
 	};
 
-	const availableContexts = parseContextList(
-		args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-	);
+	const availableContexts =
+		args.availableContexts?.map((definition) => definition.id) ??
+		parseContextList(args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY]);
 	addInstruction(
 		"available_contexts",
 		`available_contexts: ${
@@ -1019,7 +1106,7 @@ function createV5MessageContextObject(args: {
 		}`,
 		true,
 	);
-	addInstruction("composed_state", args.state.text, false);
+	appendStateProviderEvents(events, args.state);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -1196,6 +1283,39 @@ export function formatAvailableContextsForPrompt(
 		.join("\n");
 }
 
+function renderContextSegmentBlock(segment: {
+	content: string;
+	label?: string;
+	id?: string;
+	stable?: boolean;
+}): string {
+	const label = segment.label ?? segment.id ?? "context";
+	const cacheScope = segment.stable ? "stable" : "dynamic";
+	return `[${cacheScope}] ${label}\n${segment.content.trim()}`;
+}
+
+function renderMessageHandlerContext(context: ContextObject): string {
+	const rendered = renderContextObject(context);
+	const summary = {
+		id: context.id,
+		version: context.version,
+		metadata: context.metadata,
+		selectedContexts: context.trajectoryPrefix?.selectedContexts ?? [],
+		contextRegistryDigest: context.staticPrefix?.contextRegistryDigest,
+		plannedQueue: context.plannedQueue ?? [],
+	};
+	const segments = rendered.promptSegments
+		.map(renderContextSegmentBlock)
+		.filter(Boolean)
+		.join("\n\n");
+	return [
+		JSON.stringify(summary, null, 2),
+		segments ? `context_segments:\n${segments}` : "",
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
 function renderV5MessageHandlerPrompt(
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
@@ -1213,7 +1333,7 @@ function renderV5MessageHandlerPrompt(
 				)
 		: v5MessageHandlerTemplate;
 	return template
-		.replace("{{contextObject}}", JSON.stringify(context, null, 2))
+		.replace("{{contextObject}}", renderMessageHandlerContext(context))
 		.replace(
 			"{{availableContexts}}",
 			formatAvailableContextsForPrompt(availableContexts),
@@ -1387,12 +1507,15 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 }): Promise<V5MessageRuntimeStage1Result> {
-	const context = createV5MessageContextObject(args);
 	const senderRole = await resolveStage1SenderRole(args.runtime, args.message);
 	const availableContexts = listAvailableContextsForRole(
 		args.runtime.contexts,
 		senderRole,
 	);
+	const context = createV5MessageContextObject({
+		...args,
+		availableContexts,
+	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
 	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
@@ -1432,6 +1555,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			availableContexts,
 			{ directMessage: directMessageChannel },
 		);
+		const stage1PrefixHash = hashString(`stage1:${messageHandlerPrompt}`);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -1440,6 +1564,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				responseSchema: directMessageChannel
 					? v5DirectMessageHandlerSchema
 					: v5MessageHandlerSchema,
+				providerOptions: cacheProviderOptions({ prefixHash: stage1PrefixHash }),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
@@ -1507,6 +1632,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			selectedContexts,
 			includeTools: true,
 			userRoles: [senderRole],
+			availableContexts,
 		});
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
