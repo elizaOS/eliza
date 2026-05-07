@@ -139,11 +139,7 @@ export const editAction: Action = {
     const validated = await sandbox.validatePath(conversationId, filePath);
     if (!validated.ok) {
       const reason =
-        validated.reason === "outside_roots"
-          ? "path_outside_roots"
-          : validated.reason === "blocked"
-            ? "path_blocked"
-            : "invalid_param";
+        validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
     }
 

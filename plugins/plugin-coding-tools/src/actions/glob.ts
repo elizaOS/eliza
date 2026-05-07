@@ -214,13 +214,7 @@ export const globAction: Action = {
     const validation = await sandbox.validatePath(conversationId, targetPath);
     if (!validation.ok) {
       const reason =
-        validation.reason === "outside_roots"
-          ? "path_outside_roots"
-          : validation.reason === "blocked"
-            ? "path_blocked"
-            : validation.reason === "not_absolute"
-              ? "invalid_param"
-              : "invalid_param";
+        validation.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validation.message });
     }
     const root = validation.resolved;

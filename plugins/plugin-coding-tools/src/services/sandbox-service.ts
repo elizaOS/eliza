@@ -67,6 +67,16 @@ export class SandboxService extends Service {
     return this.blockedPaths.slice();
   }
 
+  /**
+   * No-op kept for API compatibility with callers that previously tracked
+   * worktree roots. The current sandbox model is blocklist-only and has
+   * no concept of allowed roots, so worktree entry/exit do not need to
+   * register paths anywhere.
+   */
+  addRoot(_conversationId: string | undefined, _absPath: string): void {}
+
+  removeRoot(_conversationId: string | undefined, _absPath: string): void {}
+
   async validatePath(
     _conversationId: string | undefined,
     absPath: string,
