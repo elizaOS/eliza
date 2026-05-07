@@ -235,6 +235,50 @@ describe("AcpService", () => {
     );
   });
 
+  it("keys service events by local session id when ACP reports a protocol session id", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const eventSessionIds: string[] = [];
+    const acpSessionIds: Array<string | undefined> = [];
+    service.onSessionEvent((sid) => eventSessionIds.push(sid));
+    service.onAcpEvent((_event, sid) => acpSessionIds.push(sid));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "local-id",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"protocol-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}}}\n',
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","id":"req","result":{"sessionId":"protocol-session","stopReason":"end_turn"}}\n',
+      ),
+    );
+    closeOk(prompt);
+    await sent;
+
+    expect(eventSessionIds).toContain(sessionId);
+    expect(eventSessionIds).not.toContain("protocol-session");
+    expect(acpSessionIds).toContain(sessionId);
+    expect(acpSessionIds).not.toContain("protocol-session");
+    expect(service.getSession(sessionId)?.acpxSessionId).toBe(
+      "protocol-session",
+    );
+  });
+
   it("cancelSession sends SIGTERM then SIGKILL after grace", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
