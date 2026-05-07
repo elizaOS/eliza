@@ -15,7 +15,12 @@ import {
 import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
-import { renderContextObject } from "./context-renderer";
+import {
+	buildStageChatMessages,
+	cachePrefixSegments,
+	normalizePromptSegments,
+	renderContextObject,
+} from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
 import type { EvaluatorEffects, EvaluatorOutput } from "./evaluator";
 import { runEvaluator } from "./evaluator";
@@ -29,6 +34,7 @@ import {
 } from "./limits";
 import {
 	buildModelInputBudget,
+	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import type {
@@ -171,8 +177,9 @@ export async function runPlannerLoop(
 		if (trajectory.plannedQueue.length === 0) {
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
-				context: params.context,
+				context: trajectory.context,
 				trajectory,
+				config,
 				modelType: params.modelType,
 				provider: params.provider,
 				tools: params.tools,
@@ -347,13 +354,9 @@ function renderPlannerModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
-	// For the legacy prompt string, still serialize as JSON so existing
-	// prompt-hash / segment-hash logic is unaffected.
-	const trajectoryContent = `trajectory:\n${stringifyForModel(params.trajectory.steps)}`;
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: false },
-		{ content: trajectoryContent, stable: false },
 	]);
 	const prompt = promptSegments.map((segment) => segment.content).join("");
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
@@ -385,8 +388,7 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 		if (!step.toolCall || !step.result) {
 			continue;
 		}
-		const toolCallId =
-			step.toolCall.id ?? `tc-${step.iteration}-${step.toolCall.name}`;
+		const toolCallId = stableToolCallId(step);
 		// The model's prior decision: assistant message with a tool call.
 		messages.push({
 			role: "assistant",
@@ -400,75 +402,65 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 				},
 			],
 		});
-		// The tool result.
 		messages.push({
 			role: "tool",
 			toolCallId,
 			name: step.toolCall.name,
-			content: step.result ? JSON.stringify(step.result) : "",
+			content: toolMessageContent(step.result),
 		});
 	}
 	return messages;
 }
 
-function compactPromptSegments(segments: PromptSegment[]): PromptSegment[] {
-	return segments.filter((segment) => segment.content.length > 0);
-}
-
-function normalizePromptSegments(segments: PromptSegment[]): PromptSegment[] {
-	return compactPromptSegments(
-		segments.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
-		})),
-	);
-}
-
-function segmentBlock(segment: PromptSegment): string {
-	const content = segment.content.trim();
-	const label = (segment as PromptSegment & { label?: unknown }).label;
-	return typeof label === "string" && label ? `${label}:\n${content}` : content;
-}
-
-function buildStageChatMessages(args: {
-	contextSegments: PromptSegment[];
-	stageLabel: string;
-	instructions: string;
-	dynamicBlocks: string[];
-	stepMessages: ChatMessage[];
-}): ChatMessage[] {
-	const stableContext = args.contextSegments
-		.filter((segment) => segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const dynamicContext = args.contextSegments
-		.filter((segment) => !segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const systemContent = [
-		...stableContext,
-		`${args.stageLabel}:\n${args.instructions}`,
-	]
-		.filter(Boolean)
-		.join("\n\n");
-	const userContent = [...dynamicContext, ...args.dynamicBlocks]
-		.map((block) => block.trim())
-		.filter(Boolean)
-		.join("\n\n");
-	return [
-		{ role: "system", content: systemContent },
-		{ role: "user", content: userContent },
-		...args.stepMessages,
-	];
-}
-
-function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
-	const prefix: PromptSegment[] = [];
-	for (const segment of segments) {
-		if (!segment.stable) break;
-		prefix.push(segment);
+/**
+ * Stable tool-call id for an assistant turn. Prefer the model-supplied id;
+ * fall back to a deterministic `tc-<iter>-<name>-<argsDigest>` so two tool
+ * calls in the same iteration with different args don't collide and so
+ * re-rendering the trajectory produces byte-identical assistant turns.
+ */
+function stableToolCallId(step: PlannerStep): string {
+	if (step.toolCall?.id) {
+		return step.toolCall.id;
 	}
-	return prefix.length > 0 ? prefix : segments.slice(0, 1);
+	const name = step.toolCall?.name ?? "unknown";
+	const argsDigest = shortArgsDigest(step.toolCall?.params);
+	return `tc-${step.iteration}-${name}-${argsDigest}`;
+}
+
+function shortArgsDigest(params: Record<string, unknown> | undefined): string {
+	if (!params) return "0";
+	const json = stringifyForModel(params);
+	let hash = 0;
+	for (let i = 0; i < json.length; i++) {
+		hash = (hash * 31 + json.charCodeAt(i)) | 0;
+	}
+	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+}
+
+/**
+ * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
+ * conventions: prefer `result.text`, fall back to a JSON serialization of
+ * `data`/`error` only when no text projection exists. Strict-grammar
+ * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
+ * the tool turn, and this preserves byte-stability when text is consistent.
+ */
+function toolMessageContent(result: PlannerToolResult): string {
+	if (typeof result.text === "string" && result.text.trim().length > 0) {
+		return result.text;
+	}
+	if (result.error) {
+		const errMsg =
+			typeof result.error === "string"
+				? result.error
+				: result.error instanceof Error
+					? result.error.message
+					: stringifyForModel(result.error);
+		return result.success ? errMsg : `error: ${errMsg}`;
+	}
+	if (result.data && Object.keys(result.data).length > 0) {
+		return stringifyForModel(result.data);
+	}
+	return result.success ? "ok" : "failed";
 }
 
 export function cacheProviderOptions(args: {
@@ -489,6 +481,19 @@ export function cacheProviderOptions(args: {
 		openai: {
 			promptCacheKey,
 			promptCacheRetention: "24h",
+		},
+		// Anthropic requires explicit cache_control on stable segments.
+		// plugin-anthropic reads cacheControl from anthropic providerOptions and
+		// stamps it onto each stable promptSegment block. This key tells the
+		// plugin which TTL to use; "5m" is the Anthropic default.
+		anthropic: {
+			cacheControl: { type: "ephemeral" },
+		},
+		// OpenRouter passes cache_control through to the underlying provider.
+		// For Anthropic-backed models it forwards the anthropic cache_control;
+		// for OpenAI-compat models it forwards prompt_cache_key.
+		openrouter: {
+			promptCacheKey,
 		},
 		gateway: {
 			caching: "auto",
@@ -560,6 +565,7 @@ async function callPlanner(params: {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
+	config: ChainingLoopConfig;
 	modelType?: TextGenerationModelType;
 	provider?: string;
 	tools?: ToolDefinition[];
@@ -569,10 +575,44 @@ async function callPlanner(params: {
 	parentStageId?: string;
 	iteration?: number;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	const renderedInput = renderPlannerModelInput({
+	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
 	});
+	let modelInputBudget = buildModelInputBudget({
+		prompt: renderedInput.prompt,
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: params.tools,
+		contextWindowTokens: params.config.contextWindowTokens,
+		reserveTokens: params.config.compactionReserveTokens,
+	});
+	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
+		const compacted = await maybeCompactPlannerTrajectory({
+			trajectory: params.trajectory,
+			budget: modelInputBudget,
+			config: params.config,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			logger: params.runtime.logger,
+		});
+		if (compacted) {
+			renderedInput = renderPlannerModelInput({
+				context: params.trajectory.context,
+				trajectory: params.trajectory,
+			});
+			modelInputBudget = buildModelInputBudget({
+				prompt: renderedInput.prompt,
+				messages: renderedInput.messages,
+				promptSegments: renderedInput.promptSegments,
+				tools: params.tools,
+				contextWindowTokens: params.config.contextWindowTokens,
+				reserveTokens: params.config.compactionReserveTokens,
+			});
+		}
+	}
 	const prompt = renderedInput.prompt;
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(
@@ -582,12 +622,6 @@ async function callPlanner(params: {
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
 	const hasTools = Array.isArray(params.tools) && params.tools.length > 0;
-	const modelInputBudget = buildModelInputBudget({
-		prompt,
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
-		tools: params.tools,
-	});
 	const modelParams: {
 		prompt: string;
 		messages: ChatMessage[];
@@ -645,6 +679,187 @@ async function callPlanner(params: {
 	});
 
 	return parsed;
+}
+
+async function maybeCompactPlannerTrajectory(args: {
+	trajectory: PlannerTrajectory;
+	budget: ModelInputBudget;
+	config: ChainingLoopConfig;
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	parentStageId?: string;
+	iteration: number;
+	logger?: PlannerRuntime["logger"];
+}): Promise<boolean> {
+	const keepSteps = Math.max(0, Math.floor(args.config.compactionKeepSteps));
+	const compactableStepCount = Math.max(
+		0,
+		args.trajectory.steps.length - keepSteps,
+	);
+	if (compactableStepCount === 0) {
+		args.logger?.debug?.(
+			{
+				estimatedInputTokens: args.budget.estimatedInputTokens,
+				compactionThresholdTokens: args.budget.compactionThresholdTokens,
+				stepCount: args.trajectory.steps.length,
+				keepSteps,
+			},
+			"Planner input crossed compaction threshold but no old steps are compactable",
+		);
+		return false;
+	}
+
+	const startedAt = Date.now();
+	const compactedSteps = args.trajectory.steps.slice(0, compactableStepCount);
+	const keptSteps = args.trajectory.steps.slice(compactableStepCount);
+	const summary = buildCompactionSummary({
+		compactedSteps,
+		keptSteps,
+		budget: args.budget,
+	});
+	args.trajectory.steps = keptSteps;
+	args.trajectory.context = appendContextEvent(args.trajectory.context, {
+		id: `compaction:${args.iteration}:${startedAt}`,
+		type: "segment",
+		source: "planner-loop",
+		createdAt: startedAt,
+		metadata: {
+			reason: "input_budget",
+			iteration: args.iteration,
+			compactedStepCount,
+			keptStepCount: keptSteps.length,
+			estimatedInputTokens: args.budget.estimatedInputTokens,
+			contextWindowTokens: args.budget.contextWindowTokens,
+			reserveTokens: args.budget.reserveTokens,
+			compactionThresholdTokens: args.budget.compactionThresholdTokens,
+		},
+		segment: {
+			id: `compaction:${args.iteration}:${startedAt}`,
+			label: "compaction",
+			content: summary,
+			stable: false,
+			metadata: {
+				reason: "input_budget",
+				iteration: args.iteration,
+				compactedStepCount,
+				keptStepCount: keptSteps.length,
+			},
+		},
+	});
+	const endedAt = Date.now();
+	await recordCompactionStage({
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		parentStageId: args.parentStageId,
+		iteration: args.iteration,
+		startedAt,
+		endedAt,
+		summary,
+		budget: args.budget,
+		compactedStepCount,
+		keptStepCount: keptSteps.length,
+		logger: args.logger,
+	});
+	return true;
+}
+
+function buildCompactionSummary(args: {
+	compactedSteps: readonly PlannerStep[];
+	keptSteps: readonly PlannerStep[];
+	budget: ModelInputBudget;
+}): string {
+	const lines = [
+		"Compacted prior planner trajectory steps because estimated input approached the model context window.",
+		`compacted_steps: ${args.compactedSteps.length}`,
+		`kept_recent_steps_verbatim: ${args.keptSteps.length}`,
+		`estimated_input_tokens_before_compaction: ${args.budget.estimatedInputTokens}`,
+		`compaction_threshold_tokens: ${args.budget.compactionThresholdTokens}`,
+		"",
+		"Compacted step summaries:",
+	];
+	for (const step of args.compactedSteps) {
+		lines.push(`- ${summarizePlannerStep(step)}`);
+	}
+	return lines.join("\n").trim();
+}
+
+function summarizePlannerStep(step: PlannerStep): string {
+	const name = step.toolCall?.name ?? (step.terminalOnly ? "terminal" : "step");
+	const status = step.result
+		? step.result.success
+			? "success"
+			: "failed"
+		: "no_result";
+	const args =
+		step.toolCall?.params && Object.keys(step.toolCall.params).length > 0
+			? ` args=${compactText(stringifyForModel(step.toolCall.params), 180)}`
+			: "";
+	const result = step.result
+		? ` result=${compactText(toolMessageContent(step.result), 360)}`
+		: step.terminalMessage
+			? ` message=${compactText(step.terminalMessage, 240)}`
+			: "";
+	return `iter ${step.iteration} ${name} ${status}${args}${result}`;
+}
+
+function compactText(value: string, maxLength: number): string {
+	const text = value.replace(/\s+/g, " ").trim();
+	if (text.length <= maxLength) {
+		return text;
+	}
+	const headLength = Math.max(20, Math.floor(maxLength * 0.65));
+	const tailLength = Math.max(20, maxLength - headLength - 24);
+	return `${text.slice(0, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${text.slice(-tailLength)}`;
+}
+
+async function recordCompactionStage(args: {
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	parentStageId?: string;
+	iteration: number;
+	startedAt: number;
+	endedAt: number;
+	summary: string;
+	budget: ModelInputBudget;
+	compactedStepCount: number;
+	keptStepCount: number;
+	logger?: PlannerRuntime["logger"];
+}): Promise<void> {
+	if (!args.recorder || !args.trajectoryId) return;
+	try {
+		const stage: RecordedStage = {
+			stageId: `stage-compaction-iter-${args.iteration}-${args.startedAt}`,
+			kind: "compaction",
+			iteration: args.iteration,
+			parentStageId: args.parentStageId,
+			startedAt: args.startedAt,
+			endedAt: args.endedAt,
+			latencyMs: args.endedAt - args.startedAt,
+			tool: {
+				name: "CONTEXT_COMPACTION",
+				args: {
+					reason: "input_budget",
+					estimatedInputTokens: args.budget.estimatedInputTokens,
+					contextWindowTokens: args.budget.contextWindowTokens,
+					reserveTokens: args.budget.reserveTokens,
+					compactionThresholdTokens: args.budget.compactionThresholdTokens,
+				},
+				result: {
+					summary: args.summary,
+					compactedStepCount: args.compactedStepCount,
+					keptStepCount: args.keptStepCount,
+				},
+				success: true,
+				durationMs: args.endedAt - args.startedAt,
+			},
+		};
+		await args.recorder.recordStage(args.trajectoryId, stage);
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record compaction stage",
+		);
+	}
 }
 
 async function recordPlannerStage(args: {
@@ -774,14 +989,14 @@ async function evaluateTrajectory(
 	if (params.evaluate) {
 		return await params.evaluate({
 			runtime: params.runtime,
-			context: params.context,
+			context: trajectory.context,
 			trajectory,
 		});
 	}
 
 	return await runEvaluator({
 		runtime: params.runtime,
-		context: params.context,
+		context: trajectory.context,
 		trajectory,
 		effects: params.evaluatorEffects,
 		recorder: params.recorder,
