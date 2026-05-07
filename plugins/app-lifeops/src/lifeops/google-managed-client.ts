@@ -1,4 +1,4 @@
-import { resolveCloudApiKey } from "@elizaos/agent/api/wallet-rpc";
+import { resolveCloudApiKey } from "@elizaos/agent/cloud/cloud-api-key";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
