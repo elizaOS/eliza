@@ -242,8 +242,11 @@ export class AccountPool {
     return all.filter((a) => a.providerId === providerId);
   }
 
-  get(accountId: string): LinkedAccountConfig | null {
-    return findAccountById(this.deps.readAccounts(), accountId);
+  get(
+    accountId: string,
+    providerId?: PoolProviderId,
+  ): LinkedAccountConfig | null {
+    return findAccountById(this.deps.readAccounts(), accountId, providerId);
   }
 
   async upsert(account: LinkedAccountConfig): Promise<void> {
@@ -269,8 +272,13 @@ export class AccountPool {
       errorCode?: string;
       model?: string;
     },
+    providerId?: PoolProviderId,
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      providerId,
+    );
     if (!account) return;
     recordUsageEntry(account.providerId, account.id, result);
     const next: LinkedAccountConfig = {
@@ -283,9 +291,17 @@ export class AccountPool {
   async refreshUsage(
     accountId: string,
     accessToken: string,
-    opts?: { codexAccountId?: string; fetch?: typeof fetch },
+    opts?: {
+      codexAccountId?: string;
+      fetch?: typeof fetch;
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
 
     let usage: LinkedAccountUsage;
@@ -315,8 +331,13 @@ export class AccountPool {
     accountId: string,
     untilMs: number,
     detail?: string,
+    providerId?: PoolProviderId,
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      providerId,
+    );
     if (!account) return;
     const healthDetail: LinkedAccountHealthDetail = {
       until:
@@ -333,8 +354,16 @@ export class AccountPool {
     });
   }
 
-  async markNeedsReauth(accountId: string, detail?: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markNeedsReauth(
+    accountId: string,
+    detail?: string,
+    providerId?: PoolProviderId,
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      providerId,
+    );
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -346,8 +375,16 @@ export class AccountPool {
     });
   }
 
-  async markInvalid(accountId: string, detail?: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markInvalid(
+    accountId: string,
+    detail?: string,
+    providerId?: PoolProviderId,
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      providerId,
+    );
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -359,8 +396,15 @@ export class AccountPool {
     });
   }
 
-  async markHealthy(accountId: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markHealthy(
+    accountId: string,
+    providerId?: PoolProviderId,
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      providerId,
+    );
     if (!account) return;
     if (account.health === "ok") return;
     await this.deps.writeAccount({
@@ -399,7 +443,18 @@ function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
 function findAccountById(
   all: Record<string, LinkedAccountConfig>,
   accountId: string,
+  providerId?: PoolProviderId,
 ): LinkedAccountConfig | null {
+  if (providerId) {
+    return (
+      all[poolRecordKey(providerId, accountId)] ??
+      Object.values(all).find(
+        (account) =>
+          account.id === accountId && account.providerId === providerId,
+      ) ??
+      null
+    );
+  }
   const direct = all[accountId];
   if (direct) return direct;
   return Object.values(all).find((account) => account.id === accountId) ?? null;
@@ -823,7 +878,11 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       const token = await getAccountAccessToken(providerId, record.id);
       if (!token) {
         result.failed += 1;
-        await pool.markNeedsReauth(record.id, "No valid credential available");
+        await pool.markNeedsReauth(
+          record.id,
+          "No valid credential available",
+          providerId,
+        );
         continue;
       }
 
@@ -833,6 +892,7 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
 
       try {
         await pool.refreshUsage(record.id, token, {
+          providerId,
           ...(record.organizationId
             ? { codexAccountId: record.organizationId }
             : {}),
@@ -842,15 +902,16 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
         result.failed += 1;
         const message = err instanceof Error ? err.message : String(err);
         if (/401|403|invalid|unauthor/i.test(message)) {
-          await pool.markNeedsReauth(record.id, message);
+          await pool.markNeedsReauth(record.id, message, providerId);
         } else if (/429|rate.?limit/i.test(message)) {
           await pool.markRateLimited(
             record.id,
             Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
             message,
+            providerId,
           );
         } else {
-          await pool.markInvalid(record.id, message);
+          await pool.markInvalid(record.id, message, providerId);
         }
       }
     }
@@ -926,9 +987,15 @@ function installAnthropicShim(pool: AccountPool): void {
     },
     getAccessToken: (providerId, accountId) =>
       getAccountAccessToken(providerId, accountId),
-    markInvalid: (accountId, detail) => pool.markInvalid(accountId, detail),
+    markInvalid: (accountId, detail) =>
+      pool.markInvalid(accountId, detail, "anthropic-subscription"),
     markRateLimited: (accountId, untilMs, detail) =>
-      pool.markRateLimited(accountId, untilMs, detail),
+      pool.markRateLimited(
+        accountId,
+        untilMs,
+        detail,
+        "anthropic-subscription",
+      ),
   };
   (globalThis as Record<symbol, unknown>)[ANTHROPIC_POOL_SHIM_SYMBOL] = shim;
 }
@@ -951,13 +1018,18 @@ function installOrchestratorShim(pool: AccountPool): void {
       return { accessToken: token, accountId: account.id };
     },
     markRateLimited: (accountId, untilMs, detail) => {
-      void pool.markRateLimited(accountId, untilMs, detail);
+      void pool.markRateLimited(
+        accountId,
+        untilMs,
+        detail,
+        "anthropic-subscription",
+      );
     },
     markInvalid: (accountId, detail) => {
-      void pool.markInvalid(accountId, detail);
+      void pool.markInvalid(accountId, detail, "anthropic-subscription");
     },
     markNeedsReauth: (accountId, detail) => {
-      void pool.markNeedsReauth(accountId, detail);
+      void pool.markNeedsReauth(accountId, detail, "anthropic-subscription");
     },
   };
   (globalThis as Record<symbol, unknown>)[ORCHESTRATOR_POOL_SHIM_SYMBOL] = shim;
