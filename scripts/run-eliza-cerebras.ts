@@ -221,30 +221,37 @@ function buildMockActions(): Action[] {
     },
   });
 
-  const clipboardWrite = makeMockAction({
-    name: "CLIPBOARD_WRITE",
-    description: "Write content to the system clipboard",
-    contexts: ["general", "files", "web"],
+  const writeDocument = makeMockAction({
+    name: "WRITE_DOCUMENT",
+    description: "Save content as a new document in the agent's document store",
+    contexts: ["documents", "web"],
     parameters: [
       {
         name: "content",
-        description: "Text content to write to clipboard",
+        description: "Document body to save",
         required: true,
+        schema: { type: "string" },
+      },
+      {
+        name: "title",
+        description: "Optional document title",
+        required: false,
         schema: { type: "string" },
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
-      const content =
-        ((options.parameters as Record<string, unknown>)?.content as string) ??
-        "";
+      const params = options.parameters as Record<string, unknown>;
+      const content = (params?.content as string) ?? "";
+      const title = (params?.title as string) ?? "Untitled";
+      const docId = `doc-${Date.now()}`;
       printStage(
         "TOOL",
-        `CLIPBOARD_WRITE called with content="${content.slice(0, 60)}..."`,
+        `WRITE_DOCUMENT called: title="${title}", content="${content.slice(0, 60)}..."`,
       );
       return {
         success: true,
-        text: "Content written to clipboard successfully.",
-        data: { actionName: "CLIPBOARD_WRITE", written: content },
+        text: `Document '${title}' saved with id ${docId}.`,
+        data: { actionName: "WRITE_DOCUMENT", documentId: docId, title },
       };
     },
   });
@@ -436,19 +443,19 @@ function buildMockActions(): Action[] {
   });
 
   // -------------------------------------------------------------------
-  // RESEARCH_AND_SAVE — umbrella action with subActions for sub-planner
-  // scenario. The real runtime triggers runSubPlanner automatically when
-  // it sees `action.subActions.length > 0`, so this handler never runs.
+  // RESEARCH — umbrella action with subActions for sub-planner scenario.
+  // The real runtime triggers runSubPlanner automatically when it sees
+  // `action.subActions.length > 0`, so this handler never runs.
   // Scoped to its own `research_workflow` context so it does not bleed
   // into the chain-2-tools scenario, which expects flat WEB_SEARCH +
-  // CLIPBOARD_WRITE calls under the `web` context.
+  // WRITE_DOCUMENT calls under the `web`/`documents` contexts.
   // -------------------------------------------------------------------
 
-  const researchAndSave = {
+  const research = {
     ...makeMockAction({
-      name: "RESEARCH_AND_SAVE",
+      name: "RESEARCH",
       description:
-        "Research a topic on the web and save the findings to the clipboard with a structured title label.",
+        "Research a topic on the web and save the findings as a document.",
       contexts: ["research_workflow"],
       parameters: [
         {
@@ -459,7 +466,7 @@ function buildMockActions(): Action[] {
         },
         {
           name: "title",
-          description: "Title label for the saved clipboard entry",
+          description: "Title for the saved document",
           required: false,
           schema: { type: "string" },
         },
@@ -467,28 +474,28 @@ function buildMockActions(): Action[] {
       handler: async () => {
         printStage(
           "TOOL",
-          "RESEARCH_AND_SAVE handler called — should not be invoked directly; sub-planner should have dispatched",
+          "RESEARCH handler called — should not be invoked directly; sub-planner should have dispatched",
         );
         return {
           success: false,
           text: "Should not be called directly — sub-planner dispatch expected.",
           error: "direct-call-not-expected",
-          data: { actionName: "RESEARCH_AND_SAVE" },
+          data: { actionName: "RESEARCH" },
         };
       },
     }),
-    subActions: ["WEB_SEARCH", "CLIPBOARD_WRITE"],
+    subActions: ["WEB_SEARCH", "WRITE_DOCUMENT"],
   } as unknown as ReturnType<typeof makeMockAction>;
 
   return [
     webSearch,
-    clipboardWrite,
+    writeDocument,
     brokenAction,
     calendarListEvents,
     calendarCreateEvent,
     emailDraft,
     emailSend,
-    researchAndSave,
+    research,
   ];
 }
 
@@ -600,10 +607,10 @@ async function buildRuntime(
     id: "research_workflow",
     label: "Research Workflow",
     description:
-      "Bundled umbrella research workflows that combine web lookup with structured, titled output to clipboard. Distinct from raw web search.",
+      "Bundled umbrella research workflows that combine web lookup with saving findings as a document. Distinct from raw web search.",
     selectionGuidance:
       "Select when the user explicitly asks for a titled or labeled research artifact (e.g. 'with title X', 'save findings as Y', 'research and store under name Z'). Do NOT select for plain 'search and save' requests.",
-    covers: ["RESEARCH_AND_SAVE", "titled research output", "umbrella research workflow"],
+    covers: ["RESEARCH", "titled research output", "umbrella research workflow"],
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",
