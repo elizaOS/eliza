@@ -10,9 +10,9 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
 import { messageText } from "./lifeops-google-helpers.js";
@@ -129,7 +129,7 @@ async function resolveChatThreadPlan(args: {
       { purpose: "lifeops-chat-thread" },
       () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
-    const parsed = parseToonKeyValue<Record<string, unknown>>(
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(
       typeof raw === "string" ? raw : "",
     );
     if (!parsed) {

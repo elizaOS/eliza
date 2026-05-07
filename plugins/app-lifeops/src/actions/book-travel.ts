@@ -11,9 +11,9 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ApprovalQueue,
@@ -269,7 +269,7 @@ async function extractBookTravelPlanWithLlm(args: {
       () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const rawText = typeof raw === "string" ? raw : "";
-    parsed = parseToonKeyValue<Record<string, unknown>>(rawText);
+    parsed = parseJsonModelRecord<Record<string, unknown>>(rawText);
   } catch {
     parsed = null;
   }

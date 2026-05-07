@@ -16,7 +16,6 @@ import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
 import {
   type IAgentRuntime,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
@@ -747,9 +746,9 @@ function normalizeModelNumber(value: unknown): number | null {
 function parseStructuredObjectFromModelText(
   value: string,
 ): Record<string, unknown> | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(value);
-  if (isRecord(parsedToon)) {
-    return parsedToon;
+  const parsedJson = parseJsonModelRecord<Record<string, unknown>>(value);
+  if (isRecord(parsedJson)) {
+    return parsedJson;
   }
   return null;
 }

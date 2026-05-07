@@ -10,10 +10,10 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -496,7 +496,7 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
         }),
     );
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
     const mode =
       parsed && typeof parsed.mode === "string"
         ? parsed.mode.trim().toLowerCase()

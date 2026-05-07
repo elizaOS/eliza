@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
@@ -125,7 +125,7 @@ function promptText(value: unknown): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function normalizeText(value: unknown): string | null {

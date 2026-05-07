@@ -14,9 +14,9 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
@@ -93,7 +93,7 @@ function promptText(value: string): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 // ── Prompt ────────────────────────────────────────────

@@ -270,7 +270,7 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_COMPLETION,
 ];
 
-type StructuredResponseFormat = "JSON" | "TOON";
+type StructuredResponseFormat = "JSON";
 
 type StructuredResponseCandidate = {
 	text: string;
@@ -3306,7 +3306,7 @@ export class AgentRuntime implements IAgentRuntime {
 										? result
 										: result === null
 											? null
-											: encodeToonValue({ result });
+												: stringifyStructuredForPrompt({ result });
 						actionResult = {
 							success: true,
 							data: {
@@ -3582,7 +3582,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.stateCache.set(`${message.id}_action_results`, {
 					values: { actionResults },
 					data: { actionResults, actionPlan },
-					text: encodeToonValue({ actionResults }),
+						text: stringifyStructuredForPrompt({ actionResults }),
 				});
 			}
 		}
@@ -4930,7 +4930,7 @@ export class AgentRuntime implements IAgentRuntime {
 				? paramsObj.input
 				: null) ||
 			(paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-				? encodeToonValue({ messages: paramsObj.messages })
+				? stringifyStructuredForPrompt({ messages: paramsObj.messages })
 				: null) ||
 			(typeof params === "string" ? params : null);
 		const resolvedModel = this.resolveModelRegistration(
@@ -5111,7 +5111,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const resultRef: { current: unknown } = { current: rawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
-			typeof v === "string" ? v : encodeToonValue({ response: v });
+			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
 		// Stream: broadcast to callbacks if streaming
 		if (
@@ -5873,11 +5873,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			// Generate prompt with format example
-			const isJSON = format === "JSON";
-
-			const EXAMPLE = isJSON
-				? this.renderJsonSchemaExample(schema)
-				: this.renderToonSchemaExample(schema);
+			const EXAMPLE = this.renderJsonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -5927,7 +5923,7 @@ export class AgentRuntime implements IAgentRuntime {
 Use this shape:
 ${EXAMPLE}
 
-Return exactly one ${isJSON ? "JSON object" : "TOON document"}.
+Return exactly one JSON object.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
 				? `\nend code: ${finalCode}\n`
@@ -5956,7 +5952,7 @@ ${section_end}`;
 			);
 
 			// Create a structured extractor on first iteration if streaming.
-			// TOON needs field-aware extraction; raw structured tokens must not be
+			// Legacy TOON output needed field-aware extraction; raw structured tokens must not be
 			// forwarded to user-visible streaming callbacks.
 			if (
 				currentRetry === 0 &&
@@ -6483,15 +6479,9 @@ ${section_end}`;
 						for (const [field, content] of validatedContent) {
 							const truncated =
 								content.length > 500 ? `${content.slice(0, 500)}...` : content;
-							if (format === "TOON") {
-								validatedParts.push(
-									encodeToonValue({
-										[field]: truncated,
-									}),
-								);
-							} else {
-								validatedParts.push(`<${field}>${truncated}</${field}>`);
-							}
+							validatedParts.push(
+								stringifyStructuredForPrompt({ [field]: truncated }),
+							);
 						}
 						if (validatedParts.length > 0) {
 							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
@@ -6643,13 +6633,6 @@ ${section_end}`;
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
 		);
 		return `${JSON.stringify(exampleObject, null, 2)}\n`;
-	}
-
-	private renderToonSchemaExample(rows: SchemaRow[]): string {
-		const exampleObject = Object.fromEntries(
-			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
-		);
-		return `${encodeToonValue(exampleObject)}\n`;
 	}
 
 	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
@@ -7285,44 +7268,21 @@ ${section_end}`;
 		response: string,
 		expectedFormat: StructuredResponseFormat,
 	): Record<string, unknown> | null {
-		const parserOrder =
-			expectedFormat === "JSON"
-				? (["JSON", "TOON"] as const)
-				: (["TOON", "JSON"] as const);
 		const candidates = this.extractStructuredResponseCandidates(response);
 
 		for (const candidate of candidates) {
-			for (const parser of parserOrder) {
-				if (parser === "JSON") {
-					if (!candidate.formats.includes("JSON")) {
-						continue;
-					}
+			if (!candidate.formats.includes("JSON")) {
+				continue;
+			}
 
-					const parsed = parseJSONObjectFromText(candidate.text);
-					if (parsed) {
-						if (candidate.source !== "raw" || expectedFormat !== "JSON") {
-							this.logger.debug(
-								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
-							);
-						}
-						return parsed;
-					}
-					continue;
+			const parsed = parseJSONObjectFromText(candidate.text);
+			if (parsed) {
+				if (candidate.source !== "raw" || expectedFormat !== "JSON") {
+					this.logger.debug(
+						`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
+					);
 				}
-
-				if (!candidate.formats.includes("TOON")) {
-					continue;
-				}
-
-				const parsed = parseToonKeyValue(candidate.text);
-				if (parsed) {
-					if (candidate.source !== "raw" || expectedFormat === "JSON") {
-						this.logger.debug(
-							`dynamicPromptExecFromState recovered TOON from ${candidate.source}`,
-						);
-					}
-					return parsed;
-				}
+				return parsed;
 			}
 		}
 
@@ -7362,22 +7322,13 @@ ${section_end}`;
 			const label = match[1]?.trim().toLowerCase() ?? "";
 			const content = match[2]?.trim() ?? "";
 			const hints: StructuredResponseFormat[] =
-				label === "json" || label === "json5"
-					? ["JSON"]
-					: label === "toon"
-						? ["TOON"]
-						: [];
+				label === "json" || label === "json5" ? ["JSON"] : [];
 			addCandidate(content, label ? `fence:${label}` : "fence", hints);
 		}
 
 		const embeddedJson = this.extractEmbeddedJsonObject(response);
 		if (embeddedJson) {
 			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
-		}
-
-		const embeddedToon = this.extractEmbeddedToonDocument(response);
-		if (embeddedToon) {
-			addCandidate(embeddedToon, "embedded-toon", ["TOON"]);
 		}
 
 		return candidates;
@@ -7391,9 +7342,6 @@ ${section_end}`;
 
 		if (this.looksLikeJsonObject(trimmed)) {
 			formats.push("JSON");
-		}
-		if (this.looksLikeToonDocument(trimmed)) {
-			formats.push("TOON");
 		}
 		return formats;
 	}

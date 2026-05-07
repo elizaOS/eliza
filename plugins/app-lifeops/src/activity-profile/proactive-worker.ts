@@ -7,10 +7,10 @@ import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import {
   type BackgroundJobContext,
@@ -205,7 +205,7 @@ function normalizeCalendarEventProactiveDecisions(
 function parseCalendarEventProactiveOutput(
   raw: string,
 ): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 export async function classifyCalendarEventsForProactivePlanning(

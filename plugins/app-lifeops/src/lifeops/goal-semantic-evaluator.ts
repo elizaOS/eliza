@@ -2,7 +2,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
@@ -201,7 +200,7 @@ function buildSemanticRepairPrompt(args: {
 function parseSemanticEvaluationOutput(
   raw: string,
 ): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function buildSemanticEvaluationResult(

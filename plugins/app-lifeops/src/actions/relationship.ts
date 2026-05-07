@@ -24,7 +24,7 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
   hasLifeOpsAccess,
-  runLifeOpsToonModel,
+  runLifeOpsJsonModel,
 } from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
@@ -525,7 +525,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "RELATIONSHIP.plan",

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
@@ -38,7 +38,7 @@ function promptText(value: string): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function parseTimeOfDay(value: string): string | null {
