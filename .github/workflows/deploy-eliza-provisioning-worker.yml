@@ -1,15 +1,15 @@
 name: Deploy Eliza Provisioning Worker
 
-# SSHes to the Hetzner provisioning host, fetches the latest develop/main commit,
+# SSHes to the Hetzner provisioning host, fetches the latest develop commit,
 # installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
-#   HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment staging
+#   HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
@@ -19,79 +19,38 @@ on:
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
       - 'cloud/packages/db/repositories/agent-sandboxes.ts'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
 
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.ref }}
+  group: deploy-eliza-provisioning-worker
   cancel-in-progress: false
 
 jobs:
-  determine-env:
-    name: Determine Environment
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.env.outputs.environment }}
-      branch: ${{ steps.env.outputs.branch }}
-    steps:
-      - name: Set environment
-        id: env
-        # Interpolate Actions context values into env: rather than the run: body
-        # so a malicious branch name (github.ref) cannot break out of the shell.
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_ENV: ${{ github.event.inputs.environment }}
-          REF: ${{ github.ref }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "environment=$INPUT_ENV" >> "$GITHUB_OUTPUT"
-            if [ "$INPUT_ENV" = "production" ]; then
-              echo "branch=main" >> "$GITHUB_OUTPUT"
-            else
-              echo "branch=develop" >> "$GITHUB_OUTPUT"
-            fi
-          elif [ "$REF" = "refs/heads/main" ]; then
-            echo "environment=production" >> "$GITHUB_OUTPUT"
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          else
-            echo "environment=staging" >> "$GITHUB_OUTPUT"
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
-          fi
-
   deploy:
     name: Deploy worker to Hetzner host
     runs-on: ubuntu-latest
-    needs: determine-env
-    environment: ${{ needs.determine-env.outputs.environment }}
+    environment: production
     timeout-minutes: 15
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-      DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+      DEPLOY_BRANCH: develop
     steps:
       - name: Check deploy configuration
         id: deploy_config
         run: |
           if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY for environment ${{ needs.determine-env.outputs.environment }}; skipping provisioning-worker deploy."
+            echo "::warning::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY; skipping provisioning-worker deploy."
             {
               echo "### Provisioning worker deploy skipped"
               echo ""
-              echo "Missing \`ELIZA_PROVISIONING_HOST\` or \`ELIZA_PROVISIONING_SSH_KEY\` for GitHub environment \`${{ needs.determine-env.outputs.environment }}\`."
+              echo "Missing \`ELIZA_PROVISIONING_HOST\` or \`ELIZA_PROVISIONING_SSH_KEY\` for GitHub environment \`production\`."
               echo ""
               echo "Bootstrap the Hetzner host and secrets with:"
               echo ""
               echo "\`\`\`bash"
-              echo "HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment ${{ needs.determine-env.outputs.environment }}"
+              echo "HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap"
               echo "\`\`\`"
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -127,7 +86,9 @@ jobs:
             git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
             git checkout -- . 2>/dev/null || true
 
-            git fetch origin "$DEPLOY_BRANCH"
+            # Use a refspec so a single-branch / shallow clone still creates
+            # the remote-tracking ref for $DEPLOY_BRANCH on first deploy.
+            git fetch origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
             git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
             # Pin bun version on first install to narrow `curl | bash` blast radius.
@@ -205,8 +166,7 @@ jobs:
           title: "🚀 Eliza Provisioning Worker Deployed"
           nodetail: true
           description: |
-            Environment: ${{ needs.determine-env.outputs.environment }}
-            Branch: ${{ needs.determine-env.outputs.branch }}
+            Branch: develop
             Commit: ${{ github.sha }}
           color: 0x00ff00
 
@@ -219,7 +179,6 @@ jobs:
           title: "❌ Eliza Provisioning Worker Deploy Failed"
           nodetail: true
           description: |
-            Environment: ${{ needs.determine-env.outputs.environment }}
-            Branch: ${{ needs.determine-env.outputs.branch }}
+            Branch: develop
             Commit: ${{ github.sha }}
           color: 0xff0000
