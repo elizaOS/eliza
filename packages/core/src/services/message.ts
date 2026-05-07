@@ -4431,9 +4431,7 @@ export class DefaultMessageService implements IMessageService {
 				await runtime.runActionsByMode("ALWAYS_BEFORE", message);
 				// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
 				// rest of the pipeline. Telemetry, logging, side effects.
-				void runtime
-					.runActionsByMode("ALWAYS_DURING", message)
-					.catch(() => {});
+				void runtime.runActionsByMode("ALWAYS_DURING", message).catch(() => {});
 			} catch (error) {
 				runtime.logger.warn(
 					{
