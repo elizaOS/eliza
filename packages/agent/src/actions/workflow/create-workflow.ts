@@ -18,7 +18,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../../security/access.js";
 import { fetchJson, getApiBase, type N8nWorkflowResponse } from "./api.js";
 
 const CREATE_WORKFLOW_ACTION = "CREATE_WORKFLOW";
@@ -49,21 +48,14 @@ export const createWorkflowAction: Action = {
     "Generate a new n8n workflow from a seed prompt describing the desired multi-step pipeline. Requires a seedPrompt — without one the UI only opens a local draft and never creates a real workflow.",
   descriptionCompressed:
     "generate new n8n workflow seed prompt describ desir multi-step pipeline require seedprompt wo/ one UI open local draft never create real workflow",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may create workflows.",
-      };
-    }
-
     const params = (options?.parameters ?? {}) as CreateWorkflowParameters;
     const seedPrompt = readString(params.seedPrompt);
     const name = readString(params.name);

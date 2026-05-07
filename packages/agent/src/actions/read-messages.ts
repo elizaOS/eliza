@@ -12,7 +12,6 @@
 
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
 import {
   type CrossPlatformConversationView,
   formatContactCandidates,
@@ -63,21 +62,11 @@ export const readMessagesAction: Action = {
   descriptionCompressed:
     "read recent messages/conversation w/ specific person across connect platform resolve person via Rolodex show conversation every platform agent interact w/ use conversation context before send reply, review what discuss different platform result save clipboard w/ CLIPBOARD_WRITE",
 
-  validate: async (runtime, message, state) => {
-    if (!(await hasAdminAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "read_messages");
   },
 
   handler: async (runtime, message, state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner or admins may read messages.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "READ_MESSAGES" },
-      };
-    }
-
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadMessagesParams;
     const params = (await extractActionParamsViaLlm<ReadMessagesParams>({

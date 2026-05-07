@@ -102,24 +102,32 @@ uv run python scripts/normalize.py
 uv run python scripts/prepare_native_tool_calling_data.py --write-matrix
 uv run python scripts/prepare_native_tool_calling_data.py \
     --transform-normalized --validate-native
+uv run python scripts/bootstrap_native_to_eliza_native.py \
+    --input data/native/records \
+    --output data/native/eliza_native_bootstrap.jsonl
 ```
 
 The source matrix is written to `data/native/source_matrix.json` and
 `data/native/SOURCE_MATRIX.md`. It records every datasource's transform family,
 strengths, weaknesses, raw-data status, and recommended native-training weight.
+`bootstrap_native_to_eliza_native.py` converts bootstrap rows into the same
+`eliza_native_v1` request/response boundary format used by real runtime
+trajectory exports.
 
 Trajectory alignment audit:
 
 ```bash
 uv run --with pyyaml --with pyarrow \
     python scripts/sample_native_trajectory_alignment.py \
-    --samples-per-source 3 --run-cerebras
+    --samples-per-source 10 --run-cerebras
 ```
 
-This writes ignored review artifacts under `data/native/audit/`: three raw
-samples per downloaded dataset, reference simple/wallet/email/calendar
-trajectories, model-call envelopes for Cerebras and the Vercel AI Gateway
-bridge, and a composition audit. See
+This writes ignored review artifacts under `data/native/audit/`: randomized
+raw samples per downloaded dataset, reference simple/wallet/email/calendar
+trajectories, real Eliza recorder-stage comparisons, an `eliza_native_v1`
+export of real local trajectories for smoke training, per-dataset synthesis
+templates for missing components, model-call envelopes for Cerebras and the
+Vercel AI Gateway bridge, and a composition audit. See
 [`docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`](docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md).
 
 ### Quick reference

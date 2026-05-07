@@ -678,6 +678,7 @@ export const searchAction: Action = {
   descriptionCompressed:
     "search registered backend by category query filters limit freshness",
   contexts: ["general", "knowledge", "browser", "system", "social"],
+  roleGate: { minRole: "USER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

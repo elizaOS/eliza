@@ -11,7 +11,16 @@ import type {
   ModelTypeName,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, ModelType, recordLlmCall } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  dropDuplicateLeadingSystemMessage,
+  logger,
+  ModelType,
+  normalizeSchemaForCerebras,
+  recordLlmCall,
+  resolveEffectiveSystemPrompt,
+  sanitizeFunctionNameForCerebras,
+} from "@elizaos/core";
 import {
   generateText,
   type JSONSchema7,
@@ -290,7 +299,10 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
   }) as NativeOutput;
 }
 
-function normalizeNativeTools(tools: unknown): ToolSet | undefined {
+function normalizeNativeTools(
+  tools: unknown,
+  options: { cerebrasMode?: boolean } = {}
+): ToolSet | undefined {
   if (!tools) {
     return undefined;
   }
@@ -314,18 +326,30 @@ function normalizeNativeTools(tools: unknown): ToolSet | undefined {
     }
 
     const description = firstString(tool.description, functionTool.description);
+    // Default to a permissive object schema. The empty-properties shape
+    // (`{ type: "object", properties: {}, additionalProperties: false }`) is
+    // accepted by OpenAI but rejected by strict-grammar providers like
+    // Cerebras with `Object fields require at least one of: 'properties' or
+    // 'anyOf' with a list of possible properties`.
     const rawSchema =
-      tool.parameters ??
-      functionTool.parameters ??
-      ({
-        type: "object",
-        properties: {},
-        required: [],
-        additionalProperties: false,
-      } satisfies JSONSchema7);
-    const inputSchema = sanitizeJsonSchema(rawSchema, true);
+      tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
+    let inputSchema = sanitizeJsonSchema(rawSchema, true);
+    if (options.cerebrasMode) {
+      // User-supplied schemas may still contain empty-properties subobjects
+      // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
+      // recursively so deep schemas are accepted by the grammar compiler.
+      inputSchema = normalizeSchemaForCerebras(inputSchema) as JSONSchema7;
+    }
 
-    toolSet[name] = {
+    // Cerebras's grammar compiler rejects function names containing characters
+    // outside `[a-zA-Z0-9_-]` (e.g. `math.factorial`). The AI SDK looks up
+    // tools by the registered key, so we register under the sanitized name AND
+    // surface it to the model under that name. Tool calls come back with the
+    // sanitized name, which the runtime resolves through its action registry —
+    // any caller relying on dotted action names should pre-sanitize.
+    const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+
+    toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
     };
@@ -516,7 +540,10 @@ function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefin
 
 function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    return { type: "object", properties: {}, required: [], additionalProperties: false };
+    // Permissive fallback: no `properties: {}`/`additionalProperties: false`
+    // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
+    // in @elizaos/core for the rationale.
+    return { type: "object" };
   }
 
   const record = schema as Record<string, unknown>;
@@ -648,26 +675,77 @@ function createLlmCallDetails(
   systemPrompt: string | undefined,
   actionType: string,
   modelType?: ModelTypeName,
-  providerOptions?: Record<string, unknown>
+  providerOptions?: Record<string, unknown>,
+  generateParams?: NativeTextParams
 ): RecordLlmCallDetails {
-  const nativeParams = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const originalParams = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const nativeParams = generateParams as
+    | (NativeTextParams & {
+        output?: unknown;
+        maxOutputTokens?: unknown;
+      })
+    | undefined;
+  const nativePrompt = nativeParams && "prompt" in nativeParams ? nativeParams.prompt : undefined;
+  const nativeMessages =
+    nativeParams && "messages" in nativeParams && Array.isArray(nativeParams.messages)
+      ? nativeParams.messages
+      : undefined;
+  const nativeSystem =
+    typeof nativeParams?.system === "string" ? nativeParams.system : systemPrompt;
   return {
     model: modelName,
     modelType,
     provider: "vercel-ai-sdk",
-    systemPrompt: systemPrompt ?? "",
-    userPrompt: params.prompt,
-    prompt: params.prompt,
-    messages: Array.isArray(nativeParams.messages) ? nativeParams.messages : undefined,
-    tools: nativeParams.tools,
-    toolChoice: nativeParams.toolChoice,
-    responseSchema: nativeParams.responseSchema,
-    providerOptions: providerOptions ?? nativeParams.providerOptions,
+    systemPrompt: nativeSystem ?? "",
+    userPrompt:
+      typeof nativePrompt === "string"
+        ? nativePrompt
+        : typeof params.prompt === "string"
+          ? params.prompt
+          : "",
+    prompt: typeof nativePrompt === "string" ? nativePrompt : undefined,
+    messages: nativeMessages,
+    tools: nativeParams?.tools ?? originalParams.tools,
+    toolChoice: nativeParams?.toolChoice ?? originalParams.toolChoice,
+    output:
+      nativeParams?.output !== undefined
+        ? buildTrajectoryOutputDescriptor(originalParams.responseSchema, nativeParams.output)
+        : undefined,
+    responseSchema: originalParams.responseSchema,
+    providerOptions:
+      providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
     temperature: params.temperature ?? 0,
-    maxTokens: params.maxTokens ?? 8192,
+    maxTokens:
+      typeof nativeParams?.maxOutputTokens === "number"
+        ? nativeParams.maxOutputTokens
+        : (params.maxTokens ?? 8192),
     purpose: "external_llm",
     actionType,
   };
+}
+
+function buildTrajectoryOutputDescriptor(responseSchema: unknown, output: unknown): unknown {
+  if (responseSchema !== undefined) {
+    return {
+      type: "object",
+      schema: responseSchema,
+    };
+  }
+  return toTrajectoryJsonSafe(output);
+}
+
+function toTrajectoryJsonSafe(value: unknown): unknown {
+  try {
+    return JSON.parse(
+      JSON.stringify(value, (_key, nested) => {
+        if (typeof nested === "function") return undefined;
+        if (typeof nested === "bigint") return nested.toString();
+        return nested;
+      })
+    ) as unknown;
+  } catch {
+    return String(value);
+  }
 }
 
 function applyUsageToDetails(
@@ -710,8 +788,10 @@ async function generateTextByModelType(
   const userContent = hasAttachments ? buildUserContent(paramsWithAttachments) : undefined;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
 
-  // Get system prompt from character if available
-  const systemPrompt = runtime.character.system ?? undefined;
+  const systemPrompt = resolveEffectiveSystemPrompt({
+    params: paramsWithAttachments,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
   const agentName = paramsWithAttachments.providerOptions?.agentName;
   const telemetryConfig: NativeTelemetrySettings = {
     isEnabled: getExperimentalTelemetry(runtime),
@@ -724,11 +804,19 @@ async function generateTextByModelType(
   // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const model = openai.chat(modelName);
-  const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools);
+  const cerebrasMode = isCerebrasMode(runtime);
+  const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools, {
+    cerebrasMode,
+  });
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice);
   const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
+  const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
   const promptOrMessages: NativePrompt = normalizedMessages
-    ? { messages: normalizedMessages }
+    ? wireMessages && wireMessages.length > 0
+      ? { messages: wireMessages }
+      : userContent
+        ? { messages: [{ role: "user" as const, content: userContent }] }
+        : { prompt: params.prompt }
     : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
       : { prompt: params.prompt };
@@ -760,7 +848,8 @@ async function generateTextByModelType(
       systemPrompt,
       "ai.streamText",
       modelType,
-      providerOptions
+      providerOptions,
+      generateParams
     );
     details.response = "";
     const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
@@ -781,7 +870,8 @@ async function generateTextByModelType(
     systemPrompt,
     "ai.generateText",
     modelType,
-    providerOptions
+    providerOptions,
+    generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
     const result = await generateText(generateParams);

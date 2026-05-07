@@ -1,5 +1,4 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -1351,8 +1350,7 @@ export const connectorAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory) =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   handler: async (
     runtime: IAgentRuntime,

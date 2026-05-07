@@ -13,7 +13,6 @@
  * @module actions/execute-trade
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   HandlerCallback,
@@ -104,6 +103,7 @@ export const executeTradeAction: Action = {
   name: "EXECUTE_TRADE",
   contexts: ["finance", "crypto", "wallet", "payments"],
   contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
+  roleGate: { minRole: "ADMIN" },
 
   similes: ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
 
@@ -116,15 +116,12 @@ export const executeTradeAction: Action = {
   descriptionCompressed:
     "Execute BSC token trade (buy/sell) via PancakeSwap (admin/owner only).",
 
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
+  validate: async (runtime: IAgentRuntime, _message: Memory) => {
     const hasWallet =
       runtime.getSetting("EVM_PRIVATE_KEY") ||
       runtime.getSetting("PRIVY_APP_ID") ||
       runtime.getSetting("STEWARD_API_URL");
     if (!hasWallet) return false;
-    // Mutating action — gate on admin/owner role. Non-admin senders are
-    // rejected at validate so the action never reaches the handler.
-    return hasAdminAccess(runtime, message);
   },
 
   handler: async (

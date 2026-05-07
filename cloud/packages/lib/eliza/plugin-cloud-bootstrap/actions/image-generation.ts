@@ -126,6 +126,7 @@ export const generateImageAction: ActionWithParams = {
   name: "GENERATE_IMAGE",
   contexts: IMAGE_CONTEXTS,
   contextGate: { anyOf: IMAGE_CONTEXTS },
+  roleGate: { minRole: "USER" },
   similes: ["DRAW", "CREATE_IMAGE", "RENDER_IMAGE", "VISUALIZE"],
   description:
     "Generates an image based on a prompt. Use when the user wants to visualize, illustrate, or see something visually.",

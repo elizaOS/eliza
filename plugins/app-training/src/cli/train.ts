@@ -200,19 +200,25 @@ async function loadBaselinePrompt(args: ParsedTrainArgs): Promise<string> {
       `[native] dataset first row is not an eliza_native_v1 document; pass --baseline <path>`,
     );
   }
-  const request = (parsedJson as { request?: { messages?: unknown } }).request;
+  const request = (
+    parsedJson as { request?: { system?: unknown; messages?: unknown } }
+  ).request;
   const messages = Array.isArray(request?.messages)
     ? (request.messages as Array<{ role?: string; content?: string }>)
     : [];
   const systemMsg = messages.find(
     (msg) => msg.role === "system" && typeof msg.content === "string",
   );
-  if (!systemMsg?.content) {
+  const system =
+    typeof request?.system === "string" && request.system.length > 0
+      ? request.system
+      : systemMsg?.content;
+  if (!system) {
     throw new Error(
-      `[native] dataset first row has no system message; pass --baseline <path>`,
+      `[native] dataset first row has no request.system or system message; pass --baseline <path>`,
     );
   }
-  return systemMsg.content;
+  return system;
 }
 
 if (

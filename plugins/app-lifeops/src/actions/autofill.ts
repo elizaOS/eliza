@@ -1,11 +1,9 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
   type ActionResult,
   type IAgentRuntime,
   logger,
-  type Memory,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -418,8 +416,7 @@ export const autofillAction: Action & {
   contexts: ["browser", "secrets", "settings", "automation"],
   roleGate: { minRole: "OWNER" },
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   parameters: [
     {
@@ -459,10 +456,6 @@ export const autofillAction: Action & {
   ],
 
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return failure("PERMISSION_DENIED");
-    }
-
     const resolved = await resolveActionArgs<AutofillSubaction, AutofillParams>(
       {
         runtime,

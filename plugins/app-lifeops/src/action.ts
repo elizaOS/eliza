@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -379,21 +378,13 @@ export const manageBrowserBridgeAction: Action = {
     "Read and control the user's real Chrome and Safari browsers via the Agent Browser Bridge extension. Scope is strictly in-browser: list tabs, read the current page DOM, navigate a tab, open a URL, change browser settings, manage companion sessions. This action only operates on already-open browser tabs and browser-extension settings. It cannot capture the desktop, cannot operate Finder, cannot launch native apps, and cannot click at OS-level coordinates. Any request mentioning the desktop, the screen, the computer, Finder, a native app, or capturing/clicking outside a browser tab must go to COMPUTER_USE instead.",
   contexts: ["browser", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may use Agent Browser Bridge control.",
-        data: { error: "PERMISSION_DENIED" },
-      };
-    }
-
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as BrowserParams;
     const inferredCommand =

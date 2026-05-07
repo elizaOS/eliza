@@ -18,7 +18,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../../security/access.js";
 import { fetchJson, findWorkflowById, getApiBase } from "./api.js";
 
 const DELETE_WORKFLOW_ACTION = "DELETE_WORKFLOW";
@@ -46,21 +45,14 @@ export const deleteWorkflowAction: Action = {
     "Permanently delete an n8n workflow by id. Use when the user wants to remove a workflow entirely. Attached trigger schedules are not cascaded — handle those separately.",
   descriptionCompressed:
     "permanently delete n8n workflow id use user want remove workflow entirely attach trigger schedule cascad handle separately",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may delete workflows.",
-      };
-    }
-
     const params = (options?.parameters ?? {}) as DeleteWorkflowParameters;
     const workflowId = readString(params.workflowId);
     if (!workflowId) {

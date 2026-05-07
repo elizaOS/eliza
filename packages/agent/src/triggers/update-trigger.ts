@@ -20,7 +20,6 @@ import type {
   TriggerType,
   TriggerWakeMode,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   listTriggerTasks,
   readTriggerConfig,
@@ -132,13 +131,13 @@ export const updateTriggerTaskAction: Action = {
   ],
   description:
     "Update an existing scheduled trigger by id. Use to change a trigger's schedule, instructions, name, or enabled state. Accepts partial updates — only the fields you provide change.",
-  validate: async (runtime, message) => {
+  validate: async (runtime, _message) => {
     if (!triggersFeatureEnabled(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
@@ -147,12 +146,6 @@ export const updateTriggerTaskAction: Action = {
       return {
         success: false,
         text: "Triggers are disabled by configuration.",
-      };
-    }
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may update triggers.",
       };
     }
 

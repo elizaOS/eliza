@@ -19,26 +19,14 @@ import type {
 } from "../src/api-client";
 import { summarizePhases } from "../src/phases";
 
+let counter = 0;
+const nextId = (prefix: string) => `${prefix}-${++counter}`;
+
 function emptyDetail(active = true): TrajectoryDetail {
-  const now = Date.now();
   const trajectory: TrajectoryListItem = {
     id: "t-001",
-    agentId: "a-001",
-    roomId: null,
-    entityId: null,
-    conversationId: null,
-    source: "chat",
     status: active ? "active" : "completed",
-    startTime: now,
-    endTime: active ? null : now + 1,
-    durationMs: active ? null : 1,
     llmCallCount: 0,
-    providerAccessCount: 0,
-    totalPromptTokens: 0,
-    totalCompletionTokens: 0,
-    metadata: {},
-    createdAt: new Date(now).toISOString(),
-    updatedAt: new Date(now).toISOString(),
   };
   return {
     trajectory,
@@ -51,40 +39,22 @@ function emptyDetail(active = true): TrajectoryDetail {
 
 function call(overrides: Partial<UILlmCall>): UILlmCall {
   return {
-    id: overrides.id ?? `c-${Math.random()}`,
-    trajectoryId: "t-001",
-    stepId: "s-001",
+    id: nextId("c"),
     model: "test-model",
-    systemPrompt: "",
-    userPrompt: "",
     response: "",
-    temperature: 0,
-    maxTokens: 0,
     purpose: "",
     actionType: "",
     stepType: "",
-    tags: [],
-    latencyMs: 0,
-    timestamp: Date.now(),
-    createdAt: new Date().toISOString(),
     ...overrides,
   };
 }
 
 function tool(overrides: Partial<UIToolEvent>): UIToolEvent {
-  return {
-    id: overrides.id ?? `e-${Math.random()}`,
-    type: "tool_call",
-    ...overrides,
-  };
+  return { id: nextId("e"), type: "tool_call", ...overrides };
 }
 
 function evaluator(overrides: Partial<UIEvaluationEvent>): UIEvaluationEvent {
-  return {
-    id: overrides.id ?? `ev-${Math.random()}`,
-    type: "evaluation",
-    ...overrides,
-  };
+  return { id: nextId("ev"), ...overrides };
 }
 
 function statusOf(
@@ -154,7 +124,7 @@ describe("realtime trajectory progression", () => {
     expect(statusOf(p3, "HANDLE")).toBe("done");
     expect(statusOf(p3, "PLAN")).toBe("done");
     expect(statusOf(p3, "ACTION")).toBe("active");
-    expect(p3.find((p) => p.phase === "ACTION")?.summary).toBe("REPLY ✓");
+    expect(p3.find((p) => p.phase === "ACTION")?.summary).toBe("REPLY");
 
     // Snapshot 4: evaluator returns CONTINUE. EVALUATE flips to done.
     const t4: TrajectoryDetail = {
@@ -222,7 +192,7 @@ describe("realtime trajectory progression", () => {
     const phases = summarizePhases(detail, { trajectoryActive: false });
     expect(statusOf(phases, "ACTION")).toBe("error");
     expect(phases.find((p) => p.phase === "ACTION")?.summary).toBe(
-      "POSTGRES_QUERY ✗",
+      "POSTGRES_QUERY",
     );
   });
 });

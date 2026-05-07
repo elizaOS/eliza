@@ -10,7 +10,6 @@
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   const port = resolveServerOnlyPort(process.env);
@@ -45,18 +44,9 @@ export const togglePluginAction: Action = {
   descriptionCompressed:
     "enable disable already-install plugin use user ask turn plugin off wo/ uninstall pass enabl true enable, enabl false disable",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may toggle plugins.",
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const pluginId =
       typeof params?.pluginId === "string" ? params.pluginId.trim() : "";

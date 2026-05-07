@@ -19,7 +19,9 @@ import {
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
+  BashAstService,
   FileStateService,
+  OsSandboxService,
   RipgrepService,
   SandboxService,
   SessionCwdService,
@@ -36,6 +38,8 @@ export const codingToolsPlugin: Plugin = {
     SessionCwdService,
     RipgrepService,
     ShellTaskService,
+    BashAstService,
+    OsSandboxService,
   ],
   providers: [availableToolsProvider],
   actions: [
@@ -61,7 +65,9 @@ export const codingToolsPlugin: Plugin = {
 export default codingToolsPlugin;
 
 export {
+  BashAstService,
   FileStateService,
+  OsSandboxService,
   RipgrepService,
   SandboxService,
   SessionCwdService,

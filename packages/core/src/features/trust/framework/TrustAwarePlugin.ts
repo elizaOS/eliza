@@ -249,6 +249,7 @@ export const exampleTrustAwarePlugin: Plugin = {
 			name: "sensitive-action",
 			contexts: ["admin", "secrets", "settings"],
 			contextGate: { anyOf: ["admin", "secrets", "settings"] },
+			roleGate: { minRole: "OWNER" },
 			description: "A sensitive action requiring trust",
 			parameters: [],
 			examples: [],

@@ -34,14 +34,19 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
-import { ContextRegistry } from "./runtime/context-registry";
+import { checkSenderRole } from "./roles";
 import { satisfiesRoleGate } from "./runtime/context-gates";
+import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
+} from "./runtime/system-prompt";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
 import type { ToolPolicyService } from "./services/tool-policy";
-import { checkSenderRole } from "./roles";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
@@ -53,11 +58,6 @@ import {
 	getTrajectoryContext,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
-import {
-	buildCanonicalSystemPrompt,
-	resolveEffectiveSystemPrompt,
-	textFromChatMessageContent,
-} from "./runtime/system-prompt";
 import {
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
@@ -4813,24 +4813,29 @@ export class AgentRuntime implements IAgentRuntime {
 		modelKey: string,
 		params: unknown,
 	): string | undefined {
-		if (!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) || !isPlainObject(params)) {
+		if (
+			!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) ||
+			!isPlainObject(params)
+		) {
 			return undefined;
 		}
-		const paramsRecord = params as Record<string, JsonValue | object | undefined>;
+		const paramsRecord = params as Record<
+			string,
+			JsonValue | object | undefined
+		>;
 		const systemPrompt = resolveEffectiveSystemPrompt({
 			params,
 			fallback: this.buildRuntimeSystemPrompt(),
 		});
-		if (
-			systemPrompt !== undefined &&
-			!Object.prototype.hasOwnProperty.call(paramsRecord, "system")
-		) {
+		if (systemPrompt !== undefined && !Object.hasOwn(paramsRecord, "system")) {
 			paramsRecord.system = systemPrompt;
 		}
 		return systemPrompt;
 	}
 
-	private getFirstUserPromptFromMessages(messages: unknown): string | undefined {
+	private getFirstUserPromptFromMessages(
+		messages: unknown,
+	): string | undefined {
 		if (!Array.isArray(messages)) {
 			return undefined;
 		}
@@ -4884,12 +4889,12 @@ export class AgentRuntime implements IAgentRuntime {
 					entityId: this.agentId,
 					roomId: this.currentRoomId ?? this.agentId,
 					body: {
-							modelType,
-							modelKey,
-							prompt: promptContent ?? undefined,
-							systemPrompt,
-							runId: this.getCurrentRunId(),
-							timestamp: Date.now(),
+						modelType,
+						modelKey,
+						prompt: promptContent ?? undefined,
+						systemPrompt,
+						runId: this.getCurrentRunId(),
+						timestamp: Date.now(),
 						executionTime: elapsedTime,
 						provider:
 							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
@@ -5088,12 +5093,12 @@ export class AgentRuntime implements IAgentRuntime {
 				requestedModelKey === ModelType.TEXT_SMALL ||
 				requestedModelKey === ModelType.TEXT_MEDIUM ||
 				requestedModelKey === ModelType.TEXT_LARGE ||
-					requestedModelKey === ModelType.TEXT_MEGA ||
-					requestedModelKey === ModelType.RESPONSE_HANDLER ||
-					requestedModelKey === ModelType.ACTION_PLANNER ||
-					requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-					requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
-					requestedModelKey === ModelType.TEXT_COMPLETION;
+				requestedModelKey === ModelType.TEXT_MEGA ||
+				requestedModelKey === ModelType.RESPONSE_HANDLER ||
+				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
+				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
 				isPlainObject(modelParams) &&
@@ -5136,24 +5141,24 @@ export class AgentRuntime implements IAgentRuntime {
 				? false
 				: !!(paramsChunk || ctxChunk || explicitStream);
 
-			if (isPlainObject(modelParams) && paramsAsStreaming) {
-				paramsAsStreaming.stream = shouldStream;
-				delete paramsAsStreaming.onStreamChunk;
-			}
+		if (isPlainObject(modelParams) && paramsAsStreaming) {
+			paramsAsStreaming.stream = shouldStream;
+			delete paramsAsStreaming.onStreamChunk;
+		}
 
-			const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
-				String(resolvedModelKey),
-			)
-				? String(resolvedModelKey)
-				: requestedModelKey;
-			const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
-				textModelKey,
-				modelParams,
-			);
+		const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
+			String(resolvedModelKey),
+		)
+			? String(resolvedModelKey)
+			: requestedModelKey;
+		const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+			textModelKey,
+			modelParams,
+		);
 
-			await this.invokePipelineHooks(
-				"pre_model",
-				preModelPipelineHookContext({
+		await this.invokePipelineHooks(
+			"pre_model",
+			preModelPipelineHookContext({
 				requestedModelType: String(modelType),
 				resolvedModelKey,
 				provider: resolvedModel?.provider ?? provider,
@@ -5272,13 +5277,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.logModelCall(
 				String(modelType),
-					resolvedModelKey,
-					params,
-					promptContent,
-					effectiveSystemPrompt,
-					elapsedTime,
-					resolvedModel?.provider ?? provider,
-					resultRef.current,
+				resolvedModelKey,
+				params,
+				promptContent,
+				effectiveSystemPrompt,
+				elapsedTime,
+				resolvedModel?.provider ?? provider,
+				resultRef.current,
 			);
 
 			await this.recordUseModelTrajectory({
@@ -5328,13 +5333,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.logModelCall(
 			String(modelType),
-				resolvedModelKey,
-				params,
-				promptContent,
-				effectiveSystemPrompt,
-				elapsedTime,
-				resolvedModel?.provider ?? provider,
-				resultRef.current,
+			resolvedModelKey,
+			params,
+			promptContent,
+			effectiveSystemPrompt,
+			elapsedTime,
+			resolvedModel?.provider ?? provider,
+			resultRef.current,
 		);
 
 		await this.recordUseModelTrajectory({
@@ -5386,21 +5391,21 @@ export class AgentRuntime implements IAgentRuntime {
 			const maxTokensRaw = isPlainObject(args.modelParams)
 				? (args.modelParams as { maxTokens?: number }).maxTokens
 				: undefined;
-				const paramsRecord = isPlainObject(args.modelParams)
-					? (args.modelParams as Record<string, unknown>)
-					: {};
-				const systemPrompt =
-					resolveEffectiveSystemPrompt({
-						params: args.modelParams,
-						fallback: this.buildRuntimeSystemPrompt(),
-					}) ?? "";
-				const userPrompt =
-					this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-					args.promptContent ??
-					"";
-				const resultRecord = isPlainObject(args.result)
-					? (args.result as Record<string, unknown>)
-					: {};
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
+			const resultRecord = isPlainObject(args.result)
+				? (args.result as Record<string, unknown>)
+				: {};
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -5410,14 +5415,14 @@ export class AgentRuntime implements IAgentRuntime {
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
-					modelType: args.modelType,
-					provider: args.provider,
-					systemPrompt,
-					userPrompt,
-					prompt:
-						typeof paramsRecord.prompt === "string"
-							? paramsRecord.prompt
-							: userPrompt,
+				modelType: args.modelType,
+				provider: args.provider,
+				systemPrompt,
+				userPrompt,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
 				messages: Array.isArray(paramsRecord.messages)
 					? paramsRecord.messages
 					: undefined,
@@ -5502,11 +5507,11 @@ export class AgentRuntime implements IAgentRuntime {
 			topK: options?.topK,
 			minP: options?.minP,
 			seed: options?.seed,
-				repetitionPenalty: options?.repetitionPenalty,
-				frequencyPenalty: options?.frequencyPenalty,
-				presencePenalty: options?.presencePenalty,
-				system,
-				stopSequences: options?.stopSequences,
+			repetitionPenalty: options?.repetitionPenalty,
+			frequencyPenalty: options?.frequencyPenalty,
+			presencePenalty: options?.presencePenalty,
+			system,
+			stopSequences: options?.stopSequences,
 			// User identifier for provider tracking/analytics - auto-populates from character name if not provided
 			// Explicitly set empty string or null will be preserved (not overridden)
 			user:
@@ -5850,7 +5855,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
-			let format: StructuredResponseFormat = resolveDefaultOutputFormat(
+			const format: StructuredResponseFormat = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
 

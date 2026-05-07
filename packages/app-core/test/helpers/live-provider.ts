@@ -252,6 +252,9 @@ export function selectLiveProvider(
     if (def.baseUrlEnvVar) {
       env[def.baseUrlEnvVar] = baseUrl;
     }
+    if (def.name === "cerebras") {
+      env.MILADY_PROVIDER = "cerebras";
+    }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;
     env.SMALL_MODEL = smallModel;

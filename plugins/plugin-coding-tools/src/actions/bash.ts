@@ -2,11 +2,11 @@ import * as fs from "node:fs/promises";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -18,6 +18,11 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
+import type { BashAstService } from "../services/bash-ast-service.js";
+import type {
+  OsSandboxService,
+  WrapResult,
+} from "../services/os-sandbox-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import type {
@@ -25,8 +30,10 @@ import type {
   ShellTaskService,
 } from "../services/shell-task-service.js";
 import {
+  BASH_AST_SERVICE,
   CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
+  OS_SANDBOX_SERVICE,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
   SHELL_TASK_SERVICE,
@@ -73,6 +80,7 @@ export const bashAction: Action = {
   name: "BASH",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "OWNER" },
   similes: ["SHELL", "EXEC", "RUN_COMMAND"],
   description:
     "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd unless an explicit cwd inside the sandbox roots is supplied. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Respects the sandbox command denylist.",
@@ -93,7 +101,8 @@ export const bashAction: Action = {
     },
     {
       name: "timeout",
-      description: "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+      description:
+        "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
       required: false,
       schema: { type: "number" },
     },
@@ -112,7 +121,11 @@ export const bashAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -133,10 +146,14 @@ export const bashAction: Action = {
     }
     const description = readStringParam(options, "description");
     const cwdParam = readStringParam(options, "cwd");
-    const runInBackground = readBoolParam(options, "run_in_background") ?? false;
+    const runInBackground =
+      readBoolParam(options, "run_in_background") ?? false;
 
     if (!message.roomId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
     const conversationId = String(message.roomId);
 
@@ -148,6 +165,12 @@ export const bashAction: Action = {
     > | null;
     const tasks = runtime.getService(SHELL_TASK_SERVICE) as InstanceType<
       typeof ShellTaskService
+    > | null;
+    const ast = runtime.getService(BASH_AST_SERVICE) as InstanceType<
+      typeof BashAstService
+    > | null;
+    const osSandbox = runtime.getService(OS_SANDBOX_SERVICE) as InstanceType<
+      typeof OsSandboxService
     > | null;
     if (!sandbox || !session || !tasks) {
       return failureToActionResult({
@@ -164,12 +187,37 @@ export const bashAction: Action = {
       });
     }
 
+    if (ast) {
+      const astResult = await ast.analyze(command);
+      if (!astResult.ok) {
+        const blocking = astResult.findings.filter(
+          (f) => f.severity === "block",
+        );
+        const summary = blocking
+          .map(
+            (f) =>
+              `[${f.category}] ${f.message}${f.evidence ? ` — ${f.evidence}` : ""}`,
+          )
+          .join("; ");
+        return failureToActionResult(
+          {
+            reason: "command_denied",
+            message: `AST analysis blocked: ${summary}`,
+          },
+          { ast_findings: astResult.findings },
+        );
+      }
+    }
+
     let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (!v.ok) {
         return failureToActionResult({
-          reason: v.reason === "outside_roots" ? "path_outside_roots" : "path_blocked",
+          reason:
+            v.reason === "outside_roots"
+              ? "path_outside_roots"
+              : "path_blocked",
           message: v.message,
         });
       }
@@ -217,17 +265,51 @@ export const bashAction: Action = {
       "CODING_TOOLS_BASH_BG_BUDGET_MS",
       DEFAULT_BG_BUDGET_MS,
     );
-    const timeout = clampTimeout(readNumberParam(options, "timeout"), defaultTimeout);
-
-    coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms`,
+    const timeout = clampTimeout(
+      readNumberParam(options, "timeout"),
+      defaultTimeout,
     );
 
-    const startOpts: { command: string; cwd: string; description?: string } = {
+    const osSandboxEnabled =
+      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === true ||
+      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === "true" ||
+      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === "1";
+    let wrap: WrapResult | undefined;
+    if (osSandboxEnabled && osSandbox?.isAvailable()) {
+      wrap = osSandbox.wrap({
+        command,
+        cwd,
+        roots: sandbox.rootsFor(conversationId),
+        allowNetwork:
+          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") ===
+            true ||
+          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") ===
+            "true" ||
+          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") === "1",
+      });
+    }
+
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms sandbox=${wrap?.kind ?? "none"}`,
+    );
+
+    const startOpts: {
+      command: string;
+      cwd: string;
+      description?: string;
+      binaryOverride?: string;
+      argsOverride?: string[];
+      onFinalize?: () => void;
+    } = {
       command,
       cwd,
     };
     if (description !== undefined) startOpts.description = description;
+    if (wrap) {
+      startOpts.binaryOverride = wrap.binary;
+      startOpts.argsOverride = wrap.args;
+      startOpts.onFinalize = wrap.cleanup;
+    }
     const rec = tasks.start_(startOpts);
 
     if (runInBackground) {

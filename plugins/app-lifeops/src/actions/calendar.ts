@@ -26,7 +26,7 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { calendarAction } from "./lib/calendar-handler.js";
+import { calendarAction as googleCalendarAction } from "./lib/calendar-handler.js";
 import { calendlyAction } from "./lib/calendly-handler.js";
 import {
   resolveActionArgs,
@@ -598,7 +598,7 @@ async function route(
 
   switch (target) {
     case "calendar":
-      return (await calendarAction.handler?.(
+      return (await googleCalendarAction.handler?.(
         runtime,
         message,
         state,
@@ -695,7 +695,7 @@ export const calendarAction: Action & {
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
   subActions: [
-    calendarAction,
+    googleCalendarAction,
     proposeMeetingTimesAction,
     checkAvailabilityAction,
     updateMeetingPreferencesAction,

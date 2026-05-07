@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -392,8 +391,7 @@ export const paymentsAction: Action & {
   ],
 
   suppressPostActionContinuation: true,
-  validate: async (runtime: IAgentRuntime, message: Memory) =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

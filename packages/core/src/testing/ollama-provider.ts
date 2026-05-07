@@ -7,6 +7,10 @@
 
 import z from "zod";
 import { logger } from "../logger";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+} from "../runtime/system-prompt";
 import type {
 	GenerateTextParams,
 	IAgentRuntime,
@@ -230,7 +234,10 @@ async function handleTextSmall(
 	);
 
 	return generateTextWithOllama(DEFAULT_MODELS.text_small, params.prompt, {
-		system: runtime.character.system ?? undefined,
+		system: resolveEffectiveSystemPrompt({
+			params,
+			fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+		}),
 		temperature: params.temperature,
 		maxTokens: params.maxTokens,
 		stopSequences: params.stopSequences,
@@ -250,7 +257,10 @@ async function handleTextLarge(
 	);
 
 	return generateTextWithOllama(DEFAULT_MODELS.text_large, params.prompt, {
-		system: runtime.character.system ?? undefined,
+		system: resolveEffectiveSystemPrompt({
+			params,
+			fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+		}),
 		temperature: params.temperature,
 		maxTokens: params.maxTokens,
 		stopSequences: params.stopSequences,
@@ -293,7 +303,7 @@ async function generateObjectWithOllama(
 
 	const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
 	const response = await generateTextWithOllama(model, jsonPrompt, {
-		system: runtime.character.system ?? undefined,
+		system: buildCanonicalSystemPrompt({ character: runtime.character }),
 		temperature: params.temperature ?? 0.3, // Lower temp for structured output
 		maxTokens: params.maxTokens,
 	});

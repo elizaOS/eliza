@@ -25,7 +25,12 @@ const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser-bridge/src",
 );
+const pluginElizaCloudSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-elizacloud",
+);
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
+const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
@@ -57,6 +62,7 @@ export default defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
+      ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
@@ -86,6 +92,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared$/,
         replacement: path.join(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/config$/,
+        replacement: path.join(sharedSrc, "config/types.ts"),
       },
       {
         find: /^@elizaos\/shared\/(.+)$/,
@@ -158,6 +168,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud$/,
+        replacement: path.join(pluginElizaCloudSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
+        replacement: path.join(pluginElizaCloudSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-openai$/,
+        replacement: path.join(pluginOpenAiSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-openai\/(.+)$/,
+        replacement: path.join(pluginOpenAiSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-pdf$/,

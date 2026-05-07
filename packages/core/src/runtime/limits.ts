@@ -7,6 +7,14 @@ export interface ChainingLoopConfig {
 	maxRepeatedFailures: number;
 	/** Maximum terminal-only planner turns that still evaluate to CONTINUE. */
 	maxTerminalOnlyContinuations: number;
+	/** Estimated model context window for compaction decisions. */
+	contextWindowTokens: number;
+	/** Token reserve kept free for model output and provider overhead. */
+	compactionReserveTokens: number;
+	/** Whether the planner may summarize old trajectory steps before replanning. */
+	compactionEnabled: boolean;
+	/** Number of newest completed tool steps kept verbatim after compaction. */
+	compactionKeepSteps: number;
 }
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
@@ -14,6 +22,10 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,
 	maxRepeatedFailures: 2,
 	maxTerminalOnlyContinuations: 2,
+	contextWindowTokens: 128_000,
+	compactionReserveTokens: 10_000,
+	compactionEnabled: true,
+	compactionKeepSteps: 4,
 };
 
 export type TrajectoryLimitKind =

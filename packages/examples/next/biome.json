@@ -10,7 +10,8 @@
       "app/**/*.ts",
       "app/**/*.tsx",
       "*.ts",
-      "*.tsx"
+      "*.tsx",
+      "!.next-build"
     ]
   },
   "linter": {

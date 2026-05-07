@@ -7,14 +7,18 @@ import { promisify } from "node:util";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
-import { failureToActionResult, readStringParam, successActionResult } from "../lib/format.js";
+import {
+  failureToActionResult,
+  readStringParam,
+  successActionResult,
+} from "../lib/format.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -41,14 +45,17 @@ export const enterWorktreeAction: Action = {
   name: "ENTER_WORKTREE",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["GIT_WORKTREE_ADD", "ADD_WORKTREE", "OPEN_WORKTREE"],
   description:
     "Create a git worktree for the current repo and switch the session into it. The new worktree path becomes the session cwd and a sandbox root, so subsequent file operations land there until EXIT_WORKTREE pops it. Use to isolate a parallel branch of work without disturbing the main checkout.",
-  descriptionCompressed: "Create and switch into a git worktree for parallel work.",
+  descriptionCompressed:
+    "Create and switch into a git worktree for parallel work.",
   parameters: [
     {
       name: "name",
-      description: "Optional worktree branch/dir name. Defaults to a random auto-* identifier.",
+      description:
+        "Optional worktree branch/dir name. Defaults to a random auto-* identifier.",
       required: false,
       schema: { type: "string" },
     },
@@ -108,7 +115,10 @@ export const enterWorktreeAction: Action = {
 
     let worktreePath: string;
     if (explicitPath) {
-      const validation = await sandbox.validatePath(conversationId, explicitPath);
+      const validation = await sandbox.validatePath(
+        conversationId,
+        explicitPath,
+      );
       if (!validation.ok) {
         const reason =
           validation.reason === "outside_roots"
@@ -127,10 +137,14 @@ export const enterWorktreeAction: Action = {
 
     try {
       const timeoutMs = 30_000;
-      await execFileAsync("git", ["worktree", "add", "-b", name, worktreePath, base], {
-        cwd,
-        timeout: timeoutMs,
-      });
+      await execFileAsync(
+        "git",
+        ["worktree", "add", "-b", name, worktreePath, base],
+        {
+          cwd,
+          timeout: timeoutMs,
+        },
+      );
     } catch (err) {
       const stderr =
         err && typeof err === "object" && "stderr" in err
@@ -139,7 +153,9 @@ export const enterWorktreeAction: Action = {
       const msg = err instanceof Error ? err.message : String(err);
       return failureToActionResult({
         reason: "io_error",
-        message: stderr ? `git worktree add failed: ${stderr.trim()}` : `git worktree add failed: ${msg}`,
+        message: stderr
+          ? `git worktree add failed: ${stderr.trim()}`
+          : `git worktree add failed: ${msg}`,
       });
     }
 
@@ -151,10 +167,11 @@ export const enterWorktreeAction: Action = {
     );
 
     const maxActionResultBytes = 2000;
-    const text = `Entered worktree ${worktreePath} on branch ${name} (from ${base})`.slice(
-      0,
-      maxActionResultBytes,
-    );
+    const text =
+      `Entered worktree ${worktreePath} on branch ${name} (from ${base})`.slice(
+        0,
+        maxActionResultBytes,
+      );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

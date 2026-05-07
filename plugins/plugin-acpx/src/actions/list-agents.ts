@@ -14,6 +14,7 @@ function dateString(value: Date | string | number): string {
 
 export const listAgentsAction: Action = {
   name: "LIST_AGENTS",
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "LIST_CODING_AGENTS",
     "SHOW_CODING_AGENTS",

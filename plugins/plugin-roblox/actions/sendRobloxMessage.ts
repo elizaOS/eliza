@@ -102,6 +102,7 @@ export const sendRobloxMessage: Action = {
   name: actionName,
   contexts: ["media", "messaging"],
   contextGate: { anyOf: ["media", "messaging"] },
+  roleGate: { minRole: "USER" },
   similes: ["ROBLOX_SEND", "ROBLOX_CHAT", "ROBLOX_ANNOUNCE"],
   description:
     "Send a chat or announcement message into the connected Roblox experience, optionally targeting specific player IDs.",

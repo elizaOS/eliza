@@ -142,6 +142,7 @@ export const readResourceAction: Action = {
   name: "READ_MCP_RESOURCE",
   contexts: MCP_RESOURCE_CONTEXTS,
   contextGate: { anyOf: MCP_RESOURCE_CONTEXTS },
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "READ_RESOURCE",
     "READ_MCP_RESOURCE",

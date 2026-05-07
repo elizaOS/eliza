@@ -14,6 +14,7 @@ const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
 const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
 const timeoutMs = Number.parseInt(process.env.CLOUD_SMOKE_TIMEOUT_MS ?? "240000", 10);
 const pollIntervalMs = Number.parseInt(process.env.CLOUD_SMOKE_POLL_INTERVAL_MS ?? "5000", 10);
+const skipStreamSmoke = process.env.CLOUD_SMOKE_SKIP_STREAM === "1";
 const runId = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 
 let apiKey: string | undefined;
@@ -90,6 +91,35 @@ async function jsonRpc(method: string, params: JsonObject = {}): Promise<JsonObj
     throw new Error(`Bridge ${method} returned no result`);
   }
   return result as JsonObject;
+}
+
+async function requestStream(path: string, init: RequestInit = {}): Promise<Response> {
+  if (!apiKey) throw new Error("API key not initialized");
+
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${apiKey}`);
+  headers.set("accept", "text/event-stream");
+  headers.set("user-agent", "eliza-cloud-live-smoke/1.0");
+  if (init.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(130_000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `${init.method ?? "GET"} ${path} returned ${response.status}: ${
+        text.trim() ? text.slice(0, 300) : response.statusText
+      }`,
+    );
+  }
+
+  return response;
 }
 
 async function createSmokeIdentity(): Promise<void> {
@@ -326,13 +356,128 @@ async function assertBridge(): Promise<void> {
   }
 
   const message = await jsonRpc("message.send", {
-    text: `cloud smoke ping ${runId}`,
+    text: `Please reply with the exact words: cloud smoke pong ${runId}`,
     roomId: `cloud-smoke-room-${runId}`,
     userId: `cloud-smoke-user-${runId}`,
+    mode: "simple",
   });
-  if (message.accepted !== true && typeof message.text !== "string") {
-    throw new Error(`Bridge message send failed: ${describeBody(message)}`);
+  const reply = typeof message.text === "string" ? message.text.trim() : "";
+  if (!reply) {
+    throw new Error(`Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`);
   }
+  console.log(`[smoke] bridge reply ${reply.length} chars`);
+}
+
+function parseSseBlock(block: string): { event: string; data: JsonObject | null } | null {
+  if (!block.trim()) return null;
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim() || "message";
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+  if (dataLines.length === 0) {
+    return { event, data: null };
+  }
+  const dataText = dataLines.join("\n");
+  try {
+    return { event, data: JSON.parse(dataText) as JsonObject };
+  } catch {
+    return { event, data: { text: dataText } };
+  }
+}
+
+function extractSseText(event: string, data: JsonObject | null): string {
+  if (!data) return "";
+  const direct =
+    typeof data.text === "string"
+      ? data.text
+      : typeof data.chunk === "string"
+        ? data.chunk
+        : typeof data.content === "string"
+          ? data.content
+          : "";
+  if (direct) return direct;
+
+  const content = data.content;
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    const text = (content as JsonObject).text;
+    if (typeof text === "string") return text;
+  }
+  if (event === "error") {
+    const message =
+      typeof data.message === "string"
+        ? data.message
+        : typeof data.error === "string"
+          ? data.error
+          : JSON.stringify(data);
+    throw new Error(`Stream returned error event: ${message}`);
+  }
+  return "";
+}
+
+async function assertStreamReply(): Promise<void> {
+  if (!agentId) throw new Error("Agent not initialized");
+  const response = await requestStream(`/api/v1/eliza/agents/${agentId}/stream`, {
+    method: "POST",
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: `stream-${Date.now()}`,
+      method: "message.send",
+      params: {
+        text: `Please reply with the exact words: cloud stream smoke pong ${runId}`,
+        roomId: `cloud-smoke-stream-room-${runId}`,
+        mode: "simple",
+      },
+    }),
+  });
+
+  if (!response.body) {
+    throw new Error("Stream response did not include a body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let reply = "";
+  let sawDone = false;
+  const deadline = Date.now() + 120_000;
+
+  while (Date.now() < deadline) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() ?? "";
+
+    for (const rawBlock of blocks) {
+      const parsed = parseSseBlock(rawBlock);
+      if (!parsed) continue;
+      if (parsed.event === "done") {
+        sawDone = true;
+      }
+      reply += extractSseText(parsed.event, parsed.data);
+    }
+
+    if (sawDone) break;
+  }
+
+  if (!sawDone && buffer.trim()) {
+    const parsed = parseSseBlock(buffer.trim());
+    if (parsed) {
+      if (parsed.event === "done") sawDone = true;
+      reply += extractSseText(parsed.event, parsed.data);
+    }
+  }
+
+  const trimmed = reply.trim();
+  if (!trimmed) {
+    throw new Error(`Stream did not return assistant text${sawDone ? "" : " before timeout"}`);
+  }
+  console.log(`[smoke] stream reply ${trimmed.length} chars`);
 }
 
 async function assertPairingToken(): Promise<void> {
@@ -395,6 +540,11 @@ async function main(): Promise<void> {
 
   await assertBridge();
   console.log("[smoke] bridge ok");
+
+  if (!skipStreamSmoke) {
+    await assertStreamReply();
+    console.log("[smoke] stream ok");
+  }
 
   await assertPairingToken();
   console.log("[smoke] pairing ok");

@@ -21,7 +21,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../../security/access.js";
 import {
   readTriggerConfig,
   taskToTriggerSummary,
@@ -102,21 +101,14 @@ export const promoteTaskToWorkflowAction: Action = {
     "Promote an existing task or trigger into a full n8n workflow. Builds a compilation prompt from the task's instructions and schedule, then generates a new workflow.",
   descriptionCompressed:
     "promote exist task trigger full n8n workflow build compilation prompt task instruction schedule, generate new workflow",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may promote tasks to workflows.",
-      };
-    }
-
     const params = (options?.parameters ?? {}) as PromoteTaskParameters;
     const taskId = readString(params.taskId);
     if (!taskId) {

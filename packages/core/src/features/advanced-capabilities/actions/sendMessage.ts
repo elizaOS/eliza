@@ -1336,6 +1336,7 @@ export const sendMessageAction: Action = {
 	description: BASE_DESCRIPTION,
 	descriptionCompressed: BASE_DESCRIPTION_COMPRESSED,
 	contexts: ["messaging", "email", "contacts", "connectors", "social_posting"],
+	roleGate: { minRole: "ADMIN" },
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,

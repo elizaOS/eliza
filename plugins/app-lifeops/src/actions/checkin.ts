@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -128,7 +127,7 @@ export const checkinAction: Action & {
   contexts: ["tasks", "calendar", "contacts", "messaging", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   parameters: [
     {
       name: "subaction",
@@ -138,14 +137,6 @@ export const checkinAction: Action & {
     },
   ],
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "",
-        success: false,
-        data: { error: "PERMISSION_DENIED" },
-      };
-    }
-
     const resolved = await resolveActionArgs<
       CheckinSubaction,
       Record<string, never>

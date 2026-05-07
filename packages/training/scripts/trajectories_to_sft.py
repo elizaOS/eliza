@@ -25,6 +25,7 @@ log = logging.getLogger("trajectories-to-sft")
 Example = dict[str, Any]
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
 NATIVE_FORMAT = "eliza_native_v1"
+NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 
 
 def _as_record(value: Any) -> dict[str, Any] | None:
@@ -139,6 +140,8 @@ def infer_task_type(record: dict[str, Any]) -> str:
 def examples_from_record(record: Any) -> Iterable[Example]:
     rec = _as_record(record)
     if not rec or rec.get("format") != NATIVE_FORMAT:
+        return
+    if rec.get("boundary") not in NATIVE_BOUNDARIES:
         return
 
     request = _as_record(rec.get("request"))

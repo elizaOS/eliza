@@ -18,7 +18,6 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   executeTriggerTask,
   listTriggerTasks,
@@ -67,13 +66,13 @@ export const runTriggerNowAction: Action = {
   ],
   description:
     "Run a trigger immediately, regardless of its schedule. Use when the user wants to fire or test an existing trigger right now.",
-  validate: async (runtime, message) => {
+  validate: async (runtime, _message) => {
     if (!triggersFeatureEnabled(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
@@ -82,12 +81,6 @@ export const runTriggerNowAction: Action = {
       return {
         success: false,
         text: "Triggers are disabled by configuration.",
-      };
-    }
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may fire triggers.",
       };
     }
 

@@ -90,6 +90,7 @@ export const searchActionsAction: ActionWithParams = {
   name: "SEARCH_ACTIONS",
   contexts: MCP_CONTEXTS,
   contextGate: { anyOf: MCP_CONTEXTS },
+  roleGate: { minRole: "ADMIN" },
   description:
     "Search for additional tool actions not shown in your current toolset. " +
     "Uses BM25 keyword matching against action names and descriptions across all connected platforms. " +
@@ -299,6 +300,7 @@ export const listConnectionsAction: Action = {
   name: "LIST_CONNECTIONS",
   contexts: ["connectors", "settings"],
   contextGate: { anyOf: ["connectors", "settings"] },
+  roleGate: { minRole: "ADMIN" },
   description:
     "List OAuth connections for the current organization. " +
     "Shows connected platforms, status, email, scopes, and linked date. " +

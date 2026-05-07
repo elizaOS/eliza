@@ -9,15 +9,36 @@ import {
 } from "../trajectory-recorder";
 
 let tmpDir: string;
+const originalReviewMode = process.env.MILADY_TRAJECTORY_REVIEW_MODE;
+const originalMarkdownDir = process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
 		path.join(os.tmpdir(), "trajectory-recorder-test-"),
 	);
+	delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
+	delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+	delete process.env.CEREBRAS_API_KEY;
 });
 
 afterEach(async () => {
 	await fs.rm(tmpDir, { recursive: true, force: true });
+	if (originalReviewMode === undefined) {
+		delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
+	} else {
+		process.env.MILADY_TRAJECTORY_REVIEW_MODE = originalReviewMode;
+	}
+	if (originalMarkdownDir === undefined) {
+		delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+	} else {
+		process.env.MILADY_TRAJECTORY_MARKDOWN_DIR = originalMarkdownDir;
+	}
+	if (originalCerebrasKey === undefined) {
+		delete process.env.CEREBRAS_API_KEY;
+	} else {
+		process.env.CEREBRAS_API_KEY = originalCerebrasKey;
+	}
 });
 
 describe("JsonFileTrajectoryRecorder", () => {
@@ -291,6 +312,42 @@ describe("JsonFileTrajectoryRecorder", () => {
 		// No files should have been written.
 		const entries = await fs.readdir(tmpDir).catch(() => [] as string[]);
 		expect(entries).toEqual([]);
+	});
+
+	it("writes redacted markdown review artifacts when review mode is enabled", async () => {
+		process.env.MILADY_TRAJECTORY_REVIEW_MODE = "1";
+		process.env.CEREBRAS_API_KEY = "csk-secret-for-markdown-test";
+
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-md",
+			rootMessage: {
+				id: "msg-md",
+				text: "use csk-secret-for-markdown-test",
+			},
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-md",
+			kind: "planner",
+			startedAt: 100,
+			endedAt: 200,
+			latencyMs: 100,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "gpt-oss-120b",
+				provider: "cerebras",
+				prompt: "prompt with csk-secret-for-markdown-test",
+				response: "done",
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const markdownPath = path.join(tmpDir, "agent-md", `${id}.md`);
+		const markdown = await fs.readFile(markdownPath, "utf8");
+		expect(markdown).toContain(`# Trajectory ${id}`);
+		expect(markdown).toContain("## Stage 1: planner");
+		expect(markdown).toContain("[REDACTED_SECRET]");
+		expect(markdown).not.toContain("csk-secret-for-markdown-test");
 	});
 
 	it("output JSON is structurally compatible with scripts/run-cerebras.ts LocalRecorder", async () => {

@@ -1,11 +1,18 @@
-# Native tool-calling corpus spec
+# Native tool-calling bootstrap spec
 
-This is the training contract for the native tool-calling refactor. It
-replaces the legacy `expectedResponse` string contract where the supervised
-target was usually TOON and sometimes XML or raw `<think>...</think>` text.
+This is the bootstrap transform contract for sources that are not already
+runtime trajectory exports. The final training contract is `eliza_native_v1`:
+one Vercel AI SDK model-boundary row with `request` and `response` fields.
+Bootstrap rows must be converted to `eliza_native_v1` before local training,
+benchmarking, or app-training ingestion.
 
-Every native row must be JSON. TOON may only appear inside migration metadata
-when a compatibility reader converted an old row.
+This replaces the legacy `expectedResponse` string contract where the
+supervised target was usually TOON and sometimes XML or raw
+`<think>...</think>` text.
+
+Every bootstrap row must be JSON. TOON may only appear inside migration
+metadata when a compatibility reader converted an old row; it must never be the
+supervised model output for new training data.
 
 ## Goals
 
@@ -18,7 +25,7 @@ when a compatibility reader converted an old row.
 - Support append-only trajectory exports for Atropos and RL without requiring
   every bootstrap dataset to be a complete trajectory.
 
-## Top-level row
+## Top-level bootstrap row
 
 ```jsonc
 {
@@ -234,5 +241,6 @@ All native rows must pass:
 ## Migration policy
 
 The compatibility converter may read legacy TOON/XML rows to bootstrap native
-records, but its output must be native JSON. New adapters should bypass TOON
-entirely and emit this spec directly from source rows.
+records, but its output must be native JSON and must be converted onward to
+`eliza_native_v1`. New adapters should bypass TOON entirely and emit
+`eliza_native_v1` model-boundary rows directly when possible.

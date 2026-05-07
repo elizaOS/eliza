@@ -4,11 +4,11 @@ import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -30,6 +30,7 @@ export const writeAction: Action = {
   name: "WRITE",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["WRITE_FILE", "CREATE_FILE"],
   description:
     "Write a file at an absolute path, replacing any existing contents. The file's parent directory is created if missing. Existing files must have been READ in this session first; otherwise the write is rejected to avoid clobbering external edits.",
@@ -66,7 +67,10 @@ export const writeAction: Action = {
         ? String(message.roomId)
         : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const filePath = readStringParam(options, "file_path");
@@ -112,7 +116,8 @@ export const writeAction: Action = {
 
     const gate = await fileState.assertWritable(conversationId, resolved);
     if (!gate.ok) {
-      const reason = gate.reason === "stale_read" ? "stale_read" : "invalid_param";
+      const reason =
+        gate.reason === "stale_read" ? "stale_read" : "invalid_param";
       return failureToActionResult({ reason, message: gate.message });
     }
 
@@ -130,18 +135,24 @@ export const writeAction: Action = {
       await fs.writeFile(resolved, content, "utf8");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `write failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `write failed: ${msg}`,
+      });
     }
 
     await fileState.recordWrite(conversationId, resolved);
     const bytes = Buffer.byteLength(content, "utf8");
-    coreLogger.debug(`${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`);
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`,
+    );
 
     const maxActionResultBytes = 2000;
-    const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`.slice(
-      0,
-      maxActionResultBytes,
-    );
+    const text =
+      `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`.slice(
+        0,
+        maxActionResultBytes,
+      );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

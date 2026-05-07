@@ -4,6 +4,7 @@ from format_for_training import format_record
 def test_format_record_renders_native_text_response():
     row = {
         "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
         "request": {
             "messages": [
                 {"role": "system", "content": "system prompt"},
@@ -33,6 +34,7 @@ def test_format_record_renders_native_text_response():
 def test_format_record_renders_native_tool_call_response():
     row = {
         "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
         "request": {
             "messages": [{"role": "user", "content": "send a reply"}],
             "tools": {
@@ -75,9 +77,56 @@ def test_format_record_renders_native_tool_call_response():
     }
 
 
+def test_format_record_prepends_native_request_system():
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {
+            "system": "system prompt",
+            "messages": [{"role": "user", "content": "user prompt"}],
+        },
+        "response": {"text": "assistant response"},
+        "metadata": {"task_type": "response"},
+    }
+
+    formatted = format_record(row)
+
+    assert formatted == {
+        "messages": [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+            {"role": "assistant", "content": "assistant response"},
+        ]
+    }
+
+
+def test_format_record_renders_native_system_prompt_request():
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {
+            "system": "system prompt",
+            "prompt": "user prompt",
+        },
+        "response": {"text": "assistant response"},
+        "metadata": {"task_type": "response"},
+    }
+
+    formatted = format_record(row)
+
+    assert formatted == {
+        "messages": [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+            {"role": "assistant", "content": "assistant response"},
+        ]
+    }
+
+
 def test_format_record_rejects_prompt_only_native_rows():
     row = {
         "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
         "request": {
             "messages": [
                 {"role": "system", "content": "system prompt"},
@@ -91,7 +140,20 @@ def test_format_record_rejects_prompt_only_native_rows():
     assert format_record(row) is None
 
 
-def test_format_record_keeps_flat_eliza_record_compatibility():
+def test_format_record_rejects_native_rows_without_model_boundary():
+    row = {
+        "format": "eliza_native_v1",
+        "request": {
+            "messages": [{"role": "user", "content": "user prompt"}],
+        },
+        "response": {"text": "assistant response"},
+        "metadata": {"task_type": "response"},
+    }
+
+    assert format_record(row) is None
+
+
+def test_format_record_rejects_flat_eliza_record_compatibility():
     row = {
         "roomName": "room",
         "agentId": "Eliza",
@@ -109,5 +171,4 @@ def test_format_record_keeps_flat_eliza_record_compatibility():
 
     formatted = format_record(row)
 
-    assert formatted is not None
-    assert formatted["messages"][-1] == {"role": "assistant", "content": "hi"}
+    assert formatted is None

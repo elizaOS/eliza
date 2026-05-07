@@ -133,7 +133,7 @@ describe("planner-loop message stacking regression", () => {
 		const capturedMessages: ChatMessage[][] = [];
 		let callCount = 0;
 		const runtime = {
-			useModel: vi.fn(async (modelType, params) => {
+			useModel: vi.fn(async (_modelType, params) => {
 				callCount++;
 				const p = params as { messages?: ChatMessage[] };
 				if (p.messages) {
@@ -191,11 +191,102 @@ describe("planner-loop message stacking regression", () => {
 		}
 	});
 
-	it("tool message toolCallId matches the assistant toolCalls id", async () => {
+	it("emits exactly one system + one user message before the suffix", async () => {
+		// Wire-shape regression: stacking many `system` messages fragments the
+		// cache prefix, confuses turn boundaries, and triggers strict provider
+		// validation (Cerebras 400s on certain combinations). The native chat
+		// protocol expects ONE system + ONE user prefix, then assistant/tool
+		// suffix turns for each iteration of the loop.
 		const capturedMessages: ChatMessage[][] = [];
 		let callCount = 0;
 		const runtime = {
 			useModel: vi.fn(async (modelType, params) => {
+				callCount++;
+				const p = params as { messages?: ChatMessage[] };
+				if (p.messages) {
+					capturedMessages.push(JSON.parse(JSON.stringify(p.messages)));
+				}
+				if (callCount === 1) {
+					return {
+						text: "",
+						toolCalls: [
+							{ id: "tc-1", name: "LOOKUP", arguments: { q: "x" } },
+						],
+					};
+				}
+				return {
+					text: "",
+					toolCalls: [
+						{ id: "tc-end", name: "REPLY", arguments: { text: "ok" } },
+					],
+				};
+			}),
+		};
+
+		await runPlannerLoop({
+			runtime,
+			context: {
+				id: "ctx-shape",
+				staticPrefix: {
+					systemPrompt: {
+						id: "system",
+						label: "system",
+						content: "You are Eliza.",
+						stable: true,
+					},
+					contextRegistryDigest: "general,calendar,email",
+				},
+				trajectoryPrefix: {
+					selectedContexts: ["general"],
+				},
+				events: [
+					{
+						id: "instr-rules",
+						type: "instruction",
+						source: "test",
+						content: "rules: be concise",
+						stable: true,
+						role: "system",
+					},
+					{
+						id: "msg-user-1",
+						type: "message",
+						source: "user",
+						message: { role: "user", content: "What's 2+2?" },
+					},
+				],
+			},
+			tools: [TOOL_DEF],
+			executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "go",
+			})),
+		});
+
+		expect(capturedMessages.length).toBeGreaterThanOrEqual(1);
+		for (const messages of capturedMessages) {
+			// Exactly one leading system message.
+			expect(messages[0]?.role).toBe("system");
+			// No second system message — that would fragment the cache prefix.
+			expect(messages[1]?.role).not.toBe("system");
+			// Second message must be the live user turn.
+			expect(messages[1]?.role).toBe("user");
+			// No system messages after the user turn (no system inserted into
+			// the suffix stream). Suffix is assistant or tool, never user.
+			for (let i = 2; i < messages.length; i++) {
+				expect(messages[i]?.role).not.toBe("system");
+				expect(["assistant", "tool"]).toContain(messages[i]?.role);
+			}
+		}
+	});
+
+	it("tool message toolCallId matches the assistant toolCalls id", async () => {
+		const capturedMessages: ChatMessage[][] = [];
+		let callCount = 0;
+		const runtime = {
+			useModel: vi.fn(async (_modelType, params) => {
 				callCount++;
 				const p = params as { messages?: ChatMessage[] };
 				if (p.messages) {

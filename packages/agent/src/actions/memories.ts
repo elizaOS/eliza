@@ -9,7 +9,6 @@
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;
@@ -51,15 +50,13 @@ export const recallMemoryFilteredAction: Action = {
     "Recall memories filtered by type, entityId, roomId, or text query. Routes to /api/memories/by-entity when entityId is supplied; otherwise /api/memories/browse.",
   descriptionCompressed:
     "recall memory filter type, entityid, roomid, text query route / api/memories/by-entity entityid suppli; otherwise / api/memories/browse",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may inspect memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | RecallMemoryParams
       | undefined;
@@ -195,15 +192,13 @@ export const forgetMemoryAction: Action = {
     "Permanently delete a memory by id. Requires explicit confirm:true.",
   descriptionCompressed:
     "permanently delete memory id require explicit confirm: true",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may forget memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ForgetMemoryParams
       | undefined;
@@ -296,15 +291,13 @@ export const editMemoryAction: Action = {
     "Edit the text of an existing memory. Server re-embeds the new text. Requires explicit confirm:true.",
   descriptionCompressed:
     "edit text exist memory server re-embed new text require explicit confirm: true",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may edit memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | EditMemoryParams
       | undefined;

@@ -32,7 +32,9 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
+export * from "./runtime/system-prompt";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";

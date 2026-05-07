@@ -9,7 +9,6 @@
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { annotateActiveTrajectoryStep, logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 import type {
   TrajectoryListResult,
   TrajectoryStepKind,
@@ -43,15 +42,13 @@ export const queryTrajectoriesAction: Action = {
     "List recorded trajectories with optional filters: source, status, scenarioId, batchId, plus limit/offset.",
   descriptionCompressed:
     "list record trajectory w/ optional filter: source, status, scenarioid, batchid, plus limit/offset",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may query trajectories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | QueryTrajectoriesParams
       | undefined;
@@ -203,15 +200,13 @@ export const exportTrajectoryDatasetAction: Action = {
     "Export trajectory data as JSON, JSONL, CSV, ART, or ZIP via /api/trajectories/export. Returns the response size; the agent does not stream the bytes back to the user.",
   descriptionCompressed:
     "export trajectory data JSON, JSONL, CSV, ART, ZIP via / api/trajectories/export return response size; agent stream byte back user",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may export trajectories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ExportTrajectoriesParams
       | undefined;
@@ -346,15 +341,13 @@ export const annotateTrajectoryAction: Action = {
     "Attach kind/script/childSteps/usedSkills annotations to the active trajectory step (or a supplied stepId).",
   descriptionCompressed:
     "attach kind/script/childsteps/usedskill annotation active trajectory step (suppli stepid)",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may annotate trajectories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | AnnotateTrajectoryParams
       | undefined;

@@ -10,7 +10,9 @@ import type {
 	StreamChunkCallback,
 } from "../types";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
+import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
+import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
@@ -92,6 +94,38 @@ export async function executePlannedToolCall(
 		},
 	};
 
+	const messageId = ctx.message.id as UUID | undefined;
+	const roomId = ctx.message.roomId as UUID;
+	const worldId = (ctx.message.worldId ?? roomId) as UUID;
+	const actionStartContent = {
+		text: `Executing action: ${action.name}`,
+		actions: [action.name],
+		actionStatus: "executing" as const,
+		source: ctx.message.content?.source,
+	};
+	if (typeof runtime.emitEvent === "function") {
+		await runtime
+			.emitEvent(EventType.ACTION_STARTED, {
+				runtime,
+				messageId,
+				roomId,
+				world: worldId,
+				content: actionStartContent,
+			})
+			.catch((err) => {
+				runtime.logger?.warn?.(
+					{
+						src: "execute-planned-tool-call",
+						action: action.name,
+						eventType: EventType.ACTION_STARTED,
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"emitEvent failed",
+				);
+			});
+	}
+
+	let resultForEvent: ActionResult;
 	try {
 		const result = await action.handler(
 			runtime,
@@ -101,13 +135,45 @@ export async function executePlannedToolCall(
 			ctx.callback,
 			ctx.responses,
 		);
-		return emitToolResult(toolCall, normalizeActionResult(action.name, result));
+		resultForEvent = normalizeActionResult(action.name, result);
 	} catch (error) {
-		return emitToolResult(
-			toolCall,
-			failureResult(action.name, stringifyError(error), { error }),
-		);
+		resultForEvent = failureResult(action.name, stringifyError(error), {
+			error,
+		});
 	}
+
+	if (typeof runtime.emitEvent === "function") {
+		await runtime
+			.emitEvent(EventType.ACTION_COMPLETED, {
+				runtime,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: resultForEvent.text ?? `Action ${action.name} completed`,
+					actions: [action.name],
+					actionStatus: resultForEvent.success ? "completed" : "failed",
+					source: ctx.message.content?.source,
+					error:
+						typeof resultForEvent.error === "string"
+							? resultForEvent.error
+							: undefined,
+				},
+			})
+			.catch((err) => {
+				runtime.logger?.warn?.(
+					{
+						src: "execute-planned-tool-call",
+						action: action.name,
+						eventType: EventType.ACTION_COMPLETED,
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"emitEvent failed",
+				);
+			});
+	}
+
+	return emitToolResult(toolCall, resultForEvent);
 }
 
 async function emitToolResult(

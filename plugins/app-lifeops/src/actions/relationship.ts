@@ -6,7 +6,6 @@
  * mark_followup_done, set_followup_threshold.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -581,7 +580,7 @@ export const relationshipAction: Action & {
   contexts: ["contacts", "tasks", "calendar", "messaging"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

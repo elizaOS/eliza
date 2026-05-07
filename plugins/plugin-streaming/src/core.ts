@@ -3,6 +3,7 @@
  * and pipeline control actions (local FFmpeg via dashboard API).
  */
 
+import { isCloudConnected } from "@elizaos/cloud-routing";
 import type {
   Action,
   ActionParameter,
@@ -18,7 +19,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { isCloudConnected } from "@elizaos/cloud-routing";
 
 // ── Overlay layout data (JSON-serializable, no React refs) ──────────────────
 
@@ -552,6 +552,7 @@ export function buildStreamOpAction(
     name: "STREAM_OP",
     contexts: ["media", "automation", "connectors"],
     contextGate: { anyOf: ["media", "automation", "connectors"] },
+    roleGate: { minRole: "ADMIN" },
     description:
       "Control the local RTMP streaming pipeline for a target platform. Dispatches start, stop, and status calls to the dashboard stream API for twitch, youtube, x, or pumpfun.",
     descriptionCompressed:

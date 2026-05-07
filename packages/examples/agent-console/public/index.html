@@ -235,6 +235,7 @@
         color: var(--fg-faint); margin-bottom: 4px;
         display: flex; gap: 8px; align-items: center;
       }
+      .io-label.sub { margin-top: 8px; }
       .io-label .arrow { color: var(--cyan); }
       .io-text {
         font-size: 11px;
@@ -244,6 +245,111 @@
       }
       .io-text.empty { color: var(--fg-faint); font-style: italic; }
       .io-text.err { color: var(--red); }
+
+      /* messages-as-blocks (the staged prefix) */
+      .messages-stack { display: flex; flex-direction: column; gap: 4px; max-height: 380px; overflow-y: auto; }
+      .msg-block {
+        border: 1px solid var(--line);
+        background: var(--bg-3);
+        position: relative;
+      }
+      .msg-block::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+        width: 2px; background: var(--mc, var(--fg-faint));
+      }
+      .msg-block.role-system   { --mc: var(--fg-dim); }
+      .msg-block.role-user     { --mc: var(--green); }
+      .msg-block.role-assistant{ --mc: var(--cyan-2); }
+      .msg-block.role-tool     { --mc: var(--magenta); }
+      .msg-block.role-segment  { --mc: var(--fg-faint); }
+      .msg-block.stable {
+        background: linear-gradient(90deg, rgba(57,186,230,0.04), transparent 60%);
+        border-color: var(--line-2);
+      }
+      .msg-block-hdr {
+        display: flex; gap: 8px; align-items: baseline;
+        padding: 2px 8px 2px 10px;
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+        color: var(--fg-faint); border-bottom: 1px solid var(--line);
+      }
+      .role-tag           { color: var(--fg-dim); }
+      .role-tag.system    { color: var(--fg-dim); }
+      .role-tag.user      { color: var(--green); }
+      .role-tag.assistant { color: var(--cyan-2); }
+      .role-tag.tool      { color: var(--magenta); }
+      .role-tag.segment   { color: var(--fg-faint); }
+      .stable-tag {
+        color: var(--cyan); font-size: 9px;
+        border: 1px solid var(--cyan); padding: 0 4px; border-radius: 1px;
+      }
+      .msg-block-hdr .bytes { margin-left: auto; color: var(--fg-faint); }
+      .msg-block-body {
+        padding: 4px 8px 6px 10px;
+        font-size: 11px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        max-height: 200px; overflow-y: auto;
+      }
+
+      /* tools list pills */
+      .tool-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+      .tool-pill {
+        font-size: 10px; padding: 1px 6px;
+        border: 1px solid var(--magenta); color: var(--magenta);
+        border-radius: 1px; cursor: help;
+      }
+
+      /* tool calls in response */
+      .tc-call {
+        margin-top: 6px;
+        border: 1px solid var(--magenta);
+        background: var(--bg-3);
+      }
+      .tc-call-hdr {
+        padding: 3px 8px; font-size: 11px; color: var(--magenta);
+        border-bottom: 1px solid var(--line);
+      }
+      .tc-call-args {
+        margin: 0; padding: 6px 8px; font-size: 10.5px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        color: var(--fg-dim);
+        max-height: 200px; overflow-y: auto;
+      }
+      .dim { color: var(--fg-dim); font-weight: normal; }
+
+      /* cache hit badge in card meta */
+      .cache-badge {
+        font-size: 10px; padding: 1px 6px; border-radius: 1px;
+        text-transform: uppercase; letter-spacing: 0.08em;
+        white-space: nowrap;
+      }
+      .cache-badge.hit  { background: rgba(127, 217, 98, 0.12); color: var(--green); border: 1px solid var(--green); }
+      .cache-badge.miss { background: rgba(122, 128, 141, 0.08); color: var(--fg-faint); border: 1px solid var(--line-2); }
+
+      /* prefix hash chip in card name */
+      .prefix-chip {
+        margin-left: 8px;
+        font-size: 10px; padding: 1px 5px; border-radius: 1px;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        font-family: inherit;
+      }
+      .prefix-chip.fresh { color: var(--cyan);  border: 1px dashed var(--cyan); }
+      .prefix-chip.reuse { color: var(--green); border: 1px solid var(--green); background: rgba(127, 217, 98, 0.06); }
+
+      /* trajectory_end stats grid */
+      .stats-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 12px;
+        font-size: 11px;
+        padding: 4px 0;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .stats-grid > div { display: flex; justify-content: space-between; gap: 6px; padding: 2px 0; }
+      .stat-k { color: var(--fg-faint); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+      .stat-v { color: var(--fg); font-weight: 500; }
+      .stat-v.hit { color: var(--green); }
+      .stat-v.partial { color: var(--amber); }
+      .stat-v.miss { color: var(--fg-dim); }
+      .stat-v.err { color: var(--red); }
     </style>
   </head>
   <body>
@@ -301,6 +407,7 @@
         elapsedTimer: null,
         evCount: 0,
         ctxMsgs: [],
+        seenPrefixHashes: new Set(),
       };
 
       const $ = (id) => document.getElementById(id);
@@ -429,24 +536,70 @@
         $pipeline.querySelector(".empty-state")?.remove();
       }
 
+      function renderMessageBlock(m) {
+        const role = m.role || "user";
+        const stable = m.stable === true;
+        return `
+          <div class="msg-block role-${role}${stable ? " stable" : ""}">
+            <div class="msg-block-hdr">
+              <span class="role-tag ${role}">${role}</span>
+              ${stable ? '<span class="stable-tag">stable</span>' : ""}
+              <span class="bytes">${m.bytes}b</span>
+            </div>
+            <div class="msg-block-body">${escHtml(m.content || "(empty)")}</div>
+          </div>
+        `;
+      }
+
+      function renderToolPills(tools) {
+        if (!Array.isArray(tools) || tools.length === 0) return "";
+        return `<div class="tool-row">${tools.map(t =>
+          `<span class="tool-pill" title="${escHtml(t.description || "")}">${escHtml(t.name)}</span>`
+        ).join("")}</div>`;
+      }
+
       function appendModelCallStart(ev) {
         pipelineEnsureClear();
         const ix = bumpStage();
+        const inputLabel = ev.inputShape === "messages"
+          ? `${(ev.messages || []).length} msgs · ${ev.inputBytes ?? 0}b`
+          : ev.inputShape === "prompt"
+            ? `prompt · ${ev.inputBytes ?? 0}b`
+            : `${ev.inputBytes ?? 0}b`;
+        const prefixHashShort = ev.prefixHash ? String(ev.prefixHash).slice(0, 8) : "";
+        const seenBefore = ev.prefixHash && state.seenPrefixHashes.has(ev.prefixHash);
+        if (ev.prefixHash) state.seenPrefixHashes.add(ev.prefixHash);
+        const prefixChip = ev.prefixHash
+          ? `<span class="prefix-chip ${seenBefore ? 'reuse' : 'fresh'}" title="${ev.prefixHash} · ${ev.segmentHashCount} segments">${prefixHashShort}${seenBefore ? ' ↻' : ' ✦'}</span>`
+          : "";
         const card = makeCard({
           kind: "MODEL CALL", typ: "typ-model",
-          name: ev.modelType, meta: `<span class="live">▶ live</span>`,
+          name: `${ev.modelType} <span class="dim">· ${inputLabel}</span>${prefixChip}`,
+          meta: `<span class="live">▶ live</span>`,
           color: state.currentTraj.color, ix,
         });
         const body = card.querySelector(".card-body");
+        const messagesHtml = (ev.messages && ev.messages.length > 0)
+          ? `<div class="messages-stack">${ev.messages.map(renderMessageBlock).join("")}</div>`
+          : ev.promptPreview
+            ? `<div class="io-text">${escHtml(ev.promptPreview)}</div>`
+            : `<div class="io-text empty">(no input)</div>`;
+        const toolsHtml = ev.tools && ev.tools.length > 0
+          ? `<div class="io-label sub"><span class="arrow">⚒ TOOLS</span><span>${ev.tools.length}${ev.toolChoice ? ` · choice=${escHtml(ev.toolChoice)}` : ""}${ev.hasResponseSchema ? " · responseSchema" : ""}</span></div>${renderToolPills(ev.tools)}`
+          : ev.hasResponseSchema
+            ? `<div class="io-label sub"><span class="arrow">⚒ SCHEMA</span><span>responseSchema</span></div>`
+            : "";
         body.innerHTML = `
           <div class="io">
             <div class="io-block">
-              <div class="io-label"><span class="arrow">▸ IN</span><span>${ev.promptBytes}b</span></div>
-              <div class="io-text">${escHtml(ev.promptPreview ?? "")}</div>
+              <div class="io-label"><span class="arrow">▸ IN</span><span>${inputLabel}</span></div>
+              ${messagesHtml}
+              ${toolsHtml}
             </div>
             <div class="io-block">
               <div class="io-label"><span class="arrow">◂ OUT</span><span data-role="dur">…</span></div>
               <div class="io-text empty" data-role="response">awaiting…</div>
+              <div data-role="tool-calls"></div>
             </div>
           </div>
           <details class="raw"><summary>request params</summary><pre>${escHtml(jsonPretty(ev.params))}</pre></details>
@@ -465,16 +618,43 @@
         if (!card) return;
         const meta = card.querySelector(".meta");
         const body = card.querySelector('[data-role="response"]');
+        const tcWrap = card.querySelector('[data-role="tool-calls"]');
         const errored = !!ev.error;
+        const usage = ev.usage;
+        const promptTokens = usage?.promptTokens ?? 0;
+        const cached = usage?.cacheReadInputTokens ?? usage?.cachedPromptTokens ?? 0;
+        const cachePct = promptTokens > 0 ? Math.round((cached / promptTokens) * 100) : 0;
+        const cacheBadge = !usage
+          ? ""
+          : cached > 0
+            ? `<span class="cache-badge hit">${cachePct}% cached <span class="dim">${cached}/${promptTokens}</span></span>`
+            : `<span class="cache-badge miss">cache miss <span class="dim">${promptTokens}</span></span>`;
+        const usageStr = usage
+          ? ` <span class="dim">${promptTokens}↓ ${usage.completionTokens ?? 0}↑</span>`
+          : "";
         meta.innerHTML = errored
-          ? `<span class="err">✗ ${escHtml(ev.error)}</span><span>${fmtMs(ev.durationMs)}</span>`
-          : `<span class="ok">✓</span><span>${fmtMs(ev.durationMs)}</span>`;
+          ? `<span class="err">✗ ${escHtml(ev.error)}</span><span>${fmtMs(ev.durationMs)}</span>${usageStr}`
+          : `${cacheBadge}<span class="ok">✓</span><span>${fmtMs(ev.durationMs)}</span>${usageStr}`;
         body.classList.remove("empty");
         if (errored) {
           body.classList.add("err");
           body.textContent = ev.error;
+          if (ev.errorDetail?.responseBody) {
+            const det = document.createElement("details");
+            det.className = "raw";
+            det.innerHTML = `<summary>error body</summary><pre>${escHtml(String(ev.errorDetail.responseBody))}</pre>`;
+            card.querySelector(".card-body").appendChild(det);
+          }
         } else {
-          body.textContent = ev.responseText || "(empty)";
+          body.textContent = ev.responseText || "(no text)";
+        }
+        if (Array.isArray(ev.toolCalls) && ev.toolCalls.length > 0 && tcWrap) {
+          tcWrap.innerHTML = ev.toolCalls.map(tc => `
+            <div class="tc-call">
+              <div class="tc-call-hdr">↪ <b>${escHtml(tc.name)}</b>${tc.id ? ` <span class="dim">${escHtml(tc.id)}</span>` : ""}</div>
+              <pre class="tc-call-args">${escHtml(jsonPretty(tc.arguments))}</pre>
+            </div>
+          `).join("");
         }
         const det = document.createElement("details");
         det.className = "raw";
@@ -508,6 +688,7 @@
             };
             state.cards.clear();
             state.ctxMsgs = [];
+            state.seenPrefixHashes = new Set();
             $pipeline.innerHTML = "";
             $statStages.textContent = "0"; $statMc.textContent = "0";
             $statTin.textContent = "0"; $statTout.textContent = "0";
@@ -679,15 +860,28 @@
             const cls = ev.reason === "ok" ? "idle" : ev.reason === "error" ? "err" : "warn";
             const lbl = ev.reason === "ok" ? "DONE" : ev.reason === "error" ? "ERR" : "WARN";
             setState(lbl, cls);
+            const s = ev.stats || {};
+            const summary = `
+              <div class="stats-grid">
+                <div><span class="stat-k">model calls</span><span class="stat-v">${s.modelCalls ?? 0}</span></div>
+                <div><span class="stat-k">prompt tok</span><span class="stat-v">${s.promptTokens ?? 0}</span></div>
+                <div><span class="stat-k">compl tok</span><span class="stat-v">${s.completionTokens ?? 0}</span></div>
+                <div><span class="stat-k">cached tok</span><span class="stat-v">${s.cacheReadTokens ?? 0}</span></div>
+                <div><span class="stat-k">cache hit</span><span class="stat-v ${s.cacheHitPct >= 50 ? 'hit' : s.cacheHitPct > 0 ? 'partial' : 'miss'}">${s.cacheHitPct ?? 0}%</span></div>
+                <div><span class="stat-k">prefixes</span><span class="stat-v">${s.distinctPrefixHashes ?? 0}</span></div>
+                <div><span class="stat-k">errors</span><span class="stat-v ${s.errors ? 'err' : ''}">${s.errors ?? 0}</span></div>
+                <div><span class="stat-k">duration</span><span class="stat-v">${fmtMs(ev.durationMs)}</span></div>
+              </div>
+            `;
             appendSimpleCard({
               kind: "TRAJECTORY END", typ: "typ-end",
-              name: "",
-              meta: `<span>${ev.reason}</span><span>${fmtMs(ev.durationMs)}</span>`,
-              body: ev.finalText ? `<div class="text">${escHtml(ev.finalText)}</div>` : "",
+              name: ev.reason,
+              meta: `<span>${fmtMs(ev.durationMs)}</span>`,
+              body: summary + (ev.finalText ? `<div class="text" style="margin-top:6px">${escHtml(ev.finalText)}</div>` : ""),
             });
             pushEvent(
               relT(ev.t), ev.reason === "error" ? "err" : "run",
-              "END", `${ev.reason} · ${fmtMs(ev.durationMs)}`, ev.color
+              "END", `${ev.reason} · ${fmtMs(ev.durationMs)} · ${s.cacheHitPct ?? 0}% cached`, ev.color
             );
             return;
           }

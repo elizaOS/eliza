@@ -17,7 +17,6 @@ import {
   getValidationKeywordTerms,
 } from "@elizaos/shared";
 import { hasSelectedActionContext } from "../actions/context-signal.js";
-import { hasOwnerAccess } from "../security/access.js";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
   getTriggerLimit,
@@ -225,7 +224,6 @@ export const createTriggerTaskAction: Action = {
   ],
   validate: async (runtime, message, state) => {
     if (!triggersFeatureEnabled(runtime)) return false;
-    if (!(await hasOwnerAccess(runtime, message))) return false;
     if (
       hasSelectedActionContext(message, state, CREATE_TRIGGER_TASK_CONTEXTS)
     ) {
@@ -274,13 +272,6 @@ export const createTriggerTaskAction: Action = {
       return {
         success: false,
         text: "Triggers are disabled by configuration.",
-      };
-    }
-
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may create autonomous trigger tasks.",
       };
     }
 

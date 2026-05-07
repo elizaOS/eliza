@@ -20,7 +20,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
 import type { AgentSkillsServiceLike } from "../types/agent-skills.js";
 
 /** Set of registered skill slugs — populated by registerSkillCommands(). */
@@ -70,13 +69,9 @@ export const skillCommandAction: Action = {
     "dispatch slash command install skill load skill instruction respond w/ contextual guidance",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    if (!(await hasRoleAccess(runtime, message, "ADMIN"))) {
-      return false;
-    }
-
     const text = (message.content as Record<string, unknown>)?.text;
     if (typeof text !== "string") return false;
     return extractSkillSlug(text) !== null;
@@ -89,13 +84,6 @@ export const skillCommandAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!(await hasRoleAccess(runtime, message, "ADMIN"))) {
-      const text =
-        "Permission denied: slash skill commands require owner or admin access.";
-      await callback?.({ text });
-      return { success: false, text };
-    }
-
     const params = _options?.parameters as
       | { slug?: string; args?: string }
       | undefined;

@@ -10,6 +10,7 @@
  * - Grouping by scenario for GRPO
  */
 
+import { textFromChatMessageContent } from "../../runtime/system-prompt";
 import type {
 	ARTTrajectory,
 	ChatMessage,
@@ -48,6 +49,16 @@ export function toARTMessages(trajectory: Trajectory): ChatMessage[] {
 function buildSystemMessage(trajectory: Trajectory): ChatMessage | null {
 	const firstStep = trajectory.steps[0];
 	const firstLLMCall = firstStep?.llmCalls?.[0];
+
+	const firstMessage = firstLLMCall?.messages?.[0] as
+		| { role?: unknown; content?: unknown }
+		| undefined;
+	if (firstMessage?.role === "system") {
+		const content = textFromChatMessageContent(firstMessage.content);
+		if (content) {
+			return { role: "system", content };
+		}
+	}
 
 	if (firstLLMCall?.systemPrompt) {
 		return { role: "system", content: firstLLMCall.systemPrompt };

@@ -22,6 +22,7 @@ import {
 } from "@/db/schemas/agent-sandboxes";
 import { jobs } from "@/db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import {
   stripReservedElizaConfigKeys,
@@ -741,7 +742,7 @@ export class ElizaSandboxService {
   }
 
   private getConfiguredAgentBaseDomain(): string | null {
-    const configured = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
+    const configured = getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
     if (!configured) return null;
     const normalized = configured
       .replace(/^https?:\/\//, "")
@@ -764,18 +765,18 @@ export class ElizaSandboxService {
     >,
     path: string,
   ): Promise<string> {
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    if (baseDomain || this.isCloudflareWorkerRuntime()) {
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(
+        rec,
+        baseDomain ? { baseDomain, path } : { path },
+      );
+      if (publicEndpoint) return publicEndpoint;
+    }
+
     const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
     if (trustedWebBaseUrl) {
       return new URL(path, trustedWebBaseUrl).toString();
-    }
-
-    const baseDomain = this.getConfiguredAgentBaseDomain();
-    if (baseDomain) {
-      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, {
-        baseDomain,
-        path,
-      });
-      if (publicEndpoint) return publicEndpoint;
     }
 
     return this.getSafeBridgeEndpoint(rec, path);
@@ -895,6 +896,10 @@ export class ElizaSandboxService {
     } catch {
       return false;
     }
+  }
+
+  private isCloudflareWorkerRuntime(): boolean {
+    return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
   }
 
   // Bridge
@@ -1033,7 +1038,7 @@ export class ElizaSandboxService {
       jsonrpc: "2.0",
       id: rpc.id,
       result: {
-        text: typeof body.text === "string" ? body.text : "",
+        text: this.extractBridgeMessageText(body) ?? "",
         agentName: typeof body.agentName === "string" ? body.agentName : undefined,
         conversationId,
       },
@@ -1074,7 +1079,7 @@ export class ElizaSandboxService {
     }
 
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId);
+    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId, runtimeAgent.id);
     return {
       jsonrpc: "2.0",
       id: rpc.id,
@@ -1189,10 +1194,10 @@ export class ElizaSandboxService {
     } else {
       body.channelType = "DM";
     }
-    if (params.mode === "simple") {
-      body.conversationMode = "simple";
-    } else if (params.mode === "power") {
+    if (params.mode === "power") {
       body.conversationMode = "power";
+    } else {
+      body.conversationMode = "simple";
     }
     return body;
   }
@@ -1214,16 +1219,173 @@ export class ElizaSandboxService {
     };
   }
 
+  private getBridgeMessages(body: unknown): unknown[] {
+    if (Array.isArray(body)) return body;
+    if (!body || typeof body !== "object") return [];
+
+    const root = body as Record<string, unknown>;
+    const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+    const result =
+      root.result && typeof root.result === "object" ? (root.result as Record<string, unknown>) : {};
+
+    for (const candidate of [
+      root.messages,
+      root.items,
+      data.messages,
+      data.items,
+      result.messages,
+      result.items,
+    ]) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+
+    return [];
+  }
+
+  private normalizeBridgeRole(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toLowerCase();
+    return normalized || null;
+  }
+
+  private bridgeRoleIsAgent(value: unknown): boolean {
+    const role = this.normalizeBridgeRole(value);
+    return (
+      role === "assistant" ||
+      role === "agent" ||
+      role === "bot" ||
+      role === "ai" ||
+      role === "model" ||
+      role === "assistant_message" ||
+      role === "agent_message"
+    );
+  }
+
+  private bridgeRoleIsUser(value: unknown): boolean {
+    const role = this.normalizeBridgeRole(value);
+    return (
+      role === "user" ||
+      role === "human" ||
+      role === "client" ||
+      role === "owner" ||
+      role === "user_message" ||
+      role === "client_message"
+    );
+  }
+
+  private bridgeMessageIdMatches(value: unknown, runtimeAgentId?: string): boolean {
+    return (
+      typeof runtimeAgentId === "string" &&
+      runtimeAgentId.length > 0 &&
+      typeof value === "string" &&
+      value === runtimeAgentId
+    );
+  }
+
+  private nestedBridgeRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private isBridgeAgentMessage(
+    message: Record<string, unknown>,
+    runtimeAgentId?: string,
+  ): boolean {
+    if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
+      return true;
+    }
+    if (message.isAgent === false || message.fromAgent === false || message.isBot === false) {
+      return false;
+    }
+
+    for (const key of ["role", "type", "senderType", "senderRole", "authorRole", "messageType"]) {
+      const value = message[key];
+      if (this.bridgeRoleIsAgent(value)) return true;
+      if (this.bridgeRoleIsUser(value)) return false;
+    }
+
+    for (const key of ["sender", "author", "from", "entity", "metadata"]) {
+      const nested = this.nestedBridgeRecord(message[key]);
+      if (!nested) continue;
+      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true) return true;
+      if (nested.isAgent === false || nested.fromAgent === false || nested.isBot === false) {
+        return false;
+      }
+      for (const nestedKey of ["role", "type", "senderType", "authorRole"]) {
+        const nestedValue = nested[nestedKey];
+        if (this.bridgeRoleIsAgent(nestedValue)) return true;
+        if (this.bridgeRoleIsUser(nestedValue)) return false;
+      }
+      for (const nestedIdKey of ["id", "entityId", "agentId", "runtimeAgentId", "senderId"]) {
+        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId)) return true;
+      }
+    }
+
+    for (const idKey of ["entityId", "agentId", "runtimeAgentId", "senderId", "authorId"]) {
+      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId)) return true;
+    }
+
+    return false;
+  }
+
+  private extractBridgeTextValue(value: unknown, depth = 0): string | null {
+    if (depth > 4) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((item) => this.extractBridgeTextValue(item, depth + 1))
+        .filter((text): text is string => Boolean(text));
+      return parts.length > 0 ? parts.join("") : null;
+    }
+
+    const record = this.nestedBridgeRecord(value);
+    if (!record) return null;
+
+    for (const key of [
+      "text",
+      "fullText",
+      "content",
+      "message",
+      "body",
+      "reply",
+      "response",
+      "value",
+    ]) {
+      const text = this.extractBridgeTextValue(record[key], depth + 1);
+      if (text) return text;
+    }
+
+    for (const key of ["parts", "items", "chunks"]) {
+      const text = this.extractBridgeTextValue(record[key], depth + 1);
+      if (text) return text;
+    }
+
+    return null;
+  }
+
+  private extractBridgeMessageText(message: Record<string, unknown>): string | null {
+    for (const key of ["text", "fullText", "content", "message", "body", "reply", "response"]) {
+      const text = this.extractBridgeTextValue(message[key]);
+      if (text) return text;
+    }
+    return null;
+  }
+
   private async waitForBridgeSessionAgentReply(
     rec: AgentSandbox,
     sessionId: string,
+    runtimeAgentId?: string,
   ): Promise<string | null> {
     const endpoint = await this.getAgentApiEndpoint(
       rec,
       `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages?limit=20`,
     );
 
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < 24; attempt++) {
       if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
       const res = await fetch(endpoint, {
         method: "GET",
@@ -1231,18 +1393,13 @@ export class ElizaSandboxService {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return null;
-      const body = (await res.json().catch(() => ({}))) as { messages?: unknown };
-      const messages = Array.isArray(body.messages) ? body.messages : [];
-      const agentMessages = messages.filter((message): message is Record<string, unknown> => {
-        return (
-          !!message &&
-          typeof message === "object" &&
-          (message as Record<string, unknown>).isAgent === true
-        );
-      });
-      const latest = agentMessages.at(-1);
-      if (typeof latest?.content === "string" && latest.content.trim()) {
-        return latest.content;
+      const body = await res.json().catch(() => ({}));
+      const messages = this.getBridgeMessages(body);
+      for (const message of messages.toReversed()) {
+        const record = this.nestedBridgeRecord(message);
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        const text = this.extractBridgeMessageText(record);
+        if (text) return text;
       }
     }
 

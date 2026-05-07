@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -324,8 +323,7 @@ export const remoteDesktopAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   parameters: [
     {
@@ -420,15 +418,6 @@ export const remoteDesktopAction: Action & {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may manage remote desktop sessions.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: ACTION_NAME },
-      };
-    }
-
     const resolved = await resolveActionArgs<RemoteSubaction, RemoteParams>({
       runtime,
       message,

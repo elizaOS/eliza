@@ -3058,6 +3058,83 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "CANCEL_TASK",
+			description:
+				"Cancel a durable task and stop any associated task-agent sessions, preserving history and marking sessions or threads as canceled or interrupted.",
+			parameters: [
+				{
+					name: "threadId",
+					description: "Task thread ID",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Task thread ID",
+				},
+				{
+					name: "sessionId",
+					description: "Session ID",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Session ID",
+				},
+				{
+					name: "search",
+					description: "Search text for a matching task",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search text for a matching task",
+				},
+				{
+					name: "all",
+					description: "Cancel all active tasks",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Cancel all active tasks",
+				},
+				{
+					name: "reason",
+					description: "Cancellation reason",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Cancellation reason",
+				},
+			],
+			similes: [
+				"STOP_TASK",
+				"CANCEL_AGENT_TASK",
+				"CANCEL_TASK_AGENT",
+				"ABORT_TASK",
+				"KILL_TASK",
+				"STOP_SUBTASK",
+			],
+			exampleCalls: [
+				{
+					user: "Use CANCEL_TASK with the provided parameters.",
+					actions: ["CANCEL_TASK"],
+					params: {
+						CANCEL_TASK: {
+							threadId: "example",
+							sessionId: "example",
+							search: "example",
+							all: false,
+							reason: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Cancel a durable task and stop any associated task-agent sessions, preserving history and marking sessions or threads as canceled or interrupted.",
+		},
+		{
 			name: "CHAT_PUBLIC",
 			description:
 				"Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
@@ -5495,21 +5572,7 @@ export const allActionsSpec = {
 			name: "LIST_AGENTS",
 			description:
 				"List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
-			parameters: [
-				{
-					name: "status",
-					description:
-						"Optional session/task status filter such as active, idle, completed, failed, or all.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional session/task status filter such as active, idle, completed, failed, or all.",
-				},
-			],
-			descriptionCompressed:
-				"List active task agents with progress for async status updates.",
+			parameters: [],
 			similes: [
 				"LIST_CODING_AGENTS",
 				"SHOW_CODING_AGENTS",
@@ -5520,17 +5583,8 @@ export const allActionsSpec = {
 				"LIST_SUB_AGENTS",
 				"SHOW_TASK_STATUS",
 			],
-			exampleCalls: [
-				{
-					user: "Use LIST_AGENTS with the provided parameters.",
-					actions: ["LIST_AGENTS"],
-					params: {
-						LIST_AGENTS: {
-							status: "example",
-						},
-					},
-				},
-			],
+			descriptionCompressed:
+				"List active task agents together with current task progress so the main agent can keep user updated while work continues asynchronously.",
 		},
 		{
 			name: "LIST_OVERDUE_FOLLOWUPS",
@@ -7881,64 +7935,54 @@ export const allActionsSpec = {
 		{
 			name: "SEND_TO_AGENT",
 			description:
-				"Send text input or key presses to a running task-agent session. ",
+				"Send text input or key presses to a running task-agent session. Use it to respond to prompts, provide feedback, continue a task, or assign a fresh tracked task to an existing agent.",
 			parameters: [
 				{
 					name: "sessionId",
-					description:
-						"ID of the task-agent session to send to. If not specified, uses the current session.",
+					description: "Target task-agent session ID",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Send input/keypresses to running task agent.",
+					descriptionCompressed: "Target task-agent session ID",
 				},
 				{
 					name: "input",
-					description: "Text input to send to the running task agent.",
+					description: "Text to send to the agent",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Text input to send to the running task agent.",
+					descriptionCompressed: "Text to send to agent",
 				},
 				{
 					name: "task",
-					description:
-						"New tracked task to assign to the existing agent. This is also sent as the next input so provider status reflects the new assignment.",
+					description: "New task to assign to the agent",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"New tracked task to assign to the existing agent. This is also sent as the next input so provider status reflects the new assignment.",
+					descriptionCompressed: "New task to assign to agent",
 				},
 				{
 					name: "label",
-					description:
-						"Optional label to use when tracking a newly assigned task on an existing agent.",
+					description: "Optional task label",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Optional label to use when tracking a newly assigned task on an existing agent.",
+					descriptionCompressed: "Optional task label",
 				},
 				{
 					name: "keys",
-					description:
-						"Special key sequence to send (e.g., 'Enter', 'Ctrl-C', 'y').",
+					description: "Key sequence to send",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Special key sequence to send (e. g. , 'Enter', 'Ctrl-C', 'y').",
+					descriptionCompressed: "Key sequence to send",
 				},
 			],
-			descriptionCompressed:
-				"send text input key press run task-agent session use respond agent prompt, provide feedback, continue task, assign fresh track task exist agent",
 			similes: [
 				"SEND_TO_CODING_AGENT",
 				"MESSAGE_CODING_AGENT",
@@ -7963,6 +8007,8 @@ export const allActionsSpec = {
 					},
 				},
 			],
+			descriptionCompressed:
+				"Send text input or key presses to a running task-agent session. Use it to respond to prompts, provide feedback, continue a task, or assign a fresh tracked...",
 		},
 		{
 			name: "SEND_X_POST",
@@ -8457,31 +8503,28 @@ export const allActionsSpec = {
 		},
 		{
 			name: "STOP_AGENT",
-			description: "Stop a running task-agent session. ",
+			description:
+				"Stop a running task-agent session, terminating the session and cleaning up resources.",
 			parameters: [
 				{
 					name: "sessionId",
-					description:
-						"ID of the session to stop. If not specified, stops the current session.",
+					description: "Session ID to stop",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Stop running task agent, cleanup resources.",
+					descriptionCompressed: "Session ID to stop",
 				},
 				{
 					name: "all",
-					description: "If true, stop all active task-agent sessions.",
+					description: "Stop all active sessions",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed:
-						"If true, stop all active task-agent sessions.",
+					descriptionCompressed: "Stop all active sessions",
 				},
 			],
-			descriptionCompressed:
-				"stop run task-agent session terminate PTY session clean up resource",
 			similes: [
 				"STOP_CODING_AGENT",
 				"KILL_CODING_AGENT",
@@ -8503,6 +8546,8 @@ export const allActionsSpec = {
 					},
 				},
 			],
+			descriptionCompressed:
+				"Stop a running task-agent session, terminating the session and cleaning up resources.",
 		},
 		{
 			name: "STOP_TAILSCALE",

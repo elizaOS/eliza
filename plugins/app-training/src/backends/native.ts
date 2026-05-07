@@ -68,7 +68,9 @@ interface JsonlMessage {
 
 interface JsonlRow {
   format: "eliza_native_v1";
+  boundary?: string;
   request?: {
+    system?: string;
     prompt?: string;
     messages?: JsonlMessage[];
   };
@@ -103,7 +105,11 @@ function parseJsonlDataset(path: string): OptimizationExample[] {
 function isJsonlRow(value: unknown): value is JsonlRow {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as JsonlRow;
-  return candidate.format === "eliza_native_v1";
+  return (
+    candidate.format === "eliza_native_v1" &&
+    (candidate.boundary === "vercel_ai_sdk.generateText" ||
+      candidate.boundary === "vercel_ai_sdk.streamText")
+  );
 }
 
 function rowToExample(
@@ -113,9 +119,12 @@ function rowToExample(
   let system: string | undefined;
   let user: string | undefined;
   let expected: string | undefined;
+  if (typeof row.request?.system === "string" && row.request.system.length > 0) {
+    system = row.request.system;
+  }
   const messages = row.request?.messages ?? [];
   for (const msg of messages) {
-    if (msg.role === "system" && typeof msg.content === "string") {
+    if (!system && msg.role === "system" && typeof msg.content === "string") {
       system = msg.content;
     }
     if (msg.role === "user" && typeof msg.content === "string") {

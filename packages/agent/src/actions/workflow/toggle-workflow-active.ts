@@ -17,7 +17,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../../security/access.js";
 import {
   fetchJson,
   findWorkflowById,
@@ -64,21 +63,14 @@ export const toggleWorkflowActiveAction: Action = {
     "Activate or deactivate an n8n workflow by id. Set active=true to enable, active=false to pause it without deleting.",
   descriptionCompressed:
     "activate deactivate n8n workflow id set active true enable, active false pause wo/ delet",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may toggle workflows.",
-      };
-    }
-
     const params = (options?.parameters ?? {}) as ToggleWorkflowParameters;
     const workflowId = readString(params.workflowId);
     const active = readBoolean(params.active);

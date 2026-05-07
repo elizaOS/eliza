@@ -119,12 +119,37 @@ let currentTrajectoryId: string | null = null;
 let currentTrajectoryColor = TRAJECTORY_COLORS[0];
 let currentTrajectoryFinalText: string | null = null;
 
+type TrajectoryStats = {
+  modelCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  cacheReadTokens: number;
+  errors: number;
+  prefixHashes: Set<string>;
+};
+let currentStats: TrajectoryStats = {
+  modelCalls: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  cacheReadTokens: 0,
+  errors: 0,
+  prefixHashes: new Set(),
+};
+
 function newTrajectory(): { id: string; color: string } {
   const id = Math.random().toString(36).slice(2, 10);
   const color = TRAJECTORY_COLORS[Math.floor(Math.random() * TRAJECTORY_COLORS.length)];
   currentTrajectoryId = id;
   currentTrajectoryColor = color;
   currentTrajectoryFinalText = "";
+  currentStats = {
+    modelCalls: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    cacheReadTokens: 0,
+    errors: 0,
+    prefixHashes: new Set(),
+  };
   return { id, color };
 }
 
@@ -133,6 +158,13 @@ function tag(extra: Record<string, unknown> = {}) {
 }
 
 // ---------- runtime construction ----------
+
+// Operator entity. We mark it as the canonical OWNER via ELIZA_ADMIN_ENTITY_ID
+// so the role gate on contexts (knowledge, files, code, terminal, admin, …)
+// passes. Without this, every console message would be treated as GUEST and
+// only `simple` + `general` would route — leaving 14+ tool-bearing contexts
+// unreachable.
+const OPERATOR_ENTITY_ID = stringToUuid("agent-console-user") as UUID;
 
 const character: Character = createCharacter({
   name: "Eliza",
@@ -146,6 +178,7 @@ const character: Character = createCharacter({
     OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL,
     CEREBRAS_API_KEY: provider.name === "cerebras" ? provider.apiKey : "",
     MILADY_PROVIDER: provider.name === "cerebras" ? "cerebras" : "",
+    ELIZA_ADMIN_ENTITY_ID: OPERATOR_ENTITY_ID,
   },
 });
 
@@ -161,20 +194,80 @@ const runtime: IAgentRuntime = new AgentRuntime({
 
 // ---------- wrap useModel ----------
 
+type SegmentView = {
+  role: string;
+  label?: string;
+  content: string;
+  bytes: number;
+  stable?: boolean;
+};
+
+function messagesToSegmentViews(messages: unknown): SegmentView[] {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((m: any) => {
+    const role = String(m?.role ?? "user");
+    const content = typeof m?.content === "string"
+      ? m.content
+      : m?.content == null
+        ? ""
+        : (() => {
+            try { return JSON.stringify(m.content); } catch { return String(m.content); }
+          })();
+    return { role, content, bytes: content.length };
+  });
+}
+
+function promptSegmentsToSegmentViews(segments: unknown): SegmentView[] {
+  if (!Array.isArray(segments)) return [];
+  return segments.map((s: any) => ({
+    role: s?.label === "system" ? "system" : "segment",
+    label: typeof s?.label === "string" ? s.label : undefined,
+    content: typeof s?.content === "string" ? s.content : "",
+    bytes: typeof s?.content === "string" ? s.content.length : 0,
+    stable: !!s?.stable,
+  }));
+}
+
+function toolsToSummary(tools: unknown): { name: string; description?: string }[] {
+  if (!Array.isArray(tools)) return [];
+  return tools.map((t: any) => ({
+    name: String(t?.name ?? t?.function?.name ?? "?"),
+    description: t?.description ?? t?.function?.description,
+  }));
+}
+
 const origUseModel = runtime.useModel.bind(runtime);
 let modelCallCounter = 0;
 (runtime as any).useModel = async (modelType: any, params: any, providerName?: any) => {
   const callId = `mc-${++modelCallCounter}`;
   const start = Date.now();
-  const promptPreview = (() => {
-    try {
-      if (typeof params?.prompt === "string") return params.prompt;
-      if (Array.isArray(params?.messages)) return JSON.stringify(params.messages);
-      return JSON.stringify(params);
-    } catch {
-      return String(params);
-    }
-  })();
+  const messageViews = messagesToSegmentViews(params?.messages);
+  const segmentViews = promptSegmentsToSegmentViews(params?.promptSegments);
+  const toolsSummary = toolsToSummary(params?.tools);
+  const promptString = typeof params?.prompt === "string" ? params.prompt : "";
+  // Prefer the segmented messages view as the canonical input. Fall back to the
+  // legacy prompt blob only when no messages are present (embeddings, simple
+  // text-gen calls, etc.).
+  const inputBytes =
+    messageViews.length > 0
+      ? messageViews.reduce((sum, m) => sum + m.bytes, 0)
+      : promptString.length;
+  const inputShape =
+    messageViews.length > 0
+      ? "messages"
+      : promptString.length > 0
+        ? "prompt"
+        : "other";
+
+  // Pull the prefix hash + Cerebras cache key off providerOptions so the
+  // dashboard can show "same prefix as previous call" / cache key in flight.
+  const elizaPo = (params?.providerOptions as any)?.eliza;
+  const cerebrasPo = (params?.providerOptions as any)?.cerebras;
+  const prefixHash: string | undefined = elizaPo?.prefixHash;
+  const segmentHashes: string[] | undefined = elizaPo?.segmentHashes;
+  const cacheKey: string | undefined =
+    cerebrasPo?.prompt_cache_key ?? cerebrasPo?.promptCacheKey ?? elizaPo?.promptCacheKey;
+  if (prefixHash) currentStats.prefixHashes.add(prefixHash);
 
   broadcast(
     tag({
@@ -182,24 +275,48 @@ let modelCallCounter = 0;
       callId,
       modelType: String(modelType),
       params: safeSnapshot(params),
-      promptPreview: promptPreview.slice(0, 8000),
-      promptBytes: promptPreview.length,
+      inputShape,
+      inputBytes,
+      messages: messageViews,
+      promptSegments: segmentViews,
+      tools: toolsSummary,
+      toolChoice: params?.toolChoice,
+      hasResponseSchema: !!params?.responseSchema,
+      responseFormat: params?.responseFormat,
+      prefixHash,
+      segmentHashCount: segmentHashes?.length ?? 0,
+      cacheKey,
+      promptPreview: promptString.slice(0, 8000),
+      promptBytes: promptString.length,
     })
   );
   try {
     const result = await origUseModel(modelType, params, providerName);
+    const responseText = stringifyResponse(result);
+    const toolCalls = extractToolCalls(result);
+    const usage = (result as any)?.usage;
+    if (usage) {
+      currentStats.modelCalls += 1;
+      currentStats.promptTokens += usage.promptTokens ?? 0;
+      currentStats.completionTokens += usage.completionTokens ?? 0;
+      currentStats.cacheReadTokens +=
+        usage.cacheReadInputTokens ?? usage.cachedPromptTokens ?? 0;
+    }
     broadcast(
       tag({
         type: "model_call_end",
         callId,
         modelType: String(modelType),
         result: safeSnapshot(result),
-        responseText: stringifyResponse(result).slice(0, 8000),
+        responseText: responseText.slice(0, 8000),
+        toolCalls,
+        usage,
         durationMs: Date.now() - start,
       })
     );
     return result;
   } catch (err: any) {
+    currentStats.errors += 1;
     const errorDetail = {
       message: err?.message,
       cause: err?.cause?.message ?? err?.cause,
@@ -241,6 +358,21 @@ function safeSnapshot(v: unknown, depth = 4): unknown {
 function stringifyResponse(r: unknown): string {
   if (typeof r === "string") return r;
   try { return JSON.stringify(r, null, 2); } catch { return String(r); }
+}
+
+function extractToolCalls(result: unknown): { id?: string; name: string; arguments: unknown }[] {
+  if (!result || typeof result !== "object") return [];
+  const tcs = (result as any).toolCalls;
+  if (!Array.isArray(tcs)) return [];
+  return tcs.map((tc: any) => {
+    const fnName = tc?.function?.name ?? tc?.name ?? tc?.toolName;
+    const args = tc?.function?.arguments ?? tc?.arguments ?? tc?.input;
+    let parsed: unknown = args;
+    if (typeof args === "string") {
+      try { parsed = JSON.parse(args); } catch { parsed = args; }
+    }
+    return { id: tc?.id, name: String(fnName ?? "?"), arguments: safeSnapshot(parsed) };
+  });
 }
 
 // ---------- subscribe to runtime events ----------
@@ -354,7 +486,7 @@ async function handleUserMessage(text: string) {
   // Fresh trajectory + fresh room: each user message clears the world.
   const { id, color } = newTrajectory();
   const roomId = stringToUuid(`agent-console-${id}`) as UUID;
-  const userId = stringToUuid("agent-console-user") as UUID;
+  const userId = OPERATOR_ENTITY_ID;
   const startedAt = Date.now();
 
   broadcast({
@@ -413,6 +545,7 @@ async function handleUserMessage(text: string) {
       finalText: currentTrajectoryFinalText ?? "",
       reason: postRespondError ? (responded ? "ok-with-postlog-errors" : "error") : "ok",
       postRespondError: postRespondError ?? undefined,
+      stats: snapshotStats(),
     });
   } catch (err: any) {
     broadcast(tag({ type: "log", level: "error", message: err?.message ?? String(err) }));
@@ -422,10 +555,25 @@ async function handleUserMessage(text: string) {
       color,
       durationMs: Date.now() - startedAt,
       reason: "error",
+      stats: snapshotStats(),
     });
   } finally {
     activeRunPromise = null;
   }
+}
+
+function snapshotStats() {
+  const totalIn = currentStats.promptTokens;
+  const cached = currentStats.cacheReadTokens;
+  return {
+    modelCalls: currentStats.modelCalls,
+    promptTokens: totalIn,
+    completionTokens: currentStats.completionTokens,
+    cacheReadTokens: cached,
+    cacheHitPct: totalIn > 0 ? Math.round((cached / totalIn) * 1000) / 10 : 0,
+    errors: currentStats.errors,
+    distinctPrefixHashes: currentStats.prefixHashes.size,
+  };
 }
 
 const server = Bun.serve({
@@ -437,6 +585,51 @@ const server = Bun.serve({
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(Bun.file(join(import.meta.dir, "public", "index.html")), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/runtime") {
+      const actions = (runtime.actions ?? []).map((a: any) => ({
+        name: a.name,
+        description: a.description,
+        contexts: a.contexts ?? [],
+        similes: (a.similes ?? []).slice(0, 6),
+      }));
+      const providers = (runtime.providers ?? []).map((p: any) => ({
+        name: p.name,
+        description: p.description,
+        position: p.position,
+        dynamic: p.dynamic ?? false,
+      }));
+      const evaluators = (runtime.evaluators ?? []).map((e: any) => ({
+        name: e.name,
+        description: e.description,
+      }));
+      const contextsByName: Record<string, any> = {};
+      try {
+        const list = (runtime as any).contexts?.list?.() ?? [];
+        for (const c of list) {
+          contextsByName[c.id] = {
+            label: c.label,
+            description: c.description,
+            cacheScope: c.cacheScope,
+            roleGate: c.roleGate,
+            actions: c.actions,
+            providers: c.providers,
+          };
+        }
+      } catch {}
+      return Response.json({
+        agentId: runtime.agentId,
+        characterName: runtime.character.name,
+        actionCount: actions.length,
+        providerCount: providers.length,
+        evaluatorCount: evaluators.length,
+        contextCount: Object.keys(contextsByName).length,
+        actions,
+        providers,
+        evaluators,
+        contexts: contextsByName,
       });
     }
 

@@ -16,10 +16,7 @@ import type {
   ActionExample,
   ActionResult,
   HandlerOptions,
-  IAgentRuntime,
-  Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 
 type AgentInboxSubaction =
   | "triage"
@@ -58,7 +55,7 @@ function notConfigured(subaction: string | undefined): ActionResult {
 export const agentInboxAction: Action = {
   name: "AGENT_INBOX",
   contexts: ["messaging", "email", "connectors", "agent_internal"],
-  roleGate: { minRole: "ADMIN" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "AGENT_MAILBOX",
     "AGENT_GMAIL",
@@ -79,8 +76,7 @@ export const agentInboxAction: Action = {
   descriptionCompressed:
     "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong TRIAGE_MESSAGES AGENT_INBOX apply subject be triage AGENT's account",
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   parameters: [
     {

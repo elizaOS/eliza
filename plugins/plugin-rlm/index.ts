@@ -16,7 +16,13 @@ import type {
   Plugin,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, ModelType, recordLlmCall } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  logger,
+  ModelType,
+  recordLlmCall,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 
 import { RLMClient, stubResult } from "./client";
 import { estimateTokenCount } from "./cost";
@@ -145,7 +151,11 @@ async function handleTextGeneration(
   const model = `${backend}:rlm`;
   const details: RecordLlmCallDetails = {
     model,
-    systemPrompt: runtime.character.system ?? "",
+    systemPrompt:
+      resolveEffectiveSystemPrompt({
+        params,
+        fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+      }) ?? "",
     userPrompt: input,
     temperature: params.temperature ?? 0,
     maxTokens: params.maxTokens ?? 0,

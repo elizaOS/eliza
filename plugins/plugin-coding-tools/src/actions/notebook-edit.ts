@@ -4,11 +4,11 @@ import * as fs from "node:fs/promises";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -87,6 +87,7 @@ export const notebookEditAction: Action = {
   name: "NOTEBOOK_EDIT",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["EDIT_NOTEBOOK"],
   description:
     "Replace, insert, or delete a cell in a Jupyter `.ipynb` notebook. Default `edit_mode` is `replace`. Insert places a new cell after `cell_id` (or at the start if omitted). Delete removes the matching cell. The notebook must have been READ in this session and must still match its recorded mtime.",
@@ -101,7 +102,8 @@ export const notebookEditAction: Action = {
     },
     {
       name: "cell_id",
-      description: "Target cell id. Required for replace and delete; optional for insert.",
+      description:
+        "Target cell id. Required for replace and delete; optional for insert.",
       required: false,
       schema: { type: "string" },
     },
@@ -141,7 +143,10 @@ export const notebookEditAction: Action = {
         ? String(message.roomId)
         : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const notebookPath = readStringParam(options, "notebook_path");
@@ -161,7 +166,9 @@ export const notebookEditAction: Action = {
     const cellId = readStringParam(options, "cell_id");
     const newSource = readStringParam(options, "new_source");
     const cellTypeRaw = readStringParam(options, "cell_type");
-    const cellType: CellType | undefined = isCellType(cellTypeRaw) ? cellTypeRaw : undefined;
+    const cellType: CellType | undefined = isCellType(cellTypeRaw)
+      ? cellTypeRaw
+      : undefined;
     if (cellTypeRaw !== undefined && cellType === undefined) {
       return failureToActionResult({
         reason: "invalid_param",
@@ -206,7 +213,8 @@ export const notebookEditAction: Action = {
 
     const gate = await fileState.assertWritable(conversationId, resolved);
     if (!gate.ok) {
-      const reason = gate.reason === "stale_read" ? "stale_read" : "invalid_param";
+      const reason =
+        gate.reason === "stale_read" ? "stale_read" : "invalid_param";
       return failureToActionResult({ reason, message: gate.message });
     }
 
@@ -215,7 +223,10 @@ export const notebookEditAction: Action = {
       raw = await fs.readFile(resolved, "utf8");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `read failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `read failed: ${msg}`,
+      });
     }
 
     let notebook: Notebook;
@@ -231,7 +242,10 @@ export const notebookEditAction: Action = {
       notebook = parsed as Notebook;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `parse failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `parse failed: ${msg}`,
+      });
     }
 
     if (editMode === "replace") {
@@ -301,7 +315,10 @@ export const notebookEditAction: Action = {
       await fs.writeFile(resolved, serialized, "utf8");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `write failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `write failed: ${msg}`,
+      });
     }
 
     await fileState.recordWrite(conversationId, resolved);
@@ -310,10 +327,11 @@ export const notebookEditAction: Action = {
     );
 
     const maxNotebookCells = 5000;
-    const text = `Notebook ${editMode} on ${resolved} (cells now ${notebook.cells.length})`.slice(
-      0,
-      2000,
-    );
+    const text =
+      `Notebook ${editMode} on ${resolved} (cells now ${notebook.cells.length})`.slice(
+        0,
+        2000,
+      );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

@@ -15,6 +15,7 @@ import {
 
 export const cancelTaskAction: Action = {
   name: "CANCEL_TASK",
+  roleGate: { minRole: "OWNER" },
   similes: [
     "STOP_TASK",
     "CANCEL_AGENT_TASK",

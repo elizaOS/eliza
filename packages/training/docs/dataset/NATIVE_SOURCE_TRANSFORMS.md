@@ -50,18 +50,28 @@ transform family:
 ```bash
 uv run --with pyyaml --with pyarrow \
   python scripts/sample_native_trajectory_alignment.py \
-  --samples-per-source 3 --run-cerebras
+  --samples-per-source 10 --run-cerebras
 ```
 
-It samples every downloaded dataset, prints simple/wallet/email/calendar
-reference trajectories, and records the provider-visible model-call envelopes
-we need transforms to approximate. The generated files live under
+It randomly samples every downloaded dataset with a deterministic seed, prints
+simple/wallet/email/calendar reference trajectories, compares real local Eliza
+recorder outputs, writes `data/native/audit/real_eliza_native_rows.jsonl` in the
+final `eliza_native_v1` format, and records per-dataset synthesis templates for
+missing request/response components. The generated files live under
 `data/native/audit/`; the tracked runbook is
 `docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`.
 
 ## Current bootstrap path
 
 Legacy normalized rows are converted by
-`scripts/prepare_native_tool_calling_data.py --transform-normalized`. New
-adapters should bypass `expectedResponse` and TOON entirely and emit
-`NATIVE_TOOL_CALLING_SPEC.md` rows directly.
+`scripts/prepare_native_tool_calling_data.py --transform-normalized`, then
+bridged into final training rows by:
+
+```bash
+uv run python scripts/bootstrap_native_to_eliza_native.py \
+  --input data/native/records \
+  --output data/native/eliza_native_bootstrap.jsonl
+```
+
+New adapters should bypass `expectedResponse` and TOON entirely and emit
+`eliza_native_v1` model-boundary rows directly.

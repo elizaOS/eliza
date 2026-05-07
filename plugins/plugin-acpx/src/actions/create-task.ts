@@ -99,6 +99,7 @@ async function runPromptAndClose(
 
 export const createTaskAction = {
   name: "CREATE_TASK",
+  roleGate: { minRole: "OWNER" },
   similes: [
     "START_CODING_TASK",
     "LAUNCH_CODING_TASK",

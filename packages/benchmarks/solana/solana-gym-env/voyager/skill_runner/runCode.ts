@@ -1,5 +1,5 @@
-import { writeFileSync } from "fs";
-import path from "path";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
 
 // const execAsync = promisify(exec);
 

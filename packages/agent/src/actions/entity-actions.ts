@@ -7,7 +7,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -202,21 +201,12 @@ export const searchEntityAction: Action = {
 
   validate: async (runtime, message, state) => {
     registerEntitySearchCategory(runtime);
-    if (!(await hasAdminAccess(runtime, message))) return false;
     void hasContextSignalSyncForKey(message, state, "search_entity");
     return false;
   },
 
   handler: async (runtime, message, state, options) => {
     registerEntitySearchCategory(runtime);
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "SEARCH_ENTITY" },
-      };
-    }
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as SearchEntityParams;
@@ -394,21 +384,11 @@ export const readEntityAction: Action = {
   descriptionCompressed:
     "read full detail person: identity, fact, recent conversation, relationship look up entity ID (SEARCH_ENTITY result) name full output save clipboard",
 
-  validate: async (runtime, message, state) => {
-    if (!(await hasAdminAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "search_entity");
   },
 
   handler: async (runtime, message, state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "READ_ENTITY" },
-      };
-    }
-
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadEntityParams;
     const params = (await extractActionParamsViaLlm<ReadEntityParams>({
@@ -668,21 +648,11 @@ export const linkEntityAction: Action = {
   descriptionCompressed:
     "propose (optionally confirm) merge two rolodex entity represent same person different platform require owner/admin access work language intent extract LLM",
 
-  validate: async (runtime, message, state) => {
-    if (!(await hasAdminAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "link_entity");
   },
 
   handler: async (runtime, message, _state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "LINK_ENTITY" },
-      };
-    }
-
     const graphService = await getGraphService(runtime);
     if (!graphService) {
       return {
@@ -917,9 +887,7 @@ export const resolveMergeCandidateAction: Action = {
   descriptionCompressed:
     "accept reject pend identity-merge candidate id owner/admin",
 
-  validate: async (runtime, message) => {
-    return hasAdminAccess(runtime, message);
-  },
+  validate: async () => true,
 
   parameters: [
     {
@@ -940,16 +908,7 @@ export const resolveMergeCandidateAction: Action = {
     },
   ],
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "RESOLVE_MERGE_CANDIDATE" },
-      };
-    }
-
+  handler: async (runtime, _message, _state, options) => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ResolveMergeCandidateParams;
     const candidateId =
@@ -1101,9 +1060,7 @@ export const getRelationshipActivityAction: Action = {
   descriptionCompressed:
     "return recent relationship/identity/fact activity timeline, paginat mirror Relationships activity feed desktop app",
 
-  validate: async (runtime, message) => {
-    return hasAdminAccess(runtime, message);
-  },
+  validate: async () => true,
 
   parameters: [
     {
@@ -1120,16 +1077,7 @@ export const getRelationshipActivityAction: Action = {
     },
   ],
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "GET_RELATIONSHIP_ACTIVITY" },
-      };
-    }
-
+  handler: async (runtime, _message, _state, options) => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as GetRelationshipActivityParams;
     const limit = clampActivityLimit(params.limit);

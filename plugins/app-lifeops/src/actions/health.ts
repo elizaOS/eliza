@@ -10,7 +10,6 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -297,8 +296,7 @@ export const healthAction: Action = {
     "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
   contexts: ["health", "tasks", "calendar"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime: IAgentRuntime, message: Memory) =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

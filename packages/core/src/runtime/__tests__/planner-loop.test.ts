@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelType } from "../../types/model";
+import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
+import type { TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 planner loop skeleton", () => {
 	it("parses planner tool calls", () => {
@@ -168,5 +169,73 @@ describe("v5 planner loop skeleton", () => {
 				evaluate,
 			}),
 		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+	});
+
+	it("compacts old assistant/tool suffixes when the planner input crosses the budget threshold", async () => {
+		const capturedMessages: ChatMessage[][] = [];
+		const longPayload = `generated file content: ${"x".repeat(20_000)}`;
+		let plannerCallCount = 0;
+		const runtime = {
+			useModel: vi.fn(async (_modelType: unknown, params: unknown) => {
+				const messages =
+					(params as { messages?: ChatMessage[] }).messages ?? [];
+				capturedMessages.push(JSON.parse(JSON.stringify(messages)));
+				plannerCallCount++;
+				if (plannerCallCount === 1) {
+					return {
+						text: "",
+						toolCalls: [{ id: "call-1", name: "GENERATE", arguments: {} }],
+					};
+				}
+				return {
+					text: "",
+					toolCalls: [
+						{
+							id: "call-final",
+							name: "REPLY",
+							arguments: { text: "done" },
+						},
+					],
+				};
+			}),
+			logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+		};
+		const recordStage = vi.fn(async () => undefined);
+		const recorder = {
+			recordStage,
+		} as unknown as TrajectoryRecorder;
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: {
+				contextWindowTokens: 2_000,
+				compactionReserveTokens: 500,
+				compactionKeepSteps: 0,
+			},
+			recorder,
+			trajectoryId: "trajectory-1",
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: longPayload,
+			})),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Continue after generated content.",
+			})),
+		});
+
+		expect(plannerCallCount).toBe(2);
+		const secondCall = capturedMessages[1];
+		if (!secondCall) throw new Error("Expected a second planner call");
+		const secondPayload = JSON.stringify(secondCall);
+		expect(secondPayload).toContain("compaction");
+		expect(secondPayload).toContain("GENERATE success");
+		expect(secondPayload).not.toContain("x".repeat(1_000));
+
+		const recordedKinds = recordStage.mock.calls.map((call) => call[1]?.kind);
+		expect(recordedKinds).toContain("compaction");
+		expect(recordedKinds).toContain("planner");
 	});
 });

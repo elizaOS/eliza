@@ -5,7 +5,7 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 // Streaming responses can be long-running
 
@@ -15,11 +15,62 @@ const streamRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]).optional(),
   method: z.literal("message.send"),
-  params: z.object({
-    text: z.string().min(1),
-    roomId: z.string().optional(),
-  }),
+  params: z
+    .object({
+      text: z.string().min(1),
+      roomId: z.string().optional(),
+      mode: z.enum(["simple", "power"]).optional(),
+    })
+    .passthrough(),
 });
+
+const CONTROL_PLANE_URL_KEYS = [
+  "CONTAINER_CONTROL_PLANE_URL",
+  "CONTAINER_SIDECAR_URL",
+  "HETZNER_CONTAINER_CONTROL_PLANE_URL",
+] as const;
+
+function readControlPlaneEnv(c: AppContext | undefined, keys: readonly string[]): string | null {
+  if (!c?.env) return null;
+  for (const key of keys) {
+    const value = c.env[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+async function forwardStreamToControlPlane(params: {
+  ctx?: AppContext;
+  request: Request;
+  agentId: string;
+  user: { id: string; organization_id: string };
+  body: BridgeRequest;
+}): Promise<Response | null> {
+  const baseUrl = readControlPlaneEnv(params.ctx, CONTROL_PLANE_URL_KEYS);
+  if (!baseUrl) return null;
+
+  const target = new URL(baseUrl);
+  target.pathname = `/api/v1/eliza/agents/${encodeURIComponent(params.agentId)}/stream`;
+
+  const headers = new Headers(params.request.headers);
+  headers.delete("host");
+  const internalToken = readControlPlaneEnv(params.ctx, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
+  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const databaseUrl = readControlPlaneEnv(params.ctx, ["DATABASE_URL"]);
+  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
+  headers.set("content-type", "application/json");
+  headers.set("accept", "text/event-stream");
+  headers.set("x-eliza-user-id", params.user.id);
+  headers.set("x-eliza-organization-id", params.user.organization_id);
+
+  return fetch(target, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(params.body),
+    redirect: "manual",
+    signal: AbortSignal.timeout(130_000),
+  });
+}
 
 /**
  * POST /api/v1/eliza/agents/[agentId]/stream
@@ -31,7 +82,11 @@ const streamRequestSchema = z.object({
  *   done       - response is complete
  *   error      - an error occurred
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+  ctx?: AppContext,
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -64,6 +119,17 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     );
 
     if (!upstreamResponse || !upstreamResponse.body) {
+      const forwarded = await forwardStreamToControlPlane({
+        ctx,
+        request,
+        agentId,
+        user,
+        body: rpcRequest,
+      });
+      if (forwarded) {
+        return applyCorsHeaders(forwarded, CORS_METHODS);
+      }
+
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
       const encoder = new TextEncoder();
@@ -113,6 +179,6 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
 );
 export default __hono_app;

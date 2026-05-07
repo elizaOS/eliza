@@ -190,6 +190,51 @@ function hasConfiguredHostsPath(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
+  const apiKey =
+    process.env.CEREBRAS_API_KEY?.trim() ||
+    process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  const baseUrl =
+    process.env.OPENAI_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+  const explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  if (
+    explicitProvider !== "cerebras" &&
+    !/cerebras\.ai(?:\/|$)/i.test(baseUrl)
+  ) {
+    return null;
+  }
+
+  const smallModel =
+    process.env.ELIZA_LIVE_TEST_SMALL_MODEL?.trim() ||
+    process.env.OPENAI_SMALL_MODEL?.trim() ||
+    "gpt-oss-120b";
+  const largeModel =
+    process.env.ELIZA_LIVE_TEST_LARGE_MODEL?.trim() ||
+    process.env.OPENAI_LARGE_MODEL?.trim() ||
+    "gpt-oss-120b";
+  const env = {
+    CEREBRAS_API_KEY: apiKey,
+    OPENAI_BASE_URL: baseUrl,
+    MILADY_PROVIDER: "cerebras",
+    OPENAI_SMALL_MODEL: smallModel,
+    OPENAI_LARGE_MODEL: largeModel,
+    SMALL_MODEL: smallModel,
+    LARGE_MODEL: largeModel,
+  };
+
+  return {
+    name: "cerebras",
+    apiKey,
+    baseUrl,
+    smallModel,
+    largeModel,
+    pluginPackage: "@elizaos/plugin-openai",
+    env,
+  };
+}
+
 /** Creates a fully initialized runtime for integration tests. */
 export async function createRealTestRuntime(
   options?: RealTestRuntimeOptions,
@@ -272,6 +317,10 @@ export async function createRealTestRuntime(
     if (options?.withLLM) {
       const { selectLiveProvider } = await import("./live-provider");
       providerConfig = selectLiveProvider(options.preferredProvider);
+      if (!providerConfig && options.preferredProvider) {
+        providerConfig = selectLiveProvider();
+      }
+      providerConfig ??= createCerebrasProviderConfigFromEnv();
       if (providerConfig) {
         providerName = providerConfig.name;
         // Set provider env vars so the plugin picks them up

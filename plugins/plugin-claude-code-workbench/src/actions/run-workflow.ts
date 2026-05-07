@@ -151,6 +151,7 @@ export const claudeCodeWorkbenchRunAction: Action = {
   name: "CLAUDE_CODE_WORKBENCH_RUN",
   contexts: ["code", "automation", "agent_internal"],
   contextGate: { anyOf: ["code", "automation", "agent_internal"] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
   description:
     "Run an allowlisted repo workflow through the Claude Code workbench service.",
@@ -243,7 +244,10 @@ export const claudeCodeWorkbenchRunAction: Action = {
               ...(trajectoryChildStepId ? { trajectoryChildStepId } : {}),
             }),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("workbench workflow timed out")), timeoutMs),
+              setTimeout(
+                () => reject(new Error("workbench workflow timed out")),
+                timeoutMs,
+              ),
             ),
           ]);
           if (trajectoryChildStepId) {

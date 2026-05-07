@@ -259,10 +259,7 @@ interface UICacheStats {
   sizeBytes?: number;
 }
 
-type RouteTrajectoryJsonShape =
-  | "legacy"
-  | "context_object_events_v5"
-  | typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+type RouteTrajectoryJsonShape = typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
 
 type RouteTrajectoryExportOptions = Omit<
   TrajectoryExportOptions,
@@ -1920,15 +1917,13 @@ async function handleExportTrajectories(
   }
 
   const jsonShape =
-    body.jsonShape === "legacy" ||
-    body.jsonShape === "context_object_events_v5" ||
     body.jsonShape === ELIZA_NATIVE_TRAJECTORY_FORMAT
       ? body.jsonShape
       : undefined;
   if (body.jsonShape !== undefined && !jsonShape) {
     sendJsonError(
       res,
-      "jsonShape must be 'legacy', 'context_object_events_v5', or 'eliza_native_v1'",
+      "jsonShape must be 'eliza_native_v1'",
       400,
     );
     return;

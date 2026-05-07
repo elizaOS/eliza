@@ -120,6 +120,7 @@ const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
+const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
 const appCompanionSourceRoot = path.join(
   elizaWorkspaceRoot,
   "apps",
@@ -148,6 +149,24 @@ const realResolveAlias: ModuleAlias[] = [
   }),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
+  {
+    find: "@elizaos/app-lifeops/plugin",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "app-lifeops",
+      "src",
+      "plugin.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-openai$/,
+    replacement: path.join(pluginOpenAiRoot, "index.node.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-openai\/(.+)$/,
+    replacement: path.join(pluginOpenAiRoot, "$1"),
+  },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-lifeops",
     "app-knowledge",

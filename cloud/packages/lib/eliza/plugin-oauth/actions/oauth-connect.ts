@@ -28,6 +28,7 @@ export const oauthConnectAction: ActionWithParams = {
   name: "OAUTH_CONNECT",
   contexts: ["connectors", "settings", "secrets"],
   contextGate: { anyOf: ["connectors", "settings", "secrets"] },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "CONNECT_PLATFORM",
     "LINK_ACCOUNT",

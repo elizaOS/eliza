@@ -1,0 +1,79 @@
+{
+  "id": "coding-tools",
+  "name": "Coding Tools",
+  "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) running directly in the agent. AST-validated commands, mtime-gated writes, sealed workspace roots, optional per-OS process sandboxing (sandbox-exec on macOS, bwrap on Linux).",
+  "npmName": "@elizaos/plugin-coding-tools",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": ["coding", "filesystem", "shell", "git", "code", "claude-code"],
+  "config": {
+    "CODING_TOOLS_WORKSPACE_ROOTS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Workspace roots",
+      "help": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's cwd.",
+      "advanced": false
+    },
+    "CODING_TOOLS_DENY_COMMANDS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Forbidden command patterns",
+      "help": "Comma-separated regex patterns the BASH action must refuse. Combined with the built-in denylist and AST analyzer.",
+      "advanced": true
+    },
+    "CODING_TOOLS_BASH_TIMEOUT_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Bash timeout",
+      "help": "Default BASH timeout in milliseconds.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "CODING_TOOLS_BASH_BG_BUDGET_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Foreground budget",
+      "help": "Bash invocations exceeding this auto-background and return a task_id.",
+      "advanced": true,
+      "min": 1000,
+      "unit": "ms"
+    },
+    "CODING_TOOLS_OS_SANDBOX": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "OS-level sandbox",
+      "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
+      "advanced": true
+    },
+    "CODING_TOOLS_DISABLE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Disable",
+      "help": "Disable all actions in this plugin even when loaded.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Puzzle",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

@@ -17,7 +17,6 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   listTriggerTasks,
   readTriggerConfig,
@@ -77,13 +76,13 @@ export const deleteTriggerTaskAction: Action = {
   ],
   description:
     "Permanently delete a trigger by id. Use when the user wants to remove a recurring or scheduled trigger entirely. Pair with cascade=true to also remove sibling schedules sharing the same workflow.",
-  validate: async (runtime, message) => {
+  validate: async (runtime, _message) => {
     if (!triggersFeatureEnabled(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
@@ -92,12 +91,6 @@ export const deleteTriggerTaskAction: Action = {
       return {
         success: false,
         text: "Triggers are disabled by configuration.",
-      };
-    }
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may delete triggers.",
       };
     }
 

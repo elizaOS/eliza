@@ -4,14 +4,18 @@ import { promisify } from "node:util";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
-import { failureToActionResult, readBoolParam, successActionResult } from "../lib/format.js";
+import {
+  failureToActionResult,
+  readBoolParam,
+  successActionResult,
+} from "../lib/format.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -27,6 +31,7 @@ export const exitWorktreeAction: Action = {
   name: "EXIT_WORKTREE",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["LEAVE_WORKTREE", "POP_WORKTREE", "GIT_WORKTREE_REMOVE"],
   description:
     "Pop the most recent ENTER_WORKTREE: restore the previous session cwd, drop the added sandbox root, and (with cleanup=true) run `git worktree remove --force` to delete the worktree directory.",
@@ -35,7 +40,8 @@ export const exitWorktreeAction: Action = {
   parameters: [
     {
       name: "cleanup",
-      description: "If true, also `git worktree remove --force` the popped worktree directory.",
+      description:
+        "If true, also `git worktree remove --force` the popped worktree directory.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -92,10 +98,14 @@ export const exitWorktreeAction: Action = {
     if (cleanup) {
       try {
         const timeoutMs = 30_000;
-        await execFileAsync("git", ["worktree", "remove", "--force", popped.entered], {
-          cwd: popped.previousCwd,
-          timeout: timeoutMs,
-        });
+        await execFileAsync(
+          "git",
+          ["worktree", "remove", "--force", popped.entered],
+          {
+            cwd: popped.previousCwd,
+            timeout: timeoutMs,
+          },
+        );
         cleaned = true;
       } catch (err) {
         const stderr =
@@ -110,7 +120,11 @@ export const exitWorktreeAction: Action = {
               ? `git worktree remove failed: ${stderr.trim()}`
               : `git worktree remove failed: ${msg}`,
           },
-          { exited: popped.entered, restoredTo: popped.previousCwd, cleaned: false },
+          {
+            exited: popped.entered,
+            restoredTo: popped.previousCwd,
+            cleaned: false,
+          },
         );
       }
     }
@@ -120,12 +134,11 @@ export const exitWorktreeAction: Action = {
     );
 
     const maxActionResultBytes = 2000;
-    const text = (cleaned
-      ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
-      : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`).slice(
-      0,
-      maxActionResultBytes,
-    );
+    const text = (
+      cleaned
+        ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
+        : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
+    ).slice(0, maxActionResultBytes);
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

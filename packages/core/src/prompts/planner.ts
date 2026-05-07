@@ -33,10 +33,12 @@ export const v5PlannerSchema: JSONSchema = {
 				properties: {
 					id: { type: "string" },
 					name: { type: "string" },
-					args: {
-						type: "object",
-						additionalProperties: false,
-					},
+					// Tool args are arbitrary per-tool. Permissive object schema —
+					// no `additionalProperties: false`, no empty `properties: {}`.
+					// Strict-grammar providers (Cerebras, etc.) reject the empty
+					// shape with `Object fields require at least one of:
+					// 'properties' or 'anyOf' with a list of possible properties`.
+					args: { type: "object" },
 				},
 				required: ["name"],
 			},

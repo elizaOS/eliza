@@ -65,6 +65,7 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
+		emitEvent: vi.fn(async () => undefined),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -1073,37 +1074,53 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(firstPlannerParams?.prompt).toContain("selected_contexts: general");
 		expect(firstPlannerParams?.prompt).not.toContain("ADMIN_ESCALATE");
 
-		const secondPlannerPrompt = String(
-			(plannerCalls[1]?.params as { prompt?: string } | undefined)?.prompt ??
-				"",
+		const secondPlannerParams = plannerCalls[1]?.params as
+			| {
+					prompt?: string;
+					messages?: unknown[];
+					tools?: Array<{ name?: string }>;
+			  }
+			| undefined;
+		const secondPlannerMessages = JSON.stringify(
+			secondPlannerParams?.messages ?? [],
 		);
-		expect(secondPlannerPrompt).toContain("PUBLIC_LOOKUP");
-		expect(secondPlannerPrompt).toContain("alpha-status");
+		expect(secondPlannerParams?.tools?.map((tool) => tool.name)).toEqual([
+			"PUBLIC_LOOKUP",
+			"SUMMARIZE_LOOKUP",
+		]);
+		expect(secondPlannerMessages).toContain("PUBLIC_LOOKUP");
+		expect(secondPlannerMessages).toContain("alpha-status");
+		expect(secondPlannerMessages).not.toContain("tool_result");
 
 		const evaluatorCalls = calls.filter(
 			(call, index) =>
 				index > 0 && call.modelType === ModelType.RESPONSE_HANDLER,
 		);
 		expect(evaluatorCalls.length).toBe(2);
-		const firstEvaluatorPrompt = String(
-			(evaluatorCalls[0]?.params as { prompt?: string } | undefined)?.prompt ??
-				"",
+		const firstEvaluatorParams = evaluatorCalls[0]?.params as
+			| { prompt?: string; messages?: unknown[] }
+			| undefined;
+		const firstEvaluatorMessages = JSON.stringify(
+			firstEvaluatorParams?.messages ?? [],
 		);
-		expect(firstEvaluatorPrompt).toContain("tool_result");
-		expect(firstEvaluatorPrompt).toContain("alpha-status");
-		expect(firstEvaluatorPrompt).toContain('"status": "completed"');
+		expect(firstEvaluatorParams?.prompt).not.toContain("tool_result");
+		expect(firstEvaluatorMessages).toContain("alpha-status");
+		expect(firstEvaluatorMessages).not.toContain("tool_result");
 
-		const finalEvaluatorPrompt = String(
-			(evaluatorCalls[1]?.params as { prompt?: string } | undefined)?.prompt ??
-				"",
+		const finalEvaluatorParams = evaluatorCalls[1]?.params as
+			| { prompt?: string; messages?: unknown[] }
+			| undefined;
+		const finalEvaluatorMessages = JSON.stringify(
+			finalEvaluatorParams?.messages ?? [],
 		);
-		expect(finalEvaluatorPrompt).toContain("SUMMARIZE_LOOKUP");
-		expect(finalEvaluatorPrompt).toContain("usedEvidenceId");
+		expect(finalEvaluatorParams?.prompt).toContain("evaluator_stage");
+		expect(finalEvaluatorMessages).toContain("SUMMARIZE_LOOKUP");
+		expect(finalEvaluatorMessages).toContain("usedEvidenceId");
 
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
 			stages: Array<{
 				kind: string;
-				model?: { prompt?: string };
+				model?: { prompt?: string; tools?: Array<{ name?: string }> };
 				cache?: { segmentHashes: string[]; prefixHash: string };
 			}>;
 			metrics: { plannerIterations: number; toolCallsExecuted: number };
@@ -1114,7 +1131,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			(stage) => stage.kind === "planner",
 		);
 		expect(recordedPlanner?.model?.prompt).toContain("message_handler");
-		expect(recordedPlanner?.model?.prompt).toContain("PUBLIC_LOOKUP");
+		expect(recordedPlanner?.model?.tools?.map((tool) => tool.name)).toEqual([
+			"PUBLIC_LOOKUP",
+			"SUMMARIZE_LOOKUP",
+		]);
 		expect(recordedPlanner?.model?.prompt).not.toContain("ADMIN_ESCALATE");
 		expect(recordedPlanner?.cache?.segmentHashes.length).toBeGreaterThan(0);
 		expect(recordedPlanner?.cache?.prefixHash).toMatch(/^[a-f0-9]{64}$/);

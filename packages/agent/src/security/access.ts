@@ -1,19 +1,11 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   checkSenderPrivateAccess,
-  checkSenderRole,
-  resolveCanonicalOwnerIdForMessage,
+  hasRoleAccess as coreHasRoleAccess,
 } from "@elizaos/core";
 
 /** Role names matching the elizaOS role hierarchy. */
 export type RequiredRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
-
-const ROLE_RANK: Record<RequiredRole, number> = {
-  GUEST: 0,
-  USER: 1,
-  ADMIN: 2,
-  OWNER: 3,
-};
 
 type AccessContext = {
   runtime: IAgentRuntime & { agentId: string };
@@ -51,82 +43,30 @@ export function isAgentSelf(
   return context.message.entityId === context.runtime.agentId;
 }
 
-async function isCanonicalOwner(
-  runtime: IAgentRuntime,
-  message: Memory,
-): Promise<boolean> {
-  try {
-    const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
-    return typeof ownerId === "string" && ownerId === message.entityId;
-  } catch {
-    return false;
-  }
-}
-
 export async function hasOwnerAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
-  const context = getAccessContext(runtime, message);
-  if (!context) {
-    return true;
-  }
-
-  if (isAgentSelf(context.runtime, context.message)) {
-    return true;
-  }
-
-  if (await isCanonicalOwner(context.runtime, context.message)) {
-    return true;
-  }
-
-  try {
-    const role = await checkSenderRole(context.runtime, context.message);
-    return role?.isOwner === true;
-  } catch {
-    return false;
-  }
+  return coreHasRoleAccess(runtime, message, "OWNER");
 }
 
 export async function hasAdminAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
-  const context = getAccessContext(runtime, message);
-  if (!context) {
-    return true;
-  }
-
-  if (isAgentSelf(context.runtime, context.message)) {
-    return true;
-  }
-
-  if (await isCanonicalOwner(context.runtime, context.message)) {
-    return true;
-  }
-
-  try {
-    const role = await checkSenderRole(context.runtime, context.message);
-    return role?.isAdmin === true;
-  } catch {
-    return false;
-  }
+  return coreHasRoleAccess(runtime, message, "ADMIN");
 }
 
 export async function hasPrivateAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
+  if (await coreHasRoleAccess(runtime, message, "OWNER")) {
+    return true;
+  }
+
   const context = getAccessContext(runtime, message);
   if (!context) {
-    return true;
-  }
-
-  if (isAgentSelf(context.runtime, context.message)) {
-    return true;
-  }
-
-  if (await isCanonicalOwner(context.runtime, context.message)) {
     return true;
   }
 
@@ -154,34 +94,5 @@ export async function hasRoleAccess(
   message: Memory | undefined,
   requiredRole: RequiredRole,
 ): Promise<boolean> {
-  if (requiredRole === "GUEST") {
-    return true;
-  }
-
-  const context = getAccessContext(runtime, message);
-  if (!context) {
-    return true;
-  }
-
-  if (isAgentSelf(context.runtime, context.message)) {
-    return true;
-  }
-
-  if (await isCanonicalOwner(context.runtime, context.message)) {
-    return true;
-  }
-
-  try {
-    const result = await checkSenderRole(context.runtime, context.message);
-    if (!result) {
-      // No world context — allow through (same lenient fallback as plugin-role-gating)
-      return true;
-    }
-
-    const senderRank = ROLE_RANK[result.role as RequiredRole] ?? 0;
-    const requiredRank = ROLE_RANK[requiredRole] ?? 0;
-    return senderRank >= requiredRank;
-  } catch {
-    return false;
-  }
+  return coreHasRoleAccess(runtime, message, requiredRole);
 }

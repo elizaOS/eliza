@@ -41,6 +41,7 @@ export const oauthGetAction: ActionWithParams = {
   name: "OAUTH_GET",
   contexts: ["connectors", "settings"],
   contextGate: { anyOf: ["connectors", "settings"] },
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "CHECK_CONNECTION",
     "VERIFY_CONNECTION",
@@ -107,7 +108,11 @@ export const oauthGetAction: ActionWithParams = {
     try {
       // Check specific platform
       if (platform) {
-        const isConnected = await oauthService.isPlatformConnected(organizationId, platform, user.id);
+        const isConnected = await oauthService.isPlatformConnected(
+          organizationId,
+          platform,
+          user.id,
+        );
         const platformName = capitalize(platform);
 
         if (isConnected) {

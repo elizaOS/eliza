@@ -42,6 +42,7 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 		character: {
 			name: "Test Agent",
 			system: "You are concise.",
+			bio: "I help with calendars.",
 		},
 		actions: [],
 		providers: [],
@@ -184,11 +185,19 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const systemContent = params.messages?.[0]?.content ?? "";
 		const userContent = params.messages?.[1]?.content ?? "";
+		expect(systemContent.startsWith("You are concise.")).toBe(true);
+		expect(systemContent.indexOf("# About Test Agent")).toBeGreaterThan(
+			systemContent.indexOf("You are concise."),
+		);
+		expect(systemContent.indexOf("user_role: USER")).toBeGreaterThan(
+			systemContent.indexOf("# About Test Agent"),
+		);
 		expect(systemContent).toContain("message_handler_stage:");
 		expect(systemContent).toContain("available_contexts:");
 		expect(userContent).toContain("# Conversation Messages");
 		expect(userContent.match(/x/g)?.length).toBe(12_000);
 		expect(userContent).toContain("Can you check my calendar?");
+		expect(userContent).not.toContain("user_role:");
 		const fullPrompt = `${params.prompt ?? ""}\n${systemContent}\n${userContent}`;
 		expect(fullPrompt).not.toContain("values:");
 		expect(fullPrompt).not.toContain("data:");

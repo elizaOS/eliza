@@ -11,7 +11,6 @@ import {
   resolveCanonicalOwnerIdForMessage,
   stringToUuid,
 } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 type SendAdminMessageParams = {
@@ -58,8 +57,7 @@ export const sendAdminMessageAction: Action = {
   descriptionCompressed:
     "send message owner/admin via Eliza app use need notify, alert, communicate w/ owner",
 
-  validate: async (runtime, message, state) => {
-    if (!(await hasAdminAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "send_admin_message");
   },
 

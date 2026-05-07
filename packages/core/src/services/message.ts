@@ -23,7 +23,11 @@ import {
 	createContextObject,
 } from "../runtime/context-object";
 import type { ContextRegistry } from "../runtime/context-registry";
-import { renderContextObject } from "../runtime/context-renderer";
+import {
+	normalizePromptSegments,
+	renderContextObject,
+	segmentBlock,
+} from "../runtime/context-renderer";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -45,6 +49,7 @@ import {
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
+	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -52,9 +57,7 @@ import {
 	runPlannerLoop,
 } from "../runtime/planner-loop";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
-import {
-	buildCanonicalSystemPrompt,
-} from "../runtime/system-prompt";
+import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
 	createJsonFileTrajectoryRecorder,
 	isTrajectoryRecordingEnabled,
@@ -1226,20 +1229,20 @@ function createV5MessageContextObject(args: {
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
 		createdAt: Date.now(),
-			metadata: {
-				roomId: args.message.roomId,
-				messageId: args.message.id,
-				selectedContexts: [...(args.selectedContexts ?? [])],
-			},
-			staticPrefix: {
-				systemPrompt: systemPrompt
-					? {
-							id: "system",
-							label: "system",
-							content: systemPrompt,
-							stable: true,
-						}
-					: undefined,
+		metadata: {
+			roomId: args.message.roomId,
+			messageId: args.message.id,
+			selectedContexts: [...(args.selectedContexts ?? [])],
+		},
+		staticPrefix: {
+			systemPrompt: systemPrompt
+				? {
+						id: "system",
+						label: "system",
+						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
 			contextRegistryDigest: availableContexts.join(","),
 		},
 		trajectoryPrefix: {
@@ -1336,30 +1339,6 @@ export function formatAvailableContextsForPrompt(
 		.join("\n");
 }
 
-function renderContextSegmentBlock(segment: {
-	content: string;
-	label?: string;
-	id?: string;
-	stable?: boolean;
-}): string {
-	const label = segment.label ?? segment.id ?? "context";
-	if (label === "system") {
-		return segment.content.trim();
-	}
-	return `${label}:\n${segment.content.trim()}`;
-}
-
-function normalizeMessageHandlerPromptSegments(
-	segments: PromptSegment[],
-): PromptSegment[] {
-	return segments
-		.filter((segment) => segment.content.trim().length > 0)
-		.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
-		}));
-}
-
 function renderV5MessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
@@ -1404,20 +1383,20 @@ function renderV5MessageHandlerModelInput(
 	const dynamicSegments = rendered.promptSegments.filter(
 		(segment) => !segment.stable,
 	);
-	const promptSegments = normalizeMessageHandlerPromptSegments([
+	const promptSegments = normalizePromptSegments([
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
 		...dynamicSegments,
 	]);
 	const prompt = promptSegments.map((segment) => segment.content).join("");
-	const systemContent = normalizeMessageHandlerPromptSegments([
+	const systemContent = normalizePromptSegments([
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
 	])
-		.map((segment) => renderContextSegmentBlock(segment))
+		.map(segmentBlock)
 		.join("\n\n");
-	const userContent = normalizeMessageHandlerPromptSegments(dynamicSegments)
-		.map((segment) => renderContextSegmentBlock(segment))
+	const userContent = normalizePromptSegments(dynamicSegments)
+		.map(segmentBlock)
 		.join("\n\n");
 	return {
 		prompt,
@@ -1545,6 +1524,7 @@ interface ExecuteV5PlannedToolCallParams {
 	tools?: ToolDefinition[];
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	plannerLoopConfig?: PlannerLoopParams["config"];
 }
 
 async function executeV5PlannedToolCall(
@@ -1564,6 +1544,7 @@ async function executeV5PlannedToolCall(
 			evaluate: args.evaluate,
 			evaluatorEffects: args.evaluatorEffects,
 			provider: args.provider,
+			config: args.plannerLoopConfig,
 			recorder: args.recorder,
 			trajectoryId: args.trajectoryId,
 		});
@@ -1622,7 +1603,7 @@ function collectPreviousActionResults(
 	trajectory: PlannerTrajectory,
 ): ActionResult[] {
 	const results: ActionResult[] = [];
-	for (const step of trajectory.steps) {
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
@@ -1650,6 +1631,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	plannerLoopConfig?: PlannerLoopParams["config"];
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -1722,6 +1704,18 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 			}),
 		];
+		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash: stage1PrefixHash,
+				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+			}),
+			buildModelInputBudget({
+				prompt: messageHandlerPrompt,
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+			}),
+		);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -1730,18 +1724,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
 				toolChoice: "required",
-				providerOptions: withModelInputBudgetProviderOptions(
-					cacheProviderOptions({
-						prefixHash: stage1PrefixHash,
-						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-					}),
-					buildModelInputBudget({
-						prompt: messageHandlerPrompt,
-						messages: messageHandlerInput.messages,
-						promptSegments: messageHandlerInput.promptSegments,
-						tools: messageHandlerTools,
-					}),
-				),
+				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
@@ -1761,6 +1744,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				messages: messageHandlerInput.messages,
 				tools: messageHandlerTools,
 				toolChoice: "required",
+				providerOptions: messageHandlerProviderOptions,
 				raw: rawMessageHandler,
 				parsed: messageHandler,
 				startedAt: messageHandlerStartedAt,
@@ -1867,6 +1851,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const plannerResult = await runPlannerLoop({
 			runtime: plannerRuntime,
 			context: plannerContextWithDecision,
+			config: args.plannerLoopConfig,
 			tools: plannerTools.length > 0 ? plannerTools : undefined,
 			evaluatorEffects,
 			recorder,
@@ -1887,6 +1872,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
+					plannerLoopConfig: args.plannerLoopConfig,
 				}),
 			evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
 				runEvaluator({
@@ -1942,6 +1928,7 @@ async function recordMessageHandlerStage(args: {
 	messages?: ChatMessage[];
 	tools?: ToolDefinition[];
 	toolChoice?: unknown;
+	providerOptions?: Record<string, unknown>;
 	raw: string | GenerateTextResult;
 	parsed?: MessageHandlerResult;
 	startedAt: number;
@@ -1971,6 +1958,7 @@ async function recordMessageHandlerStage(args: {
 				messages: args.messages,
 				tools: args.tools,
 				toolChoice: args.toolChoice,
+				providerOptions: args.providerOptions,
 				response: responseText,
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
@@ -4382,33 +4370,33 @@ export class DefaultMessageService implements IMessageService {
 				"trajectoryStepId" in message.metadata
 					? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 					: undefined;
-				trajectoryId =
-					typeof message.metadata === "object" &&
-					message.metadata !== null &&
-					"trajectoryId" in message.metadata
-						? (message.metadata as { trajectoryId?: string }).trajectoryId
-						: undefined;
-			}
+			trajectoryId =
+				typeof message.metadata === "object" &&
+				message.metadata !== null &&
+				"trajectoryId" in message.metadata
+					? (message.metadata as { trajectoryId?: string }).trajectoryId
+					: undefined;
+		}
 
-			const senderRole = await resolveStage1SenderRole(runtime, message);
-			const trajectoryContextBase = {
-				runId: runtime.getCurrentRunId?.(),
-				roomId: message.roomId,
-				messageId: message.id,
-				userRole: senderRole,
-			};
+		const senderRole = await resolveStage1SenderRole(runtime, message);
+		const trajectoryContextBase = {
+			runId: runtime.getCurrentRunId?.(),
+			roomId: message.roomId,
+			messageId: message.id,
+			userRole: senderRole,
+		};
 
-			return await runWithTrajectoryContext<MessageProcessingResult>(
-				typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
-					? {
-							...trajectoryContextBase,
-							...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
-								? { trajectoryId: trajectoryId.trim() }
-								: {}),
-							trajectoryStepId: trajectoryStepId.trim(),
-						}
-					: trajectoryContextBase,
-				async (): Promise<MessageProcessingResult> => {
+		return await runWithTrajectoryContext<MessageProcessingResult>(
+			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
+				? {
+						...trajectoryContextBase,
+						...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
+							? { trajectoryId: trajectoryId.trim() }
+							: {}),
+						trajectoryStepId: trajectoryStepId.trim(),
+					}
+				: trajectoryContextBase,
+			async (): Promise<MessageProcessingResult> => {
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",

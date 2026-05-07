@@ -1,5 +1,4 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -101,8 +100,7 @@ export const deviceIntentAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   parameters: [
     {
@@ -176,10 +174,6 @@ export const deviceIntentAction: Action & {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return fail("PERMISSION_DENIED");
-    }
-
     const rawParameters =
       ((options as HandlerOptions | undefined)?.parameters as
         | Record<string, unknown>
