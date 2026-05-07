@@ -86,6 +86,7 @@ async function build() {
   await Bun.$`tsc --project tsconfig.build.json`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
+  await mkdir("dist/cjs", { recursive: true });
   await writeFile(
     "dist/node/index.d.ts",
     `export * from '../index';

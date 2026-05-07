@@ -69,20 +69,20 @@ datasets:
       action_planner + response tasks). Drop in nubilio-trajectories/
       under training/ to ingest.
 
-  # Full scam-defense corpus — augmented v2 trajectories with
-  # systemPrompt + runtime context + transcript + chosen action.
+  # Scam defense corpus alias. The former proprietary
+  # local-corpora/full-corpus-unweighted source is replaced by the public
+  # ScamBench training release.
   - slug: scam-defense-corpus
-    local_path: local-corpora/full-corpus-unweighted
-    normalizer: scam_defense_corpus
+    repo_id: shaw/scambench-training
+    normalizer: scambench_passthrough
     weight: 4.0
-    est_size_gb: 0.2
+    est_size_gb: 0.5
     priority: core
-    license: proprietary
+    license: cc-by-sa-4.0
     notes: |
-      19,020 trajectories (15,216 train + 3,804 held-out) covering
-      legitimate, social-engineering, prompt-injection, phishing-link,
-      credential-theft, and dozens of long-tail scam categories across
-      multiple languages. Held-out auto-routes to test split.
+      Public ScamBench training release used for the scam-defense corpus
+      slot. Pulls the canonical `formats/eliza-{train,test,validation}.jsonl`
+      files from shaw/scambench-training.
 
   # Multi-party fantasy roleplay — Facebook LIGHT MultiLIGHT.
   - slug: light-multilight
@@ -177,14 +177,6 @@ datasets:
     license: cc-by-4.0
 
   # =================== AGENTIC / OPERATOR / MOBILE ================
-  - slug: openclaw-operator
-    repo_id: CyberAGI/openclaw-operator-data
-    normalizer: openclaw_operator
-    weight: 2.0
-    est_size_gb: 1.0
-    priority: core
-    license: unknown
-
   - slug: mobile-actions
     repo_id: google/mobile-actions
     normalizer: mobile_actions
@@ -459,14 +451,6 @@ datasets:
     priority: core
     license: unknown
 
-  - slug: regularizer-reasoning-tool
-    repo_id: AmanPriyanshu/regularizer-250K-from-reasoning-and-tool-use-sft-4M-random-compilation
-    normalizer: hermes_traces
-    weight: 1.0
-    est_size_gb: 1.5
-    priority: extra
-    license: unknown
-
   - slug: tool-reasoning-jupyter
     repo_id: AmanPriyanshu/tool-reasoning-sft-CODING-jupyter-agent-dataset-sft-tool-use-agent-data-cleaned-rectified
     normalizer: hermes_traces
@@ -607,14 +591,6 @@ datasets:
     normalizer: hermes_traces
     weight: 1.0
     est_size_gb: 0.5
-    priority: extra
-    license: unknown
-
-  - slug: tool-reasoning-1m-random
-    repo_id: AmanPriyanshu/tool-reasoning-sft-1M-random-compilation
-    normalizer: hermes_traces
-    weight: 1.0
-    est_size_gb: 3.0
     priority: extra
     license: unknown
 

@@ -20,6 +20,8 @@ const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 
 export const emoteAction: Action = {
   name: "PLAY_EMOTE",
+  contexts: ["media", "general"],
+  contextGate: { anyOf: ["media", "general"] },
 
   similes: [
     "EMOTE",

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -44,7 +44,7 @@ function shouldRetryCopy(error, sourcePath, attempt) {
     attempt < COPY_RETRY_ATTEMPTS &&
     error &&
     typeof error === "object" &&
-    ["EBUSY", "ENOENT", "ENOTEMPTY"].includes(error.code) &&
+    ["EBUSY", "ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code) &&
     existsSync(sourcePath)
   );
 }
@@ -53,6 +53,9 @@ async function copyAssetWithRetry(sourcePath, targetPath) {
   let lastError;
   for (let attempt = 1; attempt <= COPY_RETRY_ATTEMPTS; attempt++) {
     try {
+      if (existsSync(targetPath)) {
+        rmSync(targetPath, { recursive: true, force: true });
+      }
       mkdirSync(path.dirname(targetPath), { recursive: true });
       cpSync(sourcePath, targetPath, {
         recursive: true,

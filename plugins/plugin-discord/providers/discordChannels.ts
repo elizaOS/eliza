@@ -10,6 +10,7 @@ import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const spec = requireProviderSpec("discordChannels");
+const MAX_CHANNELS_IN_STATE = 50;
 
 interface DiscordChannelEntry {
 	id: string;
@@ -23,7 +24,10 @@ export const discordChannelsProvider: Provider = {
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
 	dynamic: true,
-	contexts: ["social", "connectors"],
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	cacheScope: "conversation",
+	roleGate: { minRole: "ADMIN" },
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -52,7 +56,7 @@ export const discordChannelsProvider: Provider = {
 		}
 
 		const channelInfos: DiscordChannelEntry[] = [];
-		for (const channelId of allowedChannelIds) {
+		for (const channelId of allowedChannelIds.slice(0, MAX_CHANNELS_IN_STATE)) {
 			const channel = discordService.client
 				? await discordService.client.channels
 						.fetch(channelId)
@@ -78,16 +82,22 @@ export const discordChannelsProvider: Provider = {
 
 		channelInfos.sort((a, b) => a.server.localeCompare(b.server));
 
+		const truncated = allowedChannelIds.length > channelInfos.length;
+
 		return {
-			data: { listeningToAll: false, channels: channelInfos },
+			data: { listeningToAll: false, channels: channelInfos, truncated },
 			values: {
 				listeningToAll: false,
-				channelCount: channelInfos.length,
+				channelCount: allowedChannelIds.length,
+				shownChannelCount: channelInfos.length,
+				truncated,
 			},
 			text: JSON.stringify({
 				discord_channels: {
 					listening_to_all: false,
-					count: channelInfos.length,
+					count: allowedChannelIds.length,
+					shown: channelInfos.length,
+					truncated,
 					items: channelInfos,
 				},
 			}),

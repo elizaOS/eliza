@@ -1,0 +1,25 @@
+{
+  "name": "@elizaos/cloud-types",
+  "version": "0.1.0",
+  "description": "Shared ambient and API contract types for Eliza Cloud.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./package.json": "./package.json",
+    "./cloud-api": "./cloud-api.ts",
+    "./cloud-worker-env": "./cloud-worker-env.ts",
+    "./global": "./global.d.ts",
+    "./plugin-sql": "./plugin-sql.d.ts",
+    "./stripe-queue-message": "./stripe-queue-message.ts"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "22.19.17",
+    "typescript": "^6.0.0"
+  }
+}

@@ -26,6 +26,11 @@ export const automationTerminalBridgeProvider: Provider = {
     "recent message link terminal conversation current automation room",
   dynamic: true,
   position: 5,
+  contexts: ["automation", "agent_internal"],
+  contextGate: { anyOf: ["automation", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     if (!(await hasAdminAccess(runtime, message))) {

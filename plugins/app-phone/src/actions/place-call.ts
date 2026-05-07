@@ -16,12 +16,39 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 interface PlaceCallParams {
   phoneNumber?: string;
 }
+
+const PLACE_CALL_CONTEXTS = ["phone", "contacts", "messaging"] as const;
+const PLACE_CALL_KEYWORDS = [
+  "call",
+  "dial",
+  "phone",
+  "ring",
+  "llamar",
+  "marcar",
+  "teléfono",
+  "appeler",
+  "composer",
+  "téléphone",
+  "anrufen",
+  "telefon",
+  "ligar",
+  "telefone",
+  "chiamare",
+  "telefono",
+  "電話",
+  "発信",
+  "拨打",
+  "电话",
+  "전화",
+  "통화",
+] as const;
 
 /** Strip whitespace and visual separators while keeping leading + and digits. */
 function normalizeNumber(input: string): string {
@@ -31,8 +58,54 @@ function normalizeNumber(input: string): string {
   return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
 }
 
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return PLACE_CALL_CONTEXTS.some((context) => selected.has(context));
+}
+
+function hasPlaceCallIntent(
+  message: Memory,
+  state: State | undefined,
+): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return PLACE_CALL_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
+
 export const placeCallAction: Action = {
   name: "PLACE_CALL",
+  contexts: [...PLACE_CALL_CONTEXTS],
+  contextGate: { anyOf: [...PLACE_CALL_CONTEXTS] },
+  roleGate: { minRole: "USER" },
   similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
   description:
     "Place a phone call to a given number using the Android Telecom service. " +
@@ -43,9 +116,9 @@ export const placeCallAction: Action = {
   descriptionCompressed:
     "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     if (!(await hasRoleAccess(runtime, message, "USER"))) return false;
-    return true;
+    return hasSelectedContext(state) || hasPlaceCallIntent(message, state);
   },
 
   handler: async (_runtime, _message, _state, options) => {

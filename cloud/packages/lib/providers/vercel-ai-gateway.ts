@@ -15,8 +15,10 @@ import {
   jsonSchema,
   type LanguageModelUsage,
   type ModelMessage,
+  Output,
   streamText,
 } from "ai";
+import type { CloudMergedProviderOptions } from "./cloud-provider-options";
 import type {
   AIProvider,
   OpenAIChatRequest,
@@ -50,6 +52,7 @@ export class VercelAIGatewayProvider implements AIProvider {
     options?: ProviderRequestOptions,
   ): Promise<Response> {
     const output = request.response_format ? toGatewayOutput(request.response_format) : undefined;
+    const providerOptions = mergeGatewayProviderOptions(request);
     const common: Record<string, unknown> = {
       model: this.gateway(request.model as never),
       messages: toModelMessages(request.messages),
@@ -63,7 +66,7 @@ export class VercelAIGatewayProvider implements AIProvider {
       ...(request.tools ? { tools: toGatewayTools(request.tools) } : {}),
       ...(request.tool_choice ? { toolChoice: toGatewayToolChoice(request.tool_choice) } : {}),
       ...(output ? { output } : {}),
-      ...(request.providerOptions ? { providerOptions: request.providerOptions } : {}),
+      ...(providerOptions ? { providerOptions } : {}),
       ...(options?.signal ? { abortSignal: options.signal } : {}),
       ...(options?.timeoutMs ? { timeout: options.timeoutMs } : {}),
     };
@@ -481,30 +484,46 @@ function toGatewayToolChoice(
   return { type: "tool", toolName: toolChoice.function.name };
 }
 
+function mergeGatewayProviderOptions(
+  request: OpenAIChatRequest,
+): CloudMergedProviderOptions | undefined {
+  const base = request.providerOptions ? { ...request.providerOptions } : {};
+  const promptCacheKey = request.prompt_cache_key;
+  if (promptCacheKey) {
+    const cerebras = { ...(base.cerebras ?? {}) };
+    cerebras.prompt_cache_key = promptCacheKey;
+    cerebras.promptCacheKey = promptCacheKey;
+    base.cerebras = cerebras;
+    const eliza = { ...(base.eliza ?? {}) };
+    eliza.promptCacheKey = promptCacheKey;
+    base.eliza = eliza;
+  }
+  return Object.keys(base).length > 0 ? base : undefined;
+}
+
 function toGatewayOutput(responseFormat: NonNullable<OpenAIChatRequest["response_format"]>) {
   if (responseFormat.type === "text") {
     return undefined;
   }
-  return {
-    name: "object",
-    responseFormat: Promise.resolve({
-      type: "json" as const,
-      schema: { type: "object", additionalProperties: true },
-    }),
-    async parseCompleteOutput({ text }: { text: string }) {
-      return JSON.parse(text);
-    },
-    async parsePartialOutput({ text }: { text: string }) {
-      try {
-        return { partial: JSON.parse(text) };
-      } catch {
-        return undefined;
-      }
-    },
-    createElementStreamTransform() {
-      return undefined;
-    },
-  };
+  if (responseFormat.type === "json_object") {
+    return Output.json();
+  }
+  if (!("json_schema" in responseFormat)) {
+    return Output.json();
+  }
+  const responseJsonSchema = responseFormat.json_schema;
+  const schema = responseJsonSchema.schema;
+  if (!schema) {
+    return Output.json({
+      ...(responseJsonSchema.name ? { name: responseJsonSchema.name } : {}),
+      ...(responseJsonSchema.description ? { description: responseJsonSchema.description } : {}),
+    });
+  }
+  return Output.object({
+    schema: jsonSchema(schema),
+    ...(responseJsonSchema.name ? { name: responseJsonSchema.name } : {}),
+    ...(responseJsonSchema.description ? { description: responseJsonSchema.description } : {}),
+  });
 }
 
 export const __nativeToolingTestHooks = {
@@ -512,16 +531,69 @@ export const __nativeToolingTestHooks = {
   toGatewayTools,
   toGatewayToolChoice,
   toGatewayOutput,
+  mergeGatewayProviderOptions,
+  toOpenAIUsage,
 };
 
 function toOpenAIUsage(usage: LanguageModelUsage | undefined) {
   const promptTokens = usage?.inputTokens ?? 0;
   const completionTokens = usage?.outputTokens ?? 0;
-  return {
+  const cacheReadInputTokens = firstNumber(
+    (usage as Record<string, unknown> | undefined)?.cacheReadInputTokens,
+    (usage as Record<string, unknown> | undefined)?.cachedInputTokens,
+    (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
+      ?.cacheReadTokens,
+    (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
+      ?.cachedInputTokens,
+    (usage as { prompt_tokens_details?: Record<string, unknown> } | undefined)
+      ?.prompt_tokens_details?.cached_tokens,
+  );
+  const cacheCreationInputTokens = firstNumber(
+    (usage as Record<string, unknown> | undefined)?.cacheCreationInputTokens,
+    (usage as Record<string, unknown> | undefined)?.cacheWriteInputTokens,
+    (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
+      ?.cacheCreationInputTokens,
+    (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
+      ?.cacheCreationTokens,
+    (usage as { inputTokenDetails?: Record<string, unknown> } | undefined)?.inputTokenDetails
+      ?.cacheWriteTokens,
+  );
+  const out: Record<string, unknown> = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: usage?.totalTokens ?? promptTokens + completionTokens,
   };
+  if (cacheReadInputTokens !== undefined || cacheCreationInputTokens !== undefined) {
+    out.prompt_tokens_details = {
+      ...(cacheReadInputTokens !== undefined
+        ? {
+            cached_tokens: cacheReadInputTokens,
+            cache_read_input_tokens: cacheReadInputTokens,
+          }
+        : {}),
+      ...(cacheCreationInputTokens !== undefined
+        ? { cache_creation_input_tokens: cacheCreationInputTokens }
+        : {}),
+    };
+    if (cacheReadInputTokens !== undefined) {
+      out.cache_read_input_tokens = cacheReadInputTokens;
+    }
+    if (cacheCreationInputTokens !== undefined) {
+      out.cache_creation_input_tokens = cacheCreationInputTokens;
+    }
+  }
+  return out;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
 }
 
 function mapFinishReason(reason: unknown) {

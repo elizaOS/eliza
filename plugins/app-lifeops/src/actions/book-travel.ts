@@ -345,6 +345,8 @@ export const bookTravelAction: Action & {
     "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed.",
   descriptionCompressed:
     "approval-gated real travel booking flights/hotels missing-detail collection draft-confirm calendar-sync after-approval",
+  contexts: ["calendar", "contacts", "tasks", "payments", "finance", "browser"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
@@ -417,9 +419,8 @@ export const bookTravelAction: Action & {
       }
       // Selection + execution were correct: the user asked to book travel,
       // the action ran, and we now need the user to fill in missing trip
-      // details. Mark as awaiting-confirmation so the runtime stops the
-      // multi-step continuation and the benchmark scorer treats this as
-      // completed.
+      // details. Mark as awaiting-confirmation so the native planner stops
+      // chaining and the benchmark scorer treats this as completed.
       return {
         text,
         success: false,

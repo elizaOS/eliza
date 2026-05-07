@@ -9,6 +9,7 @@
  */
 
 import * as fs from "node:fs";
+import { logger } from "@elizaos/core";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
 import { resolveDesktopRuntimeMode } from "./api-base";
@@ -81,7 +82,7 @@ async function syncPermissionsToRestApi(
 			body: JSON.stringify({ permissions }),
 		});
 	} catch (error) {
-		console.warn(
+		logger.warn(
 			`[Permissions] Failed to sync permission state to runtime: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
@@ -119,7 +120,7 @@ export function registerRpcHandlers(
 	sendToWebview: SendToWebview,
 ): void {
 	if (!rpc) {
-		console.error("[RPC] No RPC instance provided");
+		logger.error("[RPC] No RPC instance provided");
 		return;
 	}
 
@@ -171,17 +172,18 @@ export function registerRpcHandlers(
 			return status;
 		},
 		agentRestartClearLocalDb: async () => {
-			console.log("[RPC][reset] agentRestartClearLocalDb invoked");
+			logger.info("[RPC][reset] agentRestartClearLocalDb invoked");
 			try {
 				const status = await agent.restartClearingLocalDb();
-				console.log("[RPC][reset] agentRestartClearLocalDb done", {
-					state: status.state,
-					port: status.port,
-				});
+				logger.info(
+					`[RPC][reset] agentRestartClearLocalDb done state=${status.state} port=${status.port ?? "none"}`,
+				);
 				setAgentReady(status.state === "running");
 				return status;
 			} catch (err) {
-				console.error("[RPC][reset] agentRestartClearLocalDb failed", err);
+				logger.error(
+					`[RPC][reset] agentRestartClearLocalDb failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				throw err;
 			}
 		},
@@ -197,7 +199,9 @@ export function registerRpcHandlers(
 					bearerTokenOverride: params?.bearerToken ?? null,
 				});
 			} catch (err) {
-				console.error("[RPC] agentPostCloudDisconnect failed", err);
+				logger.error(
+					`[RPC] agentPostCloudDisconnect failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				throw err;
 			}
 		},
@@ -232,7 +236,9 @@ export function registerRpcHandlers(
 					bearerTokenOverride: params?.bearerToken ?? null,
 				});
 			} catch (err) {
-				console.error("[RPC] agentCloudDisconnectWithConfirm failed", err);
+				logger.error(
+					`[RPC] agentCloudDisconnectWithConfirm failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				throw err;
 			}
 		},
@@ -262,16 +268,16 @@ export function registerRpcHandlers(
 			const line = formatRendererDiagnosticLine(params);
 			switch (level) {
 				case "error":
-					console.error(line);
+					logger.error(line);
 					break;
 				case "warn":
-					console.warn(line);
+					logger.warn(line);
 					break;
 				case "info":
-					console.info(line);
+					logger.info(line);
 					break;
 				default:
-					console.log(line);
+					logger.info(line);
 					break;
 			}
 			return { ok: true };
@@ -967,5 +973,5 @@ export function registerRpcHandlers(
 		floatingChatGetStatus: async () => floatingChat.getStatus(),
 	});
 
-	console.log("[RPC] All handlers registered");
+	logger.info("[RPC] All handlers registered");
 }

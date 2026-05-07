@@ -4,13 +4,12 @@
  * POST: approve/reject a redemption (admin only). Rejection refunds balance.
  */
 
-import { desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead } from "@/db/client";
-import { apps } from "@/db/schemas/apps";
-import { type TokenRedemption, tokenRedemptions } from "@/db/schemas/token-redemptions";
-import { users } from "@/db/schemas/users";
+import {
+  type TokenRedemptionStatus,
+  tokenRedemptionsRepository,
+} from "@/db/repositories/token-redemptions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -34,7 +33,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 50;
 
-    const allowedStatuses: TokenRedemption["status"][] = [
+    const allowedStatuses: TokenRedemptionStatus[] = [
       "pending",
       "approved",
       "processing",
@@ -43,55 +42,19 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       "rejected",
       "expired",
     ];
-    const statusArray: TokenRedemption["status"][] =
+    const statusArray: TokenRedemptionStatus[] =
       statusFilter === "all"
         ? allowedStatuses
         : statusFilter === "review"
           ? ["pending"]
-          : allowedStatuses.includes(statusFilter as TokenRedemption["status"])
-            ? [statusFilter as TokenRedemption["status"]]
+          : allowedStatuses.includes(statusFilter as TokenRedemptionStatus)
+            ? [statusFilter as TokenRedemptionStatus]
             : ["pending"];
 
-    const redemptions = await dbRead
-      .select({
-        id: tokenRedemptions.id,
-        user_id: tokenRedemptions.user_id,
-        app_id: tokenRedemptions.app_id,
-        points_amount: tokenRedemptions.points_amount,
-        usd_value: tokenRedemptions.usd_value,
-        eliza_amount: tokenRedemptions.eliza_amount,
-        eliza_price_usd: tokenRedemptions.eliza_price_usd,
-        network: tokenRedemptions.network,
-        payout_address: tokenRedemptions.payout_address,
-        status: tokenRedemptions.status,
-        requires_review: tokenRedemptions.requires_review,
-        tx_hash: tokenRedemptions.tx_hash,
-        failure_reason: tokenRedemptions.failure_reason,
-        retry_count: tokenRedemptions.retry_count,
-        reviewed_by: tokenRedemptions.reviewed_by,
-        reviewed_at: tokenRedemptions.reviewed_at,
-        review_notes: tokenRedemptions.review_notes,
-        created_at: tokenRedemptions.created_at,
-        completed_at: tokenRedemptions.completed_at,
-        metadata: tokenRedemptions.metadata,
-        user_email: users.email,
-        app_name: apps.name,
-      })
-      .from(tokenRedemptions)
-      .leftJoin(users, eq(tokenRedemptions.user_id, users.id))
-      .leftJoin(apps, eq(tokenRedemptions.app_id, apps.id))
-      .where(inArray(tokenRedemptions.status, statusArray))
-      .orderBy(desc(tokenRedemptions.created_at))
-      .limit(limit);
-
-    const counts = await dbRead
-      .select({
-        status: tokenRedemptions.status,
-        count: sql<number>`COUNT(*)`,
-        total_usd: sql<string>`COALESCE(SUM(CAST(${tokenRedemptions.usd_value} AS DECIMAL)), 0)`,
-      })
-      .from(tokenRedemptions)
-      .groupBy(tokenRedemptions.status);
+    const [redemptions, counts] = await Promise.all([
+      tokenRedemptionsRepository.listForAdmin(statusArray, limit),
+      tokenRedemptionsRepository.countByStatusForAdmin(),
+    ]);
 
     const statusCounts: Record<string, { count: number; totalUsd: number }> = {};
     for (const row of counts) {

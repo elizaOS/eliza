@@ -1,4 +1,4 @@
-import { v5PlannerTemplate } from "../prompts/planner";
+import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
@@ -6,11 +6,15 @@ import {
 	type ChatMessage,
 	type GenerateTextResult,
 	ModelType,
+	type PromptSegment,
 	type TextGenerationModelType,
 	type ToolCall,
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
+import { computePrefixHashes } from "./context-hash";
+import { appendContextEvent } from "./context-object";
+import { renderContextObject } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
 import type { EvaluatorEffects, EvaluatorOutput } from "./evaluator";
 import { runEvaluator } from "./evaluator";
@@ -39,6 +43,9 @@ export interface PlannerRuntime {
 			tools?: ToolDefinition[];
 			toolChoice?: ToolChoice;
 			messages?: ChatMessage[];
+			responseSchema?: unknown;
+			promptSegments?: PromptSegment[];
+			providerOptions?: Record<string, unknown>;
 		},
 		provider?: string,
 	): Promise<string | GenerateTextResult>;
@@ -207,6 +214,34 @@ export async function runPlannerLoop(
 				.filter((toolCall) => !isTerminalToolCall(toolCall))
 				.map((toolCall, index) => ensureToolCallId(toolCall, iteration, index));
 			trajectory.plannedQueue.push(...nonTerminalCalls);
+			trajectory.context = {
+				...trajectory.context,
+				plannedQueue: [
+					...(trajectory.context.plannedQueue ?? []),
+					...nonTerminalCalls.map((toolCall) => ({
+						id: toolCall.id,
+						name: toolCall.name,
+						args: stringifyForModel(toolCall.params ?? {}),
+						status: "queued" as const,
+						sourceStageId: `planner:${iteration}`,
+					})),
+				],
+			};
+			for (const toolCall of nonTerminalCalls) {
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
+					type: "planned_tool_call",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					metadata: {
+						iteration,
+						toolCallId: toolCall.id,
+						name: toolCall.name,
+						params: stringifyForModel(toolCall.params ?? {}),
+						status: "queued",
+					},
+				});
+			}
 		}
 
 		const toolCall = trajectory.plannedQueue.shift();
@@ -225,6 +260,20 @@ export async function runPlannerLoop(
 
 		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
+		trajectory.context = appendContextEvent(trajectory.context, {
+			id: `evaluation:${iteration}:${Date.now()}`,
+			type: "evaluation",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			metadata: {
+				iteration,
+				success: evaluator.success,
+				decision: evaluator.decision,
+				thought: evaluator.thought,
+				messageToUser: evaluator.messageToUser,
+				recommendedToolCallId: evaluator.recommendedToolCallId,
+			},
+		});
 
 		if (evaluator.decision === "FINISH") {
 			return {
@@ -236,7 +285,17 @@ export async function runPlannerLoop(
 		}
 
 		if (evaluator.decision === "NEXT_RECOMMENDED") {
-			preferRecommendedToolCall(trajectory, evaluator);
+			const selected = preferRecommendedToolCall(trajectory, evaluator);
+			if (!selected) {
+				params.runtime.logger?.warn?.(
+					{
+						recommendedToolCallId: evaluator.recommendedToolCallId,
+						queuedToolCallIds: trajectory.plannedQueue.map((call) => call.id),
+					},
+					"Evaluator requested NEXT_RECOMMENDED without a valid queued tool; replanning",
+				);
+				trajectory.plannedQueue.length = 0;
+			}
 			continue;
 		}
 
@@ -262,9 +321,116 @@ export function renderPlannerPrompt(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 }): string {
-	return (params.template ?? v5PlannerTemplate)
-		.replace("{{contextObject}}", stringifyForModel(params.context))
-		.replace("{{trajectory}}", stringifyForModel(params.trajectory.steps));
+	return renderPlannerModelInput(params).prompt;
+}
+
+function renderPlannerModelInput(params: {
+	context: ContextObject;
+	trajectory: PlannerTrajectory;
+	template?: string;
+}): {
+	prompt: string;
+	messages: ChatMessage[];
+	promptSegments: PromptSegment[];
+} {
+	const renderedContext = renderContextObject(params.context);
+	const trajectory = stringifyForModel(params.trajectory.steps);
+	const template = params.template ?? v5PlannerTemplate;
+	const instructions = (
+		template.split("context_object:")[0] ?? template
+	).trim();
+	const trajectoryContent = `trajectory:\n${trajectory}`;
+	const promptSegments = normalizePromptSegments([
+		...renderedContext.promptSegments,
+		{ content: `planner_stage:\n${instructions}`, stable: false },
+		{ content: trajectoryContent, stable: false },
+	]);
+	const prompt = promptSegments.map((segment) => segment.content).join("");
+	const messages: ChatMessage[] = [
+		...toChatMessages(renderedContext.messages),
+		{ role: "system", content: `planner_stage:\n${instructions}` },
+		{ role: "user", content: trajectoryContent },
+	];
+	return { prompt, messages, promptSegments };
+}
+
+function compactPromptSegments(segments: PromptSegment[]): PromptSegment[] {
+	return segments.filter((segment) => segment.content.length > 0);
+}
+
+function normalizePromptSegments(segments: PromptSegment[]): PromptSegment[] {
+	return compactPromptSegments(
+		segments.map((segment, index) => ({
+			...segment,
+			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
+		})),
+	);
+}
+
+function toChatMessages(
+	messages: Array<{
+		role: string;
+		content?: unknown;
+		name?: string;
+		toolCallId?: string;
+	}>,
+): ChatMessage[] {
+	return messages.map((message) => {
+		const role =
+			message.role === "system" ||
+			message.role === "developer" ||
+			message.role === "user" ||
+			message.role === "assistant" ||
+			message.role === "tool"
+				? message.role
+				: "system";
+		const content =
+			typeof message.content === "string"
+				? message.content
+				: message.content == null
+					? null
+					: stringifyForModel(message.content);
+		return {
+			role,
+			content,
+			...(message.name ? { name: message.name } : {}),
+			...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+		};
+	});
+}
+
+function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
+	const prefix: PromptSegment[] = [];
+	for (const segment of segments) {
+		if (!segment.stable) break;
+		prefix.push(segment);
+	}
+	return prefix.length > 0 ? prefix : segments.slice(0, 1);
+}
+
+function cacheProviderOptions(args: {
+	prefixHash: string;
+	segmentHashes?: readonly string[];
+}): Record<string, unknown> {
+	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
+	return {
+		eliza: {
+			promptCacheKey,
+			prefixHash: args.prefixHash,
+			...(args.segmentHashes ? { segmentHashes: [...args.segmentHashes] } : {}),
+		},
+		cerebras: {
+			promptCacheKey,
+			prompt_cache_key: promptCacheKey,
+		},
+		openai: {
+			promptCacheKey,
+			promptCacheRetention: "24h",
+		},
+		gateway: {
+			caching: "auto",
+		},
+	};
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
@@ -340,19 +506,41 @@ async function callPlanner(params: {
 	parentStageId?: string;
 	iteration?: number;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	const prompt = renderPlannerPrompt({
+	const renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
 	});
+	const prompt = renderedInput.prompt;
+	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
+	const cachePrefixHashes = computePrefixHashes(
+		cachePrefixSegments(renderedInput.promptSegments),
+	);
+	const prefixHash =
+		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
+		"no-context-segments";
 	const hasTools = Array.isArray(params.tools) && params.tools.length > 0;
 	const modelParams: {
 		prompt: string;
+		messages: ChatMessage[];
+		responseSchema?: unknown;
+		promptSegments: PromptSegment[];
+		providerOptions: Record<string, unknown>;
 		tools?: ToolDefinition[];
 		toolChoice?: ToolChoice;
-	} = { prompt };
+	} = {
+		prompt,
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		providerOptions: cacheProviderOptions({
+			prefixHash,
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+		}),
+	};
 	if (hasTools) {
 		modelParams.tools = params.tools;
 		modelParams.toolChoice = params.toolChoice ?? "auto";
+	} else {
+		modelParams.responseSchema = v5PlannerSchema;
 	}
 
 	const startedAt = Date.now();
@@ -379,6 +567,8 @@ async function callPlanner(params: {
 		parsed,
 		startedAt,
 		endedAt,
+		segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+		prefixHash,
 		logger: params.runtime.logger,
 	});
 
@@ -398,6 +588,8 @@ async function recordPlannerStage(args: {
 	parsed: ReturnType<typeof parsePlannerOutput>;
 	startedAt: number;
 	endedAt: number;
+	segmentHashes: string[];
+	prefixHash: string;
 	logger?: PlannerRuntime["logger"];
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
@@ -421,6 +613,7 @@ async function recordPlannerStage(args: {
 				modelName,
 				provider: args.provider ?? "default",
 				prompt: args.prompt,
+				messages: (args.modelParams as { messages?: ChatMessage[] }).messages,
 				tools: args.modelParams.tools?.map((t) => ({
 					name: t.name,
 					description: t.description,
@@ -435,6 +628,10 @@ async function recordPlannerStage(args: {
 				usage,
 				finishReason,
 				costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
+			},
+			cache: {
+				segmentHashes: args.segmentHashes,
+				prefixHash: args.prefixHash,
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -590,6 +787,32 @@ async function executeQueuedToolCall(params: {
 		toolCall: params.toolCall,
 		result,
 	});
+	params.trajectory.context = {
+		...params.trajectory.context,
+		plannedQueue: (params.trajectory.context.plannedQueue ?? []).map((entry) =>
+			entry.id === params.toolCall.id ||
+			(!entry.id && entry.name === params.toolCall.name)
+				? {
+						...entry,
+						status: result.success ? "completed" : "failed",
+					}
+				: entry,
+		),
+	};
+	params.trajectory.context = appendContextEvent(params.trajectory.context, {
+		id: `tool-result:${params.toolCall.id ?? params.toolCall.name}:${endedAt}`,
+		type: "tool_result",
+		source: "planner-loop",
+		createdAt: endedAt,
+		metadata: {
+			iteration: params.iteration,
+			toolCallId: params.toolCall.id,
+			name: params.toolCall.name,
+			params: stringifyForModel(params.toolCall.params ?? {}),
+			result: stringifyForModel(result),
+			status: result.success ? "completed" : "failed",
+		},
+	});
 
 	await recordToolStage({
 		recorder: params.params.recorder,
@@ -691,12 +914,12 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const name = String(record.name ?? record.tool ?? record.action ?? "").trim();
+	const name = String(record.name ?? record.toolName ?? record.tool ?? record.action ?? "").trim();
 	if (!name) {
 		return null;
 	}
 
-	const args = normalizeArgs(record.args ?? record.arguments ?? record.params);
+	const args = normalizeArgs(record.input ?? record.args ?? record.arguments ?? record.params);
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
@@ -735,7 +958,7 @@ function terminalMessageFromToolCalls(
 function preferRecommendedToolCall(
 	trajectory: PlannerTrajectory,
 	evaluator: EvaluatorOutput,
-): void {
+): boolean {
 	if (evaluator.recommendedToolCallId) {
 		const recommendation = evaluator.recommendedToolCallId;
 		let index = trajectory.plannedQueue.findIndex(
@@ -752,13 +975,10 @@ function preferRecommendedToolCall(
 				trajectory.plannedQueue.unshift(selected);
 			}
 		}
-		return;
+		return index >= 0;
 	}
 
-	if (evaluator.nextTool) {
-		const next = ensureRecommendedToolCallId(evaluator.nextTool);
-		trajectory.plannedQueue.unshift(next);
-	}
+	return trajectory.plannedQueue.length > 0;
 }
 
 function ensureToolCallId(
@@ -772,18 +992,6 @@ function ensureToolCallId(
 	return {
 		...toolCall,
 		id: `tool-${iteration}-${index}`,
-	};
-}
-
-function ensureRecommendedToolCallId(
-	toolCall: PlannerToolCall,
-): PlannerToolCall {
-	if (typeof toolCall.id === "string" && toolCall.id.length > 0) {
-		return toolCall;
-	}
-	return {
-		...toolCall,
-		id: `tool-recommended-${toolCall.name}`,
 	};
 }
 

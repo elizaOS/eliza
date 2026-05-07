@@ -1,10 +1,10 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
 import { Navigate, useParams } from "react-router-dom";
-import { InvoiceDetailClient } from "@/packages/ui/src/components/invoices/invoice-detail-client";
 import { ApiError } from "../../../lib/api-client";
 import { useInvoice } from "../../../lib/data/invoices";
 import { useUserProfile } from "../../../lib/data/user";
+import { InvoiceDetailClient } from "../_components/invoice-detail-client";
 
 /** /dashboard/invoices/:id */
 export default function InvoiceDetailPage() {

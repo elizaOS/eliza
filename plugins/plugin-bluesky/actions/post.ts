@@ -24,6 +24,30 @@ interface ReplyTo {
 	cid: string;
 }
 
+const BLUESKY_CONTEXTS = ["social_posting", "connectors"] as const;
+const BLUESKY_KEYWORDS = [
+	"bluesky",
+	"bsky",
+	"post",
+	"reply",
+	"skeet",
+	"social",
+	"publicar",
+	"responder",
+	"répondre",
+	"publier",
+	"antworten",
+	"beitrag",
+	"pubblicare",
+	"rispondere",
+	"投稿",
+	"返信",
+	"发布",
+	"回复",
+	"게시",
+	"답장",
+] as const;
+
 function readParam(
 	options: HandlerOptions | Record<string, unknown> | undefined,
 	key: string,
@@ -60,6 +84,34 @@ function readReplyTo(
 	return { uri: candidate.uri, cid: candidate.cid };
 }
 
+function hasSelectedContext(state: State | undefined): boolean {
+	const selected = new Set<string>();
+	const collect = (value: unknown) => {
+		if (!Array.isArray(value)) return;
+		for (const item of value) {
+			if (typeof item === "string") selected.add(item);
+		}
+	};
+	collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+	collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+	const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+		| { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+		| undefined;
+	collect(contextObject?.trajectoryPrefix?.selectedContexts);
+	collect(contextObject?.metadata?.selectedContexts);
+	return BLUESKY_CONTEXTS.some((context) => selected.has(context));
+}
+
+function hasBlueskyIntent(message: Memory, state: State | undefined): boolean {
+	const text = [
+		typeof message.content?.text === "string" ? message.content.text : "",
+		typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+	]
+		.join("\n")
+		.toLowerCase();
+	return BLUESKY_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const postBlueskyAction: Action = {
 	name: "POST_BLUESKY",
 	similes: [
@@ -71,6 +123,9 @@ export const postBlueskyAction: Action = {
 	description:
 		"Post a top-level Bluesky post or a reply. kind=post supports replyTo={uri,cid}. text optional; if empty the runtime model generates content.",
 	descriptionCompressed: "Post or reply on Bluesky.",
+	contexts: [...BLUESKY_CONTEXTS],
+	contextGate: { anyOf: [...BLUESKY_CONTEXTS] },
+	roleGate: { minRole: "USER" },
 	parameters: [
 		{
 			name: "kind",
@@ -93,11 +148,11 @@ export const postBlueskyAction: Action = {
 			schema: { type: "object" },
 		},
 	],
-	validate: async (
-		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+	validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+		const service = runtime.getService<BlueSkyService>(BLUESKY_SERVICE_NAME);
+		if (!service) return false;
+		return hasSelectedContext(state) || hasBlueskyIntent(message, state);
+	},
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -142,32 +197,44 @@ export const postBlueskyAction: Action = {
 			},
 			"Posting to Bluesky",
 		);
-		const post = await postService.createPost(text, replyTo);
-		logger.info(
-			{
-				src: "plugin:bluesky",
-				op: "POST_BLUESKY",
-				uri: post.uri,
-				cid: post.cid,
-			},
-			"Bluesky post created",
-		);
+		try {
+			const post = await postService.createPost(text, replyTo);
+			logger.info(
+				{
+					src: "plugin:bluesky",
+					op: "POST_BLUESKY",
+					uri: post.uri,
+					cid: post.cid,
+				},
+				"Bluesky post created",
+			);
 
-		const summary = replyTo
-			? `Replied on Bluesky: ${post.uri}`
-			: `Posted to Bluesky: ${post.uri}`;
-		if (callback) {
-			await callback({
+			const summary = replyTo
+				? `Replied on Bluesky: ${post.uri}`
+				: `Posted to Bluesky: ${post.uri}`;
+			if (callback) {
+				await callback({
+					text: summary,
+					actions: ["POST_BLUESKY"],
+					data: { uri: post.uri, cid: post.cid },
+				});
+			}
+
+			return {
+				success: true,
 				text: summary,
-				actions: ["POST_BLUESKY"],
-				data: { uri: post.uri, cid: post.cid },
-			});
+				data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null },
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			logger.error(
+				{ src: "plugin:bluesky", op: "POST_BLUESKY", error: message },
+				"Failed to post to Bluesky",
+			);
+			if (callback) {
+				await callback({ text: `Failed to post to Bluesky: ${message}` });
+			}
+			return { success: false, error: message };
 		}
-
-		return {
-			success: true,
-			text: summary,
-			data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null },
-		};
 	},
 };

@@ -12,6 +12,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -22,11 +23,31 @@ const spec = requireActionSpec("THINK");
 
 export const thinkAction = {
 	name: spec.name,
+	contexts: ["general", "knowledge", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
-	validate: async (_runtime: IAgentRuntime) => {
-		return true;
-	},
+	parameters: [
+		{
+			name: "topic",
+			description: "Optional topic or question to think through.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["general", "knowledge", "agent_internal"],
+			keywords: [
+				"think",
+				"reason",
+				"analyze",
+				"plan",
+				"consider",
+				"reflect",
+				"work through",
+			],
+		}),
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -35,85 +56,98 @@ export const thinkAction = {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	): Promise<ActionResult> => {
-		const actionContext = _options?.actionContext;
-		const previousResults = actionContext?.previousResults || [];
+		try {
+			const actionContext = _options?.actionContext;
+			const previousResults = actionContext?.previousResults || [];
 
-		logger.debug(
-			{
-				src: "plugin:advanced-capabilities:action:think",
-				agentId: runtime.agentId,
-				previousResultCount: previousResults.length,
-			},
-			"Starting deep thinking",
-		);
+			logger.debug(
+				{
+					src: "plugin:advanced-capabilities:action:think",
+					agentId: runtime.agentId,
+					previousResultCount: previousResults.length,
+				},
+				"Starting deep thinking",
+			);
 
-		// Gather all providers requested by earlier responses in the chain
-		const allProviders: string[] = [];
-		if (responses) {
-			for (const res of responses) {
-				const providers = res.content?.providers;
-				if (providers && providers.length > 0) {
-					allProviders.push(...providers);
+			// Gather all providers requested by earlier responses in the chain
+			const allProviders: string[] = [];
+			if (responses) {
+				for (const res of responses) {
+					const providers = res.content?.providers;
+					if (providers && providers.length > 0) {
+						allProviders.push(...providers);
+					}
 				}
 			}
-		}
 
-		// Compose full state with all available context
-		state = await runtime.composeState(message, [
-			...(allProviders ?? []),
-			"RECENT_MESSAGES",
-			"ACTION_STATE",
-		]);
+			// Compose full state with all available context
+			state = await runtime.composeState(message, [
+				...(allProviders ?? []),
+				"RECENT_MESSAGES",
+				"ACTION_STATE",
+			]);
 
-		const prompt = composePromptFromState({
-			state,
-			template: runtime.character.templates?.thinkTemplate || thinkTemplate,
-		});
-
-		// Use the large model for deeper reasoning — this is the core
-		// upgrade over the default planning pass which uses ACTION_PLANNER
-		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-		});
-
-		const parsedJson = parseJSONObjectFromText(response);
-		const thoughtValue = parsedJson?.thought;
-		const textValue = parsedJson?.text;
-		const thought: string =
-			typeof thoughtValue === "string" ? thoughtValue : "";
-		const text: string =
-			typeof textValue === "string" ? textValue : response.trim();
-
-		if (callback) {
-			await callback({
-				thought,
-				text,
-				actions: ["THINK"] as string[],
+			const prompt = composePromptFromState({
+				state,
+				template: runtime.character.templates?.thinkTemplate || thinkTemplate,
 			});
-		}
 
-		// The result flows to subsequent actions via actionContext.previousResults.
-		// Downstream actions see this as the first link in the chain and can build
-		// on the deeper analysis without re-deriving it.
-		const now = Date.now();
-		return {
-			text,
-			values: {
+			// Use the large model for deeper reasoning - this is the core
+			// upgrade over the default planning pass which uses ACTION_PLANNER
+			const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+				prompt,
+			});
+
+			const parsedJson = parseJSONObjectFromText(response);
+			const thoughtValue = parsedJson?.thought;
+			const textValue = parsedJson?.text;
+			const thought: string =
+				typeof thoughtValue === "string" ? thoughtValue : "";
+			const text: string =
+				typeof textValue === "string" ? textValue : response.trim();
+
+			if (callback) {
+				await callback({
+					thought,
+					text,
+					actions: ["THINK"] as string[],
+				});
+			}
+
+			// The result flows to subsequent actions via actionContext.previousResults.
+			// Downstream actions see this as the first link in the chain and can build
+			// on the deeper analysis without re-deriving it.
+			const now = Date.now();
+			return {
+				text,
+				values: {
+					success: true,
+					responded: true,
+					lastReply: text,
+					lastReplyTime: now,
+					thoughtProcess: thought,
+				},
+				data: {
+					actionName: "THINK",
+					responseThought: thought,
+					responseText: text,
+					thought,
+					messageGenerated: true,
+				},
 				success: true,
-				responded: true,
-				lastReply: text,
-				lastReplyTime: now,
-				thoughtProcess: thought,
-			},
-			data: {
-				actionName: "THINK",
-				responseThought: thought,
-				responseText: text,
-				thought,
-				messageGenerated: true,
-			},
-			success: true,
-		};
+			};
+		} catch (error) {
+			const messageText =
+				error instanceof Error ? error.message : String(error);
+			logger.warn(`[Think] failed: ${messageText}`);
+			return {
+				text: `Thinking failed: ${messageText}`,
+				values: { success: false, error: "THINK_FAILED" },
+				data: { actionName: "THINK" },
+				error: messageText,
+				success: false,
+			};
+		}
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],
 } as Action;

@@ -26,6 +26,10 @@ export const tailscaleStatusProvider: Provider = {
     'Current Tailscale tunnel status: active flag, public URL, local port, uptime, backend provider.',
   descriptionCompressed: 'Tailscale tunnel status: active, url, port, uptime.',
   dynamic: true,
+  contexts: ['settings', 'connectors'],
+  contextGate: { anyOf: ['settings', 'connectors'] },
+  cacheStable: false,
+  cacheScope: 'turn',
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {

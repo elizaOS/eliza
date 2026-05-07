@@ -145,6 +145,9 @@ const examples: ActionExample[][] = [
 
 export const manageOrdersAction: Action = {
   name: "MANAGE_SHOPIFY_ORDERS",
+  contexts: ["payments", "connectors", "automation"],
+  contextGate: { anyOf: ["payments", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
   description:
     "List recent orders and check order status. Fulfillment requires confirmed:true.",

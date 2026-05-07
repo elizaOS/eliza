@@ -994,6 +994,21 @@ export class ElizaSandboxService {
       };
     }
 
+    try {
+      return await this.bridgeConversationMessageSend(rec, rpc, params);
+    } catch (error) {
+      if (!(error instanceof BridgeRouteUnavailableError)) {
+        throw error;
+      }
+      return await this.bridgeMessagingSessionSend(rec, rpc, params);
+    }
+  }
+
+  private async bridgeConversationMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
     const conversationId = await this.createBridgeConversation(rec, params);
     const messageEndpoint = await this.getAgentApiEndpoint(
       rec,
@@ -1025,6 +1040,55 @@ export class ElizaSandboxService {
     };
   }
 
+  private async bridgeMessagingSessionSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    if (!runtimeAgent?.id) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: "Runtime agent is not ready" },
+      };
+    }
+
+    const sessionId = await this.createBridgeMessagingSession(rec, runtimeAgent.id, params);
+    const messageEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages`,
+    );
+    const res = await fetch(messageEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify(this.buildBridgeSessionMessageBody(params)),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: `Bridge returned HTTP ${res.status}` },
+      };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId);
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: agentText ?? "",
+        accepted: true,
+        runtimeAgentId: runtimeAgent.id,
+        agentName: runtimeAgent.name,
+        sessionId,
+        messageId: typeof body.id === "string" ? body.id : undefined,
+      },
+    };
+  }
+
   private async createBridgeConversation(
     rec: AgentSandbox,
     params: Record<string, unknown>,
@@ -1044,6 +1108,9 @@ export class ElizaSandboxService {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
+      if (res.status === 404) {
+        throw new BridgeRouteUnavailableError("Conversation API is unavailable", res.status);
+      }
       throw new Error(`Bridge conversation create returned HTTP ${res.status}`);
     }
 
@@ -1055,6 +1122,46 @@ export class ElizaSandboxService {
       throw new Error("Bridge conversation create response was missing conversation.id");
     }
     return conversationId;
+  }
+
+  private async createBridgeMessagingSession(
+    rec: AgentSandbox,
+    runtimeAgentId: string,
+    params: Record<string, unknown>,
+  ): Promise<string> {
+    const endpoint = await this.getAgentApiEndpoint(rec, "/api/messaging/sessions");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify({
+        agentId: runtimeAgentId,
+        userId: this.stableBridgeUserId(params),
+        metadata: {
+          source:
+            typeof params.source === "string" && params.source.trim()
+              ? params.source.trim()
+              : "cloud",
+          roomId: typeof params.roomId === "string" ? params.roomId : undefined,
+          sender:
+            params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+              ? params.sender
+              : undefined,
+        },
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 404) {
+      throw new BridgeRouteUnavailableError("Messaging sessions API is unavailable", res.status);
+    }
+    if (!res.ok) {
+      throw new Error(`Bridge session create returned HTTP ${res.status}`);
+    }
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    if (!sessionId) {
+      throw new Error("Bridge session create response was missing sessionId");
+    }
+    return sessionId;
   }
 
   private buildBridgeConversationMessageBody(
@@ -1088,6 +1195,58 @@ export class ElizaSandboxService {
       body.conversationMode = "power";
     }
     return body;
+  }
+
+  private buildBridgeSessionMessageBody(params: Record<string, unknown>): Record<string, unknown> {
+    return {
+      content: typeof params.text === "string" ? params.text : "",
+      attachments: Array.isArray(params.attachments) ? params.attachments : undefined,
+      metadata: {
+        ...(params.metadata &&
+        typeof params.metadata === "object" &&
+        !Array.isArray(params.metadata)
+          ? (params.metadata as Record<string, unknown>)
+          : {}),
+        source:
+          typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+      },
+    };
+  }
+
+  private async waitForBridgeSessionAgentReply(
+    rec: AgentSandbox,
+    sessionId: string,
+  ): Promise<string | null> {
+    const endpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages?limit=20`,
+    );
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      const res = await fetch(endpoint, {
+        method: "GET",
+        headers: this.getAgentJsonHeaders(rec),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json().catch(() => ({}))) as { messages?: unknown };
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      const agentMessages = messages.filter((message): message is Record<string, unknown> => {
+        return (
+          !!message &&
+          typeof message === "object" &&
+          (message as Record<string, unknown>).isAgent === true
+        );
+      });
+      const latest = agentMessages.at(-1);
+      if (typeof latest?.content === "string" && latest.content.trim()) {
+        return latest.content;
+      }
+    }
+
+    return null;
   }
 
   /**

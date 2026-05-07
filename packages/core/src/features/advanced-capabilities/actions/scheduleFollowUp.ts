@@ -18,6 +18,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { asUUID } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import type { ParsedScheduleFollowUpResponse } from "../../shared/schedule-follow-up-response.ts";
 
 // Get text content from centralized specs
@@ -28,6 +29,41 @@ const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
 		includeAllLocales: true,
 	},
 );
+
+const MAX_RESULT_TEXT_LENGTH = 500;
+const MAX_ERROR_LENGTH = 240;
+
+function limitText(value: string, maxLength = MAX_RESULT_TEXT_LENGTH): string {
+	return value.length > maxLength
+		? `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`
+		: value;
+}
+
+function limitError(value: unknown): string {
+	const text = value instanceof Error ? value.message : String(value);
+	return limitText(text, MAX_ERROR_LENGTH);
+}
+
+function invalidResult(
+	text: string,
+	error: string,
+	data: Record<string, unknown> = {},
+): ActionResult {
+	return {
+		success: false,
+		text: limitText(text),
+		error,
+		values: {
+			success: false,
+			error,
+		},
+		data: {
+			actionName: "SCHEDULE_FOLLOW_UP",
+			error,
+			...data,
+		},
+	};
+}
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
 	return options?.parameters && typeof options.parameters === "object"
@@ -59,6 +95,8 @@ function readFollowUpInput(
 
 export const scheduleFollowUpAction: Action = {
 	name: spec.name,
+	contexts: ["tasks", "contacts", "calendar", "automation"],
+	roleGate: { minRole: "ADMIN" },
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	examples: (spec.examples ?? []) as ActionExample[][],
@@ -67,7 +105,7 @@ export const scheduleFollowUpAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (
@@ -90,7 +128,23 @@ export const scheduleFollowUpAction: Action = {
 		}
 
 		const params = readFollowUpInput(message, options);
-		if (params?.scheduledAt && (params.contactName || params.entityId)) {
+		const scheduledAt = params?.scheduledAt
+			? new Date(params.scheduledAt)
+			: null;
+		if (
+			params?.scheduledAt &&
+			(params.contactName || params.entityId) &&
+			scheduledAt &&
+			!Number.isNaN(scheduledAt.getTime())
+		) {
+			return true;
+		}
+		if (
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["tasks", "contacts", "calendar", "automation"],
+				keywordKeys: ["action.scheduleFollowUp.request"],
+			})
+		) {
 			return true;
 		}
 
@@ -112,105 +166,135 @@ export const scheduleFollowUpAction: Action = {
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
 		if (!relationshipsService || !followUpService) {
-			throw new Error("Required services not available");
-		}
-
-		const parsedResponse = readFollowUpInput(message, _options);
-		const contactName = parsedResponse?.contactName?.trim();
-		if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {
-			logger.warn(
-				"[ScheduleFollowUp] Failed to parse follow-up information from response",
+			return invalidResult(
+				"Follow-up scheduling is unavailable right now.",
+				"Required services not available",
 			);
-			throw new Error("Could not extract follow-up information");
 		}
 
-		let entityId = parsedResponse.entityId
-			? asUUID(parsedResponse.entityId)
-			: null;
+		try {
+			const parsedResponse = readFollowUpInput(message, _options);
+			const contactName = parsedResponse?.contactName?.trim();
+			if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {
+				logger.warn(
+					"[ScheduleFollowUp] Failed to parse follow-up information from response",
+				);
+				return invalidResult(
+					"I couldn't determine who this follow-up is for.",
+					"Could not extract follow-up information",
+				);
+			}
 
-		if (!entityId && contactName) {
-			const contacts = await relationshipsService.searchContacts({
-				searchTerm: contactName,
-			});
-			if (contacts.length > 0) {
-				entityId = contacts[0]?.entityId ?? null;
-			} else {
-				state ??= { values: {}, data: {}, text: "" };
-				const entity = await findEntityByName(runtime, message, state);
-				if (entity?.id) {
-					entityId = entity.id;
+			let entityId = parsedResponse.entityId
+				? asUUID(parsedResponse.entityId)
+				: null;
+
+			if (!entityId && contactName) {
+				const contacts = await relationshipsService.searchContacts({
+					searchTerm: contactName,
+				});
+				if (contacts.length > 0) {
+					entityId = contacts[0]?.entityId ?? null;
 				} else {
-					throw new Error(
-						`Contact "${contactName}" not found in relationships`,
-					);
+					state ??= { values: {}, data: {}, text: "" };
+					const entity = await findEntityByName(runtime, message, state);
+					if (entity?.id) {
+						entityId = entity.id;
+					} else {
+						return invalidResult(
+							`I couldn't find a contact named ${contactName}.`,
+							`Contact "${contactName}" not found in relationships`,
+							{ contactName },
+						);
+					}
 				}
 			}
-		}
 
-		if (!entityId) {
-			throw new Error("Could not determine contact to follow up with");
-		}
+			if (!entityId) {
+				return invalidResult(
+					"I couldn't determine which contact to follow up with.",
+					"Could not determine contact to follow up with",
+				);
+			}
 
-		const contact = await relationshipsService.getContact(entityId);
-		if (!contact) {
-			throw new Error(
-				"Contact not found in relationships. Please add them first.",
+			const contact = await relationshipsService.getContact(entityId);
+			if (!contact) {
+				return invalidResult(
+					"I couldn't find that contact in relationships.",
+					"Contact not found in relationships. Please add them first.",
+					{ contactId: entityId },
+				);
+			}
+
+			const scheduledAt = new Date(parsedResponse.scheduledAt || "");
+			if (Number.isNaN(scheduledAt.getTime())) {
+				return invalidResult(
+					"I couldn't parse the requested follow-up time.",
+					"Invalid follow-up date/time",
+				);
+			}
+
+			const task = await followUpService.scheduleFollowUp(
+				entityId,
+				scheduledAt,
+				parsedResponse.reason || "Follow-up",
+				(parsedResponse.priority as "high" | "medium" | "low") || "medium",
+				parsedResponse.message,
 			);
-		}
 
-		const scheduledAt = new Date(parsedResponse.scheduledAt || "");
-		if (Number.isNaN(scheduledAt.getTime())) {
-			throw new Error("Invalid follow-up date/time");
-		}
+			const resolvedContactName = contactName || "contact";
+			logger.info(
+				`[ScheduleFollowUp] Scheduled follow-up for ${resolvedContactName} at ${scheduledAt.toISOString()}`,
+			);
 
-		const task = await followUpService.scheduleFollowUp(
-			entityId,
-			scheduledAt,
-			parsedResponse.reason || "Follow-up",
-			(parsedResponse.priority as "high" | "medium" | "low") || "medium",
-			parsedResponse.message,
-		);
+			const responseText = limitText(
+				`I've scheduled a follow-up with ${resolvedContactName} for ${scheduledAt.toLocaleString()}. ${
+					parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ""
+				}`.trim(),
+			);
 
-		const resolvedContactName = contactName || "contact";
-		logger.info(
-			`[ScheduleFollowUp] Scheduled follow-up for ${resolvedContactName} at ${scheduledAt.toISOString()}`,
-		);
+			if (callback) {
+				await callback({
+					text: responseText,
+					action: "SCHEDULE_FOLLOW_UP",
+					metadata: {
+						contactId: entityId,
+						contactName: resolvedContactName,
+						scheduledAt: scheduledAt.toISOString(),
+						taskId: task.id,
+						success: true,
+					},
+				});
+			}
 
-		const responseText = `I've scheduled a follow-up with ${resolvedContactName} for ${scheduledAt.toLocaleString()}. ${
-			parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ""
-		}`;
-
-		if (callback) {
-			await callback({
-				text: responseText,
-				action: "SCHEDULE_FOLLOW_UP",
-				metadata: {
+			return {
+				success: true,
+				values: {
+					contactId: entityId,
+					taskId: task.id ?? "",
+				},
+				data: {
+					actionName: "SCHEDULE_FOLLOW_UP",
 					contactId: entityId,
 					contactName: resolvedContactName,
 					scheduledAt: scheduledAt.toISOString(),
-					taskId: task.id,
-					success: true,
+					taskId: task.id ?? "",
+					reason: parsedResponse.reason ?? "",
+					priority: parsedResponse.priority ?? "medium",
 				},
+				text: responseText,
+			};
+		} catch (error) {
+			const errorMessage = limitError(error);
+			logger.error("[ScheduleFollowUp] Error:", errorMessage);
+			const responseText = "I hit an error while scheduling that follow-up.";
+			await callback?.({
+				text: responseText,
+				error: errorMessage,
+				action: "SCHEDULE_FOLLOW_UP",
 			});
+			return invalidResult(responseText, errorMessage);
 		}
-
-		return {
-			success: true,
-			values: {
-				contactId: entityId,
-				taskId: task.id ?? "",
-			},
-			data: {
-				actionName: "SCHEDULE_FOLLOW_UP",
-				contactId: entityId,
-				contactName: resolvedContactName,
-				scheduledAt: scheduledAt.toISOString(),
-				taskId: task.id ?? "",
-				reason: parsedResponse.reason ?? "",
-				priority: parsedResponse.priority ?? "medium",
-			},
-			text: responseText,
-		};
 	},
 	parameters: [
 		{

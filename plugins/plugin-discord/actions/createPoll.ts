@@ -84,6 +84,23 @@ export const createPoll: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "question",
+			description: "Poll question.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "options",
+			description: "Poll options.",
+			required: false,
+			schema: { type: "array", items: { type: "string" } },
+		},
+	],
 	...terminalActionInteractionSemantics,
 	validate: async (
 		runtime: any,

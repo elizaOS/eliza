@@ -766,7 +766,7 @@ def decode_expected(raw: str, _decoder: Any | None = None) -> tuple[Any, str, st
             return json.loads(text), "native_direct", None
         except json.JSONDecodeError:
             return {"text": text}, "inferred", "JSON decode failed"
-    return {"text": text}, "inferred", "non-JSON legacy expectedResponse"
+    return {"text": text}, "legacy_non_json", "non-JSON legacy expectedResponse"
 
 
 def ensure_dict(value: Any) -> dict[str, Any]:
@@ -1002,6 +1002,10 @@ def native_record_from_eliza(
     task_type = md.get("task_type")
     decoded, conversion, decode_warning = decode_expected(str(record.get("expectedResponse") or ""), decoder)
     stage = infer_stage(task_type, prof)
+    if conversion == "legacy_non_json" and stage != "planner":
+        return None, "legacy non-JSON expectedResponse skipped; regenerate normalized rows as JSON"
+    if conversion == "legacy_non_json" and task_type not in {"reply", "claude_distill"}:
+        return None, "legacy non-JSON structured expectedResponse skipped; regenerate normalized rows as JSON"
     record_id = stable_hash(entry["slug"], md.get("original_id"), record.get("roomName"), record.get("currentMessage"), record.get("expectedResponse"))
     contexts = contexts_from_decoded(decoded, prof)
     messages = messages_from_eliza(record)

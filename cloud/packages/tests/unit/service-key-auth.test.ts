@@ -111,6 +111,22 @@ describe("Service Key Auth", () => {
       expect(result).toEqual({ ok: true, value: null });
     });
 
+    test("rejects wrong keys regardless of presented key length", () => {
+      const sameLength = runServiceKeyCase(buildScript("validate", "wrong-secret-key"), {
+        WAIFU_SERVICE_KEY: "right-secret-key",
+        WAIFU_SERVICE_ORG_ID: "org-uuid-123",
+        WAIFU_SERVICE_USER_ID: "user-uuid-456",
+      });
+      const shorter = runServiceKeyCase(buildScript("validate", "short"), {
+        WAIFU_SERVICE_KEY: "right-secret-key",
+        WAIFU_SERVICE_ORG_ID: "org-uuid-123",
+        WAIFU_SERVICE_USER_ID: "user-uuid-456",
+      });
+
+      expect(sameLength).toEqual({ ok: true, value: null });
+      expect(shorter).toEqual({ ok: true, value: null });
+    });
+
     test("returns null when WAIFU_SERVICE_KEY env is not set", () => {
       const result = runServiceKeyCase(buildScript("validate", "test-secret-key-abc123"), {
         WAIFU_SERVICE_KEY: undefined,

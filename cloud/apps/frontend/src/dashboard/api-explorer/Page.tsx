@@ -36,14 +36,14 @@ import {
 } from "@/lib/swagger/openapi-generator";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/utils/toast-adapter";
-import { ApiTester } from "@/packages/ui/src/components/api-explorer/api-tester";
-import { AuthManager } from "@/packages/ui/src/components/api-explorer/auth-manager";
-import { EndpointCard } from "@/packages/ui/src/components/api-explorer/endpoint-card";
-import { useExplorerApiKey } from "@/packages/ui/src/components/api-explorer/use-explorer-api-key";
+import { ApiTester } from "./_components/api-tester";
+import { AuthManager } from "./_components/auth-manager";
+import { EndpointCard } from "./_components/endpoint-card";
+import { useExplorerApiKey } from "./_components/use-explorer-api-key";
 import { useRequireAuth } from "../../lib/auth-hooks";
 
 const OpenApiViewer = lazy(() =>
-  import("@/packages/ui/src/components/api-explorer/openapi-viewer").then((mod) => ({
+  import("./_components/openapi-viewer").then((mod) => ({
     default: mod.OpenApiViewer,
   })),
 );

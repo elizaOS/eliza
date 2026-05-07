@@ -26,6 +26,7 @@ beforeAll(async () => {
   const [user] = await dbWrite
     .insert(users)
     .values({
+      steward_user_id: `test-managed-domains-${crypto.randomUUID()}`,
       email: `${SUFFIX}@test.local`,
       name: `cf domain test ${SUFFIX}`,
     })

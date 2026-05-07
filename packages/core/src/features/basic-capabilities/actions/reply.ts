@@ -12,6 +12,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -33,12 +34,25 @@ function getPlannerReplyFallback(responses?: Memory[]): string {
 
 export const replyAction = {
 	name: spec.name,
+	contexts: ["general", "messaging"],
+	roleGate: { minRole: "USER" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	suppressPostActionContinuation: true,
-	validate: async (_runtime: IAgentRuntime) => {
-		return true;
-	},
+	parameters: [
+		{
+			name: "text",
+			description:
+				"Optional reply text. If omitted, the action composes a reply from current state.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["general", "messaging"],
+			keywords: ["reply", "respond", "answer", "say", "tell me", "explain"],
+		}),
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,

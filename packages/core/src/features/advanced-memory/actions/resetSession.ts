@@ -19,13 +19,17 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 export const resetSessionAction: Action = {
 	name: "RESET_SESSION",
+	contexts: ["memory", "agent_internal", "settings"],
+	roleGate: { minRole: "ADMIN" },
 	similes: ["CLEAR_HISTORY", "NEW_SESSION", "FORGET", "START_OVER", "RESET"],
 	description:
 		"Resets the conversation session by creating a compaction point. Messages before this point will not be included in future context. Use when the user wants to start fresh or clear conversation history.",
 	suppressPostActionContinuation: true,
+	parameters: [],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -35,11 +39,25 @@ export const resetSessionAction: Action = {
 		if (!state) {
 			return false;
 		}
+		if (
+			!hasActionContextOrKeyword(message, state, {
+				contexts: ["memory", "agent_internal", "settings"],
+				keywords: [
+					"reset session",
+					"clear history",
+					"new session",
+					"start over",
+					"forget this conversation",
+				],
+			})
+		) {
+			return false;
+		}
 
 		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 		if (!room?.worldId) {
 			// Allow in DMs without world/server context
-			return true;
+			return Boolean(message.roomId);
 		}
 
 		// Check user has permission

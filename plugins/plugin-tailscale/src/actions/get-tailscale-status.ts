@@ -29,6 +29,9 @@ function readVerbose(options: unknown): boolean {
 
 export const getTailscaleStatusAction: Action = {
   name: 'GET_TAILSCALE_STATUS',
+  contexts: ['connectors', 'settings', 'admin'],
+  contextGate: { anyOf: ['connectors', 'settings', 'admin'] },
+  roleGate: { minRole: 'USER' },
   similes: ['TAILSCALE_STATUS', 'CHECK_TUNNEL', 'TUNNEL_INFO'],
   description: 'Get the current status of the Tailscale tunnel',
   descriptionCompressed: 'get current status Tailscale tunnel',

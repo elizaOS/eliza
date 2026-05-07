@@ -125,6 +125,49 @@ function validateSchema(
 	path: string,
 	errors: string[],
 ): unknown {
+	if (schema.anyOf && schema.anyOf.length > 0) {
+		let matched: unknown = value;
+		let ok = false;
+		for (const branch of schema.anyOf) {
+			const branchErrors: string[] = [];
+			const result = validateSchema(branch, value, path, branchErrors);
+			if (branchErrors.length === 0) {
+				ok = true;
+				matched = result;
+				break;
+			}
+		}
+		if (!ok) {
+			errors.push(
+				`Argument '${formatPath(path)}' did not satisfy any anyOf branch`,
+			);
+		}
+		return matched;
+	}
+
+	if (schema.oneOf && schema.oneOf.length > 0) {
+		let matches = 0;
+		let matched: unknown = value;
+		for (const branch of schema.oneOf) {
+			const branchErrors: string[] = [];
+			const result = validateSchema(branch, value, path, branchErrors);
+			if (branchErrors.length === 0) {
+				matches++;
+				matched = result;
+			}
+		}
+		if (matches === 0) {
+			errors.push(
+				`Argument '${formatPath(path)}' did not satisfy any oneOf branch`,
+			);
+		} else if (matches > 1) {
+			errors.push(
+				`Argument '${formatPath(path)}' satisfied multiple oneOf branches (${matches})`,
+			);
+		}
+		return matched;
+	}
+
 	switch (schema.type) {
 		case "string":
 			if (typeof value !== "string") {
@@ -204,6 +247,11 @@ function validateSchema(
 				return value;
 			}
 			return validateObject(schema, value, path, errors);
+		default:
+			errors.push(
+				`Argument '${formatPath(path)}' has unsupported or missing JSON schema type`,
+			);
+			return value;
 	}
 }
 

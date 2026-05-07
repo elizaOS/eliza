@@ -16,6 +16,8 @@ import type {
 import { createAppControlClient } from "../client/api.js";
 
 const MAX_LISTED = 30;
+const MAX_RUNS_RETURNED = 30;
+const MAX_ORPHAN_RUNS = 10;
 
 export const availableAppsProvider: Provider = {
 	name: "available_apps",
@@ -23,6 +25,10 @@ export const availableAppsProvider: Provider = {
 		"Installed Eliza apps with running-run counts; use this to pick targets for APP launch / relaunch / create. Read-only list/status is exposed here.",
 	descriptionCompressed: "Installed apps + running counts for APP action.",
 	position: -8,
+	contexts: ["settings", "automation"],
+	contextGate: { anyOf: ["settings", "automation"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	dynamic: true,
 
 	get: async (
@@ -30,11 +36,12 @@ export const availableAppsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const client = createAppControlClient();
-		const [installed, runs] = await Promise.all([
-			client.listInstalledApps(),
-			client.listAppRuns(),
-		]);
+		try {
+			const client = createAppControlClient();
+			const [installed, runs] = await Promise.all([
+				client.listInstalledApps(),
+				client.listAppRuns(),
+			]);
 
 		if (installed.length === 0 && runs.length === 0) {
 			return { text: "" };
@@ -70,9 +77,9 @@ export const availableAppsProvider: Provider = {
 			lines.push("apps[0]:");
 		}
 
-		const orphanRuns = runs.filter(
-			(r) => !installed.some((app) => app.name === r.appName),
-		);
+		const orphanRuns = runs
+			.filter((r) => !installed.some((app) => app.name === r.appName))
+			.slice(0, MAX_ORPHAN_RUNS);
 		if (orphanRuns.length > 0) {
 			lines.push(
 				`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
@@ -92,10 +99,13 @@ export const availableAppsProvider: Provider = {
 			},
 			data: {
 				installed: listedInstalled,
-				runs,
+				runs: runs.slice(0, MAX_RUNS_RETURNED),
 				truncated: overflow > 0,
 			},
 		};
+		} catch {
+			return { text: "", values: {}, data: {} };
+		}
 	},
 };
 

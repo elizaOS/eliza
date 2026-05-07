@@ -94,6 +94,9 @@ export const twitchChannelAction: Action = {
   ],
   description: "Join or leave a Twitch channel.",
   descriptionCompressed: "Twitch channel ops: join, leave.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "op",

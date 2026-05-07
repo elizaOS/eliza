@@ -154,7 +154,7 @@ export class UserCharactersRepository {
 
   /**
    * Finds a character by ID within an organization using the primary DB.
-   * Use this for write-after-write validation paths where replica lag matters.
+   * Use this for write-after-write validation paths that require fresh data.
    */
   async findByIdInOrganizationForWrite(
     id: string,

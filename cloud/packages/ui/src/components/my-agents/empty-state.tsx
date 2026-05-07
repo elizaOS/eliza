@@ -3,7 +3,7 @@
  */
 "use client";
 
-import { BrandButton, EmptyState } from "@elizaos/cloud-ui";
+import { BrandButton, EmptyState } from "../primitives";
 import { Plus } from "lucide-react";
 
 interface EmptyStateProps {

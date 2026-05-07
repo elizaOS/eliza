@@ -7,13 +7,128 @@
  * so the handlers themselves stay flat.
  */
 
-import type { HandlerOptions } from "../../../../types/index.ts";
+import type {
+	ActionParameter,
+	AgentContext,
+	HandlerOptions,
+	Memory,
+	State,
+} from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import {
 	ALL_MESSAGE_SOURCES,
 	type ManageOperation,
 	type MessageSource,
 	type SearchMessagesFilters,
 } from "../types.ts";
+
+export const MESSAGE_ACTION_CONTEXTS = [
+	"messaging",
+	"email",
+	"contacts",
+] satisfies AgentContext[];
+
+export const MESSAGE_ACTION_KEYWORDS = [
+	"message",
+	"messages",
+	"email",
+	"inbox",
+	"mail",
+	"draft",
+	"reply",
+	"respond",
+	"send",
+	"schedule",
+	"triage",
+	"unread",
+	"archive",
+	"trash",
+	"spam",
+	"label",
+	"tag",
+	"follow up",
+	"check in",
+	"buscar mensaje",
+	"correo",
+	"bandeja de entrada",
+	"responder",
+	"enviar",
+	"mensagem",
+	"caixa de entrada",
+	"responder",
+	"enviar",
+	"邮件",
+	"消息",
+	"回复",
+	"发送",
+	"이메일",
+	"메시지",
+	"답장",
+	"보내",
+	"tin nhắn",
+	"email",
+	"trả lời",
+	"gửi",
+	"mensahe",
+	"koreo",
+	"sagot",
+	"ipadala",
+];
+
+export function validateMessageAction(
+	message: Memory,
+	state: State | undefined,
+	contexts: readonly AgentContext[] = MESSAGE_ACTION_CONTEXTS,
+	keywords: readonly string[] = MESSAGE_ACTION_KEYWORDS,
+): boolean {
+	return hasActionContextOrKeyword(message, state, { contexts, keywords });
+}
+
+export const messageSourceParameter: ActionParameter = {
+	name: "sources",
+	description:
+		"Optional message sources to include, such as email, slack, discord, imessage, signal, whatsapp, telegram, or x.",
+	required: false,
+	schema: {
+		type: "array" as const,
+		items: { type: "string" as const, enum: [...ALL_MESSAGE_SOURCES] },
+	},
+};
+
+export const messageIdParameter: ActionParameter = {
+	name: "messageId",
+	description: "Identifier of the message to act on.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const draftIdParameter: ActionParameter = {
+	name: "draftId",
+	description: "Identifier of the draft message.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const bodyParameter: ActionParameter = {
+	name: "body",
+	description: "Message body text.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const limitParameter: ActionParameter = {
+	name: "limit",
+	description: "Maximum messages to return.",
+	required: false,
+	schema: { type: "number" as const, minimum: 1, maximum: 100 },
+};
+
+export const sinceMsParameter: ActionParameter = {
+	name: "sinceMs",
+	description: "Only include messages received at or after this timestamp.",
+	required: false,
+	schema: { type: "number" as const },
+};
 
 function getParams(
 	options: HandlerOptions | undefined,

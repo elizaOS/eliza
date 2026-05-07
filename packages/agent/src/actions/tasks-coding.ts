@@ -33,6 +33,8 @@ async function postCodingThreadAction(
 
 export const archiveCodingTaskAction: Action = {
   name: "ARCHIVE_CODING_TASK",
+  contexts: ["code", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["CLOSE_CODING_TASK", "ARCHIVE_TASK_THREAD"],
   description:
     "Archive a coding-agent task thread by id. The thread becomes hidden from the active list but remains in history.",
@@ -115,6 +117,8 @@ export const archiveCodingTaskAction: Action = {
 
 export const reopenCodingTaskAction: Action = {
   name: "REOPEN_CODING_TASK",
+  contexts: ["code", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["UNARCHIVE_CODING_TASK", "RESUME_CODING_TASK"],
   description:
     "Reopen a previously-archived coding-agent task thread by id, returning it to the active list.",

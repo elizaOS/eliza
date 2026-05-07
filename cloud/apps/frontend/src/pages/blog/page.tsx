@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { getAllPosts, getPublicCategories, getPublicPosts } from "@/lib/blog";
-import Blog from "@/packages/ui/src/components/landing/Blog";
-import { BlogPage } from "@/packages/ui/src/components/landing/blog-page";
+import Blog from "@elizaos/cloud-ui/components/landing/Blog";
+import { BlogPage } from "@elizaos/cloud-ui/components/landing/blog-page";
 
 export const metadata = {
   title: "Cloud Blog",

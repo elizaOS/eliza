@@ -14,8 +14,82 @@ import { createMcpToolAction } from "./dynamic-tool-actions";
 
 // ─── SEARCH_ACTIONS ─────────────────────────────────────────────────────────
 
+const MCP_CONTEXTS = ["connectors", "automation", "knowledge"];
+const SEARCH_ACTION_KEYWORDS = [
+  "search",
+  "find",
+  "discover",
+  "tool",
+  "action",
+  "capability",
+  "connect",
+  "integration",
+  "platform",
+  "buscar",
+  "encontrar",
+  "descubrir",
+  "herramienta",
+  "accion",
+  "integracion",
+  "chercher",
+  "trouver",
+  "decouvrir",
+  "outil",
+  "action",
+  "integration",
+  "suchen",
+  "finden",
+  "entdecken",
+  "werkzeug",
+  "aktion",
+  "integration",
+  "cercare",
+  "trovare",
+  "scoprire",
+  "strumento",
+  "azione",
+  "integrazione",
+  "pesquisar",
+  "encontrar",
+  "descobrir",
+  "ferramenta",
+  "acao",
+  "integracao",
+  "搜索",
+  "查找",
+  "工具",
+  "操作",
+  "集成",
+  "検索",
+  "探す",
+  "ツール",
+  "アクション",
+  "連携",
+];
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => MCP_CONTEXTS.includes(String(context).toLowerCase()));
+}
+
+function collectText(message: Memory, state?: State): string {
+  return [message.content?.text, state?.values?.conversationLog, state?.values?.recentMessages]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+    .toLowerCase();
+}
+
 export const searchActionsAction: ActionWithParams = {
   name: "SEARCH_ACTIONS",
+  contexts: MCP_CONTEXTS,
+  contextGate: { anyOf: MCP_CONTEXTS },
   description:
     "Search for additional tool actions not shown in your current toolset. " +
     "Uses BM25 keyword matching against action names and descriptions across all connected platforms. " +
@@ -74,7 +148,15 @@ export const searchActionsAction: ActionWithParams = {
     },
   }),
 
-  validate: async () => true,
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    const svc = runtime.getService<McpService>(MCP_SERVICE_NAME);
+    if (!svc) return false;
+
+    const text = collectText(message, state);
+    return (
+      hasSelectedContext(state) || SEARCH_ACTION_KEYWORDS.some((keyword) => text.includes(keyword))
+    );
+  },
 
   handler: async (
     runtime: IAgentRuntime,
@@ -215,6 +297,8 @@ export const searchActionsAction: ActionWithParams = {
 
 export const listConnectionsAction: Action = {
   name: "LIST_CONNECTIONS",
+  contexts: ["connectors", "settings"],
+  contextGate: { anyOf: ["connectors", "settings"] },
   description:
     "List OAuth connections for the current organization. " +
     "Shows connected platforms, status, email, scopes, and linked date. " +
@@ -226,11 +310,57 @@ export const listConnectionsAction: Action = {
     "MY_CONNECTIONS",
     "CONNECTED_SERVICES",
   ],
+  parameters: defineActionParameters({
+    platform: {
+      type: "string",
+      description: "Optional connected platform to filter by.",
+      required: false,
+    },
+  }),
 
-  validate: async (runtime: IAgentRuntime) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Requires authenticated org context (set immutably by RuntimeFactory)
     const orgId = runtime.getSetting("ORGANIZATION_ID") as string | undefined;
-    return !!orgId;
+    if (!orgId) return false;
+    const text = collectText(message, state);
+    const connectionKeywords = [
+      "connection",
+      "connected",
+      "oauth",
+      "account",
+      "service",
+      "integration",
+      "platform",
+      "conexion",
+      "conectado",
+      "cuenta",
+      "servicio",
+      "connexion",
+      "connecte",
+      "compte",
+      "service",
+      "verbindung",
+      "verbunden",
+      "konto",
+      "dienst",
+      "connessione",
+      "collegato",
+      "account",
+      "servizio",
+      "conexao",
+      "conectado",
+      "conta",
+      "servico",
+      "连接",
+      "账户",
+      "服务",
+      "接続",
+      "アカウント",
+      "サービス",
+    ];
+    return (
+      hasSelectedContext(state) || connectionKeywords.some((keyword) => text.includes(keyword))
+    );
   },
 
   handler: async (

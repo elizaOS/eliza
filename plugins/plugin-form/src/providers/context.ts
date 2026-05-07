@@ -66,6 +66,9 @@ function compactJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+const MAX_CONTEXT_FIELDS = 20;
+const MAX_STASHED_FOR_CONTEXT = 10;
+
 /**
  * Form Context Provider
  *
@@ -82,6 +85,10 @@ export const formContextProvider: Provider = {
   name: "FORM_CONTEXT",
   description: "Provides context about active form sessions",
   descriptionCompressed: "Active form session context.",
+  contexts: ["automation", "knowledge"],
+  contextGate: { anyOf: ["automation", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   /**
    * Get form context for the current message.
@@ -226,20 +233,25 @@ export const formContextProvider: Provider = {
           form_name: form?.name || session.formId,
           progress: contextState.progress,
           status: contextState.status,
-          required_missing: contextState.missingRequired,
+          required_missing: contextState.missingRequired.slice(
+            0,
+            MAX_CONTEXT_FIELDS,
+          ),
           required_filled: requiredFilled.map((field) => ({
             ...field,
             value: field.displayValue,
-          })),
-          optional_missing: optionalMissing,
+          })).slice(0, MAX_CONTEXT_FIELDS),
+          optional_missing: optionalMissing.slice(0, MAX_CONTEXT_FIELDS),
           optional_filled: optionalFilled.map((field) => ({
             ...field,
             value: field.displayValue,
-          })),
-          uncertain_fields: contextState.uncertainFields.map((field) => ({
-            ...field,
-            confidence: Math.round(field.confidence * 100) / 100,
-          })),
+          })).slice(0, MAX_CONTEXT_FIELDS),
+          uncertain_fields: contextState.uncertainFields
+            .slice(0, MAX_CONTEXT_FIELDS)
+            .map((field) => ({
+              ...field,
+              confidence: Math.round(field.confidence * 100) / 100,
+            })),
           pending_external_fields: contextState.pendingExternalFields.map(
             (field) => ({
               ...field,
@@ -248,7 +260,7 @@ export const formContextProvider: Provider = {
                 Math.floor((Date.now() - field.activatedAt) / 60000),
               ),
             }),
-          ),
+          ).slice(0, MAX_CONTEXT_FIELDS),
           instruction,
         })}`;
       } else {
@@ -274,7 +286,7 @@ export const formContextProvider: Provider = {
       // Stashed forms reminder
       // WHY: User might have forgotten about saved forms; agent can say "You have a saved form, say resume to continue"
       if (stashed.length > 0) {
-        stashedRows = stashed.map((s) => {
+        stashedRows = stashed.slice(0, MAX_STASHED_FOR_CONTEXT).map((s) => {
           const f = formService.getForm(s.formId);
           const ctx = formService.getSessionContext(s);
           return {

@@ -59,6 +59,8 @@ const FOOD_ITEMS = [
   "cake",
   "pie",
 ];
+const TRAINING_LIMIT = 12;
+const WARNING_LIMIT = 8;
 
 function chebyshevDistance(ax: number, az: number, bx: number, bz: number) {
   return Math.max(Math.abs(ax - bx), Math.abs(az - bz));
@@ -83,73 +85,91 @@ export const worldKnowledgeProvider: Provider = {
   description:
     "JSON game world knowledge: nearest bank, skill training recommendations, and warnings.",
   descriptionCompressed: "JSON nearest bank, skill tips, warnings.",
+  contexts: ["game", "automation", "world", "state", "knowledge"],
+  contextGate: {
+    anyOf: ["game", "automation", "world", "state", "knowledge"],
+  },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "ADMIN" },
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as {
-      getBotState(): BotState | null;
-    } | null;
-    const state = service?.getBotState?.();
-    if (!state?.connected || !state.inGame || !state.player) {
+    try {
+      const service = runtime.getService("rs_2004scape") as unknown as {
+        getBotState(): BotState | null;
+      } | null;
+      const state = service?.getBotState?.();
+      if (!state?.connected || !state.inGame || !state.player) {
+        return {
+          text: JSON.stringify({
+            rs_2004_world_knowledge: { status: "not_in_game" },
+          }, null, 2),
+        };
+      }
+
+      const { worldX: x, worldZ: z } = state.player;
+      const trainable = state.skills
+        .map((skill) => {
+          const recommendation = trainingRecommendation(skill.name, skill.level);
+          return recommendation
+            ? {
+                skill: skill.name,
+                level: skill.level,
+                method: recommendation.method,
+                location: recommendation.location,
+              }
+            : null;
+        })
+        .filter(Boolean);
+
+      const warnings: string[] = [];
+      if (x >= 3210 && x <= 3240 && z >= 3360 && z <= 3390) {
+        warnings.push("Dark wizards nearby; low-level players should leave.");
+      }
+      if (z >= 3520) {
+        warnings.push("Wilderness nearby; other players may attack.");
+      }
+      if (
+        x >= 3258 &&
+        x <= 3270 &&
+        z >= 3225 &&
+        z <= 3235 &&
+        state.player.combatLevel < 10
+      ) {
+        warnings.push("Al Kharid toll gate costs 10gp for low-level players.");
+      }
+      if (
+        state.player.inCombat &&
+        !state.inventory.some((item) =>
+          FOOD_ITEMS.some((food) => item.name.toLowerCase().includes(food)),
+        )
+      ) {
+        warnings.push("In combat with no visible food; walk away immediately.");
+      }
+
       return {
         text: JSON.stringify({
-          rs_2004_world_knowledge: { status: "not_in_game" },
+          rs_2004_world_knowledge: {
+            status: "ready",
+            nearestBank: nearestBank(x, z),
+            training: trainable.slice(0, TRAINING_LIMIT),
+            warnings: warnings.slice(0, WARNING_LIMIT),
+          },
+        }, null, 2),
+      };
+    } catch (error) {
+      return {
+        text: JSON.stringify({
+          rs_2004_world_knowledge: {
+            status: "error",
+            reason: error instanceof Error ? error.message : String(error),
+          },
         }, null, 2),
       };
     }
-
-    const { worldX: x, worldZ: z } = state.player;
-    const trainable = state.skills
-      .map((skill) => {
-        const recommendation = trainingRecommendation(skill.name, skill.level);
-        return recommendation
-          ? {
-              skill: skill.name,
-              level: skill.level,
-              method: recommendation.method,
-              location: recommendation.location,
-            }
-          : null;
-      })
-      .filter(Boolean);
-
-    const warnings: string[] = [];
-    if (x >= 3210 && x <= 3240 && z >= 3360 && z <= 3390) {
-      warnings.push("Dark wizards nearby; low-level players should leave.");
-    }
-    if (z >= 3520) {
-      warnings.push("Wilderness nearby; other players may attack.");
-    }
-    if (
-      x >= 3258 &&
-      x <= 3270 &&
-      z >= 3225 &&
-      z <= 3235 &&
-      state.player.combatLevel < 10
-    ) {
-      warnings.push("Al Kharid toll gate costs 10gp for low-level players.");
-    }
-    if (
-      state.player.inCombat &&
-      !state.inventory.some((item) =>
-        FOOD_ITEMS.some((food) => item.name.toLowerCase().includes(food)),
-      )
-    ) {
-      warnings.push("In combat with no visible food; walk away immediately.");
-    }
-
-    return {
-      text: JSON.stringify({
-        rs_2004_world_knowledge: {
-          status: "ready",
-          nearestBank: nearestBank(x, z),
-          training: trainable,
-          warnings,
-        },
-      }, null, 2),
-    };
   },
 };

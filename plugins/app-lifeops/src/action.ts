@@ -377,6 +377,8 @@ export const manageBrowserBridgeAction: Action = {
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
     "Read and control the user's real Chrome and Safari browsers via the Agent Browser Bridge extension. Scope is strictly in-browser: list tabs, read the current page DOM, navigate a tab, open a URL, change browser settings, manage companion sessions. This action only operates on already-open browser tabs and browser-extension settings. It cannot capture the desktop, cannot operate Finder, cannot launch native apps, and cannot click at OS-level coordinates. Any request mentioning the desktop, the screen, the computer, Finder, a native app, or capturing/clicking outside a browser tab must go to COMPUTER_USE instead.",
+  contexts: ["browser", "automation", "settings"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

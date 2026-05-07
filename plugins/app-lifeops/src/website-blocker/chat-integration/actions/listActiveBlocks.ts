@@ -66,6 +66,8 @@ export const listActiveBlocksAction: Action = {
     "List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
   descriptionCompressed:
     "List live website blocker status and active block rules.",
+  contexts: ["screen_time", "browser", "tasks", "automation"],
+  roleGate: { minRole: "OWNER" },
   validate: async (_runtime, message) =>
     BLOCK_STATUS_INTENT_RE.test(getMessageText(message)),
   handler: async (

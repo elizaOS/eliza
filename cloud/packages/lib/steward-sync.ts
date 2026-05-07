@@ -128,7 +128,7 @@ async function rollbackCreatedUserSafely(
 
 async function restorePreviousStewardUserIdSafely(
   userId: string,
-  previousStewardUserId: string | null | undefined,
+  previousStewardUserId: string,
   originalError: unknown,
 ): Promise<void> {
   try {

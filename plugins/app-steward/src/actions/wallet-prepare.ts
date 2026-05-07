@@ -11,7 +11,13 @@
  * @module actions/wallet-prepare
  */
 
-import type { Action, HandlerCallback, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  HandlerOptions,
+  Memory,
+  State,
+} from "@elizaos/core";
 import type {
   BscTradePreflightResponse,
   BscTradeQuoteResponse,
@@ -41,6 +47,44 @@ const BSC_NATIVE_SYMBOL = "BNB";
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 type WalletPrepareKind = "swap" | "transfer";
+const WALLET_PREPARE_CONTEXTS = ["finance", "crypto", "wallet", "payments"] as const;
+const WALLET_PREPARE_KEYWORDS = [
+  "wallet",
+  "swap",
+  "quote",
+  "preview",
+  "transfer",
+  "send",
+  "bnb",
+  "bsc",
+  "token",
+  "cartera",
+  "billetera",
+  "intercambiar",
+  "transferir",
+  "enviar",
+  "portefeuille",
+  "échanger",
+  "transférer",
+  "geldbörse",
+  "tauschen",
+  "überweisen",
+  "carteira",
+  "trocar",
+  "transferir",
+  "portafoglio",
+  "scambiare",
+  "trasferire",
+  "ウォレット",
+  "交換",
+  "送金",
+  "钱包",
+  "兑换",
+  "转账",
+  "지갑",
+  "스왑",
+  "전송",
+] as const;
 
 function normalizeSymbol(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -529,8 +573,39 @@ function resolveKind(value: unknown): WalletPrepareKind | undefined {
   return undefined;
 }
 
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return WALLET_PREPARE_CONTEXTS.some((context) => selected.has(context));
+}
+
+function hasWalletPrepareIntent(message: Memory, state: State | undefined): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return WALLET_PREPARE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const walletPrepareAction: Action = {
   name: "WALLET_PREPARE",
+  contexts: [...WALLET_PREPARE_CONTEXTS],
+  contextGate: { anyOf: [...WALLET_PREPARE_CONTEXTS] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "PREPARE_SWAP",
@@ -552,7 +627,8 @@ export const walletPrepareAction: Action = {
     "Read-only — does not sign or broadcast. Use before the wallet execution router.",
   descriptionCompressed: "Wallet preview ops: swap, transfer.",
 
-  validate: async () => true,
+  validate: async (_runtime, message: Memory, state?: State) =>
+    hasSelectedContext(state) || hasWalletPrepareIntent(message, state),
 
   handler: async (
     _runtime,

@@ -37,6 +37,27 @@ function readInteger(value: unknown): number | null {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function selectedContextMatches(state: State | undefined, contexts: readonly string[]): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
 /**
  * Extract reposition configuration from a free-form user message via the
  * canonical intent-trajectory helper so the LLM call is recorded on the
@@ -89,6 +110,9 @@ function readDex(options: Record<string, unknown> | undefined): ManageLpPosition
 
 export const manageLpPositionsAction: Action = {
   name: "MANAGE_LP_POSITIONS",
+  contexts: ["finance", "crypto", "wallet", "automation"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "AUTOMATE_REBALANCING",
     "AUTOMATE_POSITIONS",
@@ -102,10 +126,60 @@ export const manageLpPositionsAction: Action = {
   description:
     "Automatically rebalance Solana CLMM LP positions when they drift too far from the pool price. Supports Orca Whirlpools and Raydium CLMM via { dex: 'orca' | 'raydium' }.",
   descriptionCompressed: "Solana LP rebalance: orca or raydium CLMM (dex switch).",
+  parameters: [
+    {
+      name: "dex",
+      description: "Which Solana CLMM to manage: orca or raydium.",
+      required: true,
+      schema: { type: "string", enum: ["orca", "raydium"] },
+    },
+    {
+      name: "repositionThresholdBps",
+      description: "Optional drift threshold in basis points before rebalancing.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "slippageToleranceBps",
+      description: "Optional slippage tolerance in basis points for rebalance transactions.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "intervalSeconds",
+      description: "Optional interval, in seconds, between management checks.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    if (selectedContextMatches(state, ["finance", "crypto", "wallet", "automation"])) {
+      return true;
+    }
     const text =
       typeof message?.content?.text === "string" ? message.content.text.toLowerCase() : "";
-    const keywords = ["manage", "position", "rebalance", "liquidity", "orca", "raydium"];
+    const keywords = [
+      "manage",
+      "position",
+      "rebalance",
+      "liquidity",
+      "orca",
+      "raydium",
+      "lp",
+      "pool",
+      "liquidez",
+      "posición",
+      "rebalancear",
+      "liquidité",
+      "rééquilibrer",
+      "liquidität",
+      "流動性",
+      "再調整",
+      "流动性",
+      "再平衡",
+      "유동성",
+      "리밸런싱",
+    ];
     const keywordOk = keywords.some((kw) => text.includes(kw));
     const regexOk = /\b(?:manage|position|positions|rebalance|liquidity|orca|raydium)\b/i.test(
       text

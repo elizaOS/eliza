@@ -48,6 +48,8 @@ async function forwardBridgeToControlPlane(params: {
   headers.delete("host");
   const internalToken = readControlPlaneEnv(params.ctx, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
   if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const databaseUrl = readControlPlaneEnv(params.ctx, ["DATABASE_URL"]);
+  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("content-type", "application/json");
   headers.set("x-eliza-user-id", params.user.id);
   headers.set("x-eliza-organization-id", params.user.organization_id);

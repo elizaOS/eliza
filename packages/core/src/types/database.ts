@@ -580,7 +580,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * This is the highest-impact API addition, replacing patterns like:
 	 * - int_accounts.ts: "get accounts by pubkey" (240 lines → 10 lines)
-	 * - int_users.ts: "get users by type" (multi-step ID resolution)
+	 * - int_users.ts: "get users by type" (chained ID resolution)
 	 * - int_spartan.ts: master registry becomes unnecessary
 	 *
 	 * TWO-QUERY APPROACH (critical for correctness):

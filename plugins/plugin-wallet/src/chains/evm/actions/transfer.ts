@@ -131,6 +131,41 @@ export const transferAction: Action = {
   name: spec.name,
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  contexts: ["finance", "crypto", "wallet", "payments"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "amount",
+      description: "Human-readable amount to transfer.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toAddress",
+      description: "Recipient EVM address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "fromChain",
+      description: "Source EVM chain.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "token",
+      description: "Native token or ERC-20 token symbol/address.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   handler: async (
     runtime: IAgentRuntime,

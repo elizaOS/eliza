@@ -1,8 +1,8 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { ImagePageClient } from "@/packages/ui/src/components/image/image-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useGallery } from "../../lib/data/gallery";
+import { ImagePageClient } from "./_components/image-page-client";
 
 /** /dashboard/image — wraps ImagePageClient with the caller's image history. */
 export default function ImagePage() {

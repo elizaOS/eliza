@@ -75,6 +75,7 @@ async function setupTestFixtures(): Promise<TestFixtures> {
     // Create user
     await dbWrite.insert(users).values({
       id: userId,
+      steward_user_id: `test-entity-settings-${userId}`,
       email,
       name: `Test User ${suffix}`,
       created_at: now,

@@ -7,6 +7,7 @@ import {
 	type Memory,
 	type State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { createTaskClipboardService } from "../services/taskClipboardService.ts";
 
 async function resolveItemId(
@@ -52,6 +53,8 @@ async function resolveItemId(
 
 export const removeFromClipboardAction: Action = {
 	name: "REMOVE_FROM_CLIPBOARD",
+	contexts: ["files", "knowledge", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: ["CLEAR_CLIPBOARD_ITEM", "DELETE_CLIPBOARD_ITEM"],
 	description:
 		"Remove an item from the bounded clipboard when it is no longer needed for the current task.",
@@ -69,16 +72,26 @@ export const removeFromClipboardAction: Action = {
 			typeof options.parameters === "object"
 				? (options.parameters as Record<string, unknown>)
 				: {};
-		if (typeof params.itemId === "string" && params.itemId.trim()) {
-			return true;
-		}
-		if (typeof message.content.itemId === "string") {
-			return true;
-		}
+		const hasStructuredItemId =
+			typeof params.itemId === "string" && params.itemId.trim().length > 0;
+		const hasContentItemId = typeof message.content.itemId === "string";
 		const rawText = String(message.content.text ?? "");
 		const safeText =
 			rawText.length > 10_000 ? rawText.slice(0, 10_000) : rawText;
-		return /remove|clear|drop.*clipboard/i.test(safeText);
+		return (
+			hasStructuredItemId ||
+			hasContentItemId ||
+			/(?:remove|clear|drop).*(?:clipboard|saved item)/i.test(safeText) ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["files", "knowledge", "agent_internal"],
+				keywords: [
+					"remove clipboard",
+					"clear clipboard",
+					"drop clipboard",
+					"delete clipboard item",
+				],
+			})
+		);
 	},
 	handler: async (
 		runtime: IAgentRuntime,

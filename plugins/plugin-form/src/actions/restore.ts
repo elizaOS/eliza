@@ -73,9 +73,20 @@ import type { FormService } from "../service";
  */
 export const formRestoreAction: Action = {
   name: "FORM_RESTORE",
+  contexts: ["tasks", "automation", "memory"],
+  contextGate: { anyOf: ["tasks", "automation", "memory"] },
+  roleGate: { minRole: "USER" },
   similes: ["RESUME_FORM", "CONTINUE_FORM"],
   description: "Restore a previously stashed form session",
   descriptionCompressed: "Restore stashed form session.",
+  parameters: [
+    {
+      name: "sessionId",
+      description: "Optional stashed form session id to restore.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
   /**
    * Validate: Only trigger for restore intent with stashed sessions.

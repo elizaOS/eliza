@@ -17,10 +17,14 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 export const syncCatalogAction: Action = {
 	name: "SYNC_SKILL_CATALOG",
+	contexts: ["automation", "settings", "connectors"],
+	contextGate: { anyOf: ["automation", "settings", "connectors"] },
+	roleGate: { minRole: "USER" },
 	similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
 	description:
 		"Sync the skill catalog from the registry to discover new skills.",
 	descriptionCompressed: "Sync skill catalog from registry.",
+	parameters: [],
 	validate: createAgentSkillsActionValidator({
 		keywords: ["sync", "refresh", "update", "catalog", "skill"],
 		regex:

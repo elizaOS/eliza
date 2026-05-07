@@ -129,6 +129,10 @@ export function clearScreenshot(): void {
 const pageContentProvider: Provider = {
   name: "PAGE_CONTENT",
   description: "Current webpage content that the user is viewing",
+  contexts: ["browser", "web"],
+  contextGate: { anyOf: ["browser", "web"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async () => {
     if (!cachedPageContent) {
       return {

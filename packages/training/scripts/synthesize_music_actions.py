@@ -48,7 +48,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_DIR = ROOT / "data" / "synthesized" / "action_examples"
@@ -501,7 +501,7 @@ def to_memory_entries(
 
 def build_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     task_type: str,
     user_msg: str,
     expected: dict[str, Any] | str,
@@ -596,7 +596,7 @@ SUBTLE_NULL_TEMPLATES = [
 
 
 def _subtle_null_record(
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     rng: random.Random,
     idx: int,
     action_name: str,
@@ -623,7 +623,7 @@ def _subtle_null_record(
 
 # ─── plugin-music-library ─────────────────────────────────────────────
 
-def gen_play_audio(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_play_audio(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     """PLAY_AUDIO: track / artist / search words / media URL.
 
     Uses confirmed:true (per catalog). Mix English (~70) + multilingual (~30),
@@ -689,7 +689,7 @@ def gen_play_audio(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
         )
 
 
-def gen_play_music_query(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_play_music_query(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "PLAY_MUSIC_QUERY"
     null_quota = max(1, int(n * 0.10))
@@ -741,7 +741,7 @@ def gen_play_music_query(encoder: ToonEncoder, rng: random.Random, n: int) -> It
         )
 
 
-def gen_queue_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_queue_music(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "QUEUE_MUSIC"
     null_quota = max(1, int(n * 0.10))
@@ -794,7 +794,7 @@ def gen_queue_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
         )
 
 
-def gen_pause_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_pause_music(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "PAUSE_MUSIC"
     en_target = int(n * 0.70)
@@ -839,7 +839,7 @@ def gen_pause_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
         )
 
 
-def gen_resume_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_resume_music(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "RESUME_MUSIC"
     en_target = int(n * 0.70)
@@ -884,7 +884,7 @@ def gen_resume_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterab
         )
 
 
-def gen_stop_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_stop_music(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "STOP_MUSIC"
     en_target = int(n * 0.70)
@@ -929,7 +929,7 @@ def gen_stop_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
         )
 
 
-def gen_skip_track(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_skip_track(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "SKIP_TRACK"
     en_target = int(n * 0.70)
@@ -974,7 +974,7 @@ def gen_skip_track(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
         )
 
 
-def gen_show_queue(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_show_queue(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-player"
     action = "SHOW_QUEUE"
     en_target = int(n * 0.70)
@@ -1021,7 +1021,7 @@ def gen_show_queue(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
 
 # ─── plugin-music-library: playlists & library ────────────────────────
 
-def gen_list_playlists(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_list_playlists(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "LIST_PLAYLISTS"
     en_target = int(n * 0.70)
@@ -1066,7 +1066,7 @@ def gen_list_playlists(encoder: ToonEncoder, rng: random.Random, n: int) -> Iter
         )
 
 
-def gen_load_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_load_playlist(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "LOAD_PLAYLIST"
     null_quota = max(1, int(n * 0.10))
@@ -1117,7 +1117,7 @@ def gen_load_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Itera
         )
 
 
-def gen_save_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_save_playlist(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "SAVE_PLAYLIST"
     null_quota = max(1, int(n * 0.10))
@@ -1168,7 +1168,7 @@ def gen_save_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Itera
         )
 
 
-def gen_delete_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_delete_playlist(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "DELETE_PLAYLIST"
     null_quota = max(1, int(n * 0.07))
@@ -1219,7 +1219,7 @@ def gen_delete_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_add_to_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_add_to_playlist(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "ADD_TO_PLAYLIST"
     null_quota = max(1, int(n * 0.07))
@@ -1276,7 +1276,7 @@ def gen_add_to_playlist(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_search_youtube(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_search_youtube(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "SEARCH_YOUTUBE"
     en_target = int(n * 0.70)
@@ -1322,7 +1322,7 @@ def gen_search_youtube(encoder: ToonEncoder, rng: random.Random, n: int) -> Iter
         )
 
 
-def gen_download_music(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_download_music(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     plugin = "plugin-music-library"
     action = "DOWNLOAD_MUSIC"
     null_quota = max(1, int(n * 0.10))
@@ -1413,7 +1413,7 @@ def main() -> int:
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 

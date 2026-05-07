@@ -9,19 +9,19 @@ the eliza runtime actually parses for each `metadata.task_type`:
                                  availableActions, currentMessage role in
                                  {user, assistant}.
 
-  should_respond_with_context TOON expectedResponse decoding to one of
+  should_respond_with_context JSON expectedResponse decoding to one of
   (alias: routing /              {RESPOND, IGNORE, STOP}, with RESPOND+
    should_respond)               IGNORE+STOP in availableActions.
 
-  tool_call                   TOON expectedResponse with `tool_calls:` field
+  tool_call                   JSON expectedResponse with `tool_calls` field
                                  holding ≥1 `{name, arguments}` entry; the
                                  chosen action MUST be TASK_CALL or the tool
                                  name itself.
 
-  shell_command               TOON with `command:` field; SHELL_COMMAND must
+  shell_command               JSON with `command` field; SHELL_COMMAND must
                                  be in availableActions.
 
-  agent_trace (planning)      TOON envelope: `thought:` + `actions:[]`,
+  agent_trace (planning)      JSON envelope: `thought` + `actions`,
                                  each action with a `name`. When
                                  `simple: true` the actions list MUST be
                                  exactly one entry (REPLY-only / single).
@@ -156,9 +156,19 @@ def _decoder() -> toon_lib.ToonDecoder:
 
 
 def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
-    """Best-effort TOON decode. Returns `(ok, value, error)`."""
+    """Best-effort structured decode.
+
+    Native v5 rows are JSON. Legacy rows fall back to TOON compatibility.
+    Returns `(ok, value, error)`.
+    """
     if not isinstance(text, str) or not text.strip():
         return False, None, "empty"
+    stripped = text.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            return True, json.loads(stripped), ""
+        except json.JSONDecodeError:
+            pass
     try:
         return True, _decoder().decode(text), ""
     except (ValueError, RuntimeError) as e:

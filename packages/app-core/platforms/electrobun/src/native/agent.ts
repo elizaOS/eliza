@@ -28,6 +28,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import {
 	resolveApiToken,
 	resolveDesktopApiPort,
@@ -1587,9 +1588,8 @@ export class AgentManager {
 		try {
 			await this.killChildProcess();
 		} catch (err) {
-			console.warn(
-				"[Agent] dispose error:",
-				err instanceof Error ? err.message : err,
+			logger.warn(
+				`[Agent] dispose error: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -1608,7 +1608,9 @@ export class AgentManager {
 			try {
 				listener(statusSnapshot);
 			} catch (err) {
-				console.warn("[Agent] status listener failed:", err);
+				logger.warn(
+					`[Agent] status listener failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 	}

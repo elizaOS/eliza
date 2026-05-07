@@ -1,7 +1,7 @@
 import { Menu } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { ChatSidebar } from "@/packages/ui/src/components/layout/chat-sidebar";
+import { ChatSidebar } from "@elizaos/cloud-ui/components/layout/chat-sidebar";
 
 /**
  * Shared layout for `/dashboard/chat` and `/dashboard/build`.

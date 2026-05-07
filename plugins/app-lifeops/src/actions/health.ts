@@ -295,6 +295,8 @@ export const healthAction: Action = {
     "other body/activity metrics. Subactions: today, trend, by_metric, status.",
   descriptionCompressed:
     "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+  contexts: ["health", "tasks", "calendar"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasOwnerAccess(runtime, message),
   handler: async (

@@ -197,6 +197,9 @@ async function handleStop(
 
 export const tailscaleAction: Action = {
   name: 'TAILSCALE',
+  contexts: ['connectors', 'settings', 'admin'],
+  contextGate: { anyOf: ['connectors', 'settings', 'admin'] },
+  roleGate: { minRole: 'USER' },
   similes: [
     'TAILSCALE_OP',
     'START_TAILSCALE',

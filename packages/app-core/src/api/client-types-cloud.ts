@@ -606,7 +606,7 @@ export interface TrajectoryRecord extends CoreTrajectorySummaryRecord {
   roomId: string | null;
   entityId: string | null;
   conversationId: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, TrajectoryJsonValue | undefined>;
   updatedAt: string;
 }
 

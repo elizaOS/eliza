@@ -32,6 +32,9 @@ function parseConnectOverrides(params: Record<string, unknown>): JsonObject {
 
 export const minecraftConnectAction: Action = {
   name: ACTION_NAME,
+  contexts: ["connectors", "automation", "media"],
+  contextGate: { anyOf: ["connectors", "automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_JOIN", "MINECRAFT_CONNECT"],
   description: "Connect a Minecraft bot to a server, optionally overriding host/port/auth.",
   descriptionCompressed: "Connect Minecraft bot to server.",

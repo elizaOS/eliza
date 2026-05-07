@@ -65,6 +65,12 @@ function resolveCharacterList(
 export const characterProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general", "agent_internal"],
+	contextGate: { anyOf: ["general", "agent_internal"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const character = runtime.character;
 		const characterSeed = buildDeterministicSeed(

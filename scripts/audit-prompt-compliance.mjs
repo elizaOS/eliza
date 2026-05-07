@@ -122,7 +122,7 @@ const NEGATED_FORMAT_PATTERN =
 const ACTION_XML_PATTERNS = [
   {
     pattern: /\bparseKeyValueXml\b/,
-    reason: "actions must parse TOON with parseToonKeyValue",
+    reason: "actions must use native tool calling and JSON, not legacy XML helpers",
   },
   {
     pattern:

@@ -184,6 +184,8 @@ export function registerEntitySearchCategory(runtime: IAgentRuntime): void {
 
 export const searchEntityAction: Action = {
   name: "SEARCH_ENTITY",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "FIND_PERSON",
     "SEARCH_CONTACTS",
@@ -376,6 +378,8 @@ type ReadEntityParams = {
 
 export const readEntityAction: Action = {
   name: "READ_ENTITY",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "VIEW_PERSON",
     "GET_CONTACT",
@@ -648,6 +652,8 @@ function isLikelyUuid(value: string | undefined): value is UUID {
 
 export const linkEntityAction: Action = {
   name: "LINK_ENTITY",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "MERGE_CONTACT",
     "MERGE_ENTITY",
@@ -897,6 +903,8 @@ type ResolveMergeCandidateParams = {
 
 export const resolveMergeCandidateAction: Action = {
   name: "RESOLVE_MERGE_CANDIDATE",
+  contexts: ["contacts", "messaging", "knowledge", "admin"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "ACCEPT_MERGE_CANDIDATE",
     "REJECT_MERGE_CANDIDATE",
@@ -1080,6 +1088,8 @@ function clampActivityOffset(value: number | undefined): number {
 
 export const getRelationshipActivityAction: Action = {
   name: "GET_RELATIONSHIP_ACTIVITY",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "RELATIONSHIPS_ACTIVITY",
     "LIST_RELATIONSHIP_ACTIVITY",

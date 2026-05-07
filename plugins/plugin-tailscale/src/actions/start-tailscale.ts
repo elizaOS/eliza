@@ -61,6 +61,9 @@ function readPort(options?: HandlerOptions): number | null {
 
 export const startTailscaleAction: Action = {
   name: 'START_TAILSCALE',
+  contexts: ['connectors', 'settings', 'admin'],
+  contextGate: { anyOf: ['connectors', 'settings', 'admin'] },
+  roleGate: { minRole: 'USER' },
   similes: ['START_TUNNEL', 'OPEN_TUNNEL', 'CREATE_TUNNEL', 'TAILSCALE_UP'],
   description:
     'Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)',

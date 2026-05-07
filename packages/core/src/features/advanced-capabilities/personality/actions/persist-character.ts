@@ -9,6 +9,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 
 type PersistCharacterParameters = {
@@ -57,6 +58,8 @@ function normalizeFieldList(value: unknown): Array<keyof Character> {
  */
 export const persistCharacterAction: Action = {
 	name: "PERSIST_CHARACTER",
+	contexts: ["settings", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"SAVE_CHARACTER",
 		"COMMIT_CHARACTER",
@@ -81,9 +84,19 @@ export const persistCharacterAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["settings", "agent_internal"],
+			keywords: [
+				"persist character",
+				"save character",
+				"commit character",
+				"write character",
+				"save personality",
+			],
+		}),
 
 	handler: async (
 		runtime: IAgentRuntime,

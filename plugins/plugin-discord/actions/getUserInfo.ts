@@ -110,6 +110,17 @@ export const getUserInfo: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "userIdentifier",
+			description: "Discord user id, mention, username, or current user.",
+			required: false,
+			schema: { type: "string", default: "current" },
+		},
+	],
 	validate: async (
 		runtime: any,
 		message: any,

@@ -10,6 +10,10 @@ import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { annotateActiveTrajectoryStep, logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
+import type {
+  TrajectoryListResult,
+  TrajectoryStepKind,
+} from "../types/trajectory.js";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;
@@ -18,7 +22,7 @@ function getApiBase(): string {
 const TRAJECTORY_STATUSES = ["active", "completed", "error"] as const;
 type TrajectoryStatus = (typeof TRAJECTORY_STATUSES)[number];
 
-const EXPORT_FORMATS = ["json", "csv", "zip"] as const;
+const EXPORT_FORMATS = ["json", "jsonl", "csv", "art", "zip"] as const;
 type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 interface QueryTrajectoriesParams {
@@ -30,25 +34,10 @@ interface QueryTrajectoriesParams {
   offset?: number;
 }
 
-interface TrajectoryRecordShape {
-  id: string;
-  source?: string;
-  status?: string;
-  startedAt?: string;
-  endedAt?: string | null;
-  scenarioId?: string | null;
-  batchId?: string | null;
-}
-
-interface TrajectoryListResponse {
-  trajectories: TrajectoryRecordShape[];
-  total: number;
-  offset: number;
-  limit: number;
-}
-
 export const queryTrajectoriesAction: Action = {
   name: "QUERY_TRAJECTORIES",
+  contexts: ["agent_internal", "admin", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["LIST_TRAJECTORIES", "FIND_TRAJECTORIES", "BROWSE_TRAJECTORIES"],
   description:
     "List recorded trajectories with optional filters: source, status, scenarioId, batchId, plus limit/offset.",
@@ -95,13 +84,13 @@ export const queryTrajectoriesAction: Action = {
           text: `Failed to query trajectories: HTTP ${resp.status}`,
         };
       }
-      const data = (await resp.json()) as TrajectoryListResponse;
+      const data = (await resp.json()) as TrajectoryListResult;
       const trajectories = data.trajectories ?? [];
       const lines = trajectories
         .slice(0, 25)
         .map(
           (t) =>
-            `- ${t.id} ${t.status ?? "?"} src=${t.source ?? "?"} started=${t.startedAt ?? "?"}`,
+            `- ${t.id} ${t.status ?? "?"} src=${t.source ?? "?"} started=${t.startTime ?? "?"}`,
         );
       return {
         success: true,
@@ -207,11 +196,13 @@ interface ExportTrajectoriesParams {
 
 export const exportTrajectoryDatasetAction: Action = {
   name: "EXPORT_TRAJECTORY_DATASET",
+  contexts: ["agent_internal", "admin", "knowledge", "files"],
+  roleGate: { minRole: "OWNER" },
   similes: ["DUMP_TRAJECTORIES", "DOWNLOAD_TRAJECTORIES"],
   description:
-    "Export trajectory data as JSON, CSV, or ZIP via /api/trajectories/export. Returns the response size; the agent does not stream the bytes back to the user.",
+    "Export trajectory data as JSON, JSONL, CSV, ART, or ZIP via /api/trajectories/export. Returns the response size; the agent does not stream the bytes back to the user.",
   descriptionCompressed:
-    "export trajectory data JSON, CSV, ZIP via / api/trajectories/export return response size; agent stream byte back user",
+    "export trajectory data JSON, JSONL, CSV, ART, ZIP via / api/trajectories/export return response size; agent stream byte back user",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -305,8 +296,11 @@ export const exportTrajectoryDatasetAction: Action = {
 // ANNOTATE_TRAJECTORY
 // ---------------------------------------------------------------------------
 
-const TRAJECTORY_STEP_KINDS = ["llm", "action", "executeCode"] as const;
-type TrajectoryStepKind = (typeof TRAJECTORY_STEP_KINDS)[number];
+const TRAJECTORY_STEP_KINDS = [
+  "llm",
+  "action",
+  "executeCode",
+] as const satisfies readonly TrajectoryStepKind[];
 
 interface AnnotateTrajectoryParams {
   stepId?: string;
@@ -345,6 +339,8 @@ function readStringField(
 
 export const annotateTrajectoryAction: Action = {
   name: "ANNOTATE_TRAJECTORY",
+  contexts: ["agent_internal", "admin", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["TAG_TRAJECTORY", "ANNOTATE_TRAJECTORY_STEP"],
   description:
     "Attach kind/script/childSteps/usedSkills annotations to the active trajectory step (or a supplied stepId).",

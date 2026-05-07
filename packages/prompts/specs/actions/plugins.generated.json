@@ -4,21 +4,80 @@
     {
       "name": "ACTIVATE_N8N_WORKFLOW",
       "description": "Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "workflowId",
+          "description": "Optional exact n8n workflow id to activate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflowName",
+          "description": "Optional workflow name to activate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Optional natural-language description of the workflow to activate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language",
       "similes": [
         "ACTIVATE_WORKFLOW",
         "ENABLE_WORKFLOW",
         "START_WORKFLOW",
         "TURN_ON_WORKFLOW"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use ACTIVATE_N8N_WORKFLOW with the provided parameters.",
+          "actions": ["ACTIVATE_N8N_WORKFLOW"],
+          "params": {
+            "ACTIVATE_N8N_WORKFLOW": {
+              "workflowId": "example",
+              "workflowName": "example",
+              "query": "example"
+            }
+          }
+        }
       ]
     },
     {
       "name": "ATTACK_NPC",
       "description": "Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "npcId",
+          "description": "Nearby NPC instance id from the SCAPE_NEARBY provider.",
+          "required": true,
+          "schema": {
+            "type": "number"
+          },
+          "descriptionCompressed": "NPC id."
+        }
+      ],
       "descriptionCompressed": "Attack NPC by id.",
-      "similes": ["FIGHT_NPC", "KILL_NPC", "ENGAGE"]
+      "similes": ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
+      "exampleCalls": [
+        {
+          "user": "Use ATTACK_NPC with the provided parameters.",
+          "actions": ["ATTACK_NPC"],
+          "params": {
+            "ATTACK_NPC": {
+              "npcId": 1
+            }
+          }
+        }
+      ]
     },
     {
       "name": "BLOCK_UNTIL_TASK_COMPLETE",
@@ -95,7 +154,50 @@
     {
       "name": "BLUEBUBBLES_MESSAGE_OP",
       "description": "BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react).",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "op",
+          "description": "Operation to run: send or react.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["send", "react"]
+          }
+        },
+        {
+          "name": "text",
+          "description": "Message text for send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "to",
+          "description": "BlueBubbles chat guid, handle, or current conversation.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        },
+        {
+          "name": "messageGuid",
+          "description": "Target message guid for reactions.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction emoji.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Bluebubbles message ops: send, react.",
       "similes": [
         "SEND_IMESSAGE",
@@ -106,6 +208,21 @@
         "BLUEBUBBLES_REACT",
         "BB_REACTION",
         "IMESSAGE_REACT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use BLUEBUBBLES_MESSAGE_OP with the provided parameters.",
+          "actions": ["BLUEBUBBLES_MESSAGE_OP"],
+          "params": {
+            "BLUEBUBBLES_MESSAGE_OP": {
+              "op": "send",
+              "text": "example",
+              "to": "current",
+              "messageGuid": "example",
+              "emoji": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -257,7 +374,40 @@
     {
       "name": "CALL_MCP_TOOL",
       "description": "Calls a tool from an MCP server to perform a specific task",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "serverName",
+          "description": "Optional MCP server name that owns the tool.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toolName",
+          "description": "Optional exact MCP tool name to call.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "arguments",
+          "description": "Optional JSON arguments to pass to the selected MCP tool.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Natural-language description of the tool call to select.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "call tool MCP server perform specific task",
       "similes": [
         "CALL_TOOL",
@@ -270,14 +420,49 @@
         "RUN_MCP_TOOL",
         "INVOKE_TOOL",
         "INVOKE_MCP_TOOL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CALL_MCP_TOOL with the provided parameters.",
+          "actions": ["CALL_MCP_TOOL"],
+          "params": {
+            "CALL_MCP_TOOL": {
+              "serverName": "example",
+              "toolName": "example",
+              "arguments": "example",
+              "query": "example"
+            }
+          }
+        }
       ]
     },
     {
       "name": "CHAT_PUBLIC",
       "description": "Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "message",
+          "description": "Public chat text to send, capped to 80 characters.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "Chat text."
+        }
+      ],
       "descriptionCompressed": "Say something in public chat.",
-      "similes": ["SAY", "SPEAK", "TALK", "BROADCAST"]
+      "similes": ["SAY", "SPEAK", "TALK", "BROADCAST"],
+      "exampleCalls": [
+        {
+          "user": "Use CHAT_PUBLIC with the provided parameters.",
+          "actions": ["CHAT_PUBLIC"],
+          "params": {
+            "CHAT_PUBLIC": {
+              "message": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "CHECK_AVAILABILITY",
@@ -345,9 +530,47 @@
     {
       "name": "CLAUDE_CODE_WORKBENCH_RUN",
       "description": "Run an allowlisted repo workflow through the Claude Code workbench service.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "workflow",
+          "description": "Allowlisted workflow name to run.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cwd",
+          "description": "Optional working directory for the workflow.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "stdin",
+          "description": "Optional stdin passed to the workflow.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "run allowlist repo workflow through Claude Code workbench service",
-      "similes": ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"]
+      "similes": ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
+      "exampleCalls": [
+        {
+          "user": "Use CLAUDE_CODE_WORKBENCH_RUN with the provided parameters.",
+          "actions": ["CLAUDE_CODE_WORKBENCH_RUN"],
+          "params": {
+            "CLAUDE_CODE_WORKBENCH_RUN": {
+              "workflow": "example",
+              "cwd": "example",
+              "stdin": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "CLEAR_LINEAR_ACTIVITY",
@@ -527,13 +750,20 @@
       "description": "Add a comment to a Linear issue",
       "parameters": [
         {
-          "name": "name",
-          "description": "The name to use.",
+          "name": "issueId",
+          "description": "Linear issue id or identifier to comment on.",
           "required": false,
           "schema": {
             "type": "string"
-          },
-          "examples": ["example"]
+          }
+        },
+        {
+          "name": "body",
+          "description": "Comment body to add to the issue.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "descriptionCompressed": "add comment Linear issue",
@@ -549,7 +779,8 @@
           "actions": ["CREATE_LINEAR_COMMENT"],
           "params": {
             "CREATE_LINEAR_COMMENT": {
-              "name": "example"
+              "issueId": "example",
+              "body": "example"
             }
           }
         }
@@ -558,14 +789,134 @@
     {
       "name": "CREATE_LINEAR_ISSUE",
       "description": "Create a new issue in Linear",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "issueData",
+          "description": "Structured Linear issue fields.",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "priority": {
+                "type": "number"
+              },
+              "teamId": {
+                "type": "string"
+              },
+              "assigneeId": {
+                "type": "string"
+              },
+              "labelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ],
       "descriptionCompressed": "create new issue Linear",
-      "similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
+      "similes": [
+        "create-linear-issue",
+        "new-linear-issue",
+        "add-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_LINEAR_ISSUE with the provided parameters.",
+          "actions": ["CREATE_LINEAR_ISSUE"],
+          "params": {
+            "CREATE_LINEAR_ISSUE": {
+              "issueData": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_N8N_WORKFLOW",
+      "description": "Generate, preview, and deploy n8n workflows from natural language. ",
+      "parameters": [
+        {
+          "name": "request",
+          "description": "Natural-language workflow request, draft modification, deployment confirmation, or cancellation request.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "draftAction",
+          "description": "Optional explicit operation for a pending workflow draft.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["generate", "modify", "deploy", "cancel"]
+          }
+        }
+      ],
+      "descriptionCompressed": "generate, preview, deploy n8n workflow natural language handle full lifecycle: generate draft, show preview, deploy user confirmation handle modify/cancel pend draft IMPORTANT: workflow draft pend, action use user response draft includ yes, ok, deploy, cancel, modification request never reply w/ text draft pend",
+      "similes": [
+        "CREATE_WORKFLOW",
+        "BUILD_WORKFLOW",
+        "GENERATE_WORKFLOW",
+        "MAKE_AUTOMATION",
+        "CREATE_AUTOMATION",
+        "BUILD_N8N_WORKFLOW",
+        "SETUP_WORKFLOW",
+        "CONFIRM_WORKFLOW",
+        "DEPLOY_WORKFLOW",
+        "CANCEL_WORKFLOW"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_N8N_WORKFLOW with the provided parameters.",
+          "actions": ["CREATE_N8N_WORKFLOW"],
+          "params": {
+            "CREATE_N8N_WORKFLOW": {
+              "request": "example",
+              "draftAction": "generate"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEACTIVATE_N8N_WORKFLOW",
       "description": "Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "workflowId",
+          "description": "Optional exact n8n workflow id to deactivate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflowName",
+          "description": "Optional workflow name to deactivate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Optional natural-language description of the workflow to deactivate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "deactivate n8n workflow stop process trigger run automatically identify workflow ID, name, semantic description language",
       "similes": [
         "DEACTIVATE_WORKFLOW",
@@ -573,50 +924,247 @@
         "STOP_WORKFLOW",
         "PAUSE_WORKFLOW",
         "TURN_OFF_WORKFLOW"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use DEACTIVATE_N8N_WORKFLOW with the provided parameters.",
+          "actions": ["DEACTIVATE_N8N_WORKFLOW"],
+          "params": {
+            "DEACTIVATE_N8N_WORKFLOW": {
+              "workflowId": "example",
+              "workflowName": "example",
+              "query": "example"
+            }
+          }
+        }
       ]
     },
     {
       "name": "DELETE_LINEAR_ISSUE",
       "description": "Delete (archive) an issue in Linear",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "issueId",
+          "description": "Linear issue id or identifier to archive.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "delete (archive) issue Linear",
       "similes": [
         "delete-linear-issue",
         "archive-linear-issue",
         "remove-linear-issue",
         "close-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use DELETE_LINEAR_ISSUE with the provided parameters.",
+          "actions": ["DELETE_LINEAR_ISSUE"],
+          "params": {
+            "DELETE_LINEAR_ISSUE": {
+              "issueId": "example"
+            }
+          }
+        }
       ]
     },
     {
       "name": "DELETE_N8N_WORKFLOW",
       "description": "Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "workflowId",
+          "description": "Optional exact n8n workflow id to delete.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflowName",
+          "description": "Optional workflow name to delete.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Optional natural-language description of the workflow to delete.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Whether the user has confirmed permanent deletion.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
       "descriptionCompressed": "delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
-      "similes": ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"]
+      "similes": ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
+      "exampleCalls": [
+        {
+          "user": "Use DELETE_N8N_WORKFLOW with the provided parameters.",
+          "actions": ["DELETE_N8N_WORKFLOW"],
+          "params": {
+            "DELETE_N8N_WORKFLOW": {
+              "workflowId": "example",
+              "workflowName": "example",
+              "query": "example",
+              "confirmed": false
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_BOOSTED_TOKENS",
       "description": "Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
-      "parameters": [],
-      "similes": ["promoted tokens", "sponsored tokens", "boosted coins"]
+      "parameters": [
+        {
+          "name": "top",
+          "description": "When true, return top boosted tokens instead of latest boosted tokens.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "similes": ["promoted tokens", "sponsored tokens", "boosted coins"],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_BOOSTED_TOKENS with the provided parameters.",
+          "actions": ["DEXSCREENER_BOOSTED_TOKENS"],
+          "params": {
+            "DEXSCREENER_BOOSTED_TOKENS": {
+              "top": false
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_CHAIN_PAIRS",
       "description": "Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
-      "parameters": [],
-      "similes": ["tokens on", "pairs on", "top on"]
+      "parameters": [
+        {
+          "name": "chain",
+          "description": "Chain id/name to inspect.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sortBy",
+          "description": "Metric used to rank pairs.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["volume", "liquidity", "priceChange", "txns"],
+            "default": "volume"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of chain pairs to return.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      ],
+      "similes": ["tokens on", "pairs on", "top on"],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_CHAIN_PAIRS with the provided parameters.",
+          "actions": ["DEXSCREENER_CHAIN_PAIRS"],
+          "params": {
+            "DEXSCREENER_CHAIN_PAIRS": {
+              "chain": "example",
+              "sortBy": "volume",
+              "limit": 10
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_NEW_PAIRS",
       "description": "Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
-      "parameters": [],
-      "similes": ["new listings", "latest pairs", "new tokens", "fresh pairs"]
+      "parameters": [
+        {
+          "name": "chain",
+          "description": "Optional chain id/name to filter new pairs.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of new pairs to return.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      ],
+      "similes": ["new listings", "latest pairs", "new tokens", "fresh pairs"],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_NEW_PAIRS with the provided parameters.",
+          "actions": ["DEXSCREENER_NEW_PAIRS"],
+          "params": {
+            "DEXSCREENER_NEW_PAIRS": {
+              "chain": "example",
+              "limit": 10
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_SEARCH",
       "description": "Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
-      "parameters": [],
-      "similes": ["find token", "look for", "search dexscreener"]
+      "parameters": [
+        {
+          "name": "query",
+          "description": "Token name, symbol, pair, or contract address to search for.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "similes": ["find token", "look for", "search dexscreener"],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_SEARCH with the provided parameters.",
+          "actions": ["DEXSCREENER_SEARCH"],
+          "params": {
+            "DEXSCREENER_SEARCH": {
+              "query": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_TOKEN_INFO",
@@ -647,18 +1195,73 @@
     {
       "name": "DEXSCREENER_TOKEN_PROFILES",
       "description": "Get latest token profiles from DexScreener including social links, descriptions, and project information",
-      "parameters": [],
-      "similes": ["token profiles", "token details page"]
+      "parameters": [
+        {
+          "name": "limit",
+          "description": "Maximum number of token profiles to include.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10
+          }
+        }
+      ],
+      "similes": ["token profiles", "token details page"],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_TOKEN_PROFILES with the provided parameters.",
+          "actions": ["DEXSCREENER_TOKEN_PROFILES"],
+          "params": {
+            "DEXSCREENER_TOKEN_PROFILES": {
+              "limit": 10
+            }
+          }
+        }
+      ]
     },
     {
       "name": "DEXSCREENER_TRENDING",
       "description": "Get trending tokens from DexScreener based on volume, price changes, and trading activity",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "timeframe",
+          "description": "Trending window.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["1h", "6h", "24h"],
+            "default": "24h"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of trending pairs to return.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      ],
       "similes": [
         "hot tokens",
         "popular coins",
         "top gainers",
         "what's trending"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use DEXSCREENER_TRENDING with the provided parameters.",
+          "actions": ["DEXSCREENER_TRENDING"],
+          "params": {
+            "DEXSCREENER_TRENDING": {
+              "timeframe": "24h",
+              "limit": 10
+            }
+          }
+        }
       ]
     },
     {
@@ -666,13 +1269,20 @@
       "description": "Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
       "parameters": [
         {
-          "name": "data",
-          "description": "The data to use.",
+          "name": "service",
+          "description": "Third-party service to configure from Discord.",
           "required": false,
           "schema": {
             "type": "string"
-          },
-          "examples": ["example"]
+          }
+        },
+        {
+          "name": "credentials",
+          "description": "Credential values supplied by the user, when present.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
         }
       ],
       "descriptionCompressed": "Set up Discord credentials.",
@@ -692,7 +1302,8 @@
           "actions": ["DISCORD_SETUP_CREDENTIALS"],
           "params": {
             "DISCORD_SETUP_CREDENTIALS": {
-              "data": "example"
+              "service": "example",
+              "credentials": "example"
             }
           }
         }
@@ -1073,9 +1684,29 @@
     {
       "name": "FORM_RESTORE",
       "description": "Restore a previously stashed form session",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "sessionId",
+          "description": "Optional stashed form session id to restore.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Restore stashed form session.",
-      "similes": ["RESUME_FORM", "CONTINUE_FORM"]
+      "similes": ["RESUME_FORM", "CONTINUE_FORM"],
+      "exampleCalls": [
+        {
+          "user": "Use FORM_RESTORE with the provided parameters.",
+          "actions": ["FORM_RESTORE"],
+          "params": {
+            "FORM_RESTORE": {
+              "sessionId": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "GET_LINEAR_ACTIVITY",
@@ -1343,13 +1974,43 @@
     {
       "name": "IMESSAGE_SEND_MESSAGE",
       "description": "Send a text message via iMessage (macOS only)",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "text",
+          "description": "Message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "to",
+          "description": "Phone number, email address, or current conversation.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        }
+      ],
       "descriptionCompressed": "Send iMessage (macOS).",
       "similes": [
         "SEND_IMESSAGE",
         "IMESSAGE_TEXT",
         "TEXT_IMESSAGE",
         "SEND_IMSG"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use IMESSAGE_SEND_MESSAGE with the provided parameters.",
+          "actions": ["IMESSAGE_SEND_MESSAGE"],
+          "params": {
+            "IMESSAGE_SEND_MESSAGE": {
+              "text": "example",
+              "to": "current"
+            }
+          }
+        }
       ]
     },
     {
@@ -1410,9 +2071,29 @@
     {
       "name": "INSTALL_SKILL",
       "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "slug",
+          "description": "Skill slug or search term to install.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Install skill from ClawHub registry. Security-scanned before activation.",
-      "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"]
+      "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
+      "exampleCalls": [
+        {
+          "user": "Use INSTALL_SKILL with the provided parameters.",
+          "actions": ["INSTALL_SKILL"],
+          "params": {
+            "INSTALL_SKILL": {
+              "slug": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "LIST_ACTIVE_BLOCKS",
@@ -1537,8 +2218,8 @@
       "parameters": [
         {
           "name": "subaction",
-          "description": "Router parameter subaction.",
-          "required": false,
+          "description": "LP operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
+          "required": true,
           "schema": {
             "type": "string",
             "enum": [
@@ -1555,7 +2236,7 @@
         },
         {
           "name": "chain",
-          "description": "Router parameter chain.",
+          "description": "Chain for the LP operation.",
           "required": false,
           "schema": {
             "type": "string",
@@ -1564,7 +2245,7 @@
         },
         {
           "name": "dex",
-          "description": "Router parameter dex.",
+          "description": "DEX/protocol name.",
           "required": false,
           "schema": {
             "type": "string"
@@ -1572,7 +2253,7 @@
         },
         {
           "name": "pool",
-          "description": "Router parameter pool.",
+          "description": "Pool id/address for open, close, reposition, or position lookup.",
           "required": false,
           "schema": {
             "type": "string"
@@ -1580,7 +2261,7 @@
         },
         {
           "name": "position",
-          "description": "Router parameter position.",
+          "description": "LP position id/mint/address.",
           "required": false,
           "schema": {
             "type": "string"
@@ -1588,23 +2269,23 @@
         },
         {
           "name": "amount",
-          "description": "Router parameter amount.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "range",
-          "description": "Router parameter range.",
+          "description": "Liquidity amount for open, close, or reposition operations.",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
+          "name": "range",
+          "description": "Desired concentrated liquidity price range.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
           "name": "tokenA",
-          "description": "Router parameter tokenA.",
+          "description": "First token filter or deposit token.",
           "required": false,
           "schema": {
             "type": "string"
@@ -1612,7 +2293,7 @@
         },
         {
           "name": "tokenB",
-          "description": "Router parameter tokenB.",
+          "description": "Second token filter or deposit token.",
           "required": false,
           "schema": {
             "type": "string"
@@ -1620,15 +2301,15 @@
         },
         {
           "name": "chainId",
-          "description": "Router parameter chainId.",
+          "description": "Optional numeric EVM chain id.",
           "required": false,
           "schema": {
-            "type": "string"
+            "type": "number"
           }
         },
         {
           "name": "slippageBps",
-          "description": "Router parameter slippageBps.",
+          "description": "Maximum allowed slippage in basis points.",
           "required": false,
           "schema": {
             "type": "number"
@@ -1654,11 +2335,11 @@
               "dex": "example",
               "pool": "example",
               "position": "example",
-              "amount": 1,
+              "amount": "example",
               "range": "example",
               "tokenA": "example",
               "tokenB": "example",
-              "chainId": "example",
+              "chainId": 1,
               "slippageBps": 1
             }
           }
@@ -1757,12 +2438,56 @@
     {
       "name": "manage_raydium_positions",
       "description": "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "repositionThresholdBps",
+          "description": "Required drift threshold in basis points before rebalancing.",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          }
+        },
+        {
+          "name": "intervalSeconds",
+          "description": "Requested monitoring interval in seconds for the automation policy.",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          }
+        },
+        {
+          "name": "slippageToleranceBps",
+          "description": "Required slippage tolerance in basis points for reopen transactions.",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000
+          }
+        }
+      ],
       "descriptionCompressed": "automatically manage Raydium position rebalance drift too far pool price",
       "similes": [
         "AUTOMATE_RAYDIUM_REBALANCING",
         "AUTOMATE_RAYDIUM_POSITIONS",
         "START_MANAGING_RAYDIUM_POSITIONS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use manage_raydium_positions with the provided parameters.",
+          "actions": ["manage_raydium_positions"],
+          "params": {
+            "manage_raydium_positions": {
+              "repositionThresholdBps": "example",
+              "intervalSeconds": "example",
+              "slippageToleranceBps": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -2047,20 +2772,78 @@
     {
       "name": "MATRIX_JOIN_ROOM",
       "description": "Join a Matrix room by ID or alias",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "room",
+          "description": "Matrix room id (!room:server) or alias (#alias:server).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Join Matrix room by id or alias.",
-      "similes": ["JOIN_MATRIX_ROOM", "ENTER_ROOM"]
+      "similes": ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
+      "exampleCalls": [
+        {
+          "user": "Use MATRIX_JOIN_ROOM with the provided parameters.",
+          "actions": ["MATRIX_JOIN_ROOM"],
+          "params": {
+            "MATRIX_JOIN_ROOM": {
+              "room": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "MODIFY_EXISTING_N8N_WORKFLOW",
       "description": "Load an existing deployed n8n workflow for modification. ",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "workflowId",
+          "description": "Optional exact n8n workflow id to load into the draft editor.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflowName",
+          "description": "Optional workflow name to load into the draft editor.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Optional natural-language description of the workflow to modify.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Load deployed n8n workflow into draft editor; then use CREATE_N8N_WORKFLOW to change, preview, redeploy.",
       "similes": [
         "EDIT_EXISTING_WORKFLOW",
         "UPDATE_EXISTING_WORKFLOW",
         "CHANGE_EXISTING_WORKFLOW",
         "LOAD_WORKFLOW_FOR_EDIT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MODIFY_EXISTING_N8N_WORKFLOW with the provided parameters.",
+          "actions": ["MODIFY_EXISTING_N8N_WORKFLOW"],
+          "params": {
+            "MODIFY_EXISTING_N8N_WORKFLOW": {
+              "workflowId": "example",
+              "workflowName": "example",
+              "query": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -2161,16 +2944,84 @@
     {
       "name": "NOSTR_PUBLISH_PROFILE",
       "description": "Publish or update the bot's Nostr profile (kind:0 metadata)",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "name",
+          "description": "Display name for the Nostr profile.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "about",
+          "description": "Profile bio/about text.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "picture",
+          "description": "Profile picture URL.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "publish update bot Nostr profile (kind: 0 metadata)",
-      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"]
+      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
+      "exampleCalls": [
+        {
+          "user": "Use NOSTR_PUBLISH_PROFILE with the provided parameters.",
+          "actions": ["NOSTR_PUBLISH_PROFILE"],
+          "params": {
+            "NOSTR_PUBLISH_PROFILE": {
+              "name": "example",
+              "about": "example",
+              "picture": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "NOSTR_SEND_DM",
       "description": "Send an encrypted direct message via Nostr (NIP-04)",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "text",
+          "description": "Direct message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toPubkey",
+          "description": "Recipient npub, hex pubkey, or current.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        }
+      ],
       "descriptionCompressed": "send encrypt direct message via Nostr (NIP-04)",
-      "similes": ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"]
+      "similes": ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
+      "exampleCalls": [
+        {
+          "user": "Use NOSTR_SEND_DM with the provided parameters.",
+          "actions": ["NOSTR_SEND_DM"],
+          "params": {
+            "NOSTR_SEND_DM": {
+              "text": "example",
+              "toPubkey": "current"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "PAYMENT_OP",
@@ -2267,6 +3118,22 @@
       "description": "Start playing a new song: provide a track name, artist, search words, or a media URL. ",
       "parameters": [
         {
+          "name": "query",
+          "description": "Track name, artist, search phrase, or direct media URL to play.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "description": "Direct media URL to play. Prefer query for standard song requests.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "confirmed",
           "description": "Must be true to play or queue the requested audio.",
           "required": false,
@@ -2297,6 +3164,8 @@
           "actions": ["PLAY_AUDIO"],
           "params": {
             "PLAY_AUDIO": {
+              "query": "example",
+              "url": "example",
               "confirmed": false
             }
           }
@@ -2498,9 +3367,48 @@
     {
       "name": "POLYMARKET_PLACE_ORDER",
       "description": "Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "side",
+          "description": "Intended side, buy or sell. Trading is currently disabled.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["buy", "sell"]
+          }
+        },
+        {
+          "name": "marketId",
+          "description": "Polymarket market id or condition id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "description": "Intended order amount. Trading is currently disabled.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
       "descriptionCompressed": "Report disabled Polymarket trading readiness.",
-      "similes": ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"]
+      "similes": ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
+      "exampleCalls": [
+        {
+          "user": "Use POLYMARKET_PLACE_ORDER with the provided parameters.",
+          "actions": ["POLYMARKET_PLACE_ORDER"],
+          "params": {
+            "POLYMARKET_PLACE_ORDER": {
+              "side": "buy",
+              "marketId": "example",
+              "amount": 1
+            }
+          }
+        }
+      ]
     },
     {
       "name": "POLYMARKET_READ",
@@ -3370,13 +4278,36 @@
     {
       "name": "SIGNAL_READ_RECENT_MESSAGES",
       "description": "Read the most recent Signal messages across active conversations",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "limit",
+          "description": "Maximum recent messages to return.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      ],
       "descriptionCompressed": "Read recent Signal msgs.",
       "similes": [
         "READ_SIGNAL_MESSAGES",
         "CHECK_SIGNAL_MESSAGES",
         "SHOW_SIGNAL_MESSAGES",
         "SIGNAL_INBOX"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SIGNAL_READ_RECENT_MESSAGES with the provided parameters.",
+          "actions": ["SIGNAL_READ_RECENT_MESSAGES"],
+          "params": {
+            "SIGNAL_READ_RECENT_MESSAGES": {
+              "limit": 10
+            }
+          }
+        }
       ]
     },
     {
@@ -3417,13 +4348,46 @@
       "description": "Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
       "parameters": [
         {
-          "name": "data",
-          "description": "The data to use.",
+          "name": "op",
+          "description": "Operation: send, edit, delete, react, pin, or unpin.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["send", "edit", "delete", "react", "pin", "unpin"]
+          }
+        },
+        {
+          "name": "text",
+          "description": "Message text for send or edit.",
           "required": false,
           "schema": {
             "type": "string"
-          },
-          "examples": ["example"]
+          }
+        },
+        {
+          "name": "channelRef",
+          "description": "Slack channel name/id or current.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        },
+        {
+          "name": "messageTs",
+          "description": "Slack message timestamp for edit/delete/react/pin/unpin.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction emoji name without colons.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "descriptionCompressed": "Slack message ops: send, edit, delete, react, pin, unpin.",
@@ -3466,7 +4430,11 @@
           "actions": ["SLACK_MESSAGE_OP"],
           "params": {
             "SLACK_MESSAGE_OP": {
-              "data": "example"
+              "op": "send",
+              "text": "example",
+              "channelRef": "current",
+              "messageTs": "example",
+              "emoji": "example"
             }
           }
         }
@@ -3477,13 +4445,32 @@
       "description": "Read message history from a Slack channel",
       "parameters": [
         {
-          "name": "data",
-          "description": "The data to use.",
+          "name": "channelRef",
+          "description": "Slack channel name/id or current.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum messages to read.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "after",
+          "description": "Optional lower bound timestamp or date.",
           "required": false,
           "schema": {
             "type": "string"
-          },
-          "examples": ["example"]
+          }
         }
       ],
       "descriptionCompressed": "Read Slack channel message history.",
@@ -3500,7 +4487,9 @@
           "actions": ["SLACK_READ_CHANNEL"],
           "params": {
             "SLACK_READ_CHANNEL": {
-              "data": "example"
+              "channelRef": "current",
+              "limit": 10,
+              "after": "example"
             }
           }
         }
@@ -3677,9 +4666,44 @@
     {
       "name": "SUMMARIZE_FEED",
       "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "limit",
+          "description": "Number of top feed tweets to summarize.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        {
+          "name": "fetchCount",
+          "description": "Number of feed tweets to fetch before ranking.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      ],
       "descriptionCompressed": "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
-      "similes": ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"]
+      "similes": ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
+      "exampleCalls": [
+        {
+          "user": "Use SUMMARIZE_FEED with the provided parameters.",
+          "actions": ["SUMMARIZE_FEED"],
+          "params": {
+            "SUMMARIZE_FEED": {
+              "limit": 5,
+              "fetchCount": 50
+            }
+          }
+        }
+      ]
     },
     {
       "name": "SYNC_SKILL_CATALOG",
@@ -4077,7 +5101,24 @@
     {
       "name": "TOGGLE_SKILL",
       "description": "Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "slug",
+          "description": "Installed skill slug or name to enable or disable.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "enabled",
+          "description": "Whether to enable true or disable false the skill.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
       "descriptionCompressed": "Enable/disable installed skill.",
       "similes": [
         "ENABLE_SKILL",
@@ -4086,6 +5127,18 @@
         "TURN_OFF_SKILL",
         "ACTIVATE_SKILL",
         "DEACTIVATE_SKILL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TOGGLE_SKILL with the provided parameters.",
+          "actions": ["TOGGLE_SKILL"],
+          "params": {
+            "TOGGLE_SKILL": {
+              "slug": "example",
+              "enabled": false
+            }
+          }
+        }
       ]
     },
     {
@@ -4133,21 +5186,71 @@
     {
       "name": "TWITCH_SEND_MESSAGE",
       "description": "Send a message to a Twitch channel",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "text",
+          "description": "Chat message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "channel",
+          "description": "Twitch channel name, without #, or current.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "current"
+          }
+        }
+      ],
       "descriptionCompressed": "send message Twitch channel",
       "similes": [
         "SEND_TWITCH_MESSAGE",
         "TWITCH_CHAT",
         "CHAT_TWITCH",
         "SAY_IN_TWITCH"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TWITCH_SEND_MESSAGE with the provided parameters.",
+          "actions": ["TWITCH_SEND_MESSAGE"],
+          "params": {
+            "TWITCH_SEND_MESSAGE": {
+              "text": "example",
+              "channel": "current"
+            }
+          }
+        }
       ]
     },
     {
       "name": "UNINSTALL_SKILL",
       "description": "Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "slug",
+          "description": "Installed skill slug or name to uninstall.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "descriptionCompressed": "Remove non-bundled skill.",
-      "similes": ["REMOVE_SKILL", "DELETE_SKILL"]
+      "similes": ["REMOVE_SKILL", "DELETE_SKILL"],
+      "exampleCalls": [
+        {
+          "user": "Use UNINSTALL_SKILL with the provided parameters.",
+          "actions": ["UNINSTALL_SKILL"],
+          "params": {
+            "UNINSTALL_SKILL": {
+              "slug": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "USE_COMPUTER",

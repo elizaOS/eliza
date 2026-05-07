@@ -2,14 +2,14 @@ name: Deploy Eliza Provisioning Worker
 
 # SSHes to the Hetzner provisioning host, fetches the latest develop/main commit,
 # installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
-# and restarts the daemon. Runs in parallel with the legacy 0xSolace worker until cutover.
+# and restarts the eliza-provisioning-worker daemon.
 
 on:
   push:
     branches: [develop, main]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'cloud/packages/scripts/provisioning-worker.ts'
+      - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
       - 'cloud/packages/scripts/eliza-provisioning-worker.service'
       - 'cloud/packages/lib/services/provisioning-jobs.ts'
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
@@ -69,6 +69,7 @@ jobs:
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 15
     env:
+      SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
@@ -88,7 +89,7 @@ jobs:
           key: ${{ env.DEPLOY_SSH_KEY }}
           script_stop: true
           command_timeout: 10m
-          envs: DEPLOY_BRANCH
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -127,11 +128,11 @@ jobs:
             # Install/refresh the systemd unit.
             sudo install -m 0644 \
               cloud/packages/scripts/eliza-provisioning-worker.service \
-              /etc/systemd/system/eliza-provisioning-worker.service
+              "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo systemctl daemon-reload
-            sudo systemctl enable eliza-provisioning-worker
+            sudo systemctl enable "$SYSTEMD_UNIT"
 
-            sudo systemctl restart eliza-provisioning-worker
+            sudo systemctl restart "$SYSTEMD_UNIT"
             echo "=== Restart issued; waiting for first poll cycle ==="
 
       - name: Health check
@@ -142,13 +143,14 @@ jobs:
           key: ${{ env.DEPLOY_SSH_KEY }}
           script_stop: true
           command_timeout: 5m
+          envs: SYSTEMD_UNIT
           script: |
             set -euo pipefail
             # Anchor the journal window once so it does not shrink across retries.
             SINCE_TS="$(date -u -d '30 seconds ago' '+%Y-%m-%d %H:%M:%S')"
             for attempt in $(seq 1 18); do
-              if sudo systemctl is-active --quiet eliza-provisioning-worker; then
-                JOURNAL=$(sudo journalctl -u eliza-provisioning-worker --since "$SINCE_TS" --no-pager 2>/dev/null || true)
+              if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
+                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$SINCE_TS" --no-pager 2>/dev/null || true)
                 # Detect a restart loop: the worker prints "starting" each boot,
                 # then crashes if env or DB is misconfigured. Treat any fatal log
                 # since deploy as a hard failure even if the unit is currently active.
@@ -166,9 +168,9 @@ jobs:
               sleep 5
             done
 
-            echo "::error::eliza-provisioning-worker failed to become healthy within 90s."
-            sudo systemctl status eliza-provisioning-worker --no-pager || true
-            sudo journalctl -u eliza-provisioning-worker -n 200 --no-pager || true
+            echo "::error::$SYSTEMD_UNIT failed to become healthy within 90s."
+            sudo systemctl status "$SYSTEMD_UNIT" --no-pager || true
+            sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
             exit 1
 
       - name: Notify Discord (Success)

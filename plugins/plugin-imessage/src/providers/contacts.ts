@@ -72,64 +72,79 @@ export const contactsProvider: Provider = {
   descriptionCompressed: "Apple Contacts (name→phone/email) for iMessage handle resolution.",
 
   dynamic: true,
+  contextGate: { anyOf: ["phone", "social", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   contexts: ["phone", "social", "connectors"],
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const imessageService = runtime.getService<IMessageService>(IMESSAGE_SERVICE_NAME);
+    try {
+      const imessageService = runtime.getService<IMessageService>(IMESSAGE_SERVICE_NAME);
 
-    if (!imessageService) {
+      if (!imessageService) {
+        return {
+          data: { available: false, reason: "service-not-registered" },
+          values: {},
+          text: "",
+        };
+      }
+
+      const contactsMap = imessageService.getContacts();
+      if (!contactsMap || contactsMap.size === 0) {
+        return {
+          data: { available: false, reason: "contacts-map-empty" },
+          values: {},
+          text: "",
+        };
+      }
+
+      const groups = groupContactsByName(contactsMap);
+      if (groups.length === 0) {
+        return {
+          data: { available: false, reason: "no-named-contacts" },
+          values: {},
+          text: "",
+        };
+      }
+
+      const truncated = groups.length > MAX_CONTACTS_IN_STATE;
+      const shown = truncated ? groups.slice(0, MAX_CONTACTS_IN_STATE) : groups;
+
+      const lines: string[] = [
+        `The user's Apple Contacts are available for iMessage. ${groups.length} contact(s) loaded${truncated ? ` (showing first ${MAX_CONTACTS_IN_STATE})` : ""}.`,
+        "When the user asks you to text, message, or iMessage a person by name,",
+        "look up that person below and pass their phone number (preferred) or email",
+        'to SEND_MESSAGE with source "imessage". If the name is ambiguous or',
+        "missing, ask the user to clarify instead of guessing.",
+        "",
+        "Contacts:",
+      ];
+      for (const group of shown) {
+        lines.push(`- ${group.name}: ${group.handles.join(", ")}`);
+      }
+
       return {
-        data: { available: false, reason: "service-not-registered" },
+        data: {
+          available: true,
+          total: groups.length,
+          shown: shown.length,
+          truncated,
+        },
+        values: {
+          contactCount: groups.length,
+        },
+        text: lines.join("\n"),
+      };
+    } catch (error) {
+      return {
+        data: {
+          available: false,
+          reason: "contacts-provider-error",
+          error: error instanceof Error ? error.message : String(error),
+        },
         values: {},
         text: "",
       };
     }
-
-    const contactsMap = imessageService.getContacts();
-    if (!contactsMap || contactsMap.size === 0) {
-      return {
-        data: { available: false, reason: "contacts-map-empty" },
-        values: {},
-        text: "",
-      };
-    }
-
-    const groups = groupContactsByName(contactsMap);
-    if (groups.length === 0) {
-      return {
-        data: { available: false, reason: "no-named-contacts" },
-        values: {},
-        text: "",
-      };
-    }
-
-    const truncated = groups.length > MAX_CONTACTS_IN_STATE;
-    const shown = truncated ? groups.slice(0, MAX_CONTACTS_IN_STATE) : groups;
-
-    const lines: string[] = [
-      `The user's Apple Contacts are available for iMessage. ${groups.length} contact(s) loaded${truncated ? ` (showing first ${MAX_CONTACTS_IN_STATE})` : ""}.`,
-      "When the user asks you to text, message, or iMessage a person by name,",
-      "look up that person below and pass their phone number (preferred) or email",
-      'to SEND_MESSAGE with source "imessage". If the name is ambiguous or',
-      "missing, ask the user to clarify instead of guessing.",
-      "",
-      "Contacts:",
-    ];
-    for (const group of shown) {
-      lines.push(`- ${group.name}: ${group.handles.join(", ")}`);
-    }
-
-    return {
-      data: {
-        available: true,
-        total: groups.length,
-        shown: shown.length,
-        truncated,
-      },
-      values: {
-        contactCount: groups.length,
-      },
-      text: lines.join("\n"),
-    };
   },
 };

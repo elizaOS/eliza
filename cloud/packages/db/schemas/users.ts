@@ -36,7 +36,7 @@ export const users = pgTable(
     role: text("role").notNull().default("member"),
 
     // External identities (kept here for auth system compatibility)
-    steward_user_id: text("steward_user_id").unique(),
+    steward_user_id: text("steward_user_id").notNull().unique(),
     telegram_id: text("telegram_id").unique(),
     telegram_username: text("telegram_username"),
     telegram_first_name: text("telegram_first_name"),

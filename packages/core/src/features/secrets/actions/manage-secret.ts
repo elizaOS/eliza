@@ -18,6 +18,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -41,6 +42,8 @@ interface SecretOperation {
  */
 export const manageSecretAction: Action = {
 	name: "MANAGE_SECRET",
+	contexts: ["secrets", "settings", "connectors"],
+	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	similes: [
 		"SECRET_MANAGEMENT",
@@ -53,6 +56,53 @@ export const manageSecretAction: Action = {
 	],
 	description:
 		"Manage secrets - get, set, delete, or list secrets at various levels",
+	parameters: [
+		{
+			name: "operation",
+			description: "Secret operation: get, set, delete, list, or check.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["get", "set", "delete", "list", "check"],
+			},
+		},
+		{
+			name: "key",
+			description: "Secret key, usually UPPERCASE_WITH_UNDERSCORES.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "value",
+			description: "Secret value when setting a secret.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "level",
+			description: "Storage level.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["global", "world", "user"],
+			},
+		},
+		{
+			name: "description",
+			description: "Optional short description for the secret.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "type",
+			description: "Secret type.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["api_key", "secret", "credential", "url", "config"],
+			},
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -60,6 +110,16 @@ export const manageSecretAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
+		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
+			return false;
+		}
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredOperation =
+			typeof params.operation === "string" &&
+			params.operation.trim().length > 0;
 		const text = message.content.text?.toLowerCase() ?? "";
 		const patterns = [
 			/\b(get|show|what|retrieve)\b.*\b(secret|key|token|credential)/i,
@@ -70,11 +130,24 @@ export const manageSecretAction: Action = {
 			/\bmy secrets\b/i,
 			/\bwhat secrets\b/i,
 		];
-		if (!patterns.some((pattern) => pattern.test(text))) {
-			return false;
+		const hasPatternIntent = patterns.some((pattern) => pattern.test(text));
+		if (!hasPatternIntent) {
+			return (
+				hasStructuredOperation ||
+				hasActionContextOrKeyword(message, _state, {
+					contexts: ["secrets", "settings", "connectors"],
+					keywords: [
+						"manage secret",
+						"list secrets",
+						"delete secret",
+						"check secret",
+						"show keys",
+					],
+				})
+			);
 		}
 
-		return runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) !== null;
+		return hasStructuredOperation || hasPatternIntent;
 	},
 
 	handler: async (
@@ -124,7 +197,12 @@ export const manageSecretAction: Action = {
 		// Build state for prompt
 		const currentState = state ?? (await runtime.composeState(message));
 
-		// Extract operation from user message
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+
+		// Extract operation from structured parameters or user message
 		let operation: SecretOperation;
 		try {
 			const result = await runtime.dynamicPromptExecFromState({
@@ -188,14 +266,30 @@ export const manageSecretAction: Action = {
 			// Transform and validate result
 			operation = {
 				operation:
-					(result?.operation as SecretOperation["operation"]) || "list",
-				key: result?.key ? String(result.key) : undefined,
-				value: result?.value ? String(result.value) : undefined,
-				level: result?.level as SecretOperation["level"],
-				description: result?.description
-					? String(result.description)
-					: undefined,
-				type: result?.type as SecretOperation["type"],
+					(params.operation as SecretOperation["operation"]) ||
+					(result?.operation as SecretOperation["operation"]) ||
+					"list",
+				key: params.key
+					? String(params.key)
+					: result?.key
+						? String(result.key)
+						: undefined,
+				value: params.value
+					? String(params.value)
+					: result?.value
+						? String(result.value)
+						: undefined,
+				level:
+					(params.level as SecretOperation["level"]) ||
+					(result?.level as SecretOperation["level"]),
+				description: params.description
+					? String(params.description)
+					: result?.description
+						? String(result.description)
+						: undefined,
+				type: params.type
+					? (params.type as SecretOperation["type"])
+					: (result?.type as SecretOperation["type"]),
 			};
 		} catch (error) {
 			const errorMessage =

@@ -17,8 +17,9 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.37",
-    "@elizaos/cloud-rtmp-relay": "workspace:*",
     "@cloudflare/workers-types": "^4.20250109.0",
+    "@elizaos/billing": "workspace:*",
+    "@elizaos/cloud-rtmp-relay": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.37.0",

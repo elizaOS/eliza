@@ -19,7 +19,7 @@ export const DEFAULT_ORG_STORAGE_BYTES_LIMIT = 5n * 1024n * 1024n * 1024n;
  * Repository for per-organization attachment storage quotas.
  *
  * Only the route handler in `apps/api/v1/apis/storage` calls this. Reads
- * use the read replica; writes use the primary. There is no soft limit:
+ * use the read-intent connection; writes use the primary. There is no soft limit:
  * `tryReserveBytes` returns `null` when the requested write would push the
  * org above its `bytes_limit`, and the caller surfaces a 413.
  */

@@ -160,6 +160,8 @@ export const blockUntilTaskCompleteAction: Action = {
     "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
     "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are OWNER_WEBSITE_BLOCK.",
   descriptionCompressed: "Block websites until a named todo is completed.",
+  contexts: ["screen_time", "browser", "tasks", "automation"],
+  roleGate: { minRole: "OWNER" },
   validate: async (_runtime, message) =>
     !shouldRejectFixedDurationRequest(getMessageText(message)),
   handler: async (

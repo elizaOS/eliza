@@ -40,6 +40,9 @@ function formatWindowResultText(
 
 export const manageWindowAction: Action = {
   name: "MANAGE_WINDOW",
+  contexts: ["browser", "screen_time", "automation"],
+  contextGate: { anyOf: ["browser", "screen_time", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "LIST_WINDOWS",
     "FOCUS_WINDOW",

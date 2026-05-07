@@ -14,12 +14,12 @@ export type { AppEarnings, AppEarningsTransaction, NewAppEarnings, NewAppEarning
 /**
  * Repository for app earnings database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class AppEarningsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -216,7 +216,7 @@ export class AppEarningsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -235,7 +235,7 @@ export class AppEarningsRepository {
       .returning();
 
     if (!created) {
-      // Race condition - use write DB to avoid replication lag
+      // Race condition - refetch from write DB.
       const refetched = await dbWrite.query.appEarnings.findFirst({
         where: eq(appEarnings.app_id, appId),
       });

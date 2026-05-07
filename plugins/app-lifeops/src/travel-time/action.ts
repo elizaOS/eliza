@@ -34,6 +34,8 @@ export const computeTravelBufferAction: Action = {
   ],
   description:
     "Compute a travel-time buffer (in minutes) for an upcoming calendar event using Google Maps Distance Matrix. Fails explicitly when Maps configuration, addresses, or provider responses are unavailable.",
+  contexts: ["calendar", "tasks", "contacts"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

@@ -83,6 +83,11 @@ export const recentMessagesProvider: Provider = {
   name: "RECENT_MESSAGES",
   description: "Provides recent conversation messages with detailed context",
   position: 94,
+  contexts: ["memory", "messaging"],
+  contextGate: { anyOf: ["memory", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {

@@ -174,7 +174,7 @@ describe("SEARCH action", () => {
     expect(result?.values?.error).toBe("SEARCH_CATEGORY_NOT_FOUND");
   });
 
-  it("stops post-action continuation when web search service is unavailable", async () => {
+  it("marks the turn as owned when web search service is unavailable", async () => {
     const runtime = createRuntime();
     await webSearchPlugin.init?.({}, runtime);
 

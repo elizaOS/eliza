@@ -17,6 +17,12 @@ export const clipboardProvider: Provider = {
 	description:
 		"Bounded task clipboard state. Each item has a stable ID and stays available in context until removed.",
 	dynamic: true,
+	contexts: ["media", "messaging"],
+	contextGate: { anyOf: ["media", "messaging"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		_message: Memory,

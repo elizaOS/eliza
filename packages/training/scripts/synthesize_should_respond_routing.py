@@ -54,7 +54,7 @@ from lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE, ACTION_RESPOND, ACTION_STOP,
     build, stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "data" / "synthesized" / "should_respond_routing.jsonl"
@@ -543,7 +543,7 @@ def build_memory(
 
 def synthesize_one(
     *, pool: list[dict[str, Any]], agent: str, action: str,
-    encoder: ToonEncoder, rng: random.Random, memory_window: int,
+    encoder: ExpectedResponseEncoder, rng: random.Random, memory_window: int,
 ) -> dict[str, Any] | None:
     kind, augmenter = pick_strategy(action, rng)
 
@@ -643,7 +643,7 @@ def main() -> int:
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     n_respond = n_ignore = n_stop = n_skipped = 0
     signal_counts: dict[str, int] = {}
 

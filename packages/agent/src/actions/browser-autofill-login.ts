@@ -147,6 +147,8 @@ function buildAutofillScript(args: {
 
 export const browserAutofillLoginAction: Action = {
   name: "BROWSER_AUTOFILL_LOGIN",
+  contexts: ["browser", "web", "secrets"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "AGENT_AUTOFILL",
     "AUTOFILL_BROWSER_LOGIN",

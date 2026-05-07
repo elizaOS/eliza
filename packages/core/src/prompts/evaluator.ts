@@ -2,12 +2,6 @@ import type { JSONSchema } from "../types/model";
 
 export const v5EvaluatorTemplate = `task: Evaluate the just-executed action and route the next planner-loop step.
 
-context_object:
-{{contextObject}}
-
-trajectory:
-{{trajectory}}
-
 routes:
 - FINISH: the task is complete or should stop
 - NEXT_RECOMMENDED: one queued tool should run next before replanning
@@ -15,6 +9,9 @@ routes:
 
 rules:
 - evaluate the latest action result against the user's goal
+- success means the user's requested outcome is fully evidenced by completed tool results, not merely planned
+- never infer that a side effect happened unless a matching successful tool result exists
+- if the user requested a write/send/save/create/update/delete/payment/transfer action and the only evidence is read/search/plan output, choose CONTINUE
 - choose NEXT_RECOMMENDED only when one queued tool is clearly still grounded
 - choose CONTINUE when the next step requires new planning
 - messageToUser is optional progress, diagnosis, question, or final output
@@ -22,7 +19,13 @@ rules:
 - thought is internal and not shown to the user
 
 return:
-JSON object only. No markdown, no prose, no XML, no legacy formats.`;
+JSON object only. No markdown, no prose, no XML, no legacy formats.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}`;
 
 export const V5_EVALUATOR_TEMPLATE = v5EvaluatorTemplate;
 

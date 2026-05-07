@@ -254,6 +254,41 @@ export const messageOp: Action = {
   ],
   description: "Google Chat message operation router (send, react).",
   descriptionCompressed: "Google Chat message ops: send, react.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "op",
+      description: "Operation to run: send or react.",
+      required: false,
+      schema: { type: "string", enum: ["send", "react"] },
+    },
+    {
+      name: "text",
+      description: "Message text for send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "space",
+      description: "Google Chat space id/name or current space.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "messageName",
+      description: "Target Google Chat message resource name for reaction.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "emoji",
+      description: "Reaction emoji.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   suppressPostActionContinuation: true,
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {

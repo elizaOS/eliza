@@ -16,6 +16,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ContentType, ModelType } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("GENERATE_IMAGE");
@@ -59,6 +60,8 @@ function readImagePrompt(
 
 export const generateImageAction = {
 	name: spec.name,
+	contexts: ["media", "files"],
+	roleGate: { minRole: "USER" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	validate: async (
@@ -77,7 +80,13 @@ export const generateImageAction = {
 		if (collectKeywordTermMatches([text], IMAGE_STRONG_TERMS).size > 0) {
 			return true;
 		}
-		return collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size > 0;
+		return (
+			collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size > 0 ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["media", "files"],
+				keywords: ["generate image", "create image", "draw", "make a picture"],
+			})
+		);
 	},
 	handler: async (
 		runtime: IAgentRuntime,

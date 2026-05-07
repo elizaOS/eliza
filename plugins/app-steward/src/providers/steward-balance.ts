@@ -119,34 +119,42 @@ export const stewardBalanceProvider: Provider = {
   descriptionCompressed: "Wallet balances across chains.",
 
   dynamic: true,
+  contexts: ["finance", "wallet", "crypto"],
+  contextGate: { anyOf: ["finance", "wallet", "crypto"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const response = await fetch(
-      `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/balances`,
-      {
-        headers: { ...buildAuthHeaders() },
-        signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS),
-      },
-    );
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/balances`,
+        {
+          headers: { ...buildAuthHeaders() },
+          signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS),
+        },
+      );
 
-    if (!response.ok) {
-      return { text: "" };
+      if (!response.ok) {
+        return { text: "" };
+      }
+
+      const data = (await response.json()) as WalletBalancesResponse;
+      const snapshot = buildSnapshot(data);
+
+      if (!snapshot.evm && !snapshot.solana) {
+        return { text: "" };
+      }
+
+      return {
+        text: JSON.stringify({ steward_balance: snapshot }),
+        data: { snapshot },
+      };
+    } catch {
+      return { text: "", data: { snapshot: null } };
     }
-
-    const data = (await response.json()) as WalletBalancesResponse;
-    const snapshot = buildSnapshot(data);
-
-    if (!snapshot.evm && !snapshot.solana) {
-      return { text: "" };
-    }
-
-    return {
-      text: JSON.stringify({ steward_balance: snapshot }),
-      data: { snapshot },
-    };
   },
 };

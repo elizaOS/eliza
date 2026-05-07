@@ -281,6 +281,9 @@ const START_CODING_TASK_ACTION_NAME = "START_CODING_TASK";
 
 export const startCodingTaskAction: BackgroundAction = {
   name: START_CODING_TASK_ACTION_NAME,
+  contexts: ["code", "files", "tasks", "automation"],
+  contextGate: { anyOf: ["code", "files", "tasks", "automation"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_TASK",

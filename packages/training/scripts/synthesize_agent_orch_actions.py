@@ -47,7 +47,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "agent_orch.jsonl"
@@ -1193,7 +1193,7 @@ REQUIRED_KEYS: dict[str, set[str]] = {
 
 def make_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     action: str,
     plugin: str,
     description: str,
@@ -1273,7 +1273,7 @@ def make_record(
     return rec.to_dict()
 
 
-def gen_for_action(encoder: ToonEncoder, rng: random.Random,
+def gen_for_action(encoder: ExpectedResponseEncoder, rng: random.Random,
                    action_meta: dict, n: int) -> Iterable[dict]:
     """Generate n records for one action."""
     action = action_meta["name"]
@@ -1403,7 +1403,7 @@ def main() -> int:
         log.error("missing target actions in catalog: %s", missing)
         return 1
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     counts: dict[str, int] = {}
     all_records: list[dict] = []
 

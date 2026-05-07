@@ -54,6 +54,11 @@ export const instagramReplyAction: Action = {
   description:
     "Reply on Instagram. mode=comment posts a comment on a media post (target=mediaId, text=comment). mode=dm sends a direct message to a thread (target=threadId, text=message).",
   descriptionCompressed: "Reply on Instagram: comment on post or DM user.",
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: {
+    anyOf: ["social_posting", "messaging", "connectors"],
+  },
+  roleGate: { minRole: "USER" },
   similes: [
     "POST_INSTAGRAM_COMMENT",
     "INSTAGRAM_COMMENT",

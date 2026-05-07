@@ -25,14 +25,10 @@ export interface MessageProcessingOptions
 		| "$unknown"
 		| "maxRetries"
 		| "timeoutDuration"
-		| "useMultiStep"
-		| "maxMultiStepIterations"
 		| "shouldRespondModel"
 	> {
 	maxRetries?: number;
 	timeoutDuration?: number;
-	useMultiStep?: boolean;
-	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**
@@ -120,7 +116,7 @@ export type MessageProcessingMode =
  * including:
  * - Message validation and memory creation
  * - Response decision logic (shouldRespond)
- * - Single-shot or multi-step processing
+ * - Native planner processing
  * - Action execution and evaluation
  *
  * @example

@@ -316,10 +316,26 @@ function countUnconfiguredRequired(
  */
 export const updateSettingsAction: Action = {
 	name: "UPDATE_SETTINGS",
+	contexts: ["settings", "secrets", "connectors"],
+	roleGate: { minRole: "ADMIN" },
 	suppressPostActionContinuation: true,
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
 		"Saves a configuration setting during the onboarding process. Use when onboarding with a world owner or admin.",
+	parameters: [
+		{
+			name: "key",
+			description: "Optional setting key to update.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "value",
+			description: "Optional setting value to save.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,

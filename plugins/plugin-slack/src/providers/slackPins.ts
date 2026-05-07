@@ -13,6 +13,7 @@ const RELEVANCE_KEYWORDS = ["slack", "pin", "pins", "pinned"] as const;
 const RELEVANCE_REGEX = /\b(?:slack|pins?|pinned)\b/i;
 
 const TEXT_PREVIEW_LIMIT = 100;
+const PIN_LIMIT = 25;
 
 interface SlackPinEntry {
   ts: string;
@@ -26,7 +27,10 @@ export const slackPinsProvider: Provider = {
   description: "Lists pinned messages in the current Slack channel.",
   descriptionCompressed: "List pinned Slack channel msgs.",
   dynamic: true,
-  contexts: ["social", "connectors"],
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  cacheScope: "conversation",
+  roleGate: { minRole: "ADMIN" },
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
   get: async (
     runtime: IAgentRuntime,
@@ -58,42 +62,64 @@ export const slackPinsProvider: Provider = {
       return { data: {}, values: {}, text: "" };
     }
 
-    const channel = await slackService.getChannel(channelId);
-    const channelName = channel?.name ?? channelId;
+    try {
+      const channel = await slackService.getChannel(channelId);
+      const channelName = channel?.name ?? channelId;
 
-    const pins = await slackService.listPins(channelId);
+      const pins = await slackService.listPins(channelId);
 
-    const entries: SlackPinEntry[] = pins.map((pin) => {
-      const fullText = pin.text ?? "";
-      const truncated = fullText.length > TEXT_PREVIEW_LIMIT;
+      const entries: SlackPinEntry[] = pins.slice(0, PIN_LIMIT).map((pin) => {
+        const fullText = pin.text ?? "";
+        const truncated = fullText.length > TEXT_PREVIEW_LIMIT;
+        return {
+          ts: pin.ts,
+          user: pin.user ?? "unknown",
+          text: truncated ? fullText.slice(0, TEXT_PREVIEW_LIMIT) : fullText,
+          truncated,
+        };
+      });
+
       return {
-        ts: pin.ts,
-        user: pin.user ?? "unknown",
-        text: truncated ? fullText.slice(0, TEXT_PREVIEW_LIMIT) : fullText,
-        truncated,
-      };
-    });
-
-    return {
-      data: {
-        channelId,
-        channelName,
-        pinCount: entries.length,
-        pins: entries,
-      },
-      values: {
-        channelId,
-        channelName,
-        pinCount: entries.length,
-      },
-      text: JSON.stringify({
-        slack_pins: {
-          channel: channelName,
-          count: entries.length,
-          items: entries,
+        data: {
+          channelId,
+          channelName,
+          pinCount: entries.length,
+          pins: entries,
         },
-      }),
-    };
+        values: {
+          channelId,
+          channelName,
+          pinCount: entries.length,
+        },
+        text: JSON.stringify({
+          slack_pins: {
+            channel: channelName,
+            count: entries.length,
+            items: entries,
+          },
+        }),
+      };
+    } catch (error) {
+      return {
+        data: {
+          channelId,
+          pinCount: 0,
+          pins: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: {
+          channelId,
+          pinCount: 0,
+          slackPinsAvailable: false,
+        },
+        text: JSON.stringify({
+          slack_pins: {
+            status: "error",
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        }),
+      };
+    }
   },
 };
 

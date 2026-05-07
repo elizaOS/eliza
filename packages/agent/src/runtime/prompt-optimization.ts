@@ -22,6 +22,7 @@ import {
 } from "../config/model-metadata.js";
 import type { ElizaConfig } from "../config/types.js";
 
+import type { TrajectoryLlmCall } from "../types/trajectory.js";
 import {
   compactActionsForIntent,
   compactCodingExamplesForIntent,
@@ -283,7 +284,7 @@ function ensureTrajectoryLoggerTracking(
       const calls = Array.isArray(step?.llmCalls) ? step.llmCalls : [];
       const latestCall =
         calls.length > 0
-          ? (calls[calls.length - 1] as Record<string, unknown>)
+          ? (calls[calls.length - 1] as TrajectoryLlmCall)
           : null;
       if (!latestCall) return;
 
@@ -319,12 +320,72 @@ function ensureTrajectoryLoggerTracking(
         updated = true;
       }
 
-      const applyMissingNumber = (key: string): void => {
-        const nextValue = toOptionalNumber(patch[key]);
+      type NumericLlmCallField =
+        | "temperature"
+        | "maxTokens"
+        | "latencyMs"
+        | "promptTokens"
+        | "completionTokens";
+
+      function readExistingNumeric(
+        call: TrajectoryLlmCall,
+        key: NumericLlmCallField,
+      ) {
+        switch (key) {
+          case "temperature":
+            return call.temperature;
+          case "maxTokens":
+            return call.maxTokens;
+          case "latencyMs":
+            return call.latencyMs;
+          case "promptTokens":
+            return call.promptTokens;
+          case "completionTokens":
+            return call.completionTokens;
+          default: {
+            const _exhaustive: never = key;
+            return _exhaustive;
+          }
+        }
+      }
+
+      function writeNumeric(
+        call: TrajectoryLlmCall,
+        key: NumericLlmCallField,
+        value: number,
+      ) {
+        switch (key) {
+          case "temperature":
+            call.temperature = value;
+            break;
+          case "maxTokens":
+            call.maxTokens = value;
+            break;
+          case "latencyMs":
+            call.latencyMs = value;
+            break;
+          case "promptTokens":
+            call.promptTokens = value;
+            break;
+          case "completionTokens":
+            call.completionTokens = value;
+            break;
+          default: {
+            const _exhaustive: never = key;
+            return _exhaustive;
+          }
+        }
+      }
+
+      const applyMissingNumber = (key: NumericLlmCallField): void => {
+        const rawPatch = (patch as Record<string, unknown>)[key];
+        const nextValue = toOptionalNumber(rawPatch);
         if (nextValue === undefined) return;
-        const currentValue = toOptionalNumber(latestCall[key]);
+        const currentValue = toOptionalNumber(
+          readExistingNumeric(latestCall, key),
+        );
         if (currentValue !== undefined && currentValue > 0) return;
-        latestCall[key] = nextValue;
+        writeNumeric(latestCall, key, nextValue);
         updated = true;
       };
 
@@ -345,7 +406,9 @@ function ensureTrajectoryLoggerTracking(
         }
       }
 
-      const enriched = enrichTrajectoryLlmCall(latestCall);
+      const enriched = enrichTrajectoryLlmCall(
+        latestCall as Record<string, unknown>,
+      );
       const nextStepType = toText(enriched.stepType, "");
       if (nextStepType && toText(latestCall.stepType, "") !== nextStepType) {
         latestCall.stepType = nextStepType;

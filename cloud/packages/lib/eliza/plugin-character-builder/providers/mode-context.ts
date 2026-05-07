@@ -53,6 +53,12 @@ const EDIT_MODE_CONTEXT = `## Mode: EDIT MODE
 export const modeContextProvider: Provider = {
   name: "MODE_CONTEXT",
   description: "Provides mode-aware context (Creator vs Edit mode) for build prompts",
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const creatorMode = isCreatorMode(runtime);
     const modeLabel = creatorMode ? "Creator" : "Edit";

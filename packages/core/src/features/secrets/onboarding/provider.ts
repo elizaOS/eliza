@@ -136,6 +136,12 @@ export const onboardingSettingsProvider: Provider = {
 	description: "Current onboarding settings status for secrets collection",
 
 	dynamic: true,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -224,6 +230,12 @@ export const missingSecretsProvider: Provider = {
 	description: "Lists secrets that still need to be configured",
 
 	dynamic: true,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

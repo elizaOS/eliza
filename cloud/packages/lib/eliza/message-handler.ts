@@ -153,7 +153,7 @@ export class MessageHandler {
       }
     } else {
       const messageOptions: CloudMessageOptions = {
-        useMultiStep: true,
+        useNativePlanner: true,
         onStreamChunk,
         onReasoningChunk,
       };

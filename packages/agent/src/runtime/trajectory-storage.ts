@@ -13,7 +13,6 @@ import {
 } from "@elizaos/core";
 import type {
   Trajectory,
-  TrajectoryExportOptions,
   TrajectoryExportResult,
   TrajectoryListItem,
   TrajectoryListOptions,
@@ -21,6 +20,12 @@ import type {
   TrajectoryStatus,
   TrajectoryStepKind,
 } from "../types/trajectory.js";
+import {
+  exportPersistedTrajectories,
+  persistedTrajectoryToDetailRecord,
+  type RuntimeTrajectoryExportOptions,
+  trajectoryRowToListItem,
+} from "./trajectory-export.js";
 import {
   asRecord,
   type CompleteStepOptions,
@@ -45,7 +50,8 @@ import {
   normalizeTrajectoryMetadata,
   type PersistedLlmCall,
   type PersistedProviderAccess,
-  parseMetadata,
+  type PersistedTrajectory,
+  parsePersistedTrajectoryRow,
   patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
@@ -119,8 +125,46 @@ async function appendLlmCall(
 
   const promptTokens = toOptionalNumber(params.promptTokens);
   const completionTokens = toOptionalNumber(params.completionTokens);
+  const cacheReadInputTokens = toOptionalNumber(params.cacheReadInputTokens);
+  const cacheCreationInputTokens = toOptionalNumber(
+    params.cacheCreationInputTokens,
+  );
   if (promptTokens !== undefined) call.promptTokens = promptTokens;
   if (completionTokens !== undefined) call.completionTokens = completionTokens;
+  if (cacheReadInputTokens !== undefined) {
+    call.cacheReadInputTokens = cacheReadInputTokens;
+  }
+  if (cacheCreationInputTokens !== undefined) {
+    call.cacheCreationInputTokens = cacheCreationInputTokens;
+  }
+  if (typeof params.modelVersion === "string") {
+    call.modelVersion = params.modelVersion;
+  }
+  if (typeof params.reasoning === "string") {
+    call.reasoning = params.reasoning;
+  }
+  const topP = toOptionalNumber(params.topP);
+  if (topP !== undefined) {
+    call.topP = topP;
+  }
+  if (typeof params.modelSlot === "string") {
+    call.modelSlot = params.modelSlot;
+  }
+  if (typeof params.runId === "string") {
+    call.runId = params.runId;
+  }
+  if (typeof params.roomId === "string") {
+    call.roomId = params.roomId;
+  }
+  if (typeof params.messageId === "string") {
+    call.messageId = params.messageId;
+  }
+  if (typeof params.executionTraceId === "string") {
+    call.executionTraceId = params.executionTraceId;
+  }
+  if (typeof params.createdAt === "string") {
+    call.createdAt = params.createdAt;
+  }
   if (typeof params.tokenUsageEstimated === "boolean") {
     call.tokenUsageEstimated = params.tokenUsageEstimated;
   }
@@ -208,6 +252,21 @@ async function appendProviderAccess(
     })(),
     purpose: toText(params.purpose, "provider"),
   };
+  if (typeof params.runId === "string") {
+    access.runId = params.runId;
+  }
+  if (typeof params.roomId === "string") {
+    access.roomId = params.roomId;
+  }
+  if (typeof params.messageId === "string") {
+    access.messageId = params.messageId;
+  }
+  if (typeof params.executionTraceId === "string") {
+    access.executionTraceId = params.executionTraceId;
+  }
+  if (typeof params.createdAt === "string") {
+    access.createdAt = params.createdAt;
+  }
 
   step.providerAccesses.push(access);
   trajectory.startTime = Math.min(trajectory.startTime, now);
@@ -363,41 +422,57 @@ function buildTrajectoryWhereClause(options: TrajectoryListOptions): string {
   return whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 }
 
-function rowToTrajectoryListItem(
-  row: unknown,
-  agentId: string,
-): TrajectoryListItem | null {
-  const r = asRecord(row);
-  if (!r) return null;
-  const normalizedMetadata = normalizeTrajectoryMetadata(
-    parseMetadata(r.metadata),
-    {
-      scenarioId: r.scenario_id,
-      batchId: r.batch_id,
-    },
-  );
+async function loadPersistedTrajectoriesForExport(
+  runtime: IAgentRuntime,
+  options: RuntimeTrajectoryExportOptions,
+): Promise<PersistedTrajectory[]> {
+  if (!hasRuntimeDb(runtime)) {
+    return [];
+  }
 
-  return {
-    id: toText(r.id ?? r.trajectory_id, ""),
-    agentId: toText(r.agent_id, agentId),
-    source: toText(r.source, "runtime"),
-    status: normalizeStatus(r.status, "completed"),
-    startTime: toNumber(r.start_time, Date.now()),
-    endTime: toOptionalNumber(r.end_time) ?? null,
-    durationMs: toOptionalNumber(r.duration_ms) ?? null,
-    stepCount: toNumber(r.step_count, 0),
-    llmCallCount: toNumber(r.llm_call_count, 0),
-    providerAccessCount: toNumber(r.provider_access_count, 0),
-    totalPromptTokens: toNumber(r.total_prompt_tokens, 0),
-    totalCompletionTokens: toNumber(r.total_completion_tokens, 0),
-    scenarioId: normalizedMetadata.scenarioId,
-    batchId: normalizedMetadata.batchId,
-    createdAt: toText(
-      r.created_at,
-      new Date(toNumber(r.start_time, Date.now())).toISOString(),
-    ),
-    metadata: normalizedMetadata.metadata,
-  };
+  const tableReady = await ensureTrajectoriesTable(runtime);
+  if (!tableReady) {
+    return [];
+  }
+
+  const whereClauses = buildTrajectoryWhereClauses({
+    startDate: options.startDate,
+    endDate: options.endDate,
+    scenarioId: options.scenarioId,
+    batchId: options.batchId,
+  });
+  if (options.trajectoryIds && options.trajectoryIds.length > 0) {
+    const ids = options.trajectoryIds
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+    if (ids.length > 0) {
+      whereClauses.push(`id IN (${ids.map((id) => sqlQuote(id)).join(", ")})`);
+    }
+  }
+  const whereClause =
+    whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+  try {
+    const result = await executeRawSql(
+      runtime,
+      `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT 10000`,
+    );
+    const rows = extractRows(result);
+    return rows
+      .map((row) => {
+        const record = asRecord(row);
+        if (!record) return null;
+        return parsePersistedTrajectoryRow(
+          record,
+          toText(record.id ?? record.trajectory_id, ""),
+        );
+      })
+      .filter((trajectory): trajectory is PersistedTrajectory =>
+        Boolean(trajectory),
+      );
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -650,7 +725,7 @@ export async function installDatabaseTrajectoryLogger(
 
       const rows = extractRows(result);
       const trajectories = rows
-        .map((row) => rowToTrajectoryListItem(row, runtime.agentId))
+        .map((row) => trajectoryRowToListItem(row, runtime.agentId))
         .filter(Boolean) as TrajectoryListItem[];
 
       return { trajectories, total, offset, limit };
@@ -671,37 +746,7 @@ export async function installDatabaseTrajectoryLogger(
     const persisted = await loadTrajectoryById(runtime, trajectoryId);
     if (!persisted) return null;
 
-    return {
-      trajectoryId: persisted.id,
-      agentId: runtime.agentId,
-      startTime: persisted.startTime,
-      endTime: persisted.endTime ?? undefined,
-      durationMs: persisted.endTime
-        ? persisted.endTime - persisted.startTime
-        : undefined,
-      scenarioId: persisted.scenarioId,
-      batchId: persisted.batchId,
-      steps: persisted.steps.map((step) => ({
-        stepId: step.stepId,
-        timestamp: step.timestamp,
-        llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
-        providerAccesses: step.providerAccesses,
-        ...(step.kind !== undefined ? { kind: step.kind } : {}),
-        ...(step.childSteps !== undefined
-          ? { childSteps: step.childSteps }
-          : {}),
-        ...(step.script !== undefined ? { script: step.script } : {}),
-        ...(step.scriptHash !== undefined
-          ? { scriptHash: step.scriptHash }
-          : {}),
-        ...(step.usedSkills !== undefined
-          ? { usedSkills: step.usedSkills }
-          : {}),
-      })),
-      metrics: { finalStatus: persisted.status },
-      metadata: persisted.metadata,
-      stepsJson: JSON.stringify(persisted.steps),
-    };
+    return persistedTrajectoryToDetailRecord(persisted, runtime.agentId);
   };
 
   loggerAny.getStats = async (): Promise<unknown> => {
@@ -758,13 +803,9 @@ export async function installDatabaseTrajectoryLogger(
     setEnabled?: (enabled: boolean) => void;
     deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
     clearAllTrajectories?: () => Promise<number>;
-    exportTrajectories?: (options: {
-      format: string;
-      includePrompts?: boolean;
-      trajectoryIds?: string[];
-      startDate?: string;
-      endDate?: string;
-    }) => Promise<{ filename: string; data: string; mimeType: string }>;
+    exportTrajectories?: (
+      options: RuntimeTrajectoryExportOptions,
+    ) => Promise<TrajectoryExportResult>;
   };
 
   let _enabled = shouldEnableByDefault;
@@ -821,57 +862,18 @@ export async function installDatabaseTrajectoryLogger(
   }
 
   if (typeof loggerForRoutes.exportTrajectories !== "function") {
-    loggerForRoutes.exportTrajectories = async (options: {
-      format: string;
-      includePrompts?: boolean;
-      trajectoryIds?: string[];
-    }): Promise<{ filename: string; data: string; mimeType: string }> => {
-      if (!hasRuntimeDb(runtime)) {
-        return {
-          filename: `trajectories.${options.format}`,
-          data: options.format === "json" ? "[]" : "",
-          mimeType:
-            options.format === "json" ? "application/json" : "text/plain",
-        };
-      }
-
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) {
-        return {
-          filename: `trajectories.${options.format}`,
-          data: options.format === "json" ? "[]" : "",
-          mimeType:
-            options.format === "json" ? "application/json" : "text/plain",
-        };
-      }
-
-      const whereClauses: string[] = [];
-      if (options.trajectoryIds && options.trajectoryIds.length > 0) {
-        const ids = options.trajectoryIds.map((id) => sqlQuote(id)).join(", ");
-        whereClauses.push(`id IN (${ids})`);
-      }
-      const whereClause =
-        whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-      try {
-        const result = await executeRawSql(
-          runtime,
-          `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC`,
-        );
-        const rows = extractRows(result);
-        const data = JSON.stringify(rows, null, 2);
-        return {
-          filename: "trajectories.json",
-          data,
-          mimeType: "application/json",
-        };
-      } catch {
-        return {
-          filename: "trajectories.json",
-          data: "[]",
-          mimeType: "application/json",
-        };
-      }
+    loggerForRoutes.exportTrajectories = async (
+      options: RuntimeTrajectoryExportOptions,
+    ): Promise<TrajectoryExportResult> => {
+      const persistedTrajectories = await loadPersistedTrajectoriesForExport(
+        runtime,
+        options,
+      );
+      return exportPersistedTrajectories({
+        agentId: runtime.agentId,
+        persistedTrajectories,
+        options,
+      });
     };
   }
 
@@ -1300,7 +1302,7 @@ export class DatabaseTrajectoryLogger extends Service {
 
       const rows = extractRows(result);
       const trajectories = rows
-        .map((row) => rowToTrajectoryListItem(row, this.runtime.agentId))
+        .map((row) => trajectoryRowToListItem(row, this.runtime.agentId))
         .filter(Boolean) as TrajectoryListItem[];
 
       return { trajectories, total, offset, limit };
@@ -1319,37 +1321,7 @@ export class DatabaseTrajectoryLogger extends Service {
     const persisted = await loadTrajectoryById(this.runtime, trajectoryId);
     if (!persisted) return null;
 
-    return {
-      trajectoryId: persisted.id,
-      agentId: this.runtime.agentId,
-      startTime: persisted.startTime,
-      endTime: persisted.endTime ?? undefined,
-      durationMs: persisted.endTime
-        ? persisted.endTime - persisted.startTime
-        : undefined,
-      scenarioId: persisted.scenarioId,
-      batchId: persisted.batchId,
-      steps: persisted.steps.map((step) => ({
-        stepId: step.stepId,
-        timestamp: step.timestamp,
-        llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
-        providerAccesses: step.providerAccesses,
-        ...(step.kind !== undefined ? { kind: step.kind } : {}),
-        ...(step.childSteps !== undefined
-          ? { childSteps: step.childSteps }
-          : {}),
-        ...(step.script !== undefined ? { script: step.script } : {}),
-        ...(step.scriptHash !== undefined
-          ? { scriptHash: step.scriptHash }
-          : {}),
-        ...(step.usedSkills !== undefined
-          ? { usedSkills: step.usedSkills }
-          : {}),
-      })),
-      metrics: { finalStatus: persisted.status },
-      metadata: persisted.metadata,
-      stepsJson: JSON.stringify(persisted.steps),
-    };
+    return persistedTrajectoryToDetailRecord(persisted, this.runtime.agentId);
   }
 
   async getStats(): Promise<unknown> {
@@ -1397,75 +1369,17 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   async exportTrajectories(
-    options: TrajectoryExportOptions,
+    options: RuntimeTrajectoryExportOptions,
   ): Promise<TrajectoryExportResult> {
-    const listResult = await this.listTrajectories({
-      limit: 10000,
-      startDate: options.startDate,
-      endDate: options.endDate,
-      scenarioId: options.scenarioId,
-      batchId: options.batchId,
+    const persistedTrajectories = await loadPersistedTrajectoriesForExport(
+      this.runtime,
+      options,
+    );
+    return exportPersistedTrajectories({
+      agentId: this.runtime.agentId,
+      persistedTrajectories,
+      options,
     });
-
-    let ids = listResult.trajectories.map((t) => t.id);
-    if (options.trajectoryIds && options.trajectoryIds.length > 0) {
-      const idSet = new Set(options.trajectoryIds);
-      ids = ids.filter((id) => idSet.has(id));
-    }
-
-    const trajectories: Trajectory[] = [];
-    for (const id of ids) {
-      const detail = await this.getTrajectoryDetail(id);
-      if (detail) trajectories.push(detail);
-    }
-
-    if (options.format === "json") {
-      return {
-        filename: `trajectories-${Date.now()}.json`,
-        data: JSON.stringify(trajectories, null, 2),
-        mimeType: "application/json",
-      };
-    }
-
-    if (options.format === "csv") {
-      const rows = [
-        "id,agentId,startTime,endTime,status,llmCallCount,promptTokens,completionTokens",
-      ];
-      for (const t of trajectories) {
-        const llmCount = t.steps?.reduce(
-          (sum, s) => sum + (s.llmCalls?.length ?? 0),
-          0,
-        );
-        const promptTokens = t.steps?.reduce(
-          (sum, s) =>
-            sum +
-            (s.llmCalls?.reduce((s2, c) => s2 + (c.promptTokens ?? 0), 0) ?? 0),
-          0,
-        );
-        const completionTokens = t.steps?.reduce(
-          (sum, s) =>
-            sum +
-            (s.llmCalls?.reduce((s2, c) => s2 + (c.completionTokens ?? 0), 0) ??
-              0),
-          0,
-        );
-        rows.push(
-          `${t.trajectoryId},${t.agentId},${t.startTime},${t.endTime ?? ""},${t.metrics?.finalStatus ?? ""},${llmCount ?? 0},${promptTokens ?? 0},${completionTokens ?? 0}`,
-        );
-      }
-      return {
-        filename: `trajectories-${Date.now()}.csv`,
-        data: rows.join("\n"),
-        mimeType: "text/csv",
-      };
-    }
-
-    // Default to JSON for 'art' format
-    return {
-      filename: `trajectories-${Date.now()}.json`,
-      data: JSON.stringify(trajectories, null, 2),
-      mimeType: "application/json",
-    };
   }
 }
 

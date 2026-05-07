@@ -34,6 +34,8 @@ export const listOverdueFollowupsAction: Action = {
     "List contacts whose last-contacted-at timestamp exceeds their follow-up threshold. " +
     "Use this for overdue or pending follow-up list queries, not for scheduling a new reminder. " +
     "Returns an empty list when the RelationshipsService is not available.",
+  contexts: ["contacts", "tasks", "calendar", "messaging"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime: IAgentRuntime, _message, _state, options) => {
     const params = (options?.parameters ?? {}) as ListOverdueFollowupsParams;

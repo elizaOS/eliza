@@ -10,17 +10,18 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  getActiveRoutingContextsForTurn,
   logger,
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
 } from "@elizaos/shared";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { messageText } from "./lifeops-google-helpers.js";
 
@@ -42,6 +43,79 @@ type XReadLlmPlan = {
   shouldAct?: boolean | null;
   response?: string;
 };
+
+const X_READ_CONTEXTS = [
+  "social_posting",
+  "messaging",
+  "contacts",
+  "web",
+] as const;
+const X_READ_KEYWORDS = [
+  "x",
+  "twitter",
+  "tweet",
+  "tweets",
+  "dm",
+  "dms",
+  "direct message",
+  "timeline",
+  "feed",
+  "mentions",
+  "search",
+  "post",
+  "posts",
+  "mensaje directo",
+  "menciones",
+  "buscar",
+  "rechercher",
+  "mention",
+  "direktnachricht",
+  "suchen",
+  "cerca",
+  "menzioni",
+  "pesquisar",
+  "ツイート",
+  "検索",
+  "メンション",
+  "推文",
+  "搜索",
+  "提及",
+] as const;
+
+function hasXReadContext(message: Memory, state?: State): boolean {
+  const active = new Set(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") active.add(item.toLowerCase());
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  return X_READ_CONTEXTS.some((context) => active.has(context));
+}
+
+function hasXReadIntent(message: Memory, state?: State): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return X_READ_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
 
 function normalizeSubaction(value: unknown): XReadSubaction | null {
   if (typeof value !== "string") return null;
@@ -423,10 +497,22 @@ export const xAction: Action & {
     "Read X/Twitter DMs, the home timeline or mentions feed, or run a recent search.",
   descriptionCompressed:
     "X/Twitter read: read_dms (rank action-needed first) | read_feed(home_timeline|mentions) | search(query) owner",
+  contexts: [...X_READ_CONTEXTS],
+  contextGate: { anyOf: [...X_READ_CONTEXTS] },
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => {
+  validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
+    if (!hasXReadContext(message, state) && !hasXReadIntent(message, state)) {
+      const params = (message.content ?? {}) as Record<string, unknown>;
+      if (
+        !normalizeSubaction(params.subaction) &&
+        typeof params.query !== "string"
+      ) {
+        return false;
+      }
+    }
     const service = new LifeOpsService(runtime);
     const isUsable = (status: {
       grant?: unknown;

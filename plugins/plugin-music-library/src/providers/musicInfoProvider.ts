@@ -8,6 +8,9 @@ type MusicInfoItem =
   | { type: "artist"; info: ArtistInfo }
   | { type: "album"; info: AlbumInfo };
 
+const MAX_DETECTED_ENTITIES = 3;
+const MAX_MUSIC_INFO_TEXT = 6000;
+
 /**
  * Provider that injects music information context into the agent's state
  * This is particularly useful for DJ introductions and music-related conversations
@@ -18,9 +21,14 @@ export const musicInfoProvider: Provider = {
   description: "Provides information about tracks, artists, and albums",
   descriptionCompressed: "Track, artist, album info.",
   position: 10, // Position after basic providers but before complex ones
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    logger.debug("[MUSIC_INFO Provider] Starting provider execution");
+    try {
+      logger.debug("[MUSIC_INFO Provider] Starting provider execution");
 
     const musicLibrary = runtime.getService(
       "musicLibrary",
@@ -49,7 +57,7 @@ export const musicInfoProvider: Provider = {
       `[MUSIC_INFO Provider] Detected ${detectedEntities.length} entities: ${detectedEntities.map((e) => `${e.type}:${e.name}`).join(", ")}`,
     );
 
-    for (const entity of detectedEntities.slice(0, 3)) {
+    for (const entity of detectedEntities.slice(0, MAX_DETECTED_ENTITIES)) {
       logger.debug(
         `[MUSIC_INFO Provider] Fetching info for ${entity.type}: ${entity.name}`,
       );
@@ -100,7 +108,7 @@ export const musicInfoProvider: Provider = {
       },
       null,
       2,
-    );
+    ).slice(0, MAX_MUSIC_INFO_TEXT);
 
     logger.debug(
       `[MUSIC_INFO Provider] Returning ${text.length} characters of music info text`,
@@ -115,5 +123,8 @@ export const musicInfoProvider: Provider = {
         musicInfoText: text,
       },
     };
+    } catch {
+      return { text: "", data: {}, values: {} };
+    }
   },
 };

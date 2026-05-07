@@ -11,6 +11,9 @@ import {
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { createMcpMemory } from "./mcp";
 
+const MAX_TOOL_OUTPUT_CHARS = 12_000;
+const MAX_TOOL_ATTACHMENTS = 4;
+
 function getMimeTypeToContentType(mimeType?: string): ContentType | undefined {
   if (!mimeType) return undefined;
   if (mimeType.startsWith("image/")) return ContentType.IMAGE;
@@ -67,10 +70,19 @@ export function processToolResult(
   const attachments: Media[] = [];
   let attachmentIndex = 0;
 
+  const appendToolOutput = (text: string) => {
+    if (!text || toolOutput.length >= MAX_TOOL_OUTPUT_CHARS) return;
+    const remaining = MAX_TOOL_OUTPUT_CHARS - toolOutput.length;
+    toolOutput += text.slice(0, remaining);
+    if (text.length > remaining) {
+      toolOutput += "\n\n[Tool output truncated]";
+    }
+  };
+
   for (const content of result.content) {
     if (content.type === "text") {
-      toolOutput += content.text;
-    } else if (content.type === "image") {
+      appendToolOutput(content.text ?? "");
+    } else if (content.type === "image" && attachments.length < MAX_TOOL_ATTACHMENTS) {
       hasAttachments = true;
       attachments.push({
         contentType: getMimeTypeToContentType(content.mimeType),
@@ -83,9 +95,9 @@ export function processToolResult(
       });
     } else if (content.type === "resource" && content.resource) {
       const r = content.resource;
-      toolOutput += r.text
-        ? `\n\nResource (${r.uri}):\n${r.text}`
-        : `\n\nResource (${r.uri}): [Binary]`;
+      appendToolOutput(
+        r.text ? `\n\nResource (${r.uri}):\n${r.text}` : `\n\nResource (${r.uri}): [Binary]`,
+      );
     }
   }
 

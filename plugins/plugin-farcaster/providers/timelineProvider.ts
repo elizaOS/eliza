@@ -20,6 +20,10 @@ export const farcasterTimelineProvider: Provider = {
   descriptionCompressed: "provide recent cast agent Farcaster timeline",
 
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;

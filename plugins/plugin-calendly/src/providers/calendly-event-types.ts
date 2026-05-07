@@ -29,6 +29,8 @@ interface CalendlyEventTypeEntry {
   type: string;
 }
 
+const MAX_EVENT_TYPES = 20;
+
 export const calendlyEventTypesProvider: Provider = {
   name: "calendlyEventTypes",
   description:
@@ -37,6 +39,9 @@ export const calendlyEventTypesProvider: Provider = {
     "Calendly event types (name, slug, duration, scheduling URL).",
   dynamic: true,
   contexts: ["connectors", "productivity"],
+  contextGate: { anyOf: ["connectors", "productivity"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     runtime: IAgentRuntime,
@@ -61,6 +66,7 @@ export const calendlyEventTypesProvider: Provider = {
     }
     const entries: CalendlyEventTypeEntry[] = eventTypes
       .filter((et) => et.active)
+      .slice(0, MAX_EVENT_TYPES)
       .map((et) => ({
         uri: et.uri,
         name: et.name,

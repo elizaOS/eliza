@@ -21,6 +21,8 @@ import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
 } from "../services/secrets.ts";
+
+const MAX_SECRET_KEYS = 20;
 /**
  * Secrets Status Provider
  *
@@ -32,6 +34,12 @@ export const secretsStatusProvider: Provider = {
 	description: "Provides information about configured secrets and their status",
 
 	dynamic: true,
+	contexts: ["secrets", "settings"],
+	contextGate: { anyOf: ["secrets", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		_message: Memory,
@@ -111,19 +119,42 @@ No secrets are currently configured. The agent may need API keys or other creden
 					const requiredSecrets = activatorService.getRequiredSecrets();
 					if (requiredSecrets.size > 0) {
 						lines.push(
-							`Secrets needed for pending plugins: ${Array.from(requiredSecrets).join(", ")}`,
+							`Secrets needed for pending plugins: ${Array.from(requiredSecrets).slice(0, MAX_SECRET_KEYS).join(", ")}`,
 						);
 					}
 				}
 			}
 
-			return { text: lines.join("\n") };
+			return {
+				text: lines.join("\n"),
+				data: {
+					configuredCount: valid.length,
+					invalidCount: invalid.length,
+					missingCount: missing.length,
+					configuredKeys: valid.slice(0, MAX_SECRET_KEYS),
+					invalidKeys: invalid.slice(0, MAX_SECRET_KEYS),
+					missingKeys: missing.slice(0, MAX_SECRET_KEYS),
+				},
+				values: {
+					configuredSecrets: valid.length,
+					invalidSecrets: invalid.length,
+					missingSecrets: missing.length,
+				},
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error(
 				`[SecretsStatusProvider] Error getting secrets status: ${errorMsg}`,
 			);
-			return { text: "" };
+			return {
+				text: "",
+				data: { error: errorMsg },
+				values: {
+					configuredSecrets: 0,
+					invalidSecrets: 0,
+					missingSecrets: 0,
+				},
+			};
 		}
 	},
 };
@@ -140,6 +171,12 @@ export const secretsInfoProvider: Provider = {
 		"Provides detailed secret information based on conversation context",
 
 	dynamic: true,
+	contexts: ["secrets", "settings"],
+	contextGate: { anyOf: ["secrets", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -189,7 +226,7 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 			}
 
 			for (const [type, keys] of Object.entries(byType)) {
-				lines.push(`${type}: ${keys.join(", ")}`);
+				lines.push(`${type}: ${keys.slice(0, MAX_SECRET_KEYS).join(", ")}`);
 			}
 
 			// Check for common missing secrets that might be relevant
@@ -209,11 +246,29 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 				lines.push(`Common secrets not set: ${missingCommon.join(", ")}`);
 			}
 
-			return { text: lines.join("\n") };
+			return {
+				text: lines.join("\n"),
+				data: {
+					secretCount,
+					secretTypes: Object.fromEntries(
+						Object.entries(byType).map(([type, keys]) => [
+							type,
+							keys.slice(0, MAX_SECRET_KEYS),
+						]),
+					),
+				},
+				values: {
+					secretCount,
+				},
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error(`[SecretsInfoProvider] Error: ${errorMsg}`);
-			return { text: "" };
+			return {
+				text: "",
+				data: { error: errorMsg },
+				values: { secretCount: 0 },
+			};
 		}
 	},
 };

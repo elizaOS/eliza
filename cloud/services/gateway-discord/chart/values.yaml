@@ -49,6 +49,13 @@ config:
   failoverCheckIntervalMs: "30000"
   deadPodThresholdMs: "45000"
 
+# KEDA cooldown for scale-to-zero (seconds of inactivity before scaling down)
+kedaCooldownSeconds: 900
+
+# Optional envFrom entries for local flat env-var secrets.
+# When set, individual secretKeyRef variables below are skipped.
+envFrom: []
+
 # Eliza App Discord bot configuration (optional)
 # When enabled, the gateway runs a leader election to connect a single
 # Eliza App Discord bot across all pods for DM-based interactions.

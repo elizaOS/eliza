@@ -46,6 +46,23 @@ export const sendMessage: Action = {
   ],
   description: "Send a message to a Twitch channel",
   descriptionCompressed: "send message Twitch channel",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "text",
+      description: "Chat message text to send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "channel",
+      description: "Twitch channel name, without #, or current.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+  ],
 
   validate: async (
     _runtime: IAgentRuntime,

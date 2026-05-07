@@ -141,6 +141,8 @@ function failureResult(actionName: string, err: unknown): ActionResult {
 
 export const scratchpadAddAction: Action = {
   name: "SCRATCHPAD_ADD",
+  contexts: ["agent_internal", "memory", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["ADD_TO_SCRATCHPAD", "CREATE_SCRATCHPAD_TOPIC"],
   description:
     "Create a scratchpad topic with a title and text body. The server validates title, text, topic cap, and token limit.",
@@ -217,6 +219,8 @@ export const scratchpadAddAction: Action = {
 
 export const scratchpadReadAction: Action = {
   name: "SCRATCHPAD_READ",
+  contexts: ["agent_internal", "memory", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["READ_SCRATCHPAD", "GET_SCRATCHPAD_TOPIC"],
   description:
     "Fetch one scratchpad topic by id from GET /api/knowledge/scratchpad/topics/:id and return full title, summary, token counts, and body text. Owner-only.",
@@ -279,6 +283,8 @@ export const scratchpadReadAction: Action = {
 
 export const scratchpadSearchAction: Action = {
   name: "SCRATCHPAD_SEARCH",
+  contexts: ["agent_internal", "memory", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["SEARCH_SCRATCHPAD", "FIND_SCRATCHPAD_TOPICS"],
   description:
     "Search scratchpad topics using the knowledge-backed search route.",
@@ -353,6 +359,8 @@ export const scratchpadSearchAction: Action = {
 
 export const scratchpadReplaceAction: Action = {
   name: "SCRATCHPAD_REPLACE",
+  contexts: ["agent_internal", "memory", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["REPLACE_SCRATCHPAD", "UPDATE_SCRATCHPAD_TOPIC"],
   description:
     "Replace an existing scratchpad topic by id. Requires confirm:true because it overwrites the topic body.",
@@ -432,6 +440,8 @@ export const scratchpadReplaceAction: Action = {
 
 export const scratchpadDeleteAction: Action = {
   name: "SCRATCHPAD_DELETE",
+  contexts: ["agent_internal", "memory", "knowledge"],
+  roleGate: { minRole: "OWNER" },
   similes: ["DELETE_SCRATCHPAD_TOPIC", "REMOVE_SCRATCHPAD_TOPIC"],
   description:
     "Delete a scratchpad topic by id. Requires confirm:true because it removes the topic and its fragments.",

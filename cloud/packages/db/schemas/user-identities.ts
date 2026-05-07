@@ -19,7 +19,7 @@ export const userIdentities = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
 
     // Steward authentication
-    steward_user_id: text("steward_user_id").unique(),
+    steward_user_id: text("steward_user_id").notNull().unique(),
 
     // Anonymous user support
     is_anonymous: boolean("is_anonymous").notNull().default(false),

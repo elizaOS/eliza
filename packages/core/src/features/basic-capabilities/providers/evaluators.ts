@@ -99,6 +99,12 @@ export const evaluatorsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	private: true,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: true,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		// Get evaluators that validate for this message
 		const evaluatorPromises = runtime.evaluators.map(

@@ -8,6 +8,7 @@ import {
 	type Memory,
 	type State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import {
 	listConversationAttachments,
 	readAttachmentRecord,
@@ -53,6 +54,8 @@ function resolveTitle(message: Memory, options: HandlerOptions | undefined) {
 
 export const saveAttachmentToClipboardAction: Action = {
 	name: "SAVE_ATTACHMENT_TO_CLIPBOARD",
+	contexts: ["files", "media", "messaging", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"ADD_ATTACHMENT_TO_CLIPBOARD",
 		"STORE_ATTACHMENT_IN_CLIPBOARD",
@@ -62,14 +65,37 @@ export const saveAttachmentToClipboardAction: Action = {
 		"Save a stored conversation attachment into bounded task clipboard state. Use after an action produces an attachment that should remain available for chained work.",
 	suppressActionResultClipboard: true,
 	suppressPostActionContinuation: true,
-	validate: async (runtime, message, _state) => {
-		if (resolveAttachmentId(message, undefined)) {
-			return true;
-		}
+	validate: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		options?: HandlerOptions | Record<string, JsonValue | undefined>,
+	): Promise<boolean> => {
+		const handlerOptions =
+			options && typeof options === "object" && "parameters" in options
+				? (options as HandlerOptions)
+				: undefined;
+		const hasAttachmentId = Boolean(
+			resolveAttachmentId(message, handlerOptions),
+		);
 		if (/save|store|keep|clipboard/i.test(String(message.content.text ?? ""))) {
-			return (await listConversationAttachments(runtime, message)).length > 0;
+			return (
+				hasAttachmentId ||
+				(await listConversationAttachments(runtime, message)).length > 0
+			);
 		}
-		return false;
+		return (
+			hasAttachmentId ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["files", "media", "messaging", "knowledge"],
+				keywords: [
+					"save attachment",
+					"store attachment",
+					"keep attachment",
+					"attachment clipboard",
+				],
+			})
+		);
 	},
 	handler: async (
 		runtime: IAgentRuntime,
@@ -82,7 +108,9 @@ export const saveAttachmentToClipboardAction: Action = {
 			const attachmentId = resolveAttachmentId(message, options);
 			const result = await readAttachmentRecord(runtime, message, attachmentId);
 			if (!result) {
-				const attachments = await listConversationAttachments(runtime, message);
+				const attachments = (
+					await listConversationAttachments(runtime, message)
+				).slice(0, 10);
 				const text = attachments.length
 					? `Available attachments:\n${attachments.map(summarizeAttachment).join("\n\n")}`
 					: "No attachments are available to save to the clipboard.";

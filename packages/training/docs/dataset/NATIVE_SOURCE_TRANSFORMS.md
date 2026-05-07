@@ -42,6 +42,23 @@ Generated source rows also include raw availability:
 - `not_downloaded`: not pulled yet or failed to pull.
 - `local_missing`: `datasets.yaml` points at a local corpus that is absent.
 
+## Alignment audit
+
+After downloads, run the trajectory alignment audit before writing a new
+transform family:
+
+```bash
+uv run --with pyyaml --with pyarrow \
+  python scripts/sample_native_trajectory_alignment.py \
+  --samples-per-source 3 --run-cerebras
+```
+
+It samples every downloaded dataset, prints simple/wallet/email/calendar
+reference trajectories, and records the provider-visible model-call envelopes
+we need transforms to approximate. The generated files live under
+`data/native/audit/`; the tracked runbook is
+`docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`.
+
 ## Current bootstrap path
 
 Legacy normalized rows are converted by

@@ -1,5 +1,5 @@
 import { Helmet } from "react-helmet-async";
-import { AdminMetricsWrapper } from "@/packages/ui/src/components/admin/admin-metrics-wrapper";
+import { AdminMetricsWrapper } from "../_components/admin-metrics-wrapper";
 
 /** /dashboard/admin/metrics — engagement KPIs across platforms. */
 export default function AdminMetricsPage() {

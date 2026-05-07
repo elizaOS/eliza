@@ -1,12 +1,13 @@
 import {
   type Action,
   type ActionResult,
+  getActiveRoutingContextsForTurn,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
-  spawnWithTrajectoryLink,
   type State,
+  spawnWithTrajectoryLink,
 } from "@elizaos/core";
 import type {
   ClaudeCodeWorkbenchService,
@@ -18,6 +19,61 @@ interface WorkbenchRunActionOptions extends Record<string, unknown> {
   workflow?: string;
   cwd?: string;
   stdin?: string;
+}
+
+const WORKBENCH_CONTEXTS = ["code", "automation", "agent_internal"] as const;
+const WORKBENCH_KEYWORDS = [
+  "workbench",
+  "workflow",
+  "claude",
+  "ccw",
+  "run",
+  "execute",
+  "automation",
+  "code",
+  "ejecutar",
+  "flujo",
+  "exécuter",
+  "ausführen",
+  "eseguire",
+  "executar",
+  "运行",
+  "工作流",
+  "実行",
+  "ワークフロー",
+] as const;
+
+function hasWorkbenchIntent(message: Memory, state?: State): boolean {
+  const active = new Set(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") active.add(item.toLowerCase());
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  if (WORKBENCH_CONTEXTS.some((context) => active.has(context))) return true;
+
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return WORKBENCH_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
 }
 
 function normalizeString(value: unknown): string | undefined {
@@ -93,18 +149,43 @@ function buildWorkbenchChildStepId(workflow: string): string {
 
 export const claudeCodeWorkbenchRunAction: Action = {
   name: "CLAUDE_CODE_WORKBENCH_RUN",
+  contexts: ["code", "automation", "agent_internal"],
+  contextGate: { anyOf: ["code", "automation", "agent_internal"] },
   similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
   description:
     "Run an allowlisted repo workflow through the Claude Code workbench service.",
   descriptionCompressed:
     "run allowlist repo workflow through Claude Code workbench service",
+  parameters: [
+    {
+      name: "workflow",
+      description: "Allowlisted workflow name to run.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "cwd",
+      description: "Optional working directory for the workflow.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "stdin",
+      description: "Optional stdin passed to the workflow.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State | undefined,
+    message: Memory,
+    state: State | undefined,
   ): Promise<boolean> => {
-    return Boolean(runtime.getService("claude_code_workbench"));
+    return (
+      Boolean(runtime.getService("claude_code_workbench")) &&
+      hasWorkbenchIntent(message, state)
+    );
   },
 
   handler: async (

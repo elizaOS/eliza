@@ -19,11 +19,22 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 export const uninstallSkillAction: Action = {
 	name: "UNINSTALL_SKILL",
+	contexts: ["automation", "settings"],
+	contextGate: { anyOf: ["automation", "settings"] },
+	roleGate: { minRole: "USER" },
 	similes: ["REMOVE_SKILL", "DELETE_SKILL"],
 	description:
 		"Uninstall a non-bundled skill. Bundled skills cannot be removed. " +
 		'Provide the skill slug, e.g. "uninstall weather".',
 	descriptionCompressed: "Remove non-bundled skill.",
+	parameters: [
+		{
+			name: "slug",
+			description: "Installed skill slug or name to uninstall.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	validate: createAgentSkillsActionValidator({
 		keywords: ["uninstall", "remove", "delete", "skill"],
 		regex:

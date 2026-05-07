@@ -1977,6 +1977,7 @@ export const lifeAction: Action & {
   descriptionCompressed:
     "life: create update delete (kind=definition|goal) + occurrence complete skip snooze + goal review",
   contexts: ["tasks", "calendar", "health"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     if (looksLikeCodingTaskRequest(messageText(message))) {
@@ -2413,7 +2414,7 @@ export const lifeAction: Action & {
             }),
             // Asking the owner to fill in a missing field — selection +
             // execution were both correct, terminal state is "needs human
-            // input". Flag so the multi-step loop breaks and the spy
+            // input". Flag so the native planner chain breaks and the spy
             // scores this as completed.
             values: {
               success: false,

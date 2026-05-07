@@ -51,6 +51,9 @@ function uniqueTasks(tasks: TaskLike[]): TaskLike[] {
 
 export const listAgentsAction: Action = {
   name: "LIST_AGENTS",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "LIST_CODING_AGENTS",

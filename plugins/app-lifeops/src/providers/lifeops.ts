@@ -21,6 +21,7 @@ import { LifeOpsService } from "../lifeops/service.js";
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
+const MAX_ACCOUNT_LINES = 5;
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -184,6 +185,36 @@ export const lifeOpsProvider: Provider = {
     "LifeOps overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
   position: 12,
+  contexts: [
+    "tasks",
+    "calendar",
+    "email",
+    "contacts",
+    "payments",
+    "finance",
+    "subscriptions",
+    "health",
+    "screen_time",
+    "browser",
+    "messaging",
+  ],
+  contextGate: {
+    anyOf: [
+      "tasks",
+      "calendar",
+      "email",
+      "contacts",
+      "payments",
+      "finance",
+      "subscriptions",
+      "health",
+      "screen_time",
+      "browser",
+      "messaging",
+    ],
+  },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   async get(
     runtime: IAgentRuntime,
     message: Memory,
@@ -193,19 +224,20 @@ export const lifeOpsProvider: Provider = {
       return { text: "", values: {}, data: {} };
     }
 
-    const service = new LifeOpsService(runtime);
-    const ownerProfile = await readLifeOpsOwnerProfile(runtime);
-    const overview = await service.getOverview();
-    const now = new Date();
-    const ownerLines = summarizeOccurrences(
-      "Owner active items:",
-      overview.owner.occurrences,
-    );
-    const ownerGoalLines = summarizeActiveGoals(overview.owner.goals, now);
-    const agentLines = summarizeOccurrences(
-      "Agent ops:",
-      overview.agentOps.occurrences,
-    );
+    try {
+      const service = new LifeOpsService(runtime);
+      const ownerProfile = await readLifeOpsOwnerProfile(runtime);
+      const overview = await service.getOverview();
+      const now = new Date();
+      const ownerLines = summarizeOccurrences(
+        "Owner active items:",
+        overview.owner.occurrences,
+      );
+      const ownerGoalLines = summarizeActiveGoals(overview.owner.goals, now);
+      const agentLines = summarizeOccurrences(
+        "Agent ops:",
+        overview.agentOps.occurrences,
+      );
 
     const calendarLines: string[] = [];
     const emailLines: string[] = [];
@@ -219,7 +251,7 @@ export const lifeOpsProvider: Provider = {
 
       if (connectedAccounts.length > 1) {
         accountLines.push("Available Google accounts:");
-        for (const account of connectedAccounts) {
+        for (const account of connectedAccounts.slice(0, MAX_ACCOUNT_LINES)) {
           const email =
             (account.identity as Record<string, unknown> | null)?.email ??
             "unknown";
@@ -280,8 +312,8 @@ export const lifeOpsProvider: Provider = {
       );
     }
 
-    return {
-      text: [
+      return {
+        text: [
         "## Life Ops",
         "Use LIFE for executable personal follow-through: todos, habits, goals, reminders, alarms, escalation, and live status questions like 'what's on my todo list today?'. Examples: 'add a todo', 'remember to call mom on Sunday', 'track my gym sessions three times a week', 'set a goal to save $5,000'. Do not use REPLY, UPDATE_ENTITY, or PROFILE for these.",
         "Use CALENDAR for live calendar reads, calendar writes, availability, proposed meeting times, scheduling preferences, and scheduling negotiation. Examples: 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', 'schedule a dentist appointment next Tuesday at 3pm', 'find meeting options with Alice', or 'protect my sleep window from calls'. Do not answer these from provider context alone.",
@@ -336,28 +368,49 @@ export const lifeOpsProvider: Provider = {
         ),
         ...agentLines,
       ].join("\n"),
-      values: {
-        ownerOpenOccurrences: overview.owner.summary.activeOccurrenceCount,
-        ownerActiveGoals: overview.owner.summary.activeGoalCount,
-        ownerActiveGoalTitles: overview.owner.goals
-          .filter((goal) => goal.status === "active")
-          .map((goal) => goal.title),
-        ownerProfileName: ownerProfile.name,
-        ownerRelationshipStatus: ownerProfile.relationshipStatus,
-        ownerPartnerName: ownerProfile.partnerName,
-        ownerOrientation: ownerProfile.orientation,
-        ownerGender: ownerProfile.gender,
-        ownerAge: ownerProfile.age,
-        ownerLocation: ownerProfile.location,
-        agentOpenOccurrences: overview.agentOps.summary.activeOccurrenceCount,
-        agentActiveGoals: overview.agentOps.summary.activeGoalCount,
-      },
-      data: {
-        ownerProfile,
-        overview,
-        nextEventContext,
-        gmailSummary,
-      },
-    };
+        values: {
+          ownerOpenOccurrences: overview.owner.summary.activeOccurrenceCount,
+          ownerActiveGoals: overview.owner.summary.activeGoalCount,
+          ownerActiveGoalTitles: overview.owner.goals
+            .filter((goal) => goal.status === "active")
+            .slice(0, GOAL_TITLES_MAX_DISPLAYED)
+            .map((goal) => goal.title),
+          ownerProfileName: ownerProfile.name,
+          ownerRelationshipStatus: ownerProfile.relationshipStatus,
+          ownerPartnerName: ownerProfile.partnerName,
+          ownerOrientation: ownerProfile.orientation,
+          ownerGender: ownerProfile.gender,
+          ownerAge: ownerProfile.age,
+          ownerLocation: ownerProfile.location,
+          agentOpenOccurrences: overview.agentOps.summary.activeOccurrenceCount,
+          agentActiveGoals: overview.agentOps.summary.activeGoalCount,
+        },
+        data: {
+          ownerProfile,
+          overview: {
+            ...overview,
+            owner: {
+              ...overview.owner,
+              goals: overview.owner.goals.slice(0, GOAL_TITLES_MAX_DISPLAYED),
+              occurrences: overview.owner.occurrences.slice(0, 5),
+            },
+            agentOps: {
+              ...overview.agentOps,
+              occurrences: overview.agentOps.occurrences.slice(0, 5),
+            },
+          },
+          nextEventContext,
+          gmailSummary,
+        },
+      };
+    } catch (error) {
+      return {
+        text: "LifeOps overview unavailable.",
+        values: { ownerOpenOccurrences: 0, ownerActiveGoals: 0 },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
   },
 };

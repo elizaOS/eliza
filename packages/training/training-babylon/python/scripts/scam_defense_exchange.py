@@ -1270,6 +1270,8 @@ def write_reprocessed_formats(
 
     manifest = {
         "generatedAt": datetime.now(tz=timezone.utc).isoformat(),
+        "exportFormat": "json",
+        "expectedResponseFormat": "json",
         "actionCatalogProfile": ACTION_CATALOG_PROFILE,
         "analysisSchemaVersion": SCAM_ANALYSIS_SCHEMA_VERSION,
         "formats": counts,

@@ -10,6 +10,8 @@ import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minec
 
 type InventoryRow = { slot: number; name: string; count: number };
 type EntityRow = { id: number; type: string; name: string; x: number; y: number; z: number };
+const MAX_INVENTORY_ROWS_IN_STATE = 36;
+const MAX_ENTITY_ROWS_IN_STATE = 24;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -67,6 +69,10 @@ export const minecraftWorldStateProvider: Provider = {
   descriptionCompressed:
     "Read live Minecraft connection, position, health, inventory, and nearby entities.",
   dynamic: true,
+  contexts: ["automation", "agent_internal"],
+  contextGate: { anyOf: ["automation", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -94,8 +100,11 @@ export const minecraftWorldStateProvider: Provider = {
       const pos = state.position
         ? `(${state.position.x.toFixed(1)}, ${state.position.y.toFixed(1)}, ${state.position.z.toFixed(1)})`
         : "(unknown)";
-      const inventoryRows = pickInventoryRows(state.inventory);
-      const entityRows = pickEntityRows(state.nearbyEntities);
+      const inventoryRows = pickInventoryRows(state.inventory).slice(
+        0,
+        MAX_INVENTORY_ROWS_IN_STATE
+      );
+      const entityRows = pickEntityRows(state.nearbyEntities).slice(0, MAX_ENTITY_ROWS_IN_STATE);
 
       const headerLines = [
         `Minecraft: hp=${state.health ?? "?"} food=${state.food ?? "?"} pos=${pos} invItems=${inventoryRows.length} nearbyEntities=${entityRows.length}`,
@@ -119,7 +128,11 @@ export const minecraftWorldStateProvider: Provider = {
           inventoryCount: inventoryRows.length,
           nearbyEntitiesCount: entityRows.length,
         },
-        data: state as Record<string, string | number | boolean | string[]>,
+        data: {
+          ...state,
+          inventory: inventoryRows,
+          nearbyEntities: entityRows,
+        },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

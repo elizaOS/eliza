@@ -37,6 +37,12 @@ const spec = requireProviderSpec("PROVIDERS");
 export const providersProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: true,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const allProviders = [...runtime.providers].sort(
 			(left, right) =>

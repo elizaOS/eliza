@@ -14,6 +14,7 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -60,6 +61,8 @@ function extractSkillSlug(text: string): { slug: string; args: string } | null {
 
 export const skillCommandAction: Action = {
   name: "SKILL_COMMAND",
+  contexts: ["admin", "agent_internal", "automation"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["/skill"],
   description:
     "Dispatch a slash command to an installed skill. Loads the skill's instructions and responds with contextual guidance.",
@@ -83,7 +86,7 @@ export const skillCommandAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: unknown,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     if (!(await hasRoleAccess(runtime, message, "ADMIN"))) {
@@ -93,9 +96,19 @@ export const skillCommandAction: Action = {
       return { success: false, text };
     }
 
+    const params = _options?.parameters as
+      | { slug?: string; args?: string }
+      | undefined;
+    const nativeSlug =
+      typeof params?.slug === "string" ? params.slug.trim().toLowerCase() : "";
+    const nativeArgs =
+      typeof params?.args === "string" ? params.args.trim() : "";
     const text =
       ((message.content as Record<string, unknown>)?.text as string) ?? "";
-    const match = extractSkillSlug(text);
+    const match =
+      nativeSlug && registeredSkillSlugs.has(nativeSlug)
+        ? { slug: nativeSlug, args: nativeArgs }
+        : extractSkillSlug(text);
     if (!match) {
       await callback?.({
         text: "Could not identify a skill command. Use /help to see available commands.",
@@ -158,7 +171,20 @@ export const skillCommandAction: Action = {
     });
   },
 
-  parameters: [],
+  parameters: [
+    {
+      name: "slug",
+      description: "Registered skill slug to dispatch.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "args",
+      description: "Optional arguments or request text for the skill.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {

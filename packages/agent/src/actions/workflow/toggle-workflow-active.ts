@@ -48,6 +48,8 @@ function readBoolean(value: unknown): boolean | undefined {
 
 export const toggleWorkflowActiveAction: Action = {
   name: TOGGLE_WORKFLOW_ACTIVE_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "ACTIVATE_WORKFLOW",
     "DEACTIVATE_WORKFLOW",

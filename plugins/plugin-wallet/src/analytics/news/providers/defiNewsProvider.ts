@@ -63,6 +63,7 @@ interface SolanaTokenInfoService {
   getAddressType(address: string): Promise<string>;
   getTokenSymbol(publicKey: object): Promise<string | null | undefined>;
 }
+const DEFI_NEWS_TEXT_LIMIT = 4000;
 
 /**
  * DeFi News Provider
@@ -93,6 +94,11 @@ export const defiNewsProvider: Provider = {
   descriptionCompressed:
     "provide DeFi market data, global crypto statistic, token information, real-world crypto new",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("DEFI_NEWS provider called");
 
@@ -246,7 +252,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = `${defiNewsInfo}\n`;
+    const text = `${defiNewsInfo}\n`.slice(0, DEFI_NEWS_TEXT_LIMIT);
 
     return {
       data,

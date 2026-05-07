@@ -1,10 +1,20 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+	IAgentRuntime,
+	Memory,
+	Provider,
+	ProviderResult,
+	State,
+} from "@elizaos/core";
 import type { Guild, GuildChannel, Role } from "discord.js";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 import { ServiceType } from "../types";
 
 const spec = requireProviderSpec("guildInfo");
+const MAX_CHANNELS_PER_KIND_IN_STATE = 40;
+const MAX_ROLES_IN_STATE = 50;
+const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_RESPONSE_TEXT_LENGTH = 1000;
 
 /**
  * Represents a provider for retrieving guild/server information.
@@ -20,8 +30,15 @@ const spec = requireProviderSpec("guildInfo");
 export const guildInfoProvider: Provider = {
 	name: spec.name,
 	dynamic: true,
-	contexts: ["social", "connectors"],
-	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	cacheScope: "conversation",
+	roleGate: { minRole: "ADMIN" },
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+	): Promise<ProviderResult> => {
 		// If message source is not discord, return empty
 		if (message.content.source !== "discord") {
 			return {
@@ -103,9 +120,24 @@ export const guildInfoProvider: Provider = {
 		}
 
 		// Fetch guild info
-		const guildInfo = await getGuildInfo(guild, discordService);
+		let guildInfo: GuildInfo;
+		try {
+			guildInfo = await getGuildInfo(guild, discordService);
+		} catch (error) {
+			return {
+				data: {
+					isInGuild: false,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: { isInGuild: false },
+				text: "",
+			};
+		}
 
-		const responseText = formatGuildInfoText(guild, guildInfo);
+		const responseText = formatGuildInfoText(guild, guildInfo).slice(
+			0,
+			MAX_RESPONSE_TEXT_LENGTH,
+		);
 
 		return {
 			data: {
@@ -210,16 +242,16 @@ async function getGuildInfo(
 		roleCount: guild.roles.cache.size,
 		ownerId: guild.ownerId,
 		ownerName,
-		description: guild.description,
+		description: guild.description?.slice(0, MAX_DESCRIPTION_LENGTH) ?? null,
 		createdAt: guild.createdAt.toISOString(),
 		premiumTier: guild.premiumTier,
 		premiumSubscriptionCount: guild.premiumSubscriptionCount ?? 0,
 		channels: {
-			text: textChannels,
-			voice: voiceChannels,
-			categories,
+			text: textChannels.slice(0, MAX_CHANNELS_PER_KIND_IN_STATE),
+			voice: voiceChannels.slice(0, MAX_CHANNELS_PER_KIND_IN_STATE),
+			categories: categories.slice(0, MAX_CHANNELS_PER_KIND_IN_STATE),
 		},
-		roles: Array.from(roles),
+		roles: Array.from(roles).slice(0, MAX_ROLES_IN_STATE),
 		botPermissions,
 	};
 }

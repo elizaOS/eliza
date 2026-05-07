@@ -9,6 +9,7 @@ import { GOOGLE_CHAT_SERVICE_NAME, getSpaceDisplayName, isDirectMessage } from "
 
 const RELEVANCE_KEYWORDS = ["google", "chat", "space", "spaces", "room", "rooms"] as const;
 const RELEVANCE_REGEX = /\b(?:google|chat|spaces?|rooms?)\b/i;
+const MAX_SPACES_IN_STATE = 50;
 
 interface GoogleChatSpaceEntry {
   name: string;
@@ -24,6 +25,9 @@ export const googleChatSpacesProvider: Provider = {
   descriptionCompressed: "Google Chat spaces (display name, type, threaded).",
   dynamic: true,
   contexts: ["social", "connectors"],
+  contextGate: { anyOf: ["social", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     const recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
@@ -43,29 +47,44 @@ export const googleChatSpacesProvider: Provider = {
       return { data: {}, values: {}, text: "" };
     }
 
-    const spaces = await service.getSpaces();
-    const entries: GoogleChatSpaceEntry[] = spaces.map((s) => ({
-      name: s.name,
-      displayName: getSpaceDisplayName(s),
-      type: isDirectMessage(s) ? "DM" : s.type || "SPACE",
-      threaded: Boolean(s.threaded),
-    }));
+    try {
+      const spaces = await service.getSpaces();
+      const entries: GoogleChatSpaceEntry[] = spaces.slice(0, MAX_SPACES_IN_STATE).map((s) => ({
+        name: s.name,
+        displayName: getSpaceDisplayName(s),
+        type: isDirectMessage(s) ? "DM" : s.type || "SPACE",
+        threaded: Boolean(s.threaded),
+      }));
+      const truncated = spaces.length > entries.length;
 
-    return {
-      data: {
-        spaceCount: entries.length,
-        spaces: entries,
-      },
-      values: {
-        spaceCount: entries.length,
-      },
-      text: JSON.stringify({
-        google_chat_spaces: {
-          count: entries.length,
-          items: entries,
+      return {
+        data: {
+          spaceCount: spaces.length,
+          shown: entries.length,
+          truncated,
+          spaces: entries,
         },
-      }),
-    };
+        values: {
+          spaceCount: spaces.length,
+          shown: entries.length,
+          truncated,
+        },
+        text: JSON.stringify({
+          google_chat_spaces: {
+            count: spaces.length,
+            shown: entries.length,
+            truncated,
+            items: entries,
+          },
+        }),
+      };
+    } catch (error) {
+      return {
+        data: { available: false, error: error instanceof Error ? error.message : String(error) },
+        values: {},
+        text: "",
+      };
+    }
   },
 };
 

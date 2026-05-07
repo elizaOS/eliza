@@ -12,7 +12,12 @@
  * @module actions/context-signal
  */
 
-import type { Memory, State } from "@elizaos/core";
+import {
+  type AgentContext,
+  getActiveRoutingContextsForTurn,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import {
   collectKeywordTermMatches,
   textIncludesKeywordTerm,
@@ -169,6 +174,47 @@ export function hasContextSignalSyncForKey(
     spec.strongTerms,
     spec.weakTerms,
     options?.contextLimit ?? spec.contextLimit,
+  );
+}
+
+export function hasSelectedActionContext(
+  message: Memory,
+  state: State | undefined,
+  actionContexts: readonly AgentContext[],
+): boolean {
+  const actionContextIds = actionContexts
+    .map((context) => `${context}`.toLowerCase())
+    .filter((context) => context !== "general" && !context.startsWith("page"));
+  if (actionContextIds.length === 0) {
+    return false;
+  }
+  const activeContexts = new Set(
+    getActiveRoutingContextsForTurn(state, message)
+      .map((context) => `${context}`.toLowerCase())
+      .filter(
+        (context) => context !== "general" && !context.startsWith("page"),
+      ),
+  );
+  return actionContextIds.some((context) => activeContexts.has(context));
+}
+
+export function hasSelectedContextOrSignalSync(
+  message: Memory,
+  state: State | undefined,
+  actionContexts: readonly AgentContext[],
+  strongTerms: readonly string[],
+  weakTerms: readonly string[] = [],
+  contextLimit = 8,
+): boolean {
+  if (hasSelectedActionContext(message, state, actionContexts)) {
+    return true;
+  }
+  return hasContextSignalSync(
+    message,
+    state,
+    strongTerms,
+    weakTerms,
+    contextLimit,
   );
 }
 

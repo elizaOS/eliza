@@ -227,6 +227,8 @@ export const chatThreadAction: Action & {
     "Mute or unmute a specific connector chat that is not necessarily the current room, and optionally schedule an automatic unmute.",
   descriptionCompressed:
     "mute|unmute named connector chat (telegram|discord|...) not-current-room: mute_chat(target,duration?) unmute_chat(target) auto-unmute-schedule",
+  contexts: ["messaging", "contacts", "automation", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),

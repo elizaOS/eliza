@@ -86,6 +86,9 @@ function getDirectResourceSelection(options?: unknown): ResourceSelection | null
 
 export const readResourceAction: Action = {
   name: "READ_MCP_RESOURCE",
+  contexts: ["connectors", "knowledge", "files"],
+  contextGate: { anyOf: ["connectors", "knowledge", "files"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "READ_RESOURCE",
     "READ_MCP_RESOURCE",

@@ -9,6 +9,7 @@ import type {
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service.ts";
 import { ExperienceType, OutcomeType } from "../types.ts";
@@ -22,8 +23,19 @@ const spec = requireActionSpec("RECORD_EXPERIENCE");
 
 export const recordExperienceAction: Action = {
 	name: spec.name,
+	contexts: ["memory", "knowledge", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [
+		{
+			name: "learning",
+			description:
+				"Explicit learning or experience text to record. Defaults to the user message text.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 	examples: (spec.examples ?? []) as ActionExample[][],
 
 	validate: async (
@@ -32,42 +44,31 @@ export const recordExperienceAction: Action = {
 		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["record", "experience"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-		const __avRegex = /\b(?:record|experience)\b/i;
-		const __avRegexOk = Boolean(__avText.match(__avRegex));
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+		if (!runtime.getService("EXPERIENCE")) {
 			return false;
 		}
-
-		const __avLegacyValidate = async (
-			_runtime: IAgentRuntime,
-			message: Memory,
-		) => {
-			const text = message.content.text?.toLowerCase();
-			return text?.includes("remember") || text?.includes("record") || false;
-		};
-		try {
-			return Boolean(await __avLegacyValidate(runtime, message));
-		} catch {
-			return false;
+		const params =
+			options?.parameters && typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
+		if (typeof params.learning === "string" && params.learning.trim()) {
+			return true;
 		}
+		const text = message.content.text?.toLowerCase() ?? "";
+		return (
+			/\b(?:remember|record).*\b(?:experience|learning|lesson|this)\b/i.test(
+				text,
+			) ||
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["memory", "knowledge", "agent_internal"],
+				keywords: [
+					"record experience",
+					"remember this",
+					"record this learning",
+					"save this lesson",
+				],
+			})
+		);
 	},
 
 	async handler(
@@ -77,7 +78,6 @@ export const recordExperienceAction: Action = {
 		_options?: HandlerOptions,
 		_callback?: HandlerCallback,
 	): Promise<ActionResult> {
-		void _options;
 		void _callback;
 
 		logger.info(
@@ -97,8 +97,16 @@ export const recordExperienceAction: Action = {
 			};
 		}
 
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
 		const messageText =
-			typeof message.content.text === "string" ? message.content.text : "";
+			typeof params.learning === "string" && params.learning.trim()
+				? params.learning.trim()
+				: typeof message.content.text === "string"
+					? message.content.text
+					: "";
 		const learningText = normalizeExplicitLearningText(messageText);
 		const sanitizedLearning = sanitizeExperienceText(learningText);
 		const duplicate = await findDuplicateExperienceByLearning(

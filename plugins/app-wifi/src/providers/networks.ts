@@ -33,6 +33,9 @@ export const wifiNetworksProvider: Provider = {
     "Wi-Fi networks: ssid, bssid, rssi, frequency, secured.",
   dynamic: true,
   contexts: ["system"],
+  contextGate: { anyOf: ["system"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     _runtime: IAgentRuntime,

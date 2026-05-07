@@ -1,8 +1,8 @@
 "use client";
 
-import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
-import { useRouter, useSearchParams } from "@elizaos/cloud-ui/runtime/navigation";
+import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
+import Image from "../../runtime/image";
+import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { StewardLogin, useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

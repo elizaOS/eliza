@@ -48,7 +48,7 @@ app.get("/", async (c) => {
     if (found.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
-    return c.json({ success: true, app: found });
+    return c.json({ success: true, app: await appsService.withDatabaseState(found) });
   } catch (error) {
     logger.error("[Apps API] Failed to get app:", error);
     return failureResponse(c, error);
@@ -92,7 +92,10 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
     fields: Object.keys(validationResult.data),
   });
 
-  return c.json({ success: true, app: updated });
+  return c.json({
+    success: true,
+    app: updated ? await appsService.withDatabaseState(updated) : updated,
+  });
 }
 
 app.put("/", async (c) => {

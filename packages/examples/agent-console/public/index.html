@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AGENT // CONSOLE</title>
+    <style>
+      :root {
+        --bg: #07090d;
+        --bg-1: #0b0f15;
+        --bg-2: #11161f;
+        --bg-3: #161c27;
+        --line: #1e2533;
+        --line-2: #2a3346;
+        --fg: #c5c8d0;
+        --fg-dim: #7a808d;
+        --fg-faint: #4a5060;
+        --cyan: #39bae6;
+        --cyan-2: #59c2ff;
+        --green: #7fd962;
+        --amber: #ffb454;
+        --red: #f07178;
+        --magenta: #d896ff;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        background: var(--bg); color: var(--fg);
+        font-family: "JetBrains Mono", "SF Mono", Menlo, ui-monospace, monospace;
+        font-size: 12px; line-height: 1.45;
+        height: 100%; overflow: hidden;
+        font-feature-settings: "calt" 1, "liga" 0;
+      }
+      a { color: var(--cyan); text-decoration: none; }
+      button {
+        font-family: inherit; font-size: inherit; color: var(--fg);
+        background: var(--bg-2); border: 1px solid var(--line-2);
+        padding: 4px 10px; cursor: pointer; border-radius: 1px;
+        text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      button:hover { border-color: var(--cyan); color: var(--cyan); }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      input, textarea {
+        font-family: inherit; font-size: inherit; color: var(--fg);
+        background: var(--bg-1); border: 1px solid var(--line-2);
+        padding: 6px 10px; outline: none; border-radius: 1px;
+      }
+      input:focus, textarea:focus { border-color: var(--cyan); }
+
+      /* layout */
+      .app {
+        display: grid;
+        grid-template-rows: 32px 44px 1fr;
+        height: 100vh;
+      }
+
+      /* header */
+      .hdr {
+        display: flex; align-items: center; gap: 16px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+      }
+      .hdr .brand { color: var(--cyan); letter-spacing: 0.18em; font-weight: 600; }
+      .hdr .sep { color: var(--fg-faint); }
+      .hdr .field { color: var(--fg-dim); }
+      .hdr .field b { color: var(--fg); font-weight: 500; }
+      .hdr .spacer { flex: 1; }
+      .hdr .stat {
+        color: var(--fg-dim); display: inline-flex; align-items: center; gap: 6px;
+      }
+      .hdr .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--fg-faint);
+        box-shadow: 0 0 8px transparent;
+      }
+      .hdr .dot.idle { background: var(--fg-faint); }
+      .hdr .dot.run  { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.2s ease-in-out infinite; }
+      .hdr .dot.err  { background: var(--red); box-shadow: 0 0 8px var(--red); }
+      .hdr .dot.abrt { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+
+      /* input row */
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px; align-items: center;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-1);
+      }
+      .input-row input {
+        height: 30px;
+        font-size: 13px;
+      }
+      .input-row .prompt {
+        color: var(--cyan); margin-right: 6px;
+      }
+
+      /* main grid */
+      .main {
+        display: grid;
+        grid-template-columns: minmax(380px, 1.4fr) minmax(320px, 1fr) minmax(300px, 0.8fr);
+        gap: 0;
+        min-height: 0;
+      }
+      .col {
+        display: flex; flex-direction: column;
+        min-width: 0; min-height: 0;
+        border-right: 1px solid var(--line);
+      }
+      .col:last-child { border-right: none; }
+      .col-hdr {
+        flex: 0 0 24px;
+        display: flex; align-items: center; gap: 8px;
+        padding: 0 10px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--line);
+        color: var(--fg-dim);
+        text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px;
+      }
+      .col-hdr .tag { color: var(--cyan); }
+      .col-hdr .count { margin-left: auto; color: var(--fg-faint); }
+      .col-body {
+        flex: 1 1 auto;
+        overflow-y: auto; overflow-x: hidden;
+        padding: 6px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line-2) transparent;
+      }
+      .col-body::-webkit-scrollbar { width: 8px; }
+      .col-body::-webkit-scrollbar-thumb { background: var(--line-2); }
+
+      /* pipeline cards */
+      .card {
+        position: relative;
+        border: 1px solid var(--line-2);
+        background: var(--bg-1);
+        margin-bottom: 6px;
+      }
+      .card::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+        width: 3px; background: var(--c, var(--fg-faint));
+      }
+      .card-hdr {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 8px 4px 12px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+      }
+      .card-hdr .ix {
+        color: var(--fg-faint); min-width: 22px;
+      }
+      .card-hdr .typ {
+        text-transform: uppercase; letter-spacing: 0.12em;
+        color: var(--cyan);
+      }
+      .card-hdr .typ.tool { color: var(--magenta); }
+      .card-hdr .name { color: var(--fg); }
+      .card-hdr .meta { margin-left: auto; color: var(--fg-dim); display: flex; gap: 10px; }
+      .card-hdr .meta .ok { color: var(--green); }
+      .card-hdr .meta .err { color: var(--red); }
+      .card-hdr .meta .live { color: var(--amber); }
+
+      .card-body { padding: 6px 8px 6px 12px; }
+      .stream {
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        color: var(--fg);
+        min-height: 14px;
+      }
+      .stream.empty::after {
+        content: "▍"; color: var(--cyan);
+        animation: blink 1s steps(1) infinite;
+      }
+      .stream.dim { color: var(--fg-dim); }
+      @keyframes blink {
+        50% { opacity: 0; }
+      }
+
+      .tc {
+        margin-top: 6px;
+        border: 1px solid var(--line);
+        background: var(--bg-2);
+      }
+      .tc-hdr {
+        display: flex; gap: 8px; padding: 3px 8px;
+        font-size: 11px; color: var(--magenta);
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-3);
+      }
+      .tc-hdr .id { color: var(--fg-faint); margin-left: auto; }
+      .tc-args {
+        padding: 6px 8px; font-size: 11px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        color: var(--fg-dim);
+      }
+      .tc-result {
+        padding: 6px 8px; font-size: 11px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        background: var(--bg-3); border-top: 1px solid var(--line);
+        color: var(--fg);
+        max-height: 240px; overflow-y: auto;
+      }
+      .tc-result.err { color: var(--red); }
+
+      details.raw {
+        margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 4px;
+      }
+      details.raw > summary {
+        cursor: pointer; color: var(--fg-faint); font-size: 10px;
+        text-transform: uppercase; letter-spacing: 0.12em;
+        list-style: none;
+        user-select: none;
+      }
+      details.raw > summary::-webkit-details-marker { display: none; }
+      details.raw > summary::before { content: "▸ "; }
+      details.raw[open] > summary::before { content: "▾ "; }
+      details.raw pre {
+        margin: 6px 0 0 0; font-size: 10.5px;
+        background: var(--bg-3); border: 1px solid var(--line);
+        padding: 6px; max-height: 320px; overflow: auto;
+        color: var(--fg-dim);
+      }
+
+      /* context column */
+      .msg {
+        position: relative;
+        border: 1px solid var(--line);
+        margin-bottom: 6px;
+        background: var(--bg-1);
+      }
+      .msg::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+        width: 3px; background: var(--c, var(--fg-faint));
+      }
+      .msg-hdr {
+        display: flex; gap: 8px; padding: 3px 8px 3px 12px;
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+        color: var(--fg-dim);
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-2);
+      }
+      .msg-hdr .role { color: var(--cyan); }
+      .msg-hdr .role.system { color: var(--fg-dim); }
+      .msg-hdr .role.user { color: var(--green); }
+      .msg-hdr .role.assistant { color: var(--cyan); }
+      .msg-hdr .role.tool { color: var(--magenta); }
+      .msg-hdr .meta { margin-left: auto; color: var(--fg-faint); }
+      .msg-body {
+        padding: 6px 8px 6px 12px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+      }
+      .msg-body.empty { color: var(--fg-faint); font-style: italic; }
+      .msg-tc {
+        margin: 4px 8px 6px 12px; padding: 4px 8px;
+        font-size: 11px;
+        background: var(--bg-2); border: 1px solid var(--line);
+        color: var(--fg-dim);
+      }
+      .msg-tc .name { color: var(--magenta); }
+
+      /* events column */
+      .ev {
+        display: grid;
+        grid-template-columns: 56px 14px 1fr;
+        gap: 6px;
+        padding: 1px 6px 1px 6px;
+        font-size: 11px;
+        border-left: 3px solid var(--c, transparent);
+        align-items: baseline;
+      }
+      .ev .t { color: var(--fg-faint); text-align: right; }
+      .ev .k { color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+      .ev .k.start { color: var(--cyan); }
+      .ev .k.end { color: var(--green); }
+      .ev .k.tool { color: var(--magenta); }
+      .ev .k.chunk { color: var(--fg-faint); }
+      .ev .k.log { color: var(--amber); }
+      .ev .k.err { color: var(--red); }
+      .ev .k.context { color: var(--fg-dim); }
+      .ev .v { color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ev .v b { color: var(--fg); font-weight: 500; }
+
+      /* trajectory header banner */
+      .traj-hdr {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 8px 4px 12px;
+        margin-bottom: 6px;
+        border: 1px solid var(--line-2);
+        background: var(--bg-2);
+        position: relative;
+      }
+      .traj-hdr::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+        background: var(--c, var(--fg-faint));
+      }
+      .traj-hdr .id { color: var(--fg-dim); }
+      .traj-hdr .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .traj-hdr .meta { color: var(--fg-faint); display: flex; gap: 12px; font-size: 11px; }
+
+      /* placeholder when nothing has happened */
+      .empty-state {
+        display: flex; align-items: center; justify-content: center;
+        height: 100%;
+        color: var(--fg-faint);
+        text-align: center; padding: 20px;
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="hdr">
+        <span class="brand">AGENT // CONSOLE</span>
+        <span class="sep">│</span>
+        <span class="field">prov <b id="prov">—</b></span>
+        <span class="field">model <b id="model">—</b></span>
+        <span class="field">sandbox <b id="sandbox">—</b></span>
+        <span class="spacer"></span>
+        <span class="stat">step <b id="stat-step">0</b></span>
+        <span class="stat">in <b id="stat-tin">0</b></span>
+        <span class="stat">out <b id="stat-tout">0</b></span>
+        <span class="stat">elapsed <b id="stat-elapsed">0ms</b></span>
+        <span class="stat"><span id="state-dot" class="dot idle"></span><b id="state-label">IDLE</b></span>
+      </header>
+
+      <div class="input-row">
+        <div style="display:flex; align-items:center;">
+          <span class="prompt">▸</span>
+          <input id="input" placeholder="type message and hit enter — sends new trajectory, clears pipeline" autofocus />
+        </div>
+        <button id="abort">ABORT</button>
+        <button id="send">SEND ▸</button>
+      </div>
+
+      <div class="main">
+        <div class="col">
+          <div class="col-hdr"><span class="tag">[ PIPELINE ]</span> current trajectory<span class="count" id="pipe-count"></span></div>
+          <div class="col-body" id="pipeline">
+            <div class="empty-state">awaiting message</div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="col-hdr"><span class="tag">[ CONTEXT ]</span> messages sent to model<span class="count" id="ctx-count">0</span></div>
+          <div class="col-body" id="context">
+            <div class="empty-state">no context yet</div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="col-hdr"><span class="tag">[ EVENTS ]</span> all trajectories<span class="count" id="ev-count">0</span></div>
+          <div class="col-body" id="events"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ---------- state ----------
+      const state = {
+        provider: null, model: null,
+        currentTraj: null,           // { id, color, startedAt, totalIn, totalOut, steps }
+        steps: new Map(),            // stepIndex -> step record (for current traj only)
+        msgCount: 0,
+        evCount: 0,
+        elapsedTimer: null,
+      };
+
+      // ---------- elements ----------
+      const $prov = document.getElementById("prov");
+      const $model = document.getElementById("model");
+      const $sandbox = document.getElementById("sandbox");
+      const $stateDot = document.getElementById("state-dot");
+      const $stateLabel = document.getElementById("state-label");
+      const $statStep = document.getElementById("stat-step");
+      const $statTin = document.getElementById("stat-tin");
+      const $statTout = document.getElementById("stat-tout");
+      const $statElapsed = document.getElementById("stat-elapsed");
+      const $pipeline = document.getElementById("pipeline");
+      const $context = document.getElementById("context");
+      const $events = document.getElementById("events");
+      const $pipeCount = document.getElementById("pipe-count");
+      const $ctxCount = document.getElementById("ctx-count");
+      const $evCount = document.getElementById("ev-count");
+      const $input = document.getElementById("input");
+      const $send = document.getElementById("send");
+      const $abort = document.getElementById("abort");
+
+      // ---------- helpers ----------
+      function fmtMs(ms) {
+        if (ms < 1000) return ms + "ms";
+        return (ms / 1000).toFixed(2) + "s";
+      }
+      function relT(absT) {
+        if (!state.currentTraj) return "+0.00";
+        const d = (absT - state.currentTraj.startedAt) / 1000;
+        return "+" + d.toFixed(2);
+      }
+      function autoStick(el) {
+        // Keep scrolled to bottom unless user scrolled up
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (dist < 60) el.scrollTop = el.scrollHeight;
+      }
+      function jsonPretty(v) {
+        try { return JSON.stringify(v, null, 2); }
+        catch { return String(v); }
+      }
+      function safeStr(s) { return (s == null ? "" : String(s)); }
+      function bytesOf(v) {
+        try { return JSON.stringify(v).length; } catch { return 0; }
+      }
+
+      function setState(label, cls) {
+        $stateLabel.textContent = label;
+        $stateDot.className = "dot " + cls;
+      }
+
+      function startElapsed() {
+        stopElapsed();
+        state.elapsedTimer = setInterval(() => {
+          if (!state.currentTraj) return;
+          $statElapsed.textContent = fmtMs(Date.now() - state.currentTraj.startedAt);
+        }, 67);
+      }
+      function stopElapsed() {
+        if (state.elapsedTimer) clearInterval(state.elapsedTimer);
+        state.elapsedTimer = null;
+      }
+
+      // ---------- fetch initial status ----------
+      async function loadStatus() {
+        try {
+          const r = await fetch("/status");
+          const s = await r.json();
+          $prov.textContent = s.provider ?? "MISSING";
+          $model.textContent = s.model ?? "—";
+          $sandbox.textContent = s.sandbox ? s.sandbox.replace(/^.*\//, "…/") : "—";
+          state.provider = s.provider;
+          state.model = s.model;
+          if (!s.provider) {
+            $prov.style.color = "var(--red)";
+            const missing = (s.availableProviders || []).map(p => p.envVar).join(", ");
+            pushEvent({ type: "log", level: "error", message: "No API key found. Set one of: " + missing, t: Date.now() });
+          }
+        } catch (e) {
+          pushEvent({ type: "log", level: "error", message: "status fetch failed: " + e.message, t: Date.now() });
+        }
+      }
+
+      // ---------- render: pipeline ----------
+      function renderTrajHeader(ev) {
+        const div = document.createElement("div");
+        div.className = "traj-hdr";
+        div.style.setProperty("--c", ev.color);
+        div.innerHTML = `
+          <span class="id">▸ ${ev.trajectoryId}</span>
+          <span class="msg" title="${escapeAttr(ev.userMessage)}">${escapeHtml(ev.userMessage)}</span>
+          <span class="meta">
+            <span>${ev.provider}</span>
+            <span>${ev.model}</span>
+          </span>
+        `;
+        return div;
+      }
+
+      function renderStepCard(stepIndex, kind) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.dataset.step = stepIndex;
+        card.style.setProperty("--c", state.currentTraj?.color || "var(--fg-faint)");
+        card.innerHTML = `
+          <div class="card-hdr">
+            <span class="ix">#${String(stepIndex).padStart(2, "0")}</span>
+            <span class="typ ${kind === "tool_call" ? "tool" : ""}">${kind}</span>
+            <span class="name"></span>
+            <span class="meta">
+              <span class="status live">▶ live</span>
+              <span class="dur"></span>
+              <span class="usage"></span>
+            </span>
+          </div>
+          <div class="card-body"></div>
+        `;
+        return card;
+      }
+
+      function pipelineEmptyState(active) {
+        const e = $pipeline.querySelector(".empty-state");
+        if (active && e) e.remove();
+      }
+
+      // ---------- render: context ----------
+      function renderContext(messages) {
+        $ctxCount.textContent = messages.length;
+        $context.innerHTML = "";
+        for (const m of messages) {
+          const card = document.createElement("div");
+          card.className = "msg";
+          card.style.setProperty("--c", state.currentTraj?.color || "var(--fg-faint)");
+          const role = m.role || "?";
+          const bytes = bytesOf(m);
+          let body = "";
+          if (typeof m.content === "string" && m.content.length > 0) {
+            body = `<div class="msg-body">${escapeHtml(m.content)}</div>`;
+          } else if (m.content == null && (!m.tool_calls || m.tool_calls.length === 0)) {
+            body = `<div class="msg-body empty">∅ empty</div>`;
+          }
+          let tcs = "";
+          if (Array.isArray(m.tool_calls)) {
+            for (const tc of m.tool_calls) {
+              tcs += `<div class="msg-tc">↪ <span class="name">${escapeHtml(tc.function?.name ?? "?")}</span>(${escapeHtml(tc.function?.arguments ?? "")})</div>`;
+            }
+          }
+          let toolHead = "";
+          if (m.role === "tool" && m.name) {
+            toolHead = ` ↞ ${escapeHtml(m.name)}`;
+          }
+          card.innerHTML = `
+            <div class="msg-hdr">
+              <span class="role ${role}">${role}${toolHead}</span>
+              <span class="meta">${bytes}b</span>
+            </div>
+            ${body}
+            ${tcs}
+            <details class="raw">
+              <summary>raw</summary>
+              <pre>${escapeHtml(jsonPretty(m))}</pre>
+            </details>
+          `;
+          $context.appendChild(card);
+        }
+        autoStick($context);
+      }
+
+      // ---------- render: events ----------
+      function pushEvent(ev) {
+        state.evCount++;
+        $evCount.textContent = state.evCount;
+        const row = document.createElement("div");
+        row.className = "ev";
+        const traj = state.currentTraj;
+        row.style.setProperty("--c", ev.color || (traj && ev.trajectoryId === traj.id ? traj.color : "transparent"));
+        const t = relT(ev.t);
+        let kind = ev.type, klass = "", v = "";
+        switch (ev.type) {
+          case "trajectory_start":
+            kind = "start"; klass = "start";
+            v = `<b>${ev.provider}</b>/${ev.model} ◂ ${escapeHtml(ev.userMessage)}`;
+            break;
+          case "trajectory_end":
+            kind = "end"; klass = "end";
+            v = `${ev.reason} · ${ev.totalSteps} steps · ${fmtMs(ev.durationMs)}`;
+            break;
+          case "step_start":
+            kind = ev.stepType === "tool_call" ? "tool" : "model";
+            klass = ev.stepType === "tool_call" ? "tool" : "start";
+            v = ev.stepType === "tool_call"
+              ? `#${ev.stepIndex} <b>${escapeHtml(ev.toolCall?.name ?? "")}</b>`
+              : `#${ev.stepIndex} request · ${ev.request?.messages?.length ?? 0} msgs`;
+            break;
+          case "step_end":
+            kind = "done"; klass = "end";
+            const tag = ev.toolResult !== undefined ? "tool" : "model";
+            v = `#${ev.stepIndex} ${tag} · ${fmtMs(ev.durationMs)}`;
+            break;
+          case "model_chunk":
+            kind = ev.kind; klass = "chunk";
+            v = `#${ev.stepIndex} ${escapeHtml(safeStr(ev.delta).slice(0, 80))}`;
+            break;
+          case "context":
+            kind = "ctx"; klass = "context";
+            v = `${ev.messages.length} messages`;
+            break;
+          case "log":
+            kind = ev.level; klass = ev.level === "error" ? "err" : "log";
+            v = escapeHtml(ev.message ?? "");
+            break;
+          case "hello":
+            kind = "hello"; klass = "log";
+            v = "stream connected";
+            break;
+        }
+        row.innerHTML = `<span class="t">${t}</span><span class="k ${klass}">${kind}</span><span class="v">${v}</span>`;
+        $events.appendChild(row);
+        autoStick($events);
+      }
+
+      // ---------- escape ----------
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      function escapeAttr(s) {
+        return escapeHtml(s).replace(/"/g, "&quot;");
+      }
+
+      // ---------- event handlers ----------
+      function handleEvent(ev) {
+        if (ev.type === "trajectory_start") {
+          state.currentTraj = {
+            id: ev.trajectoryId, color: ev.color,
+            startedAt: ev.t,
+            totalIn: 0, totalOut: 0, steps: 0,
+          };
+          state.steps.clear();
+          $pipeline.innerHTML = "";
+          $context.innerHTML = "";
+          $ctxCount.textContent = "0";
+          $statStep.textContent = "0";
+          $statTin.textContent = "0";
+          $statTout.textContent = "0";
+          setState("RUN", "run");
+          startElapsed();
+
+          $pipeline.appendChild(renderTrajHeader(ev));
+          // also push to events column
+          pushEvent(ev);
+          $pipeCount.textContent = "0";
+          return;
+        }
+
+        if (ev.type === "context") {
+          renderContext(ev.messages);
+          pushEvent(ev);
+          return;
+        }
+
+        if (ev.type === "step_start") {
+          state.currentTraj && (state.currentTraj.steps = ev.stepIndex);
+          $statStep.textContent = ev.stepIndex;
+          $pipeCount.textContent = ev.stepIndex;
+
+          const card = renderStepCard(ev.stepIndex, ev.stepType);
+          const body = card.querySelector(".card-body");
+          const nameEl = card.querySelector(".name");
+
+          if (ev.stepType === "model_call") {
+            const reqMsgs = ev.request?.messages?.length ?? 0;
+            const reqBytes = bytesOf(ev.request);
+            nameEl.textContent = `${reqMsgs} msgs · ${reqBytes}b`;
+            body.innerHTML = `
+              <div class="stream empty" data-role="content"></div>
+              <div data-role="tool-calls"></div>
+              <details class="raw"><summary>request</summary><pre>${escapeHtml(jsonPretty(ev.request))}</pre></details>
+            `;
+          } else {
+            nameEl.textContent = ev.toolCall?.name ?? "";
+            const argsStr = ev.toolCall?.argumentsRaw ?? jsonPretty(ev.toolCall?.arguments ?? {});
+            body.innerHTML = `
+              <div class="tc">
+                <div class="tc-hdr">
+                  <span>↪ ${escapeHtml(ev.toolCall?.name ?? "")}</span>
+                  <span class="id">${escapeHtml(ev.toolCall?.id ?? "")}</span>
+                </div>
+                <div class="tc-args">${escapeHtml(argsStr)}</div>
+                <div class="tc-result" data-role="tool-result"><span class="dim">▍ awaiting…</span></div>
+              </div>
+              <details class="raw"><summary>tool call</summary><pre>${escapeHtml(jsonPretty(ev.toolCall))}</pre></details>
+            `;
+          }
+
+          $pipeline.appendChild(card);
+          state.steps.set(ev.stepIndex, { card, body, kind: ev.stepType });
+          autoStick($pipeline);
+          pushEvent(ev);
+          return;
+        }
+
+        if (ev.type === "model_chunk") {
+          const step = state.steps.get(ev.stepIndex);
+          if (!step) return;
+          if (ev.kind === "content") {
+            const c = step.body.querySelector('[data-role="content"]');
+            if (c) {
+              c.classList.remove("empty");
+              c.textContent = (c.textContent || "") + ev.delta;
+            }
+          } else if (ev.kind === "tool_name" || ev.kind === "tool_args") {
+            const wrap = step.body.querySelector('[data-role="tool-calls"]');
+            if (!wrap) return;
+            const idx = ev.toolIndex ?? 0;
+            let tc = wrap.querySelector(`[data-tc="${idx}"]`);
+            if (!tc) {
+              tc = document.createElement("div");
+              tc.className = "tc"; tc.dataset.tc = String(idx);
+              tc.innerHTML = `
+                <div class="tc-hdr">
+                  <span>↪ <span data-role="tc-name"></span></span>
+                </div>
+                <div class="tc-args" data-role="tc-args"></div>
+              `;
+              wrap.appendChild(tc);
+            }
+            if (ev.kind === "tool_name") {
+              tc.querySelector('[data-role="tc-name"]').textContent =
+                (tc.querySelector('[data-role="tc-name"]').textContent || "") + ev.delta;
+            } else {
+              const a = tc.querySelector('[data-role="tc-args"]');
+              a.textContent = (a.textContent || "") + ev.delta;
+            }
+          }
+          // Skip auto-scroll on tiny chunks; scroll periodically
+          autoStick($pipeline);
+          return;
+        }
+
+        if (ev.type === "step_end") {
+          const step = state.steps.get(ev.stepIndex);
+          if (step) {
+            const status = step.card.querySelector(".status");
+            const dur = step.card.querySelector(".dur");
+            const usage = step.card.querySelector(".usage");
+            status.textContent = "✓ done"; status.className = "status";
+            status.style.color = "var(--green)";
+            dur.textContent = fmtMs(ev.durationMs);
+
+            if (ev.response) {
+              const u = ev.response.usage;
+              if (u) {
+                const ti = u.prompt_tokens ?? 0, to = u.completion_tokens ?? 0;
+                usage.textContent = `${ti}↓ ${to}↑`;
+                if (state.currentTraj) {
+                  state.currentTraj.totalIn += ti;
+                  state.currentTraj.totalOut += to;
+                  $statTin.textContent = state.currentTraj.totalIn;
+                  $statTout.textContent = state.currentTraj.totalOut;
+                }
+              }
+              const c = step.body.querySelector('[data-role="content"]');
+              if (c && (!c.textContent || c.textContent.length === 0)) {
+                c.classList.add("dim"); c.classList.remove("empty");
+                c.textContent = "(no text content)";
+              } else if (c) {
+                c.classList.remove("empty");
+              }
+              const det = document.createElement("details");
+              det.className = "raw";
+              det.innerHTML = `<summary>response</summary><pre>${escapeHtml(jsonPretty(ev.response))}</pre>`;
+              step.body.appendChild(det);
+            }
+
+            if (ev.toolResult !== undefined) {
+              const r = step.body.querySelector('[data-role="tool-result"]');
+              const isErr = ev.toolResult && typeof ev.toolResult === "object" && "error" in ev.toolResult;
+              if (r) {
+                r.classList.toggle("err", !!isErr);
+                r.textContent = jsonPretty(ev.toolResult);
+              }
+            }
+          }
+          pushEvent(ev);
+          return;
+        }
+
+        if (ev.type === "trajectory_end") {
+          stopElapsed();
+          $statElapsed.textContent = fmtMs(ev.durationMs);
+          if (ev.reason === "error") setState("ERR", "err");
+          else if (ev.reason === "aborted") setState("ABRT", "abrt");
+          else setState("DONE", "idle");
+          pushEvent(ev);
+          return;
+        }
+
+        if (ev.type === "log") {
+          pushEvent(ev);
+          return;
+        }
+      }
+
+      // ---------- SSE ----------
+      function connect() {
+        const es = new EventSource("/events");
+        es.onmessage = (e) => {
+          try { handleEvent(JSON.parse(e.data)); }
+          catch (err) { console.error(err); }
+        };
+        es.onerror = () => {
+          setState("DISC", "err");
+          es.close();
+          setTimeout(connect, 1500);
+        };
+      }
+
+      // ---------- input ----------
+      async function send() {
+        const v = $input.value.trim();
+        if (!v) return;
+        $input.value = "";
+        try {
+          await fetch("/message", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: v }),
+          });
+        } catch (e) {
+          pushEvent({ type: "log", level: "error", message: "send failed: " + e.message, t: Date.now() });
+        }
+      }
+
+      $send.addEventListener("click", send);
+      $input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault(); send();
+        }
+      });
+      $abort.addEventListener("click", () => {
+        fetch("/abort", { method: "POST" }).catch(() => {});
+      });
+
+      // ---------- boot ----------
+      loadStatus();
+      connect();
+    </script>
+  </body>
+</html>

@@ -12,7 +12,11 @@ import type {
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import type { DraftRequest } from "../types.ts";
-import { parseSendDraftParams } from "./_shared.ts";
+import {
+	draftIdParameter,
+	parseSendDraftParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 /**
  * SAFETY INVARIANT: SEND_DRAFT must never send without an explicit
@@ -21,9 +25,20 @@ import { parseSendDraftParams } from "./_shared.ts";
  */
 export const sendDraftAction: Action = {
 	name: "SEND_DRAFT",
+	contexts: ["messaging", "email", "contacts"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Send a previously drafted message. Requires confirmed=true; without it, returns the preview and asks for confirmation.",
 	similes: ["SEND_MESSAGE", "DISPATCH_DRAFT", "CONFIRM_AND_SEND"],
+	parameters: [
+		draftIdParameter,
+		{
+			name: "confirmed",
+			description: "Whether the user explicitly confirmed sending the draft.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
 	examples: [
 		[
 			{
@@ -40,7 +55,11 @@ export const sendDraftAction: Action = {
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,

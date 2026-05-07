@@ -45,6 +45,23 @@ export const sendDm: Action = {
   similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
   description: "Send an encrypted direct message via Nostr (NIP-04)",
   descriptionCompressed: "send encrypt direct message via Nostr (NIP-04)",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "text",
+      description: "Direct message text to send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "toPubkey",
+      description: "Recipient npub, hex pubkey, or current.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+  ],
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "nostr";
   },

@@ -8,6 +8,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 
 type StyleAction = "add" | "remove" | "reorder";
@@ -54,6 +55,8 @@ function normalizeIndex(value: unknown): number | undefined {
  */
 export const manageStyleRulesAction: Action = {
 	name: "MANAGE_STYLE_RULES",
+	contexts: ["settings", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"UPDATE_STYLE_RULES",
 		"EDIT_STYLE_RULES",
@@ -106,9 +109,22 @@ export const manageStyleRulesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["settings", "agent_internal"],
+			keywords: [
+				"style rules",
+				"style guideline",
+				"tone rules",
+				"chat style",
+				"post style",
+				"add style",
+				"remove style",
+				"reorder style",
+			],
+		}),
 
 	handler: async (
 		runtime: IAgentRuntime,

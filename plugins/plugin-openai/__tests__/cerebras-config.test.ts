@@ -1,16 +1,44 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getApiKey, getBaseURL } from "../utils/config";
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
-    getSetting: vi.fn((key: string) => settings[key]),
+    getSetting: vi.fn((key: string) => (key in settings ? (settings[key] ?? null) : null)),
   } as unknown as IAgentRuntime;
 }
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+const ENV_KEYS = [
+  "MILADY_PROVIDER",
+  "OPENAI_BASE_URL",
+  "CEREBRAS_API_KEY",
+  "OPENAI_API_KEY",
+] as const;
+
+const originalEnv = new Map<string, string | undefined>();
+
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    originalEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+});
+
+afterEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = originalEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  originalEnv.clear();
 });
 
 describe("plugin-openai Cerebras config", () => {

@@ -10,6 +10,7 @@ import {
 	type Memory,
 	type State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistence.ts";
 
 const MAX_READ_FILE_BYTES = 128 * 1024;
@@ -223,6 +224,8 @@ export async function readFileFromActionInput(
 
 export const readFileAction: Action = {
 	name: "READ_FILE",
+	contexts: ["files", "code", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: ["OPEN_FILE", "LOAD_FILE"],
 	description:
 		"Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.",
@@ -231,21 +234,28 @@ export const readFileAction: Action = {
 		_runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
-		const params = message.content as Record<string, unknown>;
-		if (explicitReadFileInput(params)) {
-			return true;
-		}
-		if (
+		const params = getActionParams(options);
+		const hasStructuredFileInput = Boolean(explicitReadFileInput(params));
+		const contentParams = message.content as Record<string, unknown>;
+		const hasContentFileInput = Boolean(explicitReadFileInput(contentParams));
+		const hasContentPath =
 			typeof message.content.filePath === "string" ||
-			typeof message.content.path === "string"
-		) {
-			return true;
-		}
+			typeof message.content.path === "string";
 		const rawText = String(message.content.text ?? "");
 		const safeText =
 			rawText.length > 10_000 ? rawText.slice(0, 10_000) : rawText;
-		return /(?:read|open|inspect).*(?:file|path)/i.test(safeText);
+		return (
+			hasStructuredFileInput ||
+			hasContentFileInput ||
+			hasContentPath ||
+			/(?:read|open|inspect).*(?:file|path)/i.test(safeText) ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["files", "code", "knowledge"],
+				keywords: ["read file", "open file", "inspect file", "file path"],
+			})
+		);
 	},
 	handler: async (
 		runtime: IAgentRuntime,

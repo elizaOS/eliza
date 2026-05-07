@@ -10,13 +10,21 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseDraftReplyParams } from "./_shared.ts";
+import {
+	bodyParameter,
+	messageIdParameter,
+	parseDraftReplyParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const draftReplyAction: Action = {
 	name: "DRAFT_REPLY",
+	contexts: ["messaging", "email", "contacts"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Compose a draft reply to an existing message (identified by messageId). Never sends — produces a preview that must be confirmed via SEND_DRAFT.",
 	similes: ["COMPOSE_REPLY", "DRAFT_MESSAGE_REPLY"],
+	parameters: [messageIdParameter, bodyParameter],
 	examples: [
 		[
 			{
@@ -33,7 +41,11 @@ export const draftReplyAction: Action = {
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,

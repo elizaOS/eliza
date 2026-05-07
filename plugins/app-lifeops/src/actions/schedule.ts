@@ -138,6 +138,8 @@ export const scheduleAction: Action = {
     "Subactions: summary (default high-level answer) or inspect (show the evidence windows, sleep episodes, and meal candidates).",
   descriptionCompressed:
     "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
+  contexts: ["calendar", "tasks", "health", "screen_time"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {

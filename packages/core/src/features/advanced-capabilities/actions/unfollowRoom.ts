@@ -21,8 +21,11 @@ const spec = requireActionSpec("UNFOLLOW_ROOM");
 
 export const unfollowRoomAction: Action = {
 	name: spec.name,
+	contexts: ["messaging", "contacts", "settings"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [],
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
 		const roomId = message.roomId;

@@ -47,6 +47,8 @@ function formatExtractPreview(
 
 export const extractPageAction: Action = {
   name: "EXTRACT_PAGE",
+  contexts: ["web", "browser", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["SCRAPE_PAGE", "FETCH_PAGE", "READ_WEB_PAGE", "EXTRACT_WEB_PAGE"],
   description:
     "Extract page content through Eliza Cloud hosted tools. Returns cleaned markdown plus optional HTML, links, screenshot data, and page metadata.",

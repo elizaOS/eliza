@@ -29,6 +29,17 @@ export const readRecentMessages: Action = {
   ],
   description: "Read the most recent Signal messages across active conversations",
   descriptionCompressed: "Read recent Signal msgs.",
+  contexts: ["phone", "messaging", "connectors"],
+  contextGate: { anyOf: ["phone", "messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "limit",
+      description: "Maximum recent messages to return.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 25, default: 10 },
+    },
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;

@@ -87,6 +87,23 @@ export const chatWithAttachments: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "media", "knowledge", "connectors"],
+	contextGate: { anyOf: ["messaging", "media", "knowledge", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "prompt",
+			description: "Question or instruction for the attached content.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "attachmentIds",
+			description: "Attachment ids to analyze.",
+			required: false,
+			schema: { type: "array", items: { type: "string" } },
+		},
+	],
 	validate: async (
 		runtime: any,
 		message: any,

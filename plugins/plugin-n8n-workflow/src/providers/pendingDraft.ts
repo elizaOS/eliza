@@ -2,6 +2,7 @@ import { type IAgentRuntime, type Memory, type Provider, type State } from '@eli
 import type { WorkflowDraft } from '../types/index';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
+const MAX_DRAFT_NODES = 12;
 
 /**
  * Provider that tells the LLM when a workflow draft is pending confirmation.
@@ -13,29 +14,43 @@ const DRAFT_TTL_MS = 30 * 60 * 1000;
 export const pendingDraftProvider: Provider = {
   name: 'PENDING_WORKFLOW_DRAFT',
   description: 'Pending workflow draft awaiting user confirmation, modification, or cancellation',
+  contexts: ['automation', 'connectors'],
+  contextGate: { anyOf: ['automation', 'connectors'] },
+  cacheScope: 'conversation',
+  roleGate: { minRole: 'ADMIN' },
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const cacheKey = `workflow_draft:${message.entityId}`;
-    const draft = await runtime.getCache<WorkflowDraft>(cacheKey);
+    try {
+      const cacheKey = `workflow_draft:${message.entityId}`;
+      const draft = await runtime.getCache<WorkflowDraft>(cacheKey);
 
-    if (!draft || Date.now() - draft.createdAt > DRAFT_TTL_MS) {
+      if (!draft || Date.now() - draft.createdAt > DRAFT_TTL_MS) {
+        return { text: '', data: {}, values: {} };
+      }
+
+      const nodeNames = draft.workflow.nodes
+        .slice(0, MAX_DRAFT_NODES)
+        .map((n) => n.name)
+        .join(' → ');
+
+      return {
+        text:
+          '# Pending Workflow Draft\n\n' +
+          `A workflow draft "${draft.workflow.name}" is pending.\n` +
+          `Nodes: ${nodeNames}\n\n` +
+          '**REQUIRED**: Any user message about this draft MUST trigger the CREATE_N8N_WORKFLOW action.\n' +
+          'This includes confirmations ("yes", "ok", "deploy it", "create it", "go ahead"),\n' +
+          'cancellations ("cancel", "nevermind"), and modifications ("change X", "use Y instead").\n' +
+          'The action handler manages all draft operations — do NOT handle them via text reply.\n' +
+          'You MUST include CREATE_N8N_WORKFLOW in your actions.',
+        data: {
+          hasPendingDraft: true,
+          truncated: draft.workflow.nodes.length > MAX_DRAFT_NODES,
+        },
+        values: { hasPendingDraft: true },
+      };
+    } catch {
       return { text: '', data: {}, values: {} };
     }
-
-    const nodeNames = draft.workflow.nodes.map((n) => n.name).join(' → ');
-
-    return {
-      text:
-        '# Pending Workflow Draft\n\n' +
-        `A workflow draft "${draft.workflow.name}" is pending.\n` +
-        `Nodes: ${nodeNames}\n\n` +
-        '**REQUIRED**: Any user message about this draft MUST trigger the CREATE_N8N_WORKFLOW action.\n' +
-        'This includes confirmations ("yes", "ok", "deploy it", "create it", "go ahead"),\n' +
-        'cancellations ("cancel", "nevermind"), and modifications ("change X", "use Y instead").\n' +
-        'The action handler manages all draft operations — do NOT handle them via text reply.\n' +
-        'You MUST include CREATE_N8N_WORKFLOW in your actions.',
-      data: { hasPendingDraft: true },
-      values: { hasPendingDraft: true },
-    };
   },
 };

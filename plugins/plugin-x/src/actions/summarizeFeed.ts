@@ -26,6 +26,23 @@ export const summarizeFeedAction: Action = {
     "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
   descriptionCompressed:
     "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
+  contexts: ["knowledge", "web", "social_posting", "connectors"],
+  contextGate: { anyOf: ["knowledge", "web", "social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "limit",
+      description: "Number of top feed tweets to summarize.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 25, default: 5 },
+    },
+    {
+      name: "fetchCount",
+      description: "Number of feed tweets to fetch before ranking.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 100, default: 50 },
+    },
+  ],
   examples: [
     [
       {

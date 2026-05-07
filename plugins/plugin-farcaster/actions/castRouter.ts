@@ -58,6 +58,9 @@ export const farcasterCastAction: Action = {
   description:
     "Post a public Farcaster cast, or reply to an existing cast when replyToHash is provided.",
   descriptionCompressed: "Farcaster cast: post or reply (with replyToHash).",
+  contexts: ["social_posting", "connectors"],
+  contextGate: { anyOf: ["social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "text",

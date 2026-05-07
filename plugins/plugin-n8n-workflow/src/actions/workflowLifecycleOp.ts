@@ -395,6 +395,9 @@ async function resolveWorkflowId(
 
 export const workflowLifecycleOpAction: Action = {
   name: 'WORKFLOW_LIFECYCLE_OP',
+  contexts: ['automation', 'connectors', 'tasks'],
+  contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
+  roleGate: { minRole: 'USER' },
   similes: [
     'ACTIVATE_WORKFLOW',
     'DEACTIVATE_WORKFLOW',

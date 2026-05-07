@@ -37,6 +37,8 @@ function _readChoiceParameters(
 
 export const choiceAction: Action = {
 	name: spec.name,
+	contexts: ["general", "tasks", "admin"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 

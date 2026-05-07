@@ -25,6 +25,9 @@ function parseEntityId(params: Record<string, unknown>, text: string): number | 
 
 export const minecraftAttackAction: Action = {
   name: ACTION_NAME,
+  contexts: ["automation", "media"],
+  contextGate: { anyOf: ["automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_HIT"],
   description: "Attack a Minecraft entity by id.",
   descriptionCompressed: "Attack entity by id.",

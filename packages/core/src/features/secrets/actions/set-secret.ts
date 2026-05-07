@@ -18,6 +18,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -45,6 +46,8 @@ interface ExtractedSecrets {
  */
 export const setSecretAction: Action = {
 	name: "SET_SECRET",
+	contexts: ["secrets", "settings", "connectors"],
+	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	similes: [
 		"STORE_SECRET",
@@ -58,6 +61,38 @@ export const setSecretAction: Action = {
 	],
 	description:
 		"Set a secret value (API key, token, password, etc.) for the agent to use",
+	parameters: [
+		{
+			name: "secrets",
+			description: "Secrets to store, each with key and value.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						key: { type: "string" as const },
+						value: { type: "string" as const },
+						description: { type: "string" as const },
+						type: {
+							type: "string" as const,
+							enum: ["api_key", "secret", "credential", "url", "config"],
+						},
+					},
+					required: ["key", "value"],
+				},
+			},
+		},
+		{
+			name: "level",
+			description: "Storage level.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["global", "world", "user"],
+			},
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -65,6 +100,15 @@ export const setSecretAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
+		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
+			return false;
+		}
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredSecrets =
+			Array.isArray(params.secrets) && params.secrets.length > 0;
 		const text = message.content.text?.toLowerCase() ?? "";
 		const setPatterns = [
 			/\bset\b.*\b(key|token|secret|password|credential|api)/i,
@@ -77,11 +121,23 @@ export const setSecretAction: Action = {
 			/sk-ant-[a-zA-Z0-9]+/i,
 			/gsk_[a-zA-Z0-9]+/i,
 		];
-		if (!setPatterns.some((pattern) => pattern.test(text))) {
-			return false;
+		const hasSetPattern = setPatterns.some((pattern) => pattern.test(text));
+		if (!hasSetPattern) {
+			return (
+				hasStructuredSecrets ||
+				hasActionContextOrKeyword(message, _state, {
+					contexts: ["secrets", "settings", "connectors"],
+					keywords: [
+						"set secret",
+						"save secret",
+						"store api key",
+						"configure token",
+					],
+				})
+			);
 		}
 
-		return runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) !== null;
+		return hasStructuredSecrets || hasSetPattern;
 	},
 
 	handler: async (
@@ -131,7 +187,12 @@ export const setSecretAction: Action = {
 		// Build state for prompt
 		const currentState = state ?? (await runtime.composeState(message));
 
-		// Extract secrets from user message using LLM
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+
+		// Extract secrets from structured parameters or user message using LLM
 		let extracted: ExtractedSecrets;
 		try {
 			const result = await runtime.dynamicPromptExecFromState({
@@ -192,7 +253,11 @@ export const setSecretAction: Action = {
 			});
 
 			// Validate and transform the result
-			const secretsArray = Array.isArray(result?.secrets) ? result.secrets : [];
+			const secretsArray = Array.isArray(params.secrets)
+				? params.secrets
+				: Array.isArray(result?.secrets)
+					? result.secrets
+					: [];
 			extracted = {
 				secrets: secretsArray
 					.filter(
@@ -206,7 +271,9 @@ export const setSecretAction: Action = {
 						type: s.type as ExtractedSecret["type"],
 					}))
 					.filter((s) => s.key && s.value),
-				level: result?.level as ExtractedSecrets["level"],
+				level:
+					(params.level as ExtractedSecrets["level"]) ||
+					(result?.level as ExtractedSecrets["level"]),
 			};
 		} catch (error) {
 			const errorMessage =

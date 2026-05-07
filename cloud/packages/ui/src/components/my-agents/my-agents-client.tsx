@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useSetPageHeader } from "@elizaos/cloud-ui";
+import { useSetPageHeader } from "../primitives";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";

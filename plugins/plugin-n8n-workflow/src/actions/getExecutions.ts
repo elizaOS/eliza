@@ -55,6 +55,9 @@ type GetExecutionsOptions = {
 
 export const getExecutionsAction: Action = {
   name: 'GET_N8N_EXECUTIONS',
+  contexts: ['automation', 'connectors', 'tasks'],
+  contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
+  roleGate: { minRole: 'USER' },
   similes: [
     'GET_EXECUTIONS',
     'SHOW_EXECUTIONS',

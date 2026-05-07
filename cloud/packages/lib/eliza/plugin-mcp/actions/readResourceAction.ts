@@ -26,6 +26,82 @@ import {
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
 
+const MCP_RESOURCE_CONTEXTS = ["connectors", "knowledge", "files"];
+const RESOURCE_KEYWORDS = [
+  "resource",
+  "read",
+  "fetch",
+  "get",
+  "documentation",
+  "doc",
+  "file",
+  "data",
+  "recurso",
+  "leer",
+  "obtener",
+  "documentacion",
+  "archivo",
+  "ressource",
+  "lire",
+  "obtenir",
+  "documentation",
+  "fichier",
+  "ressource",
+  "lesen",
+  "holen",
+  "dokumentation",
+  "datei",
+  "risorsa",
+  "leggere",
+  "ottenere",
+  "documentazione",
+  "file",
+  "recurso",
+  "ler",
+  "buscar",
+  "documentacao",
+  "arquivo",
+  "资源",
+  "读取",
+  "获取",
+  "文档",
+  "文件",
+  "リソース",
+  "読む",
+  "取得",
+  "ドキュメント",
+  "ファイル",
+];
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => MCP_RESOURCE_CONTEXTS.includes(String(context).toLowerCase()));
+}
+
+function collectText(message: Memory, state?: State): string {
+  return [message.content?.text, state?.values?.conversationLog, state?.values?.recentMessages]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+    .toLowerCase();
+}
+
+function extractParams(message: Memory, state?: State): Record<string, unknown> {
+  const content = message.content as Record<string, unknown>;
+  return (
+    (content.actionParams as Record<string, unknown>) ||
+    (content.actionInput as Record<string, unknown>) ||
+    (state?.data?.actionParams as Record<string, unknown>) ||
+    {}
+  );
+}
+
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp || {}) as Record<string, McpServerInfo>;
   const serverNames = Object.keys(mcpData);
@@ -64,6 +140,8 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
 
 export const readResourceAction: Action = {
   name: "READ_MCP_RESOURCE",
+  contexts: MCP_RESOURCE_CONTEXTS,
+  contextGate: { anyOf: MCP_RESOURCE_CONTEXTS },
   similes: [
     "READ_RESOURCE",
     "READ_MCP_RESOURCE",
@@ -75,14 +153,40 @@ export const readResourceAction: Action = {
     "ACCESS_MCP_RESOURCE",
   ],
   description: "Reads a resource from an MCP server",
+  parameters: [
+    {
+      name: "serverName",
+      description: "Optional MCP server name that owns the resource.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "uri",
+      description: "Optional exact resource URI to read.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "query",
+      description: "Natural-language description of the resource to select.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) return false;
 
     // Check per-user OAuth access (same gate as dynamic-tool-actions).
     // No specific serverName yet — just verify the user has any enabled servers.
     if (!checkMcpOAuthAccess(runtime)) return false;
+
+    const text = collectText(message, state);
+    const relevant =
+      hasSelectedContext(state) ||
+      RESOURCE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+    if (!relevant) return false;
 
     const servers = mcpService.getServers();
     return (
@@ -105,7 +209,12 @@ export const readResourceAction: Action = {
 
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
-      throw new Error("MCP service not available");
+      return {
+        success: false,
+        text: "MCP service is not available.",
+        error: "MCP_SERVICE_UNAVAILABLE",
+        data: { actionName: "READ_MCP_RESOURCE" },
+      };
     }
 
     const mcpProvider = mcpService.getProviderData();
@@ -118,27 +227,37 @@ export const readResourceAction: Action = {
         message.content.text || "",
       );
 
-      const resourceSelection = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: resourceSelectionPrompt,
-      });
+      const params = extractParams(message, _state);
+      let parsedSelection: ResourceSelection | null;
+      if (typeof params.serverName === "string" && typeof params.uri === "string") {
+        parsedSelection = {
+          serverName: params.serverName,
+          uri: params.uri,
+          reasoning: "Selected from native action parameters.",
+        };
+      } else {
+        const resourceSelection = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: resourceSelectionPrompt,
+        });
 
-      const parsedSelection = await withModelRetry<ResourceSelection>({
-        runtime,
-        state: composedState,
-        message,
-        callback,
-        input: resourceSelection,
-        validationFn: (data) => validateResourceSelection(data),
-        createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
-          createResourceSelectionFeedbackPrompt(
-            originalResponse as string,
-            errorMessage,
-            state,
-            userMessage,
-          ),
-        failureMsg: `I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?`,
-        retryCount: 0,
-      });
+        parsedSelection = await withModelRetry<ResourceSelection>({
+          runtime,
+          state: composedState,
+          message,
+          callback,
+          input: resourceSelection,
+          validationFn: (data) => validateResourceSelection(data),
+          createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
+            createResourceSelectionFeedbackPrompt(
+              originalResponse as string,
+              errorMessage,
+              state,
+              userMessage,
+            ),
+          failureMsg: `I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?`,
+          retryCount: 0,
+        });
+      }
 
       if (!parsedSelection || parsedSelection.noResourceAvailable) {
         const responseText =

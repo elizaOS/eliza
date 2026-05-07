@@ -44,7 +44,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "synthesized" / "core_prompts"
 
@@ -194,7 +194,7 @@ def style_plan(n: int, rng: random.Random) -> list[str]:
 
 def build_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     task_type: str,
     user_msg: str,
     expected_obj: dict[str, Any],
@@ -419,7 +419,7 @@ REFLECTION_TRANSLATIONS = {
 }
 
 
-def gen_reflection(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_reflection(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -603,7 +603,7 @@ EVAL_TRANSLATIONS = {
 }
 
 
-def gen_reflection_evaluator(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_reflection_evaluator(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -770,7 +770,7 @@ SECRET_LANG_NULL = {
 }
 
 
-def gen_extract_secrets(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_extract_secrets(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -919,7 +919,7 @@ CHOOSE_OPTION_CASES = [
 ]
 
 
-def gen_choose_option(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_choose_option(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -1017,7 +1017,7 @@ CLASSIFIER_TRANSLATIONS = {
 }
 
 
-def gen_message_classifier(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_message_classifier(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -1232,7 +1232,7 @@ MULTISTEP_LANG_PREFIX = {
 }
 
 
-def gen_multi_step_decision(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_multi_step_decision(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -1374,7 +1374,7 @@ ADDCONTACT_LANG_PREFIX = {
 }
 
 
-def gen_add_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_add_contact(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -1535,7 +1535,7 @@ FOLLOW_TRANSLATIONS = {
 }
 
 
-def gen_should_follow_room(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
+def gen_should_follow_room(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict[str, Any]]:
     langs = language_plan(n, rng)
     styles = style_plan(n, rng)
     for i in range(n):
@@ -1565,7 +1565,7 @@ def gen_should_follow_room(encoder: ToonEncoder, rng: random.Random, n: int) -> 
 
 # ─────────────────────────── driver ────────────────────────────────────────
 
-GENERATORS: list[tuple[str, Callable[[ToonEncoder, random.Random, int], Iterable[dict[str, Any]]]]] = [
+GENERATORS: list[tuple[str, Callable[[ExpectedResponseEncoder, random.Random, int], Iterable[dict[str, Any]]]]] = [
     ("reflection", gen_reflection),
     ("reflection_evaluator", gen_reflection_evaluator),
     ("extract_secrets", gen_extract_secrets),
@@ -1595,7 +1595,7 @@ def main() -> int:
     args = parser.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     rng = random.Random(args.seed)
 
     counts: dict[str, int] = {}

@@ -12,9 +12,25 @@ interface FakeStorageState {
 
 function makeFakeAdapter(state: FakeStorageState): R2StorageAdapter {
   const fake = {
-    async write(key: string, data: Buffer): Promise<void> {
+    config: {
+      type: "memory",
+      path: "/",
+    },
+    async copy(pathFrom: string, pathTo: string): Promise<void> {
+      const entry = state.files.get(pathFrom);
+      if (!entry) {
+        throw new Error(`fake adapter: missing ${pathFrom}`);
+      }
+      state.files.set(pathTo, {
+        bytes: Buffer.from(entry.bytes),
+        contentType: entry.contentType,
+        etag: `"etag-${state.files.size + 1}"`,
+        modified: new Date(entry.modified),
+      });
+    },
+    async write(key: string, data: string | Buffer): Promise<void> {
       state.files.set(key, {
-        bytes: Buffer.from(data),
+        bytes: Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data),
         contentType: "application/octet-stream",
         etag: `"etag-${state.files.size + 1}"`,
         modified: new Date("2026-05-02T10:00:00.000Z"),

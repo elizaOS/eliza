@@ -314,6 +314,7 @@ class ElizaAppUserService {
     try {
       return await createUserWithOrganization({
         userData: {
+          steward_user_id: `telegram:${telegramId}`,
           telegram_id: telegramId,
           telegram_username: telegramData.username,
           telegram_first_name: telegramData.first_name,
@@ -387,6 +388,7 @@ class ElizaAppUserService {
     try {
       return await createUserWithOrganization({
         userData: {
+          steward_user_id: `phone:${normalizedPhone}`,
           phone_number: normalizedPhone,
           phone_verified: true,
           name: displayName,
@@ -443,6 +445,7 @@ class ElizaAppUserService {
     try {
       return await createUserWithOrganization({
         userData: {
+          steward_user_id: `email:${normalizedEmail}`,
           email: normalizedEmail,
           email_verified: false, // iMessage delivery doesn't prove email ownership
           name: displayName,
@@ -674,6 +677,7 @@ class ElizaAppUserService {
     try {
       return await createUserWithOrganization({
         userData: {
+          steward_user_id: `discord:${discordId}`,
           discord_id: discordId,
           discord_username: discordData.username,
           discord_global_name: discordData.globalName || undefined,
@@ -1112,6 +1116,7 @@ class ElizaAppUserService {
     try {
       return await createUserWithOrganization({
         userData: {
+          steward_user_id: `whatsapp:${whatsappId}`,
           whatsapp_id: whatsappId,
           whatsapp_name: profileName,
           phone_number: derivedPhone,

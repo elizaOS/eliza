@@ -43,6 +43,81 @@ import type {
 
 const PET_STATE_SETTING_KEY = "ELIZAGOTCHI_PET_STATE_JSON";
 const SAVE_VERSION = 1 as const;
+const ELIZAGOTCHI_CONTEXTS = ["game"] as const;
+const ELIZAGOTCHI_CONTEXT_GATE = { anyOf: [...ELIZAGOTCHI_CONTEXTS] };
+const ELIZAGOTCHI_CONTEXT_TERMS = [
+  "pet",
+  "elizagotchi",
+  "tamagotchi",
+  "virtual pet",
+  "game",
+  "mascota",
+  "mascota virtual",
+  "animal de compagnie",
+  "animal virtuel",
+  "haustier",
+  "virtuelles haustier",
+  "宠物",
+  "电子宠物",
+  "たまごっち",
+  "ペット",
+  "애완동물",
+  "다마고치",
+  "alagang hayop",
+  "thú cưng",
+  "thu cung",
+];
+
+function getMessageText(
+  message: { content?: { text?: unknown } } | undefined,
+): string {
+  return typeof message?.content?.text === "string"
+    ? message.content.text.toLowerCase()
+    : "";
+}
+
+function normalizeContextList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((item) => (typeof item === "string" ? [item.toLowerCase()] : []))
+    .filter(Boolean);
+}
+
+function hasSelectedElizagotchiContext(
+  message: unknown,
+  state: unknown,
+): boolean {
+  const stateValues =
+    state && typeof state === "object" && "values" in state
+      ? (state as { values?: Record<string, unknown> }).values
+      : undefined;
+  const messageContent =
+    message && typeof message === "object" && "content" in message
+      ? (message as { content?: Record<string, unknown> }).content
+      : undefined;
+  const selectedContexts = [
+    ...normalizeContextList(stateValues?.activeContexts),
+    ...normalizeContextList(stateValues?.selectedContexts),
+    ...normalizeContextList(messageContent?.activeContexts),
+    ...normalizeContextList(messageContent?.selectedContexts),
+    ...normalizeContextList(messageContent?.contexts),
+  ];
+  return selectedContexts.some((context) =>
+    ELIZAGOTCHI_CONTEXTS.includes(context as "game"),
+  );
+}
+
+function hasElizagotchiSignal(
+  message: { content?: { text?: unknown } } | undefined,
+  state: unknown,
+  terms: readonly string[],
+): boolean {
+  if (hasSelectedElizagotchiContext(message, state)) return true;
+  const text = getMessageText(message);
+  return [...terms, ...ELIZAGOTCHI_CONTEXT_TERMS].some((term) =>
+    text.includes(term.toLowerCase()),
+  );
+}
 
 // ============================================================================
 // Custom runtime events (in-process)
@@ -187,23 +262,11 @@ function makeGameAction(params: {
   return {
     name: params.name,
     description: params.description,
+    contexts: [...ELIZAGOTCHI_CONTEXTS],
+    contextGate: ELIZAGOTCHI_CONTEXT_GATE,
     similes: params.similes,
-    validate: async (_runtime: IAgentRuntime, message) => {
-      // Validate that this is an elizagotchi-related action by checking message content
-      const text = (message?.content?.text ?? "").toLowerCase();
-      const actionKeywords = params.similes.map((s) => s.toLowerCase());
-
-      // Check if any simile keyword is present in the message
-      const hasRelevantKeyword = actionKeywords.some((kw) => text.includes(kw));
-
-      // Also check for pet/game context words
-      const hasPetContext =
-        text.includes("pet") ||
-        text.includes("elizagotchi") ||
-        text.includes("tamagotchi") ||
-        text.includes("game");
-
-      return hasRelevantKeyword || hasPetContext;
+    validate: async (_runtime: IAgentRuntime, message, state) => {
+      return hasElizagotchiSignal(message, state, params.similes);
     },
     handler: async (
       runtime: IAgentRuntime,
@@ -233,12 +296,26 @@ function makeGameAction(params: {
 const tickAction: ElizaAction = {
   name: "ELIZAGOTCHI_TICK",
   description: "Advance the pet simulation based on elapsed time.",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["tick", "update", "step", "__tick__"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text === "__tick__" || text.includes("tick") || text.includes("update")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "tick",
+      "update",
+      "step",
+      "__tick__",
+      "actualizar",
+      "mise a jour",
+      "mettre a jour",
+      "aktualisieren",
+      "更新",
+      "アップデート",
+      "업데이트",
+      "i-update",
+      "cập nhật",
+      "cap nhat",
+    ]);
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
@@ -254,15 +331,30 @@ const tickAction: ElizaAction = {
 const statusAction: ElizaAction = {
   name: "ELIZAGOTCHI_STATUS",
   description: "Get a full status readout of the pet (with stats).",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["status", "stats", "info", "health"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("status") ||
-      text.includes("stats") ||
-      text.includes("health") ||
-      text.includes("how is")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "status",
+      "stats",
+      "info",
+      "health",
+      "how is",
+      "estado",
+      "salud",
+      "statut",
+      "sante",
+      "zustand",
+      "gesundheit",
+      "状态",
+      "健康",
+      "ステータス",
+      "상태",
+      "kalagayan",
+      "sức khỏe",
+      "suc khoe",
+    ]);
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
@@ -284,14 +376,29 @@ const statusAction: ElizaAction = {
 const helpAction: ElizaAction = {
   name: "ELIZAGOTCHI_HELP",
   description: "Show available Elizagotchi commands.",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["help", "commands", "options"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("help") ||
-      text.includes("commands") ||
-      text.includes("what can")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "help",
+      "commands",
+      "options",
+      "what can",
+      "ayuda",
+      "comandos",
+      "aide",
+      "commandes",
+      "hilfe",
+      "befehle",
+      "帮助",
+      "命令",
+      "ヘルプ",
+      "도움말",
+      "tulong",
+      "giúp",
+      "giup",
+    ]);
   },
   handler: async (_runtime, _message, _state, _options, callback) => {
     if (callback) {
@@ -308,15 +415,29 @@ const helpAction: ElizaAction = {
 const resetAction: ElizaAction = {
   name: "ELIZAGOTCHI_RESET",
   description: "Reset the game with a new pet (optionally named).",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["reset", "restart", "new", "again", "new pet"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("reset") ||
-      text.includes("restart") ||
-      text.includes("new pet") ||
-      text.includes("start over")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "reset",
+      "restart",
+      "new pet",
+      "start over",
+      "__reset__:",
+      "reiniciar",
+      "nouveau",
+      "redemarrer",
+      "zurücksetzen",
+      "zuruecksetzen",
+      "重置",
+      "重新开始",
+      "リセット",
+      "재시작",
+      "i-reset",
+      "đặt lại",
+      "dat lai",
+    ]);
   },
   parameters: [
     {
@@ -346,15 +467,30 @@ const resetAction: ElizaAction = {
 const exportAction: ElizaAction = {
   name: "ELIZAGOTCHI_EXPORT",
   description: "Export the current pet save data as JSON.",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["export", "backup", "save file"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("export") ||
-      text.includes("backup") ||
-      text.includes("save file") ||
-      text.includes("download")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "export",
+      "backup",
+      "save file",
+      "download",
+      "__export__",
+      "exportar",
+      "copia",
+      "exporter",
+      "sauvegarde",
+      "exportieren",
+      "sichern",
+      "导出",
+      "备份",
+      "エクスポート",
+      "내보내기",
+      "i-export",
+      "xuất",
+      "xuat",
+    ]);
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const petState = loadPetState(runtime);
@@ -375,14 +511,28 @@ const exportAction: ElizaAction = {
 const importAction: ElizaAction = {
   name: "ELIZAGOTCHI_IMPORT",
   description: "Import a pet save JSON and replace the current pet state.",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["import", "load save"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("import") ||
-      text.includes("load save") ||
-      text.startsWith("__import__:")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "import",
+      "load save",
+      "__import__:",
+      "importar",
+      "cargar",
+      "importer",
+      "charger",
+      "importieren",
+      "laden",
+      "导入",
+      "加载存档",
+      "インポート",
+      "가져오기",
+      "i-import",
+      "nhập",
+      "nhap",
+    ]);
   },
   parameters: [
     {
@@ -442,15 +592,30 @@ const importAction: ElizaAction = {
 const renameAction: ElizaAction = {
   name: "ELIZAGOTCHI_NAME",
   description: "Rename your pet.",
+  contexts: [...ELIZAGOTCHI_CONTEXTS],
+  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   similes: ["name", "call", "rename"],
-  validate: async (_runtime: IAgentRuntime, message) => {
-    const text = (message?.content?.text ?? "").toLowerCase();
-    return (
-      text.includes("name") ||
-      text.includes("rename") ||
-      text.includes("call it") ||
-      text.includes("call my pet")
-    );
+  validate: async (_runtime: IAgentRuntime, message, state) => {
+    return hasElizagotchiSignal(message, state, [
+      "name",
+      "rename",
+      "call it",
+      "call my pet",
+      "nombrar",
+      "llamar",
+      "renombrar",
+      "nommer",
+      "appeler",
+      "benennen",
+      "nennen",
+      "命名",
+      "改名",
+      "名前",
+      "이름",
+      "pangalan",
+      "đặt tên",
+      "dat ten",
+    ]);
   },
   parameters: [
     {

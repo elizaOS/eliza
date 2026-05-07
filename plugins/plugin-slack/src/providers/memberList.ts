@@ -11,7 +11,10 @@ export const memberListProvider: Provider = {
   description:
     "Provides information about members in the current Slack channel",
   dynamic: true,
-  contexts: ["social", "connectors"],
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  cacheScope: "conversation",
+  roleGate: { minRole: "ADMIN" },
   relevanceKeywords: [
     "slackmemberlist",
     "memberlistprovider",
@@ -88,88 +91,105 @@ export const memberListProvider: Provider = {
     const channelId = room.channelId;
 
     // Get channel members
-    const membersResult = await slackService.client.conversations.members({
-      channel: channelId,
-      limit: 100,
-    });
+    try {
+      const membersResult = await slackService.client.conversations.members({
+        channel: channelId,
+        limit: 100,
+      });
 
-    const memberIds = membersResult.members || [];
+      const memberIds = membersResult.members || [];
 
-    if (memberIds.length === 0) {
+      if (memberIds.length === 0) {
+        return {
+          data: {
+            channelId,
+            memberCount: 0,
+            members: [],
+          },
+          values: {
+            memberCount: 0,
+          },
+          text: "No members found in this channel.",
+        };
+      }
+
+      // Get user info for each member (limited to first 20 for performance)
+      const memberLimit = 20;
+      const limitedMemberIds = memberIds.slice(0, memberLimit);
+      const members: Array<{
+        id: string;
+        name: string;
+        displayName: string;
+        isBot: boolean;
+        isAdmin: boolean;
+      }> = [];
+
+      for (const memberId of limitedMemberIds) {
+        const user = await slackService.getUser(memberId);
+        if (user) {
+          members.push({
+            id: user.id,
+            name: user.name,
+            displayName: getSlackUserDisplayName(user),
+            isBot: user.isBot,
+            isAdmin: user.isAdmin || user.isOwner,
+          });
+        }
+      }
+
+      // Get channel info for name
+      const channel = await slackService.getChannel(channelId);
+      const channelName = channel?.name || channelId;
+
+      // Format member list
+      const botUserId = slackService.getBotUserId();
+      const memberDescriptions = members.map((m) => {
+        const tags: string[] = [];
+        if (m.id === botUserId) tags.push("this bot");
+        if (m.isBot && m.id !== botUserId) tags.push("bot");
+        if (m.isAdmin) tags.push("admin");
+        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
+        return `- ${m.displayName} (@${m.name})${tagStr}`;
+      });
+
+      const truncationNote =
+        memberIds.length > memberLimit
+          ? `\n\n(Showing ${memberLimit} of ${memberIds.length} total members)`
+          : "";
+
+      const responseText = `Members in #${channelName}:\n${memberDescriptions.join("\n")}${truncationNote}`;
+
+      return {
+        data: {
+          channelId,
+          channelName,
+          memberCount: memberIds.length,
+          members,
+          hasMoreMembers: memberIds.length > memberLimit,
+        },
+        values: {
+          channelId,
+          channelName,
+          memberCount: memberIds.length,
+        },
+        text: responseText,
+      };
+    } catch (error) {
       return {
         data: {
           channelId,
           memberCount: 0,
           members: [],
+          error: error instanceof Error ? error.message : String(error),
         },
         values: {
+          channelId,
           memberCount: 0,
+          slackMembersAvailable: false,
         },
-        text: "No members found in this channel.",
+        text: "Slack member list unavailable.",
       };
     }
-
-    // Get user info for each member (limited to first 20 for performance)
-    const memberLimit = 20;
-    const limitedMemberIds = memberIds.slice(0, memberLimit);
-    const members: Array<{
-      id: string;
-      name: string;
-      displayName: string;
-      isBot: boolean;
-      isAdmin: boolean;
-    }> = [];
-
-    for (const memberId of limitedMemberIds) {
-      const user = await slackService.getUser(memberId);
-      if (user) {
-        members.push({
-          id: user.id,
-          name: user.name,
-          displayName: getSlackUserDisplayName(user),
-          isBot: user.isBot,
-          isAdmin: user.isAdmin || user.isOwner,
-        });
-      }
-    }
-
-    // Get channel info for name
-    const channel = await slackService.getChannel(channelId);
-    const channelName = channel?.name || channelId;
-
-    // Format member list
-    const botUserId = slackService.getBotUserId();
-    const memberDescriptions = members.map((m) => {
-      const tags: string[] = [];
-      if (m.id === botUserId) tags.push("this bot");
-      if (m.isBot && m.id !== botUserId) tags.push("bot");
-      if (m.isAdmin) tags.push("admin");
-      const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
-      return `- ${m.displayName} (@${m.name})${tagStr}`;
-    });
-
-    const truncationNote =
-      memberIds.length > memberLimit
-        ? `\n\n(Showing ${memberLimit} of ${memberIds.length} total members)`
-        : "";
-
-    const responseText = `Members in #${channelName}:\n${memberDescriptions.join("\n")}${truncationNote}`;
-
-    return {
-      data: {
-        channelId,
-        channelName,
-        memberCount: memberIds.length,
-        members,
-        hasMoreMembers: memberIds.length > memberLimit,
-      },
-      values: {
-        channelId,
-        channelName,
-        memberCount: memberIds.length,
-      },
-      text: responseText,
-    };
   },
 };
 

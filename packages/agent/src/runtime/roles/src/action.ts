@@ -637,6 +637,8 @@ async function resolveRoleTargetEntity(args: {
 
 export const updateRoleAction: Action = {
   name: "UPDATE_ROLE",
+  contexts: ["admin", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "CHANGE_ROLE",
     "SET_ROLE",
@@ -651,8 +653,8 @@ export const updateRoleAction: Action = {
     "Assign or revoke a role using commands (/role @name ADMIN) or natural language " +
     '("alice is your boss", "bob is not your coworker"). Only OWNERs and ADMINs can manage roles.',
   // The handler already emits the full user-facing result (success, ambiguity,
-  // permission denial). Running a post-action continuation after that causes
-  // Discord to rewrite the same message multiple times for a single role change.
+  // permission denial). Letting the planner add follow-up text after that can
+  // cause Discord to rewrite the same message multiple times for one role change.
   suppressPostActionContinuation: true,
 
   validate: async (

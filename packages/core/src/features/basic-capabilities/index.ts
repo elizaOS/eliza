@@ -16,7 +16,6 @@ import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
 import {
 	imageDescriptionTemplate,
-	messageHandlerTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
@@ -129,14 +128,6 @@ interface ImageDescriptionJson {
 	description?: string;
 	title?: string;
 	text?: string;
-}
-
-interface MessageHandlerJson {
-	thought?: string;
-	actions?: string | string[];
-	providers?: string | string[];
-	text?: string;
-	simple?: boolean;
 }
 
 interface PostCreationJson {
@@ -586,10 +577,8 @@ const postGeneratedHandler = async ({
 		} as MessageMetadata & { entityName: string },
 	};
 
-	// generate thought of which providers to use using messageHandlerTemplate
-
 	// Compose state with relevant context for post generation
-	let state = await runtime.composeState(message, [
+	const state = await runtime.composeState(message, [
 		"PROVIDERS",
 		"CHARACTER",
 		"RECENT_MESSAGES",
@@ -610,86 +599,6 @@ const postGeneratedHandler = async ({
 		state.values.xUserName =
 			metadataX?.userName || metadata?.userName || undefined;
 	}
-
-	const optimizedResponseService = runtime.getService<OptimizedPromptService>(
-		OPTIMIZED_PROMPT_SERVICE,
-	);
-	const dynamicPrompt = await runtime.getCache<string>(
-		"core_prompt_messageHandlerTemplate",
-	);
-	const baselineResponseTemplate =
-		dynamicPrompt ||
-		runtime.character.templates?.messageHandlerTemplate ||
-		messageHandlerTemplate;
-	const prompt = composePromptFromState({
-		state,
-		template: resolveOptimizedPrompt(
-			optimizedResponseService,
-			"response",
-			baselineResponseTemplate,
-		),
-	});
-
-	let responseContent: Content | null = null;
-
-	let retries = 0;
-	const maxRetries = 3;
-	while (
-		retries < maxRetries &&
-		(!responseContent?.thought || !responseContent?.actions)
-	) {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
-
-		const parsedJson = parseJSONObjectFromText(
-			response,
-		) as MessageHandlerJson | null;
-		if (parsedJson) {
-			const actionsRaw = parsedJson.actions;
-			const providersRaw = parsedJson.providers;
-			const resolvedActions = Array.isArray(actionsRaw)
-				? actionsRaw
-				: actionsRaw
-					? actionsRaw
-							.split(",")
-							.map((action) => action.trim())
-							.filter(Boolean)
-					: ["IGNORE"];
-			responseContent = {
-				thought: parsedJson.thought ?? "",
-				actions: resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
-				providers: Array.isArray(providersRaw)
-					? providersRaw
-					: providersRaw
-						? [providersRaw]
-						: [],
-				text: parsedJson.text ?? "",
-				simple: parsedJson.simple ?? false,
-			};
-		} else {
-			responseContent = null;
-		}
-
-		retries++;
-		const responseContentThoughtAfter = responseContent?.thought;
-		const responseContentActionsAfter = responseContent?.actions;
-		if (!responseContentThoughtAfter || !responseContentActionsAfter) {
-			runtime.logger.warn(
-				{
-					src: "basic-capabilities",
-					agentId: runtime.agentId,
-					response,
-					parsedJson,
-					responseContent,
-				},
-				"Missing required fields, retrying",
-			);
-		}
-	}
-
-	const responseContentProviders = responseContent?.providers;
-	state = await runtime.composeState(message, responseContentProviders);
 
 	const postPrompt = composePromptFromState({
 		state,

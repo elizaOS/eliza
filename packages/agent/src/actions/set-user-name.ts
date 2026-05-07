@@ -26,6 +26,7 @@ import {
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "../services/owner-name.js";
+import { hasSelectedActionContext } from "./context-signal.js";
 
 const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
   "action.setUserName.recentContext",
@@ -33,6 +34,11 @@ const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
     includeAllLocales: true,
   },
 );
+const SET_USER_NAME_CONTEXTS = [
+  "settings",
+  "contacts",
+  "agent_internal",
+] as const;
 
 function recentMessagesMentionName(state: State): boolean {
   const lastTwo = getRecentMessagesData(state).slice(-2);
@@ -47,6 +53,8 @@ function recentMessagesMentionName(state: State): boolean {
 
 export const setUserNameAction: Action = {
   name: "SET_USER_NAME",
+  contexts: [...SET_USER_NAME_CONTEXTS],
+  roleGate: { minRole: "USER" },
 
   similes: ["REMEMBER_NAME", "SAVE_NAME", "SET_NAME"],
 
@@ -62,12 +70,23 @@ export const setUserNameAction: Action = {
     if (content?.source !== "client_chat") return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
 
+    const selectedContextMatches = hasSelectedActionContext(
+      message,
+      state,
+      SET_USER_NAME_CONTEXTS,
+    );
     const currentName = await fetchConfiguredOwnerName();
     if (currentName) {
-      return state ? recentMessagesMentionName(state) : false;
+      return (
+        selectedContextMatches ||
+        (state ? recentMessagesMentionName(state) : false)
+      );
     }
 
-    return true;
+    return (
+      selectedContextMatches ||
+      (state ? recentMessagesMentionName(state) : false)
+    );
   },
 
   handler: async (runtime, _message, _state, options) => {

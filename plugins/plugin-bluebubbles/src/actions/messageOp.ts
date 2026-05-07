@@ -279,6 +279,41 @@ export const bluebubblesMessageOp: Action = {
 	description:
 		"BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react).",
 	descriptionCompressed: "Bluebubbles message ops: send, react.",
+	contexts: ["phone", "messaging", "connectors"],
+	contextGate: { anyOf: ["phone", "messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "op",
+			description: "Operation to run: send or react.",
+			required: false,
+			schema: { type: "string", enum: ["send", "react"] },
+		},
+		{
+			name: "text",
+			description: "Message text for send.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "to",
+			description: "BlueBubbles chat guid, handle, or current conversation.",
+			required: false,
+			schema: { type: "string", default: "current" },
+		},
+		{
+			name: "messageGuid",
+			description: "Target message guid for reactions.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "emoji",
+			description: "Reaction emoji.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	suppressPostActionContinuation: true,
 	examples,
 

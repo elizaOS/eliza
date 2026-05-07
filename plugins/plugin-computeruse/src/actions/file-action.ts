@@ -26,6 +26,9 @@ function formatFileResultText(result: FileActionResult): string {
 
 export const fileAction: Action = {
   name: "FILE_ACTION",
+  contexts: ["files", "automation"],
+  contextGate: { anyOf: ["files", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "READ_FILE",
     "WRITE_FILE",

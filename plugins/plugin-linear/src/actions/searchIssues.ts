@@ -25,6 +25,9 @@ const searchTemplate = searchIssuesTemplate;
 
 export const searchIssuesAction: Action = {
   name: "SEARCH_LINEAR_ISSUES",
+  contexts: ["tasks", "connectors", "knowledge"],
+  contextGate: { anyOf: ["tasks", "connectors", "knowledge"] },
+  roleGate: { minRole: "USER" },
   description: "Search for issues in Linear with various filters",
   descriptionCompressed: "search issue Linear w/ various filter",
   similes: [

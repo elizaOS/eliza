@@ -143,6 +143,12 @@ Alex: Analysis paralysis. Pick reversible and iterate.
 export const characterGuideProvider: Provider = {
   name: "CHARACTER_GUIDE",
   description: "Lightweight character field reference with JSON to prompt mapping",
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "USER" },
+
   get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
     return {
       values: {

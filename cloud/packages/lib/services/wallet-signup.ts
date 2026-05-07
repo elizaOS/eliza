@@ -87,6 +87,7 @@ export async function findOrCreateUserByWalletAddress(
 
   try {
     const created = await usersRepository.create({
+      steward_user_id: `wallet:evm:${normalized}`,
       wallet_address: normalized,
       wallet_chain_type: "evm",
       wallet_verified: true,

@@ -5,8 +5,8 @@
  * All costs are in USD and represent actual credit deductions.
  *
  * PRICING MODEL:
- * - Base costs are what AI providers charge us
- * - User-facing costs = Base × PLATFORM_MARKUP (20% markup)
+ * - Raw costs are what AI providers charge us
+ * - Billed costs = raw cost × PLATFORM_MARKUP (20% markup)
  * - Some costs are hidden from users to avoid discouraging engagement
  *
  * AI Model Costs (base):
@@ -16,26 +16,26 @@
  */
 
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/billing";
-import { IMAGE_GENERATION_COST } from "@/lib/pricing-constants";
+import { BASE_IMAGE_GENERATION_COST } from "@/lib/pricing-constants";
 
 /** Platform markup: 20% on all AI costs */
 export const PLATFORM_MARKUP = PLATFORM_MARKUP_MULTIPLIER;
 
-// Base costs (what AI providers charge us)
-const BASE_IMAGE_COST = IMAGE_GENERATION_COST;
-const BASE_COPY_COST = 0.01;
-const BASE_DISCORD_POST_COST = 0.0005;
-const BASE_TELEGRAM_POST_COST = 0.0005;
-const BASE_TWITTER_POST_COST = 0.005;
-const BASE_PREVIEW_COST = 0.002;
+// Raw provider costs before platform markup.
+export const RAW_PROMO_IMAGE_COST = BASE_IMAGE_GENERATION_COST;
+export const RAW_AD_COPY_GENERATION_COST = 0.01;
+export const RAW_DISCORD_POST_COST = 0.0005;
+export const RAW_TELEGRAM_POST_COST = 0.0005;
+export const RAW_TWITTER_POST_COST = 0.005;
+export const RAW_PREVIEW_GENERATION_COST = 0.002;
 
-// User-facing costs (with 20% markup)
-export const PROMO_IMAGE_COST = BASE_IMAGE_COST * PLATFORM_MARKUP;
-export const AD_COPY_GENERATION_COST = BASE_COPY_COST * PLATFORM_MARKUP;
-export const DISCORD_POST_COST = BASE_DISCORD_POST_COST * PLATFORM_MARKUP;
-export const TELEGRAM_POST_COST = BASE_TELEGRAM_POST_COST * PLATFORM_MARKUP;
-export const TWITTER_POST_COST = BASE_TWITTER_POST_COST * PLATFORM_MARKUP;
-export const PREVIEW_GENERATION_COST = BASE_PREVIEW_COST * PLATFORM_MARKUP;
+// Billed costs with platform markup applied exactly once.
+export const PROMO_IMAGE_COST = RAW_PROMO_IMAGE_COST * PLATFORM_MARKUP;
+export const AD_COPY_GENERATION_COST = RAW_AD_COPY_GENERATION_COST * PLATFORM_MARKUP;
+export const DISCORD_POST_COST = RAW_DISCORD_POST_COST * PLATFORM_MARKUP;
+export const TELEGRAM_POST_COST = RAW_TELEGRAM_POST_COST * PLATFORM_MARKUP;
+export const TWITTER_POST_COST = RAW_TWITTER_POST_COST * PLATFORM_MARKUP;
+export const PREVIEW_GENERATION_COST = RAW_PREVIEW_GENERATION_COST * PLATFORM_MARKUP;
 
 // Automation setup is free (no AI involved)
 export const DISCORD_AUTOMATION_SETUP_COST = 0;

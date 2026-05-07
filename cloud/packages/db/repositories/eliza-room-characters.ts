@@ -15,7 +15,7 @@ import {
  */
 export const elizaRoomCharactersRepository = {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -165,7 +165,7 @@ export const elizaRoomCharactersRepository = {
   },
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

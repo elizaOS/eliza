@@ -206,6 +206,9 @@ async function runReview(
 
 export const prOpAction: Action = {
   name: GitHubActions.GITHUB_PR_OP,
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "LIST_PRS",
     "LIST_PULL_REQUESTS",
@@ -220,6 +223,69 @@ export const prOpAction: Action = {
     "Single router for GitHub PR ops: list and review. Review requires confirmed:true.",
   descriptionCompressed:
     "GitHub PR ops: list pull requests, submit review with confirmation.",
+  parameters: [
+    {
+      name: "op",
+      description: "PR operation: list or review.",
+      required: true,
+      schema: { type: "string", enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "repo",
+      description: "Repository in owner/name form.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "number",
+      description: "Pull request number for review.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "state",
+      description: "PR state for list.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["open", "closed", "all"],
+        default: "open",
+      },
+    },
+    {
+      name: "author",
+      description: "Optional PR author username filter for list.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "action",
+      description: "Review action: approve, request-changes, or comment.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["approve", "request-changes", "comment"],
+      },
+    },
+    {
+      name: "body",
+      description: "Review body for comment or request-changes.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "as",
+      description: "Identity to use: agent or user.",
+      required: false,
+      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+    },
+    {
+      name: "confirmed",
+      description: "Must be true to submit a review.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,

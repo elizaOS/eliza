@@ -5,6 +5,7 @@ import { MATRIX_SERVICE_NAME } from "../types.js";
 
 const RELEVANCE_KEYWORDS = ["matrix", "room", "rooms"] as const;
 const RELEVANCE_REGEX = /\b(?:matrix|rooms?)\b/i;
+const MAX_ROOMS_IN_STATE = 50;
 
 interface MatrixRoomEntry {
   roomId: string;
@@ -19,7 +20,11 @@ export const matrixRoomsProvider: Provider = {
   description: "Lists Matrix rooms the bot has joined with member counts and encryption status.",
   descriptionCompressed: "Joined Matrix rooms (members, encryption).",
   dynamic: true,
-  contexts: ["social", "connectors"],
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     const recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
@@ -39,30 +44,45 @@ export const matrixRoomsProvider: Provider = {
       return { data: {}, values: {}, text: "" };
     }
 
-    const rooms = await service.getJoinedRooms();
-    const entries: MatrixRoomEntry[] = rooms.map((r) => ({
-      roomId: r.roomId,
-      name: r.name ?? "",
-      alias: r.canonicalAlias ?? "",
-      memberCount: r.memberCount,
-      isEncrypted: r.isEncrypted,
-    }));
+    try {
+      const rooms = await service.getJoinedRooms();
+      const entries: MatrixRoomEntry[] = rooms.slice(0, MAX_ROOMS_IN_STATE).map((r) => ({
+        roomId: r.roomId,
+        name: r.name ?? "",
+        alias: r.canonicalAlias ?? "",
+        memberCount: r.memberCount,
+        isEncrypted: r.isEncrypted,
+      }));
+      const truncated = rooms.length > entries.length;
 
-    return {
-      data: {
-        roomCount: entries.length,
-        rooms: entries,
-      },
-      values: {
-        roomCount: entries.length,
-      },
-      text: JSON.stringify({
-        matrix_rooms: {
-          count: entries.length,
-          items: entries,
+      return {
+        data: {
+          roomCount: rooms.length,
+          shown: entries.length,
+          truncated,
+          rooms: entries,
         },
-      }),
-    };
+        values: {
+          roomCount: rooms.length,
+          shown: entries.length,
+          truncated,
+        },
+        text: JSON.stringify({
+          matrix_rooms: {
+            count: rooms.length,
+            shown: entries.length,
+            truncated,
+            items: entries,
+          },
+        }),
+      };
+    } catch (error) {
+      return {
+        data: { available: false, error: error instanceof Error ? error.message : String(error) },
+        values: {},
+        text: "",
+      };
+    }
   },
 };
 

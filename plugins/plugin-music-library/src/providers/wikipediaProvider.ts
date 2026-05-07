@@ -14,6 +14,10 @@ export const wikipediaProvider: Provider = {
     "Provides music information extracted from Wikipedia using LLM-based parsing",
   descriptionCompressed: "Music info from Wikipedia via LLM parsing.",
   position: 11, // After basic music info provider
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     logger.debug("[WIKIPEDIA_MUSIC Provider] Starting provider execution");

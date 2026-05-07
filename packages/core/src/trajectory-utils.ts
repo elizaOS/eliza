@@ -96,10 +96,29 @@ export type RecordLlmCallDetails = Omit<
 	response?: string;
 };
 
+/**
+ * Trajectory-shaped input for context-object export: either a slice of the
+ * canonical {@link Trajectory} type or a loosely-typed detail/DB row
+ * (`Record` metadata/metrics) used by trajectory services.
+ */
+export type ContextObjectTrajectoryExportTrajectoryInput =
+	| Partial<
+			Pick<Trajectory, "trajectoryId" | "agentId" | "metadata" | "metrics">
+	  >
+	| {
+			trajectoryId?: string;
+			agentId?: string;
+			source?: string;
+			status?: string;
+			startTime?: number;
+			endTime?: number;
+			durationMs?: number;
+			metadata?: Record<string, unknown>;
+			metrics?: Record<string, unknown>;
+	  };
+
 export type ContextObjectTrajectoryExportInput = {
-	trajectory?: Partial<
-		Pick<Trajectory, "trajectoryId" | "agentId" | "metadata" | "metrics">
-	> | null;
+	trajectory?: ContextObjectTrajectoryExportTrajectoryInput | null;
 	contextObject?: ContextObject | null;
 	events?: readonly ContextEvent[];
 	trajectoryId?: string;
@@ -300,7 +319,7 @@ export function buildContextObjectTrajectoryExport(
 	if (metrics) exportRecord.metrics = metrics;
 	if (sanitizedContextObject) {
 		exportRecord.contextObject =
-			sanitizedContextObject as ContextObjectTrajectoryExport["contextObject"];
+			sanitizedContextObject as unknown as ContextObjectTrajectoryExport["contextObject"];
 	}
 
 	return exportRecord;

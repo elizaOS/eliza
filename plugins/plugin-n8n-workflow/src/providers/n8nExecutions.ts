@@ -33,6 +33,10 @@ export const n8nExecutionsProvider: Provider = {
   name: 'n8nExecutions',
   description: 'Recent n8n workflow execution history (status, start/stop, errors).',
   descriptionCompressed: 'Recent n8n workflow execution history.',
+  contexts: ['automation', 'connectors'],
+  contextGate: { anyOf: ['automation', 'connectors'] },
+  cacheScope: 'turn',
+  roleGate: { minRole: 'ADMIN' },
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);

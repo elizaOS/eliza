@@ -39,10 +39,14 @@ export function createX402Fetch(
   config?: X402ClientConfig,
 ): typeof globalThis.fetch {
   const client = new X402Client(wallet, config);
-  return (input: string | URL | Request, init?: RequestInit) => {
+  const base = globalThis.fetch;
+  const impl = (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input.toString();
     return client.fetch(url, init);
   };
+  return Object.assign(impl, {
+    preconnect: base.preconnect.bind(base),
+  }) as typeof globalThis.fetch;
 }
 
 /**
@@ -60,7 +64,10 @@ export function wrapWithX402(
 ): typeof globalThis.fetch {
   const wrappedClient = new X402Client(wallet, config);
 
-  return async (input: string | URL | Request, init?: RequestInit) => {
+  const impl = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
     const url = input instanceof Request ? input.url : input.toString();
     const response = await fetchFn(input, init);
 
@@ -78,4 +85,8 @@ export function wrapWithX402(
     // Use the client's fetch for retry (which calls globalThis.fetch)
     return wrappedClient.fetch(url, init);
   };
+  const base = globalThis.fetch;
+  return Object.assign(impl, {
+    preconnect: base.preconnect.bind(base),
+  }) as typeof globalThis.fetch;
 }

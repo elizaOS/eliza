@@ -21,10 +21,20 @@ import type { ContextDefinition } from "../types/contexts";
 export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 	Object.freeze([
 		{
+			id: "simple",
+			label: "Simple",
+			description:
+				"Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from its own knowledge.",
+			sensitivity: "public",
+			cacheStable: true,
+			cacheScope: "global",
+			aliases: ["direct", "shortcut"],
+		},
+		{
 			id: "general",
 			label: "General",
 			description:
-				"Normal conversation, public agent behavior, and short replies that need no tools.",
+				"Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.",
 			sensitivity: "public",
 			cacheStable: true,
 			cacheScope: "global",
@@ -158,9 +168,21 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			roleGate: { minRole: "OWNER" },
 		},
 		{
+			id: "finance",
+			label: "Finance",
+			description:
+				"Money, balances, portfolio value, accounts, invoices, and financial overview questions.",
+			sensitivity: "private",
+			cacheScope: "turn",
+			aliases: ["money", "balance", "balances", "portfolio"],
+			subcontexts: ["payments", "wallet", "crypto"],
+			roleGate: { minRole: "OWNER" },
+		},
+		{
 			id: "payments",
 			label: "Payments",
 			description: "Payment methods, invoices, and financial workflows.",
+			parent: "finance",
 			sensitivity: "private",
 			cacheScope: "turn",
 			roleGate: { minRole: "OWNER" },
@@ -169,9 +191,23 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "wallet",
 			label: "Wallet",
 			description:
-				"Crypto wallet operations: balances, transfers, swaps, signing.",
+				"Wallet and account operations: balances, transfers, swaps, signing, and portfolio holdings.",
+			parents: ["finance"],
 			sensitivity: "private",
 			cacheScope: "turn",
+			aliases: ["account_balance", "wallet_balance"],
+			subcontexts: ["crypto"],
+			roleGate: { minRole: "OWNER" },
+		},
+		{
+			id: "crypto",
+			label: "Crypto",
+			description:
+				"Crypto assets, tokens, DeFi positions, wallet balances, swaps, bridges, and on-chain transfers.",
+			parents: ["finance", "wallet"],
+			sensitivity: "private",
+			cacheScope: "turn",
+			aliases: ["web3", "defi", "token", "tokens", "onchain", "on-chain"],
 			roleGate: { minRole: "OWNER" },
 		},
 		{

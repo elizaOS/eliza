@@ -3024,6 +3024,8 @@ export const calendarAction: Action & {
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
     "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
+  contexts: ["calendar", "contacts", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     return hasLifeOpsAccess(runtime, message);
@@ -3273,7 +3275,7 @@ export const calendarAction: Action & {
         // window preset is supplied. Catch that case here so the user gets a
         // useful prompt instead of "startAt is required when windowPreset is
         // not provided" — and so the failure path doesn't re-trigger the
-        // action via post-action continuation.
+        // action through planner follow-up.
         if (!resolvedStartAt && !resolvedWindowPreset) {
           const suggestedStartAt = title
             ? suggestCreateEventStartAt({

@@ -37,7 +37,10 @@ describe("context registry", () => {
 			"health",
 			"screen_time",
 			"subscriptions",
+			"finance",
 			"payments",
+			"wallet",
+			"crypto",
 			"messaging",
 			"social_posting",
 			"automation",
@@ -59,7 +62,7 @@ describe("context registry", () => {
 			filterByContextGate(candidates, ["lifeops"], ["MEMBER"]).map(
 				(candidate) => candidate.name,
 			),
-		).toEqual(["calendar"]);
+		).toEqual(["calendar", "wallet"]);
 		expect(
 			filterByContextGate(candidates, ["admin"], ["OWNER"]).map(
 				(candidate) => candidate.name,

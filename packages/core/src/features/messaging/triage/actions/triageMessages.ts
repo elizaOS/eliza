@@ -10,10 +10,18 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseTriageParams } from "./_shared.ts";
+import {
+	limitParameter,
+	messageSourceParameter,
+	parseTriageParams,
+	sinceMsParameter,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const triageMessagesAction: Action = {
 	name: "TRIAGE_MESSAGES",
+	contexts: ["messaging", "email", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp), score each one with deterministic contact+urgency heuristics, and return a priority-ranked list.",
 	similes: [
@@ -22,6 +30,7 @@ export const triageMessagesAction: Action = {
 		"RANK_INBOX",
 		"SCAN_MESSAGES",
 	],
+	parameters: [messageSourceParameter, limitParameter, sinceMsParameter],
 	examples: [
 		[
 			{
@@ -40,9 +49,10 @@ export const triageMessagesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, ["messaging", "email", "knowledge"]),
 
 	handler: async (
 		runtime: IAgentRuntime,

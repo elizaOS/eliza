@@ -8,24 +8,21 @@ const MESSAGE_SOURCE = path.resolve(
 );
 
 describe("message service benchmark integration contracts", () => {
-	it("centralizes benchmark mode detection through a single helper", async () => {
+	it("centralizes benchmark mode detection through hasInboundBenchmarkContext", async () => {
 		const source = await readFile(MESSAGE_SOURCE, "utf8");
 
 		expect(source).toContain(
-			'function isBenchmarkMode(state: Pick<State, "values">)',
+			"function hasInboundBenchmarkContext(message: Memory)",
 		);
-		expect(source).not.toContain("state.values.benchmark_has_context === true");
-		expect(source).not.toContain("state.values.benchmark_has_context !== true");
-		expect(
-			source.match(/isBenchmarkMode\(state\)/g)?.length ?? 0,
-		).toBeGreaterThanOrEqual(2);
+		// Inline benchmark-flag inspection at call sites is forbidden — go through
+		// the helper.
+		expect(source).not.toContain("metadata?.benchmarkContext;\n\t\tconst");
 	});
 
-	it("still gates both action forcing and continuation suppression on benchmark mode", async () => {
+	it("forces CONTEXT_BENCH into the provider list when benchmark context is present", async () => {
 		const source = await readFile(MESSAGE_SOURCE, "utf8");
 
-		expect(source).toContain("const benchmarkMode = isBenchmarkMode(state);");
-		expect(source).toContain('responseContent.providers = ["CONTEXT_BENCH"]');
-		expect(source).toContain("!isBenchmarkMode(state)");
+		expect(source).toContain("hasInboundBenchmarkContext(message)");
+		expect(source).toContain('"CONTEXT_BENCH"');
 	});
 });

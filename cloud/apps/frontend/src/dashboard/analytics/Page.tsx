@@ -1,7 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { AnalyticsPageClient } from "@/packages/ui/src/components/analytics/analytics-page-client";
+import { AnalyticsPageClient } from "./_components/analytics-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import {
   type AnalyticsBreakdown,

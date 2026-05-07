@@ -12,8 +12,8 @@
 
 "use client";
 
-import { Button, ScrollArea } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { Button, ScrollArea } from "../primitives";
+import Image from "../../runtime/image";
 import { ImagePlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";

@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
-import { ElizaAvatar } from "@/packages/ui/src/components/chat/eliza-avatar";
+import { ElizaAvatar } from "../chat/eliza-avatar";
 import { BrandButton } from "../brand/brand-button";
 import {
   DropdownMenu,

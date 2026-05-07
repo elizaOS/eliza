@@ -15,6 +15,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SEARCH_CONTACTS");
@@ -24,6 +25,44 @@ const SEARCH_KEYWORDS = getValidationKeywordTerms(
 		includeAllLocales: true,
 	},
 );
+
+const MAX_RESULT_TEXT_LENGTH = 1200;
+const MAX_ERROR_LENGTH = 240;
+const MAX_CONTACT_RESULTS = 25;
+const MAX_CATEGORIES = 8;
+const MAX_TAGS = 12;
+
+function limitText(value: string, maxLength = MAX_RESULT_TEXT_LENGTH): string {
+	return value.length > maxLength
+		? `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`
+		: value;
+}
+
+function limitError(value: unknown): string {
+	const text = value instanceof Error ? value.message : String(value);
+	return limitText(text, MAX_ERROR_LENGTH);
+}
+
+function invalidResult(
+	text: string,
+	error: string,
+	data: Record<string, unknown> = {},
+): ActionResult {
+	return {
+		success: false,
+		text: limitText(text),
+		error,
+		values: {
+			success: false,
+			error,
+		},
+		data: {
+			actionName: "SEARCH_CONTACTS",
+			error,
+			...data,
+		},
+	};
+}
 
 interface SearchContactsInput {
 	categories?: string | string[];
@@ -78,6 +117,8 @@ function readSearchContactsInput(
 
 export const searchContactsAction: Action = {
 	name: spec.name,
+	contexts: ["contacts", "messaging", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	suppressPostActionContinuation: true,
@@ -86,7 +127,7 @@ export const searchContactsAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
 		// Check if RelationshipsService is available
@@ -99,7 +140,23 @@ export const searchContactsAction: Action = {
 		}
 
 		const params = readSearchContactsInput(message, options);
-		if (params.searchTerm || params.categories || params.tags) return true;
+		const categories = readStringArray(params.categories);
+		const tags = readStringArray(params.tags);
+		if (
+			params.searchTerm ||
+			(categories && categories.length <= MAX_CATEGORIES) ||
+			(tags && tags.length <= MAX_TAGS)
+		) {
+			return true;
+		}
+		if (
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["contacts", "messaging", "knowledge"],
+				keywordKeys: ["action.searchContacts.request"],
+			})
+		) {
+			return true;
+		}
 
 		// Check if message contains intent to search/list contacts
 		const messageText = message.content.text ?? "";
@@ -119,60 +176,74 @@ export const searchContactsAction: Action = {
 		) as RelationshipsService;
 
 		if (!relationshipsService) {
-			throw new Error("RelationshipsService not available");
+			return invalidResult(
+				"Contacts are unavailable right now.",
+				"RelationshipsService not available",
+			);
 		}
 
-		const parsedResponse = readSearchContactsInput(message, _options);
+		try {
+			const parsedResponse = readSearchContactsInput(message, _options);
 
-		// Build search criteria
-		const criteria: {
-			categories?: string[];
-			tags?: string[];
-			searchTerm?: string;
-		} = {};
+			const criteria: {
+				categories?: string[];
+				tags?: string[];
+				searchTerm?: string;
+			} = {};
 
-		const categories = readStringArray(parsedResponse.categories);
-		if (categories) criteria.categories = categories;
+			const categories = readStringArray(parsedResponse.categories)?.slice(
+				0,
+				MAX_CATEGORIES,
+			);
+			if (categories) criteria.categories = categories;
 
-		if (parsedResponse?.searchTerm) {
-			criteria.searchTerm = parsedResponse.searchTerm;
-		}
+			if (parsedResponse?.searchTerm) {
+				criteria.searchTerm = parsedResponse.searchTerm;
+			}
 
-		const tags = readStringArray(parsedResponse.tags);
-		if (tags) criteria.tags = tags;
+			const tags = readStringArray(parsedResponse.tags)?.slice(0, MAX_TAGS);
+			if (tags) criteria.tags = tags;
 
-		// Search contacts
-		const contacts = await relationshipsService.searchContacts(criteria);
+			if (!criteria.searchTerm && !criteria.categories && !criteria.tags) {
+				return invalidResult(
+					"I need a name, category, or tag to search contacts.",
+					"Missing search criteria",
+				);
+			}
 
-		// Get entity names for each contact
-		const contactDetails = await Promise.all(
-			contacts.map(async (contact) => {
-				const entity = await runtime.getEntityById(contact.entityId);
-				const displayName =
-					typeof contact.customFields.displayName === "string"
-						? contact.customFields.displayName
-						: null;
-				return {
-					contact,
-					entity,
-					name: entity?.names[0] || displayName || "Unknown",
-				};
-			}),
-		);
+			const contacts = (
+				await relationshipsService.searchContacts(criteria)
+			).slice(0, MAX_CONTACT_RESULTS);
 
-		// Format response
-		let responseText = "";
+			const contactDetails = await Promise.all(
+				contacts.map(async (contact) => {
+					const entity = await runtime.getEntityById(contact.entityId);
+					const displayName =
+						typeof contact.customFields.displayName === "string"
+							? contact.customFields.displayName
+							: null;
+					return {
+						contact,
+						entity,
+						name: entity?.names[0] || displayName || "Unknown",
+					};
+				}),
+			);
 
-		if (contactDetails.length === 0) {
-			responseText = "No contacts found matching your criteria.";
-		} else if (parsedResponse?.intent === "count") {
-			responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
-		} else {
-			// Group by category if searching all
-			if (!criteria.categories || criteria.categories.length === 0) {
+			let responseText = "";
+
+			if (contactDetails.length === 0) {
+				responseText = "No contacts found matching your criteria.";
+			} else if (parsedResponse?.intent === "count") {
+				responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
+			} else if (!criteria.categories || criteria.categories.length === 0) {
 				const grouped: Record<string, typeof contactDetails> = {};
 				for (const item of contactDetails) {
-					for (const cat of item.contact.categories) {
+					const itemCategories = item.contact.categories.slice(
+						0,
+						MAX_CATEGORIES,
+					);
+					for (const cat of itemCategories) {
 						const bucket = grouped[cat];
 						if (bucket) {
 							bucket.push(item);
@@ -196,8 +267,9 @@ export const searchContactsAction: Action = {
 					);
 					for (const item of items) {
 						let line = `- ${item.name}`;
-						if (item.contact.tags.length > 0) {
-							line += ` [${item.contact.tags.join(", ")}]`;
+						const itemTags = item.contact.tags.slice(0, MAX_TAGS);
+						if (itemTags.length > 0) {
+							line += ` [${itemTags.join(", ")}]`;
 						}
 						lines.push(line);
 					}
@@ -209,46 +281,60 @@ export const searchContactsAction: Action = {
 				const lines = [`Your ${categoryName}s:`];
 				for (const item of contactDetails) {
 					let line = `- ${item.name}`;
-					if (item.contact.tags.length > 0) {
-						line += ` [${item.contact.tags.join(", ")}]`;
+					const itemTags = item.contact.tags.slice(0, MAX_TAGS);
+					if (itemTags.length > 0) {
+						line += ` [${itemTags.join(", ")}]`;
 					}
 					lines.push(line);
 				}
 				responseText = lines.join("\n");
 			}
-		}
 
-		if (callback) {
-			await callback({
-				text: responseText,
-				action: "SEARCH_CONTACTS",
-				metadata: {
+			responseText = limitText(responseText);
+
+			if (callback) {
+				await callback({
+					text: responseText,
+					action: "SEARCH_CONTACTS",
+					metadata: {
+						count: contactDetails.length,
+						criteria,
+						success: true,
+					},
+				});
+			}
+
+			return {
+				success: true,
+				values: {
 					count: contactDetails.length,
 					criteria,
-					success: true,
 				},
+				data: {
+					actionName: "SEARCH_CONTACTS",
+					count: contactDetails.length,
+					criteria,
+					contacts: contactDetails.map((d) => ({
+						id: d.contact.entityId,
+						name: d.name,
+						categories: d.contact.categories.slice(0, MAX_CATEGORIES),
+						tags: d.contact.tags.slice(0, MAX_TAGS),
+					})),
+					truncated: contacts.length === MAX_CONTACT_RESULTS,
+				},
+				text: responseText,
+			};
+		} catch (error) {
+			const errorMessage = limitError(error);
+			logger.error("[SearchContacts] Error:", errorMessage);
+			const responseText = "I hit an error while searching contacts.";
+			await callback?.({
+				text: responseText,
+				error: errorMessage,
+				action: "SEARCH_CONTACTS",
 			});
+			return invalidResult(responseText, errorMessage);
 		}
-
-		return {
-			success: true,
-			values: {
-				count: contactDetails.length,
-				criteria,
-			},
-			data: {
-				actionName: "SEARCH_CONTACTS",
-				count: contactDetails.length,
-				criteria,
-				contacts: contactDetails.map((d) => ({
-					id: d.contact.entityId,
-					name: d.name,
-					categories: d.contact.categories,
-					tags: d.contact.tags,
-				})),
-			},
-			text: responseText,
-		};
 	},
 	parameters: [
 		{

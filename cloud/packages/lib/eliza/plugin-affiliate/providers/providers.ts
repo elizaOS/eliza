@@ -19,6 +19,12 @@ import { addHeader } from "@elizaos/core";
 export const providersProvider: Provider = {
   name: "PROVIDERS",
   description: "List of all data providers the agent can use to get additional information",
+  contexts: ["general", "media"],
+  contextGate: { anyOf: ["general", "media"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const allProviders = runtime.providers;
 

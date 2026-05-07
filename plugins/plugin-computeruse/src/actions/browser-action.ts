@@ -82,6 +82,9 @@ async function executeBrowserActionWithAutoOpen(
 
 export const browserAction: Action = {
   name: "BROWSER_ACTION",
+  contexts: ["browser", "automation"],
+  contextGate: { anyOf: ["browser", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CONTROL_BROWSER",
     "WEB_BROWSER",

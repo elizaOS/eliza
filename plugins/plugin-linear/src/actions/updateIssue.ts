@@ -23,6 +23,9 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const updateIssueAction: Action = {
   name: "UPDATE_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Update an existing Linear issue",
   similes: [
     "update-linear-issue",
@@ -30,6 +33,50 @@ export const updateIssueAction: Action = {
     "modify-linear-issue",
     "move-linear-issue",
     "change-linear-issue",
+  ],
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue id or issue identifier to update.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "title",
+      description: "Optional replacement title for the issue.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "description",
+      description: "Optional replacement description for the issue.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "priority",
+      description: "Optional priority update.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "teamKey",
+      description: "Optional Linear team key to move the issue into.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "assignee",
+      description: "Optional assignee email or display name.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "labelNames",
+      description: "Optional list of label names to set on the issue.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
   ],
 
   examples: [

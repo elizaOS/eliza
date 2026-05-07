@@ -13,7 +13,7 @@ export type { CliAuthSession, NewCliAuthSession };
  */
 export class CliAuthSessionsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -44,7 +44,7 @@ export class CliAuthSessionsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

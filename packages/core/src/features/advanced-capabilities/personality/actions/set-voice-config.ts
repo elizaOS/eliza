@@ -10,6 +10,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 
 type VoiceProvider = "elevenlabs" | "edge";
@@ -42,6 +43,8 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
  */
 export const setVoiceConfigAction: Action = {
 	name: "SET_VOICE_CONFIG",
+	contexts: ["settings", "media", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"UPDATE_VOICE_CONFIG",
 		"SET_TTS",
@@ -82,9 +85,21 @@ export const setVoiceConfigAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["settings", "media", "agent_internal"],
+			keywords: [
+				"voice",
+				"tts",
+				"text to speech",
+				"elevenlabs",
+				"voice id",
+				"voice model",
+				"change voice",
+			],
+		}),
 
 	handler: async (
 		runtime: IAgentRuntime,

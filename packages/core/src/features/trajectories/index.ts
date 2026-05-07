@@ -383,6 +383,7 @@ export const trajectoriesPlugin: Plugin = {
 
 export default trajectoriesPlugin;
 
+export type { TrajectoryExportOptions } from "../../services/trajectory-types.ts";
 // ==========================================
 // ACTION-LEVEL INSTRUMENTATION
 // For manual trajectory collection in actions
@@ -409,7 +410,6 @@ export * from "./integration";
 // ==========================================
 export * from "./reward-service";
 export type {
-	TrajectoryExportOptions,
 	TrajectoryListItem,
 	TrajectoryListOptions,
 	TrajectoryListResult,

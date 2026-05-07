@@ -75,9 +75,7 @@ app.post("/", async (c) => {
           const owner = await usersService.getById(char.user_id);
           if (
             owner &&
-            (owner.is_anonymous === true ||
-              (owner.email?.includes("@anonymous.elizacloud.ai") &&
-                !owner.steward_user_id))
+            (owner.is_anonymous === true || owner.email?.includes("@anonymous.elizacloud.ai"))
           ) {
             const room = rooms.find((r) => r.agentId === char.id);
             claimableCharacters.push({

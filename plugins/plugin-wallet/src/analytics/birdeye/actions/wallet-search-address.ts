@@ -36,6 +36,76 @@ function readKind(
   return extractAddresses(text).length > 0 ? "wallet-address" : "token-symbol";
 }
 
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function hasBirdeyeIntent(message: Memory, state?: State): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  const keywords = [
+    "birdeye",
+    "wallet",
+    "token",
+    "lookup",
+    "search",
+    "portfolio",
+    "address",
+    "crypto",
+    "symbol",
+    "cartera",
+    "token",
+    "buscar",
+    "adresse",
+    "portefeuille",
+    "rechercher",
+    "wallet",
+    "adresse",
+    "suchen",
+    "ウォレット",
+    "トークン",
+    "検索",
+    "钱包",
+    "代币",
+    "搜索",
+    "지갑",
+    "토큰",
+    "검색",
+  ];
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
 export const walletSearchAddressAction = {
   name: "BIRDEYE_LOOKUP",
   similes: [
@@ -56,6 +126,26 @@ export const walletSearchAddressAction = {
     "Look up Birdeye intel for a wallet, token contract, or token symbol via { kind: 'wallet-address' | 'token-address' | 'token-symbol', query }.",
   descriptionCompressed:
     "Birdeye lookup: token-symbol, token-address, wallet-address.",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "kind",
+      description: "Lookup mode.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["wallet-address", "token-address", "token-symbol"],
+      },
+    },
+    {
+      name: "query",
+      description: "Wallet address, token address, or token symbol to look up.",
+      required: true,
+      schema: { type: "string" },
+    },
+  ],
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -76,7 +166,11 @@ export const walletSearchAddressAction = {
           mode: kind === "token-address" ? "address" : "symbol",
         });
         callback?.({ text: result.text });
-        return;
+        return {
+          success: true,
+          text: result.text,
+          data: result,
+        };
       }
 
       const provider = new BirdeyeProvider(runtime);
@@ -118,21 +212,41 @@ export const walletSearchAddressAction = {
         .join("\n\n")}`;
 
       callback?.({ text: completeResults });
+      return {
+        success: true,
+        text: completeResults,
+        data: {
+          kind,
+          resultCount: results.length,
+          results,
+        },
+      };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       runtime.logger?.error("Error in searchTokens handler:", errorMessage);
       callback?.({ text: `Error: ${errorMessage}` });
+      return {
+        success: false,
+        text: `Error: ${errorMessage}`,
+        error: errorMessage,
+      };
     }
   },
-  validate: async (_runtime: IAgentRuntime, message: Memory) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    if (selectedContextMatches(state, ["finance", "crypto", "wallet"])) {
+      return true;
+    }
     const text = message.content?.text ?? "";
     if (!text || typeof text !== "string") return false;
     if (extractAddresses(text).length > 0) return true;
     // Allow token-symbol lookups when text contains $TICKER or "lookup/search/birdeye"
     if (/\$[A-Z]{2,10}\b/.test(text)) return true;
-    return /\b(birdeye|lookup|search\s+(?:token|wallet|symbol|address))\b/i.test(
-      text,
+    return (
+      hasBirdeyeIntent(message, state) &&
+      /\b(birdeye|lookup|search\s+(?:token|wallet|symbol|address))\b/i.test(
+        text,
+      )
     );
   },
   examples: [

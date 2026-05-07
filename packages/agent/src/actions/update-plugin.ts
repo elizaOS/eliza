@@ -33,6 +33,8 @@ interface PluginUpdateResponse {
 
 export const updatePluginAction: Action = {
   name: "UPDATE_PLUGIN",
+  contexts: ["admin", "settings", "connectors"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "UPGRADE_PLUGIN",

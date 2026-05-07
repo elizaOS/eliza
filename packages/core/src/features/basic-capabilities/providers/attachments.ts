@@ -4,12 +4,14 @@ import type {
 	Media,
 	Memory,
 	Provider,
+	ProviderResult,
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ATTACHMENTS");
 const MAX_VISIBLE_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_MEMORY_LOOKBACK = 50;
 
 type AttachmentWithCreatedAt = Media & {
 	_createdAt?: number;
@@ -68,9 +70,22 @@ export const attachmentsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
-	get: async (runtime: IAgentRuntime, message: Memory) => {
+	contexts: ["media", "messaging"],
+	contextGate: { anyOf: ["media", "messaging"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+	): Promise<ProviderResult> => {
+		try {
 		const { roomId } = message;
-		const conversationLength = runtime.getConversationLength();
+		const conversationLength = Math.min(
+			runtime.getConversationLength(),
+			MAX_ATTACHMENT_MEMORY_LOOKBACK,
+		);
 
 		const recentMessagesData = await runtime.getMemories({
 			roomId,
@@ -129,10 +144,24 @@ export const attachmentsProvider: Provider = {
 			omittedCount,
 		};
 
-		return {
-			values,
-			data,
-			text,
-		};
+			return {
+				values,
+				data,
+				text,
+			};
+		} catch (error) {
+			return {
+				values: {
+					attachments: "",
+				},
+				data: {
+					attachments: [],
+					visibleAttachments: [],
+					omittedCount: 0,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				text: "",
+			};
+		}
 	},
 };

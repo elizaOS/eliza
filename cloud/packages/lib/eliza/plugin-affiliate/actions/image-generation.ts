@@ -706,12 +706,40 @@ Your response should include the valid XML block and nothing else.`;
  */
 export const generateImageAction = {
   name: "GENERATE_IMAGE",
+  contexts: ["general", "media"],
+  contextGate: { anyOf: ["general", "media"] },
   description:
     "Generate an AI image. ONLY use when user EXPLICITLY requests an image/picture/photo/selfie. NEVER use for normal conversation, greetings, questions, or text responses.",
   similes: ["CREATE_IMAGE", "DRAW_IMAGE", "SHOW_IMAGE", "SEND_PICTURE", "TAKE_SELFIE"],
-  validate: async (_runtime: IAgentRuntime, message: Memory) => {
+  parameters: [
+    {
+      name: "prompt",
+      description: "Optional direct image prompt or visual request from the user.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
     // STRICT validation - only trigger for EXPLICIT image requests
-    const text = message?.content?.text?.toLowerCase() || "";
+    const textParts: string[] = [];
+    const messageText = message?.content?.text;
+    if (typeof messageText === "string") textParts.push(messageText);
+    for (const key of ["conversationLog", "recentMessages", "receivedMessageHeader"]) {
+      const value = state?.values?.[key];
+      if (typeof value === "string") textParts.push(value);
+    }
+    const text = textParts.join("\n").toLowerCase();
+    const selectedContexts = [
+      state?.data?.selectedContexts,
+      state?.data?.activeContexts,
+      state?.data?.contexts,
+      state?.values?.selectedContexts,
+      state?.values?.activeContexts,
+      state?.values?.contexts,
+    ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+    const mediaContextSelected = selectedContexts.some(
+      (context) => String(context).toLowerCase() === "media",
+    );
 
     // Must contain one of these EXPLICIT image request phrases
     const imageRequestKeywords = [
@@ -756,19 +784,66 @@ export const generateImageAction = {
       "your picture",
       "your photo",
       "your selfie",
+      "genera imagen",
+      "crear imagen",
+      "haz una imagen",
+      "dibuja",
+      "foto",
+      "selfie",
+      "retrato",
+      "muestrame",
+      "muéstrame",
+      "genere une image",
+      "génère une image",
+      "creer une image",
+      "créer une image",
+      "dessine",
+      "photo",
+      "portrait",
+      "montre moi",
+      "bild generieren",
+      "erstelle ein bild",
+      "zeichne",
+      "foto",
+      "portrat",
+      "porträt",
+      "zeig mir",
+      "genera immagine",
+      "crea immagine",
+      "disegna",
+      "ritratto",
+      "mostrami",
+      "gerar imagem",
+      "criar imagem",
+      "desenhe",
+      "mostre me",
+      "生成图片",
+      "生成图像",
+      "画",
+      "照片",
+      "自拍",
+      "画像を生成",
+      "写真",
+      "自撮り",
     ];
 
     // Check if any keyword matches
     const hasImageRequest = imageRequestKeywords.some((keyword) => text.includes(keyword));
+    const content = message.content as Record<string, unknown>;
+    const hasPromptParam =
+      !!(content.actionParams as Record<string, unknown> | undefined)?.prompt ||
+      !!(state?.data?.actionParams as Record<string, unknown> | undefined)?.prompt;
 
-    if (!hasImageRequest) {
+    if (!mediaContextSelected && !hasImageRequest && !hasPromptParam) {
       logger.debug(
         `[GENERATE_IMAGE] Skipped - no explicit image request in: "${text.substring(0, 50)}..."`,
       );
       return false;
     }
 
-    logger.info(`[GENERATE_IMAGE] Triggered - user explicitly requested image`);
+    logger.info(
+      `[GENERATE_IMAGE] Triggered - media context, prompt parameter, or image request matched`,
+    );
     return true;
   },
   handler: async (

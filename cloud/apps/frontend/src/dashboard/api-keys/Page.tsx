@@ -1,13 +1,9 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { ApiKeysPage as ApiKeysPageView } from "@/packages/ui/src/components/api-keys/api-keys-page";
-import type {
-  ApiKeyDisplay,
-  ApiKeyStatus,
-  ApiKeysSummaryData,
-} from "@/packages/ui/src/components/api-keys/types";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApiKeys } from "../../lib/data/api-keys";
+import { ApiKeysPage as ApiKeysPageView } from "./_components/api-keys-page";
+import type { ApiKeyDisplay, ApiKeyStatus, ApiKeysSummaryData } from "./_components/types";
 
 function getApiKeyStatus(isActive: boolean, expiresAt: string | null): ApiKeyStatus {
   if (!isActive) return "inactive";

@@ -1,4 +1,8 @@
-"""Synthesize Phase-4 evaluator records via Anthropic Claude Opus 4.7.
+"""Legacy TOON synthesizer for Phase-4 evaluator records.
+
+This script is not a native v5 JSON export path yet. It remains quarantined
+for compatibility corpus rebuilds until the teacher prompts and validators are
+rewritten around JSON targets.
 
 Targets (one record-shape per evaluator — pulled directly from the
 template literal at `eliza/packages/core/src/prompts.ts`):

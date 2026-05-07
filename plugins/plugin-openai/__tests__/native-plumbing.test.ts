@@ -1,6 +1,45 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const aiMocks = vi.hoisted(() => ({
+  generateText: vi.fn(),
+  streamText: vi.fn(),
+}));
+
+vi.mock("ai", () => ({
+  generateText: aiMocks.generateText,
+  streamText: aiMocks.streamText,
+  jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
+  Output: {
+    object: ({
+      schema,
+      name,
+      description,
+    }: {
+      schema: unknown;
+      name?: string;
+      description?: string;
+    }) => ({
+      name: "object",
+      responseFormat: Promise.resolve({
+        type: "json",
+        schema: (schema as { jsonSchema?: unknown }).jsonSchema ?? schema,
+        ...(name ? { name } : {}),
+        ...(description ? { description } : {}),
+      }),
+      parseCompleteOutput: async ({ text }: { text: string }) => JSON.parse(text),
+      parsePartialOutput: async () => undefined,
+      createElementStreamTransform: () => undefined,
+    }),
+  },
+}));
+
+vi.mock("../providers", () => ({
+  createOpenAIClient: () => ({
+    chat: (modelName: string) => ({ modelName }),
+  }),
+}));
+
 function createRuntime() {
   return {
     character: { name: "Ada", system: "system prompt" },
@@ -18,29 +57,17 @@ function createRuntime() {
 }
 
 afterEach(() => {
-  vi.doUnmock("ai");
-  vi.doUnmock("../providers");
   vi.clearAllMocks();
-  vi.resetModules();
 });
 
 describe("OpenAI native text plumbing", () => {
   it("passes messages, tools, toolChoice, schema, and provider options through", async () => {
-    const generateText = vi.fn(async () => ({
+    aiMocks.generateText.mockResolvedValue({
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 },
-    }));
-    vi.doMock("ai", () => ({
-      generateText,
-      streamText: vi.fn(),
-    }));
-    vi.doMock("../providers", () => ({
-      createOpenAIClient: () => ({
-        chat: (modelName: string) => ({ modelName }),
-      }),
-    }));
+    });
 
     const { handleTextSmall } = await import("../models/text");
     const messages = [{ role: "user", content: "use the tool" }];
@@ -61,7 +88,7 @@ describe("OpenAI native text plumbing", () => {
       },
     } as never)) as unknown as Record<string, unknown>;
 
-    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
     expect(call.messages).toBe(messages);
     expect(call).not.toHaveProperty("prompt");
     expect(call.tools).toBe(tools);
@@ -84,7 +111,13 @@ describe("OpenAI native text plumbing", () => {
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
-      usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10, cachedPromptTokens: 5 },
+      usage: {
+        promptTokens: 7,
+        completionTokens: 3,
+        totalTokens: 10,
+        cachedPromptTokens: 5,
+        cacheReadInputTokens: 5,
+      },
     });
   }, 60_000);
 });

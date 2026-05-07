@@ -28,6 +28,8 @@ interface PluginUninstallResponse {
 
 export const uninstallPluginAction: Action = {
   name: "UNINSTALL_PLUGIN",
+  contexts: ["admin", "settings", "connectors"],
+  roleGate: { minRole: "OWNER" },
 
   similes: ["REMOVE_PLUGIN", "DELETE_PLUGIN", "DROP_PLUGIN", "PURGE_PLUGIN"],
 

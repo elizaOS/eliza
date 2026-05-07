@@ -880,7 +880,7 @@ export class MessageManager {
 
 					// Dedup: error when the runtime emits identical text
 					// twice in response to the same inbound message (e.g.
-					// post-action continuation repeating action output).
+					// planner follow-up repeating action output).
 					if (hasText && content.inReplyTo) {
 						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
 						const callbackDedup = message as DiscordMessage & {

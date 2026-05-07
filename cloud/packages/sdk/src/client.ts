@@ -94,8 +94,11 @@ export class ElizaCloudClient {
       ...options,
       baseUrl: this.baseUrl,
     });
-    this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey);
-    this.v1.setBearerToken(options.bearerToken);
+    this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
+      bearerToken: options.bearerToken,
+      defaultHeaders: options.defaultHeaders,
+      fetchImpl: options.fetchImpl,
+    });
     this.routes = new ElizaCloudPublicRoutesClient(this);
   }
 

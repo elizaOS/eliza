@@ -75,6 +75,9 @@ function readLimit(options: unknown): number {
 
 export const searchYouTube: Action = {
   name: "SEARCH_YOUTUBE",
+  contexts: ["media", "web", "knowledge"],
+  contextGate: { anyOf: ["media", "web", "knowledge"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "FIND_YOUTUBE",
     "SEARCH_YOUTUBE_VIDEO",

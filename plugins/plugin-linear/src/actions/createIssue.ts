@@ -22,8 +22,29 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const createIssueAction: Action = {
   name: "CREATE_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Create a new issue in Linear",
   descriptionCompressed: "create new issue Linear",
+  parameters: [
+    {
+      name: "issueData",
+      description: "Structured Linear issue fields.",
+      required: false,
+      schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          priority: { type: "number" },
+          teamId: { type: "string" },
+          assigneeId: { type: "string" },
+          labelIds: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  ],
   similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
 
   examples: [

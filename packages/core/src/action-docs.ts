@@ -7,6 +7,7 @@ import type {
 	Action,
 	ActionExample,
 	ActionParameter,
+	ActionParameterSchema,
 	EvaluationExample,
 	Evaluator,
 	Provider,
@@ -41,6 +42,31 @@ const coreActionDocByName: ActionDocByName =
 		return acc;
 	}, {});
 
+function cloneActionParameterSchema(
+	schema: NonNullable<
+		(typeof allActionDocs)[number]["parameters"]
+	>[number]["schema"],
+): ActionParameterSchema {
+	const properties = schema.properties
+		? Object.fromEntries(
+				Object.entries(schema.properties).map(([key, value]) => [
+					key,
+					cloneActionParameterSchema(value),
+				]),
+			)
+		: undefined;
+
+	return {
+		...schema,
+		enum: schema.enum ? [...schema.enum] : undefined,
+		enumValues: schema.enum ? [...schema.enum] : undefined,
+		properties,
+		items: schema.items ? cloneActionParameterSchema(schema.items) : undefined,
+		oneOf: schema.oneOf?.map(cloneActionParameterSchema),
+		anyOf: schema.anyOf?.map(cloneActionParameterSchema),
+	};
+}
+
 function toActionParameter(
 	param: NonNullable<(typeof allActionDocs)[number]["parameters"]>[number],
 ): ActionParameter {
@@ -52,10 +78,7 @@ function toActionParameter(
 			param.description,
 		),
 		required: param.required,
-		schema: {
-			...param.schema,
-			enumValues: param.schema.enum,
-		},
+		schema: cloneActionParameterSchema(param.schema),
 		examples: param.examples ? [...param.examples] : undefined,
 	};
 }

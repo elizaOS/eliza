@@ -16,6 +16,12 @@ import { addHeader, UUID } from "@elizaos/core";
 export const currentRunContextProvider: Provider = {
   name: "CURRENT_RUN_CONTEXT",
   description: "Action results and context for the current agent run",
+  contexts: ["general", "media"],
+  contextGate: { anyOf: ["general", "media"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const runId = runtime.getCurrentRunId();
     const actionsResults = runtime.getActionResults(message.id as UUID);

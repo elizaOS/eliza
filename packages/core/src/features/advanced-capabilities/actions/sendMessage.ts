@@ -23,6 +23,7 @@ import type {
 	TargetInfo,
 	UUID,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { stringToUuid } from "../../../utils.ts";
 
@@ -1334,14 +1335,33 @@ export const sendMessageAction: Action = {
 	similes: spec.similes ? [...spec.similes] : ["DM", "MESSAGE", "SEND_DM"],
 	description: BASE_DESCRIPTION,
 	descriptionCompressed: BASE_DESCRIPTION_COMPRESSED,
-	contexts: ["social", "phone", "connectors"],
+	contexts: ["messaging", "email", "contacts", "connectors", "social_posting"],
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
 	): Promise<boolean> => {
 		await refreshActionDescription(runtime, message, state);
-		return true;
+		return hasActionContextOrKeyword(message, state, {
+			contexts: [
+				"messaging",
+				"email",
+				"contacts",
+				"connectors",
+				"social_posting",
+			],
+			keywords: [
+				"send message",
+				"dm",
+				"direct message",
+				"email",
+				"tell",
+				"notify",
+				"message them",
+				"post to",
+				"post in",
+			],
+		});
 	},
 	handler: async (
 		runtime: IAgentRuntime,

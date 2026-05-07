@@ -8,6 +8,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 
 type PostAction = "add" | "remove" | "edit";
@@ -41,6 +42,8 @@ function normalizeIndex(value: unknown): number | undefined {
  */
 export const managePostExamplesAction: Action = {
 	name: "MANAGE_POST_EXAMPLES",
+	contexts: ["settings", "social_posting", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"UPDATE_POST_EXAMPLES",
 		"EDIT_POST_EXAMPLES",
@@ -80,9 +83,20 @@ export const managePostExamplesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["settings", "social_posting", "agent_internal"],
+			keywords: [
+				"post examples",
+				"sample posts",
+				"social examples",
+				"add post example",
+				"edit post example",
+				"remove post example",
+			],
+		}),
 
 	handler: async (
 		runtime: IAgentRuntime,

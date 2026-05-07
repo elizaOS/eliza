@@ -53,8 +53,75 @@ function readActionParams(
   return { ...direct, ...parameters };
 }
 
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function hasVisionIntent(
+  message: Memory,
+  state: State | undefined,
+  keywords: readonly string[],
+): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function visionServiceIsActive(runtime: IAgentRuntime): boolean {
+  const visionService = runtime.getService<VisionService>("VISION");
+  return Boolean(visionService?.isActive());
+}
+
+function hasVisionContextOrIntent(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  contexts: readonly string[],
+  keywords: readonly string[],
+): boolean {
+  return (
+    visionServiceIsActive(runtime) &&
+    (selectedContextMatches(state, contexts) ||
+      hasVisionIntent(message, state, keywords))
+  );
+}
+
 export const describeSceneAction: Action = {
   name: "DESCRIBE_SCENE",
+  contexts: ["media", "screen_time", "automation"],
+  contextGate: { anyOf: ["media", "screen_time", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"],
   description:
     "Analyzes the current visual scene and provides a detailed description of what the agent sees through the camera. Returns scene analysis data including people count, objects, and camera info for action chaining.",
@@ -73,61 +140,46 @@ export const describeSceneAction: Action = {
     },
   ],
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
-  ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avVisionService = runtime?.getService?.("VISION") as
-      | { isActive?: () => boolean }
-      | null
-      | undefined;
-    const __avLegacyContextOk = Boolean(
-      __avVisionService &&
-        typeof __avVisionService.isActive === "function" &&
-        __avVisionService.isActive(),
-    );
-    const __avKeywords = ["describe", "scene"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:describe|scene)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return !!visionService && visionService.isActive();
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
-  },
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    hasVisionContextOrIntent(
+      runtime,
+      message,
+      state,
+      ["media", "screen_time", "automation"],
+      [
+        "describe",
+        "scene",
+        "see",
+        "look",
+        "camera",
+        "screen",
+        "object",
+        "person",
+        "escena",
+        "ver",
+        "camara",
+        "décrire",
+        "scène",
+        "voir",
+        "beschreiben",
+        "szene",
+        "sehen",
+        "descrivi",
+        "scena",
+        "vedi",
+        "説明",
+        "見える",
+        "场景",
+        "描述",
+        "看见",
+        "장면",
+        "설명",
+        "보여",
+      ],
+    ),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -381,65 +433,50 @@ export const describeSceneAction: Action = {
 
 export const captureImageAction: Action = {
   name: "CAPTURE_IMAGE",
+  contexts: ["media", "screen_time", "automation"],
+  contextGate: { anyOf: ["media", "screen_time", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["TAKE_PHOTO", "SCREENSHOT", "CAPTURE_FRAME", "TAKE_PICTURE"],
   description:
     "Captures the current frame from the camera and saves it as an image attachment. Returns image data with camera info and timestamp for action chaining. Can be combined with DESCRIBE_SCENE for analysis or NAME_ENTITY for identification workflows.",
   descriptionCompressed: "Take camera snapshot to memory.",
+  parameters: [],
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
   ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avVisionService = runtime?.getService?.("VISION") as
-      | { isActive?: () => boolean }
-      | null
-      | undefined;
-    const __avLegacyContextOk = Boolean(
-      __avVisionService &&
-        typeof __avVisionService.isActive === "function" &&
-        __avVisionService.isActive(),
+    return hasVisionContextOrIntent(
+      runtime,
+      message,
+      state,
+      ["media", "screen_time", "automation"],
+      [
+        "capture",
+        "image",
+        "photo",
+        "picture",
+        "snapshot",
+        "screenshot",
+        "camera",
+        "captura",
+        "foto",
+        "imagen",
+        "capturer",
+        "photo",
+        "bild",
+        "foto",
+        "capturare",
+        "写真",
+        "画像",
+        "スクリーンショット",
+        "拍照",
+        "截图",
+        "이미지",
+        "사진",
+        "스크린샷",
+      ],
     );
-    const __avKeywords = ["capture", "image"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:capture|image)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return !!visionService && visionService.isActive();
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -657,6 +694,9 @@ export const captureImageAction: Action = {
 
 export const setVisionModeAction: Action = {
   name: "SET_VISION_MODE",
+  contexts: ["media", "screen_time", "settings"],
+  contextGate: { anyOf: ["media", "screen_time", "settings"] },
+  roleGate: { minRole: "USER" },
   description: "Set the vision mode to OFF, CAMERA, SCREEN, or BOTH",
   descriptionCompressed: "Set vision mode: face, scene, object, tracking.",
   similes: [
@@ -668,54 +708,50 @@ export const setVisionModeAction: Action = {
     "enable {mode} vision",
     "disable vision",
   ],
+  parameters: [
+    {
+      name: "mode",
+      description: "Vision mode to set: off, camera, screen, or both.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["off", "camera", "screen", "both"],
+      },
+    },
+  ],
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
-  ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avLegacyContextOk = Boolean(runtime?.getService?.("VISION"));
-    const __avKeywords = ["set", "vision", "mode"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:set|vision|mode)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return visionService !== null;
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
-  },
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    Boolean(runtime.getService<VisionService>("VISION")) &&
+    (selectedContextMatches(state, ["media", "screen_time", "settings"]) ||
+      hasVisionIntent(message, state, [
+        "vision",
+        "mode",
+        "camera",
+        "screen",
+        "both",
+        "disable",
+        "enable",
+        "off",
+        "visión",
+        "camara",
+        "pantalla",
+        "écran",
+        "kamera",
+        "bildschirm",
+        "schermo",
+        "ビジョン",
+        "カメラ",
+        "画面",
+        "视觉",
+        "相机",
+        "屏幕",
+        "비전",
+        "카메라",
+        "화면",
+      ])),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -747,7 +783,11 @@ export const setVisionModeAction: Action = {
     }
 
     try {
-      const messageText = message.content.text?.toLowerCase() || "";
+      const params = readActionParams(_options);
+      const explicitMode =
+        typeof params.mode === "string" ? params.mode.toLowerCase() : "";
+      const messageText =
+        explicitMode || message.content.text?.toLowerCase() || "";
       let newMode: VisionMode | null = null;
 
       if (messageText.includes("off") || messageText.includes("disable")) {
@@ -889,6 +929,9 @@ export const setVisionModeAction: Action = {
 
 export const nameEntityAction: Action = {
   name: "NAME_ENTITY",
+  contexts: ["media", "memory"],
+  contextGate: { anyOf: ["media", "memory"] },
+  roleGate: { minRole: "USER" },
   description:
     "Assign a name to a person or object currently visible in the camera view",
   descriptionCompressed: "Name a tracked entity by id.",
@@ -899,6 +942,21 @@ export const nameEntityAction: Action = {
     "that person is {name}",
     "the object is a {name}",
     "call that {name}",
+  ],
+  parameters: [
+    {
+      name: "name",
+      description:
+        "Name to assign to the most relevant visible person or object.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "targetHint",
+      description: "Optional phrase describing which visible entity to name.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   examples: [
     [
@@ -934,61 +992,46 @@ export const nameEntityAction: Action = {
   ],
 
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
-  ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avVisionService = runtime?.getService?.("VISION") as
-      | { isActive?: () => boolean }
-      | null
-      | undefined;
-    const __avLegacyContextOk = Boolean(
-      __avVisionService &&
-        typeof __avVisionService.isActive === "function" &&
-        __avVisionService.isActive(),
-    );
-    const __avKeywords = ["name", "entity"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:name|entity)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return visionService?.isActive() || false;
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
-  },
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    hasVisionContextOrIntent(
+      runtime,
+      message,
+      state,
+      ["media", "memory"],
+      [
+        "name",
+        "named",
+        "call",
+        "person",
+        "entity",
+        "remember",
+        "object",
+        "nombre",
+        "llama",
+        "persona",
+        "nom",
+        "appelle",
+        "personne",
+        "name",
+        "nenne",
+        "person",
+        "nome",
+        "chiama",
+        "persona",
+        "名前",
+        "呼ぶ",
+        "人",
+        "命名",
+        "叫",
+        "人",
+        "이름",
+        "불러",
+        "사람",
+      ],
+    ),
 
   handler: async (
     runtime: IAgentRuntime,
@@ -1033,8 +1076,13 @@ export const nameEntityAction: Action = {
         };
       }
 
+      const params = readActionParams(_options);
       const text = message.content.text?.toLowerCase() || "";
-      const nameMatch = text.match(/(?:named?|call(?:ed)?|is)\s+(\w+)/i);
+      const explicitName =
+        typeof params.name === "string" ? params.name.trim() : "";
+      const nameMatch = explicitName
+        ? [explicitName, explicitName]
+        : text.match(/(?:named?|call(?:ed)?|is)\s+(\w+)/i);
 
       if (!nameMatch) {
         const thought = "Could not extract name from message.";
@@ -1162,6 +1210,9 @@ export const nameEntityAction: Action = {
 
 export const identifyPersonAction: Action = {
   name: "IDENTIFY_PERSON",
+  contexts: ["media", "memory"],
+  contextGate: { anyOf: ["media", "memory"] },
+  roleGate: { minRole: "USER" },
   description: "Identify a person in view if they have been seen before",
   descriptionCompressed: "Match face to known person via local recognition.",
   similes: [
@@ -1170,6 +1221,20 @@ export const identifyPersonAction: Action = {
     "identify the person",
     "do you recognize them",
     "have you seen them before",
+  ],
+  parameters: [
+    {
+      name: "targetHint",
+      description: "Optional description of the visible person to focus on.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "includeUnknown",
+      description: "Whether to mention unidentified people in the response.",
+      required: false,
+      schema: { type: "boolean", default: true },
+    },
   ],
   examples: [
     [
@@ -1190,61 +1255,44 @@ export const identifyPersonAction: Action = {
   ],
 
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
-  ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avVisionService = runtime?.getService?.("VISION") as
-      | { isActive?: () => boolean }
-      | null
-      | undefined;
-    const __avLegacyContextOk = Boolean(
-      __avVisionService &&
-        typeof __avVisionService.isActive === "function" &&
-        __avVisionService.isActive(),
-    );
-    const __avKeywords = ["identify", "person"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:identify|person)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return visionService?.isActive() || false;
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
-  },
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    hasVisionContextOrIntent(
+      runtime,
+      message,
+      state,
+      ["media", "memory"],
+      [
+        "identify",
+        "recognize",
+        "who is",
+        "person",
+        "face",
+        "seen before",
+        "identificar",
+        "reconoces",
+        "persona",
+        "visage",
+        "reconnais",
+        "personne",
+        "erkennen",
+        "gesicht",
+        "person",
+        "riconosci",
+        "persona",
+        "識別",
+        "誰",
+        "顔",
+        "识别",
+        "是谁",
+        "人",
+        "식별",
+        "누구",
+        "얼굴",
+      ],
+    ),
 
   handler: async (
     runtime: IAgentRuntime,
@@ -1419,6 +1467,9 @@ export const identifyPersonAction: Action = {
 
 export const trackEntityAction: Action = {
   name: "TRACK_ENTITY",
+  contexts: ["media", "screen_time", "automation"],
+  contextGate: { anyOf: ["media", "screen_time", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Start tracking a specific person or object in view",
   descriptionCompressed: "Track entity id across frames.",
   similes: [
@@ -1426,6 +1477,15 @@ export const trackEntityAction: Action = {
     "follow the {description}",
     "keep an eye on the {description}",
     "watch the {description}",
+  ],
+  parameters: [
+    {
+      name: "description",
+      description:
+        "Optional description of the visible entity to prioritize for tracking.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   examples: [
     [
@@ -1446,61 +1506,47 @@ export const trackEntityAction: Action = {
   ],
 
   validate: async (
-    runtime: any,
-    message: any,
-    state?: any,
-    options?: any,
-  ): Promise<boolean> => {
-    const __avTextRaw =
-      typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avVisionService = runtime?.getService?.("VISION") as
-      | { isActive?: () => boolean }
-      | null
-      | undefined;
-    const __avLegacyContextOk = Boolean(
-      __avVisionService &&
-        typeof __avVisionService.isActive === "function" &&
-        __avVisionService.isActive(),
-    );
-    const __avKeywords = ["track", "entity"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      (__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)) ||
-        __avLegacyContextOk);
-    const __avRegex = new RegExp("\\b(?:track|entity)\\b", "i");
-    const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      _message: Memory,
-      _state?: State,
-    ): Promise<boolean> => {
-      const visionService = runtime.getService<VisionService>("VISION");
-      return visionService?.isActive() || false;
-    };
-    try {
-      return Boolean(
-        await (__avLegacyValidate as any)(runtime, message, state, options),
-      );
-    } catch {
-      return false;
-    }
-  },
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    hasVisionContextOrIntent(
+      runtime,
+      message,
+      state,
+      ["media", "screen_time", "automation"],
+      [
+        "track",
+        "follow",
+        "watch",
+        "keep an eye",
+        "entity",
+        "person",
+        "object",
+        "rastrear",
+        "seguir",
+        "vigilar",
+        "persona",
+        "suivre",
+        "surveiller",
+        "personne",
+        "verfolgen",
+        "beobachten",
+        "person",
+        "traccia",
+        "segui",
+        "persona",
+        "追跡",
+        "見張",
+        "人",
+        "跟踪",
+        "关注",
+        "人",
+        "추적",
+        "지켜봐",
+        "사람",
+      ],
+    ),
 
   handler: async (
     runtime: IAgentRuntime,

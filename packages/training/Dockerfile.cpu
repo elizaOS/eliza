@@ -52,6 +52,8 @@ RUN uv venv --python 3.12 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
  && uv sync --extra train --frozen --no-install-project
 
+# Legacy TOON compatibility tooling. Native v5 JSON exports do not use
+# @toon-format/toon; this remains for old corpus repair/validation scripts.
 RUN bun add @toon-format/toon@2.1.0
 
 ENV VIRTUAL_ENV=/workspace/.venv \

@@ -13,6 +13,12 @@ const formatTimestamp = (timestamp: number): string => {
 };
 
 const spec = requireProviderSpec("farcasterThread");
+const MAX_THREAD_MESSAGES_IN_STATE = 25;
+const MAX_CAST_TEXT_LENGTH = 500;
+
+const truncateCastText = (text: string): string => {
+  return text.length > MAX_CAST_TEXT_LENGTH ? `${text.slice(0, MAX_CAST_TEXT_LENGTH)}...` : text;
+};
 
 export const farcasterThreadProvider: Provider = {
   name: spec.name,
@@ -21,6 +27,10 @@ export const farcasterThreadProvider: Provider = {
   descriptionCompressed: "provide thread context Farcaster cast agent reference full conversation",
 
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const contentForSource = message.content as Record<
       string,
@@ -77,10 +87,23 @@ export const farcasterThreadProvider: Provider = {
       };
     }
 
-    const threadMessages = await messageService.getThread({
-      agentId: runtime.agentId,
-      castHash,
-    });
+    let threadMessages;
+    try {
+      threadMessages = await messageService.getThread({
+        agentId: runtime.agentId,
+        castHash,
+      });
+    } catch (error) {
+      return {
+        text: "Unable to load Farcaster thread context.",
+        data: {
+          available: false,
+          castHash,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: {},
+      };
+    }
 
     if (!threadMessages || threadMessages.length === 0) {
       runtime.logger.debug(
@@ -93,12 +116,14 @@ export const farcasterThreadProvider: Provider = {
       };
     }
 
-    const formattedThread = threadMessages
+    const shownThreadMessages = threadMessages.slice(-MAX_THREAD_MESSAGES_IN_STATE);
+    const formattedThread = shownThreadMessages
       .map((msg, index) => {
         const time = formatTimestamp(msg.timestamp);
         const username = msg.username || msg.userId || "unknown";
-        const marker = index === threadMessages.length - 1 ? "→" : "•";
-        const text = msg.text && msg.text.trim().length > 0 ? msg.text : "<no text>";
+        const marker = index === shownThreadMessages.length - 1 ? "→" : "•";
+        const text =
+          msg.text && msg.text.trim().length > 0 ? truncateCastText(msg.text) : "<no text>";
         return `${marker} [${time}] @${username}: ${text}`;
       })
       .join("\n");
@@ -109,13 +134,19 @@ export const farcasterThreadProvider: Provider = {
         available: true,
         castHash,
         count: threadMessages.length,
+        shown: shownThreadMessages.length,
+        truncated: threadMessages.length > shownThreadMessages.length,
       },
       values: {
         farcasterThread: formattedThread,
         farcasterCastHash: castHash,
-        farcasterCurrentCastText: threadMessages[threadMessages.length - 1]?.text ?? "",
+        farcasterCurrentCastText: truncateCastText(
+          threadMessages[threadMessages.length - 1]?.text ?? ""
+        ),
         farcasterParentCastText:
-          threadMessages.length > 1 ? (threadMessages[threadMessages.length - 2]?.text ?? "") : "",
+          threadMessages.length > 1
+            ? truncateCastText(threadMessages[threadMessages.length - 2]?.text ?? "")
+            : "",
       },
     };
   },

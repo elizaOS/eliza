@@ -41,10 +41,10 @@ class ModelEntry:
     fused chunked CE we can roughly 4× this on the same VRAM budget."""
 
     optimizer: str
-    """One of: apollo, apollo_mini, adamw."""
+    """One of: apollo, apollo_mini."""
 
     optimizer_rank: int
-    """APOLLO low-rank dim. Ignored for adamw."""
+    """APOLLO low-rank dim."""
 
     micro_batch: int
     grad_accum: int

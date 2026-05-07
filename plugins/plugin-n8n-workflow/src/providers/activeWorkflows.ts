@@ -12,6 +12,10 @@ import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/
 export const activeWorkflowsProvider: Provider = {
   name: 'ACTIVE_N8N_WORKFLOWS',
   description: "User's active n8n workflows with IDs and descriptions",
+  contexts: ['automation', 'connectors'],
+  contextGate: { anyOf: ['automation', 'connectors'] },
+  cacheScope: 'agent',
+  roleGate: { minRole: 'ADMIN' },
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {

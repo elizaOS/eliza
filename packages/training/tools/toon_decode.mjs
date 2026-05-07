@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Streaming TOON decoder for the training pipeline (validation only).
+ * Legacy-only streaming TOON decoder for compatibility corpus validation.
+ *
+ * Native v5 tool-calling exports must be JSON and must not call this tool.
  *
  * Reads NDJSON {"toon": "<doc>"} from stdin and writes either
- * {"ok": true, "decoded": <obj>} or {"error": "<msg>"} per line. Used
- * by the messaging-action synth verifier to assert the @toon-format/toon
- * runtime parses every emitted target.
+ * {"ok": true, "decoded": <obj>} or {"error": "<msg>"} per line.
  */
 
 import { decode } from "@toon-format/toon";

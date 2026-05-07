@@ -7,6 +7,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderResult,
 	State,
 	UUID,
 } from "../../../types/index.ts";
@@ -15,6 +16,8 @@ import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
+const MAX_RECENT_MESSAGES_LOOKBACK = 50;
+const MAX_RECENT_INTERACTIONS = 20;
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	const metadata = memory.metadata as CustomMetadata | undefined;
@@ -148,9 +151,23 @@ export const recentMessagesProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? 100,
-	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+	contexts: ["memory", "messaging"],
+	contextGate: { anyOf: ["memory", "messaging"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+	): Promise<ProviderResult> => {
+		try {
 		const { roomId } = message;
-		const conversationLength = runtime.getConversationLength();
+		const conversationLength = Math.min(
+			runtime.getConversationLength(),
+			MAX_RECENT_MESSAGES_LOOKBACK,
+		);
 
 		// First get room to check for compaction point
 		const room = await runtime.getRoom(roomId);
@@ -178,6 +195,8 @@ export const recentMessagesProvider: Provider = {
 							message.entityId,
 							runtime.agentId,
 							roomId,
+						).then((interactions) =>
+							interactions.slice(0, MAX_RECENT_INTERACTIONS),
 						)
 					: Promise.resolve([]),
 			]);
@@ -439,14 +458,34 @@ export const recentMessagesProvider: Provider = {
 			.filter(Boolean)
 			.join("\n\n");
 
-		return {
-			data: {
-				recentMessages: data.recentMessages,
-				recentInteractions: data.recentInteractions,
-				actionResults: data.actionResults,
-			},
-			values,
-			text,
-		};
+			return {
+				data: {
+					recentMessages: data.recentMessages,
+					recentInteractions: data.recentInteractions,
+					actionResults: data.actionResults,
+				},
+				values,
+				text,
+			};
+		} catch (error) {
+			return {
+				data: {
+					recentMessages: [],
+					recentInteractions: [],
+					actionResults: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: {
+					recentPosts: "",
+					recentMessages: "",
+					recentMessageInteractions: "",
+					recentPostInteractions: "",
+					recentInteractions: "",
+					recentActionResults: "",
+					recentMessage: "",
+				},
+				text: "No recent messages available",
+			};
+		}
 	},
 };

@@ -73,6 +73,8 @@ You provide a valuable service. Some guidelines about money:
 - Returning customers who've paid before deserve warm service
 - You can check your payment status and revenue using the tools available to you`;
 
+const MAX_KNOWLEDGE_TEXT_CHARS = 8000;
+
 export const mysticalKnowledgeProvider: Provider = {
   name: "MYSTICAL_KNOWLEDGE",
   description: "Provides mystical domain knowledge to ground the agent's interpretations",
@@ -80,6 +82,10 @@ export const mysticalKnowledgeProvider: Provider = {
     "Provide mysticism reading guidelines, crisis boundaries, and interpretation knowledge.",
 
   dynamic: true,
+  contexts: ["knowledge", "finance"],
+  contextGate: { anyOf: ["knowledge", "finance"] },
+  cacheStable: false,
+  cacheScope: "turn",
   relevanceKeywords: [
     "mystical",
     "knowledge",
@@ -138,7 +144,10 @@ export const mysticalKnowledgeProvider: Provider = {
         activeSession = roomId ? service.getSession(entityId, roomId) : null;
       }
 
-      const text = buildKnowledgeText(activeSession);
+      const text = buildKnowledgeText(activeSession).slice(
+        0,
+        MAX_KNOWLEDGE_TEXT_CHARS,
+      );
 
       return {
         text,
@@ -153,9 +162,9 @@ export const mysticalKnowledgeProvider: Provider = {
     } catch (error) {
       logger.error("[MysticalKnowledgeProvider] Error:", String(error));
       return {
-        text: CORE_GUIDELINES,
+        text: CORE_GUIDELINES.slice(0, MAX_KNOWLEDGE_TEXT_CHARS),
         values: {
-          mysticalKnowledge: CORE_GUIDELINES,
+          mysticalKnowledge: CORE_GUIDELINES.slice(0, MAX_KNOWLEDGE_TEXT_CHARS),
           hasMysticalContext: "true",
         },
         data: { hasMysticalContext: "true" },

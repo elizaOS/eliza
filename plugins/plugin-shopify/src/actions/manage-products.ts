@@ -167,6 +167,9 @@ const examples: ActionExample[][] = [
 
 export const manageProductsAction: Action = {
   name: "MANAGE_SHOPIFY_PRODUCTS",
+  contexts: ["payments", "connectors", "automation"],
+  contextGate: { anyOf: ["payments", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "LIST_PRODUCTS",
     "CREATE_PRODUCT",

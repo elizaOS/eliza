@@ -1,5 +1,5 @@
 import type { DiscoveredApiRouteDto } from "@/types/cloud-api";
-import { ApiRouteExplorerClient } from "@/packages/ui/src/components/docs/api-route-explorer-client";
+import { ApiRouteExplorerClient } from "./api-route-explorer-client";
 
 /**
  * Presentational API route explorer. Route discovery is owned by the app/docs layer.

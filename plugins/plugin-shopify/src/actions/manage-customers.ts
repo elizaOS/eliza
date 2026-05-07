@@ -123,6 +123,9 @@ const examples: ActionExample[][] = [
 
 export const manageCustomersAction: Action = {
   name: "MANAGE_SHOPIFY_CUSTOMERS",
+  contexts: ["payments", "connectors", "automation"],
+  contextGate: { anyOf: ["payments", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"],
   description: "List and search customers in a connected Shopify store.",
   descriptionCompressed: "List/search Shopify customers.",

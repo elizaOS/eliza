@@ -9,11 +9,12 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { type ActionWithParams, defineActionParameters } from "../types";
+import { normalizeCloudActionArgs } from "../utils/native-planner-guards";
 
 const IMAGE_GENERATION_TEMPLATE = `# Task: Generate an image prompt based on the user's request.
 # Instructions:
@@ -31,14 +32,77 @@ Use this prompt directly or enhance it slightly for better image generation resu
 {{receivedMessageHeader}}
 {{/if}}
 
-Your response should be formatted in XML like this:
-<response>
-  <prompt>Your image generation prompt here</prompt>
-</response>
-
-Your response should include the valid XML block and nothing else.`;
+Respond using JSON only. No markdown, no prose, no XML.
+{
+  "prompt": "Your image generation prompt here"
+}`;
 
 const VALID_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+const IMAGE_CONTEXTS = ["general", "media"];
+const IMAGE_KEYWORDS = [
+  "image",
+  "picture",
+  "photo",
+  "draw",
+  "illustrate",
+  "visualize",
+  "render",
+  "generate",
+  "create",
+  "imagen",
+  "foto",
+  "dibujar",
+  "ilustrar",
+  "visualizar",
+  "generar",
+  "crear",
+  "image",
+  "photo",
+  "dessiner",
+  "illustrer",
+  "visualiser",
+  "generer",
+  "creer",
+  "bild",
+  "foto",
+  "zeichnen",
+  "visualisieren",
+  "generieren",
+  "erstellen",
+  "immagine",
+  "foto",
+  "disegna",
+  "visualizza",
+  "genera",
+  "crea",
+  "imagem",
+  "foto",
+  "desenhar",
+  "visualizar",
+  "gerar",
+  "criar",
+  "图片",
+  "图像",
+  "照片",
+  "画",
+  "生成",
+  "画像",
+  "写真",
+  "描いて",
+  "生成",
+];
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => IMAGE_CONTEXTS.includes(String(context).toLowerCase()));
+}
 
 function getFileExtension(url: string): string {
   try {
@@ -51,15 +115,17 @@ function getFileExtension(url: string): string {
 
 function extractParams(message: Memory, state?: State): Record<string, unknown> {
   const content = message.content as Record<string, unknown>;
-  return (content.actionParams ||
-    content.actionInput ||
-    state?.data?.actionParams ||
-    state?.data?.generateimage ||
-    {}) as Record<string, unknown>;
+  return normalizeCloudActionArgs("GENERATE_IMAGE", {
+    params: content.params || state?.data?.params,
+    actionParams: content.actionParams || state?.data?.actionParams || state?.data?.generateimage,
+    actionInput: content.actionInput,
+  });
 }
 
 export const generateImageAction: ActionWithParams = {
   name: "GENERATE_IMAGE",
+  contexts: IMAGE_CONTEXTS,
+  contextGate: { anyOf: IMAGE_CONTEXTS },
   similes: ["DRAW", "CREATE_IMAGE", "RENDER_IMAGE", "VISUALIZE"],
   description:
     "Generates an image based on a prompt. Use when the user wants to visualize, illustrate, or see something visually.",
@@ -73,7 +139,7 @@ export const generateImageAction: ActionWithParams = {
     },
   }),
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     // Check runtime has required model capability
     if (!runtime.useModel) {
       logger.warn("[GENERATE_IMAGE] Runtime missing useModel capability");
@@ -87,19 +153,28 @@ export const generateImageAction: ActionWithParams = {
     }
 
     // Image generation requires either text content or explicit prompt parameter
-    const content = message.content as Record<string, unknown>;
-    const actionParams = content.actionParams as Record<string, unknown> | undefined;
-    const actionInput = content.actionInput as Record<string, unknown> | undefined;
+    const actionParams = extractParams(message);
     const hasText =
       typeof message.content.text === "string" && message.content.text.trim().length > 0;
-    const hasPromptParam = actionParams?.prompt || actionInput?.prompt;
+    const hasPromptParam = actionParams.prompt;
+    const conversationText = [
+      message.content.text,
+      state?.values?.conversationLog,
+      state?.values?.recentMessages,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n")
+      .toLowerCase();
+    const hasImageKeyword = IMAGE_KEYWORDS.some((keyword) =>
+      conversationText.includes(keyword.toLowerCase()),
+    );
 
     if (!hasText && !hasPromptParam) {
       logger.debug("[GENERATE_IMAGE] No text content or prompt parameter available");
       return false;
     }
 
-    return true;
+    return hasSelectedContext(state) || !!hasPromptParam || hasImageKeyword;
   },
 
   handler: async (
@@ -134,20 +209,53 @@ export const generateImageAction: ActionWithParams = {
       template: runtime.character.templates?.imageGenerationTemplate || IMAGE_GENERATION_TEMPLATE,
     });
 
-    const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const parsedXml = parseKeyValueXml(promptResponse);
+    let promptResponse: string;
+    try {
+      promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[GENERATE_IMAGE] Prompt model call failed");
+      return {
+        success: false,
+        text: "Image generation failed while preparing the prompt.",
+        error: errorMessage,
+        data: { actionName: "GENERATE_IMAGE", prompt: providedPrompt },
+      };
+    }
+    const parsedPrompt = parseJSONObjectFromText(promptResponse);
     const imagePrompt: string =
-      typeof parsedXml?.prompt === "string"
-        ? parsedXml.prompt
+      typeof parsedPrompt?.prompt === "string"
+        ? parsedPrompt.prompt
         : providedPrompt || "Unable to generate descriptive prompt for image";
 
     logger.info(`[GENERATE_IMAGE] Using prompt: "${imagePrompt}"`);
 
-    const imageResponse = await runtime.useModel(ModelType.IMAGE, {
-      prompt: imagePrompt,
-    });
+    let imageResponse;
+    try {
+      imageResponse = await runtime.useModel(ModelType.IMAGE, {
+        prompt: imagePrompt,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[GENERATE_IMAGE] Image model call failed");
+      return {
+        text: `Image generation failed for prompt: "${imagePrompt}"`,
+        values: {
+          success: false,
+          error: "IMAGE_GENERATION_FAILED",
+          prompt: imagePrompt,
+        },
+        data: {
+          actionName: "GENERATE_IMAGE",
+          error: errorMessage,
+          prompt: imagePrompt,
+        },
+        error: errorMessage,
+        success: false,
+      };
+    }
 
     if (!imageResponse?.length || !imageResponse[0]?.url) {
       logger.error(`[GENERATE_IMAGE] Image generation failed - no valid response received`);

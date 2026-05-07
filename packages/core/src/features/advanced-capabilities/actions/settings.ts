@@ -418,7 +418,14 @@ async function extractSettingValues(
 	_message: Memory,
 	state: State,
 	worldSettings: WorldSettings,
+	explicitUpdates: SettingUpdate[] = [],
 ): Promise<SettingUpdate[]> {
+	if (explicitUpdates.length > 0) {
+		return explicitUpdates.filter(
+			(update) => worldSettings.settings[update.key],
+		);
+	}
+
 	// Find what settings need to be configured
 	const { requiredUnconfigured, optionalUnconfigured } =
 		categorizeSettings(worldSettings);
@@ -803,14 +810,31 @@ async function generateErrorResponse(
  */
 export const updateSettingsAction: Action = {
 	name: spec.name,
+	contexts: ["settings", "admin"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [
+		{
+			name: "key",
+			description: "Exact setting key to update.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "value",
+			description: "Setting value to save.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 	examples: (spec.examples ?? []) as ActionExample[][],
 
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		_options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (message.content.channelType !== ChannelType.DM) {
 			logger.debug(
@@ -825,6 +849,15 @@ export const updateSettingsAction: Action = {
 		}
 
 		// Find the server where this user is the owner
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredSetting =
+			typeof params.key === "string" &&
+			params.key.trim().length > 0 &&
+			params.value !== undefined;
+
 		logger.debug(
 			{
 				src: "plugin:advanced-capabilities:action:settings",
@@ -864,7 +897,7 @@ export const updateSettingsAction: Action = {
 			},
 			"Found valid settings state for server",
 		);
-		return true;
+		return hasStructuredSetting || Boolean(message.content.text);
 	},
 
 	handler: async (
@@ -1041,6 +1074,18 @@ export const updateSettingsAction: Action = {
 			message,
 			state,
 			worldSettings,
+			(() => {
+				const params =
+					_options?.parameters && typeof _options.parameters === "object"
+						? (_options.parameters as Record<string, unknown>)
+						: {};
+				const explicitValue = normalizeSettingValue(params.value);
+				return typeof params.key === "string" &&
+					params.key.trim().length > 0 &&
+					explicitValue !== null
+					? [{ key: params.key.trim(), value: explicitValue }]
+					: [];
+			})(),
 		);
 		logger.info(
 			{

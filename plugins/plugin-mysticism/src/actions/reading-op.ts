@@ -455,6 +455,8 @@ async function finalizeReading(
 
 export const readingOpAction: Action = {
   name: "READING_OP",
+  contexts: ["knowledge", "general"],
+  contextGate: { anyOf: ["knowledge", "general"] },
   similes: [
     "TAROT_READING",
     "READ_TAROT",

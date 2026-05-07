@@ -2,6 +2,7 @@ import type { Role } from "./environment";
 import type { JsonValue } from "./proto.js";
 
 export type FirstPartyAgentContext =
+	| "simple"
 	| "general"
 	| "memory"
 	| "knowledge"
@@ -17,8 +18,10 @@ export type FirstPartyAgentContext =
 	| "health"
 	| "screen_time"
 	| "subscriptions"
+	| "finance"
 	| "payments"
 	| "wallet"
+	| "crypto"
 	| "messaging"
 	| "social_posting"
 	| "media"

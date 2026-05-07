@@ -27,6 +27,8 @@ interface PluginMutationResponse {
 
 export const togglePluginAction: Action = {
   name: "TOGGLE_PLUGIN",
+  contexts: ["admin", "settings", "connectors"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "ENABLE_PLUGIN_TOGGLE",

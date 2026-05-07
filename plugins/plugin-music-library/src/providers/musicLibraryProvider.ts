@@ -38,6 +38,10 @@ function isAskingAboutAvailable(messageText: string): boolean {
 
 export const musicLibraryProvider: Provider = {
   name: "MUSIC_LIBRARY",
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

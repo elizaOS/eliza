@@ -17,8 +17,8 @@ import {
   Skeleton,
   StatusBadge,
   Switch,
-} from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+} from "../primitives";
+import Image from "../../runtime/image";
 import {
   Copy,
   Globe,

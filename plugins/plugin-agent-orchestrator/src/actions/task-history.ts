@@ -185,6 +185,9 @@ function renderThreadLine(entry: {
 
 export const taskHistoryAction: Action = {
   name: "TASK_HISTORY",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "LIST_TASK_HISTORY",
     "GET_TASK_HISTORY",

@@ -2,7 +2,7 @@ import { BrandCard, CornerBrackets, ElizaCloudLockup } from "@elizaos/cloud-ui";
 import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
-import LandingHeader from "@/packages/ui/src/components/layout/landing-header";
+import LandingHeader from "@elizaos/cloud-ui/components/layout/landing-header";
 
 const sections = [
   {

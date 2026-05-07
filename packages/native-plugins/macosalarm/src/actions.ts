@@ -10,8 +10,8 @@ import {
   type State,
 } from "@elizaos/core";
 import {
-  MacosAlarmHelperUnavailableError,
   type HelperRunOptions,
+  MacosAlarmHelperUnavailableError,
   runHelper,
 } from "./helper";
 import type {
@@ -28,8 +28,38 @@ export interface MacosAlarmActionDeps {
 
 const NOT_SUPPORTED: ActionResult = {
   success: false,
+  text: "I can only use native alarms on macOS.",
   error: "macos-only",
 };
+const ALARM_CONTEXTS = ["tasks", "calendar", "automation"] as const;
+const LIST_ALARM_TERMS = [
+  "list alarm",
+  "list alarms",
+  "show alarm",
+  "show alarms",
+  "pending alarm",
+  "pending alarms",
+  "macos alarm",
+  "mac alarm",
+  "alarm",
+  "alarms",
+  "wake",
+  "despertador",
+  "alarma",
+  "alarmas",
+  "reveil",
+  "réveil",
+  "alarme",
+  "wecker",
+  "alarm anzeigen",
+  "闹钟",
+  "提醒",
+  "アラーム",
+  "알람",
+  "alarma",
+  "báo thức",
+  "bao thuc",
+];
 
 function isDarwin(): boolean {
   return process.platform === "darwin";
@@ -37,6 +67,34 @@ function isDarwin(): boolean {
 
 function getText(message: Memory): string {
   return (message.content.text ?? "").toLowerCase();
+}
+
+function normalizeContextList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((item) => (typeof item === "string" ? [item.toLowerCase()] : []))
+    .filter(Boolean);
+}
+
+function hasAlarmContext(message: Memory, state?: State): boolean {
+  const values = state?.values ?? {};
+  const content = message.content as Record<string, unknown>;
+  const contexts = [
+    ...normalizeContextList(values.activeContexts),
+    ...normalizeContextList(values.selectedContexts),
+    ...normalizeContextList(content.activeContexts),
+    ...normalizeContextList(content.selectedContexts),
+    ...normalizeContextList(content.contexts),
+  ];
+  return contexts.some((context) =>
+    ALARM_CONTEXTS.includes(context as (typeof ALARM_CONTEXTS)[number]),
+  );
+}
+
+function hasListAlarmSignal(message: Memory, state?: State): boolean {
+  if (hasAlarmContext(message, state)) return true;
+  const text = getText(message);
+  return LIST_ALARM_TERMS.some((term) => text.includes(term.toLowerCase()));
 }
 
 function parseSchedule(
@@ -72,6 +130,9 @@ export function createSetAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
     name: "SET_ALARM_MACOS",
     description:
       "Schedule a native macOS alarm via UNUserNotificationCenter. Use for user-requested alarms, wake-ups, and meeting reminders on a Mac.",
+    contexts: [...ALARM_CONTEXTS],
+    contextGate: { anyOf: [...ALARM_CONTEXTS] },
+    roleGate: { minRole: "ADMIN" },
     similes: [
       "schedule macos alarm",
       "create mac alarm",
@@ -189,7 +250,14 @@ export function createSetAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
           }
           return { success: false, error: err.reason };
         }
-        throw err;
+        const failureMessage =
+          err instanceof Error ? err.message : "Unknown macOS alarm failure.";
+        logger.error(`[SetAlarmMacos] helper failed: ${failureMessage}`);
+        return {
+          success: false,
+          text: `Could not set alarm: ${failureMessage}`,
+          error: failureMessage,
+        };
       }
     },
     examples: [],
@@ -202,6 +270,9 @@ export function createCancelAlarmAction(
   return {
     name: "CANCEL_ALARM_MACOS",
     description: "Cancel a previously scheduled macOS alarm by its id.",
+    contexts: [...ALARM_CONTEXTS],
+    contextGate: { anyOf: [...ALARM_CONTEXTS] },
+    roleGate: { minRole: "ADMIN" },
     similes: ["cancel macos alarm", "remove mac alarm"],
     parameters: [
       {
@@ -250,7 +321,14 @@ export function createCancelAlarmAction(
           logger.warn(`[CancelAlarmMacos] helper unavailable: ${err.reason}`);
           return { success: false, error: err.reason };
         }
-        throw err;
+        const failureMessage =
+          err instanceof Error ? err.message : "Unknown macOS alarm failure.";
+        logger.error(`[CancelAlarmMacos] helper failed: ${failureMessage}`);
+        return {
+          success: false,
+          text: `Could not cancel alarm: ${failureMessage}`,
+          error: failureMessage,
+        };
       }
     },
     examples: [],
@@ -263,8 +341,16 @@ export function createListAlarmsAction(
   return {
     name: "LIST_ALARMS_MACOS",
     description: "List pending macOS alarms scheduled via SET_ALARM_MACOS.",
+    contexts: [...ALARM_CONTEXTS],
+    contextGate: { anyOf: [...ALARM_CONTEXTS] },
+    roleGate: { minRole: "ADMIN" },
     similes: ["list macos alarms", "show pending alarms"],
-    validate: async (): Promise<boolean> => isDarwin(),
+    parameters: [],
+    validate: async (
+      _runtime: IAgentRuntime,
+      message: Memory,
+      state?: State,
+    ): Promise<boolean> => isDarwin() && hasListAlarmSignal(message, state),
     handler: async (
       _runtime: IAgentRuntime,
       message: Memory,
@@ -299,7 +385,14 @@ export function createListAlarmsAction(
           logger.warn(`[ListAlarmsMacos] helper unavailable: ${err.reason}`);
           return { success: false, error: err.reason };
         }
-        throw err;
+        const failureMessage =
+          err instanceof Error ? err.message : "Unknown macOS alarm failure.";
+        logger.error(`[ListAlarmsMacos] helper failed: ${failureMessage}`);
+        return {
+          success: false,
+          text: `Could not list alarms: ${failureMessage}`,
+          error: failureMessage,
+        };
       }
     },
     examples: [],

@@ -159,7 +159,7 @@ export class ServicePricingRepository {
 
   /**
    * List audit history for a service.
-   * Uses read replica for audit queries (eventually consistent).
+   * Uses the read-intent connection for audit queries.
    */
   async listAuditHistory(
     serviceId: string,

@@ -6,6 +6,8 @@ import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
 import { formatJsonScalar, formatJsonTable } from "../utils";
 
+const MARKET_ROW_LIMIT = 12;
+
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
   key: string,
@@ -50,6 +52,11 @@ export const marketProvider: Provider = {
   description: "Birdeye get latest cryptocurrencies overview",
   descriptionCompressed: "Read latest Birdeye cryptocurrency market overview.",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
@@ -173,8 +180,11 @@ export const marketProvider: Provider = {
 
       //console.log('BIRDEYE_CRYPTOCURRENCY_MARKET_DATA - birdye market data text', latestTxt)
 
+      const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
-        tokens: results[0],
+        tokens: Object.fromEntries(
+          Object.entries(results[0] ?? {}).slice(0, MARKET_ROW_LIMIT),
+        ),
       };
 
       const values = {};
@@ -183,7 +193,7 @@ export const marketProvider: Provider = {
       const text = [
         "birdeye_market_data:",
         "  status: ok",
-        formatJsonTable("  tokens", rows, [
+        formatJsonTable("  tokens", boundedRows, [
           "chain",
           "address",
           "symbol",

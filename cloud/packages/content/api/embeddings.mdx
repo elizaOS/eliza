@@ -51,7 +51,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/embeddings', {
 const data = await response.json();
 console.log(data.data[0].embedding);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
@@ -71,7 +71,7 @@ response = requests.post(
 
 data = response.json()
 print(data['data'][0]['embedding'])
-````
+```
 
   </Tabs.Tab>
 </Tabs>
@@ -130,11 +130,9 @@ Embed multiple texts in a single request:
 
 ## Available Models
 
-| Model                    | Dimensions | Description                    |
-| ------------------------ | ---------- | ------------------------------ |
-| `text-embedding-3-small` | 1536       | Fast, cost-effective (default) |
-| `text-embedding-3-large` | 3072       | Higher quality embeddings      |
-| `text-embedding-ada-002` | 1536       | Legacy model                   |
+Embedding model availability and dimensions are deployment-specific. Use
+`/api/v1/models`, the API Explorer, or the embeddings response metadata for the
+current catalog.
 
 ---
 

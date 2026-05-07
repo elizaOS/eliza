@@ -40,6 +40,32 @@ import {
 const LOG_PREFIX = "[ExecuteCodePlugin]";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const EXECUTE_CODE_CONTEXTS = ["code", "terminal", "automation"] as const;
+const EXECUTE_CODE_KEYWORDS = [
+  "execute",
+  "run",
+  "script",
+  "code",
+  "javascript",
+  "tool",
+  "automation",
+  "terminal",
+  "ejecutar",
+  "código",
+  "exécuter",
+  "skript",
+  "ausführen",
+  "executar",
+  "codice",
+  "eseguire",
+  "コード",
+  "実行",
+  "脚本",
+  "执行",
+  "代码",
+  "스크립트",
+  "실행",
+] as const;
 
 const AsyncFunction = Object.getPrototypeOf(async function () {})
   .constructor as new (
@@ -127,8 +153,39 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function hasSelectedContext(state: State | undefined, contexts: readonly string[]): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function hasExecuteCodeIntent(message: Memory, state: State | undefined): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return EXECUTE_CODE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const executeCodeAction: Action = {
   name: "EXECUTE_CODE",
+  contexts: [...EXECUTE_CODE_CONTEXTS],
+  contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["RUN_SCRIPT", "EXECUTE_TOOL_SCRIPT"],
   description:
     "Run a short JS-style script that calls multiple agent actions through `tools.<actionName>(args)` and reads runtime context via `context`. Use when the same turn needs three or more sequential tool calls with simple control flow or data passing between them. Not for single-call work.",
@@ -157,7 +214,13 @@ export const executeCodeAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async () => true,
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    const disable = runtime.getSetting?.("EXECUTECODE_DISABLE");
+    if (disable === true || disable === "true" || disable === "1") {
+      return false;
+    }
+    return hasSelectedContext(state, EXECUTE_CODE_CONTEXTS) || hasExecuteCodeIntent(message, state);
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

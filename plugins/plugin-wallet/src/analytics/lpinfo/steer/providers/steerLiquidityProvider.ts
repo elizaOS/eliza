@@ -6,6 +6,8 @@ import type {
   SteerVaultDetailInput,
 } from "../steer-display-types.js";
 
+const STEER_LIQUIDITY_TEXT_LIMIT = 4000;
+
 /**
  * Steer Finance Liquidity Protocol Provider
  * Provides information about Steer Finance vaults and staking pools
@@ -17,6 +19,11 @@ export const steerLiquidityProvider: Provider = {
   descriptionCompressed:
     "provide information Steer Finance vault, stak pool, token-specific liquidity data across multiple chain",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("🚀 STEER_LIQUIDITY provider called");
     console.log("📝 Message content:", message.content.text);
@@ -169,7 +176,7 @@ export const steerLiquidityProvider: Provider = {
       steerLiquidity: liquidityInfo,
     };
 
-    const text = `${liquidityInfo}\n`;
+    const text = `${liquidityInfo}\n`.slice(0, STEER_LIQUIDITY_TEXT_LIMIT);
 
     return {
       data,

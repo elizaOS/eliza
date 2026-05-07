@@ -5,6 +5,11 @@ import { FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid } from "../utils/config";
 
 const spec = requireProviderSpec("farcasterProfile");
+const MAX_PROFILE_FIELD_LENGTH = 280;
+
+function truncateProfileField(value: string | undefined): string | undefined {
+  return value ? value.slice(0, MAX_PROFILE_FIELD_LENGTH) : value;
+}
 
 export const farcasterProfileProvider: Provider = {
   name: spec.name,
@@ -12,6 +17,10 @@ export const farcasterProfileProvider: Provider = {
   descriptionCompressed: "provide information agent Farcaster profile",
 
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
@@ -45,19 +54,21 @@ export const farcasterProfileProvider: Provider = {
 
       try {
         const profile = await manager.client.getProfile(fid);
+        const username = truncateProfileField(profile.username) ?? "";
+        const name = truncateProfileField(profile.name);
 
         return {
-          text: `Your Farcaster profile: @${profile.username} (FID: ${profile.fid}). ${profile.name ? `Display name: ${profile.name}` : ""}`,
+          text: `Your Farcaster profile: @${username} (FID: ${profile.fid}). ${name ? `Display name: ${name}` : ""}`,
           data: {
             available: true,
             fid: profile.fid,
-            username: profile.username,
-            name: profile.name,
+            username,
+            name,
             pfp: profile.pfp,
           },
           values: {
             fid: profile.fid,
-            username: profile.username,
+            username,
           },
         };
       } catch (error) {

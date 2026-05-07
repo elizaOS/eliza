@@ -914,6 +914,8 @@ function formatBrowserWorkspaceCommandResult(
 
 export const manageElizaBrowserWorkspaceAction: Action = {
   name: "MANAGE_ELIZA_BROWSER_WORKSPACE",
+  contexts: ["browser", "web", "files", "code", "automation"],
+  contextGate: { anyOf: ["browser", "web", "files", "code", "automation"] },
   description: JSON.stringify({
     browser_workspace_action: {
       purpose:

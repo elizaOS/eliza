@@ -12,6 +12,9 @@ export const chatContextProvider: Provider = {
   description: "Provides iMessage chat context for the current conversation.",
   descriptionCompressed: "Current iMessage chat handle, chat ID, type, and display name.",
   dynamic: true,
+  contextGate: { anyOf: ["phone", "social", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   contexts: ["phone", "social", "connectors"],
 
   get: async (_runtime: IAgentRuntime, message: Memory, state?: State): Promise<ProviderResult> => {

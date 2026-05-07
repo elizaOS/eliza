@@ -27,8 +27,14 @@ import {
 } from "../api/workbench-helpers.js";
 import { hasOwnerAccess } from "../security/access.js";
 import { readTriggerConfig } from "../triggers/runtime.js";
+import { hasSelectedActionContext } from "./context-signal.js";
 
 const MANAGE_TASKS_ACTION = "MANAGE_TASKS";
+const MANAGE_TASKS_CONTEXTS = [
+  "tasks",
+  "automation",
+  "agent_internal",
+] as const;
 
 interface TaskExtraction {
   operation?: string;
@@ -82,6 +88,8 @@ export function looksLikeTaskIntent(text: string): boolean {
 
 export const manageTasksAction: Action = {
   name: MANAGE_TASKS_ACTION,
+  contexts: [...MANAGE_TASKS_CONTEXTS],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "CREATE_TASK",
     "ADD_TASK",
@@ -97,8 +105,11 @@ export const manageTasksAction: Action = {
   descriptionCompressed:
     "Workbench task CRUD+list NL-in-message owner SMALL-model extract",
 
-  validate: async (runtime, message) => {
+  validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
+    if (hasSelectedActionContext(message, state, MANAGE_TASKS_CONTEXTS)) {
+      return true;
+    }
     const currentText = message.content.text ?? "";
     if (looksLikeTaskIntent(currentText)) return true;
 

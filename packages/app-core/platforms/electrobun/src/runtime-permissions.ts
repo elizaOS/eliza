@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { getBrandConfig } from "./brand-config";
 import type {
 	AllPermissionsState,
@@ -63,7 +64,7 @@ export async function fetchRuntimePermissionState(
 			method: operation === "check" ? "GET" : "POST",
 		});
 		if (!response.ok) {
-			console.warn(
+			logger.warn(
 				`[Permissions] Runtime permission request failed for ${permissionId} (${operation}): ${response.status}`,
 			);
 			return null;
@@ -84,13 +85,13 @@ export async function fetchRuntimePermissionState(
 			return payload;
 		}
 	} catch (error) {
-		console.warn(
+		logger.warn(
 			`[Permissions] Failed to fetch runtime permission state for ${permissionId} (${operation}): ${error instanceof Error ? error.message : String(error)}`,
 		);
 		return null;
 	}
 
-	console.warn(
+	logger.warn(
 		`[Permissions] Runtime permission endpoint returned an invalid payload for ${permissionId} (${operation})`,
 	);
 	return null;

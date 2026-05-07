@@ -8,8 +8,8 @@
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
+import type { App } from "@/db/repositories/apps";
 import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
-import type { App } from "@/db/schemas/apps";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";

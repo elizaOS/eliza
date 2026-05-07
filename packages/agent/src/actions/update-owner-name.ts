@@ -22,6 +22,8 @@ type UpdateOwnerNameParams = {
 
 export const updateOwnerNameAction: Action = {
   name: "UPDATE_OWNER_NAME",
+  contexts: ["settings", "contacts", "admin"],
+  roleGate: { minRole: "OWNER" },
   similes: ["SET_OWNER_NAME", "CHANGE_OWNER_NAME", "UPDATE_DISPLAY_NAME"],
   description:
     "Update the configured owner display name. Owner-only. Persists to the eliza.json `ui.ownerName` field, the same path the Relationships owner-edit field writes.",

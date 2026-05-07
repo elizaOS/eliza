@@ -791,6 +791,8 @@ export const websiteBlockAction: Action & {
     "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits).",
   descriptionCompressed:
     "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission; macOS draft-then-confirm",
+  contexts: ["screen_time", "browser", "automation", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

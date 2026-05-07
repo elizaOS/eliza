@@ -1,14 +1,9 @@
 #!/usr/bin/env bun
 
-import { config } from "dotenv";
-import { resolve } from "path";
-import {
-  backfillStewardUserMappings,
-  type StewardUserBackfillOptions,
-} from "@/lib/services/steward-user-migration";
+import { loadEnvFiles } from "./local-dev-helpers";
+import type { StewardUserBackfillOptions } from "@/lib/services/steward-user-migration";
 
-config({ path: resolve(process.cwd(), ".env") });
-config({ path: resolve(process.cwd(), ".env.local"), override: true });
+loadEnvFiles();
 
 function parseNumberFlag(args: string[], flag: string): number | undefined {
   const index = args.indexOf(flag);
@@ -48,6 +43,8 @@ Options:
 `);
     process.exit(0);
   }
+
+  const { backfillStewardUserMappings } = await import("@/lib/services/steward-user-migration");
 
   const options: StewardUserBackfillOptions = {
     batchSize: parseNumberFlag(args, "--batch-size"),

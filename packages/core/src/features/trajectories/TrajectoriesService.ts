@@ -11,7 +11,16 @@
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
-import { buildContextObjectTrajectoryExport } from "../../trajectory-utils";
+import { serializeTrajectoryExport } from "../../services/trajectory-export";
+import type {
+	TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
+	TrajectoryDetailRecord,
+	TrajectoryExportResult,
+} from "../../services/trajectory-types";
+
+/** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
+export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
+
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
 
@@ -95,17 +104,6 @@ export interface TrajectoryStats {
 	bySource: Record<string, number>;
 	byStatus: Record<string, number>;
 	byScenario: Record<string, number>;
-}
-
-export interface TrajectoryExportOptions {
-	format: "json" | "art" | "csv";
-	jsonShape?: "legacy" | "context_object_events_v5";
-	includePrompts?: boolean;
-	trajectoryIds?: string[];
-	startDate?: string;
-	endDate?: string;
-	scenarioId?: string;
-	batchId?: string;
 }
 
 export interface TrajectoryZipExportOptions {
@@ -1906,8 +1904,8 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	async exportTrajectories(
-		options: TrajectoryExportOptions,
-	): Promise<{ data: string; filename: string; mimeType: string }> {
+		options: CanonicalTrajectoryExportOptions,
+	): Promise<TrajectoryExportResult> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
 		if (!runtime?.adapter) {
 			throw new Error("Database not available");
@@ -1943,60 +1941,18 @@ export class TrajectoriesService extends Service {
 			`SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC`,
 		);
 
-		const trajectories = result.rows.map((row) => this.rowToTrajectory(row));
-		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-
-		if (options.format === "csv") {
-			const lines: string[] = [
-				"id,agent_id,source,status,start_time,end_time,duration_ms,step_count,llm_call_count,total_reward,scenario_id",
-			];
-			for (const t of trajectories) {
-				lines.push(
-					[
-						t.trajectoryId,
-						t.agentId,
-						t.metadata.source ?? "chat",
-						t.metrics.finalStatus,
-						t.startTime,
-						t.endTime,
-						t.durationMs,
-						t.steps.length,
-						t.steps.reduce((sum, s) => sum + s.llmCalls.length, 0),
-						t.totalReward,
-						t.scenarioId ?? "",
-					].join(","),
-				);
-			}
+		const trajectories: TrajectoryDetailRecord[] = result.rows.map((row) => {
+			const trajectory = this.rowToTrajectory(row);
 			return {
-				data: lines.join("\n"),
-				filename: `trajectories-${timestamp}.csv`,
-				mimeType: "text/csv",
+				...trajectory,
+				source:
+					typeof trajectory.metadata?.source === "string"
+						? trajectory.metadata.source
+						: undefined,
 			};
-		}
+		});
 
-		// For JSON format, optionally redact prompts
-		let exportData:
-			| Trajectory[]
-			| ReturnType<typeof buildContextObjectTrajectoryExport>[] =
-			options.jsonShape === "context_object_events_v5"
-				? trajectories.map((trajectory) =>
-						buildContextObjectTrajectoryExport({ trajectory }),
-					)
-				: trajectories;
-		if (
-			options.jsonShape !== "context_object_events_v5" &&
-			!options.includePrompts
-		) {
-			exportData = trajectories.map((trajectory) =>
-				this.redactTrajectoryPrompts(trajectory),
-			);
-		}
-
-		return {
-			data: JSON.stringify(exportData, null, 2),
-			filename: `trajectories-${timestamp}.json`,
-			mimeType: "application/json",
-		};
+		return serializeTrajectoryExport(trajectories, options);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

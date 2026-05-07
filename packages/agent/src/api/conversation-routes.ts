@@ -1314,7 +1314,7 @@ export async function handleConversationRoutes(
     } catch (err) {
       if (!aborted) {
         // If text was already streamed to the client (e.g. the initial
-        // response succeeded but a post-action continuation failed), use the
+        // response succeeded but planner follow-up failed), use the
         // streamed text as the final reply instead of replacing it with a
         // generic fallback.
         if (streamedText) {

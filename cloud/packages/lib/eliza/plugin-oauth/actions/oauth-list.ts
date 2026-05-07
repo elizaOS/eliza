@@ -17,6 +17,8 @@ import { capitalize, formatConnectionIdentifier, isUserLookupError, lookupUser }
 
 export const oauthListAction: ActionWithParams = {
   name: "OAUTH_LIST",
+  contexts: ["connectors", "settings"],
+  contextGate: { anyOf: ["connectors", "settings"] },
   similes: [
     "LIST_CONNECTIONS",
     "SHOW_CONNECTIONS",

@@ -68,10 +68,22 @@ export interface OpenAIChatRequest {
   user?: string;
   tools?: ChatCompletionsTool[];
   tool_choice?: ChatCompletionsToolChoice;
-  response_format?: { type: "json_object" | "text" };
+  response_format?:
+    | { type: "json_object" | "text" }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name?: string;
+          description?: string;
+          schema?: Record<string, unknown>;
+          strict?: boolean;
+        };
+      };
   seed?: number;
   logprobs?: boolean;
   top_logprobs?: number;
+  /** OpenAI-compatible cache routing hint used by Cerebras-compatible providers. */
+  prompt_cache_key?: string;
   /** Provider-specific options (matches AI SDK `SharedV3ProviderOptions`). */
   providerOptions?: CloudMergedProviderOptions;
 }
@@ -106,6 +118,13 @@ export interface OpenAIChatResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
 }
 

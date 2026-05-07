@@ -6,6 +6,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderResult,
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
@@ -198,8 +199,19 @@ const factsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
-	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-		const recentMessages = await runtime.getMemories({
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+	): Promise<ProviderResult> => {
+		try {
+			const recentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
 			limit: 10,
@@ -314,15 +326,27 @@ const factsProvider: Provider = {
 			.filter((part) => part.length > 0)
 			.join("\n");
 
-		return {
-			values: { facts: formattedFacts },
-			data: {
-				facts: allFacts,
-				durableFacts,
-				currentFacts,
-			},
-			text,
-		};
+			return {
+				values: { facts: formattedFacts },
+				data: {
+					facts: allFacts,
+					durableFacts,
+					currentFacts,
+				},
+				text,
+			};
+		} catch (error) {
+			return {
+				values: { facts: "" },
+				data: {
+					facts: [],
+					durableFacts: [],
+					currentFacts: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				text: "No facts available.",
+			};
+		}
 	},
 };
 

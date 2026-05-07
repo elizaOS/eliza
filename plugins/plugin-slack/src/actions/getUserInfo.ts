@@ -81,6 +81,9 @@ export const getUserInfo: Action = {
   ],
   description: "Get information about a Slack user",
   descriptionCompressed: "Get Slack user info.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "userId",

@@ -161,8 +161,6 @@ export const styleSchema = z
 // Settings schema - flexible object allowing any JSON-serializable values
 const settingsKnownKeys = new Set([
 	"shouldRespondModel",
-	"useMultiStep",
-	"maxMultistepIterations",
 	"basic-capabilitiesDefllmoff",
 	"basic-capabilitiesKeepResp",
 	"providersTotalTimeoutMs",
@@ -181,8 +179,6 @@ const settingsKnownKeys = new Set([
 export const settingsSchema = z
 	.object({
 		shouldRespondModel: z.string().optional(),
-		useMultiStep: z.boolean().optional(),
-		maxMultistepIterations: z.number().int().optional(),
 		"basic-capabilitiesDefllmoff": z.boolean().optional(),
 		"basic-capabilitiesKeepResp": z.boolean().optional(),
 		providersTotalTimeoutMs: z.number().int().optional(),

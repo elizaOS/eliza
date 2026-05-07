@@ -53,11 +53,9 @@ import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
 import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
-  type AgentEventPayloadLike,
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
@@ -142,26 +140,19 @@ import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
-  handleChatRoutes,
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
-import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
-import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
-import { handleConversationRoutes } from "./conversation-routes.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
-import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
@@ -173,7 +164,6 @@ import {
 } from "./http-helpers.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
 // import { handleIMessageRoute } from "./imessage-routes.js";
-import { handleInboxRoute } from "./inbox-routes.js";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
@@ -197,7 +187,6 @@ import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
-import { handleSandboxRoute } from "./sandbox-routes.js";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -206,6 +195,14 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.js";
+import {
+  handleCloudAndCoreRouteGroup,
+  handleConversationRouteGroup,
+  handleDatabaseRouteGroup,
+  handleInboxAndCloudRelayRouteGroup,
+  handleLifeOpsRuntimePluginRoute,
+  handleSandboxRouteGroup,
+} from "./server-route-dispatch.js";
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
@@ -234,7 +231,6 @@ import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
-import { handleXRelayRoute } from "./x-relay-routes.js";
 
 export {
   executeFallbackParsedActions,
@@ -252,8 +248,6 @@ type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
-type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
-type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
 // LifeOpsRouteArg removed — routes extracted to lifeopsPlugin
 type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
@@ -1067,13 +1061,6 @@ const isWebSocketAuthorized = _isWebSocketAuthorized;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
 
-function isLifeOpsCloudPluginRoute(pathname: string): boolean {
-  return (
-    pathname === "/api/cloud/features" ||
-    pathname === "/api/cloud/features/sync" ||
-    pathname.startsWith("/api/cloud/travel-providers/")
-  );
-}
 const ensurePairingCode = _ensurePairingCode;
 const normalizePairingCode = _normalizePairingCode;
 const rateLimitPairing = _rateLimitPairing;
@@ -1130,8 +1117,11 @@ function getOrCreateRuntimeOperationManager(
 // decodePathComponent imported in the consolidated import at the top
 
 import {
+  isLifeOpsCloudPluginRoute,
+  maybeRouteAutonomyEventToConversation,
+} from "./server-autonomy-helpers.js";
+import {
   getPtyConsoleBridge,
-  routeAutonomyTextToUser,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
@@ -1152,43 +1142,6 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.js";
-
-async function maybeRouteAutonomyEventToConversation(
-  state: ServerState,
-  event: AgentEventPayloadLike,
-): Promise<void> {
-  if (event.stream !== "assistant") return;
-
-  const payload =
-    event.data && typeof event.data === "object"
-      ? (event.data as Record<string, unknown>)
-      : null;
-  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-  if (!text) return;
-
-  const explicitSource =
-    typeof payload?.source === "string" ? payload.source : null;
-  const hasExplicitSource =
-    explicitSource !== null && explicitSource.trim().length > 0;
-  const source = hasExplicitSource ? explicitSource.trim() : "autonomy";
-
-  // Regular user conversation turns should never be re-routed as proactive.
-  // Some AGENT_EVENT payloads may omit roomId metadata, so rely on source too.
-  if (source === "client_chat") return;
-  if (!hasExplicitSource && !event.roomId) return;
-
-  // Keep regular conversation messages in their own room only.
-  if (
-    event.roomId &&
-    Array.from(state.conversations.values()).some(
-      (c) => c.roomId === event.roomId,
-    )
-  ) {
-    return;
-  }
-
-  await routeAutonomyTextToUser(state, text, source);
-}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -2072,43 +2025,25 @@ async function handleRequest(
   // Cross-channel read-only feed that merges connector messages
   // (imessage, telegram, discord, whatsapp, etc.) into a single
   // time-ordered view. See api/inbox-routes.ts for details.
-  if (pathname.startsWith("/api/inbox")) {
-    const handled = await handleInboxRoute(
+  if (
+    await handleInboxAndCloudRelayRouteGroup({
       req,
       res,
-      pathname,
       method,
-      { runtime: state.runtime ?? null },
-      { json, error, readJsonBody },
-    );
-    if (handled) return;
+      pathname,
+      url,
+      state,
+      json,
+      error,
+      readJsonBody,
+    })
+  ) {
+    return;
   }
 
   // ── iMessage routes (/api/imessage/*) ─────────────────────────────────
   // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
   // The plugin registers rawPath routes that serve the same legacy paths.
-
-  // ── Cloud relay status (/api/cloud/relay-status) ──────────────────────
-  if (pathname === "/api/cloud/relay-status") {
-    const handled = await handleCloudRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      {
-        runtime: state.runtime
-          ? {
-              getService: (type: string) =>
-                (
-                  state.runtime as { getService: (t: string) => unknown }
-                ).getService(type),
-            }
-          : undefined,
-      },
-      { json, error, readJsonBody },
-    );
-    if (handled) return;
-  }
 
   // ── Telegram setup routes (/api/telegram-setup/*) ────────────────────
   // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
@@ -2286,119 +2221,55 @@ async function handleRequest(
 
   if (
     isLifeOpsCloudPluginRoute(pathname) &&
-    (await tryHandleRuntimePluginRoute({
+    (await handleLifeOpsRuntimePluginRoute({
       req,
       res,
       method,
       pathname,
       url,
-      runtime: state.runtime,
-      isAuthorized: () => isAuthorized(req),
+      state,
+      isAuthorizedRequest: isAuthorized,
     }))
   ) {
     return;
   }
 
-  // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
-  if (pathname.startsWith("/api/cloud/")) {
-    const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
-      config: state.config,
-      runtime: state.runtime,
-    });
-    if (xRelayHandled) return;
-
-    const billingHandled = await handleCloudBillingRoute(
+  if (
+    await handleCloudAndCoreRouteGroup({
       req,
       res,
-      pathname,
       method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (billingHandled) return;
-
-    // Compat proxy routes — transparent proxy to Eliza Cloud v2 /api/compat/*
-    const compatHandled = await handleCloudCompatRoute(
-      req,
-      res,
       pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (compatHandled) return;
-
-    const cloudState: CloudRouteState = {
-      config: state.config,
-      cloudManager: state.cloudManager,
-      runtime: state.runtime,
-      saveConfig: saveElizaConfig,
-      createTelemetrySpan: createIntegrationTelemetrySpan,
+      state,
       restartRuntime,
-    };
-    const handled = await handleCloudRoute(
-      req,
-      res,
-      pathname,
-      method,
-      cloudState,
-    );
-    if (handled) return;
+      saveConfig: saveElizaConfig,
+    })
+  ) {
+    return;
   }
 
-  // ── Sandbox routes (/api/sandbox/*) ────────────────────────────────────
-  if (pathname.startsWith("/api/sandbox")) {
-    const handled = await handleSandboxRoute(req, res, pathname, method, {
-      sandboxManager: state.sandboxManager,
-    });
-    if (handled) return;
+  if (await handleSandboxRouteGroup({ req, res, method, pathname, state })) {
+    return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Conversation routes (/api/conversations/*) — delegated to conversation-routes.ts
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (pathname.startsWith("/api/conversations")) {
-    // Cast state — ConversationRouteState is a compatible subset of ServerState
-    const handled = await handleConversationRoutes({
+  if (
+    await handleConversationRouteGroup({
       req,
       res,
       method,
       pathname,
-      readJsonBody,
+      url,
+      state,
       json,
       error,
-      state: coerce<ConversationRouteArg["state"]>(state),
-    });
-    if (handled) return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // OpenAI-compatible routes (/v1/*) — delegated to chat-routes.ts
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (pathname.startsWith("/v1/")) {
-    // Cast state — ChatRouteState is a compatible subset of ServerState
-    const handled = await handleChatRoutes({
-      req,
-      res,
-      method,
-      pathname,
       readJsonBody,
-      json,
-      error,
-      state: coerce<ChatRouteArg["state"]>(state),
-    });
-    if (handled) return;
+    })
+  ) {
+    return;
   }
 
-  // ── Database management API ─────────────────────────────────────────────
-  if (pathname.startsWith("/api/database/")) {
-    const handled = await handleDatabaseRoute(
-      req,
-      res,
-      state.runtime,
-      pathname,
-    );
-    if (handled) return;
+  if (await handleDatabaseRouteGroup({ req, res, pathname, state })) {
+    return;
   }
 
   // Trajectory routes (/api/trajectories/*) are now provided by the

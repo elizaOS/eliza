@@ -42,6 +42,8 @@ function isPaymentOp(value: unknown): value is PaymentOp {
 
 export const paymentOpAction: Action = {
   name: "PAYMENT_OP",
+  contexts: ["finance", "payments"],
+  contextGate: { anyOf: ["finance", "payments"] },
   similes: [
     "REQUEST_PAYMENT",
     "CHARGE_USER",

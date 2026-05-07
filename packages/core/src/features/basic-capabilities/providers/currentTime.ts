@@ -21,6 +21,12 @@ export const currentTimeProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
 		const setting = _runtime.getSetting("TIMEZONE");

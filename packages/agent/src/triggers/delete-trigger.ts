@@ -62,6 +62,8 @@ async function findTriggerTask(
 
 export const deleteTriggerTaskAction: Action = {
   name: DELETE_TRIGGER_TASK_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "DELETE_TRIGGER",
     "REMOVE_TRIGGER",

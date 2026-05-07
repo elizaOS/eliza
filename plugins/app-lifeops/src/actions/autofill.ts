@@ -415,6 +415,8 @@ export const autofillAction: Action & {
     "whitelist_list (show effective whitelist).",
   descriptionCompressed:
     "browser autofill: fill(field,domain) whitelist-add(domain,confirm) whitelist-list; allowlist-gated browser-feature-gated",
+  contexts: ["browser", "secrets", "settings", "automation"],
+  roleGate: { minRole: "OWNER" },
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

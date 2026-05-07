@@ -19,7 +19,10 @@ import type {
   HandlerOptions,
   IAgentRuntime,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
+import {
+  getValidationKeywordTerms,
+  isElizaCloudServiceSelectedInConfig,
+} from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.js";
 import {
   createAudioProvider,
@@ -28,6 +31,167 @@ import {
   createVisionProvider,
   type MediaProviderFactoryOptions,
 } from "../providers/media-provider.js";
+import {
+  hasSelectedContextOrSignalSync,
+  messageText,
+} from "./context-signal.js";
+
+const MEDIA_ACTION_CONTEXTS = ["general", "media", "files"] as const;
+const IMAGE_STRONG_TERMS = getValidationKeywordTerms(
+  "action.generateImage.strong",
+  {
+    includeAllLocales: true,
+  },
+);
+const IMAGE_WEAK_TERMS = getValidationKeywordTerms(
+  "action.generateImage.weak",
+  {
+    includeAllLocales: true,
+  },
+);
+const VIDEO_STRONG_TERMS = [
+  "generate video",
+  "create video",
+  "make video",
+  "animate",
+  "animation",
+  "video",
+  "clip",
+  "film",
+  "movie",
+  "text to video",
+  "image to video",
+  "生成视频",
+  "视频",
+  "动画",
+  "비디오",
+  "영상",
+  "애니메이션",
+  "generar video",
+  "crear video",
+  "vídeo",
+  "video",
+  "animar",
+  "gerar vídeo",
+  "criar vídeo",
+  "animar",
+  "tạo video",
+  "tao video",
+  "hoạt hình",
+  "hoat hinh",
+  "gumawa ng video",
+  "lumikha ng video",
+  "i-animate",
+];
+const AUDIO_STRONG_TERMS = [
+  "generate audio",
+  "create audio",
+  "make audio",
+  "generate music",
+  "make music",
+  "compose",
+  "song",
+  "sound effect",
+  "instrumental",
+  "track",
+  "beat",
+  "生成音频",
+  "音频",
+  "音乐",
+  "歌曲",
+  "오디오",
+  "음악",
+  "노래",
+  "generar audio",
+  "crear audio",
+  "música",
+  "musica",
+  "canción",
+  "cancion",
+  "gerar áudio",
+  "criar áudio",
+  "música",
+  "musica",
+  "canção",
+  "cancao",
+  "tạo âm thanh",
+  "tao am thanh",
+  "âm nhạc",
+  "am nhac",
+  "bài hát",
+  "bai hat",
+  "gumawa ng audio",
+  "musika",
+  "kanta",
+];
+const ANALYZE_IMAGE_STRONG_TERMS = [
+  "analyze image",
+  "describe image",
+  "what is in this image",
+  "what's in this image",
+  "read image",
+  "read screenshot",
+  "read receipt",
+  "ocr",
+  "vision",
+  "screenshot",
+  "photo",
+  "image",
+  "分析图片",
+  "描述图片",
+  "识别图片",
+  "截图",
+  "이미지 분석",
+  "사진 설명",
+  "스크린샷",
+  "analiza imagen",
+  "describe imagen",
+  "leer imagen",
+  "captura de pantalla",
+  "analise imagem",
+  "descreva imagem",
+  "ler imagem",
+  "ảnh chụp màn hình",
+  "anh chup man hinh",
+  "phân tích ảnh",
+  "phan tich anh",
+  "ilarawan ang larawan",
+  "basahin ang larawan",
+  "screenshot",
+];
+
+function hasMediaActionSignal(
+  message: Parameters<NonNullable<Action["validate"]>>[1],
+  state: Parameters<NonNullable<Action["validate"]>>[2],
+  strongTerms: readonly string[],
+  weakTerms: readonly string[] = [],
+): boolean {
+  return hasSelectedContextOrSignalSync(
+    message,
+    state,
+    MEDIA_ACTION_CONTEXTS,
+    strongTerms,
+    weakTerms,
+    8,
+  );
+}
+
+function messageHasImageAttachment(
+  message: Parameters<NonNullable<Action["validate"]>>[1],
+): boolean {
+  const content = message.content as Record<string, unknown> | undefined;
+  const attachments = content?.attachments;
+  if (!Array.isArray(attachments)) return false;
+  return attachments.some((attachment) => {
+    if (!attachment || typeof attachment !== "object") return false;
+    const record = attachment as Record<string, unknown>;
+    return (
+      record.type === "image" ||
+      (typeof record.mimeType === "string" &&
+        record.mimeType.toLowerCase().startsWith("image/"))
+    );
+  });
+}
 
 function getMediaProviderOptions(): MediaProviderFactoryOptions {
   const config = loadElizaConfig();
@@ -48,6 +212,8 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
 
 export const generateImageAction: Action = {
   name: "GENERATE_IMAGE",
+  contexts: ["general", "media", "files"],
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_IMAGE",
@@ -66,7 +232,8 @@ export const generateImageAction: Action = {
   descriptionCompressed:
     "generate image text prompt use AI image generation support various style, size, quality setting",
 
-  validate: async (_runtime: IAgentRuntime) => true,
+  validate: async (_runtime: IAgentRuntime, message, state) =>
+    hasMediaActionSignal(message, state, IMAGE_STRONG_TERMS, IMAGE_WEAK_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -204,6 +371,8 @@ export const generateImageAction: Action = {
 
 export const generateVideoAction: Action = {
   name: "GENERATE_VIDEO",
+  contexts: ["general", "media", "files"],
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_VIDEO",
@@ -221,7 +390,8 @@ export const generateVideoAction: Action = {
   descriptionCompressed:
     "generate video text prompt use AI video generation optionally use input image image-to-video generation",
 
-  validate: async (_runtime: IAgentRuntime) => true,
+  validate: async (_runtime: IAgentRuntime, message, state) =>
+    hasMediaActionSignal(message, state, VIDEO_STRONG_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -345,6 +515,8 @@ export const generateVideoAction: Action = {
 
 export const generateAudioAction: Action = {
   name: "GENERATE_AUDIO",
+  contexts: ["general", "media", "files"],
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_AUDIO",
@@ -363,7 +535,8 @@ export const generateAudioAction: Action = {
   descriptionCompressed:
     "generate audio music text prompt use AI audio generation create song, sound effect, instrumental music",
 
-  validate: async (_runtime: IAgentRuntime) => true,
+  validate: async (_runtime: IAgentRuntime, message, state) =>
+    hasMediaActionSignal(message, state, AUDIO_STRONG_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -492,6 +665,8 @@ export const generateAudioAction: Action = {
 
 export const analyzeImageAction: Action = {
   name: "ANALYZE_IMAGE",
+  contexts: ["general", "media", "files"],
+  roleGate: { minRole: "USER" },
 
   similes: [
     "DESCRIBE_IMAGE",
@@ -510,7 +685,10 @@ export const analyzeImageAction: Action = {
   descriptionCompressed:
     "analyze image use AI vision describe content, identify object, read text, answer question image",
 
-  validate: async (_runtime: IAgentRuntime) => true,
+  validate: async (_runtime: IAgentRuntime, message, state) =>
+    messageHasImageAttachment(message) ||
+    hasMediaActionSignal(message, state, ANALYZE_IMAGE_STRONG_TERMS) ||
+    /\b(image|photo|screenshot|receipt|ocr)\b/i.test(messageText(message)),
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as

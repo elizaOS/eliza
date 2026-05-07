@@ -105,6 +105,29 @@ def test_routing_row_converts_to_message_handler_schema() -> None:
     assert "evidenceTurnIds" not in result
 
 
+def test_legacy_non_json_tool_call_is_skipped_not_inferred_as_reply() -> None:
+    record = {
+        "roomName": "room",
+        "agentId": "agent",
+        "memoryEntries": [],
+        "currentMessage": {"role": "user", "content": "weather in LA?"},
+        "expectedResponse": "tool_calls[1]:\n  name: get_weather\n  arguments:\n    city: Los Angeles",
+        "availableActions": ["REPLY", "TASK_CALL"],
+        "metadata": {
+            "task_type": "tool_call",
+            "source_dataset": "hermes-fc-v1",
+            "split": "train",
+            "license": "mit",
+        },
+    }
+
+    native, error = native_record_from_eliza(record, _entry(), decoder=None)
+
+    assert native is None
+    assert error is not None
+    assert "legacy non-JSON structured expectedResponse skipped" in error
+
+
 def test_source_matrix_marks_missing_local_path() -> None:
     rows = source_matrix([
         {

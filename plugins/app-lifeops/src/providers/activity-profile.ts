@@ -13,6 +13,8 @@ import { readProfileFromMetadata } from "../activity-profile/service.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 
+const MAX_PROFILE_TASKS = 25;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -34,6 +36,10 @@ export const activityProfileProvider: Provider = {
   descriptionCompressed: "owner+agent activity: platform, time bucket, recency",
   dynamic: true,
   position: 13,
+  contexts: ["screen_time", "tasks", "health"],
+  contextGate: { anyOf: ["screen_time", "tasks", "health"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   async get(
     runtime: IAgentRuntime,
     message: Memory,
@@ -51,7 +57,7 @@ export const activityProfileProvider: Provider = {
         agentIds: [runtime.agentId],
         tags: [...PROACTIVE_TASK_TAGS],
       });
-      const task = tasks.find(
+      const task = tasks.slice(0, MAX_PROFILE_TASKS).find(
         (t) => t.name === "PROACTIVE_AGENT" && isRecord(t.metadata),
       );
       const metadata = isRecord(task?.metadata) ? task.metadata : null;

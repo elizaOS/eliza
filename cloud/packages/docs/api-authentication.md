@@ -69,7 +69,11 @@ For a longer rationale (CLI session public split, crypto GET/POST, key managemen
 | `requireAuthOrApiKeyWithOrg(request)` | Same as above but org required (typical for paid / credit usage). |
 | `requireAdmin(request)` | Admin wallet + role via `requireAuthOrApiKeyWithOrg` then admin checks. |
 
-**API key management**: List/create/update/delete/regenerate keys under `/api/v1/api-keys` accept API keys. Use a **different** key than the one you are modifying or revoking.
+**API key management**: `GET /api/v1/api-keys` and `POST /api/v1/api-keys`
+use Steward session auth (`requireUserWithOrg`). `PATCH`/`DELETE
+/api/v1/api-keys/:id` and `POST /api/v1/api-keys/:id/regenerate` accept
+session or API key auth (`requireUserOrApiKeyWithOrg`). Use a **different** key
+than the one you are modifying or revoking.
 
 ## Session-only routes (edge + handlers)
 
@@ -80,7 +84,7 @@ These are intentionally **not** usable with `X-API-Key` / `Bearer eliza_…` at 
 | Post-login / CLI | `/api/auth/migrate-anonymous`, `/api/auth/cli-session/:sessionId/complete` |
 | Invites (accept only) | `/api/invites/accept` — one-time user action |
 | Promo / abuse | `/api/signup-code/redeem` |
-| API Explorer UI key | `/api/v1/api-keys/explorer` |
+| API Explorer UI key and key list/create | `/api/v1/api-keys/explorer`, `GET /api/v1/api-keys`, `POST /api/v1/api-keys` |
 | Dashboard LLM helpers | `/api/v1/generate-prompts`, `/api/v1/character-assistant` |
 | Stripe checkout | `/api/stripe/create-checkout-session` |
 | My agents | `/api/my-agents/claim-affiliate-characters`, `/api/my-agents/characters/:id/track-interaction` |
@@ -93,14 +97,14 @@ Infrastructure, billing reads, voices, keys, org admin, profile:
 
 - `/api/v1/dashboard`, `/api/v1/apps/:id/deploy`, `/api/v1/apps/:id/domains` (+ status, sync, verify)
 - `/api/elevenlabs/voices` (premade list), `/api/elevenlabs/voices/user`, `/api/elevenlabs/voices/jobs`, `/api/elevenlabs/voices/:id`, `/api/elevenlabs/voices/verify/:id`
-- `/api/v1/api-keys`, `/api/v1/api-keys/:id`, `/api/v1/api-keys/:id/regenerate`
+- `PATCH`/`DELETE /api/v1/api-keys/:id`, `POST /api/v1/api-keys/:id/regenerate`
 - `/api/v1/user` (GET/PATCH; org optional per user record)
 - `/api/sessions/current`, `GET /api/crypto/payments`, `GET /api/crypto/payments/:id`
 - `/api/organizations/members`, `/api/organizations/members/:userId`, `/api/organizations/invites`, `/api/organizations/invites/:inviteId`
 
 ## CORS
 
-- **Shared allow list**: `CORS_ALLOW_HEADERS`, `CORS_ALLOW_METHODS`, `CORS_MAX_AGE` in [`packages/lib/cors-constants.ts`](../packages/lib/cors-constants.ts) — used by `next.config.ts`, `proxy.ts` OPTIONS, `packages/lib/middleware/cors-apps.ts`, `packages/lib/services/proxy/cors.ts`, and reflected in `packages/lib/utils/cors.ts` for allowlisted origins.
+- **Shared allow list**: `CORS_ALLOW_HEADERS`, `CORS_ALLOW_METHODS`, `CORS_MAX_AGE` in [`packages/lib/cors-constants.ts`](../lib/cors-constants.ts) — used by `next.config.ts`, `proxy.ts` OPTIONS, `packages/lib/middleware/cors-apps.ts`, `packages/lib/services/proxy/cors.ts`, and reflected in `packages/lib/utils/cors.ts` for allowlisted origins.
 - **Wildcard `*`**: Default for most `/api/*` responses; credentials are not used with `*`; auth is via headers or same-site cookies on the app origin.
 - **Origin allowlist + credentials**: `getCorsHeaders` in `packages/lib/utils/cors.ts` for first-party domains that need `Access-Control-Allow-Credentials: true`.
 

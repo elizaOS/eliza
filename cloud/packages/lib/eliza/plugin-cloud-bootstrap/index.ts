@@ -1,5 +1,5 @@
 /**
- * Cloud Bootstrap Plugin - Multi-step message execution for cloud.
+ * Cloud Bootstrap Plugin - Native planner message execution for cloud.
  * Replaces default message service with CloudBootstrapMessageService.
  */
 import {
@@ -162,7 +162,7 @@ const events = {
 
 export const cloudBootstrapPlugin: Plugin = {
   name: "cloud-bootstrap",
-  description: "Multi-step message execution with action params for cloud",
+  description: "Native planner message execution with action params for cloud",
   actions: [
     generateImageAction,
     finishAction,

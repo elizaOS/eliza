@@ -54,6 +54,23 @@ export const sendMessage: Action = {
   similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
   description: "Send a text message via iMessage (macOS only)",
   descriptionCompressed: "Send iMessage (macOS).",
+  contexts: ["phone", "messaging", "connectors"],
+  contextGate: { anyOf: ["phone", "messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "text",
+      description: "Message text to send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "to",
+      description: "Phone number, email address, or current conversation.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+  ],
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {

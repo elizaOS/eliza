@@ -19,6 +19,7 @@ import { ChannelType } from "../../../types/index.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("SETTINGS");
+const MAX_SETTINGS_OUTPUT_LENGTH = 12000;
 
 /**
  * Formats a setting value for display, respecting privacy flags
@@ -157,11 +158,18 @@ function generateStatusMessage(
 export const settingsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
 	): Promise<ProviderResult> => {
+		try {
 		// Parallelize the initial database operations to improve performance
 		// These operations can run simultaneously as they don't depend on each other
 		const [room, userWorlds] = await Promise.all([
@@ -374,12 +382,15 @@ export const settingsProvider: Provider = {
 		}
 
 		// Generate the status message based on the settings
-		const output = generateStatusMessage(
+		let output = generateStatusMessage(
 			runtime,
 			worldSettings,
 			isOnboarding,
 			state,
 		);
+		if (output.length > MAX_SETTINGS_OUTPUT_LENGTH) {
+			output = `${output.slice(0, MAX_SETTINGS_OUTPUT_LENGTH)}...`;
+		}
 
 		return {
 			data: {
@@ -390,5 +401,17 @@ export const settingsProvider: Provider = {
 			},
 			text: output,
 		};
+		} catch (error) {
+			return {
+				data: {
+					settings: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: {
+					settings: "Configuration is temporarily unavailable.",
+				},
+				text: "Configuration is temporarily unavailable.",
+			};
+		}
 	},
 };

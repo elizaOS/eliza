@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { BuildPageClient } from "@/packages/ui/src/components/chat/build-page-client";
+import { BuildPageClient } from "../../components/chat/build-page-client";
 
 /**
  * /dashboard/build — free-mode character builder. Auth is optional; the

@@ -45,6 +45,12 @@ export function createChannelProfileProvider(): Provider {
     name: "elizaChannelProfile",
     description: "Reports channel-derived execution profile state.",
     position: -50,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
+
     async get(
       _runtime: IAgentRuntime,
       message: Memory,

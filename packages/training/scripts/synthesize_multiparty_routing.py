@@ -58,7 +58,7 @@ from lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE, ACTION_RESPOND, ACTION_STOP,
     build, stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "data" / "synthesized" / "multiparty_should_respond.jsonl"
@@ -117,7 +117,7 @@ def _build_record(
     current_turn: dict[str, str],
     action: str,
     reasoning: str,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Render one canonical eliza `should_respond` record."""
@@ -178,7 +178,7 @@ def _build_record(
 
 # Pre-labeled. Each row → exactly one record.
 def iter_ishiki_records(
-    *, slug: str, license: str, encoder: ToonEncoder,
+    *, slug: str, license: str, encoder: ExpectedResponseEncoder,
 ) -> Iterator[dict[str, Any]]:
     base = RAW_DIR / slug
     if not base.exists():
@@ -416,7 +416,7 @@ def synth_from_conversation(
     slug: str,
     license: str,
     split: str,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     rng: random.Random,
     memory_window: int,
     p_respond: float,
@@ -527,7 +527,7 @@ def main() -> int:
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     out_path: Path = args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
 

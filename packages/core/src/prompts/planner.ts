@@ -2,12 +2,6 @@ import type { JSONSchema } from "../types/model";
 
 export const v5PlannerTemplate = `task: Plan the next native tool calls for the current ContextObject.
 
-context_object:
-{{contextObject}}
-
-trajectory:
-{{trajectory}}
-
 rules:
 - use only tools exposed in the current context object
 - plan the smallest grounded queue of useful tool calls
@@ -16,7 +10,13 @@ rules:
 - do not invent tool names, connector names, providers, ids, or benchmark ids
 
 return:
-JSON object only. No markdown, no prose, no XML, no legacy formats.`;
+JSON object only. No markdown, no prose, no XML, no legacy formats.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}`;
 
 export const V5_PLANNER_TEMPLATE = v5PlannerTemplate;
 
@@ -35,7 +35,7 @@ export const v5PlannerSchema: JSONSchema = {
 					name: { type: "string" },
 					args: {
 						type: "object",
-						additionalProperties: true,
+						additionalProperties: false,
 					},
 				},
 				required: ["name"],

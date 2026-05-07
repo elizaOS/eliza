@@ -15,6 +15,10 @@ const DEFAULT_LIMIT = 20;
 export const musicPlaylistsProvider: Provider = {
   name: "musicPlaylists",
   description: "Saved playlists for the requesting user as JSON context.",
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

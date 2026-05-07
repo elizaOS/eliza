@@ -21,7 +21,7 @@
     "dev:web": "bun run --cwd apps/frontend dev",
     "dev:stack": "bun run setup:check && bun run dev",
     "dev:web:linked": "DEV_LINKED=1 bun run --cwd apps/frontend dev",
-    "pglite:server": "bun run packages/scripts/pglite-server.ts",
+    "pglite:server": "bun run packages/scripts/dev/pglite-server.ts",
     "generate:llms": "tsx packages/scripts/generate-llms-txt.ts",
     "generate:jwt-keys": "bun run packages/scripts/generate-jwt-keys.ts",
     "build:sdk": "bun run --cwd packages/sdk build",
@@ -41,7 +41,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "verify": "bun run lint:check && bun run deps:circular && bun run typecheck",
-    "typecheck": "bun run packages/scripts/typecheck-split.ts && bun ./node_modules/typescript/lib/tsc.js --noEmit --project tsconfig.test.json && bun run --cwd packages/ui typecheck && bun run --cwd packages/sdk typecheck && bun run --cwd packages/billing typecheck && bun run --cwd apps/frontend typecheck && bun run --cwd apps/api typecheck && bun run --cwd services/agent-server typecheck && bun run --cwd services/container-control-plane typecheck && bun run --cwd services/gateway-discord typecheck && bun run --cwd services/gateway-webhook typecheck && bun run --cwd services/operator typecheck && bun run --cwd services/rtmp-relay typecheck",
+    "typecheck": "bun run packages/scripts/typecheck-split.ts && bun run typecheck:packages && bun ./node_modules/typescript/lib/tsc.js --noEmit --project tsconfig.test.json && bun run --cwd packages/ui typecheck && bun run --cwd packages/sdk typecheck && bun run --cwd packages/billing typecheck && bun run --cwd apps/frontend typecheck && bun run --cwd apps/api typecheck && bun run --cwd services/agent-server typecheck && bun run --cwd services/container-control-plane typecheck && bun run --cwd services/gateway-discord typecheck && bun run --cwd services/gateway-webhook typecheck && bun run --cwd services/operator typecheck && bun run --cwd services/rtmp-relay typecheck",
+    "typecheck:packages": "bun run --cwd packages/db typecheck && bun run --cwd packages/lib typecheck && bun run --cwd packages/types typecheck",
     "typecheck:full": "bun ./node_modules/typescript/lib/tsc.js --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run packages/scripts/migrate-with-diagnostics.ts",
@@ -68,7 +69,7 @@
     "test:repo-unit:bulk": "find packages/tests/unit -name '*.test.ts' ! -path 'packages/tests/unit/credits.test.ts' ! -path 'packages/tests/unit/docker-infrastructure.test.ts' ! -path 'packages/tests/unit/eliza-app/discord-auth.test.ts' ! -path 'packages/tests/unit/eliza-agent-web-ui.test.ts' ! -path 'packages/tests/unit/oauth/secrets-adapter-utils.test.ts' ! -path 'packages/tests/unit/market-price-preview-route.test.ts' | sort | xargs -n 1 env SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/lib/services/gateway-discord/__tests__ services/gateway-discord/tests/hash-router.test.ts services/gateway-discord/tests/leader-election.test.ts services/gateway-discord/tests/voice-message-handler.test.ts",
     "test:repo-unit:special": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/credits.test.ts packages/tests/unit/eliza-app/discord-auth.test.ts packages/tests/unit/eliza-agent-web-ui.test.ts",
     "test:repo-unit:isolated": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/docker-infrastructure.test.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/oauth/secrets-adapter-utils.test.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/market-price-preview-route.test.ts",
-    "test:repo-unit:db": "SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/unit/idempotency.test.ts packages/tests/unit/message-router-service.test.ts packages/tests/unit/twilio-automation-service.test.ts",
+    "test:integration:db": "SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/integration/db/idempotency.test.ts packages/tests/integration/db/message-router-service.test.ts packages/tests/integration/db/twilio-automation-service.test.ts",
     "test:integration": "bun test --max-concurrency=1 --preload ./packages/tests/e2e/preload.ts packages/tests/integration --timeout 120000",
     "test:properties": "bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/properties --timeout 300000",
     "test:runtime": "bun run build:linked-workspaces && bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/runtime --timeout 120000",
@@ -112,6 +113,9 @@
     "@electric-sql/pglite": "^0.4.5",
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/billing": "workspace:*",
+    "@elizaos/cloud-db": "workspace:*",
+    "@elizaos/cloud-lib": "workspace:*",
+    "@elizaos/cloud-types": "workspace:*",
     "@elizaos/cloud-ui": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elevenlabs": "^1.6.0",
@@ -334,7 +338,6 @@
     "zod": "^4.4.3"
   },
   "patchedDependencies": {
-    "x402@1.1.0": "packages/patches/x402@1.1.0.patch",
     "@brighter/storage-adapter-s3@1.6.3": "packages/patches/@brighter+storage-adapter-s3@1.6.3.patch"
   }
 }

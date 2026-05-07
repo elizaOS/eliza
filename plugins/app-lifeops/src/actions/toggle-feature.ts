@@ -165,6 +165,8 @@ export const toggleFeatureAction: Action = {
     "The set of feature keys is closed — do not invent new ones.",
   descriptionCompressed:
     "toggle LifeOps feature flight-booking push-notifs browser-automation escalation: enable | disable; closed feature key set",
+  contexts: ["settings", "automation", "connectors"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

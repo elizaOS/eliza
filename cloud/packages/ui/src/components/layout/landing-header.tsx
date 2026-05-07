@@ -8,7 +8,7 @@
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import UserMenu from "@/packages/ui/src/components/layout/user-menu";
+import UserMenu from "./user-menu";
 import { ElizaCloudLockup } from "../brand/eliza-cloud-lockup";
 import { Button } from "../button";
 

@@ -277,6 +277,50 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			ModelType.ACTION_PLANNER, // planner iteration 1
 			ModelType.RESPONSE_HANDLER, // evaluator iteration 1
 		]);
+		const plannerParams = calls[1]?.params as
+			| {
+					messages?: unknown[];
+					promptSegments?: unknown[];
+					responseSchema?: unknown;
+					providerOptions?: {
+						eliza?: { segmentHashes?: unknown[] };
+						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
+					};
+			  }
+			| undefined;
+		const evaluatorParams = calls[2]?.params as
+			| {
+					messages?: unknown[];
+					promptSegments?: unknown[];
+					responseSchema?: unknown;
+					providerOptions?: {
+						eliza?: { segmentHashes?: unknown[] };
+						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
+					};
+			  }
+			| undefined;
+		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
+		expect(evaluatorParams?.messages?.length).toBeGreaterThan(1);
+		expect(plannerParams?.promptSegments?.length).toBeGreaterThan(1);
+		expect(evaluatorParams?.promptSegments?.length).toBeGreaterThan(1);
+		// When tools are present, responseSchema must NOT be sent — providers
+		// like Cerebras reject requests that contain both `tools` and
+		// `response_format` simultaneously. Native tool calls ARE the
+		// structured output when tools are active.
+		expect(plannerParams?.responseSchema).toBeUndefined();
+		expect(evaluatorParams?.responseSchema).toBeDefined();
+		expect(
+			plannerParams?.providerOptions?.eliza?.segmentHashes?.length,
+		).toBeGreaterThan(0);
+		expect(
+			evaluatorParams?.providerOptions?.eliza?.segmentHashes?.length,
+		).toBeGreaterThan(0);
+		expect(plannerParams?.providerOptions?.cerebras?.prompt_cache_key).toMatch(
+			/^v5:/,
+		);
+		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
+			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
+		);
 
 		// Trajectory recording wrote a JSON file
 		const recorded = readRecordedTrajectories(String(AGENT_ID));
@@ -851,5 +895,228 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(trajectory.metrics.toolCallsExecuted).toBe(2);
 		// Single planner iteration covered both tools via the queue
 		expect(trajectory.metrics.plannerIterations).toBe(1);
+	});
+
+	it("filters role-gated contexts and carries tool evidence through CONTINUE replanning", async () => {
+		let lookupCount = 0;
+		let summarizeCount = 0;
+		let adminCount = 0;
+
+		const definitions = [
+			{
+				id: "general",
+				label: "General",
+				description: "General user-safe context",
+				gate: { minRole: "GUEST" as const },
+			},
+			{
+				id: "admin",
+				label: "Admin",
+				description: "Owner-only administrative context",
+				gate: { minRole: "OWNER" as const },
+			},
+		];
+		const fakeRegistry = {
+			listAvailable: (role: string) =>
+				role === "OWNER"
+					? definitions
+					: definitions.filter((definition) => definition.id !== "admin"),
+		} as unknown as ContextRegistry;
+
+		const lookup = makeMockAction({
+			name: "PUBLIC_LOOKUP",
+			contexts: ["general"],
+			parameters: [
+				{
+					name: "query",
+					description: "Lookup query",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async (_runtime, _message, _state, options) => {
+				lookupCount++;
+				expect(options.parameters?.query).toBe("alpha");
+				return {
+					success: true,
+					text: "lookup evidence: alpha-status=green",
+					data: {
+						actionName: "PUBLIC_LOOKUP",
+						evidenceId: "alpha-status",
+						status: "green",
+					},
+				};
+			},
+		});
+		const summarize = makeMockAction({
+			name: "SUMMARIZE_LOOKUP",
+			contexts: ["general"],
+			handler: async (_runtime, _message, _state, options) => {
+				summarizeCount++;
+				const prior = options.actionContext?.getPreviousResult("PUBLIC_LOOKUP");
+				expect(prior?.data?.evidenceId).toBe("alpha-status");
+				return {
+					success: true,
+					text: "summary used alpha-status evidence",
+					data: {
+						actionName: "SUMMARIZE_LOOKUP",
+						usedEvidenceId: prior?.data?.evidenceId,
+					},
+				};
+			},
+		});
+		const admin = makeMockAction({
+			name: "ADMIN_ESCALATE",
+			contexts: ["admin"],
+			handler: async () => {
+				adminCount++;
+				return { success: true, text: "admin", data: {} };
+			},
+		});
+
+		const runtime = makeRuntime({
+			actions: [lookup, summarize, admin],
+			contextRegistry: fakeRegistry,
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						action: "RESPOND",
+						simple: false,
+						contexts: ["general", "admin"],
+						thought: "The user needs a lookup; admin should be filtered.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Looking up public status.",
+						toolCalls: [
+							{
+								id: "lookup-1",
+								name: "PUBLIC_LOOKUP",
+								args: { query: "alpha" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "CONTINUE",
+						thought: "The lookup evidence is present; summarize it next.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Summarizing accumulated evidence.",
+						toolCalls: [
+							{
+								id: "summarize-1",
+								name: "SUMMARIZE_LOOKUP",
+								args: {},
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Summary used the lookup result.",
+						messageToUser: "Alpha status is green.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("check alpha status and summarize it"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(lookupCount).toBe(1);
+		expect(summarizeCount).toBe(1);
+		expect(adminCount).toBe(0);
+		if (result.kind === "planned_reply") {
+			expect(result.messageHandler.contexts).toEqual(["general"]);
+			expect(result.result.responseContent?.text).toBe(
+				"Alpha status is green.",
+			);
+		}
+
+		const calls = getCalls(runtime);
+		const stage1Prompt = String(
+			(calls[0]?.params as { prompt?: string } | undefined)?.prompt ?? "",
+		);
+		expect(stage1Prompt).toContain("- general");
+		expect(stage1Prompt).not.toContain("- admin");
+
+		const plannerCalls = calls.filter(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		expect(plannerCalls.length).toBe(2);
+		const firstPlannerParams = plannerCalls[0]?.params as
+			| { tools?: Array<{ name?: string }>; prompt?: string }
+			| undefined;
+		expect(firstPlannerParams?.tools?.map((tool) => tool.name)).toEqual([
+			"PUBLIC_LOOKUP",
+			"SUMMARIZE_LOOKUP",
+		]);
+		expect(firstPlannerParams?.prompt).toContain("message_handler");
+		expect(firstPlannerParams?.prompt).toContain("selected_contexts: general");
+		expect(firstPlannerParams?.prompt).not.toContain("ADMIN_ESCALATE");
+
+		const secondPlannerPrompt = String(
+			(plannerCalls[1]?.params as { prompt?: string } | undefined)?.prompt ??
+				"",
+		);
+		expect(secondPlannerPrompt).toContain("PUBLIC_LOOKUP");
+		expect(secondPlannerPrompt).toContain("alpha-status");
+
+		const evaluatorCalls = calls.filter(
+			(call, index) =>
+				index > 0 && call.modelType === ModelType.RESPONSE_HANDLER,
+		);
+		expect(evaluatorCalls.length).toBe(2);
+		const firstEvaluatorPrompt = String(
+			(evaluatorCalls[0]?.params as { prompt?: string } | undefined)?.prompt ??
+				"",
+		);
+		expect(firstEvaluatorPrompt).toContain("tool_result");
+		expect(firstEvaluatorPrompt).toContain("alpha-status");
+		expect(firstEvaluatorPrompt).toContain('"status": "completed"');
+
+		const finalEvaluatorPrompt = String(
+			(evaluatorCalls[1]?.params as { prompt?: string } | undefined)?.prompt ??
+				"",
+		);
+		expect(finalEvaluatorPrompt).toContain("SUMMARIZE_LOOKUP");
+		expect(finalEvaluatorPrompt).toContain("usedEvidenceId");
+
+		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
+			stages: Array<{
+				kind: string;
+				model?: { prompt?: string };
+				cache?: { segmentHashes: string[]; prefixHash: string };
+			}>;
+			metrics: { plannerIterations: number; toolCallsExecuted: number };
+		};
+		expect(trajectory.metrics.plannerIterations).toBe(2);
+		expect(trajectory.metrics.toolCallsExecuted).toBe(2);
+		const recordedPlanner = trajectory.stages.find(
+			(stage) => stage.kind === "planner",
+		);
+		expect(recordedPlanner?.model?.prompt).toContain("message_handler");
+		expect(recordedPlanner?.model?.prompt).toContain("PUBLIC_LOOKUP");
+		expect(recordedPlanner?.model?.prompt).not.toContain("ADMIN_ESCALATE");
+		expect(recordedPlanner?.cache?.segmentHashes.length).toBeGreaterThan(0);
+		expect(recordedPlanner?.cache?.prefixHash).toMatch(/^[a-f0-9]{64}$/);
 	});
 });

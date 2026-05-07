@@ -1,9 +1,9 @@
 import { DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
 import type { ElizaCharacter } from "@/lib/types";
-import { KnowledgePageClient } from "@/packages/ui/src/components/knowledge/knowledge-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useMyAgents } from "../../lib/data/agents";
+import { KnowledgePageClient } from "./_components/knowledge-page-client";
 
 export default function KnowledgePage() {
   const { ready, authenticated } = useRequireAuth();

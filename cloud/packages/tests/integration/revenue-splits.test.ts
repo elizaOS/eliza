@@ -32,6 +32,7 @@ async function createUser(name: string, email: string) {
 
   await dbWrite.insert(users).values({
     id,
+    steward_user_id: `test-revenue-splits-${id}`,
     email,
     name,
     organization_id,

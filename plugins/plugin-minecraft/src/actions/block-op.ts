@@ -45,6 +45,9 @@ function parsePlaceFace(params: Record<string, unknown>, text: string): PlaceFac
 
 export const minecraftBlockOpAction: Action = {
   name: ACTION_NAME,
+  contexts: ["automation", "media"],
+  contextGate: { anyOf: ["automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_DIG", "MC_PLACE", "MC_BUILD", "MC_MINE"],
   description:
     "Operate on a Minecraft block at coordinates: dig the block or place a block facing.",

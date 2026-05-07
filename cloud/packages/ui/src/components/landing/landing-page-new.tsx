@@ -12,8 +12,8 @@ import { useNavigate } from "react-router-dom";
 // import DiscoverAgents from "./discover-agents";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import Footer from "@/packages/ui/src/components/landing/Footer";
-import LandingHeader from "@/packages/ui/src/components/layout/landing-header";
+import Footer from "./Footer";
+import LandingHeader from "../layout/landing-header";
 import HeroSection from "./hero-section";
 
 interface LandingPageProps {

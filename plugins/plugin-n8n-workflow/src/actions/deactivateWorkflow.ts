@@ -8,9 +8,13 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import { matchWorkflow } from '../utils/generation';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 import { buildConversationContext } from '../utils/context';
+import { matchWorkflow } from '../utils/generation';
+import { validateN8nWorkflowIntent } from './validation';
 
 const examples: ActionExample[][] = [
   [
@@ -62,6 +66,9 @@ const examples: ActionExample[][] = [
 
 export const deactivateWorkflowAction: Action = {
   name: 'DEACTIVATE_N8N_WORKFLOW',
+  contexts: ['automation', 'connectors', 'tasks'],
+  contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
+  roleGate: { minRole: 'USER' },
   similes: [
     'DEACTIVATE_WORKFLOW',
     'DISABLE_WORKFLOW',
@@ -73,25 +80,49 @@ export const deactivateWorkflowAction: Action = {
     'Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.',
   descriptionCompressed:
     'deactivate n8n workflow stop process trigger run automatically identify workflow ID, name, semantic description language',
+  parameters: [
+    {
+      name: 'workflowId',
+      description: 'Optional exact n8n workflow id to deactivate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'workflowName',
+      description: 'Optional workflow name to deactivate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'query',
+      description:
+        'Optional natural-language description of the workflow to deactivate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+  ],
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
-    return !!service;
-  },
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => validateN8nWorkflowIntent(runtime, message, state),
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:deactivate' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         await callback({
@@ -120,7 +151,9 @@ export const deactivateWorkflowAction: Action = {
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+        const workflowList = matchResult.matches
+          .map((m) => `- ${m.name} (ID: ${m.id})`)
+          .join('\n');
 
         if (callback) {
           await callback({
@@ -135,7 +168,7 @@ export const deactivateWorkflowAction: Action = {
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:deactivate' },
-        `Deactivated workflow ${matchResult.matchedWorkflowId}`
+        `Deactivated workflow ${matchResult.matchedWorkflowId}`,
       );
 
       if (callback) {
@@ -147,10 +180,11 @@ export const deactivateWorkflowAction: Action = {
 
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:deactivate' },
-        `Failed to deactivate workflow: ${errorMessage}`
+        `Failed to deactivate workflow: ${errorMessage}`,
       );
 
       if (callback) {

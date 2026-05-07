@@ -8,9 +8,13 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import { matchWorkflow } from '../utils/generation';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 import { buildConversationContext } from '../utils/context';
+import { matchWorkflow } from '../utils/generation';
+import { validateN8nWorkflowIntent } from './validation';
 
 const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
 
@@ -70,30 +74,62 @@ const examples: ActionExample[][] = [
 
 export const deleteWorkflowAction: Action = {
   name: 'DELETE_N8N_WORKFLOW',
+  contexts: ['automation', 'connectors', 'tasks'],
+  contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
+  roleGate: { minRole: 'USER' },
   similes: ['DELETE_WORKFLOW', 'REMOVE_WORKFLOW', 'DESTROY_WORKFLOW'],
   description:
     'Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.',
   descriptionCompressed:
     'delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language',
+  parameters: [
+    {
+      name: 'workflowId',
+      description: 'Optional exact n8n workflow id to delete.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'workflowName',
+      description: 'Optional workflow name to delete.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'query',
+      description: 'Optional natural-language description of the workflow to delete.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'confirmed',
+      description: 'Whether the user has confirmed permanent deletion.',
+      required: false,
+      schema: { type: 'boolean', default: false },
+    },
+  ],
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
-    return !!service;
-  },
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => validateN8nWorkflowIntent(runtime, message, state),
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:delete' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         await callback({
@@ -112,7 +148,9 @@ export const deleteWorkflowAction: Action = {
       const pending = await runtime.getCache<PendingDeletion>(cacheKey);
       if (pending && Date.now() - pending.createdAt < DELETE_CONFIRM_TTL_MS) {
         const userText = (message.content?.text || '').toLowerCase().trim();
-        const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText);
+        const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(
+          userText,
+        );
 
         if (isConfirm) {
           await service.deleteWorkflow(pending.workflowId);
@@ -120,7 +158,7 @@ export const deleteWorkflowAction: Action = {
 
           logger.info(
             { src: 'plugin:n8n-workflow:action:delete' },
-            `Deleted workflow ${pending.workflowId} after confirmation`
+            `Deleted workflow ${pending.workflowId} after confirmation`,
           );
 
           if (callback) {
@@ -160,7 +198,9 @@ export const deleteWorkflowAction: Action = {
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+        const workflowList = matchResult.matches
+          .map((m) => `- ${m.name} (ID: ${m.id})`)
+          .join('\n');
 
         if (callback) {
           await callback({
@@ -171,8 +211,11 @@ export const deleteWorkflowAction: Action = {
         return { success: false };
       }
 
-      const matchedWorkflow = workflows.find((w) => w.id === matchResult.matchedWorkflowId);
-      const workflowName = matchedWorkflow?.name || matchResult.matchedWorkflowId;
+      const matchedWorkflow = workflows.find(
+        (w) => w.id === matchResult.matchedWorkflowId,
+      );
+      const workflowName =
+        matchedWorkflow?.name || matchResult.matchedWorkflowId;
 
       // Store pending deletion and ask for confirmation
       const pendingDeletion: PendingDeletion = {
@@ -192,10 +235,11 @@ export const deleteWorkflowAction: Action = {
 
       return { success: true, data: { awaitingUserInput: true } };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:delete' },
-        `Failed to delete workflow: ${errorMessage}`
+        `Failed to delete workflow: ${errorMessage}`,
       );
 
       if (callback) {

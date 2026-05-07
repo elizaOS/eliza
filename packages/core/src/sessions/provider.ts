@@ -79,6 +79,11 @@ export function createSessionProvider(options?: {
 		name: options?.name ?? "session",
 		description: "Current session context and state",
 		dynamic: true,
+		contexts: ["general", "messaging"],
+		contextGate: { anyOf: ["general", "messaging"] },
+		cacheStable: false,
+		cacheScope: "turn",
+		roleGate: { minRole: "USER" },
 
 		async get(
 			_runtime: IAgentRuntime,
@@ -165,6 +170,11 @@ export function createSessionSkillsProvider(options?: {
 		name: options?.name ?? "sessionSkills",
 		description: "Skills active in the current session",
 		dynamic: true,
+		contexts: ["general", "agent_internal"],
+		contextGate: { anyOf: ["general", "agent_internal"] },
+		cacheStable: false,
+		cacheScope: "turn",
+		roleGate: { minRole: "USER" },
 
 		async get(
 			_runtime: IAgentRuntime,
@@ -235,6 +245,11 @@ export function createSendPolicyProvider(options?: {
 		dynamic: true,
 		// High position to appear prominently in context
 		position: 100,
+		contexts: ["general", "messaging"],
+		contextGate: { anyOf: ["general", "messaging"] },
+		cacheStable: false,
+		cacheScope: "turn",
+		roleGate: { minRole: "USER" },
 
 		async get(
 			_runtime: IAgentRuntime,

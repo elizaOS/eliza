@@ -39,37 +39,45 @@ export const stewardReceiveAddressProvider: Provider = {
   descriptionCompressed: "Wallet receive addresses by chain.",
 
   dynamic: true,
+  contexts: ["finance", "wallet", "crypto"],
+  contextGate: { anyOf: ["finance", "wallet", "crypto"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const response = await fetch(
-      `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/addresses`,
-      {
-        headers: { ...buildAuthHeaders() },
-        signal: AbortSignal.timeout(ADDRESSES_TIMEOUT_MS),
-      },
-    );
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/addresses`,
+        {
+          headers: { ...buildAuthHeaders() },
+          signal: AbortSignal.timeout(ADDRESSES_TIMEOUT_MS),
+        },
+      );
 
-    if (!response.ok) {
-      return { text: "" };
+      if (!response.ok) {
+        return { text: "" };
+      }
+
+      const addresses = (await response.json()) as WalletAddresses;
+      const snapshot: ReceiveAddressSnapshot = {
+        evm: addresses.evmAddress,
+        solana: addresses.solanaAddress,
+      };
+
+      if (!snapshot.evm && !snapshot.solana) {
+        return { text: "" };
+      }
+
+      return {
+        text: JSON.stringify({ steward_receive_address: snapshot }),
+        data: { snapshot },
+      };
+    } catch {
+      return { text: "", data: { snapshot: null } };
     }
-
-    const addresses = (await response.json()) as WalletAddresses;
-    const snapshot: ReceiveAddressSnapshot = {
-      evm: addresses.evmAddress,
-      solana: addresses.solanaAddress,
-    };
-
-    if (!snapshot.evm && !snapshot.solana) {
-      return { text: "" };
-    }
-
-    return {
-      text: JSON.stringify({ steward_receive_address: snapshot }),
-      data: { snapshot },
-    };
   },
 };

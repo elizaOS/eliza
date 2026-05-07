@@ -11,12 +11,12 @@ export type { CreditTransaction, NewCreditTransaction };
 /**
  * Repository for credit transaction database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class CreditTransactionsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -68,7 +68,7 @@ export class CreditTransactionsRepository {
 
   /**
    * Returns true if the organization has already received a signup code bonus.
-   * WHY dbWrite (primary): On redeem, read replica can be stale; using primary avoids granting twice.
+   * WHY dbWrite (primary): On redeem, use a primary read to avoid granting twice.
    */
   async hasSignupCodeBonus(organizationId: string): Promise<boolean> {
     const [row] = await dbWrite
@@ -86,7 +86,7 @@ export class CreditTransactionsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

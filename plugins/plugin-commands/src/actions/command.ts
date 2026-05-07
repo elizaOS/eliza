@@ -272,6 +272,8 @@ async function handleStop(
 
 export const commandAction: Action = {
 	name: "COMMAND",
+	contexts: ["general", "settings", "agent_internal"],
+	contextGate: { anyOf: ["general", "settings", "agent_internal"] },
 	similes: [
 		"COMMAND_OP",
 		"SLASH_COMMAND",

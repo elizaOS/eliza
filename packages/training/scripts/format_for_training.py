@@ -129,9 +129,61 @@ def system_prompt_for(record: dict[str, Any]) -> str:
     return TASK_FALLBACK_SYSTEM
 
 
+def _normalize_message_role(role: Any) -> str | None:
+    if not isinstance(role, str):
+        return None
+    normalized = role.strip().lower()
+    if normalized == "model":
+        return "assistant"
+    if normalized in ("system", "user", "assistant"):
+        return normalized
+    return None
+
+
+def _format_messages_record(
+    record: dict[str, Any],
+) -> dict[str, list[dict[str, str]]] | None:
+    """Accept runtime trajectory/Gemini rows that already carry messages."""
+
+    raw_messages = record.get("messages")
+    if not isinstance(raw_messages, list):
+        return None
+
+    messages: list[dict[str, str]] = []
+    for raw in raw_messages:
+        if not isinstance(raw, dict):
+            continue
+        role = _normalize_message_role(raw.get("role"))
+        content = raw.get("content")
+        if role is None or not isinstance(content, str) or not content.strip():
+            continue
+        messages.append({"role": role, "content": content})
+
+    if not messages:
+        return None
+
+    if messages[0]["role"] != "system":
+        messages.insert(0, {"role": "system", "content": system_prompt_for(record)})
+
+    # Supervised SFT needs an assistant target. Runtime harness rows and
+    # Vertex/Gemini rows both place it at the end; reject partial prompt-only
+    # rows so they cannot train the model to predict user text.
+    if messages[-1]["role"] != "assistant":
+        return None
+
+    if not any(message["role"] == "user" for message in messages):
+        return None
+
+    return {"messages": messages}
+
+
 def format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | None:
     """Return {"messages": [...]} ready for tokenizer.apply_chat_template,
     or None if the record can't be rendered."""
+
+    messages_record = _format_messages_record(record)
+    if messages_record is not None:
+        return messages_record
 
     expected = record.get("expectedResponse") or ""
     if not expected:

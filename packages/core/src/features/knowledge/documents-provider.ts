@@ -5,12 +5,20 @@ import type { KnowledgeService } from "./service.ts";
 import type { KnowledgeDocumentMetadata } from "./types.ts";
 import { normalizeKnowledgeSourceValue } from "./utils.ts";
 
+const MAX_DOCUMENT_PROVIDER_ITEMS = 25;
+
 export const documentsProvider: Provider = {
 	name: "AVAILABLE_DOCUMENTS",
 	description:
 		"List of documents available in the knowledge base. Shows which documents the agent can reference and retrieve information from.",
 	dynamic: true,
 	companionProviders: ["KNOWLEDGE"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
 		try {
 			const knowledgeService = runtime.getService(
@@ -59,7 +67,8 @@ export const documentsProvider: Provider = {
 				};
 			}
 
-			const documentsList = documents
+			const visibleDocuments = documents.slice(0, MAX_DOCUMENT_PROVIDER_ITEMS);
+			const documentsList = visibleDocuments
 				.map((doc, index) => {
 					const metadata = doc.metadata as
 						| KnowledgeDocumentMetadata
@@ -95,12 +104,12 @@ export const documentsProvider: Provider = {
 
 			const documentsText = addHeader(
 				"# Available Documents",
-				`${documents.length} document(s) in knowledge base:\n${documentsList}`,
+				`${documents.length} document(s) in knowledge base${documents.length > visibleDocuments.length ? ` (showing ${visibleDocuments.length})` : ""}:\n${documentsList}`,
 			);
 
 			return {
 				data: {
-					documents: documents.map((doc) => ({
+					documents: visibleDocuments.map((doc) => ({
 						id: doc.id,
 						filename:
 							(doc.metadata as KnowledgeDocumentMetadata | undefined)
@@ -114,6 +123,7 @@ export const documentsProvider: Provider = {
 							?.source,
 					})),
 					count: documents.length,
+					truncated: documents.length > visibleDocuments.length,
 				},
 				values: {
 					documentsCount: documents.length,

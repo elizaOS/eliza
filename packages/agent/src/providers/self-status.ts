@@ -18,13 +18,23 @@ export function createSelfStatusProvider(
       "agent self-awareness status summary (wallet, permission, plugin, etc)",
     dynamic: true,
     position: 12,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
+
     async get(
       runtime: IAgentRuntime,
       _message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
       const text = await registry.composeSummary(runtime);
-      return { text };
+      return {
+        text,
+        values: { hasSelfStatus: text.trim().length > 0 },
+        data: { summaryLength: text.length },
+      };
     },
   };
 }

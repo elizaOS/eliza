@@ -24,7 +24,7 @@ export interface CreateParticipantInput {
  */
 export class ParticipantsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -117,7 +117,7 @@ export class ParticipantsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -130,7 +130,7 @@ export class ParticipantsRepository {
     // Check if already exists
     const exists = await this.isParticipant(input.roomId, input.entityId);
     if (exists) {
-      // Return existing participant - use dbWrite to avoid replication lag
+      // Return existing participant from dbWrite so this sees the latest row.
       const existing = await dbWrite
         .select()
         .from(participantTable)

@@ -23,6 +23,9 @@ import { mergeTaskThreadEvalMetadata } from "./eval-metadata.js";
 
 export const sendToAgentAction: Action = {
   name: "SEND_TO_AGENT",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "SEND_TO_CODING_AGENT",

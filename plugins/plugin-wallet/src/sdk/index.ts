@@ -1,3 +1,4 @@
+import type { JsonValue } from "@elizaos/core";
 import {
   type Address,
   type Chain,
@@ -19,7 +20,11 @@ import type {
   QueuedEvent,
   WalletHealth,
 } from "./types.js";
-import { NATIVE_TOKEN, type AgentWallet as Wallet } from "./wallet-core.js";
+import {
+  NATIVE_TOKEN,
+  requireWalletAccount,
+  type AgentWallet as Wallet,
+} from "./wallet-core.js";
 
 export { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 export type {
@@ -39,6 +44,7 @@ export {
   checkBudget,
   createWallet,
   NATIVE_TOKEN,
+  requireWalletAccount,
   setSpendPolicy,
 } from "./wallet-core.js";
 export type {

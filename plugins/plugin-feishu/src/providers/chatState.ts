@@ -17,6 +17,10 @@ export const chatStateProvider: Provider = {
 	descriptionCompressed: "provide Feishu chat context state information",
 
 	dynamic: true,
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	get: async (
 		_runtime: IAgentRuntime,
 		message: Memory,

@@ -229,6 +229,23 @@ export const summarize: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "knowledge", "connectors"],
+	contextGate: { anyOf: ["messaging", "knowledge", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "range",
+			description: "Date, time, or message range to summarize.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "objective",
+			description: "Summary objective or focus.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	validate: async (
 		runtime: any,
 		message: any,

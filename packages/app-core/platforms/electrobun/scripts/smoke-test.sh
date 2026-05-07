@@ -24,8 +24,68 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ELECTROBUN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_DIR="$(cd "$ELECTROBUN_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$ELECTROBUN_DIR/../../.." && pwd)"
+
+has_electrobun_workspace_root() {
+  local candidate="$1"
+  [[ -f "$candidate/bun.lock" ]] || return 1
+  [[ -f "$candidate/package.json" ]] || return 1
+  [[ -f "$candidate/packages/app/package.json" || -f "$candidate/apps/app/package.json" ]] || return 1
+  [[ -f "$candidate/packages/app-core/platforms/electrobun/package.json" || -f "$candidate/eliza/packages/app-core/platforms/electrobun/package.json" ]] || return 1
+}
+
+has_outer_eliza_electrobun_checkout() {
+  local candidate="$1"
+  [[ -f "$candidate/eliza/packages/app-core/platforms/electrobun/package.json" ]]
+}
+
+find_electrobun_workspace_root() {
+  local current="$ELECTROBUN_DIR"
+  local matches=()
+
+  while true; do
+    if has_electrobun_workspace_root "$current"; then
+      matches+=("$current")
+    fi
+
+    local parent
+    parent="$(dirname "$current")"
+    if [[ "$parent" == "$current" ]]; then
+      local match
+      for match in "${matches[@]}"; do
+        if has_outer_eliza_electrobun_checkout "$match"; then
+          printf "%s\n" "$match"
+          return 0
+        fi
+      done
+      if [[ "${#matches[@]}" -gt 0 ]]; then
+        printf "%s\n" "${matches[0]}"
+        return 0
+      fi
+      echo "ERROR: Could not locate Electrobun workspace root from $ELECTROBUN_DIR" >&2
+      return 1
+    fi
+
+    current="$parent"
+  done
+}
+
+REPO_ROOT="${ELIZA_ELECTROBUN_REPO_ROOT:-$(find_electrobun_workspace_root)}"
+if ! has_electrobun_workspace_root "$REPO_ROOT"; then
+  echo "ERROR: ELIZA_ELECTROBUN_REPO_ROOT is not an Electrobun workspace root: $REPO_ROOT" >&2
+  exit 1
+fi
+APP_DIR="${ELIZA_ELECTROBUN_APP_DIR:-}"
+if [[ -z "$APP_DIR" ]]; then
+  if [[ -f "$REPO_ROOT/packages/app/package.json" ]]; then
+    APP_DIR="$REPO_ROOT/packages/app"
+  else
+    APP_DIR="$REPO_ROOT/apps/app"
+  fi
+fi
+COMMON_BUILD_ENV=(ELIZA_ELECTROBUN_REPO_ROOT="$REPO_ROOT")
+if [[ -f "$REPO_ROOT/eliza/packages/app-core/package.json" && -z "${MILADY_ELIZA_SOURCE:-}" && -z "${ELIZA_SOURCE:-}" ]]; then
+  COMMON_BUILD_ENV+=(MILADY_ELIZA_SOURCE="local")
+fi
 BUILD_ENV="${BUILD_ENV:-canary}"
 SKIP_SIGNATURE_CHECK="${SKIP_SIGNATURE_CHECK:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
@@ -754,6 +814,8 @@ echo "============================================================"
 echo " Eliza Electrobun Smoke Test"
 echo " Build env  : $BUILD_ENV"
 echo " Working dir: $ELECTROBUN_DIR"
+echo " Repo root  : $REPO_ROOT"
+echo " App dir    : $APP_DIR"
 echo "============================================================"
 echo ""
 
@@ -762,12 +824,12 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
   echo "[1/7] Reusing existing packaged artifact (SKIP_BUILD=1)..."
 else
   echo "[1/7] Building core dist + renderer assets..."
-  (cd "$REPO_ROOT" && bunx tsdown && echo '{"type":"module"}' > dist/package.json && node --import tsx scripts/write-build-info.ts)
-  (cd "$APP_DIR" && npx vite build)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" bunx tsdown && echo '{"type":"module"}' > dist/package.json && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/write-build-info.ts)
+  (cd "$APP_DIR" && env "${COMMON_BUILD_ENV[@]}" npx vite build)
   echo ""
 
   echo "[2/7] Bundling runtime node_modules into dist/..."
-  (cd "$REPO_ROOT" && node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
   echo ""
 
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -785,7 +847,7 @@ else
   echo ""
 
   echo "[4/7] Building Electrobun app (env=$BUILD_ENV)..."
-  (cd "$ELECTROBUN_DIR" && ELECTROBUN_DEVELOPER_ID="$BUILD_DEVELOPER_ID" ELECTROBUN_SKIP_CODESIGN="$BUILD_SKIP_CODESIGN" bun run build -- --env="$BUILD_ENV")
+  (cd "$ELECTROBUN_DIR" && env "${COMMON_BUILD_ENV[@]}" ELECTROBUN_DEVELOPER_ID="$BUILD_DEVELOPER_ID" ELECTROBUN_SKIP_CODESIGN="$BUILD_SKIP_CODESIGN" bun run build -- --env="$BUILD_ENV")
 fi
 echo ""
 

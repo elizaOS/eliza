@@ -1,7 +1,7 @@
 "use client";
 
-import Footer from "@/packages/ui/src/components/landing/Footer";
-import LandingHeader from "@/packages/ui/src/components/layout/landing-header";
+import Footer from "./Footer";
+import LandingHeader from "../layout/landing-header";
 import BayerDitheringBackground from "./BayerDitheringBackground";
 
 interface BlogPageProps {

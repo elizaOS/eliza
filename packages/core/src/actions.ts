@@ -314,7 +314,15 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 }
 
 function formatParameterType(schema: ActionParameterSchema): string {
-	switch (schema.type) {
+	if (schema.anyOf?.length) {
+		return `(${schema.anyOf.map(formatParameterType).join(" | ")})`;
+	}
+	if (schema.oneOf?.length) {
+		return schema.oneOf.map(formatParameterType).join(" | ");
+	}
+
+	const primitiveType = schema.type;
+	switch (primitiveType) {
 		case "string":
 			return "string";
 		case "number":
@@ -329,8 +337,10 @@ function formatParameterType(schema: ActionParameterSchema): string {
 				: "array";
 		case "object":
 			return "object";
+		case undefined:
+			return "unknown";
 		default:
-			return schema.type;
+			return primitiveType;
 	}
 }
 

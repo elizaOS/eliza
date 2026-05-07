@@ -152,47 +152,65 @@ const PRIORITY_ORDER: Record<string, number> = {
   MEDIUM_TERM: 2,
   EXPLORE: 3,
 };
+const GOAL_LIMIT = 8;
 
 export const goalsProvider: Provider = {
   name: "RS_SDK_GOALS",
   description:
     "Strategic goals for the 2004scape bot, computed from current game state analysis.",
   descriptionCompressed: "Strategic goals from game state analysis.",
+  contexts: ["game", "automation", "world", "state", "tasks"],
+  contextGate: { anyOf: ["game", "automation", "world", "state", "tasks"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as {
-      getBotState(): BotState | null;
-      getEventLog(): Array<{ action: string; timestamp: number }>;
-    } | null;
-    const state = service?.getBotState?.();
-    if (!state?.connected || !state.inGame || !state.player) {
+    try {
+      const service = runtime.getService("rs_2004scape") as unknown as {
+        getBotState(): BotState | null;
+        getEventLog(): Array<{ action: string; timestamp: number }>;
+      } | null;
+      const state = service?.getBotState?.();
+      if (!state?.connected || !state.inGame || !state.player) {
+        return {
+          text: JSON.stringify({
+            rs_2004_goals: { status: "not_in_game", goals: [] },
+          }, null, 2),
+        };
+      }
+
+      const eventLog = service?.getEventLog?.() ?? [];
+      const goals = computeGoals(state, eventLog);
+      goals.sort(
+        (a, b) =>
+          (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
+      );
+
       return {
         text: JSON.stringify({
-          rs_2004_goals: { status: "not_in_game", goals: [] },
+          rs_2004_goals: {
+            status: "ready",
+            instruction:
+              "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
+            goals: goals.slice(0, GOAL_LIMIT),
+          },
+        }, null, 2),
+      };
+    } catch (error) {
+      return {
+        text: JSON.stringify({
+          rs_2004_goals: {
+            status: "error",
+            reason: error instanceof Error ? error.message : String(error),
+            goals: [],
+          },
         }, null, 2),
       };
     }
-
-    const eventLog = service?.getEventLog?.() ?? [];
-    const goals = computeGoals(state, eventLog);
-    goals.sort(
-      (a, b) =>
-        (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
-    );
-
-    return {
-      text: JSON.stringify({
-        rs_2004_goals: {
-          status: "ready",
-          instruction:
-            "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
-          goals,
-        },
-      }, null, 2),
-    };
   },
 };

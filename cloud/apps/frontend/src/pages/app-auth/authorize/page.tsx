@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { AuthorizeContent } from "@/packages/ui/src/components/auth/authorize-content";
+import { AuthorizeContent } from "@elizaos/cloud-ui/components/auth/authorize-content";
 
 export default function AppAuthAuthorizePage() {
   return (

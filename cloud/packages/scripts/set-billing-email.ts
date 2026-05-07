@@ -2,15 +2,20 @@
  * Script to set billing email for an organization
  * This is a one-time setup script to ensure billing emails are sent
  *
- * Usage: tsx scripts/set-billing-email.ts <org-id> <email>
+ * Usage: tsx packages/scripts/set-billing-email.ts <org-id> <email>
  */
 
-import "dotenv/config";
+import { loadEnvFiles } from "./local-dev-helpers";
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
-import { organizations } from "@/db/schemas/organizations";
+
+loadEnvFiles();
 
 async function setBillingEmail(orgId: string, email: string) {
+  const [{ db }, { organizations }] = await Promise.all([
+    import("@/db/client"),
+    import("@/db/schemas/organizations"),
+  ]);
+
   try {
     console.log(`Setting billing email for organization ${orgId} to ${email}`);
 
@@ -42,10 +47,10 @@ const orgId = process.argv[2];
 const email = process.argv[3];
 
 if (!orgId || !email) {
-  console.error("Usage: tsx scripts/set-billing-email.ts <org-id> <email>");
+  console.error("Usage: tsx packages/scripts/set-billing-email.ts <org-id> <email>");
   console.error("\nExample:");
   console.error(
-    "  tsx scripts/set-billing-email.ts 67e22ff7-257b-41a3-8773-513a4674d1bb user@example.com",
+    "  tsx packages/scripts/set-billing-email.ts 67e22ff7-257b-41a3-8773-513a4674d1bb user@example.com",
   );
   process.exit(1);
 }

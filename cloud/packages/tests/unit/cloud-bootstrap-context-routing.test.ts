@@ -13,12 +13,11 @@ describe("cloud bootstrap context routing", () => {
     const parsed = parseContextRoutingMetadata({
       primaryContext: "wallet",
       secondaryContexts: "wallet, knowledge, wallet",
-      evidenceTurnIds: "turn-1,turn-2,turn-1",
     });
 
     expect(parsed).toEqual({
       primaryContext: "wallet",
-      secondaryContexts: ["wallet", "knowledge"],
+      secondaryContexts: ["knowledge"],
     });
   });
 

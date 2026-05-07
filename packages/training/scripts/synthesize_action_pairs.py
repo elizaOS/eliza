@@ -48,7 +48,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 REGISTRY_PATH = ROOT / "data" / "prompts" / "registry-v2.json"
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
@@ -369,7 +369,7 @@ def random_room_meta(rng: random.Random) -> tuple[str, str]:
 
 def build_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     task_id: str,
     user_msg: str,
     expected: dict[str, Any] | str,
@@ -415,7 +415,7 @@ def build_record(
 
 # ─── core templates ────────────────────────────────────────────────────
 
-def gen_add_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_add_contact(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "save {name} to my contacts — {notes}",
         "add {name}, {categories} please",
@@ -448,7 +448,7 @@ def gen_add_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
         )
 
 
-def gen_remove_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_remove_contact(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "remove {name} from my contacts",
         "delete the contact for {name}",
@@ -472,7 +472,7 @@ def gen_remove_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iter
         )
 
 
-def gen_search_contacts(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_search_contacts(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "find me contacts that match: {intent}",
         "search contacts — {intent}",
@@ -499,7 +499,7 @@ def gen_search_contacts(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_schedule_follow_up(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_schedule_follow_up(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "schedule a follow-up with {name}: {message}",
         "remind me to ping {name} — {message}",
@@ -528,7 +528,7 @@ def gen_schedule_follow_up(encoder: ToonEncoder, rng: random.Random, n: int) -> 
         )
 
 
-def gen_update_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_update_contact(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "update {name}'s contact info — notes: {notes}",
         "change {name}'s categories to {categories}",
@@ -559,7 +559,7 @@ def gen_update_contact(encoder: ToonEncoder, rng: random.Random, n: int) -> Iter
         )
 
 
-def gen_update_role(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_update_role(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "promote {entity_id} to {new_role}",
         "set {entity_id}'s role to {new_role}",
@@ -584,7 +584,7 @@ def gen_update_role(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
         )
 
 
-def gen_should_room(encoder: ToonEncoder, rng: random.Random, n: int,
+def gen_should_room(encoder: ExpectedResponseEncoder, rng: random.Random, n: int,
                     task_id: str) -> Iterable[dict]:
     """Shared generator for should_{mute,unmute,follow,unfollow}_room."""
     yes_phrasings_mute = ["mute {room}", "silence {room}", "shush {room}"]
@@ -624,7 +624,7 @@ def gen_should_room(encoder: ToonEncoder, rng: random.Random, n: int,
         )
 
 
-def gen_should_respond(encoder: ToonEncoder, rng: random.Random, n: int,
+def gen_should_respond(encoder: ExpectedResponseEncoder, rng: random.Random, n: int,
                        with_context: bool) -> Iterable[dict]:
     task_id = "should_respond_with_context" if with_context else "should_respond"
     contexts = ["wallet", "scheduling", "incident-response", "fundraising",
@@ -690,7 +690,7 @@ def gen_should_respond(encoder: ToonEncoder, rng: random.Random, n: int,
         yield rec.to_dict()
 
 
-def gen_choose_option(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_choose_option(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "pick one: {options}",
         "we need a decision — {options}",
@@ -713,7 +713,7 @@ def gen_choose_option(encoder: ToonEncoder, rng: random.Random, n: int) -> Itera
         )
 
 
-def gen_option_extraction(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_option_extraction(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "the available options are: {options}. We need to pick.",
         "from the meeting: choices are {options}",
@@ -737,7 +737,7 @@ def gen_option_extraction(encoder: ToonEncoder, rng: random.Random, n: int) -> I
         )
 
 
-def gen_reflection(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_reflection(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "reflect on the last conversation",
         "summarize what just happened and what you learned",
@@ -760,7 +760,7 @@ def gen_reflection(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
         )
 
 
-def gen_reflection_evaluator(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_reflection_evaluator(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "evaluate that last reflection",
         "score the previous summary on quality",
@@ -787,7 +787,7 @@ def gen_reflection_evaluator(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_think(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_think(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     for i in range(n):
         topic = THINK_TOPICS[i % len(THINK_TOPICS)]
         msg = f"think about {topic}"
@@ -801,7 +801,7 @@ def gen_think(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict
         )
 
 
-def gen_initial_summarization(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_initial_summarization(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "summarize the conversation so far",
         "give me a quick recap",
@@ -824,7 +824,7 @@ def gen_initial_summarization(encoder: ToonEncoder, rng: random.Random, n: int) 
         )
 
 
-def gen_multi_step_summary(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_multi_step_summary(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "summarize the multi-step plan execution",
         "what were the steps and outcomes",
@@ -847,7 +847,7 @@ def gen_multi_step_summary(encoder: ToonEncoder, rng: random.Random, n: int) -> 
         )
 
 
-def gen_update_summarization(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_update_summarization(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "update the conversation summary with the latest turn",
         "fold the new messages into the running summary",
@@ -870,7 +870,7 @@ def gen_update_summarization(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_post_action_decision(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_post_action_decision(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "the action just completed — what's next",
         "decide the next move after the last action",
@@ -898,7 +898,7 @@ def gen_post_action_decision(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_multi_step_decision(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_multi_step_decision(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "decide the next step in the plan",
         "which step comes next in the workflow",
@@ -924,7 +924,7 @@ def gen_multi_step_decision(encoder: ToonEncoder, rng: random.Random, n: int) ->
         )
 
 
-def gen_post_creation(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_post_creation(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     phrasings = [
         "draft a post about {topic}",
         "compose a tweet on {topic}",
@@ -948,7 +948,7 @@ def gen_post_creation(encoder: ToonEncoder, rng: random.Random, n: int) -> Itera
         )
 
 
-def gen_image_description(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_image_description(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     image_scenarios = [
         ("Sunset Over a Mountain Lake",
          "A serene lake reflecting orange and pink hues at sunset, framed by silhouetted mountains.",
@@ -981,7 +981,7 @@ def gen_image_description(encoder: ToonEncoder, rng: random.Random, n: int) -> I
         )
 
 
-def gen_image_generation(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_image_generation(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     prompts = [
         ("photo of a glass terrarium on a sunlit windowsill",
          "minimalist photo, glass terrarium with moss and pebbles, sunlit windowsill, soft morning light, shallow depth of field, 35mm"),
@@ -1008,7 +1008,7 @@ def gen_image_generation(encoder: ToonEncoder, rng: random.Random, n: int) -> It
         )
 
 
-def gen_reply(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_reply(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     asks = [
         ("what's the weather in Tokyo today",
          "Mostly sunny in Tokyo today, around 22°C (72°F) with a light breeze."),
@@ -1034,7 +1034,7 @@ def gen_reply(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict
         )
 
 
-def gen_message_classifier(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_message_classifier(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     msgs = [
         ("turn off the lights at 10pm", "simple", "direct_action",
          "scheduling,iot", "user", "single device", "device-online", 0.95),
@@ -1071,7 +1071,7 @@ def gen_message_classifier(encoder: ToonEncoder, rng: random.Random, n: int) -> 
         )
 
 
-def gen_extract_secrets(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_extract_secrets(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     msgs = [
         ("Set my OpenAI key to sk-test-abcdef1234567890", "OPENAI_API_KEY", "sk-test-abcdef1234567890",
          "api_key", "OpenAI API access key"),
@@ -1100,7 +1100,7 @@ def gen_extract_secrets(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_extract_secret_operation(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_extract_secret_operation(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     msgs = [
         ("What is my OpenAI key?", "get", "OPENAI_API_KEY", "", "user"),
         ("Do I have a Discord token set?", "check", "DISCORD_BOT_TOKEN", "", "user"),
@@ -1125,7 +1125,7 @@ def gen_extract_secret_operation(encoder: ToonEncoder, rng: random.Random, n: in
         )
 
 
-def gen_extract_secret_request(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_extract_secret_request(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     msgs = [
         ("I need an API key for OpenAI", "OPENAI_API_KEY", "Required to access the model"),
         ("Missing TWITTER_TOKEN", "TWITTER_TOKEN", "Required for tweet posting"),
@@ -1144,7 +1144,7 @@ def gen_extract_secret_request(encoder: ToonEncoder, rng: random.Random, n: int)
         )
 
 
-def gen_long_term_extraction(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_long_term_extraction(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     samples = [
         ("semantic", "User is a senior TypeScript developer with 8 years of backend experience.", 0.95),
         ("procedural", "User follows TDD workflow: writes tests before implementation, runs tests after each change.", 0.88),
@@ -1169,7 +1169,7 @@ def gen_long_term_extraction(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_message_handler(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_message_handler(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     asks = [
         ("can you book a meeting with Jane next week",
          "I'll schedule a 30-minute slot with Jane for Tuesday at 10 AM ET. Confirm?"),
@@ -1193,7 +1193,7 @@ def gen_message_handler(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_autonomy(encoder: ToonEncoder, rng: random.Random, n: int, task_id: str) -> Iterable[dict]:
+def gen_autonomy(encoder: ExpectedResponseEncoder, rng: random.Random, n: int, task_id: str) -> Iterable[dict]:
     """Autonomy prompts emit <thought> + optional action — text format."""
     prompts = [
         "continue the autonomous loop",
@@ -1220,7 +1220,7 @@ def gen_autonomy(encoder: ToonEncoder, rng: random.Random, n: int, task_id: str)
         )
 
 
-def gen_update_settings(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_update_settings(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     settings = [
         ("notification_quiet_hours", "22:00-07:00", "Set quiet hours from 10 PM to 7 AM."),
         ("default_timezone", "America/New_York", "Updated default timezone to America/New_York."),
@@ -1243,7 +1243,7 @@ def gen_update_settings(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_update_entity(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_update_entity(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("ent-jane-001", "title", "VP of Design", "Jane was promoted from Senior Designer to VP of Design."),
         ("ent-mateo", "team", "platform", "Mateo joined the platform team."),
@@ -1275,7 +1275,7 @@ DISCORD_USERS = ["alice#1234", "bob#0001", "carlos#4242", "diana#0007",
                  "ethan#2718", "fatima#3141"]
 
 
-def gen_discord_attachment_ids(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_attachment_ids(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     objectives = [
         "summarize these screenshots from the design crit",
         "extract the bullet points from the slides",
@@ -1303,7 +1303,7 @@ def gen_discord_attachment_ids(encoder: ToonEncoder, rng: random.Random, n: int)
         )
 
 
-def gen_discord_attachment_summarization(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_attachment_summarization(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     summaries = [
         "Three screenshots from the design crit: tab-bar redesign, color audit, navigation flow.",
         "Slides cover Q2 priorities, hiring slowdown, and infra cost optimization.",
@@ -1321,7 +1321,7 @@ def gen_discord_attachment_summarization(encoder: ToonEncoder, rng: random.Rando
         )
 
 
-def gen_discord_channel_info(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_channel_info(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"channelIdentifier": "#engineering", "focusUser": "alice#1234",
          "messageCount": 50, "summarize": True,
@@ -1347,7 +1347,7 @@ def gen_discord_channel_info(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_discord_create_poll(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_create_poll(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     polls = [
         {"question": "Where should we host the offsite?",
          "options": ["Lisbon", "Mexico City", "Bali"], "useEmojis": True,
@@ -1376,7 +1376,7 @@ def gen_discord_create_poll(encoder: ToonEncoder, rng: random.Random, n: int) ->
         )
 
 
-def gen_discord_date_range(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_date_range(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"start": "2026-04-01", "end": "2026-04-30", "objective": "monthly digest of #engineering",
          "ask": "give me the April digest for #engineering"},
@@ -1400,7 +1400,7 @@ def gen_discord_date_range(encoder: ToonEncoder, rng: random.Random, n: int) -> 
         )
 
 
-def gen_discord_get_user_info(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_get_user_info(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"userIdentifier": "alice#1234", "detailed": True,
          "ask": "give me detailed info on alice#1234"},
@@ -1424,7 +1424,7 @@ def gen_discord_get_user_info(encoder: ToonEncoder, rng: random.Random, n: int) 
         )
 
 
-def gen_discord_join_or_leave(encoder: ToonEncoder, rng: random.Random, n: int,
+def gen_discord_join_or_leave(encoder: ExpectedResponseEncoder, rng: random.Random, n: int,
                               task_id: str) -> Iterable[dict]:
     is_voice_pool = [True, False, False, True, False]
     verb = "join" if "join" in task_id else "leave"
@@ -1446,7 +1446,7 @@ def gen_discord_join_or_leave(encoder: ToonEncoder, rng: random.Random, n: int,
         )
 
 
-def gen_discord_media_attachment_id(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_media_attachment_id(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     ids = ["att-img-001", "att-vid-014", "att-aud-007", "att-img-099", "att-pdf-22"]
     for i in range(n):
         aid = ids[i % len(ids)]
@@ -1460,7 +1460,7 @@ def gen_discord_media_attachment_id(encoder: ToonEncoder, rng: random.Random, n:
         )
 
 
-def gen_discord_media_url(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_media_url(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     urls = [
         "https://cdn.discordapp.com/attachments/123/456/screen.png",
         "https://media.discordapp.net/attachments/789/012/clip.mp4",
@@ -1480,7 +1480,7 @@ def gen_discord_media_url(encoder: ToonEncoder, rng: random.Random, n: int) -> I
         )
 
 
-def gen_discord_pin_or_unpin(encoder: ToonEncoder, rng: random.Random, n: int,
+def gen_discord_pin_or_unpin(encoder: ExpectedResponseEncoder, rng: random.Random, n: int,
                              task_id: str) -> Iterable[dict]:
     refs = ["msg-aaa-1", "msg-bbb-22", "msg-ccc-300", "msg-ddd-9", "msg-eee-77"]
     verb = "pin" if "unpin" not in task_id else "unpin"
@@ -1501,7 +1501,7 @@ def gen_discord_pin_or_unpin(encoder: ToonEncoder, rng: random.Random, n: int,
         )
 
 
-def gen_discord_react_to_message(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_react_to_message(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"messageRef": "msg-aaa-1", "emoji": "🚀", "ask": "react to msg-aaa-1 with 🚀"},
         {"messageRef": "msg-bbb-22", "emoji": "✅", "ask": "✅ on msg-bbb-22 please"},
@@ -1520,7 +1520,7 @@ def gen_discord_react_to_message(encoder: ToonEncoder, rng: random.Random, n: in
         )
 
 
-def gen_discord_search_messages(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_search_messages(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"query": "TLS cert", "channelIdentifier": "#ops", "author": "",
          "limit": 50, "timeRange": "last-7-days",
@@ -1549,7 +1549,7 @@ def gen_discord_search_messages(encoder: ToonEncoder, rng: random.Random, n: int
         )
 
 
-def gen_discord_send_dm(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_send_dm(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("alice#1234", "Quick Q — can you confirm the design crit time tomorrow?",
          "DM alice#1234 to confirm tomorrow's design crit"),
@@ -1573,7 +1573,7 @@ def gen_discord_send_dm(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_discord_summarization(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_summarization(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     summaries = [
         "Engineering team unblocked the migration, frontend shipped redesign behind a flag, ops paused alert cleanup.",
         "Design crit approved the new tab bar; three accessibility regressions to fix; re-review next Tuesday.",
@@ -1591,7 +1591,7 @@ def gen_discord_summarization(encoder: ToonEncoder, rng: random.Random, n: int) 
         )
 
 
-def gen_discord_transcription(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_discord_transcription(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     transcripts = [
         "Hey team, quick update on the migration — Postgres cutover went smoothly, latency is down 18%.",
         "Reminder: design crit is moving to Tuesday at 2 PM. Bring the latest mocks.",
@@ -1621,7 +1621,7 @@ EVM_ADDRS = [
 ]
 
 
-def gen_evm_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_evm_swap(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     swaps = [
         ("ethereum", "USDC", "ETH", "1000"),
         ("base", "ETH", "USDC", "0.5"),
@@ -1654,7 +1654,7 @@ def gen_evm_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[d
         )
 
 
-def gen_evm_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_evm_transfer(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("ethereum", "USDC", "100", EVM_ADDRS[0]),
         ("base", "ETH", "0.1", EVM_ADDRS[1]),
@@ -1681,7 +1681,7 @@ def gen_evm_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterab
         )
 
 
-def gen_evm_bridge(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_evm_bridge(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("ethereum", "base", "USDC", "500", EVM_ADDRS[0]),
         ("polygon", "ethereum", "DAI", "1000", EVM_ADDRS[1]),
@@ -1708,7 +1708,7 @@ def gen_evm_bridge(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable
         )
 
 
-def gen_evm_token_balance(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_evm_token_balance(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("ethereum", "USDC"),
         ("base", "ETH"),
@@ -1733,7 +1733,7 @@ def gen_evm_token_balance(encoder: ToonEncoder, rng: random.Random, n: int) -> I
         )
 
 
-def gen_evm_governance(encoder: ToonEncoder, rng: random.Random, n: int, task_id: str) -> Iterable[dict]:
+def gen_evm_governance(encoder: ExpectedResponseEncoder, rng: random.Random, n: int, task_id: str) -> Iterable[dict]:
     governors = [
         "0xc0Da02939E1441F497fd74F78cE7Decb17B66529",
         "0x408ED6354d4973f66138C91495F2f2FCbd8724C3",
@@ -1771,7 +1771,7 @@ def gen_evm_governance(encoder: ToonEncoder, rng: random.Random, n: int, task_id
         )
 
 
-def gen_evm_vote(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_evm_vote(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("ethereum", "0xc0Da02939E1441F497fd74F78cE7Decb17B66529", "42", 1),
         ("polygon", "0x408ED6354d4973f66138C91495F2f2FCbd8724C3", "17", 0),
@@ -1792,7 +1792,7 @@ def gen_evm_vote(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[d
         )
 
 
-def gen_solana_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_solana_swap(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"inputTokenSymbol": "SOL", "outputTokenSymbol": "USDC",
          "inputTokenCA": "So11111111111111111111111111111111111111112",
@@ -1828,7 +1828,7 @@ def gen_solana_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
         )
 
 
-def gen_solana_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_solana_transfer(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         {"recipient": "5xot8gC5dZGTNFJiE7CLqSGyqWzWZ9R6CuJ6BqGsHCcB",
          "tokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -1858,7 +1858,7 @@ def gen_solana_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_shell_command_extraction(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterable[dict]:
+def gen_shell_command_extraction(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterable[dict]:
     cases = [
         ("show me the disk usage on this machine", "df -h"),
         ("list all running docker containers", "docker ps"),
@@ -1918,7 +1918,7 @@ _LIFEOPS_ACCEPTABLE_RE = re.compile(r'"acceptableActions":\s*\[([^\]]*)\]')
 _LIFEOPS_FORBIDDEN_RE = re.compile(r'"forbiddenActions":\s*\[([^\]]*)\]')
 
 
-def gen_lifeops(encoder: ToonEncoder, rng: random.Random,
+def gen_lifeops(encoder: ExpectedResponseEncoder, rng: random.Random,
                 lifeops_entries: list[dict], per_template: int) -> Iterable[dict]:
     for entry in lifeops_entries:
         tmpl = entry["template"]
@@ -2249,7 +2249,7 @@ def _sample_value_for_param(p: dict, plugin: str, action_name: str, idx: int,
     return f"sample-{name}-{idx}"
 
 
-def gen_action_with_params(encoder: ToonEncoder, rng: random.Random,
+def gen_action_with_params(encoder: ExpectedResponseEncoder, rng: random.Random,
                            action: dict, n_per: int) -> Iterable[dict]:
     plugin = action.get("plugin", "")
     action_name = action["name"]
@@ -2295,7 +2295,7 @@ def gen_action_with_params(encoder: ToonEncoder, rng: random.Random,
         )
 
 
-def gen_action_no_params(encoder: ToonEncoder, rng: random.Random,
+def gen_action_no_params(encoder: ExpectedResponseEncoder, rng: random.Random,
                         action: dict, n_per: int) -> Iterable[dict]:
     plugin = action.get("plugin", "")
     action_name = action["name"]
@@ -2344,7 +2344,7 @@ CLIPBOARD_ENTRIES = [
 ]
 
 
-def gen_clipboard_extract(encoder: ToonEncoder, rng: random.Random, n: int,
+def gen_clipboard_extract(encoder: ExpectedResponseEncoder, rng: random.Random, n: int,
                           task_id: str) -> Iterable[dict]:
     """Inline-action templates from plugin-clipboard (.extract)."""
     for i in range(n):
@@ -2382,7 +2382,7 @@ def gen_clipboard_extract(encoder: ToonEncoder, rng: random.Random, n: int,
         )
 
 
-def gen_dataset_generator_should_respond(encoder: ToonEncoder, rng: random.Random,
+def gen_dataset_generator_should_respond(encoder: ExpectedResponseEncoder, rng: random.Random,
                                          n: int) -> Iterable[dict]:
     """Inline action template for dataset-generator should_respond (toon)."""
     actions_cycle = [ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP]
@@ -2562,7 +2562,7 @@ def main() -> int:
     plugin_entries = [e for e in registry["entries"] if e["source_kind"] == "plugin"]
     lifeops_entries = [e for e in registry["entries"] if e["source_kind"] == "lifeops"]
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     counts: dict[str, int] = {}
 
     try:

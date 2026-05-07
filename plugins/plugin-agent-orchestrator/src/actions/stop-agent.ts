@@ -22,6 +22,9 @@ import { requireTaskAgentAccess } from "../services/task-policy.js";
 
 export const stopAgentAction: Action = {
   name: "STOP_AGENT",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "STOP_CODING_AGENT",

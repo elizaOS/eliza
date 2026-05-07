@@ -115,6 +115,8 @@ async function findTriggerTask(
 
 export const updateTriggerTaskAction: Action = {
   name: UPDATE_TRIGGER_TASK_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "UPDATE_TRIGGER",
     "EDIT_TRIGGER",

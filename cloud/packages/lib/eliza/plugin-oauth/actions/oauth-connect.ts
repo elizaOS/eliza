@@ -24,6 +24,8 @@ import {
 
 export const oauthConnectAction: ActionWithParams = {
   name: "OAUTH_CONNECT",
+  contexts: ["connectors", "settings", "secrets"],
+  contextGate: { anyOf: ["connectors", "settings", "secrets"] },
   similes: [
     "CONNECT_PLATFORM",
     "LINK_ACCOUNT",

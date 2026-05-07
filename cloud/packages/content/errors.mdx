@@ -242,9 +242,9 @@ curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
 
 **Solutions**:
 
-1. Verify your API key starts with `ek_live_` or `ek_test_`
+1. Verify your API key starts with `eliza_`
 2. Check the key hasn't been revoked in [Dashboard → API Keys](/dashboard/api-keys)
-3. Ensure you're using `Authorization: Bearer YOUR_KEY` (not `X-API-Key`)
+3. Ensure you're sending either `Authorization: Bearer YOUR_KEY` or `X-API-Key: YOUR_KEY`
 
 ### "RATE_LIMITED" errors
 

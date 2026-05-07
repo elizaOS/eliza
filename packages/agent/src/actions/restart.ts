@@ -81,6 +81,8 @@ function isExplicitRestartRequest(message: Memory | undefined): boolean {
 
 export const restartAction: Action = {
   name: "RESTART_AGENT",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "RESTART",

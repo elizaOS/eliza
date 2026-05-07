@@ -110,7 +110,6 @@ export class BridgeModule {
     this.signerAccount = requireWalletAccount(walletClient);
     this.walletClient = walletClient;
     this.fromChain = fromChain;
-    this.fromRpcUrl = options.rpcUrl;
     this.publicClient = createPublicClient({
       chain: VIEM_CHAINS[fromChain],
       transport: http(options.rpcUrl),

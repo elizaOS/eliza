@@ -393,6 +393,7 @@ export const resolveRequestAction: Action & {
   descriptionCompressed:
     "approve|reject pending request from queue: send_email send_message book_travel voice_call multilingual",
   contexts: ["email", "messaging", "calendar", "tasks", "contacts", "payments"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   parameters: [
     {

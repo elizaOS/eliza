@@ -58,6 +58,8 @@ interface QueryResultShape {
 
 export const listDatabaseTablesAction: Action = {
   name: "LIST_DATABASE_TABLES",
+  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  roleGate: { minRole: "OWNER" },
   similes: ["LIST_TABLES", "SHOW_TABLES", "DB_TABLES"],
   description:
     "List all tables in the agent's database, with row counts and column metadata when available.",
@@ -163,6 +165,8 @@ interface GetTableDataParams {
 
 export const getTableDataAction: Action = {
   name: "GET_TABLE_DATA",
+  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  roleGate: { minRole: "OWNER" },
   similes: ["READ_TABLE", "SELECT_TABLE", "BROWSE_TABLE"],
   description:
     "Fetch a page of rows from a database table. Supports limit, offset, sortBy, and sortDir.",
@@ -349,6 +353,8 @@ function detectMutation(sql: string): string | null {
 
 export const executeDatabaseQueryAction: Action = {
   name: "EXECUTE_DATABASE_QUERY",
+  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  roleGate: { minRole: "OWNER" },
   similes: ["RUN_QUERY", "SQL_QUERY", "DB_QUERY"],
   description:
     "Execute a SQL query against the agent's database. Read-only by default — pass allowWrites:true to permit mutations.",
@@ -533,6 +539,8 @@ export function registerVectorSearchCategory(runtime: IAgentRuntime): void {
 
 export const searchVectorsAction: Action = {
   name: "SEARCH_VECTORS",
+  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  roleGate: { minRole: "OWNER" },
   similes: ["VECTOR_SEARCH", "EMBEDDING_SEARCH", "SIMILARITY_SEARCH"],
   description:
     "Search the agent's vector store for semantically similar items via /api/database/vectors/search. Embeds the query with the runtime's TEXT_EMBEDDING model and returns top-k matches with similarity scores.",

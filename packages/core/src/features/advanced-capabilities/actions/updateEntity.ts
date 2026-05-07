@@ -24,6 +24,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ENTITY");
@@ -100,6 +101,8 @@ function readComponentInput(
  */
 export const updateEntityAction: Action = {
 	name: spec.name,
+	contexts: ["contacts", "memory", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
@@ -107,10 +110,25 @@ export const updateEntityAction: Action = {
 	validate: async (
 		_runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (!readComponentInput(message, options)) return false;
+		if (
+			!hasActionContextOrKeyword(message, state, {
+				contexts: ["contacts", "memory", "knowledge"],
+				keywords: [
+					"update entity",
+					"entity data",
+					"profile",
+					"contact profile",
+					"component",
+					"metadata",
+				],
+			})
+		) {
+			return false;
+		}
 		// Check if we have any registered sources or existing components that could be updated
 		// const worldId = message.roomId;
 		// const agentId = runtime.agentId;

@@ -26,6 +26,8 @@ import {
 
 export const oauthRevokeAction: ActionWithParams = {
   name: "OAUTH_REVOKE",
+  contexts: ["connectors", "settings", "secrets"],
+  contextGate: { anyOf: ["connectors", "settings", "secrets"] },
   similes: [
     "DISCONNECT",
     "REMOVE_CONNECTION",
