@@ -73,6 +73,7 @@ import {
   type N8nClarificationTargetGroup,
   type N8nStatusResponse,
   type N8nWorkflow,
+  type N8nWorkflowExecution,
   type N8nWorkflowMissingCredential,
   type N8nWorkflowNeedsClarificationResponse,
   type N8nWorkflowWriteRequest,
@@ -3858,6 +3859,8 @@ function WorkflowAutomationDetailPane({
     null,
   );
   const [workflowPromptSaving, setWorkflowPromptSaving] = useState(false);
+  const [executions, setExecutions] = useState<N8nWorkflowExecution[]>([]);
+  const [executionsLoading, setExecutionsLoading] = useState(false);
   const workflowGenerating = useWorkflowGenerationState(automation.workflowId);
   const busy =
     workflowOpsBusy ||
@@ -3947,6 +3950,29 @@ function WorkflowAutomationDetailPane({
     automation.workflow,
     automation.workflowId,
   ]);
+
+  useEffect(() => {
+    if (!automation.workflowId || !automation.hasBackingWorkflow) {
+      setExecutions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setExecutionsLoading(true);
+    void client
+      .getN8nWorkflowExecutions(automation.workflowId, 10)
+      .then((data) => {
+        if (!cancelled) setExecutions(data);
+      })
+      .catch(() => {
+        if (!cancelled) setExecutions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExecutionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [automation.hasBackingWorkflow, automation.workflowId]);
 
   return (
     <div className="space-y-4">
@@ -4114,6 +4140,59 @@ function WorkflowAutomationDetailPane({
         />
       </div>
 
+      {automation.hasBackingWorkflow && (
+        <DetailSection title="Recent runs">
+          {executionsLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Spinner className="h-4 w-4 text-muted" />
+            </div>
+          ) : executions.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-muted">No executions yet.</div>
+          ) : (
+            <div className="divide-y divide-border/15">
+              {executions.slice(0, 10).map((exec) => {
+                const durationMs =
+                  exec.startedAt && exec.stoppedAt
+                    ? Date.parse(exec.stoppedAt) - Date.parse(exec.startedAt)
+                    : null;
+                const isErr = exec.status === "error" || exec.status === "crashed";
+                const errorMsg = exec.data?.resultData?.error?.message;
+                return (
+                  <div key={exec.id} className="flex flex-col gap-0.5 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          exec.status === "success"
+                            ? "bg-success"
+                            : isErr
+                              ? "bg-danger"
+                              : exec.status === "running"
+                                ? "bg-accent animate-pulse"
+                                : "bg-muted"
+                        }`}
+                      />
+                      <span className="text-xs text-txt">
+                        {formatDateTime(exec.startedAt, { locale: uiLanguage, fallback: "—" })}
+                      </span>
+                      {durationMs !== null && durationMs >= 0 && (
+                        <span className="ml-auto text-[10px] text-muted">
+                          {formatDurationMs(durationMs)}
+                        </span>
+                      )}
+                    </div>
+                    {isErr && errorMsg && (
+                      <div className="ml-3.5 truncate text-[10px] text-danger">
+                        {errorMsg}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DetailSection>
+      )}
+
       {showWorkflowPromptBox && (
         <DetailSection title="Create workflow">
           <div className="p-3">
@@ -4275,7 +4354,11 @@ function AutomationSidebarItem({
 
   if (item.type === "n8n_workflow") {
     Icon = Workflow;
-    tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
+    if (item.lastExecution?.status === "error") {
+      tone = "danger";
+    } else {
+      tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
+    }
   } else if (item.type === "automation_draft") {
     Icon = FileText;
     tone = "warning";
@@ -4317,7 +4400,27 @@ function AutomationSidebarItem({
       <span className={`truncate text-xs-tight ${titleClass}`}>
         {getAutomationDisplayTitle(item)}
       </span>
-      <StatusDot tone={tone} className="ml-auto h-1.5 w-1.5 shrink-0" />
+      {item.type === "n8n_workflow" && item.lastExecution && (
+        <span
+          className={`ml-auto shrink-0 text-[10px] leading-none ${
+            item.lastExecution.status === "error"
+              ? "text-danger"
+              : item.lastExecution.status === "running"
+                ? "text-accent animate-pulse"
+                : "text-muted"
+          }`}
+        >
+          {item.lastExecution.status === "error"
+            ? "failed"
+            : item.lastExecution.status === "running"
+              ? "running"
+              : formatRelativePast(item.lastExecution.startedAt)}
+        </span>
+      )}
+      <StatusDot
+        tone={tone}
+        className={`${item.type === "n8n_workflow" && item.lastExecution ? "" : "ml-auto"} h-1.5 w-1.5 shrink-0`}
+      />
     </button>
   );
 }
