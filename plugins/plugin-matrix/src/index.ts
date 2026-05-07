@@ -22,6 +22,7 @@ export { joinRoom, MATRIX_MESSAGE_OP_ACTION, matrixRoomsProvider, messageOp };
 
 // Import service for plugin
 import { MatrixService } from "./service.js";
+import { MatrixN8nCredentialProvider } from "./n8n-credential-provider.js";
 
 /**
  * Matrix plugin definition.
@@ -30,7 +31,7 @@ const matrixPlugin: Plugin = {
   name: "matrix",
   description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
 
-  services: [MatrixService],
+  services: [MatrixService, MatrixN8nCredentialProvider],
 
   actions: [messageOp, joinRoom],
 
