@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/native-reasoning",
   "version": "2.0.0-beta.0",
-  "description": "Single-call multi-tool reasoning loop for elizaOS agents as an opt-in alternate runtime.",
+  "description": "Native tool-calling substrate for elizaOS message dispatch when model capabilities support it.",
   "keywords": [
     "elizaos",
     "agent",

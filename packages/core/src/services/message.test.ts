@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory, State } from "../types";
+import { type IAgentRuntime, type Memory, ModelType } from "../types";
 import { stringToUuid } from "../utils";
-import {
-	DefaultMessageService,
-	extractPlannerActionNames,
-	findOwnedActionCorrectionFromMetadata,
-	shouldRunMetadataActionRescue,
-} from "./message.ts";
+import { isNativeToolCallingCapable } from "./message.ts";
 
 // Tests for DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS logic
 describe("MessageService memory persistence logic", () => {
@@ -80,27 +75,14 @@ describe("MessageService memory persistence logic", () => {
 	});
 });
 
-describe("DefaultMessageService native reasoning opt-in", () => {
-	it.skipIf(typeof (vi as unknown as { resetModules?: () => void }).resetModules !== "function")("routes to native reasoning when character.reasoning.mode is native", async () => {
-		vi.resetModules();
-		const runNativeReasoningLoop = vi.fn(
-			async (_runtime, _message, callback) => {
-				await callback({ text: "native response", attachments: [] });
-			},
-		);
-		const buildDefaultRegistry = vi.fn(() => new Map());
-
-		vi.doMock("@elizaos/native-reasoning", () => ({
-			runNativeReasoningLoop,
-			buildDefaultRegistry,
-		}));
-
-		const { DefaultMessageService: Service } = await import("./message.ts");
-		const service = new Service();
-		const callback = vi.fn(async () => []);
+describe("DefaultMessageService native tool calling capability dispatch", () => {
+	function createRuntime(overrides: Partial<IAgentRuntime> = {}) {
+		const settings = new Map<string, string | boolean | number | null>();
 		const runtime = {
 			agentId: stringToUuid("native-agent"),
-			character: { reasoning: { mode: "native", provider: "anthropic" } },
+			character: {},
+			models: new Map(),
+			getSetting: vi.fn((key: string) => settings.get(key) ?? null),
 			emitEvent: vi.fn(async () => undefined),
 			applyPipelineHooks: vi.fn(async () => undefined),
 			createMemory: vi.fn(async () => undefined),
@@ -111,55 +93,108 @@ describe("DefaultMessageService native reasoning opt-in", () => {
 				info: vi.fn(),
 				debug: vi.fn(),
 			},
-		} as unknown as IAgentRuntime;
-		const message = {
-			id: stringToUuid("native-message"),
-			roomId: stringToUuid("native-room"),
-			entityId: stringToUuid("native-entity"),
-			content: { text: "use the native loop" },
-		} as Memory;
+			...overrides,
+		} as unknown as IAgentRuntime & {
+			models: Map<string, Array<{ provider: string; priority?: number }>>;
+		};
+		return { runtime, settings };
+	}
 
-		const result = await service.handleMessage(runtime, message, callback);
+	it("detects native tool calling from the registered model provider", () => {
+		const { runtime } = createRuntime();
+		runtime.models.set(String(ModelType.TEXT_LARGE), [
+			{ provider: "anthropic", priority: 10 },
+		]);
 
-		expect(buildDefaultRegistry).toHaveBeenCalledTimes(1);
-		expect(runNativeReasoningLoop).toHaveBeenCalledWith(
-			runtime,
-			message,
-			expect.any(Function),
-			expect.objectContaining({
-				registry: expect.any(Map),
-				provider: "anthropic",
-			}),
-		);
-		expect(runtime.applyPipelineHooks).toHaveBeenCalledWith(
-			"outgoing_before_deliver",
-			expect.any(Object),
-		);
-		expect(runtime.createMemory).toHaveBeenCalledWith(
-			expect.objectContaining({
-				content: expect.objectContaining({ text: "native response" }),
-			}),
-			"messages",
-		);
-		expect(runtime.emitEvent).toHaveBeenCalledWith(
-			expect.any(String),
-			expect.objectContaining({
-				message: expect.objectContaining({
+		expect(isNativeToolCallingCapable(runtime)).toBe(true);
+	});
+
+	it("leaves legacy completion providers on the bootstrap planner", () => {
+		const { runtime, settings } = createRuntime();
+		runtime.models.set(String(ModelType.TEXT_LARGE), [
+			{ provider: "openai", priority: 10 },
+		]);
+		settings.set("OPENAI_LARGE_MODEL", "text-davinci-003");
+
+		expect(isNativeToolCallingCapable(runtime)).toBe(false);
+	});
+
+	it.skipIf(
+		typeof (vi as unknown as { resetModules?: () => void }).resetModules !==
+			"function",
+	)(
+		"routes to native reasoning when the configured model supports native tools",
+		async () => {
+			vi.resetModules();
+			const runNativeReasoningLoop = vi.fn(
+				async (_runtime, _message, callback) => {
+					await callback({ text: "native response", attachments: [] });
+				},
+			);
+			const buildDefaultRegistry = vi.fn(() => new Map());
+
+			vi.doMock("@elizaos/native-reasoning", () => ({
+				runNativeReasoningLoop,
+				buildDefaultRegistry,
+			}));
+
+			const { DefaultMessageService: Service } = await import("./message.ts");
+			const service = new Service();
+			const callback = vi.fn(async () => []);
+			const { runtime } = createRuntime();
+			runtime.models.set(String(ModelType.TEXT_LARGE), [
+				{ provider: "anthropic", priority: 10 },
+			]);
+			const message = {
+				id: stringToUuid("native-message"),
+				roomId: stringToUuid("native-room"),
+				entityId: stringToUuid("native-entity"),
+				content: { text: "use the native loop" },
+			} as Memory;
+
+			const result = await service.handleMessage(runtime, message, callback);
+
+			expect(buildDefaultRegistry).toHaveBeenCalledTimes(1);
+			expect(runNativeReasoningLoop).toHaveBeenCalledWith(
+				runtime,
+				message,
+				expect.any(Function),
+				expect.objectContaining({
+					registry: expect.any(Map),
+					provider: "anthropic",
+					model: "claude-sonnet-4-6",
+				}),
+			);
+			expect(runtime.applyPipelineHooks).toHaveBeenCalledWith(
+				"outgoing_before_deliver",
+				expect.any(Object),
+			);
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
 					content: expect.objectContaining({ text: "native response" }),
 				}),
-			}),
-		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "native response" }),
-			undefined,
-		);
-		expect(result).toMatchObject({
-			didRespond: true,
-			mode: "simple",
-			skipEvaluation: true,
-			reason: "native-reasoning",
-		});
+				"messages",
+			);
+			expect(runtime.emitEvent).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.objectContaining({
+					message: expect.objectContaining({
+						content: expect.objectContaining({ text: "native response" }),
+					}),
+				}),
+			);
+			expect(callback).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "native response" }),
+				undefined,
+			);
+			expect(result).toMatchObject({
+				didRespond: true,
+				mode: "simple",
+				skipEvaluation: true,
+				reason: "native-reasoning",
+			});
 
-		vi.doUnmock("@elizaos/native-reasoning");
-	});
+			vi.doUnmock("@elizaos/native-reasoning");
+		},
+	);
 });

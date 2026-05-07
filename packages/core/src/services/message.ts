@@ -179,13 +179,200 @@ type NativeReasoningModule = {
 		options?: {
 			registry?: unknown;
 			provider?: "anthropic" | "openai" | "codex";
+			model?: string;
 		},
 	) => Promise<void>;
 	buildDefaultRegistry: () => unknown;
 };
 
-function isNativeReasoningEnabled(runtime: IAgentRuntime): boolean {
-	return runtime.character.reasoning?.mode === "native";
+type NativeToolCallingProvider = "anthropic" | "openai" | "codex";
+
+interface NativeToolCallingCapability {
+	provider: NativeToolCallingProvider;
+	model?: string;
+}
+
+interface RuntimeModelRegistration {
+	provider?: string;
+	priority?: number;
+	registrationOrder?: number;
+}
+
+const NATIVE_TOOL_CALLING_MODEL_TYPES = [
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_LARGE,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_SMALL,
+] as const;
+
+function normalizeModelProvider(provider: unknown): string | null {
+	if (typeof provider !== "string") {
+		return null;
+	}
+	const normalized = provider.trim().toLowerCase();
+	if (!normalized) {
+		return null;
+	}
+	if (normalized.includes("anthropic") || normalized.includes("claude")) {
+		return "anthropic";
+	}
+	if (normalized.includes("openai")) {
+		return "openai";
+	}
+	if (normalized.includes("codex")) {
+		return "codex";
+	}
+	if (
+		normalized.includes("ollama") ||
+		normalized.includes("lmstudio") ||
+		normalized.includes("local")
+	) {
+		return "local";
+	}
+	return normalized;
+}
+
+function readRuntimeSetting(
+	runtime: IAgentRuntime,
+	keys: string[],
+): string | null {
+	for (const key of keys) {
+		const value = runtime.getSetting?.(key);
+		if (typeof value === "string" && value.trim() !== "") {
+			return value.trim();
+		}
+		if (typeof value === "number" || typeof value === "boolean") {
+			return String(value);
+		}
+	}
+	return null;
+}
+
+function inferModelName(
+	runtime: IAgentRuntime,
+	provider: string | null,
+): string | undefined {
+	switch (provider) {
+		case "anthropic":
+			return (
+				readRuntimeSetting(runtime, [
+					"ANTHROPIC_LARGE_MODEL",
+					"ANTHROPIC_MODEL",
+					"LARGE_MODEL",
+					"MODEL",
+				]) ?? "claude-sonnet-4-6"
+			);
+		case "openai":
+			return (
+				readRuntimeSetting(runtime, [
+					"OPENAI_LARGE_MODEL",
+					"OPENAI_MODEL",
+					"LARGE_MODEL",
+					"MODEL",
+				]) ?? "gpt-5"
+			);
+		case "codex":
+			return readRuntimeSetting(runtime, ["CODEX_MODEL", "MODEL"]);
+		case "local":
+			return readRuntimeSetting(runtime, [
+				"OLLAMA_MODEL",
+				"LOCAL_MODEL",
+				"MODEL",
+				"LARGE_MODEL",
+			]);
+		default:
+			return readRuntimeSetting(runtime, ["MODEL", "LARGE_MODEL"]);
+	}
+}
+
+function getPreferredTextModelProvider(runtime: IAgentRuntime): string | null {
+	const models = (runtime as unknown as { models?: unknown }).models;
+	if (!(models instanceof Map)) {
+		return null;
+	}
+
+	for (const modelType of NATIVE_TOOL_CALLING_MODEL_TYPES) {
+		const registrations = models.get(String(modelType));
+		if (!Array.isArray(registrations) || registrations.length === 0) {
+			continue;
+		}
+		const [preferred] = registrations as RuntimeModelRegistration[];
+		const provider = normalizeModelProvider(preferred?.provider);
+		if (provider) {
+			return provider;
+		}
+	}
+	return null;
+}
+
+function inferConfiguredModelProvider(runtime: IAgentRuntime): string | null {
+	const registeredProvider = getPreferredTextModelProvider(runtime);
+	if (registeredProvider) {
+		return registeredProvider;
+	}
+	if (
+		readRuntimeSetting(runtime, ["NATIVE_REASONING_BACKEND"])
+			?.trim()
+			.toLowerCase() === "codex"
+	) {
+		return "codex";
+	}
+	if (
+		readRuntimeSetting(runtime, ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"])
+	) {
+		return "anthropic";
+	}
+	if (readRuntimeSetting(runtime, ["OPENAI_API_KEY", "OPENAI_BASE_URL"])) {
+		return "openai";
+	}
+	if (readRuntimeSetting(runtime, ["OLLAMA_BASE_URL", "LOCAL_LLM_BASE_URL"])) {
+		return "local";
+	}
+	return null;
+}
+
+function modelSupportsNativeToolCalling(
+	provider: string | null,
+	model: string | undefined,
+): provider is NativeToolCallingProvider {
+	const normalizedModel = model?.trim().toLowerCase() ?? "";
+	if (provider === "codex") {
+		return true;
+	}
+	if (provider === "anthropic") {
+		return normalizedModel === "" || normalizedModel.startsWith("claude-");
+	}
+	if (provider === "openai") {
+		if (/^(text-|davinci|curie|babbage|ada)/u.test(normalizedModel)) {
+			return false;
+		}
+		return /^(gpt-[45]|o[134]|codex)/u.test(normalizedModel);
+	}
+	// Local providers can support tools, but there is no common wire protocol to
+	// assume from a provider name alone. Keep them on the prompt planner until
+	// the provider advertises a concrete native backend/capability.
+	return false;
+}
+
+function resolveNativeToolCallingCapability(
+	runtime: IAgentRuntime,
+): NativeToolCallingCapability | null {
+	const provider = inferConfiguredModelProvider(runtime);
+	const model = inferModelName(runtime, provider);
+	if (!modelSupportsNativeToolCalling(provider, model)) {
+		return null;
+	}
+	return {
+		provider,
+		...(model ? { model } : {}),
+	};
+}
+
+export function isNativeToolCallingCapable(runtime: IAgentRuntime): boolean {
+	return resolveNativeToolCallingCapability(runtime) !== null;
 }
 
 async function tryHandleWithNativeReasoning(
@@ -193,7 +380,8 @@ async function tryHandleWithNativeReasoning(
 	message: Memory,
 	callback?: HandlerCallback,
 ): Promise<MessageProcessingResult | null> {
-	if (!isNativeReasoningEnabled(runtime)) {
+	const nativeToolCalling = resolveNativeToolCallingCapability(runtime);
+	if (!nativeToolCalling) {
 		return null;
 	}
 
@@ -226,7 +414,8 @@ async function tryHandleWithNativeReasoning(
 			nativeCallback,
 			{
 				registry: nativeReasoning.buildDefaultRegistry(),
-				provider: runtime.character.reasoning?.provider,
+				provider: nativeToolCalling.provider,
+				model: nativeToolCalling.model,
 			},
 		);
 	} catch (error) {

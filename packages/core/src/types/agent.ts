@@ -54,16 +54,6 @@ export type CharacterSettings = Omit<
 	[key: string]: JsonValue | undefined;
 };
 export type ProtoCharacterSettings = ProtoCharacterSettingsType;
-export type ReasoningMode = "bootstrap" | "native";
-export type ReasoningProvider = "anthropic" | "openai" | "codex";
-
-export interface CharacterReasoningConfig {
-	/** Runtime shape for message handling. Defaults to bootstrap when unset. */
-	mode?: ReasoningMode;
-	/** Optional backend hint for alternate runtimes. */
-	provider?: ReasoningProvider;
-}
-
 export type Character = Partial<
 	Omit<
 		ProtoCharacter,
@@ -81,8 +71,6 @@ export type Character = Partial<
 	messageExamples?: MessageExampleGroup[];
 	knowledge?: KnowledgeSourceItem[];
 	style?: { all?: string[]; chat?: string[]; post?: string[] };
-	/** Opt-in alternate reasoning runtime. Unset means classic bootstrap. */
-	reasoning?: CharacterReasoningConfig;
 	/** Enable advanced planning capabilities for this character */
 	advancedPlanning?: boolean;
 	/** Enable advanced memory capabilities for this character */

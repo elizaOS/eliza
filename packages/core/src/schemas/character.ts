@@ -238,22 +238,6 @@ export const secretsSchema = z
 		"Secret values and API keys (should not be committed to version control)",
 	);
 
-export const reasoningSchema = z
-	.object({
-		mode: z
-			.enum(["bootstrap", "native"])
-			.optional()
-			.describe(
-				"Message handling runtime. Defaults to bootstrap when omitted.",
-			),
-		provider: z
-			.enum(["anthropic", "openai", "codex"])
-			.optional()
-			.describe("Optional backend hint for native reasoning."),
-	})
-	.strict()
-	.describe("Opt-in alternate reasoning runtime configuration");
-
 // Main Character schema
 export const characterSchema = z
 	.object({
@@ -321,7 +305,6 @@ export const characterSchema = z
 		settings: settingsSchema,
 		secrets: secretsSchema,
 		style: styleSchema,
-		reasoning: reasoningSchema.optional(),
 		advancedPlanning: z
 			.boolean()
 			.optional()
