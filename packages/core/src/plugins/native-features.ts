@@ -9,9 +9,9 @@ import {
 	updateEntityAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
-	factExtractorEvaluator,
-	reflectionEvaluator,
-	relationshipExtractionEvaluator,
+	factExtractorAction,
+	reflectionAction,
+	relationshipExtractionAction,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
@@ -53,6 +53,11 @@ export const relationshipsPlugin: Plugin = {
 		withCanonicalActionDocs(sendMessageAction),
 		withCanonicalActionDocs(updateContactAction),
 		withCanonicalActionDocs(updateEntityAction),
+		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
+		factExtractorAction,
+		reflectionAction,
+		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
+		relationshipExtractionAction,
 	],
 	providers: [
 		contactsProvider,
@@ -60,11 +65,7 @@ export const relationshipsPlugin: Plugin = {
 		followUpsProvider,
 		relationshipsProvider,
 	],
-	evaluators: [
-		factExtractorEvaluator,
-		reflectionEvaluator,
-		relationshipExtractionEvaluator,
-	],
+	evaluators: [],
 	services: [RelationshipsService, FollowUpService],
 };
 

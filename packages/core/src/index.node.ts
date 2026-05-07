@@ -34,7 +34,10 @@ export * from "./entities";
 // dropped some of these when they were only re-exported transitively through
 // the basic-capabilities barrel, which leaves dangling exports in dist.
 export {
+	factExtractorAction,
 	factExtractorEvaluator,
+	reflectionAction,
+	relationshipExtractionAction,
 	skillExtractionEvaluator,
 	skillRefinementEvaluator,
 } from "./features/advanced-capabilities/evaluators/index";

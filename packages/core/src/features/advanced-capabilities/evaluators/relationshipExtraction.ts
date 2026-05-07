@@ -2,6 +2,7 @@ import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
+	Action,
 	ActionResult,
 	Entity,
 	Evaluator,
@@ -10,6 +11,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
+import { ActionMode } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
@@ -52,27 +54,19 @@ interface MentionedPerson {
 	attributes: Record<string, unknown>;
 }
 
-export const relationshipExtractionEvaluator: Evaluator = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? false,
-	examples: toEvaluationExamples(spec.examples),
+const relationshipExtractionValidate = async (
+	_runtime: IAgentRuntime,
+	message: Memory,
+	_state?: State,
+): Promise<boolean> => {
+	return !!(message.content?.text && message.content.text.length > 0);
+};
 
-	validate: async (
-		_runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-	): Promise<boolean> => {
-		// Always run for messages in conversations
-		return !!(message.content?.text && message.content.text.length > 0);
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-	): Promise<ActionResult | undefined> => {
+const relationshipExtractionHandler = async (
+	runtime: IAgentRuntime,
+	message: Memory,
+	_state?: State,
+): Promise<ActionResult | undefined> => {
 		const relationshipsService = runtime.getService(
 			"relationships",
 		) as RelationshipsService;
@@ -160,9 +154,44 @@ export const relationshipExtractionEvaluator: Evaluator = {
 				hasDispute: !!disputeInfo,
 				mentionedPeopleCount: mentionedPeople.length,
 			},
-			text: `Extracted ${identities.length} identities, ${mentionedPeople.length} mentioned people, and ${disputeInfo ? "1 dispute" : "0 disputes"}.`,
-		};
-	},
+		text: `Extracted ${identities.length} identities, ${mentionedPeople.length} mentioned people, and ${disputeInfo ? "1 dispute" : "0 disputes"}.`,
+	};
+};
+
+/**
+ * Relationship extraction as an `ALWAYS_BEFORE` action — runs heuristics
+ * (platform identities, disputes, mentioned people, trust signals, privacy
+ * markers, admin updates) before Stage 1 routes the message. Outputs are
+ * available to the messageHandler when it composes its prompt. Runs even on
+ * IGNORE/STOP routes so observation-only learning continues.
+ *
+ * Migration target: fold these heuristics into Stage 1 prompt construction
+ * (sender identity / room membership pre-compute) so the messageHandler
+ * sees them inline. At that point this action can be deleted.
+ */
+export const relationshipExtractionAction: Action = {
+	name: spec.name,
+	description: spec.description,
+	similes: spec.similes ? [...spec.similes] : [],
+	mode: ActionMode.ALWAYS_BEFORE,
+	modePriority: 50,
+	examples: [],
+	validate: relationshipExtractionValidate as Action["validate"],
+	handler: relationshipExtractionHandler as Action["handler"],
+};
+
+/**
+ * @deprecated Re-exported as an evaluator only so legacy registrations don't
+ * break during migration. New code should register `relationshipExtractionAction`.
+ */
+export const relationshipExtractionEvaluator: Evaluator = {
+	name: spec.name,
+	description: spec.description,
+	similes: spec.similes ? [...spec.similes] : [],
+	alwaysRun: spec.alwaysRun ?? false,
+	examples: toEvaluationExamples(spec.examples),
+	validate: relationshipExtractionValidate,
+	handler: relationshipExtractionHandler,
 };
 
 function extractPlatformIdentities(text: string): PlatformIdentity[] {
