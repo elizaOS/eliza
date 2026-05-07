@@ -3,7 +3,6 @@ import {
 	logger,
 	type Media,
 	ModelType,
-	parseToonKeyValue,
 	type ReplyToMode,
 	trimTokens,
 } from "@elizaos/core";
@@ -93,6 +92,66 @@ export function getMessageService(
 }
 
 export const MAX_MESSAGE_LENGTH = 1900;
+
+function stripJsonFence(text: string): string {
+	const trimmed = text.trim();
+	const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	return fenceMatch?.[1]?.trim() ?? trimmed;
+}
+
+export function parseJsonObjectFromText(
+	text: string,
+): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(stripJsonFence(text));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	} catch (_error) {
+		return null;
+	}
+	return null;
+}
+
+export function getActionParameters(
+	options: unknown,
+): Record<string, unknown> {
+	const optionsRecord =
+		options && typeof options === "object"
+			? (options as Record<string, unknown>)
+			: {};
+	const parameters = optionsRecord.parameters;
+	if (parameters && typeof parameters === "object" && !Array.isArray(parameters)) {
+		return parameters as Record<string, unknown>;
+	}
+	return optionsRecord;
+}
+
+export function parseJsonArrayFromText(text: string): JsonValue[] | null {
+	try {
+		const parsed = JSON.parse(stripJsonFence(text));
+		if (Array.isArray(parsed)) {
+			return parsed.filter(
+				(chunk): chunk is JsonValue =>
+					typeof chunk === "string" ||
+					typeof chunk === "number" ||
+					typeof chunk === "boolean" ||
+					chunk === null ||
+					(Array.isArray(chunk) &&
+						chunk.every(
+							(item) =>
+								typeof item === "string" ||
+								typeof item === "number" ||
+								typeof item === "boolean" ||
+								item === null,
+						)),
+			);
+		}
+	} catch (_error) {
+		return null;
+	}
+	return null;
+}
 
 function collectStructuredText(value: unknown, seen: Set<object>): string[] {
 	if (typeof value === "string") {
@@ -287,17 +346,17 @@ export async function generateSummary(
   ${text}
   """
 
-  Respond with TOON only:
-  title: Generated Title
-  summary: Generated summary and/or description of the text`;
+  Respond with JSON only, no markdown:
+  {
+    "title": "Generated Title",
+    "summary": "Generated summary and/or description of the text"
+  }`;
 
 	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 	});
 
-	const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
-		response,
-	) as {
+	const parsedResponse = parseJsonObjectFromText(response) as {
 		title?: string;
 		summary?: string;
 	} | null;
@@ -628,30 +687,6 @@ export function needsSmartSplit(content: string): boolean {
 	return false;
 }
 
-function parseJSONArrayFromText(text: string): JsonValue[] | null {
-	const toon = parseToonKeyValue<Record<string, unknown>>(text);
-	const toonChunks = toon?.chunks;
-	if (Array.isArray(toonChunks)) {
-		return toonChunks.filter(
-			(chunk): chunk is JsonValue =>
-				typeof chunk === "string" ||
-				typeof chunk === "number" ||
-				typeof chunk === "boolean" ||
-				chunk === null ||
-				(Array.isArray(chunk) &&
-					chunk.every(
-						(item) =>
-							typeof item === "string" ||
-							typeof item === "number" ||
-							typeof item === "boolean" ||
-							item === null,
-					)),
-		);
-	}
-
-	return null;
-}
-
 export async function smartSplitMessage(
 	runtime: IAgentRuntime,
 	content: string,
@@ -670,7 +705,7 @@ export async function smartSplitMessage(
 
 		const prompt = `Split the following text into ${estimatedChunks} parts for Discord messages (max ${maxLength} chars each).
 Keep related content together (don't split code blocks, keep list items with their headers, etc.).
-Return TOON only, no explanation.
+Return JSON only, no markdown or explanation.
 
 Text to split:
 """
@@ -678,13 +713,11 @@ ${content}
 """
 
 Return format:
-chunks[2]:
-  - chunk1
-  - chunk2`;
+["chunk1", "chunk2"]`;
 
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
 
-		const parsed = parseJSONArrayFromText(response);
+		const parsed = parseJsonArrayFromText(response);
 		if (Array.isArray(parsed)) {
 			const validChunks = parsed.filter(
 				(chunk: unknown): chunk is string =>

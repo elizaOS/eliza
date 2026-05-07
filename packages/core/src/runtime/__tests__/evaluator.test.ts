@@ -1,0 +1,68 @@
+import { describe, expect, it, vi } from "vitest";
+import { ModelType } from "../../types/model";
+import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+
+describe("v5 evaluator skeleton", () => {
+	it("normalizes evaluator routes and next tool recommendations", () => {
+		const output = parseEvaluatorOutput(`{
+  "success": true,
+  "thought": "Need one more lookup.",
+  "decision": "NEXT_RECOMMENDED",
+  "nextTool": {
+    "name": "LOOKUP",
+    "args": { "id": 123 }
+  }
+}`);
+
+		expect(output.decision).toBe("NEXT_RECOMMENDED");
+		expect(output.nextTool).toEqual({
+			name: "LOOKUP",
+			params: { id: 123 },
+		});
+	});
+
+	it("applies message and clipboard effects through injected callbacks", async () => {
+		const copyToClipboard = vi.fn();
+		const messageToUser = vi.fn();
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "thought": "Complete.",
+  "decision": "FINISH",
+  "messageToUser": "Sent.",
+  "copyToClipboard": {
+    "title": "Artifact",
+    "content": "artifact",
+    "tags": ["test"]
+  }
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: { id: "ctx" },
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+			effects: { copyToClipboard, messageToUser },
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.RESPONSE_HANDLER,
+			expect.objectContaining({ prompt: expect.any(String) }),
+			undefined,
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(copyToClipboard).toHaveBeenCalledWith({
+			title: "Artifact",
+			content: "artifact",
+			tags: ["test"],
+		});
+		expect(messageToUser).toHaveBeenCalledWith("Sent.");
+	});
+});

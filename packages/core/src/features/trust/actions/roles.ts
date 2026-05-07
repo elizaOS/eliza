@@ -298,7 +298,7 @@ export const updateRoleAction: ElizaAction = {
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},

@@ -214,7 +214,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "calendar":
       return {
         category,
-        actionNames: ["OWNER_CALENDAR"],
+        actionNames: ["CALENDAR"],
         intent,
         parameters: compactParameters({
           subaction: args.query ? "search_events" : "feed",
@@ -233,7 +233,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
         category,
         actionNames:
           category === "priority"
-            ? ["OWNER_CHECKIN", "LIST_INBOX"]
+            ? ["CHECKIN", "LIST_INBOX"]
             : ["TRIAGE_MESSAGES"],
         intent,
         parameters: compactParameters({
@@ -245,7 +245,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "contacts":
       return {
         category,
-        actionNames: ["OWNER_RELATIONSHIP"],
+        actionNames: ["RELATIONSHIP"],
         intent,
         parameters: compactParameters({
           subaction: "list_contacts",

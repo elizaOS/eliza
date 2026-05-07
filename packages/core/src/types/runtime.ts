@@ -1,4 +1,5 @@
 import type { Logger } from "../logger";
+import type { ContextRegistry } from "../runtime/context-registry";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
@@ -197,6 +198,12 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
+	/**
+	 * Per-runtime registry of context definitions. Seeded at runtime start with
+	 * the first-party taxonomy from PLAN.md §4.3 and extended by plugins via
+	 * `runtime.contexts.tryRegister(...)`.
+	 */
+	contexts: ContextRegistry;
 	promptBatcher?: PromptBatcher;
 	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
 	companionUrl?: string;

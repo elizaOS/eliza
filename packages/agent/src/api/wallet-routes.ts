@@ -11,6 +11,7 @@ import {
   type CloudWalletProvider,
   ElizaCloudClient,
 } from "../cloud/bridge-client.js";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import {
   getOrCreateClientAddressKey,
   persistCloudWalletCache,
@@ -43,7 +44,6 @@ import { resolveWalletCapabilityStatus } from "./wallet-capability.js";
 import {
   applyWalletRpcConfigUpdate,
   getStoredWalletRpcSelections,
-  resolveCloudApiKey,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.js";

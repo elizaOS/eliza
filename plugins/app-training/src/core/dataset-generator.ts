@@ -14,12 +14,12 @@
  * - Falls back to whichever is available
  */
 
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type { IAgentRuntime, RecordLlmCallDetails } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
 import {
   ACTION_CONTEXT_MAP,
   ALL_CONTEXTS,
@@ -47,10 +47,12 @@ rules[6]:
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
-context_routing:
-- primaryContext: choose one context from available_contexts, or "general" if none apply
-- secondaryContexts: optional comma-separated list of additional relevant contexts
-- evidenceTurnIds: optional comma-separated list of memory IDs supporting the decision
+message_handler:
+- action: RESPOND, IGNORE, or STOP
+- simple: true only when the reply can be sent directly without planner/tool context
+- contexts: list of available_contexts needed for planner/tool/provider work; [] for direct replies, IGNORE, or STOP
+- thought: short internal routing rationale
+- reply: optional direct user-visible reply when contexts is []
 
 decision_note:
 - respond only when the latest message is talking TO {{agentName}}
@@ -61,23 +63,13 @@ decision_note:
 - talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No hidden reasoning.
+JSON object only. No prose, markdown, XML, or hidden reasoning.
 
 Example:
-name: {{agentName}}
-reasoning: Direct mention and clear follow-up.
-action: RESPOND
-primaryContext: wallet
-secondaryContexts:
-evidenceTurnIds:
+{"messageHandler":{"action":"RESPOND","simple":false,"contexts":["wallet"],"thought":"Direct mention and clear follow-up needs wallet context.","reply":""}}
 
 Example:
-name: {{agentName}}
-reasoning: Direct mention but no relevant action.
-action: IGNORE
-primaryContext: general
-secondaryContexts:
-evidenceTurnIds:`;
+{"messageHandler":{"action":"IGNORE","simple":false,"contexts":[],"thought":"The latest message is not addressed to {{agentName}}.","reply":""}}`;
 
 // ==================== Types ====================
 
@@ -109,6 +101,16 @@ export interface ClassifierOutput {
   secondaryContexts: AgentContext[];
   reasoning: string;
   expectedAction?: string;
+}
+
+export interface MessageHandlerTrainingOutput {
+  messageHandler: {
+    action: ClassifierOutput["decision"];
+    simple: boolean;
+    contexts: AgentContext[];
+    thought: string;
+    reply: string;
+  };
 }
 
 export interface SampleMetadata {
@@ -417,7 +419,11 @@ export function createOpenAITeacher(
 // ==================== Randomization utilities ====================
 
 function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
+  const value = arr[Math.floor(Math.random() * arr.length)];
+  if (value === undefined) {
+    throw new Error("Cannot pick a random value from an empty array");
+  }
+  return value;
 }
 
 function pickN<T>(arr: T[], n: number): T[] {
@@ -446,7 +452,7 @@ function buildTeacherSystemPrompt(): string {
 Your task is to generate realistic multi-turn group chat conversations.
 
 IMPORTANT RULES:
-1. Output ONLY TOON/plain text. No markdown, no explanation, no preamble.
+1. Output ONLY a JSON object. No markdown, no explanation, no preamble.
 2. Each message must have "name" (speaker name) and "content" (message text).
 3. Messages should feel natural - casual, varied length, sometimes with typos.
 4. Group chats should have 3-6 participants plus optionally the agent.
@@ -455,11 +461,7 @@ IMPORTANT RULES:
 7. Messages should be diverse in tone: some short, some long, some with emoji.
 
 Output format:
-messages:
-- name: Alice
-  content: hey everyone
-- name: Bob
-  content: what's up`;
+{"messages":[{"name":"Alice","content":"hey everyone"},{"name":"Bob","content":"what's up"}]}`;
 }
 
 function buildTeacherUserPrompt(
@@ -514,7 +516,7 @@ ${extraInstructions}
 ${blueprint.generationHint}
 
 Remember:
-- Output ONLY TOON/plain text with a messages list
+- Output ONLY a JSON object with a messages array
 - Each message has "name" and "content"
 - Make it feel natural and realistic
 - Vary message lengths and tones
@@ -523,12 +525,46 @@ Remember:
 
 function stripOutputFences(raw: string): string {
   return raw
-    .replace(/^```(?:toon|json)?\s*/i, "")
+    .replace(/^```[a-z0-9_-]*\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 }
 
-function parseTeacherToonMessages(raw: string): {
+function parseTeacherJsonMessages(raw: string): {
+  messages: Array<{ name: string; content: string }>;
+} {
+  const cleaned = stripOutputFences(raw);
+  const parsed = JSON.parse(cleaned) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Teacher output must be a JSON object");
+  }
+  const messages = (parsed as Record<string, unknown>).messages;
+  if (!Array.isArray(messages)) {
+    throw new Error("Teacher JSON output must include a messages array");
+  }
+  const parsedMessages = messages
+    .filter(
+      (message): message is Record<string, unknown> =>
+        Boolean(message) &&
+        typeof message === "object" &&
+        !Array.isArray(message),
+    )
+    .map((message) => ({
+      name: String(message.name ?? "").trim(),
+      content: String(message.content ?? "").trim(),
+    }))
+    .filter(
+      (message) => message.name.length > 0 && message.content.length > 0,
+    );
+  if (parsedMessages.length === 0) {
+    throw new Error("Teacher JSON output did not include valid messages");
+  }
+  return {
+    messages: parsedMessages,
+  };
+}
+
+function parseTeacherLegacyMessages(raw: string): {
   messages: Array<{ name: string; content: string }>;
 } {
   const text = stripOutputFences(raw);
@@ -554,8 +590,8 @@ function parseTeacherToonMessages(raw: string): {
     if (rowMatch) {
       flush();
       messages.push({
-        name: rowMatch[1]!.trim(),
-        content: rowMatch[2]!.trim(),
+        name: (rowMatch[1] ?? "").trim(),
+        content: (rowMatch[2] ?? "").trim(),
       });
       continue;
     }
@@ -563,40 +599,31 @@ function parseTeacherToonMessages(raw: string): {
     const itemNameMatch = trimmed.match(/^-\s*name:\s*(.*)$/i);
     if (itemNameMatch) {
       flush();
-      current = { name: itemNameMatch[1]!.trim() };
+      current = { name: (itemNameMatch[1] ?? "").trim() };
       continue;
     }
 
     const nameMatch = trimmed.match(/^name:\s*(.*)$/i);
     if (nameMatch) {
       current ??= {};
-      current.name = nameMatch[1]!.trim();
+      current.name = (nameMatch[1] ?? "").trim();
       continue;
     }
 
     const contentMatch = trimmed.match(/^content:\s*(.*)$/i);
     if (contentMatch) {
       current ??= {};
-      current.content = contentMatch[1]!.trim();
+      current.content = (contentMatch[1] ?? "").trim();
     }
   }
 
   flush();
 
   if (messages.length === 0) {
-    throw new Error("No TOON messages found in teacher output");
+    throw new Error("No teacher messages found in legacy output");
   }
 
   return { messages };
-}
-
-function parseTeacherJsonMessages(raw: string): {
-  messages: Array<{ name: string; content: string }>;
-} {
-  const cleaned = stripOutputFences(raw);
-  return JSON.parse(cleaned) as {
-    messages: Array<{ name: string; content: string }>;
-  };
 }
 
 // ==================== Core generation ====================
@@ -634,17 +661,19 @@ export async function generateSample(
   // Parse the teacher's output
   let parsed: { messages: Array<{ name: string; content: string }> };
   try {
-    parsed = parseTeacherToonMessages(raw);
+    parsed = parseTeacherJsonMessages(raw);
   } catch {
     try {
-      parsed = parseTeacherJsonMessages(raw);
+      parsed = parseTeacherLegacyMessages(raw);
     } catch {
       // If parsing fails, create a minimal sample
+      const [firstParticipant = "Alice", secondParticipant = "Bob"] =
+        participants;
       parsed = {
         messages: [
-          { name: participants[0]!, content: "Hey everyone" },
+          { name: firstParticipant, content: "Hey everyone" },
           {
-            name: participants[1]!,
+            name: secondParticipant,
             content:
               blueprint.decision === "RESPOND"
                 ? `${agentName}, can you help?`
@@ -788,7 +817,7 @@ export async function generateDataset(
  * Convert a training sample to Gemini supervised tuning format.
  * The system message contains the shouldRespond prompt template,
  * the user message contains the conversation, and the model message
- * contains the expected structured output.
+ * contains the expected native JSON output.
  */
 export function toGeminiFormat(
   sample: TrainingSample,
@@ -799,7 +828,7 @@ export function toGeminiFormat(
     includeContextRouting,
   );
   const userContent = buildShouldRespondUserPrompt(sample);
-  const modelContent = buildClassifierToonResponse(
+  const modelContent = buildClassifierJsonResponse(
     sample,
     includeContextRouting,
   );
@@ -839,6 +868,26 @@ function listContextsForSample(sample: TrainingSample): AgentContext[] {
     }
   }
 
+  return [...contexts];
+}
+
+function listMessageHandlerContextsForSample(
+  sample: TrainingSample,
+): AgentContext[] {
+  const contexts = new Set<AgentContext>([
+    sample.expectedOutput.primaryContext,
+    ...sample.expectedOutput.secondaryContexts,
+  ]);
+
+  if (sample.expectedOutput.expectedAction) {
+    for (const actionContext of ACTION_CONTEXT_MAP[
+      sample.expectedOutput.expectedAction
+    ] ?? []) {
+      contexts.add(actionContext);
+    }
+  }
+
+  contexts.delete("general");
   return [...contexts];
 }
 
@@ -890,12 +939,12 @@ function buildShouldRespondSystemPrompt(
   const baseTemplate = includeContextRouting
     ? SHOULD_RESPOND_PROMPT_TEMPLATE
     : SHOULD_RESPOND_PROMPT_TEMPLATE.replace(
-        /\ncontext_routing:[\s\S]*?\ndecision_note:/m,
+        /\nmessage_handler:[\s\S]*?\ndecision_note:/m,
         "\ndecision_note:",
-      )
-        .replace(/\nprimaryContext:.*$/m, "")
-        .replace(/\nsecondaryContexts:.*$/m, "")
-        .replace(/\nevidenceTurnIds:.*$/m, "");
+      ).replace(
+        /\nExample:\n\{"messageHandler":\{"action":"RESPOND"[\s\S]*$/m,
+        '\nExample:\n{"messageHandler":{"action":"RESPOND","simple":true,"contexts":[],"thought":"Direct mention can be answered directly.","reply":""}}',
+      );
 
   return renderTemplate(baseTemplate, {
     agentName: sample.agentName,
@@ -925,37 +974,72 @@ function buildShouldRespondUserPrompt(sample: TrainingSample): string {
   ].join("\n");
 }
 
-function buildClassifierToonResponse(
+function buildClassifierJsonResponse(
   sample: TrainingSample,
   includeContextRouting: boolean,
 ): string {
-  const evidenceTurnIds = sample.messages
-    .slice(Math.max(0, sample.messages.length - 3))
-    .map((_, index, tail) => {
-      const absoluteIndex = sample.messages.length - tail.length + index + 1;
-      return `turn-${String(absoluteIndex).padStart(3, "0")}`;
-    })
-    .join(", ");
+  const contexts =
+    includeContextRouting && sample.expectedOutput.decision === "RESPOND"
+      ? listMessageHandlerContextsForSample(sample)
+      : [];
+  const output: MessageHandlerTrainingOutput = {
+    messageHandler: {
+      action: sample.expectedOutput.decision,
+      simple:
+        sample.expectedOutput.decision === "RESPOND" && contexts.length === 0,
+      contexts,
+      thought: sample.expectedOutput.reasoning,
+      reply: "",
+    },
+  };
 
-  const lines = [
-    `name: ${sample.agentName}`,
-    `reasoning: ${sample.expectedOutput.reasoning}`,
-    `action: ${sample.expectedOutput.decision}`,
-  ];
+  return JSON.stringify(output);
+}
 
-  if (includeContextRouting) {
-    lines.push(`primaryContext: ${sample.expectedOutput.primaryContext}`);
-    lines.push(
-      `secondaryContexts: ${sample.expectedOutput.secondaryContexts.join(", ")}`,
-    );
-    lines.push(`evidenceTurnIds: ${evidenceTurnIds}`);
+function normalizeMessageHandlerJson(response: string): string | null {
+  const trimmed = response
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  if (!trimmed.startsWith("{")) {
+    return null;
   }
-
-  if (sample.expectedOutput.expectedAction) {
-    lines.push(`expectedAction: ${sample.expectedOutput.expectedAction}`);
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    const candidate =
+      record.messageHandler &&
+      typeof record.messageHandler === "object" &&
+      !Array.isArray(record.messageHandler)
+        ? (record.messageHandler as Record<string, unknown>)
+        : record;
+    const action = candidate.action;
+    if (action !== "RESPOND" && action !== "IGNORE" && action !== "STOP") {
+      return null;
+    }
+    const contexts = Array.isArray(candidate.contexts)
+      ? candidate.contexts.filter(
+          (context): context is AgentContext => typeof context === "string",
+        )
+      : [];
+    return JSON.stringify({
+      messageHandler: {
+        action,
+        simple:
+          typeof candidate.simple === "boolean"
+            ? candidate.simple
+            : action === "RESPOND" && contexts.length === 0,
+        contexts,
+        thought: typeof candidate.thought === "string" ? candidate.thought : "",
+        reply: typeof candidate.reply === "string" ? candidate.reply : "",
+      },
+    });
+  } catch {
+    return null;
   }
-
-  return lines.join("\n");
 }
 
 /**
@@ -977,14 +1061,14 @@ export async function exportToGeminiJSONL(
   const combinedLines = samples
     .map((s) => JSON.stringify(toGeminiFormat(s, true)))
     .join("\n");
-  await writeFile(combinedPath, combinedLines + "\n");
+  await writeFile(combinedPath, `${combinedLines}\n`);
 
   // shouldRespond only (no context routing — for Flash Lite)
   const shouldRespondPath = join(outputDir, "should_respond_training.jsonl");
   const srLines = samples
     .map((s) => JSON.stringify(toGeminiFormat(s, false)))
     .join("\n");
-  await writeFile(shouldRespondPath, srLines + "\n");
+  await writeFile(shouldRespondPath, `${srLines}\n`);
 
   // Context routing only (for samples where decision is RESPOND)
   const contextRoutingPath = join(outputDir, "context_routing_training.jsonl");
@@ -992,7 +1076,7 @@ export async function exportToGeminiJSONL(
     .filter((s) => s.expectedOutput.decision === "RESPOND")
     .map((s) => JSON.stringify(toGeminiFormat(s, true)))
     .join("\n");
-  await writeFile(contextRoutingPath, crLines + "\n");
+  await writeFile(contextRoutingPath, `${crLines}\n`);
 
   // Also write the raw samples for analysis
   const rawPath = join(outputDir, "raw_samples.json");
@@ -1044,6 +1128,8 @@ export async function exportTrajectoriesAsTraining(
   outputPath: string,
 ): Promise<number> {
   const examples: GeminiTuningExample[] = [];
+  let skippedLegacyRows = 0;
+  void agentName;
 
   for (const trajectory of trajectories) {
     for (const step of trajectory.steps ?? []) {
@@ -1054,11 +1140,19 @@ export async function exportTrajectoriesAsTraining(
           call.userPrompt &&
           call.response
         ) {
+          const response = normalizeMessageHandlerJson(call.response);
+          if (!response) {
+            skippedLegacyRows += 1;
+            console.warn(
+              `[dataset-generator] skipped legacy should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+            );
+            continue;
+          }
           examples.push({
             messages: [
               { role: "system", content: call.systemPrompt },
               { role: "user", content: call.userPrompt },
-              { role: "model", content: call.response },
+              { role: "model", content: response },
             ],
           });
         }
@@ -1067,7 +1161,13 @@ export async function exportTrajectoriesAsTraining(
   }
 
   const content = examples.map((e) => JSON.stringify(e)).join("\n");
-  await writeFile(outputPath, content + "\n");
+  await writeFile(outputPath, `${content}\n`);
+
+  if (skippedLegacyRows > 0) {
+    console.warn(
+      `[dataset-generator] skipped ${skippedLegacyRows} legacy should_respond rows while exporting ${outputPath}`,
+    );
+  }
 
   return examples.length;
 }

@@ -344,7 +344,7 @@ async function startNgrokVncSession(args: {
         if (!line.trim()) continue;
         try {
           const evt = JSON.parse(line) as { url?: string; msg?: string };
-          if (evt.url && evt.url.startsWith("tcp://")) {
+          if (evt.url?.startsWith("tcp://")) {
             clearTimeout(timer);
             child.stdout?.off("data", onStdout);
             resolve(evt.url);

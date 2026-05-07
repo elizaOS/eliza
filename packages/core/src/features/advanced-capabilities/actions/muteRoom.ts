@@ -19,7 +19,6 @@ import { ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
 	parseBooleanFromText,
-	parseToonKeyValue,
 } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -88,10 +87,7 @@ export const muteRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const parsed = parseToonKeyValue<{ decision?: boolean | string }>(
-				response,
-			);
-			const decisionValue = parsed?.decision ?? response.trim();
+			const decisionValue = response.trim();
 			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			if (

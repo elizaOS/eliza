@@ -1306,7 +1306,7 @@ export async function runCrossChannelSearch(
   //    when the caller explicitly asked for that channel (so we don't spam
   //    every result with the full list).
   for (const entry of CONNECTORS_WITHOUT_NATIVE_SEARCH) {
-    if (channels && channels.includes(entry.channel)) {
+    if (channels?.includes(entry.channel)) {
       unsupported.push(entry);
     }
   }

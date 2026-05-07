@@ -50,7 +50,7 @@ export default scenario({
       predicate: async (ctx) => {
         const hits = ctx.actionsCalled.filter(
           (action) =>
-            action.actionName === "OWNER_AUTOFILL" ||
+            action.actionName === "AUTOFILL" ||
             action.actionName === "AUTOFILL_FIELD",
         );
         if (hits.length === 0) {

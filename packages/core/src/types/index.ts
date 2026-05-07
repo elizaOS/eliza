@@ -12,6 +12,7 @@ export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
 export * from "./components";
+export * from "./contexts";
 export * from "./database";
 export * from "./environment";
 export * from "./events";

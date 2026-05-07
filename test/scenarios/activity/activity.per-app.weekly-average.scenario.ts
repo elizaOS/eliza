@@ -60,7 +60,7 @@ export default scenario({
       room: "main",
       text: "What's my weekly average per app?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
         description: "weekly per-app average lookup",
         includesAny: ["weekly_average_by_app", "average", "per app"],
       }),
@@ -71,11 +71,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
       includesAny: ["weekly_average_by_app"],
     },
     {
@@ -83,7 +83,7 @@ export default scenario({
       name: "weekly-average-per-app-structured-result",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find((entry) =>
-          ["OWNER_SCREEN_TIME", "SCREEN_TIME"].includes(entry.actionName),
+          ["SCREEN_TIME", "SCREEN_TIME"].includes(entry.actionName),
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"

@@ -56,7 +56,7 @@ export default scenario({
       name: "ask-what-times-to-offer",
       text: "What meeting times should I offer next week based on my saved preferences?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "meeting preference aware slot proposal",
       }),
       responseIncludesAny: ["offer", "slot", "next week", "30"],
@@ -65,13 +65,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
     },
     {
       type: "custom",
       name: "meeting-preferences-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "meeting preference aware slot proposal",
       }),
     },
@@ -80,7 +80,7 @@ export default scenario({
       name: "meeting-preferences-seeded-window-used",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "OWNER_CALENDAR",
+          (action) => action.actionName === "CALENDAR",
         );
         if (!hit) {
           return "expected PROPOSE_MEETING_TIMES action result";

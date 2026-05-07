@@ -13,8 +13,7 @@ import type {
 	UUID,
 	World,
 } from "../../../types/index.ts";
-import { ChannelType, ModelType } from "../../../types/index.ts";
-import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
+import { ChannelType } from "../../../types/index.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ROLE");
@@ -60,6 +59,19 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
 	}
 
 	return [];
+}
+
+function readRoleAssignments(
+	message: Memory,
+	options?: HandlerOptions,
+): RoleAssignmentToon[] {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	return normalizeRoleAssignments(
+		params.assignments ?? message.content.assignments,
+	);
 }
 
 /**
@@ -137,7 +149,11 @@ export const updateRoleAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
+		if (readRoleAssignments(message, options).length === 0) {
+			return false;
+		}
 		// Only activate in group chats where the feature is enabled
 		const channelType = message.content.channelType as ChannelType;
 
@@ -241,48 +257,8 @@ export const updateRoleAction: Action = {
 		// Get the role of the requester
 		const requesterRole = world.metadata.roles[message.entityId] || ROLE_NONE;
 
-		// Construct extraction prompt
-		const extractionPrompt = composePrompt({
-			state: {
-				...state.values,
-				content: state.text,
-			},
-			template: `# Task: Parse Role Assignment
-
-I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
-
-The available role types are:
-- OWNER: Full control over the server and all settings
-- ADMIN: Ability to manage channels and moderate content
-- MEMBER: Regular member with standard permissions
-- GUEST: Limited, read-oriented permissions
-- NONE: No specific role or permissions
-
-# Current context:
-{{content}}
-
-
-Format your response as TOON with multiple assignments:
-assignments[0]:
-  entityId: John
-  newRole: ADMIN
-assignments[1]:
-  entityId: Sarah
-  newRole: OWNER
-
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`,
-		});
-
-		// Extract role assignments using the TOON-first compatibility parser.
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt: extractionPrompt,
-			stopSequences: [],
-		});
-
-		const parsedToon = parseToonKeyValue<RoleExtractionResult>(response);
-
 		// Handle the parsed structured response.
-		const assignmentArray = normalizeRoleAssignments(parsedToon?.assignments);
+		const assignmentArray = readRoleAssignments(message, _options);
 		const assignments: RoleAssignment[] = assignmentArray
 			.filter(
 				(a): a is RoleAssignmentToon & { entityId: string; newRole: string } =>
@@ -431,4 +407,25 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 			success: true,
 		};
 	},
+	parameters: [
+		{
+			name: "assignments",
+			description: "Role assignments to apply by entity ID.",
+			required: true,
+			schema: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						entityId: { type: "string" as const },
+						newRole: {
+							type: "string" as const,
+							enum: ["OWNER", "ADMIN", "MEMBER", "GUEST", "NONE"],
+						},
+					},
+					required: ["entityId", "newRole"],
+				},
+			},
+		},
+	],
 };

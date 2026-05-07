@@ -544,7 +544,7 @@ async function seedBenchmarkCaseFixtures(
       });
 
       // Counterparty fixtures referenced by scheduling cases. Without
-      // these, OWNER_CALENDAR(negotiate_start) fails downstream with
+      // these, CALENDAR(negotiate_start) fails downstream with
       // SCHEDULING_NO_COUNTERPARTY_CONTACT because the design-team /
       // Marco / engineering-discord references can't resolve to a known
       // relationship row.

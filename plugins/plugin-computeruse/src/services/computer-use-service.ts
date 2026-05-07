@@ -28,17 +28,18 @@ import {
   waitBrowser,
 } from "../platform/browser.js";
 import {
-  desktopClick,
-  desktopClickWithModifiers,
-  desktopDoubleClick,
-  desktopDrag,
-  desktopKeyCombo,
-  desktopKeyPress,
-  desktopMouseMove,
-  desktopRightClick,
-  desktopScroll,
-  desktopType,
-} from "../platform/desktop.js";
+  driverCaptureScreenshot,
+  driverClick,
+  driverClickWithModifiers,
+  driverDoubleClick,
+  driverDrag,
+  driverKeyCombo,
+  driverKeyPress,
+  driverMouseMove,
+  driverRightClick,
+  driverScroll,
+  driverType,
+} from "../platform/driver.js";
 import {
   appendFile,
   deleteDirectory,
@@ -51,7 +52,6 @@ import {
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
-import { captureScreenshot } from "../platform/screenshot.js";
 import {
   clearTerminal,
   closeAllTerminalSessions,
@@ -311,15 +311,15 @@ export class ComputerUseService extends Service {
         case "screenshot":
           return this.succeedEntry(entry, {
             success: true,
-            screenshot: this.captureScreenshotBase64(),
+            screenshot: await this.captureScreenshotBase64(),
           });
         case "click":
           this.requireCoordinate(params.coordinate, "click");
-          desktopClick(params.coordinate[0], params.coordinate[1]);
+          await driverClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "click_with_modifiers":
           this.requireCoordinate(params.coordinate, "click_with_modifiers");
-          desktopClickWithModifiers(
+          await driverClickWithModifiers(
             params.coordinate[0],
             params.coordinate[1],
             params.modifiers ?? [],
@@ -327,33 +327,33 @@ export class ComputerUseService extends Service {
           break;
         case "double_click":
           this.requireCoordinate(params.coordinate, "double_click");
-          desktopDoubleClick(params.coordinate[0], params.coordinate[1]);
+          await driverDoubleClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "right_click":
           this.requireCoordinate(params.coordinate, "right_click");
-          desktopRightClick(params.coordinate[0], params.coordinate[1]);
+          await driverRightClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "mouse_move":
           this.requireCoordinate(params.coordinate, "mouse_move");
-          desktopMouseMove(params.coordinate[0], params.coordinate[1]);
+          await driverMouseMove(params.coordinate[0], params.coordinate[1]);
           break;
         case "type":
           if (!params.text) throw new Error("text is required for type action");
-          desktopType(params.text);
+          await driverType(params.text);
           break;
         case "key":
           if (!params.key) throw new Error("key is required for key action");
-          desktopKeyPress(params.key);
+          await driverKeyPress(params.key);
           break;
         case "key_combo":
           if (!params.key) {
             throw new Error("key is required for key_combo action");
           }
-          desktopKeyCombo(params.key);
+          await driverKeyCombo(params.key);
           break;
         case "scroll":
           this.requireCoordinate(params.coordinate, "scroll");
-          desktopScroll(
+          await driverScroll(
             params.coordinate[0],
             params.coordinate[1],
             params.scrollDirection ?? "down",
@@ -367,7 +367,7 @@ export class ComputerUseService extends Service {
             "startCoordinate",
           );
           this.requireCoordinate(params.coordinate, "drag");
-          desktopDrag(
+          await driverDrag(
             params.startCoordinate[0],
             params.startCoordinate[1],
             params.coordinate[0],
@@ -384,7 +384,7 @@ export class ComputerUseService extends Service {
       const result: ComputerActionResult = { success: true };
       if (this.shouldCaptureAfterDesktopAction(params.action)) {
         try {
-          result.screenshot = this.captureScreenshotBase64();
+          result.screenshot = await this.captureScreenshotBase64();
         } catch (error) {
           logger.warn(
             `[computeruse] Post-action screenshot failed: ${errorMessage(error)}`,
@@ -922,7 +922,7 @@ export class ComputerUseService extends Service {
   }
 
   async captureScreen(): Promise<Buffer> {
-    return captureScreenshot();
+    return driverCaptureScreenshot();
   }
 
   getCapabilities(): PlatformCapabilities {
@@ -1313,8 +1313,9 @@ export class ComputerUseService extends Service {
       : `Computer-use approval rejected for "${command}".`;
   }
 
-  private captureScreenshotBase64(): string {
-    return captureScreenshot().toString("base64");
+  private async captureScreenshotBase64(): Promise<string> {
+    const buf = await driverCaptureScreenshot();
+    return buf.toString("base64");
   }
 
   private shouldCaptureAfterDesktopAction(

@@ -9,7 +9,7 @@ import {
 } from "@/lib/eliza/plugin-cloud-bootstrap/utils/context-routing";
 
 describe("cloud bootstrap context routing", () => {
-  test("parses routing metadata with context and evidence lists", () => {
+  test("parses routing metadata with shared contexts only", () => {
     const parsed = parseContextRoutingMetadata({
       primaryContext: "wallet",
       secondaryContexts: "wallet, knowledge, wallet",
@@ -19,7 +19,6 @@ describe("cloud bootstrap context routing", () => {
     expect(parsed).toEqual({
       primaryContext: "wallet",
       secondaryContexts: ["wallet", "knowledge"],
-      evidenceTurnIds: ["turn-1", "turn-2"],
     });
   });
 
@@ -33,26 +32,24 @@ describe("cloud bootstrap context routing", () => {
     setContextRoutingMetadata(message, {
       primaryContext: "wallet",
       secondaryContexts: ["knowledge"],
-      evidenceTurnIds: ["turn-9"],
     });
 
     expect(getContextRoutingFromMessage(message)).toEqual({
       primaryContext: "wallet",
       secondaryContexts: ["knowledge"],
-      evidenceTurnIds: ["turn-9"],
     });
   });
 
-  test("derives available contexts from action and provider catalog fallbacks", () => {
+  test("derives available contexts from action catalog fallbacks only", () => {
     const nextState = attachAvailableContexts({ values: {}, data: {}, text: "" } as never, {
-      actions: [{ name: "SEND_TOKEN" }, { name: "WEB_SEARCH" }] as never,
-      providers: [{ name: "walletBalance" }, { name: "knowledge" }] as never,
+      actions: [{ name: "SEND_TOKEN" }] as never,
+      providers: [{ name: "knowledge" }, { name: "pluginList" }] as never,
     });
 
     expect(nextState.values.availableContexts).toContain("general");
     expect(nextState.values.availableContexts).toContain("wallet");
-    expect(nextState.values.availableContexts).toContain("knowledge");
-    expect(nextState.values.availableContexts).toContain("browser");
+    expect(nextState.values.availableContexts).not.toContain("knowledge");
+    expect(nextState.values.availableContexts).not.toContain("system");
   });
 
   test("filters actions to the active routed contexts", () => {

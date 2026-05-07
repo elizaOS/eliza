@@ -80,6 +80,24 @@ No actions executed yet. Analyze the user's request and select the first action.
 
 # Output Format
 
+Prefer the v5 native tool-call-compatible JSON shape:
+
+{
+  "thought": "Your analysis of what to do next",
+  "tool_calls": [
+    {
+      "type": "function",
+      "function": {
+        "name": "ACTION_NAME",
+        "arguments": {"param": "value"}
+      }
+    }
+  ]
+}
+
+The legacy XML parser is still accepted during migration and should be deleted
+after cloud planners run directly on native tool calls end-to-end.
+
 <output>
 <response>
   <thought>[Your analysis of what to do next]</thought>
@@ -196,7 +214,6 @@ RULES:
 CONTEXT ROUTING:
 - primaryContext: choose one context from available_contexts, or "general" if none apply
 - secondaryContexts: optional comma-separated list of additional relevant contexts
-- evidenceTurnIds: optional comma-separated message IDs supporting the decision
 
 DECISION NOTE:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
@@ -211,6 +228,5 @@ Respond using XML format:
   <action>RESPOND | IGNORE | STOP</action>
   <primaryContext>general</primaryContext>
   <secondaryContexts></secondaryContexts>
-  <evidenceTurnIds></evidenceTurnIds>
 </response>
 </output>`;

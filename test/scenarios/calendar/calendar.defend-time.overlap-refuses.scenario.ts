@@ -45,7 +45,7 @@ export default scenario({
       name: "request-during-blackout",
       text: "Schedule a meeting with Alex tomorrow at 10am.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "blackout conflict handling",
       }),
       responseIncludesAny: [
@@ -60,13 +60,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+      actionName: ["CALENDAR", "CALENDAR"],
     },
     {
       type: "custom",
       name: "blackout-conflict-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "blackout conflict handling",
         includesAny: ["Alex", "10am", "deep work"],
       }),

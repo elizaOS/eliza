@@ -10,11 +10,18 @@
  */
 
 import type { StreamChunkCallback } from "./types/components";
+import type {
+	StreamingContextEventPayload,
+	StreamingEvaluationPayload,
+	StreamingEventHooks,
+	StreamingToolCallPayload,
+	StreamingToolResultPayload,
+} from "./types/streaming";
 
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
-export interface StreamingContext {
+export interface StreamingContext extends StreamingEventHooks {
 	/** Called for each chunk of streamed content */
 	onStreamChunk: StreamChunkCallback;
 	/** Called when a useModel streaming call completes (allows reset between calls) */
@@ -22,6 +29,36 @@ export interface StreamingContext {
 	messageId?: string;
 	/** Optional abort signal to cancel streaming */
 	abortSignal?: AbortSignal;
+}
+
+export interface StreamingHookPayloads {
+	onToolCall: StreamingToolCallPayload;
+	onToolResult: StreamingToolResultPayload;
+	onEvaluation: StreamingEvaluationPayload;
+	onContextEvent: StreamingContextEventPayload;
+}
+
+/**
+ * Safely emit an optional streaming event hook.
+ * Missing hooks are no-ops, and hook failures are isolated from runtime flow.
+ */
+export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
+	context: StreamingContext | undefined,
+	hook: K,
+	payload: StreamingHookPayloads[K],
+): Promise<void> {
+	const callback = context?.[hook];
+	if (!callback) {
+		return;
+	}
+
+	try {
+		await (
+			callback as (value: StreamingHookPayloads[K]) => void | Promise<void>
+		)(payload);
+	} catch {
+		// Streaming observers must not break the underlying model/action flow.
+	}
 }
 
 /**

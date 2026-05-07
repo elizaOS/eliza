@@ -5,12 +5,11 @@
  * and a summary of recent actions so the agent has continuity.
  */
 
-import {
-  encodeToonValue,
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
 } from "@elizaos/core";
 import { currentPlatform } from "../platform/helpers.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
@@ -35,7 +34,7 @@ export const computerStateProvider: Provider = {
     const recent = service.getRecentActions();
     const approvals = service.getApprovalSnapshot();
 
-    const text = encodeToonValue({
+    const text = `\`\`\`json\n${JSON.stringify({
       computer_use: {
         platform: currentPlatform(),
         screen: { width: screen.width, height: screen.height },
@@ -70,7 +69,7 @@ export const computerStateProvider: Provider = {
           success: entry.success,
         })),
       },
-    });
+    }, null, 2)}\n\`\`\``;
 
     return {
       text,

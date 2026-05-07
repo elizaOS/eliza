@@ -9,7 +9,6 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -28,11 +27,72 @@ Extract the following:
 3. before: Optional message timestamp to fetch messages before
 4. after: Optional message timestamp to fetch messages after
 
-Respond with TOON only:
-channelRef: current
-limit: 10
-before:
-after:`;
+Respond with JSON only. Return exactly one JSON object with this shape:
+{"channelRef":"current","limit":10,"before":null,"after":null}`;
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value.trim()) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readParams(
+  options?: HandlerOptions | unknown,
+): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function normalizeReadInfo(params: Record<string, unknown>): {
+  channelRef?: string;
+  limit?: number;
+  before?: string | null;
+  after?: string | null;
+} | null {
+  const hasReadableField = ["channelRef", "channel", "limit", "before", "after"].some(
+    (key) => params[key] !== undefined,
+  );
+  if (!hasReadableField) {
+    return null;
+  }
+
+  const rawLimit = Number(params.limit);
+  return {
+    channelRef:
+      typeof params.channelRef === "string" && params.channelRef.trim().length > 0
+        ? params.channelRef
+        : typeof params.channel === "string" && params.channel.trim().length > 0
+          ? params.channel
+          : "current",
+    limit: Number.isFinite(rawLimit) ? Math.min(rawLimit, 100) : 10,
+    before:
+      typeof params.before === "string" && params.before.trim().length > 0
+        ? params.before
+        : undefined,
+    after:
+      typeof params.after === "string" && params.after.trim().length > 0
+        ? params.after
+        : undefined,
+  };
+}
 
 export const readChannel: Action = {
   name: "SLACK_READ_CHANNEL",
@@ -107,41 +167,31 @@ export const readChannel: Action = {
       return { success: false, error: "Slack service not available" };
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: readChannelTemplate,
-    });
-
     let readInfo: {
       channelRef?: string;
       limit?: number;
       before?: string | null;
       after?: string | null;
-    } | null = null;
+    } | null = normalizeReadInfo(readParams(_options));
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
+    if (!readInfo) {
+      const prompt = composePromptFromState({
+        state,
+        template: readChannelTemplate,
       });
 
-      const parsedResponse =
-        parseToonKeyValue<Record<string, unknown>>(response);
-      if (parsedResponse) {
-        readInfo = {
-          channelRef: parsedResponse.channelRef
-            ? String(parsedResponse.channelRef)
-            : "current",
-          limit: parsedResponse.limit
-            ? Math.min(Number(parsedResponse.limit), 100)
-            : 10,
-          before: parsedResponse.before
-            ? String(parsedResponse.before)
-            : undefined,
-          after: parsedResponse.after
-            ? String(parsedResponse.after)
-            : undefined,
-        };
-        break;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        });
+
+        const parsedResponse = parseJsonObject(response);
+        if (parsedResponse) {
+          readInfo = normalizeReadInfo(parsedResponse);
+          if (readInfo) {
+            break;
+          }
+        }
       }
     }
 

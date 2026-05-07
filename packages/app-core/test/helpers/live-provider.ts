@@ -37,6 +37,10 @@ function providerKeyMatchesSelection(
     return false;
   }
 
+  if (providerName === "openai" && /^csk[-_]/i.test(trimmed)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -71,6 +75,7 @@ function getLiveTestBaseUrlOverride(
 }
 
 export type LiveProviderName =
+  | "cerebras"
   | "groq"
   | "openai"
   | "anthropic"
@@ -114,6 +119,18 @@ const PROVIDERS: Array<{
   defaultSmallModel: string;
   defaultLargeModel: string;
 }> = [
+  {
+    name: "cerebras",
+    plugin: "@elizaos/plugin-openai",
+    keyEnvVars: ["CEREBRAS_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_CEREBRAS_API_KEY"],
+    baseUrlEnvVar: "OPENAI_BASE_URL",
+    defaultBaseUrl: "https://api.cerebras.ai/v1",
+    smallModelEnvVar: "OPENAI_SMALL_MODEL",
+    largeModelEnvVar: "OPENAI_LARGE_MODEL",
+    defaultSmallModel: "gpt-oss-120b",
+    defaultLargeModel: "gpt-oss-120b",
+  },
   {
     name: "groq",
     plugin: "@elizaos/plugin-groq",
@@ -198,7 +215,7 @@ function providerKeyEnvCandidates(provider: {
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: groq -> openai -> anthropic -> google -> openrouter.
+ * Preference order: cerebras -> groq -> openai -> anthropic -> google -> openrouter.
  */
 export function selectLiveProvider(
   preferredProvider?: LiveProviderName,

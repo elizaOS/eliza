@@ -3,7 +3,6 @@ import {
   ChannelType,
   elizaLogger,
   type Plugin,
-  parseToonKeyValue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -291,12 +290,7 @@ export function coerceParams(value: unknown): Record<string, unknown> {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through to TOON parsing
-    }
-
-    const parsedToon = parseToonKeyValue<Record<string, unknown>>(trimmed);
-    if (parsedToon && Object.keys(parsedToon).length > 0) {
-      return parsedToon;
+      return {};
     }
   }
 

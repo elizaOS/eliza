@@ -3,7 +3,6 @@
  * speech text extraction, and mouth animation helpers.
  */
 
-import { parseToonKeyValue } from "@elizaos/core";
 import { sanitizeSpeechText } from "@elizaos/shared";
 import { MAX_SPOKEN_CHARS, MOUTH_OPEN_STEP } from "./voice-chat-types";
 
@@ -39,8 +38,19 @@ export function capSpeechLength(input: string): string {
 const HIDDEN_VOICE_BLOCK_RE =
   /<(think|thought|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
-function extractToonVoiceText(input: string): string | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(input);
+function parseJsonObject(input: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(input.trim());
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractStructuredVoiceText(input: string): string | null {
+  const parsed = parseJsonObject(input);
   if (!parsed) return null;
 
   if (typeof parsed.text === "string") {
@@ -55,7 +65,7 @@ function extractToonVoiceText(input: string): string | null {
 }
 
 export function extractVoiceText(input: string): string {
-  let text = extractToonVoiceText(input) ?? input;
+  let text = extractStructuredVoiceText(input) ?? input;
 
   text = text.replace(HIDDEN_VOICE_BLOCK_RE, " ");
   text = text.replace(/<\/?[a-zA-Z][^>]*$|<\/?$/s, "");

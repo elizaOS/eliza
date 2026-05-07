@@ -1579,7 +1579,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    return canonicalName === "OWNER_WEBSITE_BLOCK";
+                    return canonicalName === "WEBSITE_BLOCK";
                   });
                 const callbacksBeforeFallback = actionCallbacksSeen;
 
@@ -1603,7 +1603,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    if (canonicalName === "OWNER_WEBSITE_BLOCK") {
+                    if (canonicalName === "WEBSITE_BLOCK") {
                       return !selfControlFallbackExecuted;
                     }
                     return true;

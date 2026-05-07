@@ -49,6 +49,8 @@ import {
 } from "../utils/context-routing";
 import {
   getAvailableActionNames,
+  parseNativeMultiStepDecision,
+  toNativeActionParams,
   type ValidatedMultiStepDecision,
   validateMultiStepDecision,
 } from "../utils/multi-step-guards";
@@ -874,7 +876,9 @@ export class CloudBootstrapMessageService implements IMessageService {
             logger.info(
               `[LLM:multiStepDecision] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
             );
-            const rawParsedStep = parseKeyValueXml(stepResultRaw) as ParsedMultiStepDecision | null;
+            const rawParsedStep =
+              parseNativeMultiStepDecision(stepResultRaw) ||
+              (parseKeyValueXml(stepResultRaw) as ParsedMultiStepDecision | null);
             if (rawParsedStep) {
               const validation = validateMultiStepDecision(
                 rawParsedStep,
@@ -1024,6 +1028,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
           if (action && hasActionParams) {
             accumulatedState.data.actionParams = actionParams;
+            accumulatedState.data.params = toNativeActionParams(action, actionParams);
             const actionKey = action.toLowerCase().replace(/_/g, "");
             accumulatedState.data[actionKey] = {
               ...actionParams,
@@ -1041,6 +1046,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           );
 
           const actionContent: Content & {
+            params?: Record<string, Record<string, unknown>>;
             actionParams?: Record<string, unknown>;
             actionInput?: Record<string, unknown>;
           } = {
@@ -1050,6 +1056,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           };
 
           if (hasActionParams) {
+            actionContent.params = toNativeActionParams(action, actionParams);
             actionContent.actionParams = actionParams;
             actionContent.actionInput = actionParams;
           }

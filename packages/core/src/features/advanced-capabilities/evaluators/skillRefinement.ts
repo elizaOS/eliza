@@ -28,7 +28,6 @@ import type {
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
-import { tryParseToonValue } from "../../../utils/toon";
 
 interface TrajectoryStep {
 	timestamp: number;
@@ -76,16 +75,16 @@ const MAX_AUTO_REFINEMENTS = 3;
 const REFINEMENT_PROMPT = `You are improving a SKILL.md file because the agent recently failed or
 retried while using it.
 
-Output TOON only. Return exactly one TOON document, no prose or fences.
+Return a JSON object matching the provided schema. Do not include prose or fences.
 
 If refinement is warranted:
-refine: true
-newBody: "full replacement markdown body with \\n escapes for line breaks, no frontmatter"
-reason: short reason
+- refine: true
+- newBody: full replacement markdown body, no frontmatter
+- reason: short reason
 
-If no refinement is warranted, return:
-refine: false
-reason: short reason
+If no refinement is warranted:
+- refine: false
+- reason: short reason
 
 Rules:
 - newBody MUST be the complete replacement markdown body (the frontmatter is
@@ -100,6 +99,16 @@ interface RefinementDraft {
 	newBody?: string;
 }
 
+const REFINEMENT_RESPONSE_SCHEMA = {
+	type: "object",
+	properties: {
+		refine: { type: "boolean" },
+		reason: { type: "string" },
+		newBody: { type: "string" },
+	},
+	required: ["refine"],
+};
+
 function getActiveSkillsDir(): string {
 	return join(resolveStateDir(), "skills", "curated", "active");
 }
@@ -108,16 +117,7 @@ function getProposedSkillsDir(): string {
 	return join(resolveStateDir(), "skills", "curated", "proposed");
 }
 
-function parseRefinementResponse(raw: string): RefinementDraft | null {
-	const toon = tryParseToonValue(raw);
-	if (toon && typeof toon === "object" && !Array.isArray(toon)) {
-		const obj = toon as Record<string, unknown>;
-		const draft: RefinementDraft = { refine: obj.refine === true };
-		if (typeof obj.reason === "string") draft.reason = obj.reason;
-		if (typeof obj.newBody === "string") draft.newBody = obj.newBody;
-		return draft;
-	}
-
+function parseJsonObject(raw: string): Record<string, unknown> | null {
 	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
 	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
 	if (!jsonText) return null;
@@ -128,7 +128,17 @@ function parseRefinementResponse(raw: string): RefinementDraft | null {
 		return null;
 	}
 	if (!parsed || typeof parsed !== "object") return null;
-	const obj = parsed as Record<string, unknown>;
+	return parsed as Record<string, unknown>;
+}
+
+function parseRefinementResponse(raw: unknown): RefinementDraft | null {
+	const obj =
+		raw && typeof raw === "object" && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: typeof raw === "string"
+				? parseJsonObject(raw)
+				: null;
+	if (!obj) return null;
 	const draft: RefinementDraft = { refine: obj.refine === true };
 	if (typeof obj.reason === "string") draft.reason = obj.reason;
 	if (typeof obj.newBody === "string") draft.newBody = obj.newBody;
@@ -394,8 +404,11 @@ export const skillRefinementEvaluator: Evaluator = {
 			}
 
 			const prompt = `${REFINEMENT_PROMPT}\n\nCurrent SKILL.md body:\n${parsed.body}\n\nFailing trajectory:\n${trajectoryDigest}`;
-			const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-			if (!response || typeof response !== "string") continue;
+			const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+				prompt,
+				schema: REFINEMENT_RESPONSE_SCHEMA,
+			});
+			if (!response) continue;
 			const draft = parseRefinementResponse(response);
 			if (!draft?.refine || !draft.newBody) continue;
 			if (draft.newBody.includes("---")) {

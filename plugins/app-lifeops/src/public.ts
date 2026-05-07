@@ -6,8 +6,8 @@ export { lifeopsPlugin } from "./routes/plugin.js";
 export {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
-  ownerWebsiteBlockAction,
   requestSelfControlPermission,
+  websiteBlockAction,
 } from "./website-blocker/public.js";
 
 registerLifeOpsAutomationNodeContributor();

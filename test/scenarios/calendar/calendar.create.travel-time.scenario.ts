@@ -26,7 +26,7 @@ export default scenario({
       name: "create-event-with-travel-time",
       text: "Book a lunch with Alex at Tartine tomorrow at noon. Block travel time from my house.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "travel-time-aware calendar creation",
       }),
     },
@@ -37,7 +37,7 @@ export default scenario({
       name: "calendar-create-travel-buffer-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "OWNER_CALENDAR",
+          (action) => action.actionName === "CALENDAR",
         );
         if (!hit) {
           return "expected CALENDAR_ACTION result";
@@ -92,7 +92,7 @@ export default scenario({
       type: "custom",
       name: "calendar-create-travel-action-covered",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "travel-time-aware calendar creation",
       }),
     },

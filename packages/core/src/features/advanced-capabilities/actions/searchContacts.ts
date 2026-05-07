@@ -4,7 +4,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { searchContactsTemplate } from "../../../prompts.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Action,
@@ -16,8 +15,6 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SEARCH_CONTACTS");
@@ -28,11 +25,55 @@ const SEARCH_KEYWORDS = getValidationKeywordTerms(
 	},
 );
 
-interface SearchContactsToonResult {
-	categories?: string;
+interface SearchContactsInput {
+	categories?: string | string[];
 	searchTerm?: string;
-	tags?: string;
+	tags?: string | string[];
 	intent?: string;
+}
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
+
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const values = value
+			.map((item) => readString(item))
+			.filter((item): item is string => Boolean(item));
+		return values.length > 0 ? values : undefined;
+	}
+	if (typeof value === "string") {
+		const values = value
+			.split(",")
+			.map((item) => item.trim())
+			.filter(Boolean);
+		return values.length > 0 ? values : undefined;
+	}
+	return undefined;
+}
+
+function readSearchContactsInput(
+	message: Memory,
+	options?: HandlerOptions,
+): SearchContactsInput {
+	const params = readParams(options);
+	return {
+		categories:
+			readStringArray(params.categories ?? message.content.categories) ??
+			undefined,
+		searchTerm: readString(
+			params.searchTerm ?? params.query ?? message.content.searchTerm,
+		),
+		tags: readStringArray(params.tags ?? message.content.tags) ?? undefined,
+		intent: readString(params.intent ?? message.content.intent),
+	};
 }
 
 export const searchContactsAction: Action = {
@@ -46,6 +87,7 @@ export const searchContactsAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		// Check if RelationshipsService is available
 		const relationshipsService = runtime.getService(
@@ -55,6 +97,9 @@ export const searchContactsAction: Action = {
 			logger.warn("[SearchContacts] RelationshipsService not available");
 			return false;
 		}
+
+		const params = readSearchContactsInput(message, options);
+		if (params.searchTerm || params.categories || params.tags) return true;
 
 		// Check if message contains intent to search/list contacts
 		const messageText = message.content.text ?? "";
@@ -77,37 +122,7 @@ export const searchContactsAction: Action = {
 			throw new Error("RelationshipsService not available");
 		}
 
-		// Build proper state for prompt composition
-		if (!state) {
-			state = {
-				values: {},
-				data: {},
-				text: "",
-			};
-		}
-
-		// Add our values to the state
-		state.values = {
-			...state.values,
-			message: message.content.text,
-			senderId: message.entityId,
-			senderName: state.values?.senderName || "User",
-		};
-
-		// Compose prompt to extract search criteria
-		const prompt = composePromptFromState({
-			state,
-			template: searchContactsTemplate,
-		});
-
-		// Use LLM to extract search criteria
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			stopSequences: [],
-		});
-
-		const parsedResponse =
-			parseToonKeyValue<SearchContactsToonResult>(response);
+		const parsedResponse = readSearchContactsInput(message, _options);
 
 		// Build search criteria
 		const criteria: {
@@ -116,23 +131,15 @@ export const searchContactsAction: Action = {
 			searchTerm?: string;
 		} = {};
 
-		if (parsedResponse?.categories) {
-			criteria.categories = parsedResponse.categories
-				.split(",")
-				.map((c: string) => c.trim())
-				.filter(Boolean);
-		}
+		const categories = readStringArray(parsedResponse.categories);
+		if (categories) criteria.categories = categories;
 
 		if (parsedResponse?.searchTerm) {
 			criteria.searchTerm = parsedResponse.searchTerm;
 		}
 
-		if (parsedResponse?.tags) {
-			criteria.tags = parsedResponse.tags
-				.split(",")
-				.map((t: string) => t.trim())
-				.filter(Boolean);
-		}
+		const tags = readStringArray(parsedResponse.tags);
+		if (tags) criteria.tags = tags;
 
 		// Search contacts
 		const contacts = await relationshipsService.searchContacts(criteria);
@@ -243,4 +250,30 @@ export const searchContactsAction: Action = {
 			text: responseText,
 		};
 	},
+	parameters: [
+		{
+			name: "searchTerm",
+			description: "Name or text to search contacts for.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "categories",
+			description: "Contact categories to filter by.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+		{
+			name: "tags",
+			description: "Contact tags to filter by.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+	],
 };

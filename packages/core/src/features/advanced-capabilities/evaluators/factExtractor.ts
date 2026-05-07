@@ -8,7 +8,7 @@
  *   2. Pull a wider similarity pool from the `facts` table and partition into
  *      `durable` and `current` lists in TS (the runtime search API does not
  *      filter on metadata).
- *   3. One LLM call (TEXT_SMALL, temp=0) emits a TOON `ops` array validated
+ *   3. One LLM call (OBJECT_SMALL, temp=0) emits a JSON `ops` array validated
  *      by `ExtractorOutputSchema`. Legacy JSON responses are still accepted.
  *   4. Write-time embedding-similarity dedup upgrades near-duplicate
  *      `add_*` ops to `strengthen` against the closest existing fact in the
@@ -40,7 +40,6 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { asUUID, type JsonValue } from "../../../types/primitives.ts";
-import { tryParseToonValue } from "../../../utils/toon";
 import { composePrompt } from "../../../utils.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
@@ -61,9 +60,43 @@ const FACT_DECAY_FLOOR = 0.2;
 const NEW_FACT_CONFIDENCE = 0.7;
 const DEDUP_SIMILARITY_THRESHOLD = 0.92;
 
-const FACT_EXTRACTION_TOON_TEMPLATE = `# Task: Classify and extract facts from this message
+const FACT_EXTRACTION_SCHEMA = {
+	type: "object",
+	properties: {
+		ops: {
+			type: "array",
+			items: {
+				type: "object",
+				properties: {
+					op: {
+						type: "string",
+						enum: [
+							"add_durable",
+							"add_current",
+							"strengthen",
+							"decay",
+							"contradict",
+						],
+					},
+					claim: { type: "string" },
+					category: { type: "string" },
+					structured_fields: { type: "object" },
+					verification_status: { type: "string" },
+					valid_at: { type: "string" },
+					factId: { type: "string" },
+					reason: { type: "string" },
+					proposedText: { type: "string" },
+				},
+				required: ["op"],
+			},
+		},
+	},
+	required: ["ops"],
+};
 
-You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return TOON ops only.
+const FACT_EXTRACTION_JSON_TEMPLATE = `# Task: Classify and extract facts from this message
+
+You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return a JSON object matching the provided schema.
 
 Stores:
 - durable: stable identity-level claims that matter in a year.
@@ -87,44 +120,42 @@ Ops:
 Examples:
 
 Message: "I have a flat cortisol curve confirmed via lab"
-ops[1]:
-  - op: add_durable
-    claim: flat cortisol curve
-    category: health
-    structured_fields:
-      condition: flat cortisol curve
-      source: lab
-    verification_status: confirmed
+{
+  "ops": [
+    {
+      "op": "add_durable",
+      "claim": "flat cortisol curve",
+      "category": "health",
+      "structured_fields": { "condition": "flat cortisol curve", "source": "lab" },
+      "verification_status": "confirmed"
+    }
+  ]
+}
 
 Message: "I'm anxious this morning"
-ops[1]:
-  - op: add_current
-    claim: anxious this morning
-    category: feeling
-    structured_fields:
-      emotion: anxious
-      window: morning
+{
+  "ops": [
+    {
+      "op": "add_current",
+      "claim": "anxious this morning",
+      "category": "feeling",
+      "structured_fields": { "emotion": "anxious", "window": "morning" }
+    }
+  ]
+}
 
 Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Berlin's been treating me well"
-ops[1]:
-  - op: strengthen
-    factId: fact_abc
-    reason: user reaffirmed living in Berlin
+{ "ops": [{ "op": "strengthen", "factId": "fact_abc", "reason": "user reaffirmed living in Berlin" }] }
 
 Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Actually I moved to Tokyo last month"
-ops[2]:
-  - op: contradict
-    factId: fact_abc
-    proposedText: lives in Tokyo
-    reason: user moved to Tokyo, contradicts Berlin
-  - op: add_durable
-    claim: moved to Tokyo last month
-    category: life_event
-    structured_fields:
-      event: relocation
-      to: Tokyo
+{
+  "ops": [
+    { "op": "contradict", "factId": "fact_abc", "proposedText": "lives in Tokyo", "reason": "user moved to Tokyo, contradicts Berlin" },
+    { "op": "add_durable", "claim": "moved to Tokyo last month", "category": "life_event", "structured_fields": { "event": "relocation", "to": "Tokyo" } }
+  ]
+}
 
 Inputs:
 Agent Name: {{agentName}}
@@ -144,9 +175,9 @@ Latest message:
 {{message}}
 
 Output:
-TOON only. Return exactly one TOON document. No prose, no fences, no JSON, no XML, no <think>.
+Return exactly one JSON object. No prose, no fences, no XML, no <think>.
 If nothing should change, return:
-ops[0]:`;
+{ "ops": [] }`;
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -335,18 +366,10 @@ function findDedupTarget(
 
 function parseExtractorResponse(
 	runtime: IAgentRuntime,
-	raw: string,
+	raw: unknown,
 ): ExtractorOp[] | null {
-	const trimmed = raw.trim();
-	if (!trimmed) return null;
-
-	const parsedToon = tryParseToonValue(trimmed);
-	if (
-		parsedToon &&
-		typeof parsedToon === "object" &&
-		!Array.isArray(parsedToon)
-	) {
-		const validated = ExtractorOutputSchema.safeParse(parsedToon);
+	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+		const validated = ExtractorOutputSchema.safeParse(raw);
 		if (!validated.success) {
 			runtime.logger.warn(
 				{
@@ -354,14 +377,18 @@ function parseExtractorResponse(
 					agentId: runtime.agentId,
 					issues: validated.error.issues,
 				},
-				"Fact extractor TOON output failed schema validation",
+				"Fact extractor object output failed schema validation",
 			);
 			return null;
 		}
 		return validated.data.ops;
 	}
 
-	// Legacy JSON fallback for older prompts and cached model outputs.
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+
+	// JSON fallback for older mocks and providers that return object JSON as text.
 	const start = trimmed.indexOf("{");
 	if (start === -1) return null;
 	const end = trimmed.lastIndexOf("}");
@@ -770,16 +797,16 @@ async function handler(
 			knownCurrent: formatKnownLines(knownCurrent, "current"),
 			message: message.content.text,
 		},
-		template: FACT_EXTRACTION_TOON_TEMPLATE,
+		template: FACT_EXTRACTION_JSON_TEMPLATE,
 	});
 
-	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+	const response = await runtime.useModel(ModelType.OBJECT_SMALL, {
 		prompt,
+		schema: FACT_EXTRACTION_SCHEMA,
 		temperature: 0,
 	});
 
-	const rawResponse = typeof response === "string" ? response : "";
-	const ops = parseExtractorResponse(runtime, rawResponse);
+	const ops = parseExtractorResponse(runtime, response);
 	if (ops === null) {
 		return undefined;
 	}

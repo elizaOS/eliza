@@ -30,7 +30,6 @@ import {
   resolveCreateEventTravelIntent,
 } from "../../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../../travel-time/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
@@ -50,6 +49,7 @@ import {
   runLifeOpsToonModel,
   toActionData,
 } from "../lifeops-google-helpers.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
   | "feed"

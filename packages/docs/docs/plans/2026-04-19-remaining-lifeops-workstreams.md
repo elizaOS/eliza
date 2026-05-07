@@ -88,7 +88,7 @@ Exact seams:
 - `eliza/plugins/app-lifeops/src/activity-profile/service.ts`
 - `eliza/plugins/app-lifeops/src/providers/activity-profile.ts`
 - `eliza/plugins/app-lifeops/src/actions/screen-time.ts`
-- `eliza/plugins/app-lifeops/src/actions/owner-screen-time.ts`
+- `eliza/plugins/app-lifeops/src/actions/screen-time.ts`
 - `eliza/plugins/app-lifeops/src/lifeops/service-mixin-screentime.ts`
 - `eliza/plugins/app-lifeops/src/lifeops/screen-context.ts`
 
@@ -170,7 +170,7 @@ Status:
 Exact seams:
 - `eliza/plugins/plugin-calendly/src/actions/book-slot.ts`
 - `eliza/plugins/app-lifeops/src/actions/calendly.ts`
-- `eliza/plugins/app-lifeops/src/actions/owner-calendar.ts`
+- `eliza/plugins/app-lifeops/src/actions/calendar.ts`
 - `eliza/plugins/app-lifeops/src/lifeops/browser-session-lifecycle.ts`
 - `eliza/plugins/app-lifeops/test/helpers/browser-portal-scenario-fixture.ts`
 
@@ -321,7 +321,7 @@ Scenarios:
 
 Status:
 - health progress: stale scenario, convertible now against `review_goal`
-- relationship progress: stale scenario, convertible now against `OWNER_RELATIONSHIP`
+- relationship progress: stale scenario, convertible now against `RELATIONSHIP`
 - missed streak escalation: real runtime gap
 - pause while traveling: real runtime gap
 
@@ -338,7 +338,7 @@ Exact seams:
 
 Implementation TODOs:
 - Rewrite `goal.health.track-progress` to assert structured `review_goal` output fields instead of ignored memory seeds.
-- Rewrite `goal.relationship.track-progress` to assert `OWNER_RELATIONSHIP` follow-up output, or remove it if the existing relationships scenario already covers the same path.
+- Rewrite `goal.relationship.track-progress` to assert `RELATIONSHIP` follow-up output, or remove it if the existing relationships scenario already covers the same path.
 - Add habit streak state to morning check-in before converting the escalation scenario.
 - Add time-bounded pause windows plus auto-resume before converting the travel-pause scenario.
 
@@ -366,7 +366,7 @@ Status:
 
 Exact seams:
 - `eliza/plugins/app-lifeops/src/actions/inbox.ts`
-- `eliza/plugins/app-lifeops/src/actions/owner-inbox.ts`
+- `eliza/plugins/app-lifeops/src/actions/inbox.ts`
 - `eliza/packages/agent/src/services/escalation.ts`
 - `eliza/plugins/app-lifeops/src/actions/device-bus.ts`
 - `eliza/packages/core/src/features/advanced-capabilities/actions/muteRoom.ts`

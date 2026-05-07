@@ -139,7 +139,7 @@ function commandToActionKind(command: BrowserCommand): BrowserBridgeActionKind {
   }
 }
 
-function isDesktopOnlyAlias(command: BrowserCommand): boolean {
+function _isDesktopOnlyAlias(command: BrowserCommand): boolean {
   return command === "finder" || command === "open_finder";
 }
 
@@ -329,11 +329,11 @@ async function runCommand(
     case "open_finder": {
       return {
         success: false,
-        text: "Finder and other desktop workflows should use OWNER_COMPUTER_USE, not MANAGE_LIFEOPS_BROWSER.",
+        text: "Finder and other desktop workflows should use COMPUTER_USE, not MANAGE_LIFEOPS_BROWSER.",
         data: {
           error: "DESKTOP_WORKFLOW",
           command,
-          suggestedAction: "OWNER_COMPUTER_USE",
+          suggestedAction: "COMPUTER_USE",
         },
       };
     }
@@ -376,7 +376,7 @@ export const manageBrowserBridgeAction: Action = {
   name: "MANAGE_LIFEOPS_BROWSER",
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
-    "Read and control the user's real Chrome and Safari browsers via the Agent Browser Bridge extension. Scope is strictly in-browser: list tabs, read the current page DOM, navigate a tab, open a URL, change browser settings, manage companion sessions. This action only operates on already-open browser tabs and browser-extension settings. It cannot capture the desktop, cannot operate Finder, cannot launch native apps, and cannot click at OS-level coordinates. Any request mentioning the desktop, the screen, the computer, Finder, a native app, or capturing/clicking outside a browser tab must go to OWNER_COMPUTER_USE instead.",
+    "Read and control the user's real Chrome and Safari browsers via the Agent Browser Bridge extension. Scope is strictly in-browser: list tabs, read the current page DOM, navigate a tab, open a URL, change browser settings, manage companion sessions. This action only operates on already-open browser tabs and browser-extension settings. It cannot capture the desktop, cannot operate Finder, cannot launch native apps, and cannot click at OS-level coordinates. Any request mentioning the desktop, the screen, the computer, Finder, a native app, or capturing/clicking outside a browser tab must go to COMPUTER_USE instead.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

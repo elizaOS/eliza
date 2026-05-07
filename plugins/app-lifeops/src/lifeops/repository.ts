@@ -7085,7 +7085,6 @@ export class LifeOpsRepository {
           AND id = ${sqlQuote(id)}`,
     );
   }
-
 }
 
 export function createLifeOpsTaskDefinition(

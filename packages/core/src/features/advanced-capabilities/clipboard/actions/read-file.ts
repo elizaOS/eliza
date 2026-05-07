@@ -8,8 +8,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistence.ts";
@@ -120,10 +118,9 @@ function readClipboardContentOverrides(
 	return overrides as Partial<Memory["content"]>;
 }
 
-async function extractReadFileInput(
-	runtime: IAgentRuntime,
+function extractReadFileInput(
 	message: Memory,
-): Promise<ReadFileInput | null> {
+): ReadFileInput | null {
 	const explicitPath =
 		typeof message.content.filePath === "string"
 			? message.content.filePath.trim()
@@ -148,39 +145,22 @@ async function extractReadFileInput(
 	if (!text.trim()) {
 		return null;
 	}
-	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt: [
-			"Extract the file path and optional line range to read.",
-			"",
-			`User message: ${text}`,
-			"",
-			"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
-			"filePath: relative/or/absolute/path",
-			"from: 1",
-			"lines: 40",
-		].join("\n"),
-		stopSequences: [],
-	});
-	const parsed = parseToonKeyValue(String(response)) as Record<
-		string,
-		unknown
-	> | null;
-	if (!parsed || !hasReadFilePath(parsed)) {
+	const pathMatch =
+		text.match(/(?:file|path)\s+["'`](.+?)["'`]/i) ??
+		text.match(/["'`](.+?\.[\w.-]+)["'`]/) ??
+		text.match(/((?:\.{1,2}\/|\/)[^\s,;]+|[A-Za-z]:[\\/][^\s,;]+)/);
+	const filePath = pathMatch?.[1]?.trim();
+	if (!filePath) {
 		return null;
 	}
-	const filePath = String(parsed.filePath);
-	const fromValue = parsed.from;
-	const linesValue = parsed.lines;
+	const fromValue = text.match(/\bfrom\s+line\s+(\d+)/i)?.[1];
+	const linesValue =
+		text.match(/\b(?:first|next|limit|lines)\s+(\d+)/i)?.[1] ??
+		text.match(/\b(\d+)\s+lines\b/i)?.[1];
 	return {
-		filePath: filePath.trim(),
-		from:
-			typeof fromValue === "string" && fromValue.trim()
-				? Number(fromValue)
-				: undefined,
-		lines:
-			typeof linesValue === "string" && linesValue.trim()
-				? Number(linesValue)
-				: undefined,
+		filePath,
+		from: fromValue ? Number(fromValue) : undefined,
+		lines: linesValue ? Number(linesValue) : undefined,
 	};
 }
 
@@ -202,7 +182,7 @@ export async function readFileFromActionInput(
 				from: explicitInput.from,
 				lines: explicitInput.lines,
 			} satisfies ReadFileInput)
-		: await extractReadFileInput(runtime, message);
+		: extractReadFileInput(message);
 
 	if (!inferred) {
 		throw new Error("I couldn't determine which file to read.");

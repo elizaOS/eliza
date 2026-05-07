@@ -13,6 +13,8 @@ import type {
 	StreamingContext,
 } from "./streaming-context";
 
+export type { StreamingContext } from "./streaming-context";
+
 /**
  * Stack-based context manager for browser environments.
  * Safe because browser typically has 1 runtime per request.

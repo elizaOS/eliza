@@ -8,7 +8,7 @@
  */
 
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
-import { LifeOpsService } from "../../lifeops/service.js";
+import type { LifeOpsService } from "../../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,

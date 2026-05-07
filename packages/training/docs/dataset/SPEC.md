@@ -1,4 +1,9 @@
-# eliza-1 training corpus — record spec
+# eliza-1 training corpus — legacy record spec
+
+This document describes the current TOON-era `ElizaRecord` contract. The v5
+native tool-calling migration uses
+[`NATIVE_TOOL_CALLING_SPEC.md`](NATIVE_TOOL_CALLING_SPEC.md) for new bootstrap
+data, planner/evaluator rows, and Atropos JSON exports.
 
 This document is the contract between **dataset adapters** (everything in
 `scripts/sources/`, `scripts/lib/adapters.py`, the synth pipeline, and the

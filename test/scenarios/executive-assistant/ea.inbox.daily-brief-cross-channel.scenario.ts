@@ -36,9 +36,9 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "TRIAGE_MESSAGES",
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEARCH_MESSAGES",
-          "OWNER_RELATIONSHIP",
+          "RELATIONSHIP",
         ],
         description: "strict cross-channel morning brief generation",
         includesAny: [
@@ -69,18 +69,18 @@ export default scenario({
       type: "selectedAction",
       actionName: [
         "TRIAGE_MESSAGES",
-        "OWNER_CALENDAR",
+        "CALENDAR",
         "SEARCH_MESSAGES",
-        "OWNER_RELATIONSHIP",
+        "RELATIONSHIP",
       ],
     },
     {
       type: "selectedActionArguments",
       actionName: [
         "TRIAGE_MESSAGES",
-        "OWNER_CALENDAR",
+        "CALENDAR",
         "SEARCH_MESSAGES",
-        "OWNER_RELATIONSHIP",
+        "RELATIONSHIP",
       ],
       includesAny: [
         "brief",
@@ -105,9 +105,9 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: [
           "TRIAGE_MESSAGES",
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEARCH_MESSAGES",
-          "OWNER_RELATIONSHIP",
+          "RELATIONSHIP",
         ],
         description: "strict cross-channel morning brief generation",
         includesAny: [

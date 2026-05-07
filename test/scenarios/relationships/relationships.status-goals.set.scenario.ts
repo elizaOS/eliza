@@ -6,7 +6,7 @@ export default scenario({
   domain: "relationships",
   tags: ["lifeops", "relationships", "routing"],
   description:
-    "A relationship-goal request currently routes into the generic OWNER_RELATIONSHIP flow instead of a dedicated goal-setting action.",
+    "A relationship-goal request currently routes into the generic RELATIONSHIP flow instead of a dedicated goal-setting action.",
 
   isolation: "per-scenario",
   requires: {
@@ -43,7 +43,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
       minCount: 1,
     },
   ],

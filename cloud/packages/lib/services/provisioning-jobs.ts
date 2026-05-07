@@ -183,6 +183,33 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Best-effort kick of the provisioning worker without waiting for the
+   * next cron tick. Fire-and-forget — the cron is the safety net.
+   *
+   * The cron endpoint is idempotent (FOR UPDATE SKIP LOCKED) so calling
+   * it concurrently with the scheduled invocation is safe.
+   */
+  async triggerImmediate(env?: { CRON_SECRET?: string; NEXT_PUBLIC_APP_URL?: string }): Promise<void> {
+    const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
+    const baseUrl = env?.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+    if (!cronSecret || !baseUrl) return;
+    try {
+      await fetch(`${baseUrl}/api/v1/cron/process-provisioning-jobs?limit=5`, {
+        method: "POST",
+        headers: {
+          "x-cron-secret": cronSecret,
+          "user-agent": "agent-provision-trigger/1.0",
+        },
+        signal: AbortSignal.timeout(3_000),
+      });
+    } catch (err) {
+      logger.debug("[provisioning-jobs] triggerImmediate fire-and-forget failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
    * Get a job by ID (for status polling).
    */
   async getJob(jobId: string): Promise<Job | undefined> {

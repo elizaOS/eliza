@@ -1,30 +1,35 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { getDefaultTriageService, registerSendPolicy } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  registerSendPolicy,
+} from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
-import { ownerDeviceIntentAction } from "./actions/owner-device-intent.js";
-import { ownerAppBlockAction } from "./actions/owner-app-block.js";
-import { ownerAutofillAction } from "./actions/owner-autofill.js";
-import { bookTravelAction } from "./actions/owner-book-travel.js";
-import { ownerCalendarAction } from "./actions/owner-calendar.js";
-import { chatThreadControlAction } from "./actions/owner-chat-thread.js";
-import { ownerCheckinAction } from "./actions/owner-checkin.js";
-import { lifeOpsComputerUseAction } from "./actions/owner-computer-use.js";
-import { lifeOpsConnectorAction } from "./actions/owner-connector.js";
-import { healthAction } from "./actions/owner-health.js";
-import { lifeAction } from "./actions/owner-life.js";
-import { passwordManagerAction } from "./actions/owner-password-manager.js";
-import { paymentsAction } from "./actions/owner-payments.js";
-import { ownerProfileAction } from "./actions/owner-profile.js";
-import { relationshipAction } from "./actions/owner-relationship.js";
-import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
-import { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
-import { ownerScheduleAction } from "./actions/owner-schedule.js";
-import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
-import { subscriptionsAction } from "./actions/owner-subscriptions.js";
-import { toggleLifeOpsFeatureAction } from "./actions/owner-toggle-feature.js";
-import { ownerVoiceCallAction } from "./actions/owner-voice-call.js";
-import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
-import { xReadAction } from "./actions/owner-x.js";
+import { appBlockAction } from "./actions/app-block.js";
+import { autofillAction } from "./actions/autofill.js";
+import { bookTravelAction } from "./actions/book-travel.js";
+import { calendarAction } from "./actions/calendar.js";
+import { chatThreadAction } from "./actions/chat-thread.js";
+import { checkinAction } from "./actions/checkin.js";
+import { computerUseAction } from "./actions/computer-use.js";
+import { connectorAction } from "./actions/connector.js";
+import { deviceIntentAction } from "./actions/device-intent.js";
+import { healthAction } from "./actions/health.js";
+import { lifeAction } from "./actions/life.js";
+import { passwordManagerAction } from "./actions/password-manager.js";
+import { paymentsAction } from "./actions/payments.js";
+import { profileAction } from "./actions/profile.js";
+import { relationshipAction } from "./actions/relationship.js";
+import { remoteDesktopAction } from "./actions/remote-desktop.js";
+import { resolveRequestAction } from "./actions/resolve-request.js";
+import { scheduleAction } from "./actions/schedule.js";
+import { screenTimeAction } from "./actions/screen-time.js";
+import { subscriptionsAction } from "./actions/subscriptions.js";
+import { toggleFeatureAction } from "./actions/toggle-feature.js";
+import { voiceCallAction } from "./actions/voice-call.js";
+import { websiteBlockAction } from "./actions/website-block.js";
+import { xAction } from "./actions/x.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -197,33 +202,33 @@ const rawAppLifeOpsPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions: [
     manageBrowserBridgeAction,
-    ownerWebsiteBlockAction,
+    websiteBlockAction,
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
     releaseBlockAction,
-    ownerAppBlockAction,
-    ownerCalendarAction,
-    xReadAction,
-    ownerResolveRequestAction,
+    appBlockAction,
+    calendarAction,
+    xAction,
+    resolveRequestAction,
     lifeAction,
     bookTravelAction,
-    ownerProfileAction,
-    ownerCheckinAction,
+    profileAction,
+    checkinAction,
     relationshipAction,
-    ownerScreenTimeAction,
-    ownerVoiceCallAction,
-    ownerRemoteDesktopAction,
-    lifeOpsComputerUseAction,
-    ownerScheduleAction,
-    ownerDeviceIntentAction,
+    screenTimeAction,
+    voiceCallAction,
+    remoteDesktopAction,
+    computerUseAction,
+    scheduleAction,
+    deviceIntentAction,
     passwordManagerAction,
-    ownerAutofillAction,
+    autofillAction,
     healthAction,
     subscriptionsAction,
     paymentsAction,
-    chatThreadControlAction,
-    lifeOpsConnectorAction,
-    toggleLifeOpsFeatureAction,
+    chatThreadAction,
+    connectorAction,
+    toggleFeatureAction,
   ],
   providers: [
     browserBridgeProvider,

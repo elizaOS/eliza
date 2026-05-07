@@ -5,7 +5,6 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
   type TextGenerationModelType,
   type UUID,
 } from "@elizaos/core";
@@ -80,8 +79,32 @@ function toStringArray(value: unknown): string[] {
   return [];
 }
 
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = fenced ? fenced[1]!.trim() : trimmed;
+
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start === -1 || end <= start) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(candidate.slice(start, end + 1)) as unknown;
+      return isRecord(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
 function parseSummaryResponse(text: string): SummaryResult {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  const parsed = parseJsonObject(text);
   if (parsed) {
     const summary =
       typeof parsed.text === "string" && parsed.text.trim().length > 0
@@ -114,7 +137,7 @@ function parseSummaryResponse(text: string): SummaryResult {
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
 
 function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  const parsed = parseJsonObject(text);
   if (parsed) {
     const rawMemories = parsed.memories;
     const candidateEntries = Array.isArray(rawMemories)

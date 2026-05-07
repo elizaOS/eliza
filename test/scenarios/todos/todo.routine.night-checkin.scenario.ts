@@ -37,7 +37,7 @@ export default scenario({
       text: "Give me my night check-in.",
       responseIncludesAny: ["summary", "day"],
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CHECKIN"],
+        acceptedActions: ["CHECKIN"],
         description: "night check-in",
       }),
     },
@@ -45,14 +45,14 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_CHECKIN",
+      actionName: "CHECKIN",
     },
     {
       type: "custom",
       name: "night-checkin-report-includes-overdue-todo",
       predicate: expectScenarioActionResultData({
         description: "night check-in report payload",
-        actionName: "OWNER_CHECKIN",
+        actionName: "CHECKIN",
         includesAll: ["night", "Journal"],
       }),
     },

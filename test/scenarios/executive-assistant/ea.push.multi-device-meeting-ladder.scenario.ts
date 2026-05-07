@@ -39,7 +39,7 @@ export default scenario({
       room: "main",
       text: "For important meetings, remind me an hour before, ten minutes before, and right when they start on both my Mac and my phone.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
+        acceptedActions: ["DEVICE_INTENT", "CALENDAR"],
         description: "multi-device meeting reminder ladder",
         includesAny: ["hour", "ten minutes", "mac", "phone", "meeting"],
       }),
@@ -66,7 +66,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
+      actionName: ["DEVICE_INTENT", "CALENDAR"],
     },
     {
       type: "pushSent",
@@ -83,14 +83,14 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: ["desktop", "mobile"],
-      actionName: ["OWNER_DEVICE_INTENT"],
+      actionName: ["DEVICE_INTENT"],
       minCount: 2,
     },
     {
       type: "custom",
       name: "ea-meeting-ladder-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
+        acceptedActions: ["DEVICE_INTENT", "CALENDAR"],
         description: "multi-device meeting reminder ladder",
         includesAny: ["hour", "ten minutes", "mac", "phone", "meeting"],
       }),

@@ -4,7 +4,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { updateContactTemplate } from "../../../prompts.ts";
 import type {
 	ContactInfo,
 	RelationshipsService,
@@ -19,8 +18,6 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_CONTACT");
@@ -31,18 +28,49 @@ const UPDATE_CONTACT_TERMS = getValidationKeywordTerms(
 	},
 );
 
-interface UpdateContactToonResult {
+interface UpdateContactInput {
 	contactName?: string;
 	operation?: string;
-	categories?: string;
-	tags?: string;
-	preferences?: string;
-	customFields?: string;
+	categories?: string | string[];
+	tags?: string | string[];
+	preferences?: string | Record<string, string>;
+	customFields?: string | Record<string, string>;
 	notes?: string;
 }
 
-const parseKeyValueList = (value?: string): Record<string, string> => {
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
+
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const values = value
+			.map((item) => readString(item))
+			.filter((item): item is string => Boolean(item));
+		return values.length > 0 ? values : undefined;
+	}
+	if (!value) return undefined;
+	if (typeof value === "string") {
+		const values = value
+			.split(",")
+			.map((item) => item.trim())
+			.filter(Boolean);
+		return values.length > 0 ? values : undefined;
+	}
+	return undefined;
+}
+
+const parseKeyValueList = (
+	value?: string | Record<string, string>,
+): Record<string, string> => {
 	if (!value) return {};
+	if (typeof value === "object") return value;
 	const result: Record<string, string> = {};
 	const entries = value.split(",");
 	for (const entry of entries) {
@@ -53,6 +81,39 @@ const parseKeyValueList = (value?: string): Record<string, string> => {
 	}
 	return result;
 };
+
+function readRecord(value: unknown): Record<string, string> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	const result: Record<string, string> = {};
+	for (const [key, val] of Object.entries(value)) {
+		if (typeof val === "string") result[key] = val;
+	}
+	return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function readUpdateContactInput(
+	message: Memory,
+	options?: HandlerOptions,
+): UpdateContactInput {
+	const params = readParams(options);
+	return {
+		contactName: readString(params.contactName ?? message.content.contactName),
+		operation: readString(params.operation ?? message.content.operation),
+		categories:
+			readStringArray(params.categories ?? message.content.categories) ??
+			undefined,
+		tags: readStringArray(params.tags ?? message.content.tags) ?? undefined,
+		preferences:
+			readRecord(params.preferences ?? message.content.preferences) ??
+			readString(params.preferences ?? message.content.preferences),
+		customFields:
+			readRecord(params.customFields ?? message.content.customFields) ??
+			readString(params.customFields ?? message.content.customFields),
+		notes: readString(params.notes ?? message.content.notes),
+	};
+}
 
 export const updateContactAction: Action = {
 	name: spec.name,
@@ -65,8 +126,21 @@ export const updateContactAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		const hasService = !!runtime.getService("relationships");
+		const params = readUpdateContactInput(message, options);
+		if (
+			hasService &&
+			params.contactName &&
+			(params.categories ||
+				params.tags ||
+				params.preferences ||
+				params.customFields ||
+				params.notes)
+		) {
+			return true;
+		}
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = findKeywordTermMatch(text, UPDATE_CONTACT_TERMS);
@@ -76,7 +150,7 @@ export const updateContactAction: Action = {
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: State,
+		_state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
@@ -88,40 +162,7 @@ export const updateContactAction: Action = {
 				throw new Error("RelationshipsService not available");
 			}
 
-			// Build state for prompt composition
-			const updateState: State = {
-				values: {
-					...state?.values,
-					message: message.content.text,
-					senderName: state?.values?.senderName || "User",
-					senderId: message.entityId,
-					currentDateTime: new Date().toISOString(),
-				},
-				data: state?.data || {},
-				text: state?.text || "",
-			};
-
-			const prompt = composePromptFromState({
-				state: updateState,
-				template: updateContactTemplate,
-			});
-
-			// Get LLM response
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt,
-			});
-			const parsed = parseToonKeyValue<UpdateContactToonResult>(response);
-			if (!parsed) {
-				logger.warn("[UpdateContact] Failed to parse response");
-				await callback?.({
-					text: "I couldn't understand the update request. Please try again.",
-				});
-				return {
-					success: false,
-					text: "I couldn't understand the update request. Please try again.",
-					data: { actionName: "UPDATE_CONTACT" },
-				};
-			}
+			const parsed = readUpdateContactInput(message, _options);
 
 			const contactName = parsed.contactName?.trim();
 			if (!contactName) {
@@ -159,11 +200,8 @@ export const updateContactAction: Action = {
 			const updateData: Partial<ContactInfo> = {};
 
 			// Handle categories
-			if (parsed.categories) {
-				const newCategories = parsed.categories
-					.split(",")
-					.map((c: string) => c.trim())
-					.filter(Boolean);
+			const newCategories = readStringArray(parsed.categories);
+			if (newCategories) {
 				if (operation === "add_to" && contact.categories) {
 					updateData.categories = [
 						...new Set([...contact.categories, ...newCategories]),
@@ -178,11 +216,8 @@ export const updateContactAction: Action = {
 			}
 
 			// Handle tags
-			if (parsed.tags) {
-				const newTags = parsed.tags
-					.split(",")
-					.map((t: string) => t.trim())
-					.filter(Boolean);
+			const newTags = readStringArray(parsed.tags);
+			if (newTags) {
 				if (operation === "add_to" && contact.tags) {
 					updateData.tags = [...new Set([...contact.tags, ...newTags])];
 				} else if (operation === "remove_from" && contact.tags) {
@@ -224,6 +259,13 @@ export const updateContactAction: Action = {
 				} else {
 					updateData.customFields = newFields;
 				}
+			}
+
+			if (parsed.notes) {
+				updateData.preferences = {
+					...(updateData.preferences ?? contact.preferences ?? {}),
+					notes: parsed.notes,
+				};
 			}
 
 			// Update the contact
@@ -280,4 +322,65 @@ export const updateContactAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "contactName",
+			description: "Name of the contact to update.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "operation",
+			description:
+				"How to apply list/map updates: replace, add_to, or remove_from.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["replace", "add_to", "remove_from"],
+				default: "replace",
+			},
+		},
+		{
+			name: "categories",
+			description: "Contact categories to set, add, or remove.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+		{
+			name: "tags",
+			description: "Contact tags to set, add, or remove.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+		{
+			name: "preferences",
+			description: "Preference key-value pairs to set, add, or remove.",
+			required: false,
+			schema: {
+				type: "object" as const,
+				additionalProperties: { type: "string" as const },
+			},
+		},
+		{
+			name: "customFields",
+			description: "Custom field key-value pairs to set, add, or remove.",
+			required: false,
+			schema: {
+				type: "object" as const,
+				additionalProperties: { type: "string" as const },
+			},
+		},
+		{
+			name: "notes",
+			description: "Optional notes to store in contact preferences.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 };

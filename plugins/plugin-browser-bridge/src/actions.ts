@@ -19,7 +19,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -55,7 +55,7 @@ function describeError(err: unknown): string {
 export const browserBridgeInstallAction: Action = {
   name: INSTALL_NAME,
   similes: ["INSTALL_BROWSER_BRIDGE", "SETUP_BROWSER_BRIDGE"],
-  description: encodeToonValue({
+  description: JSON.stringify({
     browser_bridge_install: {
       purpose:
         "Prepare the Agent Browser Bridge Chrome extension for unpacked install.",
@@ -138,7 +138,7 @@ export const browserBridgeInstallAction: Action = {
 export const browserBridgeRevealFolderAction: Action = {
   name: REVEAL_FOLDER_NAME,
   similes: ["REVEAL_BROWSER_BRIDGE_FOLDER", "OPEN_BROWSER_BRIDGE_FOLDER"],
-  description: encodeToonValue({
+  description: JSON.stringify({
     browser_bridge_reveal_folder: {
       purpose:
         "Reveal the Agent Browser Bridge Chrome extension folder in the host file manager.",
@@ -197,7 +197,7 @@ export const browserBridgeRevealFolderAction: Action = {
 export const browserBridgeOpenManagerAction: Action = {
   name: OPEN_MANAGER_NAME,
   similes: ["OPEN_CHROME_EXTENSIONS", "OPEN_BROWSER_BRIDGE_MANAGER"],
-  description: encodeToonValue({
+  description: JSON.stringify({
     browser_bridge_open_manager: {
       purpose:
         "Open chrome://extensions so the user can load the unpacked Agent Browser Bridge extension.",
@@ -259,7 +259,7 @@ export const browserBridgeRefreshAction: Action = {
     "REFRESH_BROWSER_BRIDGE_CONNECTION",
     "RELOAD_BROWSER_BRIDGE_STATUS",
   ],
-  description: encodeToonValue({
+  description: JSON.stringify({
     browser_bridge_refresh: {
       purpose:
         "Refresh Agent Browser Bridge connection status, paired companions, and packaging artifact paths.",

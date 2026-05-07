@@ -347,6 +347,7 @@ async function initializePlatform(): Promise<void> {
   initializeCapacitorBridge();
 
   if (isIOS || isAndroid) {
+    await initializeStatusBar();
     await initializeKeyboard();
     initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
@@ -357,6 +358,27 @@ async function initializePlatform(): Promise<void> {
     await initializeDesktopShell();
   } else {
     await initializeAgent();
+  }
+}
+
+async function initializeStatusBar(): Promise<void> {
+  if (!isNative) return;
+  // Make the status bar overlay the WebView so the app can render
+  // edge-to-edge and `env(safe-area-inset-top)` reports the real status-bar
+  // height on both platforms (iOS already does this via the
+  // `apple-mobile-web-app-status-bar-style: black-translucent` meta tag;
+  // Android needs an explicit opt-in via `setOverlaysWebView`). Imported
+  // dynamically so non-mobile bundles don't try to resolve the native
+  // plugin's named exports through the vite native stub.
+  try {
+    const { StatusBar, Style } = await import("@capacitor/status-bar");
+    await StatusBar.setStyle({ style: Style.Dark });
+    if (isAndroid) {
+      await StatusBar.setOverlaysWebView({ overlay: true });
+      await StatusBar.setBackgroundColor({ color: "#00000000" });
+    }
+  } catch (error) {
+    logNativePluginUnavailable("StatusBar", error);
   }
 }
 

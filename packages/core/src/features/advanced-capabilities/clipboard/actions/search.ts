@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -21,49 +19,39 @@ function isValidSearchInput(obj: Record<string, unknown>): boolean {
 	return typeof obj.query === "string" && obj.query.length > 0;
 }
 
-const EXTRACT_TEMPLATE = `Extract the search query from the user's message.
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
 
-User message: {{text}}
+function optionalNumber(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : undefined;
+	}
+	return undefined;
+}
 
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
-
-Fields:
-- query: The search terms to find in clipboard entries (required)
-- maxResults: Maximum number of results to return (optional, default 5)
-
-Example:
-query: search terms
-maxResults: 5`;
-
-async function extractSearchInfo(
-	runtime: IAgentRuntime,
+function extractSearchInfo(
 	message: Memory,
-): Promise<SearchInput | null> {
-	const prompt = EXTRACT_TEMPLATE.replace(
-		"{{text}}",
-		message.content.text ?? "",
-	);
+	options?: HandlerOptions,
+): SearchInput | null {
+	const params = readParams(options);
+	const raw = {
+		query: params.query ?? message.content.query,
+		maxResults: params.maxResults ?? message.content.maxResults,
+	};
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
-
-	logger.debug("[ClipboardSearch] Extract result:", result);
-
-	const parsed = parseToonKeyValue(String(result)) as Record<
-		string,
-		unknown
-	> | null;
-
-	if (!parsed || !isValidSearchInput(parsed)) {
+	if (!isValidSearchInput(raw)) {
 		logger.error("[ClipboardSearch] Failed to extract valid search info");
 		return null;
 	}
 
 	return {
-		query: String(parsed.query),
-		maxResults: parsed.maxResults ? Number(parsed.maxResults) : 5,
+		query: String(raw.query),
+		maxResults: optionalNumber(raw.maxResults) ?? 5,
 	};
 }
 
@@ -95,6 +83,10 @@ export const clipboardSearchAction: Action = {
 			? __avSource === __avExpectedSource
 			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
 		const __avOptions = options && typeof options === "object" ? options : {};
+		const __avParams = readParams(options);
+		if (isValidSearchInput(__avParams)) {
+			return true;
+		}
 		const __avInputOk =
 			__avText.trim().length > 0 ||
 			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
@@ -137,7 +129,7 @@ export const clipboardSearchAction: Action = {
 		callback?: HandlerCallback,
 		_responses?: Memory[],
 	) => {
-		const searchInfo = await extractSearchInfo(runtime, message);
+		const searchInfo = extractSearchInfo(message, _options);
 
 		if (!searchInfo) {
 			if (callback) {
@@ -199,6 +191,20 @@ export const clipboardSearchAction: Action = {
 		}
 	},
 
+	parameters: [
+		{
+			name: "query",
+			description: "Search terms to find in clipboard entries.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "maxResults",
+			description: "Maximum number of matching snippets to return.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1, maximum: 20, default: 5 },
+		},
+	],
 	examples: [],
 };
 

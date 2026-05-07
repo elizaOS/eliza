@@ -60,7 +60,7 @@ export default scenario({
       room: "main",
       text: "Anyone I haven't talked to in over 14 days?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "14-day threshold review",
         includesAny: ["14", "days", "follow", "talked"],
       }),
@@ -76,18 +76,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
     },
     {
       type: "selectedActionArguments",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
       includesAny: ["14", "days", "follow"],
     },
     {
       type: "custom",
       name: "followup-threshold-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "14-day threshold review",
         includesAny: ["14", "days", "follow", "talked"],
       }),

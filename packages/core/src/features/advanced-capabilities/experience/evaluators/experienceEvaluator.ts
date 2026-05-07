@@ -9,7 +9,6 @@ import type { Memory } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
-import { tryParseToonValue } from "../../../../utils/toon";
 import { composePrompt } from "../../../../utils.ts";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.ts";
 import type { ExperienceService } from "../service";
@@ -29,6 +28,27 @@ type ExtractedExperience = {
 };
 
 const EXISTING_EXPERIENCE_LIMIT = 5;
+const EXPERIENCE_EXTRACTION_SCHEMA = {
+	type: "object",
+	properties: {
+		experiences: {
+			type: "array",
+			items: {
+				type: "object",
+				properties: {
+					type: { type: "string" },
+					learning: { type: "string" },
+					context: { type: "string" },
+					confidence: { type: "number" },
+					reasoning: { type: "string" },
+				},
+				required: ["type", "learning", "context", "confidence", "reasoning"],
+			},
+			maxItems: 3,
+		},
+	},
+	required: ["experiences"],
+};
 const PASSIVE_ACTIONS = new Set([
 	"REPLY",
 	"NONE",
@@ -185,11 +205,12 @@ export const experienceEvaluator: Evaluator = {
 			template: EXTRACT_EXPERIENCES_TEMPLATE,
 		});
 
-		// Use TEXT_SMALL: extraction is structured but not complex reasoning.
-		// Saves 5-10x in token cost vs TEXT_LARGE.
+		// Use OBJECT_SMALL: extraction is structured but not complex reasoning.
+		// Saves 5-10x in token cost vs larger models.
 		const runModel = runtime.useModel.bind(runtime);
-		const response = await runModel(ModelType.TEXT_SMALL, {
+		const response = await runModel(ModelType.OBJECT_SMALL, {
 			prompt: extractionPrompt,
+			schema: EXPERIENCE_EXTRACTION_SCHEMA,
 		});
 
 		const experiences = parseExtractedExperiences(response);
@@ -353,14 +374,9 @@ function formatExistingExperiences(experiences: Experience[]): string {
 		.join("\n");
 }
 
-function parseExtractedExperiences(response: string): ExtractedExperience[] {
-	const parsedToon = tryParseToonValue(response);
-	if (
-		parsedToon &&
-		typeof parsedToon === "object" &&
-		!Array.isArray(parsedToon)
-	) {
-		const experiences = (parsedToon as { experiences?: unknown }).experiences;
+function parseExtractedExperiences(response: unknown): ExtractedExperience[] {
+	if (response && typeof response === "object" && !Array.isArray(response)) {
+		const experiences = (response as { experiences?: unknown }).experiences;
 		if (Array.isArray(experiences)) {
 			return experiences.filter(
 				(item): item is ExtractedExperience =>
@@ -369,14 +385,20 @@ function parseExtractedExperiences(response: string): ExtractedExperience[] {
 		}
 	}
 
-	// Legacy JSON-array fallback for older generated prompts and model outputs.
-	const jsonMatch = response.match(/\[[\s\S]*\]/);
-	if (!jsonMatch) return [];
+	if (typeof response !== "string") return [];
 
+	// JSON fallback for older generated prompts and text-returning providers.
+	const objectMatch = response.match(/\{[\s\S]*\}/);
+	const arrayMatch = response.match(/\[[\s\S]*\]/);
+	const jsonText = objectMatch?.[0] ?? arrayMatch?.[0];
+	if (!jsonText) return [];
 	try {
-		const parsed = JSON.parse(jsonMatch[0]) as ExtractedExperience[];
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter((item) => item && typeof item === "object");
+		const parsed = JSON.parse(jsonText) as
+			| ExtractedExperience[]
+			| { experiences?: ExtractedExperience[] };
+		const experiences = Array.isArray(parsed) ? parsed : parsed.experiences;
+		if (!Array.isArray(experiences)) return [];
+		return experiences.filter((item) => item && typeof item === "object");
 	} catch {
 		return [];
 	}

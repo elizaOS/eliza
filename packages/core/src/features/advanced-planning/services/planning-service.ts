@@ -15,13 +15,6 @@ import {
 	type State,
 	type UUID,
 } from "../../../types/index.ts";
-import {
-	encodeToonValue,
-	mergeStructuredRecords,
-	normalizeStructuredRecord,
-	tryParseLooseToonRecord,
-	tryParseToonValue,
-} from "../../../utils/toon";
 import type { JsonValue, PlanningContext, RetryPolicy } from "../types.ts";
 
 type ExtendedHandlerOptions = HandlerOptions & {
@@ -47,18 +40,34 @@ interface ActionStep {
 
 function formatPromptData(value: unknown): string {
 	try {
-		return encodeToonValue(value);
+		return JSON.stringify(value, null, 2);
 	} catch {
 		return String(value);
 	}
 }
 
-function parseToonRecord(response: string): Record<string, unknown> {
-	const parsedToon = normalizeStructuredRecord(tryParseToonValue(response));
-	const parsedLooseToon = normalizeStructuredRecord(
-		tryParseLooseToonRecord(response),
-	);
-	return mergeStructuredRecords(parsedToon, parsedLooseToon) ?? {};
+function parseJsonRecord(response: string): Record<string, unknown> {
+	const trimmed = response.trim();
+	const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	const candidate = fenced ? fenced[1]!.trim() : trimmed;
+
+	try {
+		const parsed = JSON.parse(candidate) as unknown;
+		return isRecord(parsed) ? parsed : {};
+	} catch {
+		const start = candidate.indexOf("{");
+		const end = candidate.lastIndexOf("}");
+		if (start === -1 || end <= start) {
+			return {};
+		}
+
+		try {
+			const parsed = JSON.parse(candidate.slice(start, end + 1)) as unknown;
+			return isRecord(parsed) ? parsed : {};
+		} catch {
+			return {};
+		}
+	}
 }
 
 interface PlanState {
@@ -563,17 +572,21 @@ MAX STEPS: ${context.preferences?.maxSteps || 10}
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
 ${state ? `CURRENT STATE:\n${formatPromptData(state.values)}` : ""}
 
-Create a detailed plan with the following TOON structure:
-goal: ${context.goal}
-execution_model: ${context.preferences?.executionModel || "sequential"}
-steps[0]:
-  id: step_1
-  action: ACTION_NAME
-  parameters:
-    key: value
-  dependencies[0]: step_0
-  description: What this step accomplishes
-estimated_duration: Total estimated time in milliseconds
+Return JSON only, with no prose, markdown, or code fences, using this shape:
+{
+  "goal": ${JSON.stringify(context.goal)},
+  "execution_model": ${JSON.stringify(context.preferences?.executionModel || "sequential")},
+  "steps": [
+    {
+      "id": "step_1",
+      "action": "ACTION_NAME",
+      "parameters": { "key": "value" },
+      "dependencies": ["step_0"],
+      "description": "What this step accomplishes"
+    }
+  ],
+  "estimated_duration": 30000
+}
 
 Focus on:
 1. Breaking down the goal into logical, executable steps
@@ -588,7 +601,7 @@ Focus on:
 		context: PlanningContext,
 	): ActionPlan {
 		try {
-			const parsedResponse = parseToonRecord(response);
+			const parsedResponse = parseJsonRecord(response);
 
 			const planId = asUUID(uuidv4());
 			const steps: ActionStep[] = [];
@@ -612,11 +625,11 @@ Focus on:
 						30000;
 
 			const stepIdMap = new Map<string, UUID>();
-			const toonSteps = Array.isArray(parsedResponse?.steps)
+			const parsedSteps = Array.isArray(parsedResponse?.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 
-			for (const step of toonSteps) {
+			for (const step of parsedSteps) {
 				const actionName =
 					typeof step.action === "string"
 						? step.action.trim()
@@ -1102,7 +1115,7 @@ Analyze the situation and provide an adapted plan that:
 3. Uses available actions effectively
 4. Considers what has already been completed
 
-Return the adapted plan in the same TOON format as the original planning response.`;
+Return the adapted plan as JSON only, with the same shape as the original planning response.`;
 	}
 
 	private parseAdaptationResponse(
@@ -1112,12 +1125,12 @@ Return the adapted plan in the same TOON format as the original planning respons
 	): ActionPlan {
 		try {
 			const adaptedSteps: ActionStep[] = [];
-			const parsedResponse = parseToonRecord(response);
-			const toonSteps = Array.isArray(parsedResponse?.steps)
+			const parsedResponse = parseJsonRecord(response);
+			const parsedSteps = Array.isArray(parsedResponse?.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 
-			for (const step of toonSteps) {
+			for (const step of parsedSteps) {
 				const actionName =
 					typeof step.action === "string"
 						? step.action.trim()

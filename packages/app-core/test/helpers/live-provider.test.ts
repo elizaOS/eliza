@@ -64,4 +64,37 @@ describe("selectLiveProvider", () => {
 
     expect(selectLiveProvider()?.apiKey).toBe("gsk_canonical");
   });
+
+  it("selects cerebras when only CEREBRAS_API_KEY is set", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    const provider = selectLiveProvider();
+    expect(provider?.name).toBe("cerebras");
+    expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
+    expect(provider?.largeModel).toBe("gpt-oss-120b");
+    expect(provider?.smallModel).toBe("gpt-oss-120b");
+  });
+
+  it("prefers cerebras over groq when both keys are set", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test_groq_key");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    expect(selectLiveProvider()?.name).toBe("cerebras");
+  });
+
+  it("rejects csk-prefixed keys for openai provider selection", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "csk_test_cerebras_key_in_wrong_slot");
+    vi.stubEnv("ELIZA_E2E_OPENAI_API_KEY", "");
+    vi.stubEnv("CEREBRAS_API_KEY", "");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    expect(selectLiveProvider("openai")).toBeNull();
+  });
 });

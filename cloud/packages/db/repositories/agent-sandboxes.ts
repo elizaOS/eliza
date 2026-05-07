@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import { sqlRows } from "@/db/execute-helpers";
 import { dbRead, dbWrite } from "@/db/helpers";
 import {
@@ -11,6 +11,8 @@ import {
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  WARM_POOL_ORG_ID,
+  WARM_POOL_USER_ID,
 } from "@/db/schemas/agent-sandboxes";
 import { AGENT_MANAGED_DISCORD_KEY } from "@/lib/services/eliza-agent-config";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
@@ -242,6 +244,288 @@ export class AgentSandboxesRepository {
       .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.organization_id, orgId)))
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
+  }
+
+  // ── Warm pool ─────────────────────────────────────────────────────────
+
+  /**
+   * Count ready pool entries (status='running' AND pool_status='unclaimed').
+   * Optionally filter by image so a stale image doesn't inflate the count.
+   */
+  async countUnclaimedPool(filter: { image?: string } = {}): Promise<number> {
+    const conditions = [
+      eq(agentSandboxes.pool_status, "unclaimed"),
+      eq(agentSandboxes.status, "running"),
+      isNotNull(agentSandboxes.pool_ready_at),
+    ];
+    if (filter.image) conditions.push(eq(agentSandboxes.docker_image, filter.image));
+    const [row] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(and(...conditions));
+    return row?.count ?? 0;
+  }
+
+  /**
+   * Count pool entries by status — including not-yet-ready ones (still
+   * provisioning). Used to size in-flight replenish work.
+   */
+  async countAllPoolEntries(): Promise<{ ready: number; provisioning: number }> {
+    const [ready] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          eq(agentSandboxes.status, "running"),
+        ),
+      );
+    const [provisioning] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          sql`${agentSandboxes.status} in ('pending','provisioning')`,
+        ),
+      );
+    return { ready: ready?.count ?? 0, provisioning: provisioning?.count ?? 0 };
+  }
+
+  /**
+   * Count user-facing provisions created in the given window.
+   * Used by the forecast to predict next-period demand.
+   * Excludes pool sentinel org rows.
+   */
+  async countUserProvisionsSince(sinceMs: number): Promise<number> {
+    const since = new Date(Date.now() - sinceMs);
+    const [row] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          gte(agentSandboxes.created_at, since),
+          sql`${agentSandboxes.organization_id} <> ${WARM_POOL_ORG_ID}`,
+          sql`${agentSandboxes.pool_status} is null`,
+        ),
+      );
+    return row?.count ?? 0;
+  }
+
+  /**
+   * User provisions per UTC hour over the last `windowHours`, oldest first.
+   * Excludes pool sentinel org rows. Used by the forecast.
+   */
+  async countUserProvisionsByHour(windowHours: number): Promise<number[]> {
+    if (windowHours <= 0) return [];
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const rows = await sqlRows<{ bucket: string; count: number }>(
+      dbRead,
+      sql`
+        SELECT
+          to_char(date_trunc('hour', ${agentSandboxes.created_at}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:00:00') as bucket,
+          count(*)::int as count
+        FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.created_at} >= ${since}
+          AND ${agentSandboxes.organization_id} <> ${WARM_POOL_ORG_ID}
+          AND ${agentSandboxes.pool_status} IS NULL
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+    );
+    const byBucket = new Map(rows.map((r) => [r.bucket, r.count]));
+
+    const buckets: number[] = [];
+    const nowMs = Date.now();
+    const startHourMs = Math.floor(nowMs / 3_600_000) * 3_600_000;
+    for (let i = windowHours - 1; i >= 0; i--) {
+      const ms = startHourMs - i * 3_600_000;
+      const key = new Date(ms).toISOString().slice(0, 13) + ":00:00";
+      buckets.push(byBucket.get(key) ?? 0);
+    }
+    return buckets;
+  }
+
+  /** All ready unclaimed pool rows — for health probing and image rollout. */
+  async listUnclaimedPool(): Promise<AgentSandbox[]> {
+    return dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          eq(agentSandboxes.status, "running"),
+        ),
+      )
+      .orderBy(agentSandboxes.pool_ready_at);
+  }
+
+  /**
+   * Pool rows that started provisioning but never became ready. Used to
+   * reap stuck containers so the pool replenisher can retry.
+   */
+  async findStuckPoolProvisioning(staleThresholdMs: number): Promise<AgentSandbox[]> {
+    const cutoff = new Date(Date.now() - staleThresholdMs);
+    return dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          sql`${agentSandboxes.status} in ('pending','provisioning','error')`,
+          lt(agentSandboxes.updated_at, cutoff),
+        ),
+      );
+  }
+
+  /**
+   * Atomically claim a warm pool entry on behalf of a user's pending
+   * sandbox row. Uses `FOR UPDATE SKIP LOCKED` so concurrent claims pick
+   * different pool rows and never block each other.
+   *
+   * On success, the user's row inherits all docker infrastructure fields
+   * from the pool row, status flips to 'running', and the pool row is
+   * deleted in the same transaction.
+   *
+   * Returns the updated user row, or null when the pool is empty.
+   */
+  async claimWarmContainer(params: {
+    userAgentId: string;
+    organizationId: string;
+    image: string;
+    agentName: string;
+    agentConfig?: Record<string, unknown>;
+    characterId?: string | null;
+    expectedUpdatedAt?: Date | string | null;
+  }): Promise<AgentSandbox | null> {
+    return dbWrite.transaction(async (tx) => {
+      const poolRows = await sqlRows<AgentSandbox>(
+        tx,
+        sql`
+          SELECT *
+          FROM ${agentSandboxes}
+          WHERE ${agentSandboxes.pool_status} = 'unclaimed'
+            AND ${agentSandboxes.status} = 'running'
+            AND ${agentSandboxes.docker_image} = ${params.image}
+            AND ${agentSandboxes.pool_ready_at} IS NOT NULL
+          ORDER BY ${agentSandboxes.pool_ready_at} ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        `,
+      );
+      const pool = poolRows[0];
+      if (!pool) return null;
+
+      const [userRow] = await tx
+        .select()
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.userAgentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!userRow) return null;
+
+      // Pool claim is for fresh provisions only. If the user's row already
+      // has a database, fall through to the existing provision flow which
+      // will reuse it. Likewise if it's already running.
+      if (userRow.database_status === "ready" || userRow.database_uri) return null;
+      if (userRow.status === "running") return null;
+
+      if (params.expectedUpdatedAt) {
+        const expectedMs = new Date(params.expectedUpdatedAt).getTime();
+        const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
+        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
+          return null;
+        }
+      }
+
+      const claimedAt = new Date();
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "running",
+          node_id: pool.node_id,
+          container_name: pool.container_name,
+          bridge_port: pool.bridge_port,
+          web_ui_port: pool.web_ui_port,
+          headscale_ip: pool.headscale_ip,
+          docker_image: pool.docker_image,
+          bridge_url: pool.bridge_url,
+          health_url: pool.health_url,
+          sandbox_id: pool.sandbox_id,
+          // Neon database transfer — pool row's database is now the user's.
+          neon_project_id: pool.neon_project_id,
+          neon_branch_id: pool.neon_branch_id,
+          database_uri: pool.database_uri,
+          database_status: pool.database_status,
+          agent_name: params.agentName,
+          agent_config: params.agentConfig ?? userRow.agent_config,
+          character_id: params.characterId ?? userRow.character_id,
+          claimed_at: claimedAt,
+          updated_at: claimedAt,
+          error_message: null,
+        })
+        .where(eq(agentSandboxes.id, params.userAgentId))
+        .returning();
+
+      await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
+
+      return updated ?? null;
+    });
+  }
+
+  /** Insert a pool entry pre-bound to the sentinel pool org. */
+  async createPoolEntry(
+    data: Omit<NewAgentSandbox, "organization_id" | "user_id" | "pool_status">,
+  ): Promise<AgentSandbox> {
+    const [row] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        ...data,
+        organization_id: WARM_POOL_ORG_ID,
+        user_id: WARM_POOL_USER_ID,
+        pool_status: "unclaimed",
+      })
+      .returning();
+    if (!row) throw new Error("Failed to create warm pool entry");
+    return row;
+  }
+
+  /** Hard-delete a pool entry by id. Caller is responsible for stopping the container. */
+  async deletePoolEntry(id: string): Promise<boolean> {
+    const r = await dbWrite
+      .delete(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+    return r.length > 0;
+  }
+
+  /** Mark a pool entry ready (called after health check passes post-provision). */
+  async markPoolEntryReady(id: string): Promise<AgentSandbox | undefined> {
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "running",
+        pool_ready_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+        ),
+      )
+      .returning();
+    return r;
   }
 
   // Backups

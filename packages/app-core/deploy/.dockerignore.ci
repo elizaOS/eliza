@@ -20,22 +20,15 @@ packages/**/node_modules
 !packages/agent/node_modules/
 !packages/agent/node_modules/**
 apps/**/node_modules
-plugins/**/node_modules
-!plugins/plugin-browser-bridge/node_modules/
-!plugins/plugin-browser-bridge/node_modules/**
-!plugins/app-elizamaker/node_modules/
-!plugins/app-elizamaker/node_modules/**
-!plugins/app-lifeops/node_modules/
-!plugins/app-lifeops/node_modules/**
-!plugins/app-steward/node_modules/
-!plugins/app-steward/node_modules/**
+# `plugins/**/node_modules` is intentionally NOT excluded: bun's isolated
+# install puts each workspace plugin's runtime deps under
+# `plugins/<plugin>/node_modules/`. Stripping that breaks plugin loading
+# (cross-spawn, fluent-ffmpeg, fflate, etc.) at runtime. The directories
+# are mostly symlinks into `node_modules/.bun/`, so the size cost is
+# negligible.
 eliza/**/node_modules
-!eliza/plugins/app-elizamaker/node_modules/
-!eliza/plugins/app-elizamaker/node_modules/**
-!eliza/plugins/app-lifeops/node_modules/
-!eliza/plugins/app-lifeops/node_modules/**
-!eliza/plugins/app-steward/node_modules/
-!eliza/plugins/app-steward/node_modules/**
+!eliza/plugins/*/node_modules/
+!eliza/plugins/*/node_modules/**
 !eliza/packages/agent/node_modules/
 !eliza/packages/agent/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules

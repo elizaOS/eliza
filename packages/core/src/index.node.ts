@@ -127,6 +127,10 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/context-gates";
+export * from "./runtime/context-registry";
+export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/sub-planner";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 // Export character schemas

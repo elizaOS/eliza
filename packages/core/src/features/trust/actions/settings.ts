@@ -20,7 +20,6 @@ import {
 	composePrompt,
 	composePromptFromState,
 	parseJSONObjectFromText,
-	parseToonKeyValue,
 } from "../../../utils.ts";
 
 interface SettingUpdate {
@@ -87,13 +86,15 @@ function extractValidSettings(
 }
 
 const messageCompletionFooter = `\n# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
+Respond with JSON only. Return exactly one JSON object, no prose or fences.
 
 Example:
-name: {{agentName}}
-text: Message to send
-thought: Short justification for the response
-actions: SETTING_UPDATED
+{
+  "name": "{{agentName}}",
+  "text": "Message to send",
+  "thought": "Short justification for the response",
+  "actions": ["SETTING_UPDATED"]
+}
 
 Do not include thinking or internal reflection in the text field.
 thought should be a short description of what the agent is thinking before responding, including a brief justification for the response.`;
@@ -206,10 +207,8 @@ updates[2]{key,value}:
 IMPORTANT: Only include settings from the Available Settings list above. Ignore any other potential settings.`;
 
 function parseGeneratedContent(response: string): Content {
-	return (
-		(parseToonKeyValue<Content>(response) as Content | null) ??
-		(parseJSONObjectFromText(response) as Content)
-	);
+	const parsed = parseJSONObjectFromText(response);
+	return isRecord(parsed) ? (parsed as Content) : { text: response.trim() };
 }
 
 export async function getWorldSettings(
@@ -366,7 +365,7 @@ async function extractSettingValues(
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},

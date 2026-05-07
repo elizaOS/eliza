@@ -2,6 +2,12 @@
 /**
  * Ensures platform-specific dependencies are installed for computer-use.
  *
+ * Default driver = nutjs (cross-platform native bindings). With nutjs, no
+ * shell tools are required — this script exits early after confirming the
+ * native module loads. Set ELIZA_COMPUTERUSE_DRIVER=legacy to switch back
+ * to the per-OS shell drivers (cliclick / xdotool / PowerShell), in which
+ * case this script ensures those tools are present.
+ *
  * macOS:  installs cliclick via Homebrew (fast, reliable mouse/keyboard control)
  * Linux:  checks for xdotool, suggests install command
  * Windows: no extra deps needed (PowerShell built-in)
@@ -11,6 +17,20 @@
 
 import { execSync } from "node:child_process";
 import { platform } from "node:os";
+
+const driver = (process.env.ELIZA_COMPUTERUSE_DRIVER ?? "nutjs")
+  .trim()
+  .toLowerCase();
+
+if (driver === "nutjs") {
+  console.log(
+    "[computeruse] Driver = nutjs (cross-platform). Skipping shell-tool checks.",
+  );
+  console.log(
+    "[computeruse] Set ELIZA_COMPUTERUSE_DRIVER=legacy to switch to per-OS shell drivers.",
+  );
+  process.exit(0);
+}
 
 function commandExists(cmd) {
   try {

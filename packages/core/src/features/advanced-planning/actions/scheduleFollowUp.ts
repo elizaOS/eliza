@@ -20,7 +20,6 @@ import { asUUID, ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
-	parseToonKeyValue,
 } from "../../../utils.ts";
 import {
 	extractScheduleFollowUpResponseFromText,
@@ -65,17 +64,19 @@ Extract the follow-up scheduling information from the message:
 {{currentDateTime}}
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the TOON response format without any preamble or explanation.
+Go directly to the JSON response without any preamble or explanation.
 
 ## Response Format
-contactName: Name of the contact to follow up with
-entityId: ID if known, otherwise leave empty
-scheduledAt: ISO datetime for the follow-up
-reason: Reason for the follow-up
-priority: high, medium, or low
-message: Optional message or notes for the follow-up
+{
+  "contactName": "Name of the contact to follow up with",
+  "entityId": "ID if known, otherwise empty string",
+  "scheduledAt": "ISO datetime for the follow-up",
+  "reason": "Reason for the follow-up",
+  "priority": "high, medium, or low",
+  "message": "Optional message or notes for the follow-up"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const scheduleFollowUpAction: Action = {
 	name: "SCHEDULE_FOLLOW_UP",
@@ -141,7 +142,7 @@ export const scheduleFollowUpAction: Action = {
 		if (
 			runtime.actions.some(
 				(action) =>
-					action.name === "OWNER_RELATIONSHIP" ||
+					action.name === "RELATIONSHIP" ||
 					action.name === "RELATIONSHIP",
 			)
 		) {
@@ -209,7 +210,6 @@ export const scheduleFollowUpAction: Action = {
 		});
 
 		const parsedResponse =
-			parseToonKeyValue<ParsedScheduleFollowUpResponse>(response) ??
 			(parseJSONObjectFromText(
 				response,
 			) as ParsedScheduleFollowUpResponse | null) ??

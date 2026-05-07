@@ -21,6 +21,7 @@ export {
 } from "./useInbox.js";
 export { useLifeOpsActivitySignals } from "./useLifeOpsActivitySignals.js";
 export { useLifeOpsAppState } from "./useLifeOpsAppState.js";
+export { useLifeOpsHealthConnectors } from "./useLifeOpsHealthConnectors.js";
 export {
   type UseLifeOpsScheduleStateOptions,
   useLifeOpsScheduleState,
@@ -35,7 +36,6 @@ export {
   useLifeOpsSelection,
 } from "./useLifeOpsSelection.js";
 export { useLifeOpsStretchReminder } from "./useLifeOpsStretchReminder.js";
-export { useLifeOpsHealthConnectors } from "./useLifeOpsHealthConnectors.js";
 export { useLifeOpsXConnector } from "./useLifeOpsXConnector.js";
 export {
   type UseSignalConnectorOptions,

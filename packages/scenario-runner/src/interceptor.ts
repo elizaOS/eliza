@@ -504,7 +504,7 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (actionName === "OWNER_DEVICE_INTENT") {
+  if (actionName === "DEVICE_INTENT") {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(params?.channels),
@@ -522,7 +522,7 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (actionName === "OWNER_VOICE_CALL") {
+  if (actionName === "VOICE_CALL") {
     const channel = blob.includes("sms") ? "sms" : "phone_call";
     push(channel, params ?? resultData ?? {});
   }

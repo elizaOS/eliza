@@ -112,6 +112,11 @@ export const agentSandboxes = pgTable(
     scheduled_shutdown_at: timestamp("scheduled_shutdown_at", {
       withTimezone: true,
     }),
+    // Warm pool tracking. `pool_status` is null for user-owned rows and
+    // 'unclaimed' for pool entries owned by the sentinel pool org.
+    pool_status: text("pool_status").$type<AgentSandboxPoolStatus>(),
+    pool_ready_at: timestamp("pool_ready_at", { withTimezone: true }),
+    claimed_at: timestamp("claimed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -124,6 +129,12 @@ export const agentSandboxes = pgTable(
     billing_status_idx: index("agent_sandboxes_billing_status_idx").on(table.billing_status),
   }),
 );
+
+/** Sentinel UUIDs that own warm pool rows. Mirrors migration 0107. */
+export const WARM_POOL_ORG_ID = "00000000-0000-4000-8000-000000077001";
+export const WARM_POOL_USER_ID = "00000000-0000-4000-8000-000000077002";
+
+export type AgentSandboxPoolStatus = "unclaimed";
 
 export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown";
 

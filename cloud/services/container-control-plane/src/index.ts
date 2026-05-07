@@ -3,6 +3,8 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
 import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
 import { containersEnv } from "@/lib/config/containers-env";
+import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
+import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
 import {
   type CreateContainerInput,
   getHetznerContainersClient,
@@ -14,6 +16,14 @@ import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config"
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
+
+let cachedWarmPoolManager: WarmPoolManager | null = null;
+function getWarmPoolManager(): WarmPoolManager {
+  if (!cachedWarmPoolManager) {
+    cachedWarmPoolManager = new WarmPoolManager(getHetznerPoolContainerCreator());
+  }
+  return cachedWarmPoolManager;
+}
 
 interface ForwardedAuth {
   userId: string;
@@ -340,6 +350,82 @@ function processProvisioningJobsResponse(c: Context) {
 app.get("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
 
 app.post("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
+
+// ── Warm pool ─────────────────────────────────────────────────────────────
+
+function poolReplenishResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const image = containersEnv.defaultAgentImage();
+    const result = await getWarmPoolManager().replenish(image);
+    return c.json({
+      success: true,
+      data: {
+        image,
+        ...result,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+app.get("/api/v1/cron/pool-replenish", poolReplenishResponse);
+app.post("/api/v1/cron/pool-replenish", poolReplenishResponse);
+
+function poolDrainIdleResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const image = containersEnv.defaultAgentImage();
+    const result = await getWarmPoolManager().drainIdle(image);
+    return c.json({
+      success: true,
+      data: { image, ...result, timestamp: new Date().toISOString() },
+    });
+  });
+}
+app.get("/api/v1/cron/pool-drain-idle", poolDrainIdleResponse);
+app.post("/api/v1/cron/pool-drain-idle", poolDrainIdleResponse);
+
+function poolHealthCheckResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const result = await getWarmPoolManager().healthCheck();
+    return c.json({
+      success: true,
+      data: { ...result, timestamp: new Date().toISOString() },
+    });
+  });
+}
+app.get("/api/v1/cron/pool-health-check", poolHealthCheckResponse);
+app.post("/api/v1/cron/pool-health-check", poolHealthCheckResponse);
+
+function poolImageRolloutResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const image = containersEnv.defaultAgentImage();
+    const result = await getWarmPoolManager().rollout(image);
+    return c.json({
+      success: true,
+      data: { image, ...result, timestamp: new Date().toISOString() },
+    });
+  });
+}
+app.get("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
+app.post("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
+
+function poolStateResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const image = containersEnv.defaultAgentImage();
+    const state = await getWarmPoolManager().snapshot(image);
+    return c.json({
+      success: true,
+      data: {
+        image,
+        enabled: containersEnv.warmPoolEnabled(),
+        minPoolSize: containersEnv.warmPoolMinSize(),
+        maxPoolSize: containersEnv.warmPoolMaxSize(),
+        state,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+app.get("/api/v1/admin/warm-pool", poolStateResponse);
 
 app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
   handle(c, async () => {

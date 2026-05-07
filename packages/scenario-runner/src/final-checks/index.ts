@@ -402,7 +402,7 @@ function actionMatchesChannel(
       ].includes(action.actionName);
     case "x-dm":
       return [
-        "OWNER_X",
+        "X",
         "SEND_DRAFT",
         "RESPOND_TO_MESSAGE",
       ].includes(action.actionName);
@@ -410,8 +410,8 @@ function actionMatchesChannel(
     case "mobile":
     case "phone_call":
       return [
-        "OWNER_DEVICE_INTENT",
-        "OWNER_VOICE_CALL",
+        "DEVICE_INTENT",
+        "VOICE_CALL",
       ].includes(action.actionName);
     default:
       return false;
@@ -747,7 +747,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
     return (
-      action.actionName === "OWNER_DEVICE_INTENT" ||
+      action.actionName === "DEVICE_INTENT" ||
       (/acknowledge/.test(blob) && /sync/.test(blob))
     );
   });

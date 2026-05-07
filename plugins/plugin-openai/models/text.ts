@@ -11,7 +11,16 @@ import type {
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import { logger, ModelType, recordLlmCall } from "@elizaos/core";
-import { generateText, type LanguageModelUsage, streamText } from "ai";
+import {
+  generateText,
+  type JSONSchema7,
+  type LanguageModelUsage,
+  type ModelMessage,
+  streamText,
+  type ToolChoice,
+  type ToolSet,
+  type UserContent,
+} from "ai";
 import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
@@ -49,13 +58,38 @@ interface OpenAIPromptCacheOptions {
 
 interface GenerateTextParamsWithOpenAIOptions extends GenerateTextParams {
   attachments?: ChatAttachment[];
+  messages?: ModelMessage[];
+  tools?: ToolSet;
+  toolChoice?: ToolChoice<ToolSet>;
+  responseSchema?: unknown;
   providerOptions?: {
+    agentName?: string;
     openai?: OpenAIPromptCacheOptions;
+    [key: string]: unknown;
   };
 }
 
+type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet, NativeOutput>>[0];
+type NativeStreamTextParams = Parameters<typeof streamText<ToolSet, NativeOutput>>[0];
+type NativePrompt =
+  | { prompt: string; messages?: never }
+  | { messages: ModelMessage[]; prompt?: never };
+type NativeTextParams = Omit<NativeGenerateTextParams, "messages" | "prompt"> &
+  Omit<NativeStreamTextParams, "messages" | "prompt"> &
+  NativePrompt;
+type NativeProviderOptions = NativeTextParams["providerOptions"];
+type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
+
 interface LanguageModelUsageWithCache extends LanguageModelUsage {
   cachedInputTokens?: number;
+}
+
+interface NativeGenerateTextResult {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: TokenUsage;
 }
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -65,7 +99,7 @@ const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
 
-function buildUserContent(params: GenerateTextParamsWithOpenAIOptions) {
+function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserContent {
   const content: Array<
     | { type: "text"; text: string }
     | {
@@ -121,6 +155,91 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
   };
 }
 
+function resolveProviderOptions(params: GenerateTextParams): Record<string, unknown> | undefined {
+  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
+  const rawProviderOptions = withOpenAIOptions.providerOptions;
+  const promptCacheOptions = resolvePromptCacheOptions(params);
+
+  if (
+    !rawProviderOptions &&
+    !promptCacheOptions.promptCacheKey &&
+    !promptCacheOptions.promptCacheRetention
+  ) {
+    return undefined;
+  }
+
+  const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
+  const openaiOptions = {
+    ...(rawOpenAIOptions ?? {}),
+    ...(promptCacheOptions.promptCacheKey
+      ? { promptCacheKey: promptCacheOptions.promptCacheKey }
+      : {}),
+    ...(promptCacheOptions.promptCacheRetention
+      ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
+      : {}),
+  };
+
+  const providerOptions = {
+    ...rest,
+    ...(Object.keys(openaiOptions).length > 0 ? { openai: openaiOptions } : {}),
+  };
+
+  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
+}
+
+function buildStructuredOutput(responseSchema: unknown): NativeOutput {
+  if (
+    responseSchema &&
+    typeof responseSchema === "object" &&
+    "responseFormat" in responseSchema &&
+    "parseCompleteOutput" in responseSchema
+  ) {
+    return responseSchema as NativeOutput;
+  }
+
+  const schemaOptions =
+    responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
+      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      : { schema: responseSchema };
+
+  return {
+    name: "object",
+    responseFormat: Promise.resolve({
+      type: "json" as const,
+      schema: schemaOptions.schema as JSONSchema7,
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    }),
+    async parseCompleteOutput({ text }: { text: string }) {
+      return JSON.parse(text);
+    },
+    async parsePartialOutput(): Promise<undefined> {
+      return undefined;
+    },
+    createElementStreamTransform(): undefined {
+      return undefined;
+    },
+  } satisfies NativeOutput;
+}
+
+function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): boolean {
+  return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
+}
+
+function buildNativeTextResult(result: {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: LanguageModelUsage;
+}): NativeGenerateTextResult {
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls ?? [],
+    finishReason: result.finishReason,
+    usage: convertUsage(result.usage),
+  };
+}
+
 function createLlmCallDetails(
   modelName: string,
   params: GenerateTextParams,
@@ -173,42 +292,42 @@ async function generateTextByModelType(
   const modelName = getModelFn(runtime);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
-  const promptCacheOptions = resolvePromptCacheOptions(params);
+  const providerOptions = resolveProviderOptions(params);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
   const userContent = hasAttachments ? buildUserContent(paramsWithAttachments) : undefined;
+  const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
 
   // Get system prompt from character if available
   const systemPrompt = runtime.character.system ?? undefined;
+  const agentName = paramsWithAttachments.providerOptions?.agentName;
+  const telemetryConfig: NativeTelemetrySettings = {
+    isEnabled: getExperimentalTelemetry(runtime),
+    functionId: agentName ? `agent:${agentName}` : undefined,
+    metadata: agentName ? { agentName } : undefined,
+  };
 
   // Use chat() instead of languageModel() to use the Chat Completions API
   // which has better compatibility than the Responses API
   // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const model = openai.chat(modelName);
-  const generateParams = {
-    model,
-    ...(userContent
+  const promptOrMessages: NativePrompt = paramsWithAttachments.messages
+    ? { messages: paramsWithAttachments.messages }
+    : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: params.prompt }),
+      : { prompt: params.prompt };
+  const generateParams: NativeTextParams = {
+    model,
+    ...promptOrMessages,
     system: systemPrompt,
     maxOutputTokens: params.maxTokens ?? 8192,
-    experimental_telemetry: { isEnabled: getExperimentalTelemetry(runtime) },
-    ...(promptCacheOptions.promptCacheKey || promptCacheOptions.promptCacheRetention
-      ? {
-          providerOptions: {
-            openai: {
-              ...(promptCacheOptions.promptCacheKey
-                ? { promptCacheKey: promptCacheOptions.promptCacheKey }
-                : {}),
-              ...(promptCacheOptions.promptCacheRetention
-                ? {
-                    promptCacheRetention: promptCacheOptions.promptCacheRetention,
-                  }
-                : {}),
-            },
-          },
-        }
+    experimental_telemetry: telemetryConfig,
+    ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
+    ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
+    ...(paramsWithAttachments.responseSchema
+      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
       : {}),
+    ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
   };
 
   // Handle streaming mode
@@ -220,6 +339,7 @@ async function generateTextByModelType(
     return {
       textStream: result.textStream,
       text: Promise.resolve(result.text),
+      ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(result.toolCalls) } : {}),
       usage: Promise.resolve(result.usage).then(convertUsage),
       finishReason: Promise.resolve(result.finishReason).then((r) => r as string | undefined),
     };
@@ -227,18 +347,22 @@ async function generateTextByModelType(
 
   // Non-streaming mode
   const details = createLlmCallDetails(modelName, params, systemPrompt, "ai.generateText");
-  const { text, usage } = await recordLlmCall(runtime, details, async () => {
+  const result = await recordLlmCall(runtime, details, async () => {
     const result = await generateText(generateParams);
     details.response = result.text;
     applyUsageToDetails(details, result.usage);
     return result;
   });
 
-  if (usage) {
-    emitModelUsageEvent(runtime, modelType, params.prompt, usage);
+  if (result.usage) {
+    emitModelUsageEvent(runtime, modelType, params.prompt, result.usage);
   }
 
-  return text;
+  if (shouldReturnNativeResult) {
+    return buildNativeTextResult(result) as unknown as string;
+  }
+
+  return result.text;
 }
 
 // ============================================================================

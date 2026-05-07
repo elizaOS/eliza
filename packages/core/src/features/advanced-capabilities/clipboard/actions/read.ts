@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -22,56 +20,41 @@ function isValidReadInput(obj: Record<string, unknown>): boolean {
 	return typeof obj.id === "string" && obj.id.length > 0;
 }
 
-const EXTRACT_TEMPLATE = `Extract the clipboard entry ID and optional line range from the user's message.
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
 
-User message: {{text}}
+function optionalNumber(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : undefined;
+	}
+	return undefined;
+}
 
-Available clipboard entries:
-{{entries}}
-
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
-
-Fields:
-- id: The ID of the clipboard entry to read (required)
-- from: Starting line number (optional)
-- lines: Number of lines to read (optional)
-
-Example:
-id: entry-id
-from: 1
-lines: 10`;
-
-async function extractReadInfo(
-	runtime: IAgentRuntime,
+function extractReadInfo(
 	message: Memory,
-	availableEntries: string,
-): Promise<ReadInput | null> {
-	const prompt = EXTRACT_TEMPLATE.replace(
-		"{{text}}",
-		message.content.text ?? "",
-	).replace("{{entries}}", availableEntries);
+	options?: HandlerOptions,
+): ReadInput | null {
+	const params = readParams(options);
+	const raw = {
+		id: params.id ?? message.content.id ?? message.content.entryId,
+		from: params.from ?? message.content.from,
+		lines: params.lines ?? message.content.lines,
+	};
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
-
-	logger.debug("[ClipboardRead] Extract result:", result);
-
-	const parsed = parseToonKeyValue(String(result)) as Record<
-		string,
-		unknown
-	> | null;
-
-	if (!parsed || !isValidReadInput(parsed)) {
+	if (!isValidReadInput(raw)) {
 		logger.error("[ClipboardRead] Failed to extract valid read info");
 		return null;
 	}
 
 	return {
-		id: String(parsed.id),
-		from: parsed.from ? Number(parsed.from) : undefined,
-		lines: parsed.lines ? Number(parsed.lines) : undefined,
+		id: String(raw.id),
+		from: optionalNumber(raw.from),
+		lines: optionalNumber(raw.lines),
 	};
 }
 
@@ -103,6 +86,10 @@ export const clipboardReadAction: Action = {
 			? __avSource === __avExpectedSource
 			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
 		const __avOptions = options && typeof options === "object" ? options : {};
+		const __avParams = readParams(options);
+		if (isValidReadInput(__avParams)) {
+			return true;
+		}
 		const __avInputOk =
 			__avText.trim().length > 0 ||
 			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
@@ -152,7 +139,7 @@ export const clipboardReadAction: Action = {
 			return { success: false, text: "No entries available" };
 		}
 
-		const readInfo = await extractReadInfo(runtime, message, entriesContext);
+		const readInfo = extractReadInfo(message, _options);
 
 		if (!readInfo) {
 			if (callback) {
@@ -201,6 +188,26 @@ export const clipboardReadAction: Action = {
 		}
 	},
 
+	parameters: [
+		{
+			name: "id",
+			description: "Clipboard entry ID to read.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "from",
+			description: "Optional 1-based starting line number.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+		{
+			name: "lines",
+			description: "Optional maximum number of lines to read.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+	],
 	examples: [],
 };
 

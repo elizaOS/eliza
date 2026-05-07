@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -20,50 +18,28 @@ function isValidDeleteInput(obj: Record<string, unknown>): boolean {
 	return typeof obj.id === "string" && obj.id.length > 0;
 }
 
-const EXTRACT_TEMPLATE = `Extract the clipboard entry ID to delete from the user's message.
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
 
-User message: {{text}}
-
-Available clipboard entries:
-{{entries}}
-
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
-
-Fields:
-- id: The ID of the clipboard entry to delete (required)
-
-Example:
-id: entry-id`;
-
-async function extractDeleteInfo(
-	runtime: IAgentRuntime,
+function extractDeleteInfo(
 	message: Memory,
-	availableEntries: string,
-): Promise<DeleteInput | null> {
-	const prompt = EXTRACT_TEMPLATE.replace(
-		"{{text}}",
-		message.content.text ?? "",
-	).replace("{{entries}}", availableEntries);
+	options?: HandlerOptions,
+): DeleteInput | null {
+	const params = readParams(options);
+	const raw = {
+		id: params.id ?? message.content.id ?? message.content.entryId,
+	};
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
-
-	logger.debug("[ClipboardDelete] Extract result:", result);
-
-	const parsed = parseToonKeyValue(String(result)) as Record<
-		string,
-		unknown
-	> | null;
-
-	if (!parsed || !isValidDeleteInput(parsed)) {
+	if (!isValidDeleteInput(raw)) {
 		logger.error("[ClipboardDelete] Failed to extract valid delete info");
 		return null;
 	}
 
 	return {
-		id: String(parsed.id),
+		id: String(raw.id),
 	};
 }
 
@@ -95,6 +71,10 @@ export const clipboardDeleteAction: Action = {
 			? __avSource === __avExpectedSource
 			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
 		const __avOptions = options && typeof options === "object" ? options : {};
+		const __avParams = readParams(options);
+		if (isValidDeleteInput(__avParams)) {
+			return true;
+		}
 		const __avInputOk =
 			__avText.trim().length > 0 ||
 			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
@@ -144,11 +124,7 @@ export const clipboardDeleteAction: Action = {
 			return { success: false, text: "No entries available" };
 		}
 
-		const deleteInfo = await extractDeleteInfo(
-			runtime,
-			message,
-			entriesContext,
-		);
+		const deleteInfo = extractDeleteInfo(message, _options);
 
 		if (!deleteInfo) {
 			if (callback) {
@@ -200,6 +176,14 @@ export const clipboardDeleteAction: Action = {
 		}
 	},
 
+	parameters: [
+		{
+			name: "id",
+			description: "Clipboard entry ID to delete.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+	],
 	examples: [],
 };
 

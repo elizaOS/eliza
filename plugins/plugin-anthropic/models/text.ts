@@ -5,7 +5,15 @@ import type {
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateText, streamText } from "ai";
+import {
+  generateText,
+  type JSONSchema7,
+  type ModelMessage,
+  streamText,
+  type ToolChoice,
+  type ToolSet,
+  type UserContent,
+} from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers";
 import type { ModelName, ModelSize, ProviderOptions } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
@@ -45,8 +53,24 @@ interface ResolvedTextParams {
 
 interface GenerateTextParamsWithProviderOptions extends GenerateTextParams {
   attachments?: ChatAttachment[];
+  messages?: ModelMessage[];
+  tools?: ToolSet;
+  toolChoice?: ToolChoice<ToolSet>;
+  responseSchema?: unknown;
   providerOptions?: ProviderOptions;
 }
+
+type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet, NativeOutput>>[0];
+type NativeStreamTextParams = Parameters<typeof streamText<ToolSet, NativeOutput>>[0];
+type NativePrompt =
+  | { prompt: string; messages?: never }
+  | { messages: ModelMessage[]; prompt?: never };
+type NativeTextParams = Omit<NativeGenerateTextParams, "messages" | "prompt"> &
+  Omit<NativeStreamTextParams, "messages" | "prompt"> &
+  NativePrompt;
+type NativeProviderOptions = NativeTextParams["providerOptions"];
+type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
 
 type AnthropicCacheControl = NonNullable<NonNullable<ProviderOptions["anthropic"]>["cacheControl"]>;
 
@@ -58,6 +82,21 @@ interface AnthropicUsageWithCache {
   totalTokens?: number;
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
+}
+
+interface AnthropicNormalizedUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+interface NativeGenerateTextResult {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: AnthropicNormalizedUsage;
 }
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -96,7 +135,7 @@ function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
 }
 
-function buildUserContent(params: GenerateTextParamsWithProviderOptions) {
+function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
   const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
 
   for (const attachment of params.attachments ?? []) {
@@ -114,7 +153,7 @@ function buildUserContent(params: GenerateTextParamsWithProviderOptions) {
 function buildSegmentedUserContent(
   params: GenerateTextParamsWithProviderOptions,
   cacheControl?: AnthropicCacheControl
-) {
+): UserContent {
   const content: AnthropicUserContentPart[] = [];
 
   for (const segment of params.promptSegments ?? []) {
@@ -152,6 +191,82 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl |
     }
   }
   return undefined;
+}
+
+function normalizeAnthropicUsage(
+  usage: AnthropicUsageWithCache | undefined
+): AnthropicNormalizedUsage | undefined {
+  if (!usage) {
+    return undefined;
+  }
+
+  const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0;
+  const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
+    ...(usage.cacheReadInputTokens !== undefined
+      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+      : {}),
+    ...(usage.cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+      : {}),
+  };
+}
+
+function buildStructuredOutput(responseSchema: unknown): NativeOutput {
+  if (
+    responseSchema &&
+    typeof responseSchema === "object" &&
+    "responseFormat" in responseSchema &&
+    "parseCompleteOutput" in responseSchema
+  ) {
+    return responseSchema as NativeOutput;
+  }
+
+  const schemaOptions =
+    responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
+      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      : { schema: responseSchema };
+
+  return {
+    name: "object",
+    responseFormat: Promise.resolve({
+      type: "json" as const,
+      schema: schemaOptions.schema as JSONSchema7,
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    }),
+    async parseCompleteOutput({ text }: { text: string }) {
+      return JSON.parse(text);
+    },
+    async parsePartialOutput(): Promise<undefined> {
+      return undefined;
+    },
+    createElementStreamTransform(): undefined {
+      return undefined;
+    },
+  } satisfies NativeOutput;
+}
+
+function usesNativeTextResult(params: GenerateTextParamsWithProviderOptions): boolean {
+  return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
+}
+
+function buildNativeTextResult(result: {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: AnthropicUsageWithCache;
+}): NativeGenerateTextResult {
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls ?? [],
+    finishReason: result.finishReason,
+    usage: normalizeAnthropicUsage(result.usage),
+  };
 }
 
 function resolveTextParams(
@@ -238,7 +353,15 @@ async function generateTextWithModel(
   modelSize: ModelSize,
   modelType: TextModelType
 ): Promise<string | TextStreamResult> {
+  const paramsWithAttachments = params as GenerateTextParamsWithProviderOptions;
+  const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
+
   if (getAuthMode(runtime) === "cli") {
+    if (shouldReturnNativeResult) {
+      throw new Error(
+        "[Anthropic] Native messages, tools, toolChoice, and responseSchema are not supported when ANTHROPIC_AUTH_MODE=cli."
+      );
+    }
     if (params.stream) {
       return streamViaCli(runtime, params.prompt, modelName, modelType, params.maxTokens);
     }
@@ -252,7 +375,6 @@ async function generateTextWithModel(
     return result.text;
   }
 
-  const paramsWithAttachments = params as GenerateTextParamsWithProviderOptions;
   const anthropic = createAnthropicClientWithTopPSupport(runtime);
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const cotBudget = getCoTBudget(runtime, modelSize);
@@ -290,20 +412,25 @@ async function generateTextWithModel(
   const anthropicProviderOptions = anthropicOptions ? { anthropic: anthropicOptions } : undefined;
 
   const agentName = resolved.providerOptions.agentName;
-  const telemetryConfig = {
+  const telemetryConfig: NativeTelemetrySettings = {
     isEnabled: experimentalTelemetry,
     functionId: agentName ? `agent:${agentName}` : undefined,
     metadata: agentName ? { agentName } : undefined,
   };
 
-  const generateParams = {
+  const promptOrMessages: NativePrompt = paramsWithAttachments.messages
+    ? { messages: paramsWithAttachments.messages }
+    : {
+        messages: [
+          {
+            role: "user" as const,
+            content: userContent ?? resolved.prompt,
+          },
+        ],
+      };
+  const generateParams: NativeTextParams = {
     model: anthropic(modelName),
-    messages: [
-      {
-        role: "user" as const,
-        content: userContent ?? resolved.prompt,
-      },
-    ],
+    ...promptOrMessages,
     system: runtime.character.system ?? undefined,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
@@ -312,7 +439,14 @@ async function generateTextWithModel(
     experimental_telemetry: telemetryConfig,
     maxOutputTokens: resolved.maxTokens,
     topP: resolved.topP,
-    ...(anthropicProviderOptions ? { providerOptions: anthropicProviderOptions } : {}),
+    ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
+    ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
+    ...(paramsWithAttachments.responseSchema
+      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
+      : {}),
+    ...(anthropicProviderOptions
+      ? { providerOptions: anthropicProviderOptions as NativeProviderOptions }
+      : {}),
   };
 
   const operationName = `${modelType} request using ${modelName}`;
@@ -325,13 +459,14 @@ async function generateTextWithModel(
           return undefined;
         }
 
-        return emitModelUsageEvent(
+        emitModelUsageEvent(
           runtime,
           modelType,
           resolved.prompt,
           usage as AnthropicUsageWithCache,
           modelName
         );
+        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache);
       });
       const ignoreUsageError = (): undefined => undefined;
       async function* textStreamWithUsage(): AsyncIterable<string> {
@@ -353,6 +488,7 @@ async function generateTextWithModel(
           await usagePromise.catch(ignoreUsageError);
           return text;
         }),
+        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
         usage: usagePromise,
         finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
       };
@@ -362,21 +498,23 @@ async function generateTextWithModel(
   }
 
   try {
-    const { text, usage } = await executeWithRetry(operationName, () =>
-      generateText(generateParams)
-    );
+    const response = await executeWithRetry(operationName, () => generateText(generateParams));
 
-    if (usage) {
+    if (response.usage) {
       emitModelUsageEvent(
         runtime,
         modelType,
         resolved.prompt,
-        usage as AnthropicUsageWithCache,
+        response.usage as AnthropicUsageWithCache,
         modelName
       );
     }
 
-    return text;
+    if (shouldReturnNativeResult) {
+      return buildNativeTextResult(response) as unknown as string;
+    }
+
+    return response.text;
   } catch (error) {
     throw formatModelError(operationName, error);
   }

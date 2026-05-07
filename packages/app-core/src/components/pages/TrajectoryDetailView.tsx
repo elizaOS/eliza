@@ -2,8 +2,14 @@ import {
   PagePanel,
   type PipelineNode,
   type PipelineStageId,
+  type TrajectoryCacheMetric,
+  TrajectoryCacheStats,
+  TrajectoryContextDiffList,
+  type TrajectoryContextDiffSummary,
+  TrajectoryEventTimeline,
   TrajectoryLlmCallCard,
   TrajectoryPipelineGraph,
+  type TrajectoryTimelineEvent,
 } from "@elizaos/ui";
 import {
   Brain,
@@ -16,8 +22,14 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type {
+  NativeToolCallEvent,
+  TrajectoryCacheObservation,
+  TrajectoryContextDiff,
   TrajectoryDetailResult,
+  TrajectoryEvaluationEvent,
+  TrajectoryEvent,
   TrajectoryLlmCall,
+  TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
 import { useApp } from "../../state/useApp";
 import {
@@ -25,6 +37,11 @@ import {
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
+import {
+  getToolCallEventDisplayState,
+  getToolCallName,
+  ToolCallEventLog,
+} from "../tool-events/ToolCallEventLog";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -119,6 +136,236 @@ function formatProviderPayload(value: unknown): string {
   }
 }
 
+function isNativeToolCallEvent(
+  event: TrajectoryEvent,
+): event is NativeToolCallEvent {
+  return (
+    event.type === "tool_call" ||
+    event.type === "tool_result" ||
+    event.type === "tool_error"
+  );
+}
+
+function isEvaluationEvent(
+  event: TrajectoryEvent,
+): event is TrajectoryEvaluationEvent {
+  return event.type === "evaluation" || event.type === "evaluator";
+}
+
+function isCacheObservation(
+  event: TrajectoryEvent,
+): event is TrajectoryCacheObservation {
+  return event.type === "cache_observation" || event.type === "cache";
+}
+
+function isContextDiff(event: TrajectoryEvent): event is TrajectoryContextDiff {
+  return event.type === "context_diff";
+}
+
+function formatEventTimestamp(
+  timestamp?: number,
+  createdAt?: string,
+): string | undefined {
+  const value =
+    typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? timestamp
+      : createdAt
+        ? Date.parse(createdAt)
+        : Number.NaN;
+  if (!Number.isFinite(value)) return undefined;
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function eventSortValue(event: { timestamp?: number; createdAt?: string }) {
+  if (typeof event.timestamp === "number" && Number.isFinite(event.timestamp)) {
+    return event.timestamp;
+  }
+  if (event.createdAt) {
+    const parsed = Date.parse(event.createdAt);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function timelineStatusForEvent(
+  event: TrajectoryEvent,
+): TrajectoryTimelineEvent["status"] {
+  if (isNativeToolCallEvent(event)) {
+    const state = getToolCallEventDisplayState(event);
+    if (state === "failure") return "failure";
+    if (state === "success") return "success";
+    return "running";
+  }
+
+  const statusValue = (event as Record<string, unknown>).status;
+  const status =
+    typeof statusValue === "string" ? statusValue.toLowerCase() : "";
+  if (status === "failed" || status === "error") return "failure";
+  if (status === "completed" || status === "success") return "success";
+  if (status === "running" || status === "queued") return "running";
+  if (status === "skipped") return "skipped";
+  return "info";
+}
+
+function labelForEvent(event: TrajectoryEvent): string {
+  if (isNativeToolCallEvent(event)) return getToolCallName(event);
+  if (isEvaluationEvent(event)) {
+    return event.evaluatorName || event.name || "evaluation";
+  }
+  if (isCacheObservation(event)) {
+    return event.cacheName || event.scope || "cache";
+  }
+  if (isContextDiff(event)) return event.label || "context diff";
+  return event.type.replace(/_/g, " ");
+}
+
+function descriptionForEvent(event: TrajectoryEvent): string | undefined {
+  if (isNativeToolCallEvent(event)) {
+    const args = event.args ?? event.input;
+    return args ? formatProviderPayload(args) : undefined;
+  }
+  if (isEvaluationEvent(event)) {
+    return event.thought || event.decision || event.error;
+  }
+  if (isCacheObservation(event)) {
+    return `${event.hit ? "hit" : "miss"}${event.key ? ` - ${event.key}` : ""}`;
+  }
+  if (isContextDiff(event)) {
+    return `${event.added ?? 0} added, ${event.removed ?? 0} removed, ${
+      event.changed ?? 0
+    } changed`;
+  }
+  return undefined;
+}
+
+function dedupeEvents<T extends { id?: string; type?: string }>(
+  events: readonly T[],
+): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  events.forEach((event, index) => {
+    const key = `${event.type ?? "event"}:${event.id ?? index}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(event);
+  });
+  return result;
+}
+
+function buildTimelineEvents(params: {
+  events: readonly TrajectoryEvent[];
+  llmCalls: readonly TrajectoryLlmCall[];
+  providerAccesses: readonly TrajectoryProviderAccess[];
+}): TrajectoryTimelineEvent[] {
+  const explicitEvents = params.events
+    .map((event, index) => ({ event, index }))
+    .sort((a, b) => {
+      const diff = eventSortValue(a.event) - eventSortValue(b.event);
+      return diff === 0 ? a.index - b.index : diff;
+    });
+
+  if (explicitEvents.length > 0) {
+    return explicitEvents.map(({ event, index }) => ({
+      id: event.id || `${event.type}-${index}`,
+      type: event.type,
+      label: labelForEvent(event),
+      stage: event.stage ? String(event.stage).replace(/_/g, " ") : undefined,
+      status: timelineStatusForEvent(event),
+      timestampLabel: formatEventTimestamp(event.timestamp, event.createdAt),
+      description: descriptionForEvent(event),
+      meta: event.stepId,
+    }));
+  }
+
+  return [
+    ...params.llmCalls.map<TrajectoryTimelineEvent>((call, index) => ({
+      id: call.id,
+      type: "llm_call",
+      label: formatTrajectoryStepLabel(
+        call.stepType || call.purpose || call.actionType,
+        `LLM call ${index + 1}`,
+      ),
+      stage: stageForCall(call).replace(/_/g, " "),
+      status: "success",
+      timestampLabel: formatEventTimestamp(call.timestamp, call.createdAt),
+      description: call.model,
+      meta: call.stepId,
+    })),
+    ...params.providerAccesses.map<TrajectoryTimelineEvent>((access) => ({
+      id: access.id,
+      type: "provider_access",
+      label: access.providerName,
+      stage: "provider",
+      status: "success",
+      timestampLabel: formatEventTimestamp(access.timestamp, access.createdAt),
+      description: access.purpose,
+      meta: access.stepId,
+    })),
+  ].sort((a, b) =>
+    String(a.timestampLabel ?? "").localeCompare(
+      String(b.timestampLabel ?? ""),
+    ),
+  );
+}
+
+function buildCacheMetrics(
+  observations: readonly TrajectoryCacheObservation[],
+  stats: TrajectoryDetailResult["cacheStats"] | undefined,
+): TrajectoryCacheMetric[] {
+  const total = stats?.total ?? observations.length;
+  if (total === 0) return [];
+  const hits =
+    stats?.hits ?? observations.filter((observation) => observation.hit).length;
+  const misses = stats?.misses ?? total - hits;
+  const hitRate = stats?.hitRate ?? hits / Math.max(total, 1);
+  const tokenCount =
+    stats?.tokenCount ??
+    observations.reduce((sum, observation) => {
+      return sum + (observation.tokenCount ?? 0);
+    }, 0);
+  return [
+    { id: "hits", label: "Hits", value: hits, meta: `${total} total` },
+    { id: "misses", label: "Misses", value: misses },
+    {
+      id: "hit-rate",
+      label: "Hit Rate",
+      value: `${Math.round(hitRate * 100)}%`,
+    },
+    {
+      id: "tokens",
+      label: "Tokens",
+      value: formatTrajectoryTokenCount(tokenCount, { emptyLabel: "—" }),
+    },
+  ];
+}
+
+function buildContextDiffSummaries(
+  diffs: readonly TrajectoryContextDiff[],
+): TrajectoryContextDiffSummary[] {
+  return diffs.map((diff, index) => ({
+    id: diff.id || `context-diff-${index}`,
+    label: diff.label || `Context diff ${index + 1}`,
+    timestampLabel: formatEventTimestamp(diff.timestamp, diff.createdAt),
+    added: diff.added ?? 0,
+    removed: diff.removed ?? 0,
+    changed:
+      diff.changed ??
+      diff.changes?.filter((change) => change.type === "changed").length ??
+      0,
+    tokenDelta: diff.tokenDelta ?? "—",
+    description:
+      diff.beforeContextId || diff.afterContextId
+        ? `${diff.beforeContextId ?? "before"} -> ${
+            diff.afterContextId ?? "after"
+          }`
+        : undefined,
+  }));
+}
+
 export function TrajectoryDetailView({
   trajectoryId,
 }: TrajectoryDetailViewProps) {
@@ -150,6 +397,44 @@ export function TrajectoryDetailView({
   const llmCalls = detail?.llmCalls ?? [];
   const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = detail?.trajectory;
+  const explicitEvents = detail?.events ?? [];
+  const toolEvents = dedupeEvents([
+    ...(detail?.toolEvents ?? []),
+    ...explicitEvents.filter(isNativeToolCallEvent),
+  ]);
+  const evaluationEvents = dedupeEvents([
+    ...(detail?.evaluationEvents ?? []),
+    ...explicitEvents.filter(isEvaluationEvent),
+  ]);
+  const cacheObservations = dedupeEvents([
+    ...(detail?.cacheObservations ?? []),
+    ...explicitEvents.filter(isCacheObservation),
+  ]);
+  const contextDiffs = dedupeEvents([
+    ...(detail?.contextDiffs ?? []),
+    ...explicitEvents.filter(isContextDiff),
+  ]);
+  const timelineEvents = buildTimelineEvents({
+    events: dedupeEvents([
+      ...explicitEvents,
+      ...toolEvents,
+      ...evaluationEvents,
+      ...cacheObservations,
+      ...contextDiffs,
+    ]),
+    llmCalls,
+    providerAccesses,
+  });
+  const cacheMetrics = buildCacheMetrics(cacheObservations, detail?.cacheStats);
+  const contextDiffSummaries = buildContextDiffSummaries(contextDiffs);
+  const shouldShowNativeEventPanels =
+    explicitEvents.length > 0 ||
+    toolEvents.length > 0 ||
+    evaluationEvents.length > 0 ||
+    cacheObservations.length > 0 ||
+    Boolean(detail?.cacheStats) ||
+    contextDiffs.length > 0 ||
+    (detail?.contextEvents?.length ?? 0) > 0;
 
   const pipelineNodes = useMemo(
     () => buildPipelineNodes(llmCalls, trajectory?.status ?? "active"),
@@ -323,6 +608,58 @@ export function TrajectoryDetailView({
             </div>
           ) : null}
         </PagePanel>
+      ) : null}
+
+      <TrajectoryEventTimeline
+        heading={t("trajectorydetailview.EventTimeline", {
+          defaultValue: "Event Timeline",
+        })}
+        emptyLabel={t("trajectorydetailview.NoEventsCaptured", {
+          defaultValue: "No events captured",
+        })}
+        events={timelineEvents}
+      />
+
+      {toolEvents.length > 0 ? (
+        <PagePanel variant="section" className="px-5 py-4">
+          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            {t("trajectorydetailview.NativeToolEvents", {
+              defaultValue: "Native Tool Events",
+            })}
+          </div>
+          <div className="space-y-3">
+            {toolEvents.map((event, index) => (
+              <ToolCallEventLog
+                event={event}
+                key={event.id || `${event.type}-${index}`}
+              />
+            ))}
+          </div>
+        </PagePanel>
+      ) : null}
+
+      {shouldShowNativeEventPanels ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TrajectoryCacheStats
+            heading={t("trajectorydetailview.CacheStats", {
+              defaultValue: "Cache Stats",
+            })}
+            emptyLabel={t("trajectorydetailview.NoCacheObservations", {
+              defaultValue: "No cache observations captured",
+            })}
+            metrics={cacheMetrics}
+          />
+          <TrajectoryContextDiffList
+            heading={t("trajectorydetailview.ContextDiffs", {
+              defaultValue: "Context Diffs",
+            })}
+            emptyLabel={t("trajectorydetailview.NoContextDiffs", {
+              defaultValue:
+                "Context diffs are not available for this trajectory",
+            })}
+            diffs={contextDiffSummaries}
+          />
+        </div>
       ) : null}
 
       {providerAccesses.length > 0 ? (

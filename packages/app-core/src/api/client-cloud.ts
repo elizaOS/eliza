@@ -1894,9 +1894,45 @@ ElizaClient.prototype.getCloudCompatPairingToken = async function (
   this: ElizaClient,
   agentId,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data: {
+      token: string;
+      redirectUrl: string;
+      expiresIn: number;
+      status?: string;
+      jobId?: string;
+      retryAfterMs?: number;
+      message?: string;
+    };
+    error?: string;
+  }>(
+    this,
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
+    { method: "POST" },
+  );
+  if (direct) return direct;
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: { token: "", redirectUrl: "", expiresIn: 0 },
+      error: nativeDirectCloudAuthMissingMessage(),
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    return this.fetch(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
+      { method: "POST" },
+      { allowNonOk: true },
+    );
+  }
+
   return this.fetch(
     `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/pairing-token`,
     { method: "POST" },
+    { allowNonOk: true },
   );
 };
 

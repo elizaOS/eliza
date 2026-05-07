@@ -27,6 +27,8 @@ import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import { ContextRegistry } from "./runtime/context-registry";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	getNativeRuntimeFeaturePlugin,
 	type NativeRuntimeFeature,
@@ -601,6 +603,12 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
 	readonly plugins: Plugin[] = [];
+	/**
+	 * Per-runtime context registry seeded with first-party context definitions
+	 * during `_initializeCore`. Plugins may register additional contexts before
+	 * Stage 1 runs.
+	 */
+	readonly contexts: ContextRegistry = new ContextRegistry([]);
 	public unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>;
 	public reloadPlugin!: (plugin: Plugin) => Promise<void>;
 	public applyPluginConfig!: (
@@ -1735,6 +1743,19 @@ export class AgentRuntime implements IAgentRuntime {
 		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		// Seed the per-runtime context registry with the first-party taxonomy
+		// before any plugin registers. Subsequent plugin/extension calls to
+		// `runtime.contexts.tryRegister(...)` will be idempotent on these ids.
+		const { skipped: skippedContexts } = this.contexts.tryRegisterMany(
+			DEFAULT_CONTEXT_DEFINITIONS,
+		);
+		for (const id of skippedContexts) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, context: id },
+				"First-party context already registered, skipping",
+			);
+		}
+
 		const pluginRegistrationPromises: Promise<void>[] = [];
 
 		// Basic capabilities are now built into core - auto-register it first
@@ -2827,8 +2848,8 @@ export class AgentRuntime implements IAgentRuntime {
 		let actionIndex = 0;
 		// Track which action names have already been executed in this
 		// processActions invocation. The LLM sometimes emits the same action
-		// twice in `actions` (e.g. ["SEND_MESSAGE", "OWNER_CALENDAR",
-		// "OWNER_CALENDAR"] when the user has multiple sub-intents the LLM
+		// twice in `actions` (e.g. ["SEND_MESSAGE", "CALENDAR",
+		// "CALENDAR"] when the user has multiple sub-intents the LLM
 		// can't split into per-action params). Without dedupe the second run
 		// uses the same params as the first → identical output → discord
 		// dedup layer rejects it as a duplicate callback. Two identical

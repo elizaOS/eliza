@@ -317,7 +317,7 @@ function deriveSelfCareExpectation(
     return {
       expectedAction: null,
       acceptableActions: ["REPLY"],
-      forbiddenActions: ["OWNER_LIFE"],
+      forbiddenActions: ["LIFE"],
       expectedOperation: null,
       notes:
         "First-turn self-care smalltalk is a subtle non-request. Reply conversationally and wait until the user explicitly asks to create or save the routine.",
@@ -342,17 +342,17 @@ function deriveSelfCareExpectation(
       firstMessageTurnText(scenario),
     );
     return {
-      expectedAction: "OWNER_LIFE",
+      expectedAction: "LIFE",
       acceptableActions: supportsBlockRule ? ["BLOCK_UNTIL_TASK_COMPLETE"] : [],
       forbiddenActions: [],
       expectedOperation: isGoalScenario ? "create_goal" : "create_definition",
       notes:
-        "First-turn self-care request should route through OWNER_LIFE while staying in preview/clarification mode until the user explicitly confirms.",
+        "First-turn self-care request should route through LIFE while staying in preview/clarification mode until the user explicitly confirms.",
     };
   }
 
   return {
-    expectedAction: "OWNER_LIFE",
+    expectedAction: "LIFE",
     acceptableActions: [],
     forbiddenActions: [],
     expectedOperation: isGoalScenario ? "create_goal" : "create_definition",

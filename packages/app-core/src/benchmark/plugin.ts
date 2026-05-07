@@ -78,50 +78,48 @@ STEP 1: Find the "# Benchmark Task" section in the providers above. Read:
 
 STEP 2: Choose ONE action to take based on the benchmark type.
 
-STEP 3: Use EXACTLY this response format:
+STEP 3: Use native tool/action calling when available.
 
-For AgentBench tasks (command-based):
-thought: I will [action] because [reason]
-actions: BENCHMARK_ACTION
-text: [Brief status]
-params:
-  BENCHMARK_ACTION:
-    command: [YOUR ACTION - e.g., search[laptop], click[42], ask[question], ls, SELECT * FROM users]
+For AgentBench tasks (command-based), call BENCHMARK_ACTION with:
+{
+  "command": "[YOUR ACTION - e.g., search[laptop], click[42], ask[question], ls, SELECT * FROM users]"
+}
 
-For Tool-calling tasks (tau-bench):
-thought: I need to call [tool] because [reason]
-actions: BENCHMARK_ACTION
-text: [Brief status]
-params:
-  BENCHMARK_ACTION:
-    tool_name: [TOOL NAME]
-    arguments:
-      key: value
+For Tool-calling tasks (tau-bench), call BENCHMARK_ACTION with:
+{
+  "tool_name": "[TOOL NAME]",
+  "arguments": {
+    "key": "value"
+  }
+}
 
-For Web navigation tasks (mind2web):
-thought: I should [operation] on [element] because [reason]
-actions: BENCHMARK_ACTION
-text: [Brief status]
-params:
-  BENCHMARK_ACTION:
-    operation: [CLICK|TYPE|SELECT]
-    element_id: [BACKEND NODE ID]
-    value: [TEXT FOR TYPE/SELECT, empty for CLICK]
+For Web navigation tasks (mind2web), call BENCHMARK_ACTION with:
+{
+  "operation": "[CLICK|TYPE|SELECT]",
+  "element_id": "[BACKEND NODE ID]",
+  "value": "[TEXT FOR TYPE/SELECT, empty for CLICK]"
+}
 
 For question-answering / text tasks:
-thought: Based on the context, the answer is...
-actions: REPLY
-text: [YOUR ANSWER HERE]
+Use REPLY with text: [YOUR ANSWER HERE]
 
 For JSON-plan tasks (hyperliquid_bench):
-thought: I will provide the requested plan JSON.
-actions: REPLY
-text: {"steps":[...]}
+Use REPLY with text: {"steps":[...]}
 
 For Vending-Bench tasks:
-thought: I will manage inventory and cash flow.
-actions: REPLY
-text: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
+Use REPLY with text: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
+
+If native tool/action calling is unavailable for an action benchmark, return one JSON object:
+{
+  "thought": "[brief reason]",
+  "actions": ["BENCHMARK_ACTION"],
+  "text": "[brief status]",
+  "params": {
+    "BENCHMARK_ACTION": {
+      "command": "[command]"
+    }
+  }
+}
 
 RULES:
 - Always use BENCHMARK_ACTION (not the raw action name) for action-based benchmarks
@@ -130,7 +128,7 @@ RULES:
 - For swe_bench, use REPLY with a single unified diff in text
 - For experience learning turns, use BENCHMARK_ACTION with command RECORD_EXPERIENCE
 - Never use REPLY for benchmarks that need tool/command execution
-- Output TOON only. Do not output XML tags or markdown fences.
+- For text-format fallback, output JSON only. Do not output XML tags or markdown fences.
 - Be precise and decisive — choose the best action immediately
 `;
 

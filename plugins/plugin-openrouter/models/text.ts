@@ -5,7 +5,16 @@ import type {
   TextStreamResult,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { generateText, type LanguageModel, streamText } from "ai";
+import {
+  generateText,
+  type JSONSchema7,
+  type LanguageModel,
+  type ModelMessage,
+  streamText,
+  type ToolChoice,
+  type ToolSet,
+  type UserContent,
+} from "ai";
 
 import { createOpenRouterProvider } from "../providers";
 import {
@@ -35,9 +44,36 @@ type ChatAttachment = {
 
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
+  messages?: ModelMessage[];
+  tools?: ToolSet;
+  toolChoice?: ToolChoice<ToolSet>;
+  responseSchema?: unknown;
 };
 
-function buildUserContent(params: GenerateTextParamsWithAttachments) {
+type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet, NativeOutput>>[0];
+type NativeStreamTextParams = Parameters<typeof streamText<ToolSet, NativeOutput>>[0];
+type NativePrompt =
+  | { prompt: string; messages?: never }
+  | { messages: ModelMessage[]; prompt?: never };
+type NativeTextParams = Omit<NativeGenerateTextParams, "messages" | "prompt"> &
+  Omit<NativeStreamTextParams, "messages" | "prompt"> &
+  NativePrompt;
+
+type NormalizedUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
+type NativeGenerateTextResult = {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: NormalizedUsage;
+};
+
+function buildUserContent(params: GenerateTextParamsWithAttachments): UserContent {
   const content: Array<
     | { type: "text"; text: string }
     | {
@@ -68,6 +104,45 @@ function supportsSamplingParameters(modelName: string): boolean {
   }
 
   return !NO_SAMPLING_MODEL_PATTERNS.some((pattern) => lowerModelName.includes(pattern));
+}
+
+function buildStructuredOutput(responseSchema: unknown): NativeOutput {
+  if (
+    responseSchema &&
+    typeof responseSchema === "object" &&
+    "responseFormat" in responseSchema &&
+    "parseCompleteOutput" in responseSchema
+  ) {
+    return responseSchema as NativeOutput;
+  }
+
+  const schemaOptions =
+    responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
+      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      : { schema: responseSchema };
+
+  return {
+    name: "object",
+    responseFormat: Promise.resolve({
+      type: "json" as const,
+      schema: schemaOptions.schema as JSONSchema7,
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    }),
+    async parseCompleteOutput({ text }: { text: string }) {
+      return JSON.parse(text);
+    },
+    async parsePartialOutput(): Promise<undefined> {
+      return undefined;
+    },
+    createElementStreamTransform(): undefined {
+      return undefined;
+    },
+  } satisfies NativeOutput;
+}
+
+function usesNativeTextResult(params: GenerateTextParamsWithAttachments): boolean {
+  return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
 type TextModelType =
@@ -150,11 +225,14 @@ function buildGenerateParams(
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
 
-  const generateParams = {
-    model: openrouter.chat(modelName) as LanguageModel,
-    ...(userContent
+  const promptOrMessages: NativePrompt = paramsWithAttachments.messages
+    ? { messages: paramsWithAttachments.messages }
+    : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: prompt }),
+      : { prompt };
+  const generateParams: NativeTextParams = {
+    model: openrouter.chat(modelName) as LanguageModel,
+    ...promptOrMessages,
     system: runtime.character?.system ?? undefined,
     ...(supportsSampling
       ? {
@@ -165,9 +243,20 @@ function buildGenerateParams(
         }
       : {}),
     maxOutputTokens: resolvedMaxOutput,
+    ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
+    ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
+    ...(paramsWithAttachments.responseSchema
+      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
+      : {}),
   };
 
-  return { generateParams, modelName, modelLabel, prompt };
+  return {
+    generateParams,
+    modelName,
+    modelLabel,
+    prompt,
+    shouldReturnNativeResult: usesNativeTextResult(paramsWithAttachments),
+  };
 }
 
 type GenerateParams = ReturnType<typeof buildGenerateParams>["generateParams"];
@@ -178,7 +267,8 @@ function handleStreamingGeneration(
   generateParams: GenerateParams,
   prompt: string,
   modelName: string,
-  modelLabel: string
+  modelLabel: string,
+  shouldReturnNativeResult: boolean
 ): TextStreamResult {
   const streamResult = streamText(generateParams);
   const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
@@ -210,8 +300,38 @@ function handleStreamingGeneration(
       await usagePromise.catch(ignoreUsageError);
       return text;
     }),
+    ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
     usage: usagePromise,
     finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+  };
+}
+
+function buildNativeTextResult(result: {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}): NativeGenerateTextResult {
+  const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
+  const outputTokens = result.usage?.outputTokens ?? result.usage?.completionTokens ?? 0;
+
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls ?? [],
+    finishReason: result.finishReason,
+    usage: result.usage
+      ? {
+          promptTokens: inputTokens,
+          completionTokens: outputTokens,
+          totalTokens: result.usage.totalTokens ?? inputTokens + outputTokens,
+        }
+      : undefined,
   };
 }
 
@@ -220,11 +340,8 @@ async function generateTextWithModel(
   modelType: TextModelType,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const { generateParams, modelName, modelLabel, prompt } = buildGenerateParams(
-    runtime,
-    modelType,
-    params
-  );
+  const { generateParams, modelName, modelLabel, prompt, shouldReturnNativeResult } =
+    buildGenerateParams(runtime, modelType, params);
 
   if (params.stream) {
     return handleStreamingGeneration(
@@ -233,7 +350,8 @@ async function generateTextWithModel(
       generateParams,
       prompt,
       modelName,
-      modelLabel
+      modelLabel,
+      shouldReturnNativeResult
     );
   }
 
@@ -241,6 +359,10 @@ async function generateTextWithModel(
 
   if (response.usage) {
     emitModelUsageEvent(runtime, modelType, prompt, response.usage, modelName, modelLabel);
+  }
+
+  if (shouldReturnNativeResult) {
+    return buildNativeTextResult(response) as unknown as string;
   }
 
   return response.text;

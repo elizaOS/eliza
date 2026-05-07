@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@elizaos/ui";
 import { ChevronRight, ListTodo, Settings } from "lucide-react";
 import type {
@@ -5,8 +6,9 @@ import type {
   ReactNode,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { useMediaQuery } from "../../hooks";
 import {
   type DynamicNavTab,
@@ -15,6 +17,7 @@ import {
   type TabGroup,
   titleForTab,
 } from "../../navigation";
+import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
@@ -83,7 +86,6 @@ const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
 };
 
 interface HeaderProps {
-  mobileCenter?: ReactNode;
   mobileLeft?: ReactNode;
   pageRightExtras?: ReactNode;
   transparent?: boolean;
@@ -103,7 +105,6 @@ function shouldShowMacDesktopTitleBar(): boolean {
 }
 
 export function Header({
-  mobileCenter,
   mobileLeft,
   pageRightExtras,
   transparent: _transparent = false,
@@ -139,6 +140,9 @@ export function Header({
   } = useApp();
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
+  const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
+    readPersistedMobileRuntimeMode,
+  );
   const collapseDesktopNavLabels = useMediaQuery(
     DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY,
   );
@@ -161,6 +165,29 @@ export function Header({
   useEffect(() => {
     setState("chatMode", "power");
   }, [setState]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const handleMobileRuntimeModeChanged = () => {
+      setMobileRuntimeMode(readPersistedMobileRuntimeMode());
+    };
+
+    handleMobileRuntimeModeChanged();
+    document.addEventListener(
+      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+      handleMobileRuntimeModeChanged,
+    );
+
+    return () => {
+      document.removeEventListener(
+        MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+        handleMobileRuntimeModeChanged,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -233,6 +260,11 @@ export function Header({
     return out;
   }, [plugins, developerModeEnabled]);
 
+  const hideMobileLocalAutomations =
+    isMobileViewport &&
+    mobileRuntimeMode === "local" &&
+    Capacitor.isNativePlatform();
+
   const tabGroups = useMemo(
     () =>
       getTabGroups(
@@ -240,9 +272,27 @@ export function Header({
         walletEnabled,
         browserEnabled,
         dynamicNavTabs,
+        undefined,
+        !hideMobileLocalAutomations,
       ),
-    [browserEnabled, streamingEnabled, walletEnabled, dynamicNavTabs],
+    [
+      browserEnabled,
+      hideMobileLocalAutomations,
+      streamingEnabled,
+      walletEnabled,
+      dynamicNavTabs,
+    ],
   );
+
+  useEffect(() => {
+    if (
+      hideMobileLocalAutomations &&
+      (tab === "automations" || tab === "triggers" || tab === "tasks")
+    ) {
+      setTab("apps");
+    }
+  }, [hideMobileLocalAutomations, setTab, tab]);
+
   const settingsTabGroup = useMemo(
     () => tabGroups.find((group) => group.label === "Settings") ?? null,
     [tabGroups],
@@ -471,7 +521,7 @@ export function Header({
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
       style={{
-        paddingBottom: "0.375rem",
+        paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
         paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
         paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
       }}
@@ -576,7 +626,7 @@ export function Header({
           <div
             className={
               isMobileViewport
-                ? "grid min-h-[2.375rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2"
+                ? "grid min-h-[2.75rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2"
                 : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
             }
             data-window-titlebar-padding={
@@ -586,16 +636,24 @@ export function Header({
           >
             {isMobileViewport ? (
               <>
+                {/*
+                 * Mobile header — single canonical row that sits directly
+                 * below the system status bar (the body has
+                 * padding-top: env(safe-area-inset-top), so this row's
+                 * sticky `top: 0` lands just under the iPhone notch /
+                 * Dynamic Island and the Android status icons). Buttons at
+                 * the left and right edges naturally bracket the notch.
+                 */}
                 <div
-                  className="flex min-w-0 items-center justify-start gap-1"
+                  className="flex min-w-0 items-center justify-start"
                   data-no-camera-drag="true"
                 >
                   {mobileLeft}
                 </div>
                 <div
                   className={
-                    mobileCenter || breadcrumbNode
-                      ? "flex h-[2.375rem] min-w-0 items-center justify-center"
+                    breadcrumbNode || chatInferenceNotice
+                      ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
                       : "pointer-events-none h-[2.375rem] min-w-0"
                   }
                   data-testid={
@@ -604,26 +662,25 @@ export function Header({
                       : undefined
                   }
                   data-no-camera-drag={
-                    mobileCenter || breadcrumbNode ? "true" : undefined
+                    breadcrumbNode || chatInferenceNotice ? "true" : undefined
                   }
                   aria-hidden={
-                    mobileCenter || breadcrumbNode ? undefined : "true"
+                    breadcrumbNode || chatInferenceNotice ? undefined : "true"
                   }
                 >
-                  {mobileCenter ?? breadcrumbNode}
-                </div>
-                <div
-                  className="flex min-w-0 items-center justify-end gap-1"
-                  data-no-camera-drag="true"
-                >
-                  {pageRightExtras}
-                  {desktopTaskToggle}
+                  {breadcrumbNode}
                   {chatInferenceNotice ? (
                     <InferenceCloudAlertButton
                       notice={chatInferenceNotice}
                       onClick={handleChatInferenceAlertClick}
                     />
                   ) : null}
+                </div>
+                <div
+                  className="flex min-w-0 items-center justify-end"
+                  data-no-camera-drag="true"
+                >
+                  {pageRightExtras}
                 </div>
               </>
             ) : (
