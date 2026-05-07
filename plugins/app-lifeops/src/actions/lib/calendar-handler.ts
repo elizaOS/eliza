@@ -45,8 +45,8 @@ import {
   INTERNAL_URL,
   messageText,
   parseLifeOpsJsonRecord,
-  runLifeOpsTextModel,
   runLifeOpsJsonModel,
+  runLifeOpsTextModel,
   toActionData,
 } from "../lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";

@@ -5139,8 +5139,10 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.recordUseModelTrajectory({
 				modelType: String(modelType),
 				resolvedModelKey: String(resolvedModelKey),
+				provider: resolvedModel?.provider ?? provider,
 				modelParams,
 				promptContent,
+				result: resultRef.current,
 				response: modelOutToTrajectoryString(resultRef.current),
 				elapsedTime,
 			});
@@ -5192,8 +5194,10 @@ export class AgentRuntime implements IAgentRuntime {
 		await this.recordUseModelTrajectory({
 			modelType: String(modelType),
 			resolvedModelKey: String(resolvedModelKey),
+			provider: resolvedModel?.provider ?? provider,
 			modelParams,
 			promptContent,
+			result: resultRef.current,
 			response: modelOutToTrajectoryString(resultRef.current),
 			elapsedTime,
 		});
@@ -5213,8 +5217,10 @@ export class AgentRuntime implements IAgentRuntime {
 	private async recordUseModelTrajectory(args: {
 		modelType: string;
 		resolvedModelKey: string;
+		provider?: string;
 		modelParams: unknown;
 		promptContent: string | null | undefined;
+		result?: unknown;
 		response: string;
 		elapsedTime: number;
 	}): Promise<void> {
@@ -5234,21 +5240,59 @@ export class AgentRuntime implements IAgentRuntime {
 			const maxTokensRaw = isPlainObject(args.modelParams)
 				? (args.modelParams as { maxTokens?: number }).maxTokens
 				: undefined;
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const resultRecord = isPlainObject(args.result)
+				? (args.result as Record<string, unknown>)
+				: {};
+			const usageRecord = isPlainObject(resultRecord.usage)
+				? (resultRecord.usage as Record<string, unknown>)
+				: {};
+			const asNumber = (value: unknown): number | undefined =>
+				typeof value === "number" && Number.isFinite(value) ? value : undefined;
 			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
+				modelType: args.modelType,
+				provider: args.provider,
 				systemPrompt:
 					typeof this.character.system === "string"
 						? this.character.system
 						: "",
 				userPrompt: args.promptContent ?? "",
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: (args.promptContent ?? ""),
+				messages: Array.isArray(paramsRecord.messages)
+					? paramsRecord.messages
+					: undefined,
+				tools: paramsRecord.tools,
+				toolChoice: paramsRecord.toolChoice,
+				responseSchema: paramsRecord.responseSchema,
+				providerOptions: paramsRecord.providerOptions,
 				response: args.response,
+				toolCalls: Array.isArray(resultRecord.toolCalls)
+					? resultRecord.toolCalls
+					: undefined,
+				finishReason:
+					typeof resultRecord.finishReason === "string"
+						? resultRecord.finishReason
+						: undefined,
+				providerMetadata: resultRecord.providerMetadata,
 				temperature: typeof tempRaw === "number" ? tempRaw : 0,
 				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
 				purpose: trajCtx?.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				promptTokens: asNumber(usageRecord.promptTokens),
+				completionTokens: asNumber(usageRecord.completionTokens),
+				cacheReadInputTokens: asNumber(usageRecord.cacheReadInputTokens),
+				cacheCreationInputTokens: asNumber(
+					usageRecord.cacheCreationInputTokens,
+				),
 				modelSlot: args.modelType,
 				runId: trajCtx?.runId,
 				roomId: trajCtx?.roomId,

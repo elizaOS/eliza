@@ -1,0 +1,46 @@
+{
+  "trajectoryId": "tj-fe306969fab303",
+  "agentId": "93432706-b3b2-08ea-ab6a-ba55340a8848",
+  "roomId": "995d0e6b-8386-4618-bb35-496a7629133d",
+  "rootMessage": {
+    "id": "94ae9d73-d5e3-4b35-a767-03818c21a34a",
+    "text": "what's 2+2?",
+    "sender": "93432706-b3b2-08ea-ab6a-ba55340a8848"
+  },
+  "startedAt": 1778149896297,
+  "status": "finished",
+  "stages": [
+    {
+      "stageId": "stage-msghandler-1778149896297",
+      "kind": "messageHandler",
+      "startedAt": 1778149896297,
+      "endedAt": 1778149896813,
+      "latencyMs": 516,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "prompt": "task: Decide processMessage and the plan for this message.\n\ncontext:\n{\n  \"id\": \"94ae9d73-d5e3-4b35-a767-03818c21a34a\",\n  \"version\": \"v5\",\n  \"createdAt\": 1778149896296,\n  \"metadata\": {\n    \"roomId\": \"995d0e6b-8386-4618-bb35-496a7629133d\",\n    \"messageId\": \"94ae9d73-d5e3-4b35-a767-03818c21a34a\",\n    \"selectedContexts\": []\n  },\n  \"staticPrefix\": {\n    \"characterPrompt\": {\n      \"id\": \"character\",\n      \"label\": \"character\",\n      \"content\": \"agent_name: ElizaCerebrasTest\\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\",\n      \"stable\": true\n    },\n    \"contextRegistryDigest\": \"\"\n  },\n  \"trajectoryPrefix\": {\n    \"selectedContexts\": [],\n    \"expandedTools\": [],\n    \"createdAtStageId\": \"message-handler\"\n  },\n  \"plannedQueue\": [],\n  \"metrics\": {},\n  \"limits\": {},\n  \"events\": [\n    {\n      \"id\": \"available_contexts\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"available_contexts: general\",\n      \"stable\": true\n    },\n    {\n      \"id\": \"composed_state\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"No prior conversation.\",\n      \"stable\": false\n    },\n    {\n      \"id\": \"94ae9d73-d5e3-4b35-a767-03818c21a34a\",\n      \"type\": \"message\",\n      \"source\": \"run-eliza-cerebras\",\n      \"createdAt\": 1778149896295,\n      \"message\": {\n        \"id\": \"94ae9d73-d5e3-4b35-a767-03818c21a34a\",\n        \"role\": \"user\",\n        \"content\": {\n          \"text\": \"what's 2+2?\",\n          \"source\": \"run-eliza-cerebras\"\n        },\n        \"metadata\": {\n          \"roomId\": \"995d0e6b-8386-4618-bb35-496a7629133d\",\n          \"entityId\": \"93432706-b3b2-08ea-ab6a-ba55340a8848\"\n        }\n      }\n    }\n  ]\n}\n\navailable_contexts:\n- simple: Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from its own knowledge.\n- general: Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.\n- memory: Read, write, and recall agent memories and long-term facts.\n- knowledge: Search the agent's knowledge base and grounded long-form documents.\n- web: Web search and reading public internet pages.\n- browser: Drive a browser session: navigate, click, type, and extract page state.\n- code: Read, edit, run, or review code, including spawned coding sub-agents.\n- files: Local file and document operations: read, write, list, attach.\n- terminal: Execute shell commands and inspect local processes.\n- email: Read, send, draft, triage, and search the user's email accounts.\n- calendar: Check availability, view events, schedule meetings, manage invites.\n- contacts: Look up, add, or update people in the user's contacts and relationship graph.\n- tasks: Reminders, todos, goals, habits, and scheduled actions for the user.\n- health: Personal health metrics and wellness data.\n- screen_time: Device, app, and screen-time controls and reporting.\n- subscriptions: Recurring services, billing awareness, and renewals.\n- finance: Money, balances, portfolio value, accounts, invoices, and financial overview questions.\n- payments: Payment methods, invoices, and financial workflows.\n- wallet: Wallet and account operations: balances, transfers, swaps, signing, and portfolio holdings.\n- crypto: Crypto assets, tokens, DeFi positions, wallet balances, swaps, bridges, and on-chain transfers.\n- messaging: Send and read messages on Discord, Slack, Telegram, Signal, iMessage, and similar.\n- social_posting: Public posts and social actions on platforms like X.\n- media: Generate or process images, audio, and video. Includes screenshots and transcription.\n- automation: Workflows, cron jobs, triggers, and scheduled agent automations.\n- connectors: MCP, OAuth, and integration connectors: list, configure, connect, disconnect.\n- settings: Agent and user settings, capability toggles, identity, and AI provider config.\n- secrets: Credentials, API keys, and session tokens.\n- admin: Role and system administration, plugin management, trust changes.\n- agent_internal: Scratchpad, self-management, and internal autonomous tasks not intended for users.\n\nrules:\n- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n- plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email\n- never invent context ids that are not in available_contexts\n- choose plan.contexts=[\"simple\"] (and only \"simple\") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply\n- otherwise list every relevant context id; planning will run and tools will be selected from those contexts\n- include plan.reply only on the simple shortcut path (plan.contexts=[\"simple\"])\n- thought is internal routing rationale and is not shown to the user\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.",
+        "response": "{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"simple\"],\"reply\":\"4\"},\"thought\":\"The user asked a basic arithmetic question that can be answered directly from internal knowledge. No external tools or contexts are needed, so we use the simple shortcut context and provide the answer.\"}",
+        "usage": {
+          "promptTokens": 1570,
+          "completionTokens": 156,
+          "totalTokens": 1726,
+          "cacheReadInputTokens": 256
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "totalLatencyMs": 516,
+    "totalPromptTokens": 1570,
+    "totalCompletionTokens": 156,
+    "totalCacheReadTokens": 256,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 0,
+    "toolCallsExecuted": 0,
+    "toolCallFailures": 0,
+    "evaluatorFailures": 0
+  },
+  "endedAt": 1778149896815
+}

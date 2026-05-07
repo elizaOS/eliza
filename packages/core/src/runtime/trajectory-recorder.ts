@@ -59,7 +59,7 @@ export interface RecordedModelCall {
 	provider: string;
 	prompt: string;
 	messages?: ChatMessage[] | unknown[];
-	tools?: Array<{ name?: string; description?: string }> | ToolDefinition[];
+	tools?: unknown;
 	toolChoice?: ToolChoice | unknown;
 	response: string;
 	toolCalls?: RecordedToolCall[];

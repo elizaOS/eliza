@@ -21,6 +21,7 @@ import type {
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
+import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
 
@@ -885,27 +886,7 @@ export class TrajectoriesService extends Service {
 	 * Called by the runtime when an LLM call is made.
 	 * This is the interface the runtime expects.
 	 */
-	logLlmCall(params: {
-		stepId: string;
-		model: string;
-		modelVersion?: string;
-		systemPrompt: string;
-		userPrompt: string;
-		response: string;
-		reasoning?: string;
-		temperature: number;
-		maxTokens: number;
-		purpose: string;
-		actionType: string;
-		latencyMs: number;
-		promptTokens?: number;
-		completionTokens?: number;
-		modelSlot?: string;
-		runId?: string;
-		roomId?: string;
-		messageId?: string;
-		executionTraceId?: string;
-	}): void {
+	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (!this.enabled) return;
 
 		// Resolve trajectory synchronously from in-memory map (set by startStep).
@@ -941,27 +922,7 @@ export class TrajectoriesService extends Service {
 
 	private async _persistLlmCall(
 		trajectoryId: string,
-		params: {
-			stepId: string;
-			model: string;
-			modelVersion?: string;
-			systemPrompt: string;
-			userPrompt: string;
-			response: string;
-			reasoning?: string;
-			temperature: number;
-			maxTokens: number;
-			purpose: string;
-			actionType: string;
-			latencyMs: number;
-			promptTokens?: number;
-			completionTokens?: number;
-			modelSlot?: string;
-			runId?: string;
-			roomId?: string;
-			messageId?: string;
-			executionTraceId?: string;
-		},
+		params: TrajectoryRuntimeLlmCallParams,
 	): Promise<void> {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
@@ -973,9 +934,20 @@ export class TrajectoriesService extends Service {
 				timestamp: Date.now(),
 				model: params.model,
 				modelVersion: params.modelVersion,
+				modelType: params.modelType,
+				provider: params.provider,
 				systemPrompt: params.systemPrompt,
 				userPrompt: params.userPrompt,
+				prompt: params.prompt ?? params.userPrompt,
+				messages: params.messages,
+				tools: params.tools,
+				toolChoice: params.toolChoice,
+				responseSchema: params.responseSchema,
+				providerOptions: params.providerOptions,
 				response: params.response,
+				toolCalls: params.toolCalls,
+				finishReason: params.finishReason,
+				providerMetadata: params.providerMetadata,
 				reasoning: params.reasoning,
 				temperature: params.temperature,
 				maxTokens: params.maxTokens,
@@ -983,6 +955,8 @@ export class TrajectoriesService extends Service {
 				actionType: params.actionType,
 				promptTokens: params.promptTokens,
 				completionTokens: params.completionTokens,
+				cacheReadInputTokens: params.cacheReadInputTokens,
+				cacheCreationInputTokens: params.cacheCreationInputTokens,
 				latencyMs: params.latencyMs,
 				modelSlot: params.modelSlot,
 				runId: params.runId,

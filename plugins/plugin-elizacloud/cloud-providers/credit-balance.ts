@@ -26,7 +26,8 @@ export const creditBalanceProvider: Provider = {
 
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {
-      return capCreditResult(format(cached.value));
+      const result = format(cached.value);
+      return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
     }
 
     let balance: number;
@@ -37,13 +38,17 @@ export const creditBalanceProvider: Provider = {
       logger.warn(
         `[CloudCredits] Failed to fetch balance: ${err instanceof Error ? err.message : err}`
       );
-      if (cached) return capCreditResult(format(cached.value));
+      if (cached) {
+        const result = format(cached.value);
+        return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
+      }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
     creditCaches.set(runtime, { value: balance, at: Date.now() });
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
-    return capCreditResult(format(balance));
+    const result = format(balance);
+    return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
   },
 };
 
@@ -61,12 +66,5 @@ function format(balance: number): ProviderResult {
       cloudCreditsCritical: critical,
       cloudTopUpUrl: TOP_UP_URL,
     },
-  };
-}
-
-function capCreditResult(result: ProviderResult): ProviderResult {
-  return {
-    ...result,
-    text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS),
   };
 }

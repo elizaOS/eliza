@@ -37,14 +37,24 @@ export interface LLMCall {
 	timestamp: number;
 	model: string;
 	modelVersion?: string;
+	modelType?: string;
+	provider?: string;
 
 	// Full prompt context
 	systemPrompt: string;
 	userPrompt: string;
-	messages?: Array<{ role: string; content: string }>;
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
 
 	// Response
 	response: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	providerMetadata?: unknown;
 	reasoning?: string;
 
 	// Parameters

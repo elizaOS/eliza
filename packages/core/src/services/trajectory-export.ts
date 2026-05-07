@@ -1,5 +1,8 @@
 import { buildContextObjectTrajectoryExport } from "../trajectory-utils";
 import type {
+	ElizaNativeModelRequestRecord,
+	ElizaNativeModelResponseRecord,
+	ElizaNativeTrajectoryRow,
 	TrajectoryCacheStatsRecord,
 	TrajectoryDetailRecord,
 	TrajectoryExportOptions,
@@ -12,6 +15,7 @@ import type {
 	TrajectoryTrainingMessageRecord,
 	TrajectoryUsageTotalsRecord,
 } from "./trajectory-types";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 
 type TrajectoryArtMessage = {
 	role: "system" | "user" | "assistant";
@@ -318,6 +322,190 @@ export function buildTrajectoryHarnessRows(
 	return out;
 }
 
+function inferNativeTaskType(call: TrajectoryFlattenedLlmCallRecord): string {
+	const tokens = [
+		call.purpose,
+		call.stepType,
+		call.actionType,
+		call.modelSlot,
+		...(Array.isArray(call.tags) ? call.tags : []),
+	]
+		.filter((value): value is string => typeof value === "string")
+		.join(" ")
+		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+		.toLowerCase()
+		.replace(/[^a-z0-9:_-]+/g, "_");
+
+	if (tokens.includes("context_routing")) return "context_routing";
+	if (
+		tokens.includes("should_respond") ||
+		tokens.includes("response_handler") ||
+		tokens.includes("message_handler")
+	) {
+		return "should_respond";
+	}
+	if (
+		tokens.includes("action_planner") ||
+		tokens.includes("planner") ||
+		tokens.includes("runtime_use_model")
+	) {
+		return "action_planner";
+	}
+	if (
+		tokens.includes("media_description") ||
+		tokens.includes("image_description") ||
+		tokens.includes("describe_image")
+	) {
+		return "media_description";
+	}
+	if (tokens.includes("reply")) return "reply";
+	return "response";
+}
+
+function buildNativeMessages(
+	call: TrajectoryFlattenedLlmCallRecord,
+): unknown[] | undefined {
+	if (Array.isArray(call.messages) && call.messages.length > 0) {
+		return call.messages;
+	}
+
+	const messages: Array<{ role: "system" | "user"; content: string }> = [];
+	const systemPrompt = toOptionalString(call.systemPrompt);
+	const userPrompt = toOptionalString(call.userPrompt ?? call.prompt);
+	if (systemPrompt) {
+		messages.push({ role: "system", content: systemPrompt });
+	}
+	if (userPrompt) {
+		messages.push({ role: "user", content: userPrompt });
+	}
+	return messages.length > 0 ? messages : undefined;
+}
+
+function buildNativeRequest(
+	call: TrajectoryFlattenedLlmCallRecord,
+): ElizaNativeModelRequestRecord {
+	const request: ElizaNativeModelRequestRecord = {};
+	const prompt = toOptionalString(call.prompt ?? call.userPrompt);
+	const messages = buildNativeMessages(call);
+	if (prompt) request.prompt = prompt;
+	if (messages) request.messages = messages;
+	if (call.tools !== undefined) request.tools = call.tools;
+	if (call.toolChoice !== undefined) request.toolChoice = call.toolChoice;
+	if (call.responseSchema !== undefined) {
+		request.responseSchema = call.responseSchema;
+	}
+	if (call.providerOptions !== undefined) {
+		request.providerOptions = call.providerOptions;
+	}
+
+	const settings: NonNullable<ElizaNativeModelRequestRecord["settings"]> = {};
+	if (typeof call.temperature === "number") settings.temperature = call.temperature;
+	if (typeof call.maxTokens === "number") settings.maxTokens = call.maxTokens;
+	if (typeof call.topP === "number") settings.topP = call.topP;
+	if (Object.keys(settings).length > 0) request.settings = settings;
+	return request;
+}
+
+function buildNativeResponse(
+	call: TrajectoryFlattenedLlmCallRecord,
+): ElizaNativeModelResponseRecord {
+	const promptTokens = toOptionalFiniteNumber(call.promptTokens);
+	const completionTokens = toOptionalFiniteNumber(call.completionTokens);
+	const cacheReadInputTokens = toOptionalFiniteNumber(
+		call.cacheReadInputTokens,
+	);
+	const cacheCreationInputTokens = toOptionalFiniteNumber(
+		call.cacheCreationInputTokens,
+	);
+	const usage: NonNullable<ElizaNativeModelResponseRecord["usage"]> = {};
+	if (promptTokens !== undefined) usage.promptTokens = promptTokens;
+	if (completionTokens !== undefined) usage.completionTokens = completionTokens;
+	if (promptTokens !== undefined || completionTokens !== undefined) {
+		usage.totalTokens = (promptTokens ?? 0) + (completionTokens ?? 0);
+	}
+	if (cacheReadInputTokens !== undefined) {
+		usage.cacheReadInputTokens = cacheReadInputTokens;
+	}
+	if (cacheCreationInputTokens !== undefined) {
+		usage.cacheCreationInputTokens = cacheCreationInputTokens;
+	}
+
+	const response: ElizaNativeModelResponseRecord = {
+		text: typeof call.response === "string" ? call.response : "",
+	};
+	if (Array.isArray(call.toolCalls)) response.toolCalls = call.toolCalls;
+	if (typeof call.finishReason === "string") {
+		response.finishReason = call.finishReason;
+	}
+	if (Object.keys(usage).length > 0) response.usage = usage;
+	if (call.providerMetadata !== undefined) {
+		response.providerMetadata = call.providerMetadata;
+	}
+	return response;
+}
+
+export function buildElizaNativeTrajectoryRows(
+	trajectories: readonly TrajectoryDetailRecord[],
+	options: { includePrompts?: boolean } = {},
+): ElizaNativeTrajectoryRow[] {
+	const includePrompts = options.includePrompts !== false;
+	const out: ElizaNativeTrajectoryRow[] = [];
+
+	for (const trajectory of trajectories) {
+		const trajectoryTotals =
+			trajectory.totals ?? summarizeTrajectoryUsage(trajectory);
+		const cacheStats = summarizeTrajectoryCache(trajectory);
+		for (const call of iterateTrajectoryLlmCalls(trajectory)) {
+			const taskType = inferNativeTaskType(call);
+			out.push({
+				format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+				schemaVersion: 1,
+				boundary: "vercel_ai_sdk.generateText",
+				trajectoryId: call.trajectoryId,
+				agentId: call.agentId,
+				source: call.source,
+				status: call.status,
+				scenarioId: call.scenarioId,
+				batchId: call.batchId,
+				stepId: call.stepId,
+				callId: call.callId,
+				stepIndex: call.stepIndex,
+				callIndex: call.callIndex,
+				timestamp: call.timestamp,
+				purpose: call.purpose,
+				actionType: call.actionType,
+				stepType: call.stepType,
+				tags: call.tags,
+				model: call.model,
+				modelVersion: call.modelVersion,
+				modelType: call.modelType ?? call.modelSlot,
+				provider: call.provider,
+				request: includePrompts ? buildNativeRequest(call) : {},
+				response: includePrompts ? buildNativeResponse(call) : { text: "" },
+				metadata: {
+					task_type: taskType,
+					source_dataset: "runtime_trajectory_boundary",
+					trajectory_id: call.trajectoryId,
+					step_id: call.stepId,
+					call_id: call.callId,
+					agent_id: call.agentId,
+					trajectory_source: call.source,
+					source_call_purpose: call.purpose,
+					source_action_type: call.actionType,
+					source_step_type: call.stepType,
+					source_model: call.model,
+					source_model_type: call.modelType ?? call.modelSlot,
+					source_provider: call.provider,
+				},
+				trajectoryTotals,
+				cacheStats,
+			});
+		}
+	}
+
+	return out;
+}
+
 function filterNumericMetrics(
 	trajectory: TrajectoryDetailRecord,
 ): Record<string, number> {
@@ -391,7 +579,7 @@ export function resolveJsonShape(
 	if (jsonShape) {
 		return jsonShape;
 	}
-	return format === "jsonl" ? "harness_v1" : "legacy";
+	return format === "jsonl" ? ELIZA_NATIVE_TRAJECTORY_FORMAT : "legacy";
 }
 
 function serializeLegacyJson(
@@ -484,6 +672,19 @@ export function serializeTrajectoryExport(
 	const jsonShape = resolveJsonShape(options.format, options.jsonShape);
 
 	if (options.format === "json") {
+		if (jsonShape === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
+			return {
+				filename: `trajectories-${stamp}.eliza-native.json`,
+				data: JSON.stringify(
+					buildElizaNativeTrajectoryRows(trajectories, {
+						includePrompts: options.includePrompts,
+					}),
+					null,
+					2,
+				),
+				mimeType: "application/json",
+			};
+		}
 		if (jsonShape === "context_object_events_v5") {
 			return {
 				filename: `trajectories-${stamp}.json`,
@@ -520,6 +721,17 @@ export function serializeTrajectoryExport(
 	}
 
 	if (options.format === "jsonl") {
+		if (jsonShape === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
+			return {
+				filename: `trajectories-${stamp}.eliza-native.jsonl`,
+				data: serializeJsonLines(
+					buildElizaNativeTrajectoryRows(trajectories, {
+						includePrompts: options.includePrompts,
+					}),
+				),
+				mimeType: "application/x-ndjson",
+			};
+		}
 		if (jsonShape === "context_object_events_v5") {
 			return {
 				filename: `trajectories-${stamp}.context-object.jsonl`,

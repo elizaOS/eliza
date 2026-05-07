@@ -384,9 +384,15 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
   const runtime = await buildRuntime(model);
   console.log(`${GREEN}[SETUP]${RESET} AgentRuntime initialized (agentId: ${runtime.agentId})`);
 
+  // Send as the agent itself so resolveStage1SenderRole returns "OWNER" and
+  // every gated context (calendar/email/finance/etc) becomes available to the
+  // messageHandler. Without this the harness's anonymous sender is "USER" and
+  // ADMIN/OWNER-gated contexts are silently filtered out before the prompt is
+  // built — which is correct production behavior, but the wrong condition for
+  // tests that exercise the full registry.
   const message: Memory = {
     id: crypto.randomUUID() as UUID,
-    entityId: crypto.randomUUID() as UUID,
+    entityId: runtime.agentId,
     agentId: runtime.agentId,
     roomId: crypto.randomUUID() as UUID,
     content: { text: scenario.message, source: "run-eliza-cerebras" },

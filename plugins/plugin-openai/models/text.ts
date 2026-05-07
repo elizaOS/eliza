@@ -113,6 +113,7 @@ interface NativeGenerateTextResult {
   toolCalls?: unknown[];
   finishReason?: string;
   usage?: TokenUsage;
+  providerMetadata?: unknown;
 }
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -289,12 +290,14 @@ function buildNativeTextResult(result: {
   toolCalls?: unknown[];
   finishReason?: string;
   usage?: LanguageModelUsage;
+  providerMetadata?: unknown;
 }): NativeGenerateTextResult {
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
     usage: convertUsage(result.usage),
+    providerMetadata: result.providerMetadata,
   };
 }
 
@@ -302,12 +305,23 @@ function createLlmCallDetails(
   modelName: string,
   params: GenerateTextParams,
   systemPrompt: string | undefined,
-  actionType: string
+  actionType: string,
+  modelType?: ModelTypeName,
+  providerOptions?: Record<string, unknown>
 ): RecordLlmCallDetails {
+  const nativeParams = params as unknown as GenerateTextParamsWithOpenAIOptions;
   return {
     model: modelName,
+    modelType,
+    provider: "vercel-ai-sdk",
     systemPrompt: systemPrompt ?? "",
     userPrompt: params.prompt,
+    prompt: params.prompt,
+    messages: Array.isArray(nativeParams.messages) ? nativeParams.messages : undefined,
+    tools: nativeParams.tools,
+    toolChoice: nativeParams.toolChoice,
+    responseSchema: nativeParams.responseSchema,
+    providerOptions: providerOptions ?? nativeParams.providerOptions,
     temperature: params.temperature ?? 0,
     maxTokens: params.maxTokens ?? 8192,
     purpose: "external_llm",
@@ -390,7 +404,14 @@ async function generateTextByModelType(
 
   // Handle streaming mode
   if (params.stream) {
-    const details = createLlmCallDetails(modelName, params, systemPrompt, "ai.streamText");
+    const details = createLlmCallDetails(
+      modelName,
+      params,
+      systemPrompt,
+      "ai.streamText",
+      modelType,
+      providerOptions
+    );
     details.response = "";
     const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
 
@@ -404,10 +425,20 @@ async function generateTextByModelType(
   }
 
   // Non-streaming mode
-  const details = createLlmCallDetails(modelName, params, systemPrompt, "ai.generateText");
+  const details = createLlmCallDetails(
+    modelName,
+    params,
+    systemPrompt,
+    "ai.generateText",
+    modelType,
+    providerOptions
+  );
   const result = await recordLlmCall(runtime, details, async () => {
     const result = await generateText(generateParams);
     details.response = result.text;
+    details.toolCalls = result.toolCalls ?? [];
+    details.finishReason = result.finishReason as string | undefined;
+    details.providerMetadata = result.providerMetadata;
     applyUsageToDetails(details, result.usage);
     return result;
   });

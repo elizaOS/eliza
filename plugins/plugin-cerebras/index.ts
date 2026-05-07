@@ -229,6 +229,53 @@ function sanitizeForCerebras(name: string): string {
   return name.replace(CEREBRAS_NAME_PATTERN, "_");
 }
 
+/**
+ * Cerebras also rejects object schemas where `properties` is missing or empty:
+ * `Object fields require at least one of: 'properties' or 'anyOf' with a list
+ * of possible properties.` This breaks every parameterless tool because
+ * OpenAI-compatible clients normally send `{ type: "object", properties: {} }`.
+ *
+ * We rewrite empty object schemas recursively into permissive ones that
+ * Cerebras accepts: drop `properties` and any restrictive
+ * `additionalProperties: false`. The resulting schema places no constraint on
+ * the arguments object, which is the right semantic for a parameterless tool.
+ */
+function normalizeSchemaForCerebras(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return schema;
+  }
+  const node = { ...(schema as Record<string, unknown>) };
+
+  if (node.type === "object") {
+    const props = node.properties;
+    const hasProps = props && typeof props === "object" && Object.keys(props).length > 0;
+    const hasAnyOf = Array.isArray(node.anyOf) && node.anyOf.length > 0;
+    const hasOneOf = Array.isArray(node.oneOf) && node.oneOf.length > 0;
+    if (!hasProps && !hasAnyOf && !hasOneOf) {
+      delete node.properties;
+      delete node.required;
+      delete node.additionalProperties;
+    } else if (hasProps) {
+      const next: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
+        next[k] = normalizeSchemaForCerebras(v);
+      }
+      node.properties = next;
+    }
+  }
+
+  if (Array.isArray(node.anyOf)) {
+    node.anyOf = node.anyOf.map(normalizeSchemaForCerebras);
+  }
+  if (Array.isArray(node.oneOf)) {
+    node.oneOf = node.oneOf.map(normalizeSchemaForCerebras);
+  }
+  if (node.items) {
+    node.items = normalizeSchemaForCerebras(node.items);
+  }
+  return node;
+}
+
 function toOpenAITool(
   tool: ToolDefinition,
   nameMap: Map<string, string>,
@@ -237,12 +284,13 @@ function toOpenAITool(
   if (safeName !== tool.name) {
     nameMap.set(safeName, tool.name);
   }
+  const rawParams = tool.parameters ?? { type: "object" };
   return {
     type: "function",
     function: {
       name: safeName,
       ...(tool.description ? { description: tool.description } : {}),
-      parameters: tool.parameters ?? { type: "object", properties: {} },
+      parameters: normalizeSchemaForCerebras(rawParams),
       ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
     },
   };
@@ -294,7 +342,7 @@ function toResponseFormat(params: GenerateTextParams): unknown {
       json_schema: {
         name: "eliza_response",
         strict: true,
-        schema: params.responseSchema,
+        schema: normalizeSchemaForCerebras(params.responseSchema),
       },
     };
   }
@@ -449,12 +497,22 @@ function normalizeTextResult(
 function createLlmCallDetails(
   model: string,
   params: GenerateTextParams,
-  systemPrompt: string | undefined
+  systemPrompt: string | undefined,
+  modelType?: ModelTypeName,
+  payload?: Record<string, unknown>
 ): RecordLlmCallDetails {
   return {
     model,
+    modelType,
+    provider: "cerebras",
     systemPrompt: systemPrompt ?? "",
     userPrompt: params.prompt,
+    prompt: params.prompt,
+    messages: params.messages,
+    tools: payload?.tools ?? params.tools,
+    toolChoice: payload?.tool_choice ?? params.toolChoice,
+    responseSchema: params.responseSchema,
+    providerOptions: params.providerOptions,
     temperature: params.temperature ?? 0,
     maxTokens: params.maxTokens ?? 8192,
     purpose: "external_llm",
@@ -520,7 +578,13 @@ async function callCerebrasChatCompletions(
   const payload = buildRequestPayload(runtime, model, paramsWithOptions, nameMap);
   const providerOptions = paramsWithOptions.providerOptions?.cerebras;
   const encoded = await encodePayload(payload, providerOptions);
-  const details = createLlmCallDetails(model, params, runtime.character?.system);
+  const details = createLlmCallDetails(
+    model,
+    params,
+    runtime.character?.system,
+    modelType,
+    payload
+  );
   const fetchImpl = getFetch(runtime);
 
   const result = await recordLlmCall(runtime, details, async () => {
@@ -542,6 +606,8 @@ async function callCerebrasChatCompletions(
     const data = (await response.json()) as ChatCompletionResponse;
     const textResult = normalizeTextResult(data, nameMap);
     details.response = textResult.text;
+    details.toolCalls = textResult.toolCalls;
+    details.finishReason = textResult.finishReason;
     applyUsageToDetails(details, textResult.usage);
     return textResult;
   });

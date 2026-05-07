@@ -702,6 +702,11 @@ export const calendarAction: Action & {
     calendlyAction,
     schedulingAction,
   ],
+  subPlanner: {
+    name: "calendar_subplanner",
+    description:
+      "Explodes calendar, Calendly, availability, preferences, and scheduling negotiation sub-actions for multi-step calendar work.",
+  },
   suppressPostActionContinuation: true,
   validate: async (
     runtime: IAgentRuntime,

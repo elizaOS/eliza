@@ -614,10 +614,7 @@ async function recordPlannerStage(args: {
 				provider: args.provider ?? "default",
 				prompt: args.prompt,
 				messages: (args.modelParams as { messages?: ChatMessage[] }).messages,
-				tools: args.modelParams.tools?.map((t) => ({
-					name: t.name,
-					description: t.description,
-				})),
+				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,
 				response: responseText,
 				toolCalls: args.parsed.toolCalls.map<RecordedToolCall>((tc) => ({

@@ -232,6 +232,56 @@ describe("@elizaos/plugin-cerebras", () => {
     expect(payload.tools).toBeUndefined();
   });
 
+  it("normalizes empty-properties object schemas for Cerebras's grammar compiler", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        choices: [
+          { message: { content: "", tool_calls: [] }, finish_reason: "stop" },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      })
+    );
+    const runtime = createRuntime({ CEREBRAS_API_KEY: "k" }, fetchImpl);
+    const { cerebrasPlugin } = await import("../index");
+
+    await cerebrasPlugin.models?.[ModelType.TEXT_SMALL]?.(
+      runtime as never,
+      {
+        prompt: "x",
+        messages: [{ role: "user", content: "x" }],
+        tools: [
+          {
+            // No-arg tool: parameters is empty object schema. Cerebras 400s on
+            // `{ type: "object", properties: {} }`. We must normalize it.
+            name: "ping",
+            description: "ping",
+            parameters: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
+            // Truly missing parameters — defaults to `{ type: "object" }` and
+            // must also be normalized to a permissive shape.
+            name: "noop",
+            description: "noop",
+          },
+        ],
+      } as never
+    );
+
+    const payload = JSON.parse(
+      (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string
+    );
+    for (const tool of payload.tools) {
+      const params = tool.function.parameters;
+      // Either no `properties` field at all, or non-empty properties.
+      expect(
+        params.properties === undefined ||
+          (typeof params.properties === "object" && Object.keys(params.properties).length > 0)
+      ).toBe(true);
+      // No `additionalProperties: false` paired with an empty object schema.
+      expect(params.additionalProperties).not.toBe(false);
+    }
+  });
+
   it("sanitizes dotted tool names for Cerebras's grammar compiler and rewrites response names", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

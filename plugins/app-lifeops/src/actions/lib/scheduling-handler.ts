@@ -29,12 +29,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import {
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
@@ -45,6 +41,7 @@ import {
 } from "../../lifeops/owner-profile.js";
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops-google-helpers.js";
 import {
   messageText as getMessageText,

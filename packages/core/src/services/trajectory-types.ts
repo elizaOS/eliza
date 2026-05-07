@@ -1,5 +1,10 @@
 import type { JsonValue } from "../types/primitives.ts";
 
+export const ELIZA_NATIVE_TRAJECTORY_FORMAT = "eliza_native_v1" as const;
+
+export type ElizaNativeTrajectoryFormat =
+	typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+
 export type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
 
 export interface TrajectoryListOptions {
@@ -56,11 +61,22 @@ export interface TrajectoryLlmCallRecord {
 	stepId?: string;
 	trajectoryId?: string;
 	timestamp?: number;
+	provider?: string;
 	model?: string;
 	modelVersion?: string;
+	modelType?: string;
 	systemPrompt?: string;
 	userPrompt?: string;
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
 	response?: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	providerMetadata?: unknown;
 	reasoning?: string;
 	temperature?: number;
 	maxTokens?: number;
@@ -192,8 +208,69 @@ export interface TrajectoryTrainingExampleRecord {
 	messages: TrajectoryTrainingMessageRecord[];
 }
 
+export interface ElizaNativeModelRequestRecord {
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
+	settings?: {
+		temperature?: number;
+		maxTokens?: number;
+		topP?: number;
+	};
+}
+
+export interface ElizaNativeModelResponseRecord {
+	text: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	usage?: {
+		promptTokens?: number;
+		completionTokens?: number;
+		totalTokens?: number;
+		cacheReadInputTokens?: number;
+		cacheCreationInputTokens?: number;
+	};
+	providerMetadata?: unknown;
+}
+
+export interface ElizaNativeTrajectoryRow
+	extends Pick<
+		TrajectoryFlattenedLlmCallRecord,
+		| "trajectoryId"
+		| "agentId"
+		| "source"
+		| "status"
+		| "scenarioId"
+		| "batchId"
+		| "stepId"
+		| "callId"
+		| "stepIndex"
+		| "callIndex"
+		| "timestamp"
+		| "purpose"
+		| "actionType"
+		| "stepType"
+		| "tags"
+		| "model"
+		| "modelVersion"
+		| "modelType"
+		| "provider"
+	> {
+	format: ElizaNativeTrajectoryFormat;
+	schemaVersion: 1;
+	boundary: "vercel_ai_sdk.generateText";
+	request: ElizaNativeModelRequestRecord;
+	response: ElizaNativeModelResponseRecord;
+	metadata: Record<string, unknown>;
+	trajectoryTotals: TrajectoryUsageTotalsRecord;
+	cacheStats: TrajectoryCacheStatsRecord;
+}
+
 export interface TrajectoryHarnessExportRow
-	extends TrajectoryFlattenedLlmCallRecord,
+	extends Omit<TrajectoryFlattenedLlmCallRecord, "messages">,
 		TrajectoryTrainingExampleRecord {
 	format: "trajectory_harness_v1";
 	trajectoryTotals: TrajectoryUsageTotalsRecord;
@@ -203,7 +280,8 @@ export interface TrajectoryHarnessExportRow
 export type TrajectoryJsonShape =
 	| "legacy"
 	| "context_object_events_v5"
-	| "harness_v1";
+	| "harness_v1"
+	| ElizaNativeTrajectoryFormat;
 
 export type TrajectoryExportFormat = "json" | "jsonl" | "csv" | "art" | "zip";
 
