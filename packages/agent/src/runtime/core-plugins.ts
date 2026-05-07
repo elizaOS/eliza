@@ -65,7 +65,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-shell", // shell command execution
-  "@elizaos/plugin-coding-tools", // native Read/Write/Edit/Bash/Grep/Glob/etc. (desktop-only, gated by CODING_TOOLS_DISABLE)
+  "@elizaos/plugin-coding-tools", // native Read/Write/Edit/Bash/Grep/Glob/etc. (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking

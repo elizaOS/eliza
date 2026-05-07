@@ -814,7 +814,7 @@ export class AgentRuntime implements IAgentRuntime {
 			enablePluginManager: opts.enablePluginManager,
 		};
 		this.nativeFeatureOptions = {
-			knowledge: opts.enableKnowledge,
+			documents: opts.enableKnowledge,
 			relationships: opts.enableRelationships,
 			trajectories: opts.enableTrajectories,
 		};
@@ -963,13 +963,19 @@ export class AgentRuntime implements IAgentRuntime {
 		return serviceType;
 	}
 
+	private nativeRuntimeFeatureSettingKey(feature: NativeRuntimeFeature): string {
+		return feature === "documents"
+			? "ENABLE_KNOWLEDGE"
+			: `ENABLE_${feature.toUpperCase()}`;
+	}
+
 	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
 		const explicit = this.nativeFeatureOptions[feature];
 		if (explicit !== undefined) {
 			return explicit;
 		}
 
-		const settingKey = `ENABLE_${feature.toUpperCase()}`;
+		const settingKey = this.nativeRuntimeFeatureSettingKey(feature);
 		const settingValue = parseBooleanValue(this.getSetting(settingKey));
 		if (settingValue !== undefined) {
 			return settingValue;
@@ -988,7 +994,7 @@ export class AgentRuntime implements IAgentRuntime {
 	): NativeRuntimeFeature | null {
 		switch (serviceType) {
 			case "knowledge":
-				return "knowledge";
+				return "documents";
 			case "relationships":
 				return "relationships";
 			case "trajectories":
@@ -1029,19 +1035,19 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
 		}
 
-		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
+		this.setSetting(this.nativeRuntimeFeatureSettingKey(feature), enabled);
 	}
 
 	async enableKnowledge(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("knowledge", true);
+		await this.setNativeRuntimeFeatureEnabled("documents", true);
 	}
 
 	async disableKnowledge(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("knowledge", false);
+		await this.setNativeRuntimeFeatureEnabled("documents", false);
 	}
 
 	isKnowledgeEnabled(): boolean {
-		return this.hasNativeRuntimeFeature("knowledge");
+		return this.hasNativeRuntimeFeature("documents");
 	}
 
 	async enableRelationships(): Promise<void> {

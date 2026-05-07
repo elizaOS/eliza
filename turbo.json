@@ -238,6 +238,13 @@
       ],
       "outputs": []
     },
+    "@elizaos/example-game-of-life#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-inmemorydb#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/gcp-examples#build": {
       "dependsOn": [
         "@elizaos/core#build",

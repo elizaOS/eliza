@@ -13,8 +13,6 @@ import type { ServiceTypeRegistry } from "../../types/service.ts";
  * Uses a permissive record type to avoid conflicts between TypeScript and protobuf MemoryMetadata types.
  */
 export type StoredDocumentMetadata = Record<string, unknown>;
-/** @deprecated Use StoredDocumentMetadata */
-export type StoredKnowledgeMetadata = StoredDocumentMetadata;
 
 /**
  * Stored document item with content, metadata, and optional similarity score.
@@ -27,8 +25,6 @@ export interface StoredDocument {
 	worldId?: UUID;
 	similarity?: number;
 }
-/** @deprecated Use StoredDocument */
-export type StoredKnowledgeItem = StoredDocument;
 
 export const ModelConfigSchema = z.object({
 	EMBEDDING_PROVIDER: z.enum(["local", "openai", "google"]).optional(),
@@ -141,9 +137,6 @@ export interface AddDocumentOptions {
 	content: string;
 	metadata?: Record<string, unknown>;
 }
-/** @deprecated Use AddDocumentOptions */
-export type AddKnowledgeOptions = AddDocumentOptions;
-
 declare module "../../types/service.ts" {
 	interface ServiceTypeRegistry {
 		KNOWLEDGE: "knowledge";
@@ -153,8 +146,6 @@ declare module "../../types/service.ts" {
 export const KnowledgeServiceType = {
 	KNOWLEDGE: "knowledge" as const,
 } satisfies Partial<ServiceTypeRegistry>;
-/** @deprecated Use KnowledgeServiceType */
-export const DocumentsServiceType = KnowledgeServiceType;
 
 export interface DocumentMetadataExtended extends Record<string, unknown> {
 	type: string; // e.g., 'document', 'website_content'
@@ -165,9 +156,6 @@ export interface DocumentMetadataExtended extends Record<string, unknown> {
 	fileType?: string; // MIME type
 	fileSize?: number;
 }
-/** @deprecated Use DocumentMetadataExtended */
-export type KnowledgeDocumentMetadata = DocumentMetadataExtended;
-
 export interface DocumentMemoryMetadata
 	extends DocumentMetadata,
 		Record<string, unknown> {
@@ -185,9 +173,6 @@ export interface DocumentMemoryMetadata
 	timestamp?: number;
 	editedAt?: number;
 }
-/** @deprecated Use DocumentMemoryMetadata */
-export type KnowledgeDocumentMemoryMetadata = DocumentMemoryMetadata;
-
 export interface DocumentFragmentMemoryMetadata
 	extends FragmentMetadata,
 		Record<string, unknown> {
@@ -198,9 +183,6 @@ export interface DocumentFragmentMemoryMetadata
 	documentTitle?: string;
 	timestamp?: number;
 }
-/** @deprecated Use DocumentFragmentMemoryMetadata */
-export type KnowledgeFragmentMemoryMetadata = DocumentFragmentMemoryMetadata;
-
 export interface DocumentsConfig {
 	CTX_KNOWLEDGE_ENABLED: boolean;
 	LOAD_DOCS_ON_STARTUP: boolean;
@@ -216,9 +198,6 @@ export interface DocumentsConfig {
 	TOKENS_PER_MINUTE?: number;
 	BATCH_DELAY_MS?: number;
 }
-/** @deprecated Use DocumentsConfig */
-export type KnowledgeConfig = DocumentsConfig;
-
 export interface LoadResult {
 	successful: number;
 	failed: number;

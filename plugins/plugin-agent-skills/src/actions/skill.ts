@@ -134,24 +134,7 @@ export const skillAction: Action = {
 		"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
 	descriptionCompressed:
 		"Skill catalog: search, details, sync, toggle, install, uninstall.",
-	similes: [
-		// Generic
-		"SKILLS",
-		"SKILL_CATALOG",
-		// Per-op legacy names
-		"SEARCH_SKILLS",
-		"GET_SKILL_DETAILS",
-		"SYNC_SKILL_CATALOG",
-		"TOGGLE_SKILL",
-		"INSTALL_SKILL",
-		"UNINSTALL_SKILL",
-		// Common natural language
-		"BROWSE_SKILLS",
-		"LIST_SKILLS",
-		"REFRESH_SKILLS",
-		"ENABLE_SKILL",
-		"DISABLE_SKILL",
-	],
+	similes: [],
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{

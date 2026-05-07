@@ -8,13 +8,6 @@ import { fileURLToPath } from "node:url";
 import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
 export {
-  entriesToLegacyManifest,
-  entryToLegacyManifestEntry,
-  type LegacyManifest,
-  type LegacyManifestEntry,
-  type LegacyManifestParameter,
-} from "./legacy-adapter";
-export {
   getApps,
   getConnectors,
   getEntry,

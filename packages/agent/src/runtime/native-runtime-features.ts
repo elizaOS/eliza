@@ -22,5 +22,3 @@ export function runtimeKnowledgeEnabled(runtime: AgentRuntime): boolean {
   );
 }
 
-/** @deprecated Use runtimeKnowledgeEnabled (identical behavior, documents = knowledge feature) */
-export const runtimeDocumentsEnabled = runtimeKnowledgeEnabled;

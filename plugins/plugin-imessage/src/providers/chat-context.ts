@@ -7,7 +7,7 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-export const chatContextProvider: Provider = {
+export const chatContextProvider = {
   name: "imessageChatContext",
   description: "Provides iMessage chat context for the current conversation.",
   descriptionCompressed: "Current iMessage chat handle, chat ID, type, and display name.",
@@ -73,4 +73,4 @@ export const chatContextProvider: Provider = {
       text: lines.join("\n"),
     };
   },
-};
+} as Provider;

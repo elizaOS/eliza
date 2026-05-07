@@ -9,7 +9,7 @@ import { getCloudSecret } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 import {
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingProviderId,
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
@@ -208,7 +208,7 @@ export async function handleOnboardingCompatRoute(
     const replayDeploymentTarget = normalizeDeploymentTargetConfig(
       replayBodyRecord.deploymentTarget,
     );
-    const replayLinkedAccounts = normalizeLinkedAccountsConfig(
+    const replayLinkedAccounts = normalizeLinkedAccountFlagsConfig(
       replayBodyRecord.linkedAccounts,
     );
     const replayServiceRouting = normalizeServiceRoutingConfig(

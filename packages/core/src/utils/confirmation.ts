@@ -99,7 +99,11 @@ export interface ConfirmationDecision {
 	metadata?: Record<string, unknown>;
 }
 
-function buildCacheKey(userId: string, actionName: string, pendingKey: string): string {
+function buildCacheKey(
+	userId: string,
+	actionName: string,
+	pendingKey: string,
+): string {
 	return `confirmation:${userId}:${actionName}:${pendingKey}`;
 }
 
@@ -137,8 +141,7 @@ export async function requireConfirmation(
 	const userText = readUserText(args.message);
 
 	const existing = await args.runtime.getCache<PendingConfirmation>(cacheKey);
-	const fresh =
-		!existing || Date.now() - existing.createdAt > existing.ttlMs;
+	const fresh = !existing || Date.now() - existing.createdAt > existing.ttlMs;
 
 	if (fresh) {
 		const record: PendingConfirmation = {
@@ -164,8 +167,11 @@ export async function requireConfirmation(
 
 	const isConfirmed = confirmRegex.test(userText);
 	const isCancelled = !isConfirmed && cancelRegex.test(userText);
-	const status: ConfirmationStatus =
-		isConfirmed ? "confirmed" : isCancelled ? "cancelled" : "cancelled";
+	const status: ConfirmationStatus = isConfirmed
+		? "confirmed"
+		: isCancelled
+			? "cancelled"
+			: "cancelled";
 	return { status, metadata: existing.metadata };
 }
 

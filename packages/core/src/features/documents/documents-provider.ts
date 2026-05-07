@@ -2,7 +2,7 @@ import { logger } from "../../logger";
 import type { IAgentRuntime, Memory, Provider, State } from "../../types";
 import { addHeader } from "../../utils";
 import type { KnowledgeService } from "./service.ts";
-import type { KnowledgeDocumentMetadata } from "./types.ts";
+import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeKnowledgeSourceValue } from "./utils.ts";
 
 const MAX_DOCUMENT_PROVIDER_ITEMS = 25;
@@ -46,7 +46,7 @@ export const documentsProvider: Provider = {
 
 			const documents = allMemories.filter((memory) => {
 				const metadata = memory.metadata as
-					| KnowledgeDocumentMetadata
+					| DocumentMetadataExtended
 					| undefined;
 				return (
 					metadata?.documentId === memory.id ||
@@ -71,7 +71,7 @@ export const documentsProvider: Provider = {
 			const documentsList = visibleDocuments
 				.map((doc, index) => {
 					const metadata = doc.metadata as
-						| KnowledgeDocumentMetadata
+						| DocumentMetadataExtended
 						| undefined;
 					const filename =
 						metadata?.filename || metadata?.title || `Document ${index + 1}`;
@@ -112,14 +112,14 @@ export const documentsProvider: Provider = {
 					documents: visibleDocuments.map((doc) => ({
 						id: doc.id,
 						filename:
-							(doc.metadata as KnowledgeDocumentMetadata | undefined)
+							(doc.metadata as DocumentMetadataExtended | undefined)
 								?.filename ||
-							(doc.metadata as KnowledgeDocumentMetadata | undefined)?.title,
+							(doc.metadata as DocumentMetadataExtended | undefined)?.title,
 						fileType:
-							(doc.metadata as KnowledgeDocumentMetadata | undefined)
+							(doc.metadata as DocumentMetadataExtended | undefined)
 								?.fileType ||
-							(doc.metadata as KnowledgeDocumentMetadata | undefined)?.fileExt,
-						source: (doc.metadata as KnowledgeDocumentMetadata | undefined)
+							(doc.metadata as DocumentMetadataExtended | undefined)?.fileExt,
+						source: (doc.metadata as DocumentMetadataExtended | undefined)
 							?.source,
 					})),
 					count: documents.length,

@@ -20,7 +20,7 @@ import type {
 } from "../../types";
 import { hasActionContextOrKeyword } from "../../utils/action-validation.ts";
 import { addKnowledgeFromFilePath } from "./docs-loader.ts";
-import { KnowledgeService } from "./service.ts";
+import { KnowledgeService, type SearchMode } from "./service.ts";
 import { fetchKnowledgeFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createKnowledgeNoteFilename, deriveKnowledgeTitle } from "./utils.ts";
 
@@ -366,6 +366,16 @@ export const searchDocumentsAction: Action = {
 			required: false,
 			schema: { type: "number" as const, minimum: 1, maximum: 20, default: 3 },
 		},
+		{
+			name: "searchMode",
+			description:
+				"Retrieval strategy: 'hybrid' (default, vector + BM25 combined), 'vector' (pure semantic), or 'keyword' (pure BM25, works without an embedding model).",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["hybrid", "vector", "keyword"],
+			},
+		},
 	],
 	similes: [
 		"SEARCH_KNOWLEDGE",
@@ -446,7 +456,7 @@ export const searchDocumentsAction: Action = {
 			}
 
 			const params = _options?.parameters as
-				| { query?: string; limit?: number }
+				| { query?: string; limit?: number; searchMode?: string }
 				| undefined;
 			const text = message.content.text || "";
 
@@ -472,8 +482,18 @@ export const searchDocumentsAction: Action = {
 				};
 			}
 
+			const rawMode = params?.searchMode;
+			const searchMode: SearchMode | undefined =
+				rawMode === "hybrid" || rawMode === "vector" || rawMode === "keyword"
+					? rawMode
+					: undefined;
+
 			const searchMessage: Memory = { ...message, content: { text: query } };
-			const results = await service.getKnowledge(searchMessage);
+			const results = await service.getKnowledge(
+				searchMessage,
+				undefined,
+				searchMode,
+			);
 
 			let response: Content;
 			if (results.length === 0) {

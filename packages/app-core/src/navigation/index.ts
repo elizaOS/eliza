@@ -322,41 +322,6 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   logs: "/apps/logs",
 };
 
-/** Legacy path redirects — old paths that now map to new tabs. */
-const LEGACY_PATHS: Record<string, Tab> = {
-  "/game": "apps",
-  "/agent": "character",
-  "/inventory": "inventory",
-  "/wallets": "inventory",
-  "/features": "plugins",
-  "/admin": "fine-tuning",
-  "/config": "settings",
-  "/triggers": "automations",
-  "/heartbeats": "automations",
-  // Old top-level paths that moved under /character/
-  "/character-select": "character-select",
-  "/knowledge": "knowledge",
-  // Old top-level paths that moved under /apps/
-  "/lifeops": "lifeops",
-  "/tasks": "automations",
-  "/plugins": "plugins",
-  "/skills": "skills",
-  "/advanced": "fine-tuning",
-  "/fine-tuning": "fine-tuning",
-  "/trajectories": "trajectories",
-  "/relationships": "relationships",
-  "/memories": "memories",
-  "/runtime": "runtime",
-  "/database": "database",
-  "/logs": "logs",
-  // Old/legacy connector paths
-  "/connectors": "connectors",
-  "/settings/connectors": "connectors",
-  "/voice": "settings",
-  // /companion stays as a legacy redirect — companion is now an overlay app at /apps/companion
-  "/companion": "chat",
-};
-
 const PATH_TO_TAB = new Map(
   Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),
 );
@@ -384,14 +349,10 @@ export function pathForTab(tab: Tab, basePath = ""): string {
 }
 
 export function canonicalPathForPath(
-  pathname: string,
-  basePath = "",
+  _pathname: string,
+  _basePath = "",
 ): string | null {
-  const normalized = normalizePathForLookup(pathname, basePath);
-  const legacyTab = LEGACY_PATHS[normalized];
-  if (!legacyTab) return null;
-  const canonical = pathForTab(legacyTab, basePath);
-  return canonical === pathname ? null : canonical;
+  return null;
 }
 
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
@@ -487,7 +448,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   }
 
   // Check current paths first, then legacy redirects
-  return PATH_TO_TAB.get(normalized) ?? LEGACY_PATHS[normalized] ?? null;
+  return PATH_TO_TAB.get(normalized) ?? null;
 }
 
 function normalizeBasePath(basePath: string): string {

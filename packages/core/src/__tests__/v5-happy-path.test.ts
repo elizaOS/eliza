@@ -783,7 +783,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			| {
 					prompt?: string;
 					messages?: Array<{ content?: unknown }>;
-				}
+			  }
 			| undefined;
 		const messageContent = (stage1Params?.messages ?? [])
 			.map((m) =>

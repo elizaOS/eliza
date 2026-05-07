@@ -22,8 +22,8 @@ import {
 } from "./ctx-embeddings.ts";
 import { generateText } from "./llm.ts";
 import type {
-	KnowledgeDocumentMemoryMetadata,
-	KnowledgeFragmentMemoryMetadata,
+	DocumentMemoryMetadata,
+	DocumentFragmentMemoryMetadata,
 } from "./types.ts";
 import {
 	convertPdfToTextFromBuffer,
@@ -217,7 +217,7 @@ export function createDocumentMemory({
 	const fileExt = originalFilename.split(".").pop()?.toLowerCase() || "";
 	const title = originalFilename.replace(`.${fileExt}`, "");
 	const docId = documentId || (uuidv4() as UUID);
-	const metadata: KnowledgeDocumentMemoryMetadata = {
+	const metadata: DocumentMemoryMetadata = {
 		type: MemoryType.DOCUMENT,
 		documentId: clientDocumentId,
 		filename: originalFilename,
@@ -340,7 +340,7 @@ async function processAndSaveFragments({
 					typeof documentMetadata?.source === "string"
 						? documentMetadata.source
 						: "upload";
-				const fragmentMetadata: KnowledgeFragmentMemoryMetadata = {
+				const fragmentMetadata: DocumentFragmentMemoryMetadata = {
 					...(documentMetadata ?? {}),
 					type: MemoryType.FRAGMENT,
 					documentId,

@@ -33,21 +33,6 @@ export {
   verifyBootstrapToken,
 } from "./bootstrap-token";
 export {
-  _peekLegacyBearerDeadline,
-  _peekLegacyBearerInvalidated,
-  _resetLegacyBearerState,
-  decideLegacyBearer,
-  LEGACY_DEPRECATION_HEADER,
-  LEGACY_GRACE_WINDOW_MS,
-  LEGACY_INVALIDATE_AUDIT_ACTION,
-  LEGACY_REJECT_AUDIT_ACTION,
-  LEGACY_USE_AUDIT_ACTION,
-  type LegacyBearerDecision,
-  markLegacyBearerInvalidated,
-  recordLegacyBearerRejection,
-  recordLegacyBearerUse,
-} from "./legacy-bearer";
-export {
   ARGON2_PARAMS,
   assertPasswordStrong,
   hashPassword,

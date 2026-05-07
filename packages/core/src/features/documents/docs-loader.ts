@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { logger } from "../../logger";
 import type { UUID } from "../../types";
 import type { KnowledgeService } from "./service.ts";
-import type { AddKnowledgeOptions } from "./types.ts";
+import type { AddDocumentOptions } from "./types.ts";
 import { isTextBackedKnowledgeContent } from "./utils.ts";
 
 export function getKnowledgePath(runtimePath?: string): string {
@@ -141,7 +141,7 @@ export async function addKnowledgeFromFilePath({
 		? fileBuffer.toString("utf-8")
 		: fileBuffer.toString("base64");
 
-	const knowledgeOptions: AddKnowledgeOptions = {
+	const knowledgeOptions: AddDocumentOptions = {
 		agentId,
 		clientDocumentId: "" as UUID,
 		contentType,

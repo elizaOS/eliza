@@ -57,7 +57,12 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   },
   "page-connectors": {
     primaryContext: "connectors",
-    secondaryContexts: ["page", "page-connectors", "connectors", "social_posting"],
+    secondaryContexts: [
+      "page",
+      "page-connectors",
+      "connectors",
+      "social_posting",
+    ],
   },
   "page-phone": {
     primaryContext: "phone",

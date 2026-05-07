@@ -873,8 +873,26 @@ async function fixDtsExtensions(rootDir: string): Promise<void> {
 	let rewrittenFiles = 0;
 	let rewrittenSpecifiers = 0;
 
+	const readDtsWithRetry = async (file: string): Promise<string> => {
+		let last: Error | undefined;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			try {
+				return await fs.readFile(file, "utf8");
+			} catch (e) {
+				const err = e as NodeJS.ErrnoException;
+				last = err instanceof Error ? err : new Error(String(e));
+				if (err.code === "ENOENT" && attempt < 4) {
+					await new Promise((r) => setTimeout(r, 30 * (attempt + 1)));
+					continue;
+				}
+				throw last;
+			}
+		}
+		throw last ?? new Error(`Failed to read ${file}`);
+	};
+
 	for (const file of files) {
-		const src = await fs.readFile(file, "utf8");
+		const src = await readDtsWithRetry(file);
 		const fileDir = path.dirname(file);
 		const matches: Array<{ start: number; end: number; replacement: string }> =
 			[];

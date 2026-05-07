@@ -71,7 +71,6 @@ export {
 export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
-  isAllowedLocalOrigin,
 } from "./server-cors";
 export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"

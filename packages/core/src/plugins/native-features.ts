@@ -28,7 +28,6 @@ import {
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
 	KnowledgeService,
-	knowledgePlugin,
 } from "../features/documents/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
@@ -37,7 +36,6 @@ import type { Plugin } from "../types/plugin";
 
 export type NativeRuntimeFeature =
 	| "documents"
-	| "knowledge" // legacy alias for "documents"
 	| "relationships"
 	| "trajectories";
 
@@ -72,7 +70,6 @@ export const relationshipsPlugin: Plugin = {
 export const nativeRuntimeFeaturePlugins: Record<NativeRuntimeFeature, Plugin> =
 	{
 		documents: documentsPlugin,
-		knowledge: knowledgePlugin, // legacy alias
 		relationships: relationshipsPlugin,
 		trajectories: trajectoriesPlugin,
 	};
@@ -88,7 +85,6 @@ export const nativeRuntimeFeaturePluginNames: Record<
 	string
 > = {
 	documents: documentsPlugin.name,
-	knowledge: knowledgePlugin.name, // legacy alias
 	relationships: relationshipsPlugin.name,
 	trajectories: trajectoriesPlugin.name,
 };
@@ -98,7 +94,6 @@ export const nativeRuntimeFeatureDefaults: Record<
 	boolean
 > = {
 	documents: true,
-	knowledge: true, // legacy alias
 	relationships: true,
 	trajectories: true,
 };
@@ -123,13 +118,9 @@ export function resolveNativeRuntimeFeatureFromPluginName(
 
 export {
 	createDocumentsPlugin,
-	createKnowledgePlugin,
 	documentsPlugin,
 	documentsPluginCore,
 	documentsPluginHeadless,
-	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
 } from "../features/documents/index";
 export type {
 	FetchedKnowledgeUrl,

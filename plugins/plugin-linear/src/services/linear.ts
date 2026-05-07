@@ -320,6 +320,32 @@ export class LinearService extends Service {
     return comment;
   }
 
+  async updateComment(commentId: string, body: string): Promise<Comment> {
+    const commentPayload = await this.client.updateComment(commentId, {
+      body,
+    });
+    const comment = await commentPayload.comment;
+    if (!comment) {
+      throw new Error("Failed to update comment");
+    }
+    this.logActivity("update_comment", "comment", commentId, { bodyLength: body.length }, true);
+    return comment;
+  }
+
+  async deleteComment(commentId: string): Promise<void> {
+    const payload = await this.client.deleteComment(commentId);
+    if (!payload.success) {
+      throw new Error("Failed to delete comment");
+    }
+    this.logActivity("delete_comment", "comment", commentId, {}, true);
+  }
+
+  async listComments(issueId: string, limit = 25): Promise<Comment[]> {
+    const issue = await this.client.issue(issueId);
+    const connection = await issue.comments({ first: Math.min(limit, 100) });
+    return connection.nodes;
+  }
+
   async getProjects(teamId?: string): Promise<Project[]> {
     // Linear SDK v51 requires manual team filtering on projects
     const query = this.client.projects({
