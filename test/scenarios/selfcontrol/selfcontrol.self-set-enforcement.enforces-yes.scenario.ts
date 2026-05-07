@@ -6,7 +6,7 @@ export default scenario({
   domain: "selfcontrol",
   tags: ["lifeops", "selfcontrol", "confirmation", "happy-path"],
   description:
-    "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; BLOCK_WEBSITES must fire.",
+    "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; OWNER_WEBSITE_BLOCK must fire.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

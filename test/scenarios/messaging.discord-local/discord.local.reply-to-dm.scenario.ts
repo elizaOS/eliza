@@ -101,7 +101,7 @@ export default scenario({
           .reverse()
           .find((entry) => entry.actionName === "SEND_DRAFT");
         if (!sendAction) {
-          return "expected a CROSS_CHANNEL_SEND action for the confirmed Discord reply";
+          return "expected a SEND_DRAFT action for the confirmed Discord reply";
         }
 
         const blob = JSON.stringify(sendAction).toLowerCase();

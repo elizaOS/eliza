@@ -6,7 +6,7 @@ export default scenario({
   domain: "selfcontrol",
   tags: ["lifeops", "selfcontrol", "confirmation", "ambiguity"],
   description:
-    "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No BLOCK_WEBSITES fires on turn 1.",
+    "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No OWNER_WEBSITE_BLOCK fires on turn 1.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

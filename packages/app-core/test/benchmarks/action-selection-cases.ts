@@ -52,13 +52,13 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["chat", "negative"],
   },
 
-  // ─── To-dos / habits (LIFE create_definition) ─────────────────────────
+  // ─── To-dos / habits (LIFE create kind=definition) ────────────────────
   {
     id: "todo-add-simple",
     userMessage: "add a todo: pick up dry cleaning tomorrow",
     expectedAction: "LIFE",
     acceptableActions: ["CREATE_TODO", "LIFE_CREATE_DEFINITION"],
-    expectedParams: { intent: "create_definition" },
+    expectedParams: { subaction: "create", kind: "definition" },
     tags: ["todos", "standard"],
   },
   {
@@ -91,13 +91,13 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["todos", "standard"],
   },
 
-  // ─── Goals (LIFE create_goal) ─────────────────────────────────────────
+  // ─── Goals (LIFE create kind=goal) ────────────────────────────────────
   {
     id: "goal-save-money",
     userMessage: "set a goal to save $5,000 by the end of the year",
     expectedAction: "LIFE",
     acceptableActions: ["CREATE_GOAL"],
-    expectedParams: { intent: "create_goal" },
+    expectedParams: { subaction: "create", kind: "goal" },
     tags: ["goals", "standard"],
   },
   {
