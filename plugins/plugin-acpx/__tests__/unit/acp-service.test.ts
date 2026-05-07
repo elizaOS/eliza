@@ -303,6 +303,38 @@ describe("AcpService", () => {
     prompt.proc.emit("close", 130, "SIGTERM");
   });
 
+  it("preserves cancelled status when cancelling an in-flight prompt", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cancel-active",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "long running");
+    await waitForSpawn(prompt);
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(prompt.proc.kill).toHaveBeenCalledWith("SIGTERM");
+    prompt.proc.emit("close", 130, "SIGTERM");
+
+    await cancelled;
+    const result = await sent;
+    expect(result.stopReason).toBe("cancelled");
+    expect(result.error).toBeUndefined();
+    expect(service.getSession(sessionId)?.status).toBe("cancelled");
+    expect(events).toContain("cancelled");
+    expect(events).not.toContain("error");
+  });
+
   it("ignores malformed NDJSON without crashing", async () => {
     const create = nextProc();
     const rt = runtime() as { logger: { warn: ReturnType<typeof vi.fn> } };
