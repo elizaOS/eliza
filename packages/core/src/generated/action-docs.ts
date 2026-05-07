@@ -3820,6 +3820,34 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "DELETE_LINEAR_COMMENT",
+			description: "Delete a Linear comment by id",
+			parameters: [
+				{
+					name: "commentId",
+					description: "Linear comment id to delete.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear comment id to delete.",
+				},
+			],
+			descriptionCompressed: "delete Linear comment id",
+			similes: ["remove-linear-comment", "erase-linear-comment"],
+			exampleCalls: [
+				{
+					user: "Use DELETE_LINEAR_COMMENT with the provided parameters.",
+					actions: ["DELETE_LINEAR_COMMENT"],
+					params: {
+						DELETE_LINEAR_COMMENT: {
+							commentId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "DELETE_LINEAR_ISSUE",
 			description: "Delete (archive) an issue in Linear",
 			parameters: [
@@ -5240,22 +5268,22 @@ export const allActionsSpec = {
 		{
 			name: "LINEAR",
 			description:
-				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
 					name: "op",
 					description:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from...",
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments...",
 				},
 			],
 			descriptionCompressed:
-				"Linear: create/get/update/delete issue, create comment, search issues, get/clear activity.",
+				"Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
 			similes: [
 				"LINEAR_ISSUE",
 				"LINEAR_ISSUES",
@@ -5272,6 +5300,9 @@ export const allActionsSpec = {
 				"MANAGE_LINEAR_ISSUES",
 				"CREATE_LINEAR_COMMENT",
 				"COMMENT_LINEAR_ISSUE",
+				"UPDATE_LINEAR_COMMENT",
+				"DELETE_LINEAR_COMMENT",
+				"LIST_LINEAR_COMMENTS",
 				"GET_LINEAR_ACTIVITY",
 				"CLEAR_LINEAR_ACTIVITY",
 				"SEARCH_LINEAR_ISSUES",
@@ -5354,6 +5385,50 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"List active task agents together with current task progress so the main agent can keep user updated while work continues asynchronously.",
+		},
+		{
+			name: "LIST_LINEAR_COMMENTS",
+			description: "List comments on a Linear issue",
+			parameters: [
+				{
+					name: "issueId",
+					description: "Linear issue id or identifier to list comments for.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear issue id or id to list comments for.",
+				},
+				{
+					name: "limit",
+					description:
+						"Maximum number of comments to return (default 25, max 100).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"max number of comments to return (default 25, max 100).",
+				},
+			],
+			descriptionCompressed: "list comment Linear issue",
+			similes: [
+				"get-linear-comments",
+				"show-linear-comments",
+				"fetch-linear-comments",
+			],
+			exampleCalls: [
+				{
+					user: "Use LIST_LINEAR_COMMENTS with the provided parameters.",
+					actions: ["LIST_LINEAR_COMMENTS"],
+					params: {
+						LIST_LINEAR_COMMENTS: {
+							issueId: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "LIST_OVERDUE_FOLLOWUPS",
@@ -7167,26 +7242,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Post to social network: x, bluesky, farcaster, nostr.",
-			similes: [
-				"POST",
-				"PUBLISH",
-				"BROADCAST",
-				"SHARE",
-				"SOCIAL_POST",
-				"PUBLISH_POST",
-				"SEND_X_POST",
-				"POST_X",
-				"TWEET",
-				"POST_BLUESKY",
-				"POST_TO_BLUESKY",
-				"BLUESKY_POST",
-				"FARCASTER_CAST",
-				"SEND_CAST",
-				"POST_CAST",
-				"NOSTR_PUBLISH_NOTE",
-				"NOSTR_NOTE",
-				"POST_NOSTR_NOTE",
-			],
 			exampleCalls: [
 				{
 					user: "Use POST_TO_SOCIAL with the provided parameters.",
@@ -8106,20 +8161,6 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Shopify: products, inventory, orders, customers.",
-			similes: [
-				"STORE",
-				"SHOPIFY_STORE",
-				"MANAGE_SHOPIFY_PRODUCTS",
-				"MANAGE_SHOPIFY_INVENTORY",
-				"MANAGE_SHOPIFY_ORDERS",
-				"MANAGE_SHOPIFY_CUSTOMERS",
-				"SEARCH_SHOPIFY_STORE",
-				"SEARCH_SHOPIFY",
-				"SHOPIFY_PRODUCTS",
-				"SHOPIFY_ORDERS",
-				"SHOPIFY_INVENTORY",
-				"SHOPIFY_CUSTOMERS",
-			],
 			exampleCalls: [
 				{
 					user: "Use SHOPIFY with the provided parameters.",
@@ -8188,21 +8229,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
-			similes: [
-				"SKILLS",
-				"SKILL_CATALOG",
-				"SEARCH_SKILLS",
-				"GET_SKILL_DETAILS",
-				"SYNC_SKILL_CATALOG",
-				"TOGGLE_SKILL",
-				"INSTALL_SKILL",
-				"UNINSTALL_SKILL",
-				"BROWSE_SKILLS",
-				"LIST_SKILLS",
-				"REFRESH_SKILLS",
-				"ENABLE_SKILL",
-				"DISABLE_SKILL",
-			],
 			exampleCalls: [
 				{
 					user: "Use SKILL with the provided parameters.",
@@ -8308,39 +8334,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Slack message ops: send, edit, delete, react, pin, unpin.",
-			similes: [
-				"SLACK_SEND_MESSAGE",
-				"SEND_SLACK_MESSAGE",
-				"POST_TO_SLACK",
-				"MESSAGE_SLACK",
-				"SLACK_POST",
-				"SEND_TO_CHANNEL",
-				"SLACK_EDIT_MESSAGE",
-				"UPDATE_SLACK_MESSAGE",
-				"MODIFY_MESSAGE",
-				"CHANGE_MESSAGE",
-				"SLACK_UPDATE",
-				"SLACK_DELETE_MESSAGE",
-				"REMOVE_SLACK_MESSAGE",
-				"DELETE_MESSAGE",
-				"SLACK_REMOVE",
-				"SLACK_REACT_TO_MESSAGE",
-				"ADD_SLACK_REACTION",
-				"REACT_SLACK",
-				"SLACK_EMOJI",
-				"ADD_EMOJI",
-				"REMOVE_REACTION",
-				"SLACK_PIN_MESSAGE",
-				"PIN_SLACK_MESSAGE",
-				"PIN_MESSAGE",
-				"SLACK_PIN",
-				"SAVE_MESSAGE",
-				"SLACK_UNPIN_MESSAGE",
-				"UNPIN_SLACK_MESSAGE",
-				"UNPIN_MESSAGE",
-				"SLACK_UNPIN",
-				"REMOVE_PIN",
-			],
 			exampleCalls: [
 				{
 					user: "Use SLACK_MESSAGE_OP with the provided parameters.",
@@ -8642,18 +8635,6 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
-			similes: [
-				"TAILSCALE_OP",
-				"START_TAILSCALE",
-				"STOP_TAILSCALE",
-				"START_TUNNEL",
-				"STOP_TUNNEL",
-				"OPEN_TUNNEL",
-				"CLOSE_TUNNEL",
-				"CREATE_TUNNEL",
-				"TAILSCALE_UP",
-				"TAILSCALE_DOWN",
-			],
 			exampleCalls: [
 				{
 					user: "Use TAILSCALE with the provided parameters.",
@@ -9305,12 +9286,53 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "UPDATE_LINEAR_COMMENT",
+			description: "Update (edit) the body of an existing Linear comment",
+			parameters: [
+				{
+					name: "commentId",
+					description: "Linear comment id to update.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear comment id to update.",
+				},
+				{
+					name: "body",
+					description: "New comment body text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "New comment body text.",
+				},
+			],
+			descriptionCompressed: "update (edit) body exist Linear comment",
+			similes: [
+				"edit-linear-comment",
+				"modify-linear-comment",
+				"change-linear-comment",
+			],
+			exampleCalls: [
+				{
+					user: "Use UPDATE_LINEAR_COMMENT with the provided parameters.",
+					actions: ["UPDATE_LINEAR_COMMENT"],
+					params: {
+						UPDATE_LINEAR_COMMENT: {
+							commentId: "example",
+							body: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 			parameters: [],
 			descriptionCompressed: "Invoke an enabled skill by slug.",
-			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 		},
 		{
 			name: "WALLET_PREPARE",
@@ -9482,7 +9504,7 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "WORKFLOW_LIFECYCLE_OP",
+			name: "WORKFLOW",
 			description:
 				'n8n workflow lifecycle operation. Pass `op` ("activate", "deactivate", or "delete") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.',
 			parameters: [
@@ -9530,10 +9552,10 @@ export const allActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: "Use WORKFLOW_LIFECYCLE_OP with the provided parameters.",
-					actions: ["WORKFLOW_LIFECYCLE_OP"],
+					user: "Use WORKFLOW with the provided parameters.",
+					actions: ["WORKFLOW"],
 					params: {
-						WORKFLOW_LIFECYCLE_OP: {
+						WORKFLOW: {
 							op: "example",
 							workflowId: "example",
 						},

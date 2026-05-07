@@ -153,9 +153,7 @@ const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /**
  * Cookie-aware authorisation gate. Tries (in order):
  *   1. valid `eliza_session` cookie → session in DB → authorised.
- *   2. configured static bearer (legacy) → 14-day grace window via
- *      `decideLegacyBearer`; emits the deprecation header on success.
- *   3. open-access fallback when no token is configured.
+ *   2. session-id bearer header.
  *
  * For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
  * MUST present a valid `x-eliza-csrf` header that matches the per-session
@@ -216,7 +214,7 @@ export async function ensureCompatApiAuthorizedAsync(
     }
   }
 
-  // Bearer path — session id, legacy static token, or bootstrap bearer.
+  // Bearer path — session id only.
   // Bearer-auth requests are exempt from CSRF (they're not cookie-bound).
   const provided = getProvidedApiToken(req);
   if (provided) {
@@ -226,54 +224,6 @@ export async function ensureCompatApiAuthorizedAsync(
       options.now,
     ).catch(() => null);
     if (sessionFromBearer) return true;
-
-    const expectedToken = getCompatApiToken();
-    if (expectedToken && tokenMatches(expectedToken, provided)) {
-      const userAgent = extractHeaderValue(req.headers["user-agent"]);
-      const {
-        decideLegacyBearer,
-        recordLegacyBearerRejection,
-        recordLegacyBearerUse,
-        LEGACY_DEPRECATION_HEADER,
-      } = await import("./auth/legacy-bearer");
-      const decision = await decideLegacyBearer(
-        options.store,
-        process.env,
-        options.now,
-      );
-      if (decision.allowed) {
-        if (!res.headersSent) {
-          res.setHeader(LEGACY_DEPRECATION_HEADER, "1");
-        }
-        await recordLegacyBearerUse(options.store, {
-          ip,
-          userAgent,
-        }).catch((err) => {
-          logger.error(
-            `[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
-        return true;
-      }
-      await recordLegacyBearerRejection(options.store, {
-        ip,
-        userAgent,
-        reason: decision.reason ?? "post_grace",
-      }).catch((err) => {
-        logger.error(
-          `[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-      recordFailedAuth(ip);
-      sendJsonError(res, 401, "Unauthorized");
-      return false;
-    }
-  }
-
-  // No credential matched.
-  if (!getCompatApiToken()) {
-    sendJsonError(res, 401, "Unauthorized");
-    return false;
   }
 
   recordFailedAuth(ip);
@@ -412,7 +362,7 @@ interface CompatStateLike {
  *
  *   - When the runtime DB is up, delegate to
  *     {@link ensureCompatApiAuthorizedAsync} so cookie + CSRF +
- *     legacy-bearer + machine-session paths all work.
+ *     machine-session paths all work.
  *   - When the runtime DB is not yet available (early boot), fall back
  *     to {@link ensureCompatApiAuthorized} (bearer-only). This preserves
  *     the existing behaviour for cold boot probes that ran before the

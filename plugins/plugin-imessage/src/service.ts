@@ -19,7 +19,13 @@ import {
   logger,
   type Memory,
   MemoryType,
+  type MessageConnectorChatContext,
+  type MessageConnectorQueryContext,
+  type MessageConnectorRegistration,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
   Service,
+  type TargetInfo,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -74,22 +80,6 @@ function appleScriptStringLiteral(value: string): string {
 type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
   registerMessageConnector?: (registration: MessageConnectorRegistration) => void;
 };
-type RuntimeSendHandler = Parameters<IAgentRuntime["registerSendHandler"]>[1];
-type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];
-type ConnectorContent = Parameters<RuntimeSendHandler>[2];
-type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
-type MessageConnectorTarget = Awaited<
-  ReturnType<NonNullable<MessageConnectorRegistration["resolveTargets"]>>
->[number];
-type MessageConnectorQueryContext = Parameters<
-  NonNullable<MessageConnectorRegistration["resolveTargets"]>
->[1];
-type MessageConnectorChatContext = NonNullable<
-  Awaited<ReturnType<NonNullable<MessageConnectorRegistration["getChatContext"]>>>
->;
-type MessageConnectorUserContext = NonNullable<
-  Awaited<ReturnType<NonNullable<MessageConnectorRegistration["getUserContext"]>>>
->;
 
 function registerMessageConnectorIfAvailable(
   runtime: IAgentRuntime,
@@ -201,7 +191,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
     contactName ??
     (isGroup ? participants.filter(Boolean).join(", ") : primaryHandle) ??
     chat.chatId;
-  const target: ConnectorTargetInfo = {
+  const target: TargetInfo = {
     source: "imessage",
     channelId: isGroup ? `chat_id:${chat.chatId}` : (primaryHandle ?? `chat_id:${chat.chatId}`),
   };
@@ -224,7 +214,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
 
 async function resolveIMessageSendTarget(
   runtime: IAgentRuntime,
-  target: ConnectorTargetInfo
+  target: TargetInfo
 ): Promise<string | null> {
   if (target.channelId?.trim()) {
     return normalizeIMessageConnectorHandle(target.channelId);
@@ -243,7 +233,7 @@ async function resolveIMessageSendTarget(
 
 async function resolveIMessageChatId(
   runtime: IAgentRuntime,
-  target: ConnectorTargetInfo
+  target: TargetInfo
 ): Promise<string | null> {
   const channelId =
     target.channelId ??
@@ -410,8 +400,8 @@ export class IMessageService extends Service implements IIMessageService {
       },
       sendHandler: async (
         _runtime: IAgentRuntime,
-        target: ConnectorTargetInfo,
-        content: ConnectorContent
+        target: TargetInfo,
+        content: Content
       ) => {
         const text = typeof content.text === "string" ? content.text : "";
         const mediaUrl = firstAttachmentUrl(content);
@@ -512,7 +502,7 @@ export class IMessageService extends Service implements IIMessageService {
         return (await service.getChats()).map((chat) => chatTarget(chat, contacts));
       },
       getChatContext: async (
-        target: ConnectorTargetInfo,
+        target: TargetInfo,
         context: MessageConnectorQueryContext
       ): Promise<MessageConnectorChatContext | null> => {
         const chatId = await resolveIMessageChatId(context.runtime, target);

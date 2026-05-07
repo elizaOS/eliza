@@ -19,7 +19,6 @@ interface RuntimeOptions {
   workspaceRoots?: string;
   bashTimeoutMs?: number;
   bashBgBudgetMs?: number;
-  disable?: boolean;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
@@ -34,7 +33,6 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     settings.CODING_TOOLS_BASH_TIMEOUT_MS = opts.bashTimeoutMs;
   if (opts.bashBgBudgetMs !== undefined)
     settings.CODING_TOOLS_BASH_BG_BUDGET_MS = opts.bashBgBudgetMs;
-  if (opts.disable) settings.CODING_TOOLS_DISABLE = true;
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -165,11 +163,5 @@ describe("bashAction", () => {
 
     const final = await tasks.waitFor(taskId!, 5_000);
     expect(final?.status).toBe("completed");
-  });
-
-  it("fails fast when CODING_TOOLS_DISABLE is set (validate)", async () => {
-    const { runtime } = await makeRuntime({ disable: true });
-    const ok = await bashAction.validate!(runtime, makeMessage());
-    expect(ok).toBe(false);
   });
 });

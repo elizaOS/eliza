@@ -64,6 +64,20 @@ export interface CreateCommentParameters {
   body?: string;
 }
 
+export interface UpdateCommentParameters {
+  commentId?: string;
+  body?: string;
+}
+
+export interface DeleteCommentParameters {
+  commentId?: string;
+}
+
+export interface ListCommentsParameters {
+  issueId?: string;
+  limit?: number;
+}
+
 export interface CreateIssueParameters {
   issueData?: Partial<LinearIssueInput>;
 }

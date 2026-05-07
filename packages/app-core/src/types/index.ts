@@ -312,10 +312,6 @@ export type ConfigSnapshot = {
 
 // ── Simple showIf (legacy, still supported) ─────────────────────────
 
-export type { ShowIfCondition } from "@elizaos/agent";
-
-import type { ShowIfCondition } from "@elizaos/agent";
-
 // ── Dynamic values (Phase 2) ─────────────────────────────────────────
 
 /** A value that's either a literal or a path reference into the state model. */
@@ -395,7 +391,6 @@ export type ConfigUiHint = {
   /** Layout width hint. */
   width?: "full" | "half" | "third";
   /** Legacy conditional visibility. */
-  showIf?: ShowIfCondition;
   /** Whether the field is read-only. */
   readonly?: boolean;
   /** Regex pattern for string validation. */

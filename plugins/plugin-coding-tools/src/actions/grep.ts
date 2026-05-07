@@ -135,8 +135,6 @@ export const grepAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (d === true || d === "true" || d === "1") return false;
     return true;
   },
   handler: async (

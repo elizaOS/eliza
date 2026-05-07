@@ -118,8 +118,6 @@ export const bashAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (disable === true || disable === "true" || disable === "1") return false;
     return true;
   },
   handler: async (

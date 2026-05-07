@@ -23,11 +23,14 @@ import {
   searchVectorsAction,
 } from "../actions/database.js";
 import {
+  createContactAction,
+  deleteContactAction,
   getRelationshipActivityAction,
   linkEntityAction,
   readEntityAction,
   resolveMergeCandidateAction,
   searchEntityAction,
+  updateContactAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
 import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
@@ -38,12 +41,14 @@ import {
 } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import {
+  createMemoryAction,
   editMemoryAction,
   forgetMemoryAction,
   recallMemoryFilteredAction,
 } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
+import { readPluginConfigAction } from "../actions/read-plugin-config.js";
 import { readMessagesAction } from "../actions/read-messages.js";
 import { restartAction } from "../actions/restart.js";
 import {
@@ -293,6 +298,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       readEntityAction,
       resolveMergeCandidateAction,
       getRelationshipActivityAction,
+      createContactAction,
+      updateContactAction,
+      deleteContactAction,
       updateOwnerNameAction,
       readMessagesAction,
       updateIdentityAction,
@@ -303,6 +311,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       toggleConnectorAction,
       saveConnectorConfigAction,
       disconnectConnectorAction,
+      readPluginConfigAction,
       // Observability / introspection actions
       queryLogsAction,
       exportLogsAction,
@@ -318,6 +327,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       queryTrajectoriesAction,
       exportTrajectoryDatasetAction,
       annotateTrajectoryAction,
+      createMemoryAction,
       recallMemoryFilteredAction,
       forgetMemoryAction,
       editMemoryAction,

@@ -366,19 +366,6 @@ export function normalizeLinkedAccountFlagsConfig(
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
-/**
- * @deprecated Use {@link normalizeLinkedAccountFlagConfig}. Retained
- * as a re-export so older imports keep compiling during the WS1→WS3
- * migration; will be removed once all callers move to the flag-typed
- * helpers (still WS3).
- */
-export const normalizeLinkedAccountConfig = normalizeLinkedAccountFlagConfig;
-
-/**
- * @deprecated Use {@link normalizeLinkedAccountFlagsConfig}.
- */
-export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
-
 export function isLinkedAccountProviderId(
   value: unknown,
 ): value is LinkedAccountProviderId {

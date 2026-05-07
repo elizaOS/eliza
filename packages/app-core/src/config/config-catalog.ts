@@ -27,7 +27,6 @@ import type {
   ConfigUiHint,
   DynamicValue,
   LogicExpression,
-  ShowIfCondition,
   ValidationCheck,
   ValidationConfig,
   VisibilityCondition,
@@ -267,31 +266,6 @@ export function evaluateVisibility(
     return Boolean(getByPath(state, (condition as { path: string }).path));
   }
   return evaluateLogicExpression(condition as LogicExpression, state);
-}
-
-/**
- * Evaluate a legacy ShowIfCondition (backwards compat).
- */
-export function evaluateShowIf(
-  condition: ShowIfCondition | undefined,
-  values: Record<string, unknown>,
-): boolean {
-  if (!condition) return true;
-  const val = values[condition.field];
-  switch (condition.op) {
-    case "eq":
-      return val === condition.value;
-    case "neq":
-      return val !== condition.value;
-    case "in":
-      return Array.isArray(condition.value) && condition.value.includes(val);
-    case "truthy":
-      return Boolean(val);
-    case "falsy":
-      return !val;
-    default:
-      return true;
-  }
 }
 
 // ── Visibility helpers (≈ json-render visibility.*) ─────────────────────
@@ -1032,7 +1006,6 @@ export interface ResolvedField {
   advanced: boolean;
   hidden: boolean;
   width: "full" | "half" | "third";
-  showIf?: ShowIfCondition;
   visible?: VisibilityCondition;
   validation?: ValidationConfig;
   readonly: boolean;
@@ -1082,7 +1055,6 @@ export function resolveFields(
       advanced: hint.advanced ?? false,
       hidden: hint.hidden ?? false,
       width: hint.width ?? (HALF_WIDTH_TYPES.has(fieldType) ? "half" : "full"),
-      showIf: hint.showIf,
       visible: hint.visible,
       validation: hint.validation,
       readonly: hint.readonly ?? false,

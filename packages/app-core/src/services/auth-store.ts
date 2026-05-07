@@ -340,34 +340,6 @@ export class AuthStore {
   }
 
   /**
-   * Mark every active legacy machine session (scopes containing the literal
-   * "legacy" entry) as revoked. Used when a real auth method lands and the
-   * legacy bearer must be retired immediately.
-   */
-  async revokeLegacyBearerSessions(now: number = Date.now()): Promise<number> {
-    const allMachine = await this.db
-      .select()
-      .from(authSessionTable)
-      .where(
-        and(
-          eq(authSessionTable.kind, "machine"),
-          isNull(authSessionTable.revokedAt),
-        ),
-      );
-    let revoked = 0;
-    for (const row of allMachine) {
-      const session = rowToSession(row);
-      if (!session.scopes.includes("legacy")) continue;
-      await this.db
-        .update(authSessionTable)
-        .set({ revokedAt: now })
-        .where(eq(authSessionTable.id, session.id));
-      revoked += 1;
-    }
-    return revoked;
-  }
-
-  /**
    * List every active (unrevoked, unexpired) session for an identity, newest
    * first. Used by `/api/auth/sessions` to populate the security UI.
    */

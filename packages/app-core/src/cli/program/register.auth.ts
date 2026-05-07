@@ -241,15 +241,6 @@ export async function runElizaAuthReset(
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
   }
 
-  // Mark legacy bearer invalidated even if no sessions matched. Audit the
-  // CLI reset event so the operator has a trail.
-  const { markLegacyBearerInvalidated } = await import("../../api/auth/index");
-  await markLegacyBearerInvalidated(store, {
-    actorIdentityId: null,
-    ip: null,
-    userAgent: "eliza-cli auth reset",
-  });
-
   const { appendAuditEvent } = await import("../../api/auth/index");
   await appendAuditEvent(
     {

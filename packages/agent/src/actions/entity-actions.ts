@@ -1,12 +1,19 @@
 import type {
   Action,
   ActionExample,
+  Entity,
   HandlerOptions,
   IAgentRuntime,
+  Metadata,
   SearchCategoryRegistration,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJSONObjectFromText,
+  stringToUuid,
+} from "@elizaos/core";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -1244,6 +1251,404 @@ export const getRelationshipActivityAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Relationships activity | 25/40 items shown (offset 0, limit 25)\n  1 | [relationship] Jill Park ↔ Marco Pierre — friends · positive · strength 0.72 · 14 interactions · 2026-04-22T...",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ---------------------------------------------------------------------------
+// CREATE_CONTACT
+// ---------------------------------------------------------------------------
+
+type CreateContactParams = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+};
+
+export const createContactAction: Action = {
+  name: "CREATE_CONTACT",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
+  similes: ["ADD_CONTACT", "NEW_CONTACT", "SAVE_CONTACT", "STORE_CONTACT"],
+  description:
+    "Create a new contact (entity) in the Rolodex. Provide at minimum a name. " +
+    "Returns the new entity id.",
+  descriptionCompressed:
+    "create new contact (entity) Rolodex provide name return new entity id",
+
+  validate: async () => true,
+
+  handler: async (runtime, _message, _state, options) => {
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as CreateContactParams;
+
+    const name = typeof params.name === "string" ? params.name.trim() : "";
+    if (!name) {
+      return {
+        text: "CREATE_CONTACT requires a name.",
+        success: false,
+        values: { success: false, error: "INVALID_PARAMETERS" },
+        data: { actionName: "CREATE_CONTACT" },
+      };
+    }
+
+    const metadata: Metadata = {};
+    if (typeof params.email === "string" && params.email.trim())
+      metadata.email = params.email.trim();
+    if (typeof params.phone === "string" && params.phone.trim())
+      metadata.phone = params.phone.trim();
+    if (typeof params.notes === "string" && params.notes.trim())
+      metadata.notes = params.notes.trim();
+
+    const entityId = stringToUuid(
+      `contact-${runtime.agentId}-${name}-${Date.now()}`,
+    ) as UUID;
+
+    const entity: Entity = {
+      id: entityId,
+      names: [name],
+      agentId: runtime.agentId as UUID,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    };
+
+    try {
+      const ok = await runtime.createEntity(entity);
+      if (!ok) {
+        return {
+          text: `Failed to create contact "${name}".`,
+          success: false,
+          values: { success: false, error: "CREATE_FAILED" },
+          data: { actionName: "CREATE_CONTACT", name },
+        };
+      }
+      return {
+        text: `Created contact "${name}" (entityId: ${entityId}).`,
+        success: true,
+        values: { success: true, entityId, name },
+        data: { actionName: "CREATE_CONTACT", entityId, name, metadata },
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error("[CREATE_CONTACT] Error:", errMsg);
+      return {
+        text: `Failed to create contact: ${errMsg}`,
+        success: false,
+        values: { success: false, error: "CREATE_FAILED" },
+        data: { actionName: "CREATE_CONTACT", name },
+      };
+    }
+  },
+
+  parameters: [
+    {
+      name: "name",
+      description: "Full name of the contact (required).",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "email",
+      description: "Email address (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "phone",
+      description: "Phone number (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "notes",
+      description: "Free-text notes about the contact (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Add a contact: Jill Park, jill@acme.com." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Created contact "Jill Park" (entityId: ...).',
+          action: "CREATE_CONTACT",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ---------------------------------------------------------------------------
+// UPDATE_CONTACT
+// ---------------------------------------------------------------------------
+
+type UpdateContactParams = {
+  id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+};
+
+export const updateContactAction: Action = {
+  name: "UPDATE_CONTACT",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
+  similes: [
+    "EDIT_CONTACT",
+    "MODIFY_CONTACT",
+    "PATCH_CONTACT",
+    "CHANGE_CONTACT",
+  ],
+  description:
+    "Update an existing contact's name, email, phone, or notes. " +
+    "Requires the entity id (from SEARCH_CONTACT or CREATE_CONTACT). " +
+    "Returns the updated record.",
+  descriptionCompressed:
+    "update exist contact name, email, phone, notes require entity id return updated record",
+
+  validate: async () => true,
+
+  handler: async (runtime, _message, _state, options) => {
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as UpdateContactParams;
+
+    const id = typeof params.id === "string" ? params.id.trim() : "";
+    if (!id) {
+      return {
+        text: "UPDATE_CONTACT requires an id parameter.",
+        success: false,
+        values: { success: false, error: "INVALID_PARAMETERS" },
+        data: { actionName: "UPDATE_CONTACT" },
+      };
+    }
+
+    let existing: Entity | null = null;
+    try {
+      existing = await runtime.getEntityById(id as UUID);
+    } catch {
+      // fall through to null check
+    }
+
+    if (!existing) {
+      return {
+        text: `Contact ${id} was not found.`,
+        success: false,
+        values: { success: false, error: "NOT_FOUND" },
+        data: { actionName: "UPDATE_CONTACT", id },
+      };
+    }
+
+    const updated: Entity = { ...existing };
+
+    if (typeof params.name === "string" && params.name.trim()) {
+      const newName = params.name.trim();
+      updated.names = [
+        newName,
+        ...(existing.names ?? []).filter((n) => n !== newName),
+      ];
+    }
+
+    const existingMeta: Metadata =
+      existing.metadata && typeof existing.metadata === "object"
+        ? { ...(existing.metadata as Metadata) }
+        : {};
+
+    if (typeof params.email === "string" && params.email.trim())
+      existingMeta.email = params.email.trim();
+    if (typeof params.phone === "string" && params.phone.trim())
+      existingMeta.phone = params.phone.trim();
+    if (typeof params.notes === "string" && params.notes.trim())
+      existingMeta.notes = params.notes.trim();
+
+    updated.metadata = existingMeta;
+
+    try {
+      await runtime.updateEntity(updated);
+      return {
+        text: `Updated contact ${id}.`,
+        success: true,
+        values: { success: true, id },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          id,
+          names: updated.names,
+          metadata: existingMeta,
+        },
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error("[UPDATE_CONTACT] Error:", errMsg);
+      return {
+        text: `Failed to update contact: ${errMsg}`,
+        success: false,
+        values: { success: false, error: "UPDATE_FAILED" },
+        data: { actionName: "UPDATE_CONTACT", id },
+      };
+    }
+  },
+
+  parameters: [
+    {
+      name: "id",
+      description: "Entity id of the contact to update (required).",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "name",
+      description: "New display name (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "email",
+      description: "New email address (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "phone",
+      description: "New phone number (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "notes",
+      description: "Updated notes (optional).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Update Jill Park's email to jill@newco.com." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Updated contact 9f1c3a22-...",
+          action: "UPDATE_CONTACT",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ---------------------------------------------------------------------------
+// DELETE_CONTACT
+// ---------------------------------------------------------------------------
+
+type DeleteContactParams = {
+  id?: string;
+  confirm?: boolean;
+};
+
+type RuntimeWithDeleteEntities = IAgentRuntime & {
+  deleteEntities?: (ids: UUID[]) => Promise<void>;
+};
+
+export const deleteContactAction: Action = {
+  name: "DELETE_CONTACT",
+  contexts: ["contacts", "messaging", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
+  similes: ["REMOVE_CONTACT", "ERASE_CONTACT", "DROP_CONTACT"],
+  description:
+    "Permanently delete a contact entity from the Rolodex. " +
+    "Requires the entity id and confirm:true. " +
+    "This is irreversible — prefer UPDATE_CONTACT to mark someone inactive.",
+  descriptionCompressed:
+    "permanently delete contact entity Rolodex require entity id confirm irreversible prefer UPDATE_CONTACT mark inactive",
+
+  validate: async () => true,
+
+  handler: async (runtime, _message, _state, options) => {
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as DeleteContactParams;
+
+    const id = typeof params.id === "string" ? params.id.trim() : "";
+    if (!id) {
+      return {
+        text: "DELETE_CONTACT requires an id parameter.",
+        success: false,
+        values: { success: false, error: "INVALID_PARAMETERS" },
+        data: { actionName: "DELETE_CONTACT" },
+      };
+    }
+
+    if (params.confirm !== true) {
+      return {
+        text: "Refusing to delete: pass confirm:true to acknowledge this destructive action.",
+        success: false,
+        values: { success: false, error: "CONFIRMATION_REQUIRED" },
+        data: { actionName: "DELETE_CONTACT", id },
+      };
+    }
+
+    const rt = runtime as RuntimeWithDeleteEntities;
+    if (typeof rt.deleteEntities !== "function") {
+      return {
+        text: "DELETE_CONTACT: deleteEntities is not supported by this runtime version.",
+        success: false,
+        values: { success: false, error: "NOT_SUPPORTED" },
+        data: { actionName: "DELETE_CONTACT", id },
+      };
+    }
+
+    try {
+      await rt.deleteEntities([id as UUID]);
+      return {
+        text: `Deleted contact ${id}.`,
+        success: true,
+        values: { success: true, id },
+        data: { actionName: "DELETE_CONTACT", id },
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error("[DELETE_CONTACT] Error:", errMsg);
+      return {
+        text: `Failed to delete contact: ${errMsg}`,
+        success: false,
+        values: { success: false, error: "DELETE_FAILED" },
+        data: { actionName: "DELETE_CONTACT", id },
+      };
+    }
+  },
+
+  parameters: [
+    {
+      name: "id",
+      description: "Entity id of the contact to delete (required).",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirm",
+      description: "Must be true to proceed with deletion.",
+      required: true,
+      schema: { type: "boolean" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Delete contact 9f1c3a22-... (confirmed)." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Deleted contact 9f1c3a22-...",
+          action: "DELETE_CONTACT",
         },
       },
     ],

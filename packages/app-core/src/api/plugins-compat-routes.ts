@@ -27,7 +27,8 @@ import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "../config/plugin-auto-enable";
-import { entriesToLegacyManifest, loadRegistry } from "../registry";
+import { loadRegistry } from "../registry";
+import type { ConfigField, RegistryEntry } from "../registry/schema";
 import {
   _resetSharedVaultForTesting,
   mirrorPluginSensitiveToVault,
@@ -94,6 +95,92 @@ interface ManifestPluginEntry {
 
 interface PluginManifestFile {
   plugins?: ManifestPluginEntry[];
+}
+
+const FIELD_TYPE_TO_LEGACY: Record<ConfigField["type"], string> = {
+  string: "string",
+  secret: "string",
+  url: "string",
+  "file-path": "string",
+  textarea: "string",
+  json: "string",
+  select: "string",
+  multiselect: "string",
+  boolean: "boolean",
+  number: "number",
+};
+
+function pluginSubtypeToCategory(entry: RegistryEntry): string {
+  if (entry.kind !== "plugin") return entry.kind;
+  if (entry.subtype === "ai-provider") return "ai-provider";
+  if (entry.subtype === "database") return "database";
+  return "feature";
+}
+
+function connectorSubtypeToCategory(entry: RegistryEntry): string {
+  if (entry.kind !== "connector") return "connector";
+  if (entry.subtype === "streaming") return "streaming";
+  return "connector";
+}
+
+function categoryForRegistryEntry(entry: RegistryEntry): string {
+  if (entry.kind === "plugin") return pluginSubtypeToCategory(entry);
+  if (entry.kind === "connector") return connectorSubtypeToCategory(entry);
+  return entry.kind;
+}
+
+function envKeyForRegistryEntry(entry: RegistryEntry): string | undefined {
+  if (entry.kind === "connector" && entry.auth) {
+    const [first] = entry.auth.credentialKeys;
+    if (first) return first;
+  }
+  for (const [key, field] of Object.entries(entry.config)) {
+    if (field.required && (field.type === "secret" || field.sensitive)) {
+      return key;
+    }
+  }
+  return undefined;
+}
+
+function fieldToManifestParameter(field: ConfigField): ManifestPluginParameter {
+  const param: ManifestPluginParameter = {
+    type: FIELD_TYPE_TO_LEGACY[field.type],
+    description: field.help ?? field.label ?? "",
+    required: field.required,
+    sensitive: field.sensitive ?? field.type === "secret",
+  };
+  if (field.default !== undefined && field.default !== null) {
+    param.default = String(field.default);
+  }
+  if (field.options) {
+    param.options = field.options.map((option) => option.value);
+  }
+  return param;
+}
+
+function registryEntryToManifest(entry: RegistryEntry): ManifestPluginEntry {
+  const pluginParameters: Record<string, ManifestPluginParameter> = {};
+  for (const [key, field] of Object.entries(entry.config)) {
+    pluginParameters[key] = fieldToManifestParameter(field);
+  }
+
+  return {
+    id: entry.id,
+    dirName: entry.npmName?.replace(/^@[^/]+\//, ""),
+    name: entry.name,
+    npmName: entry.npmName,
+    description: entry.description,
+    tags: entry.tags,
+    category: categoryForRegistryEntry(entry),
+    envKey: envKeyForRegistryEntry(entry),
+    configKeys: Object.keys(entry.config),
+    version: entry.version,
+    pluginParameters,
+    icon: entry.render.icon ?? null,
+    homepage: entry.resources.homepage,
+    repository: entry.resources.repository,
+    setupGuideUrl: entry.resources.setupGuideUrl,
+  };
 }
 
 interface RuntimePluginLike {
@@ -989,7 +1076,9 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const manifestRoot = resolvePluginManifestPath()
     ? path.dirname(resolvePluginManifestPath() ?? "")
     : process.cwd();
-  const manifest: PluginManifestFile = entriesToLegacyManifest(registry.all);
+  const manifest: PluginManifestFile = {
+    plugins: registry.all.map(registryEntryToManifest),
+  };
 
   const configEntries = config.plugins?.entries ?? {};
   const installEntries = config.plugins?.installs ?? {};

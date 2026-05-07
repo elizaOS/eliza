@@ -8,6 +8,7 @@ export interface DocumentsPluginConfig {
 	enableActions?: boolean;
 	enableProviders?: boolean;
 }
+
 /** @deprecated Use DocumentsPluginConfig */
 export type KnowledgePluginConfig = DocumentsPluginConfig;
 
@@ -48,9 +49,15 @@ export const knowledgePluginHeadless = documentsPluginHeadless;
 
 export default documentsPlugin;
 
-export { documentActions, knowledgeActions } from "./actions";
+export { documentActions } from "./actions";
+
+/** @deprecated Use documentActions */
+export const knowledgeActions = documentActions;
+export type { Bm25Document, Bm25Options, Bm25Score } from "./bm25";
+export { bm25Scores, normalizeBm25Scores, tokenize } from "./bm25";
 export { documentsProvider } from "./documents-provider";
 export { knowledgeProvider } from "./provider";
+export type { SearchMode } from "./service";
 export { KnowledgeService } from "./service";
 export * from "./types";
 export {

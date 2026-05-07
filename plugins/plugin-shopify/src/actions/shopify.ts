@@ -90,23 +90,7 @@ export const shopifyAction: Action = {
     "Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided. For read-only catalog browsing use SEARCH_SHOPIFY_STORE.",
   descriptionCompressed:
     "Shopify: products, inventory, orders, customers.",
-  similes: [
-    // Generic
-    "STORE",
-    "SHOPIFY_STORE",
-    // Per-entity legacy names
-    "MANAGE_SHOPIFY_PRODUCTS",
-    "MANAGE_SHOPIFY_INVENTORY",
-    "MANAGE_SHOPIFY_ORDERS",
-    "MANAGE_SHOPIFY_CUSTOMERS",
-    "SEARCH_SHOPIFY_STORE",
-    "SEARCH_SHOPIFY",
-    // Common natural language
-    "SHOPIFY_PRODUCTS",
-    "SHOPIFY_ORDERS",
-    "SHOPIFY_INVENTORY",
-    "SHOPIFY_CUSTOMERS",
-  ],
+  similes: [],
   contexts: ["payments", "connectors", "automation", "knowledge"],
   contextGate: { anyOf: ["payments", "connectors", "automation", "knowledge"] },
   roleGate: { minRole: "USER" },

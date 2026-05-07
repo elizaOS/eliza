@@ -381,7 +381,7 @@ export function withRateLimit<T = Record<string, string>>(
       );
 
       const policy: "redis" | "in-memory" = useRedis ? "redis" : "in-memory";
-      return rateLimitExceededNextResponse(result, config.maxRequests, config.windowMs, policy);
+      return rateLimitExceededResponse(result, config.maxRequests, config.windowMs, policy);
     }
 
     // Call the actual handler

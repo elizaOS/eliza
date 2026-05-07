@@ -50,6 +50,9 @@ function makeRuntimeWithContexts(
 		actions: [],
 		providers: [],
 		contexts: registry,
+		composeState: vi.fn(async () => makeState()),
+		runActionsByMode: vi.fn(async () => undefined),
+		emitEvent: vi.fn(async () => undefined),
 		useModel: vi.fn(async () => stage1Response),
 		logger: {
 			debug: vi.fn(),
@@ -124,16 +127,18 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as { prompt?: string } | undefined;
-		const prompt = params?.prompt ?? "";
+		const params = firstCall?.[1] as
+			| { messages?: Array<{ role?: string; content?: string }> }
+			| undefined;
+		const systemContent = params?.messages?.[0]?.content ?? "";
 
-		expect(prompt).toContain("available_contexts:");
+		expect(systemContent).toContain("available_contexts:");
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
-		expect(prompt).toContain("- general:");
-		expect(prompt).toContain("- memory:");
+		expect(systemContent).toContain("- general:");
+		expect(systemContent).toContain("- memory:");
 		// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
-		expect(prompt).not.toMatch(/^- wallet:/m);
-		expect(prompt).not.toMatch(/^- calendar:/m);
+		expect(systemContent).not.toMatch(/^- wallet:/m);
+		expect(systemContent).not.toMatch(/^- calendar:/m);
 	});
 
 	it("falls back to the placeholder line when no registry is attached", async () => {
@@ -143,6 +148,9 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			actions: [],
 			providers: [],
 			contexts: undefined,
+			composeState: vi.fn(async () => makeState()),
+			runActionsByMode: vi.fn(async () => undefined),
+			emitEvent: vi.fn(async () => undefined),
 			useModel: vi.fn(async () =>
 				JSON.stringify({
 					action: "RESPOND",
@@ -169,9 +177,11 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as { prompt?: string } | undefined;
-		const prompt = params?.prompt ?? "";
-		expect(prompt).toContain("available_contexts:");
-		expect(prompt).toContain("(no contexts registered)");
+		const params = firstCall?.[1] as
+			| { messages?: Array<{ role?: string; content?: string }> }
+			| undefined;
+		const systemContent = params?.messages?.[0]?.content ?? "";
+		expect(systemContent).toContain("available_contexts:");
+		expect(systemContent).toContain("(no contexts registered)");
 	});
 });

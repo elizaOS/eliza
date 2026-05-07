@@ -1,13 +1,21 @@
 /**
  * Memory introspection actions.
  *
+ * CREATE_MEMORY   (new)                         → runtime.createMemory (direct)
  * SEARCH_MEMORIES (was RECALL_MEMORY_FILTERED) → GET /api/memories/browse or /api/memories/by-entity/:id
  * DELETE_MEMORY   (was FORGET_MEMORY)          → DELETE /api/memories/:id
  * UPDATE_MEMORY   (was EDIT_MEMORY)            → PATCH /api/memories/:id (server re-embeds)
  */
 
-import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import { logger, stringToUuid } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
 
 function getApiBase(): string {
@@ -16,6 +24,160 @@ function getApiBase(): string {
 
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
+
+// ---------------------------------------------------------------------------
+// CREATE_MEMORY
+// ---------------------------------------------------------------------------
+
+interface CreateMemoryParams {
+  text?: string;
+  kind?: string;
+  tags?: string[];
+}
+
+export const createMemoryAction: Action = {
+  name: "CREATE_MEMORY",
+  contexts: ["memory", "knowledge", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
+  similes: [
+    "MEMORIZE",
+    "REMEMBER_THIS",
+    "STORE_MEMORY",
+    "WRITE_MEMORY",
+    "SAVE_MEMORY",
+  ],
+  description:
+    "Store a new memory record. Use to remember a fact, preference, or note for future reference.",
+  descriptionCompressed:
+    "store new memory record remember fact, preference, note future reference",
+  validate: async () => true,
+  handler: async (
+    runtime: IAgentRuntime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
+    const params = (options as HandlerOptions | undefined)?.parameters as
+      | CreateMemoryParams
+      | undefined;
+
+    const text = typeof params?.text === "string" ? params.text.trim() : "";
+    if (!text) {
+      return {
+        success: false,
+        text: "text is required.",
+        values: { error: "MISSING_TEXT" },
+      };
+    }
+
+    const kind =
+      typeof params?.kind === "string" && params.kind.trim()
+        ? params.kind.trim()
+        : undefined;
+    const tags = Array.isArray(params?.tags)
+      ? params.tags.filter(
+          (t): t is string => typeof t === "string" && t.trim().length > 0,
+        )
+      : [];
+
+    const agentId = runtime.agentId as UUID;
+    const roomId = stringToUuid(
+      `${runtime.character?.name ?? "eliza"}-manual-memories-room`,
+    ) as UUID;
+
+    const memoryId = crypto.randomUUID() as UUID;
+    const createdAt = Date.now();
+
+    const content: Record<string, unknown> = { text, source: "CREATE_MEMORY" };
+    if (kind) content.kind = kind;
+    if (tags.length > 0) content.tags = tags;
+
+    try {
+      await runtime.ensureRoomExists({
+        id: roomId,
+        agentId,
+        name: "manual-memories",
+        source: "agent",
+        type: "DM" as unknown as import("@elizaos/core").ChannelType,
+        worldId: stringToUuid(`${agentId}-manual-memories-world`) as UUID,
+      });
+    } catch {
+      // Room may already exist — not fatal.
+    }
+
+    try {
+      await runtime.createMemory(
+        {
+          id: memoryId,
+          entityId: agentId,
+          agentId,
+          roomId,
+          content,
+          createdAt,
+        } as Memory,
+        "memories",
+      );
+
+      return {
+        success: true,
+        text: `Stored memory ${memoryId}.`,
+        values: { memoryId, kind: kind ?? null, tagCount: tags.length },
+        data: {
+          actionName: "CREATE_MEMORY",
+          memoryId,
+          text,
+          kind: kind ?? null,
+          tags,
+          createdAt,
+        },
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[create-memory] failed: ${msg}`);
+      return { success: false, text: `Failed to store memory: ${msg}` };
+    }
+  },
+  parameters: [
+    {
+      name: "text",
+      description: "The content of the memory to store.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "kind",
+      description:
+        'Optional category label, e.g. "fact", "preference", "note".',
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "tags",
+      description: "Optional list of string tags for retrieval.",
+      required: false,
+      schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Remember that I prefer dark mode." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored memory abc-123.",
+          action: "CREATE_MEMORY",
+        },
+      },
+    ],
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// SEARCH_MEMORIES (was RECALL_MEMORY_FILTERED)
+// ---------------------------------------------------------------------------
 
 interface RecallMemoryParams {
   type?: MemoryType;

@@ -67,93 +67,91 @@ const relationshipExtractionHandler = async (
 	message: Memory,
 	_state?: State,
 ): Promise<ActionResult | undefined> => {
-		const relationshipsService = runtime.getService(
-			"relationships",
-		) as RelationshipsService;
-		if (!relationshipsService) {
-			logger.warn(
-				"[RelationshipExtraction] RelationshipsService not available",
-			);
-			return;
-		}
+	const relationshipsService = runtime.getService(
+		"relationships",
+	) as RelationshipsService;
+	if (!relationshipsService) {
+		logger.warn("[RelationshipExtraction] RelationshipsService not available");
+		return;
+	}
 
-		// Get recent messages for context
-		const recentMessages = await runtime.getMemories({
-			roomId: message.roomId,
-			tableName: "messages",
-			limit: 10,
-			unique: false,
-		});
+	// Get recent messages for context
+	const recentMessages = await runtime.getMemories({
+		roomId: message.roomId,
+		tableName: "messages",
+		limit: 10,
+		unique: false,
+	});
 
-		if (!message.content?.text) {
-			return;
-		}
+	if (!message.content?.text) {
+		return;
+	}
 
-		// Extract platform identities from the current message
-		const identities = extractPlatformIdentities(message.content.text);
-		if (identities.length > 0) {
-			await storePlatformIdentities(runtime, message.entityId, identities);
-			await upsertEntityIdentities(
-				relationshipsService,
-				message.entityId,
-				identities,
-				message.id ? [message.id] : [],
-			);
-		}
-
-		// Check for disputes or corrections
-		const disputeInfo = detectDispute(message.content.text, recentMessages);
-		if (disputeInfo) {
-			await handleDispute(runtime, disputeInfo, message);
-		}
-
-		// Analyze relationships between participants
-		if (recentMessages.length > 1) {
-			await analyzeRelationships(runtime, recentMessages, relationshipsService);
-		}
-
-		// Extract information about mentioned third parties
-		const mentionedPeople = extractMentionedPeople(message.content.text);
-		for (const person of mentionedPeople) {
-			await createOrUpdateMentionedEntity(runtime, person, message.entityId);
-		}
-
-		// Assess trust and behavior patterns
-		await assessTrustIndicators(runtime, message.entityId, recentMessages);
-
-		// Detect privacy boundaries
-		const privacyInfo = detectPrivacyBoundaries(message.content.text);
-		if (privacyInfo) {
-			await handlePrivacyBoundary(runtime, privacyInfo, message);
-		}
-
-		// Handle admin user updates
-		await handleAdminUpdates(runtime, message, recentMessages);
-
-		logger.info(
-			{
-				src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
-				agentId: runtime.agentId,
-				messageId: message.id,
-				identitiesFound: identities.length,
-				disputeDetected: !!disputeInfo,
-				mentionedPeople: mentionedPeople.length,
-			},
-			"Completed extraction for message",
+	// Extract platform identities from the current message
+	const identities = extractPlatformIdentities(message.content.text);
+	if (identities.length > 0) {
+		await storePlatformIdentities(runtime, message.entityId, identities);
+		await upsertEntityIdentities(
+			relationshipsService,
+			message.entityId,
+			identities,
+			message.id ? [message.id] : [],
 		);
+	}
 
-		return {
-			success: true,
-			values: {
-				identitiesFound: identities.length,
-				disputeDetected: !!disputeInfo,
-				mentionedPeopleCount: mentionedPeople.length,
-			},
-			data: {
-				identitiesCount: identities.length,
-				hasDispute: !!disputeInfo,
-				mentionedPeopleCount: mentionedPeople.length,
-			},
+	// Check for disputes or corrections
+	const disputeInfo = detectDispute(message.content.text, recentMessages);
+	if (disputeInfo) {
+		await handleDispute(runtime, disputeInfo, message);
+	}
+
+	// Analyze relationships between participants
+	if (recentMessages.length > 1) {
+		await analyzeRelationships(runtime, recentMessages, relationshipsService);
+	}
+
+	// Extract information about mentioned third parties
+	const mentionedPeople = extractMentionedPeople(message.content.text);
+	for (const person of mentionedPeople) {
+		await createOrUpdateMentionedEntity(runtime, person, message.entityId);
+	}
+
+	// Assess trust and behavior patterns
+	await assessTrustIndicators(runtime, message.entityId, recentMessages);
+
+	// Detect privacy boundaries
+	const privacyInfo = detectPrivacyBoundaries(message.content.text);
+	if (privacyInfo) {
+		await handlePrivacyBoundary(runtime, privacyInfo, message);
+	}
+
+	// Handle admin user updates
+	await handleAdminUpdates(runtime, message, recentMessages);
+
+	logger.info(
+		{
+			src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
+			agentId: runtime.agentId,
+			messageId: message.id,
+			identitiesFound: identities.length,
+			disputeDetected: !!disputeInfo,
+			mentionedPeople: mentionedPeople.length,
+		},
+		"Completed extraction for message",
+	);
+
+	return {
+		success: true,
+		values: {
+			identitiesFound: identities.length,
+			disputeDetected: !!disputeInfo,
+			mentionedPeopleCount: mentionedPeople.length,
+		},
+		data: {
+			identitiesCount: identities.length,
+			hasDispute: !!disputeInfo,
+			mentionedPeopleCount: mentionedPeople.length,
+		},
 		text: `Extracted ${identities.length} identities, ${mentionedPeople.length} mentioned people, and ${disputeInfo ? "1 dispute" : "0 disputes"}.`,
 	};
 };

@@ -167,7 +167,7 @@ export const useSkillAction: Action = {
 	contexts: ["automation", "knowledge", "connectors"],
 	contextGate: { anyOf: ["automation", "knowledge", "connectors"] },
 	roleGate: { minRole: "USER" },
-	similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
+	similes: [],
 	description:
 		"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 	descriptionCompressed: "Invoke an enabled skill by slug.",

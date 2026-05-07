@@ -15,7 +15,6 @@ import type {
 import {
   defaultCatalog,
   defineRegistry,
-  evaluateShowIf,
   evaluateVisibility,
   resolveFields,
   runValidation,
@@ -333,8 +332,7 @@ export const ConfigRenderer = forwardRef<
         return evaluateVisibility(field.visible, values);
       }
 
-      // Legacy showIf fallback
-      return evaluateShowIf(field.showIf, values);
+      return true;
     },
     [values],
   );

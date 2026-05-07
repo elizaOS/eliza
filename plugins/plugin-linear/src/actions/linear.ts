@@ -10,10 +10,13 @@ import type {
 import { clearActivityAction } from "./clearActivity";
 import { createCommentAction } from "./createComment";
 import { createIssueAction } from "./createIssue";
+import { deleteCommentAction } from "./deleteComment";
 import { deleteIssueAction } from "./deleteIssue";
 import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
+import { listCommentsAction } from "./listComments";
 import { searchIssuesAction } from "./searchIssues";
+import { updateCommentAction } from "./updateComment";
 import { updateIssueAction } from "./updateIssue";
 
 export const LINEAR_CONTEXT = "linear";
@@ -24,6 +27,9 @@ type LinearOp =
   | "update_issue"
   | "delete_issue"
   | "create_comment"
+  | "update_comment"
+  | "delete_comment"
+  | "list_comments"
   | "get_activity"
   | "clear_activity"
   | "search_issues";
@@ -34,6 +40,9 @@ const ALL_OPS: readonly LinearOp[] = [
   "update_issue",
   "delete_issue",
   "create_comment",
+  "update_comment",
+  "delete_comment",
+  "list_comments",
   "get_activity",
   "clear_activity",
   "search_issues",
@@ -67,6 +76,21 @@ const ROUTES: LinearRoute[] = [
     op: "create_comment",
     action: createCommentAction,
     match: /\b(comment|reply|note|tell)\b.*\b(issue|bug|task|ticket|[a-z]+-\d+)\b/i,
+  },
+  {
+    op: "update_comment",
+    action: updateCommentAction,
+    match: /\b(update|edit|modify|change)\b.*\bcomment\b/i,
+  },
+  {
+    op: "delete_comment",
+    action: deleteCommentAction,
+    match: /\b(delete|remove|erase)\b.*\bcomment\b/i,
+  },
+  {
+    op: "list_comments",
+    action: listCommentsAction,
+    match: /\b(list|show|get|fetch|view)\b.*\bcomments?\b|\bcomments?\b.*\b(list|show|get|fetch)\b/i,
   },
   {
     op: "clear_activity",
@@ -139,9 +163,9 @@ function hasLinearAccess(runtime: IAgentRuntime): boolean {
 export const linearAction: Action = {
   name: "LINEAR",
   description:
-    "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+    "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
   descriptionCompressed:
-    "Linear: create/get/update/delete issue, create comment, search issues, get/clear activity.",
+    "Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
   similes: [
     // Group/router-style names
     "LINEAR_ISSUE",
@@ -161,6 +185,9 @@ export const linearAction: Action = {
     // Comment ops
     "CREATE_LINEAR_COMMENT",
     "COMMENT_LINEAR_ISSUE",
+    "UPDATE_LINEAR_COMMENT",
+    "DELETE_LINEAR_COMMENT",
+    "LIST_LINEAR_COMMENTS",
     // Workflow / activity / search ops
     "GET_LINEAR_ACTIVITY",
     "CLEAR_LINEAR_ACTIVITY",
@@ -174,7 +201,7 @@ export const linearAction: Action = {
     {
       name: "op",
       description:
-        "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+        "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },

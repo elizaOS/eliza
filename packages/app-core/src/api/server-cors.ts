@@ -26,7 +26,7 @@ export function buildCorsAllowedPorts(): Set<string> {
 /**
  * Comma-separated explicit origins allowed by the operator (e.g. a
  * remote dashboard host like https://bot.example.com). Localhost gets
- * a built-in pass via {@link isAllowedLocalOrigin}; this is the only
+ * a built-in pass via {@link isAllowedOrigin}; this is the only
  * way to allow non-loopback hosts.
  */
 export function getAllowedRemoteOrigins(): Set<string> {
@@ -137,5 +137,3 @@ export function isAllowedOrigin(
   }
 }
 
-/** @deprecated retained for API compatibility — use isAllowedOrigin. */
-export const isAllowedLocalOrigin = isAllowedOrigin;

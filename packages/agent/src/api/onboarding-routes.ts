@@ -6,7 +6,7 @@ import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
@@ -502,7 +502,7 @@ export async function handleOnboardingRoutes(
       "linkedAccounts",
     );
     const explicitLinkedAccounts = explicitLinkedAccountsRequested
-      ? normalizeLinkedAccountsConfig(body.linkedAccounts)
+      ? normalizeLinkedAccountFlagsConfig(body.linkedAccounts)
       : null;
     const explicitServiceRoutingRequested = Object.hasOwn(
       body,

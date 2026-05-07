@@ -127,8 +127,6 @@ export const notebookEditAction: Action = {
     },
   ],
   validate: async (runtime: IAgentRuntime) => {
-    const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
-    if (d === true || d === "true" || d === "1") return false;
     return true;
   },
   handler: async (
