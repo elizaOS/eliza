@@ -91,6 +91,8 @@ const ELIZA_SUPPORTED_CRED_TYPES: ReadonlySet<string> = new Set([
   "httpQueryAuth",
   "googleChatOAuth2Api",
   "facebookGraphApi",
+  "twitterOAuth2Api",
+  "twitterApi",
 ]);
 
 interface RuntimeContextSupportedCredential {
@@ -211,6 +213,14 @@ const CRED_TYPE_FACTS: Record<
   facebookGraphApi: {
     friendlyName: "Instagram (Meta Graph API)",
     nodeTypes: ["n8n-nodes-base.facebookGraphApi"],
+  },
+  twitterOAuth2Api: {
+    friendlyName: "X (Twitter) OAuth2",
+    nodeTypes: ["n8n-nodes-base.twitter"],
+  },
+  twitterApi: {
+    friendlyName: "X (Twitter) API v1",
+    nodeTypes: ["n8n-nodes-base.twitter"],
   },
 };
 

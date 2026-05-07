@@ -6,6 +6,7 @@ import { xTimelineProvider } from "./providers/xTimeline.js";
 import { xUnreadDmsProvider } from "./providers/xUnreadDms.js";
 import { registerXSearchCategory } from "./search-category.js";
 import { XService } from "./services/x.service.js";
+import { XN8nCredentialProvider } from "./n8n-credential-provider.js";
 import { getSetting } from "./utils/settings";
 
 export const XPlugin: Plugin = {
@@ -14,7 +15,7 @@ export const XPlugin: Plugin = {
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
   actions: [sendXPostAction, searchXAction, summarizeFeedAction],
   providers: [xTimelineProvider, xUnreadDmsProvider],
-  services: [XService],
+  services: [XService, XN8nCredentialProvider],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerXSearchCategory(runtime);
     logger.log("🔧 Initializing X plugin...");
