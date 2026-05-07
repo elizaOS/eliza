@@ -113,6 +113,24 @@ afterEach(() => {
 });
 
 describe("AcpService", () => {
+  it("static start wires the runtime-backed durable session store", async () => {
+    const rt = runtime() as {
+      databaseAdapter: { query: ReturnType<typeof vi.fn> };
+    };
+    rt.databaseAdapter = { query: vi.fn() };
+
+    const service = await AcpService.start(rt as never);
+
+    expect(
+      (
+        service as unknown as {
+          store: { backend: string };
+        }
+      ).store.backend,
+    ).toBe("runtime-db");
+    await service.stop();
+  });
+
   it("spawns a session, emits ready, and stores the session", async () => {
     const reg = nextProc();
     const service = new AcpService(runtime());
