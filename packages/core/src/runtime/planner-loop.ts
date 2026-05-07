@@ -93,6 +93,7 @@ export interface PlannerStep {
 export interface PlannerTrajectory {
 	context: ContextObject;
 	steps: PlannerStep[];
+	archivedSteps: PlannerStep[];
 	plannedQueue: PlannerToolCall[];
 	evaluatorOutputs: EvaluatorOutput[];
 }
@@ -158,6 +159,7 @@ export async function runPlannerLoop(
 	const trajectory: PlannerTrajectory = {
 		context: params.context,
 		steps: [],
+		archivedSteps: [],
 		plannedQueue: [],
 		evaluatorOutputs: [],
 	};
@@ -710,6 +712,7 @@ async function maybeCompactPlannerTrajectory(args: {
 	}
 
 	const startedAt = Date.now();
+	const compactedStepCount = compactableStepCount;
 	const compactedSteps = args.trajectory.steps.slice(0, compactableStepCount);
 	const keptSteps = args.trajectory.steps.slice(compactableStepCount);
 	const summary = buildCompactionSummary({
@@ -717,6 +720,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		keptSteps,
 		budget: args.budget,
 	});
+	args.trajectory.archivedSteps.push(...compactedSteps);
 	args.trajectory.steps = keptSteps;
 	args.trajectory.context = appendContextEvent(args.trajectory.context, {
 		id: `compaction:${args.iteration}:${startedAt}`,
@@ -726,7 +730,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		metadata: {
 			reason: "input_budget",
 			iteration: args.iteration,
-			compactedStepCount,
+			compactedStepCount: compactableStepCount,
 			keptStepCount: keptSteps.length,
 			estimatedInputTokens: args.budget.estimatedInputTokens,
 			contextWindowTokens: args.budget.contextWindowTokens,
@@ -741,7 +745,7 @@ async function maybeCompactPlannerTrajectory(args: {
 			metadata: {
 				reason: "input_budget",
 				iteration: args.iteration,
-				compactedStepCount,
+				compactedStepCount: compactableStepCount,
 				keptStepCount: keptSteps.length,
 			},
 		},
@@ -756,7 +760,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		endedAt,
 		summary,
 		budget: args.budget,
-		compactedStepCount,
+		compactedStepCount: compactableStepCount,
 		keptStepCount: keptSteps.length,
 		logger: args.logger,
 	});
