@@ -10,6 +10,7 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserAutofillLoginAction } from "../actions/browser-autofill-login.js";
 import { browserSessionAction } from "../actions/browser-session.js";
+import { codeAction } from "../actions/code-umbrella.js";
 import {
   disconnectConnectorAction,
   listConnectorsAction,
@@ -48,8 +49,8 @@ import {
 } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
-import { readPluginConfigAction } from "../actions/read-plugin-config.js";
 import { readMessagesAction } from "../actions/read-messages.js";
+import { readPluginConfigAction } from "../actions/read-plugin-config.js";
 import { restartAction } from "../actions/restart.js";
 import {
   describeRegisteredActionsAction,
@@ -338,6 +339,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       scratchpadDeleteAction,
       archiveCodingTaskAction,
       reopenCodingTaskAction,
+      codeAction,
     ],
   };
 
