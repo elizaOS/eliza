@@ -72,7 +72,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "apps",
         primaryContext: "apps",
-        secondaryContexts: ["system"],
+        secondaryContexts: ["admin"],
         capabilities: ["launch-app", "stop-app"],
       };
     case "character":
@@ -80,7 +80,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "character",
         primaryContext: "character",
-        secondaryContexts: ["knowledge", "system"],
+        secondaryContexts: ["knowledge", "admin"],
         capabilities: ["modify-character", "edit-character-knowledge"],
       };
     case "knowledge":
@@ -95,7 +95,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "automations",
         primaryContext: "automation",
-        secondaryContexts: ["code", "system"],
+        secondaryContexts: ["code", "admin"],
         capabilities: ["manage-cron", "manage-workflow", "run-automation"],
       };
     case "browser":
@@ -116,7 +116,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "apps",
         primaryContext: "automation",
-        secondaryContexts: ["social", "knowledge"],
+        secondaryContexts: ["social_posting", "knowledge"],
         capabilities: ["lifeops", "tasks", "calendar"],
       };
     case "plugins":
@@ -138,7 +138,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "knowledge",
         primaryContext: "knowledge",
-        secondaryContexts: ["system", "social"],
+        secondaryContexts: ["admin", "social_posting"],
         capabilities: ["knowledge", "memory", "relationships"],
       };
     default:

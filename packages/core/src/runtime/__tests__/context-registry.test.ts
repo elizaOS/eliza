@@ -26,25 +26,20 @@ describe("context registry", () => {
 			expect(defaultContextRegistry.has(context)).toBe(true);
 		}
 		expect(defaultContextRegistry.has("lifeops")).toBe(false);
+		expect(defaultContextRegistry.has("social")).toBe(false);
+		expect(defaultContextRegistry.has("system")).toBe(false);
 	});
 
-	it("expands lifeops only as a migration alias", () => {
-		expect(normalizeContextList(["lifeops"])).toEqual([
-			"email",
-			"calendar",
-			"contacts",
-			"tasks",
-			"health",
-			"screen_time",
-			"subscriptions",
+	it("expands the remaining finance aliases", () => {
+		expect(normalizeContextList(["money"])).toEqual([
 			"finance",
-			"payments",
 			"wallet",
 			"crypto",
-			"messaging",
-			"social_posting",
-			"automation",
-			"connectors",
+		]);
+		expect(normalizeContextList(["defi"])).toEqual([
+			"crypto",
+			"wallet",
+			"finance",
 		]);
 	});
 
@@ -58,11 +53,13 @@ describe("context registry", () => {
 			},
 		] satisfies Array<ContextGateCandidate & { name: string }>;
 
+		// `money` expands to finance/wallet/crypto, so only the wallet
+		// candidate matches.
 		expect(
-			filterByContextGate(candidates, ["lifeops"], ["MEMBER"]).map(
+			filterByContextGate(candidates, ["money"], ["MEMBER"]).map(
 				(candidate) => candidate.name,
 			),
-		).toEqual(["calendar", "wallet"]);
+		).toEqual(["wallet"]);
 		expect(
 			filterByContextGate(candidates, ["admin"], ["OWNER"]).map(
 				(candidate) => candidate.name,
@@ -71,9 +68,11 @@ describe("context registry", () => {
 	});
 
 	it("checks context and role gates", () => {
+		// `money` alias expands through wallet, so candidates declaring
+		// `wallet` satisfy a `{ anyOf: ["money"] }` gate.
 		expect(
-			satisfiesContextGate(["calendar"], {
-				anyOf: ["lifeops"],
+			satisfiesContextGate(["wallet"], {
+				anyOf: ["money"],
 			}),
 		).toBe(true);
 		expect(satisfiesRoleGate(["OWNER"], { minRole: "ADMIN" })).toBe(true);

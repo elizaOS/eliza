@@ -151,7 +151,7 @@ const ENTITY_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "entities",
   label: "Rolodex",
   description: "Search contacts and cross-platform identities.",
-  contexts: ["social", "knowledge"],
+  contexts: ["social_posting", "knowledge"],
   filters: [
     {
       name: "platform",

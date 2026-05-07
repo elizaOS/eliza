@@ -194,6 +194,16 @@ export * from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
+// Unified two-phase confirmation helper for destructive actions.
+export {
+	clearPendingConfirmation,
+	requireConfirmation,
+} from "./utils/confirmation";
+export type {
+	ConfirmationDecision,
+	ConfirmationStatus,
+	RequireConfirmationArgs,
+} from "./utils/confirmation";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
 // Prompt description compression (parity with Python `compress_prompt_description`)

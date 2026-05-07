@@ -1162,14 +1162,6 @@ function createV5MessageContextObject(args: {
 		});
 	};
 
-	const availableContexts =
-		args.availableContexts?.map((definition) => definition.id) ??
-		parseContextList(args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY]);
-	// `available_contexts` was previously emitted as an instruction event AND
-	// as `staticPrefix.contextRegistryDigest`. Both held the same flat ID list,
-	// duplicating the line in the planner system message. Keep only the
-	// registry digest (set on `staticPrefix` below) — it's already cache-stable
-	// and self-labeled in the rendered output.
 	appendStateProviderEvents(
 		events,
 		args.state,
@@ -1259,15 +1251,9 @@ function createV5MessageContextObject(args: {
 						stable: true,
 					}
 				: undefined,
-			contextRegistryDigest: availableContexts.join(","),
 		},
 		trajectoryPrefix: {
 			selectedContexts: [...(args.selectedContexts ?? [])],
-			// Pass the rich definitions (id + description + selectionGuidance)
-			// for the selected contexts so the downstream planner can reason
-			// about each selected context, not just its bare id. The renderer
-			// at context-renderer.ts:420 emits these as JSON in a stable
-			// prompt segment.
 			contextDefinitions:
 				args.selectedContexts && args.availableContexts
 					? args.availableContexts.filter((def) =>
@@ -1350,17 +1336,8 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
-			const selectionGuidance = definition.selectionGuidance?.trim();
-			const covers = definition.covers?.length
-				? definition.covers.join(", ")
-				: "";
-			const parts = [
-				description,
-				selectionGuidance ? `select_when: ${selectionGuidance}` : "",
-				covers ? `covers: ${covers}` : "",
-			].filter(Boolean);
-			return parts.length > 0
-				? `- ${definition.id}: ${parts.join(" ")}`
+			return description
+				? `- ${definition.id}: ${description}`
 				: `- ${definition.id}`;
 		})
 		.join("\n");
@@ -1801,11 +1778,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
-		messageHandler.contexts = filterSelectedContextsForRole(
+		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		messageHandler.plan.contexts = messageHandler.contexts;
 		const route = routeMessageHandlerOutput(messageHandler);
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -5124,7 +5100,7 @@ export class DefaultMessageService implements IMessageService {
 						parallelHookCtx,
 					),
 				]);
-				const routedContexts = v5Outcome.messageHandler.contexts;
+				const routedContexts = v5Outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
 						? {
@@ -5797,7 +5773,7 @@ export class DefaultMessageService implements IMessageService {
 				skipEvaluation: true,
 				reason: "explicit self-modification request",
 				primaryContext: "social",
-				secondaryContexts: ["system"],
+				secondaryContexts: ["admin"],
 			};
 		}
 

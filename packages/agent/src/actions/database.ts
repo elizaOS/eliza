@@ -486,7 +486,7 @@ const VECTOR_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "vectors",
   label: "Vector store",
   description: "Search semantically similar memory/vector rows.",
-  contexts: ["system", "knowledge"],
+  contexts: ["admin", "knowledge"],
   filters: [
     {
       name: "table",
