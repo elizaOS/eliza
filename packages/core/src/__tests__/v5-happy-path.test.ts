@@ -66,6 +66,7 @@ function makeRuntime(opts: {
 		providers: [],
 		contexts: opts.contextRegistry,
 		emitEvent: vi.fn(async () => undefined),
+		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -778,8 +779,18 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 
 		const calls = getCalls(runtime);
-		const stage1Params = calls[0]?.params as { prompt?: string } | undefined;
-		const renderedPrompt = stage1Params?.prompt ?? "";
+		const stage1Params = calls[0]?.params as
+			| {
+					prompt?: string;
+					messages?: Array<{ content?: unknown }>;
+				}
+			| undefined;
+		const messageContent = (stage1Params?.messages ?? [])
+			.map((m) =>
+				typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+			)
+			.join("\n");
+		const renderedPrompt = `${stage1Params?.prompt ?? ""}\n${messageContent}`;
 
 		// USER-role caller should see "general" but not "secrets".
 		expect(renderedPrompt).toContain("general");

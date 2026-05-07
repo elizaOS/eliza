@@ -47,6 +47,8 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 		actions: [],
 		providers: [],
 		composeState: vi.fn(async () => makeState()),
+		runActionsByMode: vi.fn(async () => undefined),
+		emitEvent: vi.fn(async () => undefined),
 		useModel: vi.fn(async () => {
 			if (queue.length === 0) {
 				throw new Error("Unexpected useModel call");
