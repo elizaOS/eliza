@@ -312,7 +312,7 @@ function renderEvent(
 	if (isInstructionEvent(event)) {
 		// System-role instruction events are part of the agent's stable system
 		// prompt and their content is already self-labeled (e.g. starts with
-		// `available_contexts:`). Use label="system" so segmentBlock emits the
+		// `available_contexts:`). Use label="admin" so segmentBlock emits the
 		// raw content without an extra `instruction:system:\n` header. Non-
 		// system roles keep the label so the model can spot them.
 		const role = event.role ?? "system";
@@ -402,16 +402,8 @@ export function renderContextObject(
 	}
 	// Synthetic system segments use label="system" so segmentBlock emits the
 	// raw content without a redundant `<label>:\n` header — every content body
-	// below is already self-labeled (e.g. `context_registry_digest: ...`,
-	// `selected_contexts: ...`).
-	if (context.staticPrefix?.contextRegistryDigest) {
-		appendSyntheticSegment(rendered, {
-			id: "context-registry-digest",
-			label: "system",
-			content: `context_registry_digest: ${context.staticPrefix.contextRegistryDigest}`,
-			stable: true,
-		});
-	}
+	// below is already self-labeled (e.g. `selected_contexts: ...`,
+	// `contexts:\n- ...`).
 	if (context.trajectoryPrefix?.messageHandlerThought) {
 		appendSyntheticSegment(rendered, {
 			id: "message-handler-thought",
@@ -429,23 +421,18 @@ export function renderContextObject(
 		});
 	}
 	if (context.trajectoryPrefix?.contextDefinitions?.length) {
-		// Surface selectionGuidance + covers + description so planner/evaluator
-		// see the same rich context catalog Stage 1 sees, not just IDs.
-		const definitions = context.trajectoryPrefix.contextDefinitions.map(
+		const lines = context.trajectoryPrefix.contextDefinitions.map(
 			(definition) => {
-				const entry: Record<string, unknown> = { id: definition.id };
-				if (definition.description) entry.description = definition.description;
-				if (definition.selectionGuidance)
-					entry.selectionGuidance = definition.selectionGuidance;
-				if (Array.isArray(definition.covers) && definition.covers.length > 0)
-					entry.covers = definition.covers;
-				return entry;
+				const description = definition.description?.trim();
+				return description
+					? `- ${definition.id}: ${description}`
+					: `- ${definition.id}`;
 			},
 		);
 		appendSyntheticSegment(rendered, {
 			id: "context-definitions",
 			label: "system",
-			content: `context_definitions: ${JSON.stringify(definitions)}`,
+			content: `contexts:\n${lines.join("\n")}`,
 			stable: true,
 		});
 	}

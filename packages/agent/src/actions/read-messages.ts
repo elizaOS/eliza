@@ -40,7 +40,7 @@ const MAX_LIMIT = 50;
 
 export const readMessagesAction: Action = {
   name: "READ_MESSAGES",
-  contexts: ["messaging", "social", "connectors", "knowledge"],
+  contexts: ["messaging", "social_posting", "connectors", "knowledge"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "GET_MESSAGES",

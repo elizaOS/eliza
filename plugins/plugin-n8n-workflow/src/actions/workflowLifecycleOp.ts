@@ -7,6 +7,7 @@ import {
   type ProviderDataRecord,
   logger,
   type Memory,
+  requireConfirmation,
   type State,
 } from '@elizaos/core';
 import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
@@ -15,17 +16,10 @@ import { buildConversationContext } from '../utils/context';
 import type { WorkflowDraft } from '../types/index';
 import { DRAFT_TTL_MS } from '../utils/constants';
 
-const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
 const VALID_OPS = ['activate', 'deactivate', 'delete'] as const;
 const N8N_WORKFLOW_MATCH_LIMIT = 25;
 const N8N_LIFECYCLE_TIMEOUT_MS = 30_000;
 type LifecycleOp = (typeof VALID_OPS)[number];
-
-interface PendingDeletion {
-  workflowId: string;
-  workflowName: string;
-  createdAt: number;
-}
 
 type LifecycleOptions = {
   parameters?: {
@@ -253,42 +247,9 @@ async function runDelete(
   callback?: HandlerCallback
 ): Promise<ActionResult> {
   const userId = message.entityId;
-  const cacheKey = `workflow_delete_pending:${userId}`;
 
-  const pending = await runtime.getCache<PendingDeletion>(cacheKey);
-  if (pending && Date.now() - pending.createdAt < DELETE_CONFIRM_TTL_MS) {
-    const userText = (message.content?.text || '').toLowerCase().trim();
-    const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText);
-
-    if (isConfirm) {
-      await service.deleteWorkflow(pending.workflowId);
-      await runtime.deleteCache(cacheKey);
-
-      logger.info(
-        { src: 'plugin:n8n-workflow:action:lifecycle' },
-        `Deleted workflow ${pending.workflowId} after confirmation`
-      );
-
-      if (callback) {
-        await callback({
-          text: `Workflow "${pending.workflowName}" deleted permanently.`,
-          success: true,
-        });
-      }
-      return { success: true };
-    }
-
-    await runtime.deleteCache(cacheKey);
-    if (callback) {
-      await callback({
-        text: 'Deletion cancelled.',
-        success: true,
-      });
-    }
-    return { success: true };
-  }
-
-  // No pending — start a new deletion flow
+  // Resolve which workflow we're talking about so we can cite it in the
+  // confirmation prompt before stashing pending state.
   const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
   if (workflows.length === 0) {
@@ -324,22 +285,38 @@ async function runDelete(
 
   const workflowName = matchedName || matchedId;
 
-  const pendingDeletion: PendingDeletion = {
-    workflowId: matchedId,
-    workflowName,
-    createdAt: Date.now(),
-  };
-  await runtime.setCache(cacheKey, pendingDeletion);
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: 'WORKFLOW_LIFECYCLE_OP',
+    pendingKey: `delete:${matchedId}`,
+    prompt: `Permanently delete workflow "${workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
+    callback,
+    metadata: { workflowId: matchedId, workflowName },
+  });
 
-  if (callback) {
-    await callback({
-      text: `Are you sure you want to permanently delete "${workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
-      success: true,
-      data: { awaitingUserInput: true },
-    });
+  if (decision.status === 'pending') {
+    return { success: true, data: { awaitingUserInput: true } };
+  }
+  if (decision.status === 'cancelled') {
+    if (callback) {
+      await callback({ text: 'Deletion cancelled.', success: true });
+    }
+    return { success: true };
   }
 
-  return { success: true, data: { awaitingUserInput: true } };
+  await service.deleteWorkflow(matchedId);
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:lifecycle' },
+    `Deleted workflow ${matchedId} after confirmation`
+  );
+  if (callback) {
+    await callback({
+      text: `Workflow "${workflowName}" deleted permanently.`,
+      success: true,
+    });
+  }
+  return { success: true };
 }
 
 async function resolveWorkflowId(

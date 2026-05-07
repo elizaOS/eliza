@@ -137,7 +137,7 @@ const PLUGIN_CATEGORY: SearchCategoryRegistration = {
   category: "plugins",
   label: "Plugin registry",
   description: "Search the elizaOS plugin registry.",
-  contexts: ["system", "knowledge"],
+  contexts: ["admin", "knowledge"],
   filters: [
     {
       name: "tags",
@@ -677,7 +677,7 @@ export const searchAction: Action = {
     "Search a registered backend by category. Use category/query plus optional filters, limit, and freshness.",
   descriptionCompressed:
     "search registered backend by category query filters limit freshness",
-  contexts: ["general", "knowledge", "browser", "system", "social"],
+  contexts: ["general", "knowledge", "browser", "admin", "social_posting"],
   roleGate: { minRole: "USER" },
   suppressPostActionContinuation: true,
 

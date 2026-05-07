@@ -13,6 +13,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { requireConfirmation } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import { extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
@@ -94,6 +95,24 @@ export const uninstallSkillAction: Action = {
 				match.slug;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
+		}
+
+		const decision = await requireConfirmation({
+			runtime,
+			message,
+			actionName: "UNINSTALL_SKILL",
+			pendingKey: `uninstall:${match.slug}`,
+			prompt: `Uninstall skill **${match.name}** (\`${match.slug}\`)? This removes its files. Reply "yes" to confirm.`,
+			callback,
+			metadata: { slug: match.slug, name: match.name },
+		});
+		if (decision.status === "pending") {
+			return { success: true, data: { awaitingUserInput: true, slug: match.slug } };
+		}
+		if (decision.status === "cancelled") {
+			const cancelText = `Uninstall of ${match.slug} cancelled.`;
+			if (callback) await callback({ text: cancelText });
+			return { success: true, text: cancelText, data: { cancelled: true, slug: match.slug } };
 		}
 
 		const success = await service.uninstall(match.slug);

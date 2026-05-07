@@ -39,36 +39,22 @@ export const FIRST_PARTY_CONTEXT_IDS = [
 	"agent_internal",
 ] as const satisfies readonly FirstPartyAgentContext[];
 
-const LIFEOPS_ALIAS_CONTEXTS = [
-	"email",
-	"calendar",
-	"contacts",
-	"tasks",
-	"health",
-	"screen_time",
-	"subscriptions",
-	"finance",
-	"payments",
-	"wallet",
-	"crypto",
-	"messaging",
-	"social_posting",
-	"automation",
-	"connectors",
-] as const satisfies readonly FirstPartyAgentContext[];
-
+/**
+ * Aliases for context names that aren't themselves canonical first-party
+ * contexts but expand to one or more canonical contexts. Aliases are
+ * intentionally narrow — `lifeops`, `social`, and `system` were retired
+ * (callers now declare the canonical contexts directly); only convenience
+ * aliases for finance/crypto remain.
+ */
 export const CONTEXT_ALIASES: Readonly<
 	Record<string, readonly AgentContext[]>
 > = Object.freeze({
-	lifeops: LIFEOPS_ALIAS_CONTEXTS,
 	money: ["finance", "wallet", "crypto"],
 	balance: ["finance", "wallet", "crypto"],
 	balances: ["finance", "wallet", "crypto"],
 	portfolio: ["finance", "wallet", "crypto"],
 	web3: ["crypto", "wallet", "finance"],
 	defi: ["crypto", "wallet", "finance"],
-	social: ["social_posting"],
-	system: ["admin", "settings"],
 });
 
 /**

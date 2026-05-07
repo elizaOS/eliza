@@ -7,6 +7,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  requireConfirmation,
   type State,
 } from "@elizaos/core";
 import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -177,6 +178,33 @@ export const deleteIssueAction: Action = {
       const issue = await linearService.getIssue(issueId);
       const issueTitle = issue.title.slice(0, LINEAR_ISSUE_TITLE_MAX_CHARS);
       const issueIdentifier = issue.identifier;
+
+      // Two-phase confirmation: archiving a Linear issue is irreversible
+      // from the agent's side, so always ask the user to confirm.
+      const decision = await requireConfirmation({
+        runtime,
+        message,
+        actionName: "DELETE_LINEAR_ISSUE",
+        pendingKey: `archive:${issue.id}`,
+        prompt: `Archive issue ${issueIdentifier}: "${issueTitle}"? This moves it out of active views. Reply "yes" to confirm.`,
+        callback,
+      });
+      if (decision.status === "pending") {
+        return {
+          text: `Awaiting confirmation to archive ${issueIdentifier}.`,
+          success: true,
+          data: { awaitingUserInput: true, issueId: issue.id, identifier: issueIdentifier },
+        };
+      }
+      if (decision.status === "cancelled") {
+        const cancelMessage = `Archive of ${issueIdentifier} cancelled.`;
+        await callback?.({ text: cancelMessage, source: message.content.source });
+        return {
+          text: cancelMessage,
+          success: true,
+          data: { cancelled: true, issueId: issue.id, identifier: issueIdentifier },
+        };
+      }
 
       logger.info(`Archiving issue ${issueIdentifier}: ${issueTitle}`);
 

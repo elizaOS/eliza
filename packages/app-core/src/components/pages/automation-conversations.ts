@@ -156,7 +156,7 @@ export function buildAutomationResponseRoutingMetadata(
     return {
       __responseContext: {
         primaryContext: "automation",
-        secondaryContexts: ["automation", "code", "system"],
+        secondaryContexts: ["automation", "code", "admin"],
       },
     };
   }

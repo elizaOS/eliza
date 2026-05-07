@@ -33,18 +33,14 @@ export type FirstPartyAgentContext =
 	| "admin"
 	| "agent_internal";
 
-export type LegacyAgentContext = "social" | "system" | "lifeops";
-
 /**
  * Canonical domain contexts for routing and plugin/action gating.
  *
  * Plugins may still declare custom contexts while v5 first-party contexts are
- * adopted. Legacy values remain accepted for compatibility.
+ * adopted; the open string branch keeps `string & {}` so custom strings are
+ * allowed without weakening literal-type inference.
  */
-export type AgentContext =
-	| FirstPartyAgentContext
-	| LegacyAgentContext
-	| (string & {});
+export type AgentContext = FirstPartyAgentContext | (string & {});
 
 export type ContextSensitivity = "public" | "personal" | "private" | "system";
 

@@ -6,6 +6,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  requireConfirmation,
   type State,
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
@@ -73,6 +74,33 @@ export const clearActivityAction: Action = {
       const linearService = runtime.getService<LinearService>("linear");
       if (!linearService) {
         throw new Error("Linear service not available");
+      }
+
+      // Two-phase confirmation: clearing the activity log is destructive
+      // and not undoable from the agent's side.
+      const decision = await requireConfirmation({
+        runtime,
+        message,
+        actionName: "CLEAR_LINEAR_ACTIVITY",
+        pendingKey: "clear_log",
+        prompt: 'Clear the Linear activity log? Reply "yes" to confirm.',
+        callback,
+      });
+      if (decision.status === "pending") {
+        return {
+          text: "Awaiting confirmation to clear Linear activity.",
+          success: true,
+          data: { awaitingUserInput: true },
+        };
+      }
+      if (decision.status === "cancelled") {
+        const cancelMessage = "Clear of Linear activity cancelled.";
+        await callback?.({ text: cancelMessage, source: message.content.source });
+        return {
+          text: cancelMessage,
+          success: true,
+          data: { cancelled: true },
+        };
       }
 
       await Promise.race([
