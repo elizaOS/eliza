@@ -97,6 +97,8 @@ export const deviceIntentAction: Action & {
     "Broadcast a structured cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices realize it. Owner only.",
   descriptionCompressed:
     "broadcast intent paired-devices: alarm reminder block custom",
+  contexts: ["automation", "tasks", "screen_time", "settings"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>

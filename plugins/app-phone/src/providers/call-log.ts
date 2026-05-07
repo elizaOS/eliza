@@ -34,7 +34,11 @@ export const phoneCallLogProvider: Provider = {
     "Read-only Android call history (number, cached name, timestamp, duration, call type) for resolving recent phone activity.",
   descriptionCompressed: "Phone call log: number, name, date, duration, type.",
   dynamic: true,
-  contexts: ["system"],
+  contexts: ["contacts", "messaging"],
+  contextGate: { anyOf: ["contacts", "messaging"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   get: async (
     _runtime: IAgentRuntime,

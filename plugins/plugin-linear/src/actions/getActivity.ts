@@ -42,6 +42,9 @@ type ActivityParams = {
 
 export const getActivityAction: Action = {
   name: "GET_LINEAR_ACTIVITY",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Get recent Linear activity log with optional filters",
   descriptionCompressed: "get recent Linear activity log w/ optional filter",
   similes: [

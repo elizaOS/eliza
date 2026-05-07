@@ -43,6 +43,8 @@ function normalizeConfig(value: unknown): Record<string, string> | null {
 
 export const configurePluginAction: Action = {
   name: "CONFIGURE_PLUGIN",
+  contexts: ["admin", "settings", "connectors", "secrets"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "SAVE_PLUGIN_CONFIG",

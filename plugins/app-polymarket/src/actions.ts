@@ -3,6 +3,8 @@ import type {
   ActionResult,
   HandlerCallback,
   HandlerOptions,
+  Memory,
+  State,
 } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
@@ -16,6 +18,60 @@ import type {
 } from "./polymarket-contracts";
 
 const ACTION_TIMEOUT_MS = 15_000;
+const POLYMARKET_CONTEXTS = ["finance", "crypto", "web", "knowledge"] as const;
+const POLYMARKET_READ_KEYWORDS = [
+  "polymarket",
+  "prediction market",
+  "market",
+  "markets",
+  "orderbook",
+  "positions",
+  "odds",
+  "forecast",
+  "predicción",
+  "mercado",
+  "pronóstico",
+  "marché",
+  "prévision",
+  "prognose",
+  "markt",
+  "mercado",
+  "previsão",
+  "mercato",
+  "previsione",
+  "予測市場",
+  "オッズ",
+  "预测市场",
+  "赔率",
+  "예측 시장",
+  "배당",
+] as const;
+const POLYMARKET_TRADE_KEYWORDS = [
+  ...POLYMARKET_READ_KEYWORDS,
+  "buy",
+  "sell",
+  "trade",
+  "order",
+  "comprar",
+  "vender",
+  "orden",
+  "acheter",
+  "vendre",
+  "ordre",
+  "kaufen",
+  "verkaufen",
+  "auftrag",
+  "comprare",
+  "vendere",
+  "注文",
+  "買う",
+  "売る",
+  "买入",
+  "卖出",
+  "订单",
+  "매수",
+  "매도",
+] as const;
 
 const READ_KINDS = [
   "status",
@@ -81,6 +137,38 @@ function readKind(
   return (READ_KINDS as readonly string[]).includes(normalized)
     ? normalized
     : null;
+}
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return POLYMARKET_CONTEXTS.some((context) => selected.has(context));
+}
+
+function hasKeywordIntent(
+  message: Memory,
+  state: State | undefined,
+  keywords: readonly string[],
+): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 async function fetchPolymarketJson<T>(
@@ -283,6 +371,9 @@ async function handlePositions(
 
 export const polymarketReadAction: Action = {
   name: "POLYMARKET_READ",
+  contexts: [...POLYMARKET_CONTEXTS],
+  contextGate: { anyOf: [...POLYMARKET_CONTEXTS] },
+  roleGate: { minRole: "USER" },
   similes: [
     "POLYMARKET_STATUS",
     "POLYMARKET_READINESS",
@@ -350,7 +441,8 @@ export const polymarketReadAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async () => true,
+  validate: async (_runtime, message: Memory, state?: State) =>
+    hasSelectedContext(state) || hasKeywordIntent(message, state, POLYMARKET_READ_KEYWORDS),
   handler: async (_runtime, _message, _state, options, callback) => {
     const kind = readKind(options);
     if (!kind) {
@@ -382,11 +474,35 @@ export const polymarketReadAction: Action = {
 
 export const polymarketOrdersDisabledAction: Action = {
   name: "POLYMARKET_PLACE_ORDER",
+  contexts: [...POLYMARKET_CONTEXTS, "payments"],
+  contextGate: { anyOf: [...POLYMARKET_CONTEXTS, "payments"] },
+  roleGate: { minRole: "USER" },
   similes: ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
   description:
     "Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
   descriptionCompressed: "Report disabled Polymarket trading readiness.",
-  validate: async () => true,
+  parameters: [
+    {
+      name: "side",
+      description: "Intended side, buy or sell. Trading is currently disabled.",
+      required: false,
+      schema: { type: "string", enum: ["buy", "sell"] },
+    },
+    {
+      name: "marketId",
+      description: "Polymarket market id or condition id.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "Intended order amount. Trading is currently disabled.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
+  validate: async (_runtime, message: Memory, state?: State) =>
+    hasSelectedContext(state) || hasKeywordIntent(message, state, POLYMARKET_TRADE_KEYWORDS),
   handler: async (_runtime, _message, _state, _options, callback) => {
     const response = await fetchPolymarketJson<PolymarketDisabledResponse>(
       "/api/polymarket/orders",

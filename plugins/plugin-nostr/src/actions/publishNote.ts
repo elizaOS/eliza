@@ -49,6 +49,9 @@ export const publishNote: Action = {
   description:
     "Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; use NOSTR_SEND_DM for private messages.",
   descriptionCompressed: "Publish Nostr note (kind:1) to relays.",
+  contexts: ["social_posting", "connectors"],
+  contextGate: { anyOf: ["social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "text",

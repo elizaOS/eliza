@@ -3,7 +3,12 @@
  */
 
 import crypto from "crypto";
+import {
+  type AppDatabaseState,
+  appDatabasesRepository,
+} from "@/db/repositories/app-databases";
 import { type App, type AppUser, appsRepository, type NewApp } from "@/db/repositories/apps";
+import type { UserDatabaseStatus } from "@/db/schemas/apps";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
@@ -20,6 +25,30 @@ export class AppNameConflictError extends Error {
     super(message);
     this.name = "AppNameConflictError";
   }
+}
+
+export interface AppDatabaseCompatibilityFields {
+  user_database_status: UserDatabaseStatus;
+  user_database_uri: string | null;
+  user_database_project_id: string | null;
+  user_database_branch_id: string | null;
+  user_database_region: string | null;
+  user_database_error: string | null;
+}
+
+export type AppWithDatabaseState = App & AppDatabaseCompatibilityFields;
+
+function databaseCompatibilityFields(
+  database?: AppDatabaseState,
+): AppDatabaseCompatibilityFields {
+  return {
+    user_database_status: database?.user_database_status ?? "none",
+    user_database_uri: database?.user_database_uri ?? null,
+    user_database_project_id: database?.user_database_project_id ?? null,
+    user_database_branch_id: database?.user_database_branch_id ?? null,
+    user_database_region: database?.user_database_region ?? null,
+    user_database_error: database?.user_database_error ?? null,
+  };
 }
 
 /**
@@ -196,6 +225,28 @@ export class AppsService {
     return await appsRepository.listByOrganization(organizationId);
   }
 
+  async listByOrganizationWithDatabaseState(
+    organizationId: string,
+  ): Promise<AppWithDatabaseState[]> {
+    const apps = await appsRepository.listByOrganization(organizationId);
+    const databaseStates = await appDatabasesRepository.listStatesByAppIds(
+      apps.map((app) => app.id),
+    );
+
+    return apps.map((app) => ({
+      ...app,
+      ...databaseCompatibilityFields(databaseStates.get(app.id)),
+    }));
+  }
+
+  async withDatabaseState(app: App): Promise<AppWithDatabaseState> {
+    const database = await appDatabasesRepository.findStateByAppId(app.id);
+    return {
+      ...app,
+      ...databaseCompatibilityFields(database),
+    };
+  }
+
   async listAll(filters?: { isActive?: boolean; isApproved?: boolean }): Promise<App[]> {
     return await appsRepository.listAll(filters);
   }
@@ -293,8 +344,9 @@ export class AppsService {
       await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
     }
 
-    // Clean up user database if provisioned
-    if (app?.user_database_project_id) {
+    // Clean up app database state. The service reads canonical app_databases and
+    // no-ops for shared DB apps or apps without a provisioned project.
+    if (app) {
       try {
         const { userDatabaseService } = await import("./user-database");
         await userDatabaseService.cleanupDatabase(id);

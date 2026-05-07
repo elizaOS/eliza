@@ -13,6 +13,8 @@ import { hexToUint8Array, uploadAttestationQuote } from "../utils";
 
 export const remoteAttestationAction: Action = {
   name: "REMOTE_ATTESTATION",
+  contexts: ["admin", "secrets", "agent_internal"],
+  contextGate: { anyOf: ["admin", "secrets", "agent_internal"] },
 
   similes: [
     "REMOTE_ATTESTATION",
@@ -29,6 +31,7 @@ export const remoteAttestationAction: Action = {
     "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
   descriptionCompressed:
     "generate remote attestation prove agent run TEE (Trusted Execution Environment)",
+  parameters: [],
 
   validate: async (
     runtime: any,

@@ -19,6 +19,7 @@ Reference: eliza/packages/core/src/utils/toon.ts.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -221,6 +222,13 @@ def parse(text: str) -> ParseResult:
     raw = _strip_wrappers(text or "")
     if not raw:
         return ParseResult(document={}, errors=["empty document"], raw=raw)
+    if raw.startswith("{"):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return ParseResult(document=parsed, errors=[], raw=raw)
+        except json.JSONDecodeError:
+            pass
     lines: list[tuple[int, str]] = []
     for ln in raw.splitlines():
         if ln.strip() == "":

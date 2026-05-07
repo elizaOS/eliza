@@ -384,6 +384,11 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       canonicalName: "@clawville/app-clawville",
       aliases: [],
     },
+    {
+      slug: "trajectory-logger",
+      canonicalName: "@elizaos/app-trajectory-logger",
+      aliases: [],
+    },
   ] as const;
 
 function getElizaCuratedAppMatchKeys(

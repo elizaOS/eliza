@@ -23,6 +23,12 @@ import {
 } from "../types/onboarding";
 import { ChannelType } from "../types/primitives";
 
+const MAX_ONBOARDING_OUTPUT_LENGTH = 5000;
+const MAX_ONBOARDING_ERRORS = 8;
+const MAX_ONBOARDING_CHANNELS = 10;
+const MAX_ONBOARDING_SKILLS = 12;
+const MAX_ONBOARDING_MISSING_ITEMS = 8;
+
 /**
  * Format a step status for display.
  */
@@ -102,7 +108,7 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
 	if (context.settings.channels) {
 		const channels = context.settings.channels;
 		if (channels.enabledChannels.length > 0) {
-			output += `- Channels: ${channels.enabledChannels.join(", ")}\n`;
+			output += `- Channels: ${channels.enabledChannels.slice(0, MAX_ONBOARDING_CHANNELS).join(", ")}\n`;
 		} else {
 			output += "- Channels: None configured\n";
 		}
@@ -113,7 +119,7 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
 	if (context.settings.skills) {
 		const skills = context.settings.skills;
 		if (skills.enabledSkills.length > 0) {
-			output += `- Skills: ${skills.enabledSkills.join(", ")}\n`;
+			output += `- Skills: ${skills.enabledSkills.slice(0, MAX_ONBOARDING_SKILLS).join(", ")}\n`;
 		} else {
 			output += "- Skills: None configured\n";
 		}
@@ -124,7 +130,7 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
 	// Add errors if any
 	if (context.errors.length > 0) {
 		output += "\n### Errors:\n";
-		for (const error of context.errors) {
+		for (const error of context.errors.slice(0, MAX_ONBOARDING_ERRORS)) {
 			output += `- [${ONBOARDING_STEP_LABELS[error.step]}] ${error.message}\n`;
 		}
 	}
@@ -180,85 +186,101 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
 export const onboardingProgressProvider: Provider = {
 	name: "ONBOARDING_PROGRESS",
 	description: "Current onboarding progress and state for the agent",
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		// Get the room to determine context
-		const room = await runtime.getRoom(message.roomId);
-		if (!room?.worldId) {
-			return {
-				data: { onboarding: null },
-				values: { onboardingProgress: "" },
-				text: "",
+		try {
+			const room = await runtime.getRoom(message.roomId);
+			if (!room?.worldId) {
+				return {
+					data: { onboarding: null },
+					values: { onboardingProgress: "" },
+					text: "",
+				};
+			}
+
+			if (room.type !== ChannelType.DM) {
+				return {
+					data: { onboarding: null },
+					values: { onboardingProgress: "" },
+					text: "",
+				};
+			}
+
+			const world = await runtime.getWorld(room.worldId);
+			if (!world?.metadata) {
+				return {
+					data: { onboarding: null },
+					values: { onboardingProgress: "" },
+					text: "",
+				};
+			}
+
+			const metadata = world.metadata as {
+				onboardingStateMachine?: SerializedOnboardingState;
 			};
-		}
 
-		// Only show onboarding progress in DM contexts
-		if (room.type !== ChannelType.DM) {
-			return {
-				data: { onboarding: null },
-				values: { onboardingProgress: "" },
-				text: "",
-			};
-		}
+			if (!metadata.onboardingStateMachine) {
+				return {
+					data: { onboarding: null },
+					values: { onboardingProgress: "" },
+					text: "",
+				};
+			}
 
-		// Try to get onboarding state from world metadata
-		const world = await runtime.getWorld(room.worldId);
-		if (!world?.metadata) {
-			return {
-				data: { onboarding: null },
-				values: { onboardingProgress: "" },
-				text: "",
-			};
-		}
+			const context = metadata.onboardingStateMachine.context;
+			const agentName = runtime.character.name ?? "Agent";
 
-		// Look for serialized state machine state
-		const metadata = world.metadata as {
-			onboardingStateMachine?: SerializedOnboardingState;
-		};
+			let progressText = generateProgressText(context, agentName);
+			if (progressText.length > MAX_ONBOARDING_OUTPUT_LENGTH) {
+				progressText = `${progressText.slice(0, MAX_ONBOARDING_OUTPUT_LENGTH)}...`;
+			}
 
-		if (!metadata.onboardingStateMachine) {
-			return {
-				data: { onboarding: null },
-				values: { onboardingProgress: "" },
-				text: "",
-			};
-		}
-
-		const context = metadata.onboardingStateMachine.context;
-		const agentName = runtime.character.name ?? "Agent";
-
-		const progressText = generateProgressText(context, agentName);
-
-		logger.debug(
-			{
-				worldId: room.worldId,
-				currentStep: context.currentStep,
-				progress: calculateProgress(context),
-			},
-			"[OnboardingProgressProvider] Providing onboarding context",
-		);
-
-		return {
-			data: {
-				onboarding: {
-					context,
-					isComplete: context.currentStep === OnboardingStep.COMPLETE,
+			logger.debug(
+				{
+					worldId: room.worldId,
+					currentStep: context.currentStep,
 					progress: calculateProgress(context),
 				},
-			},
-			values: {
-				onboardingProgress: progressText,
-				currentOnboardingStep: context.currentStep,
-				onboardingComplete: String(
-					context.currentStep === OnboardingStep.COMPLETE,
-				),
-			},
-			text: progressText,
-		};
+				"[OnboardingProgressProvider] Providing onboarding context",
+			);
+
+			return {
+				data: {
+					onboarding: {
+						context,
+						isComplete: context.currentStep === OnboardingStep.COMPLETE,
+						progress: calculateProgress(context),
+					},
+					truncated: progressText.length >= MAX_ONBOARDING_OUTPUT_LENGTH,
+				},
+				values: {
+					onboardingProgress: progressText,
+					currentOnboardingStep: context.currentStep,
+					onboardingComplete: String(
+						context.currentStep === OnboardingStep.COMPLETE,
+					),
+				},
+				text: progressText,
+			};
+		} catch (error) {
+			return {
+				data: {
+					onboarding: null,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: { onboardingProgress: "" },
+				text: "",
+			};
+		}
 	},
 };
 
@@ -268,77 +290,98 @@ export const onboardingProgressProvider: Provider = {
 export const onboardingMissingProvider: Provider = {
 	name: "ONBOARDING_MISSING",
 	description: "Lists what still needs to be configured during onboarding",
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const room = await runtime.getRoom(message.roomId);
-		if (!room?.worldId) {
-			return {
-				data: { missing: [] },
-				values: { onboardingMissing: "" },
-				text: "",
+		try {
+			const room = await runtime.getRoom(message.roomId);
+			if (!room?.worldId) {
+				return {
+					data: { missing: [] },
+					values: { onboardingMissing: "" },
+					text: "",
+				};
+			}
+
+			const world = await runtime.getWorld(room.worldId);
+			const metadata = world?.metadata as {
+				onboardingStateMachine?: SerializedOnboardingState;
 			};
-		}
 
-		const world = await runtime.getWorld(room.worldId);
-		const metadata = world?.metadata as {
-			onboardingStateMachine?: SerializedOnboardingState;
-		};
+			if (!metadata?.onboardingStateMachine) {
+				return {
+					data: { missing: [] },
+					values: { onboardingMissing: "" },
+					text: "",
+				};
+			}
 
-		if (!metadata?.onboardingStateMachine) {
+			const context = metadata.onboardingStateMachine.context;
+			const missing: string[] = [];
+
+			if (!context.settings.riskAcknowledged) {
+				missing.push("Risk acknowledgement");
+			}
+
+			if (
+				!context.settings.auth?.apiKey &&
+				!context.settings.auth?.oauthTokens
+			) {
+				missing.push("AI provider authentication");
+			}
+
+			if (
+				!context.settings.channels ||
+				context.settings.channels.enabledChannels.length === 0
+			) {
+				missing.push("Messaging channels");
+			}
+
+			if (
+				!context.settings.skills ||
+				context.settings.skills.enabledSkills.length === 0
+			) {
+				missing.push("Agent skills");
+			}
+
+			if (missing.length === 0) {
+				return {
+					data: { missing: [] },
+					values: {
+						onboardingMissing: "All onboarding steps have been completed.",
+					},
+					text: "All onboarding steps have been completed.",
+				};
+			}
+
+			const visibleMissing = missing.slice(0, MAX_ONBOARDING_MISSING_ITEMS);
+			const text = `Still needs configuration:\n${visibleMissing.map((m) => `- ${m}`).join("\n")}`;
+
 			return {
-				data: { missing: [] },
-				values: { onboardingMissing: "" },
-				text: "",
-			};
-		}
-
-		const context = metadata.onboardingStateMachine.context;
-
-		// Determine what's missing
-		const missing: string[] = [];
-
-		if (!context.settings.riskAcknowledged) {
-			missing.push("Risk acknowledgement");
-		}
-
-		if (!context.settings.auth?.apiKey && !context.settings.auth?.oauthTokens) {
-			missing.push("AI provider authentication");
-		}
-
-		if (
-			!context.settings.channels ||
-			context.settings.channels.enabledChannels.length === 0
-		) {
-			missing.push("Messaging channels");
-		}
-
-		if (
-			!context.settings.skills ||
-			context.settings.skills.enabledSkills.length === 0
-		) {
-			missing.push("Agent skills");
-		}
-
-		if (missing.length === 0) {
-			return {
-				data: { missing: [] },
-				values: {
-					onboardingMissing: "All onboarding steps have been completed.",
+				data: {
+					missing: visibleMissing,
+					omittedCount: missing.length - visibleMissing.length,
 				},
-				text: "All onboarding steps have been completed.",
+				values: { onboardingMissing: text },
+				text,
+			};
+		} catch (error) {
+			return {
+				data: {
+					missing: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: { onboardingMissing: "" },
+				text: "",
 			};
 		}
-
-		const text = `Still needs configuration:\n${missing.map((m) => `- ${m}`).join("\n")}`;
-
-		return {
-			data: { missing },
-			values: { onboardingMissing: text },
-			text,
-		};
 	},
 };

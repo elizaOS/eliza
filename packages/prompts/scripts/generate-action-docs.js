@@ -29,7 +29,7 @@ const CORE_PROVIDERS_SPEC_PATH = path.join(PROVIDERS_SPECS_DIR, "core.json");
 const CORE_EVALUATORS_SPEC_PATH = path.join(EVALUATORS_SPECS_DIR, "core.json");
 
 /**
- * @typedef {"string" | "number" | "boolean" | "object" | "array"} JsonSchemaType
+ * @typedef {"string" | "number" | "integer" | "boolean" | "object" | "array"} JsonSchemaType
  */
 
 /**
@@ -123,11 +123,25 @@ function assertExampleValuesArray(value, name) {
  */
 function assertParameterSchema(schema, name) {
   assertRecord(schema, name);
+  if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+    for (let i = 0; i < schema.oneOf.length; i++) {
+      assertParameterSchema(schema.oneOf[i], `${name}.oneOf[${i}]`);
+    }
+    return;
+  }
+  if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
+    for (let i = 0; i < schema.anyOf.length; i++) {
+      assertParameterSchema(schema.anyOf[i], `${name}.anyOf[${i}]`);
+    }
+    return;
+  }
   const t = schema.type;
   assertString(t, `${name}.type`);
-  if (!["string", "number", "boolean", "object", "array"].includes(t)) {
+  if (
+    !["string", "number", "integer", "boolean", "object", "array"].includes(t)
+  ) {
     throw new Error(
-      `${name}.type must be one of string|number|boolean|object|array`,
+      `${name}.type must be one of string|number|integer|boolean|object|array`,
     );
   }
   if (schema.enum !== undefined) {
@@ -595,12 +609,14 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
 export type ActionDocParameterExampleValue = string | number | boolean | null;
 
 export type ActionDocParameterSchema = {
-  type: "string" | "number" | "boolean" | "object" | "array";
+  type: "string" | "number" | "integer" | "boolean" | "object" | "array";
   description?: string;
   default?: ActionDocParameterExampleValue;
   enum?: string[];
   properties?: Record<string, ActionDocParameterSchema>;
   items?: ActionDocParameterSchema;
+  oneOf?: ActionDocParameterSchema[];
+  anyOf?: ActionDocParameterSchema[];
   minimum?: number;
   maximum?: number;
   pattern?: string;

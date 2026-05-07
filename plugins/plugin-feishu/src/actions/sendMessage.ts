@@ -27,6 +27,31 @@ export const sendMessageAction: Action = {
 	],
 	description: "Send a message to a Feishu/Lark chat",
 	descriptionCompressed: "send message Feishu/Lark chat",
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "text",
+			description:
+				"Message text to send. Falls back to the composed response when omitted.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "chatId",
+			description:
+				"Feishu/Lark chat id. Falls back to the current message chat id.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "replyToMessageId",
+			description: "Optional Feishu/Lark message id to reply to.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
 	validate: async (
 		_runtime: IAgentRuntime,

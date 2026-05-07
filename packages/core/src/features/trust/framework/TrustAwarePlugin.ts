@@ -11,6 +11,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import type { ContextualPermissionSystem } from "../services/ContextualPermissionSystem.ts";
 import type { SecurityModule } from "../services/SecurityModule.ts";
 import type { TrustEngine } from "../services/TrustEngine.ts";
@@ -246,11 +247,24 @@ export const exampleTrustAwarePlugin: Plugin = {
 	actions: [
 		{
 			name: "sensitive-action",
+			contexts: ["admin", "secrets", "settings"],
+			contextGate: { anyOf: ["admin", "secrets", "settings"] },
 			description: "A sensitive action requiring trust",
+			parameters: [],
 			examples: [],
-			validate: async (_runtime, _message) => {
-				return true;
-			},
+				validate: async (_runtime, message, state) => {
+					return hasActionContextOrKeyword(message, state, {
+						contexts: ["admin", "secrets", "settings"],
+						keywords: [
+							"sensitive action",
+							"trust",
+							"permission",
+							"secret",
+							"admin",
+							"security",
+						],
+					});
+				},
 			handler: async (
 				runtime,
 				message,

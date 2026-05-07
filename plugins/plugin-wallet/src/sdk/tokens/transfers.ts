@@ -12,6 +12,7 @@
 
 import {
   type Address,
+  type Chain,
   encodeFunctionData,
   type Hash,
   type PublicClient,
@@ -125,6 +126,7 @@ export async function sendToken(
 
   return ctx.walletClient.sendTransaction({
     account: ctx.account,
+    chain: requirePublicClientChain(ctx),
     to: tokenAddress,
     data,
     ...buildGasOptions(options),
@@ -149,6 +151,7 @@ export async function sendNative(
 
   return ctx.walletClient.sendTransaction({
     account: ctx.account,
+    chain: requirePublicClientChain(ctx),
     to,
     value: rawAmount,
     ...buildGasOptions(options),
@@ -296,6 +299,16 @@ function buildGasOptions(options: TransferOptions) {
   if (options.maxPriorityFeePerGas != null)
     gas.maxPriorityFeePerGas = options.maxPriorityFeePerGas;
   return gas;
+}
+
+function requirePublicClientChain(ctx: TransferContext): Chain {
+  const chain = ctx.publicClient.chain;
+  if (!chain) {
+    throw new Error(
+      "TransferContext.publicClient must be created with chain (required for walletClient.sendTransaction).",
+    );
+  }
+  return chain;
 }
 
 /**

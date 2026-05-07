@@ -53,6 +53,8 @@ async function findTriggerTask(
 
 export const runTriggerNowAction: Action = {
   name: RUN_TRIGGER_NOW_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "RUN_TRIGGER",
     "EXECUTE_TRIGGER",

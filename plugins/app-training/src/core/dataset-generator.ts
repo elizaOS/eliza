@@ -21,6 +21,10 @@ import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type { IAgentRuntime, RecordLlmCallDetails } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import {
+  buildTrajectoryTrainingMessages,
+  iterateTrajectoryLlmCalls,
+} from "@elizaos/core";
+import {
   ACTION_CONTEXT_MAP,
   ALL_CONTEXTS,
   PROVIDER_CONTEXT_MAP,
@@ -1132,30 +1136,27 @@ export async function exportTrajectoriesAsTraining(
   void agentName;
 
   for (const trajectory of trajectories) {
-    for (const step of trajectory.steps ?? []) {
-      for (const call of step.llmCalls ?? []) {
-        if (
-          call.purpose === "should_respond" &&
-          call.systemPrompt &&
-          call.userPrompt &&
-          call.response
-        ) {
-          const response = normalizeMessageHandlerJson(call.response);
-          if (!response) {
-            skippedLegacyRows += 1;
-            console.warn(
-              `[dataset-generator] skipped legacy should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
-            );
-            continue;
-          }
-          examples.push({
-            messages: [
-              { role: "system", content: call.systemPrompt },
-              { role: "user", content: call.userPrompt },
-              { role: "model", content: response },
-            ],
-          });
+    for (const call of iterateTrajectoryLlmCalls(trajectory)) {
+      if (call.purpose === "should_respond") {
+        const response = normalizeMessageHandlerJson(call.response ?? "");
+        if (!response) {
+          skippedLegacyRows += 1;
+          console.warn(
+            `[dataset-generator] skipped legacy should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+          );
+          continue;
         }
+
+        const messages = buildTrajectoryTrainingMessages({
+          systemPrompt: call.systemPrompt,
+          userPrompt: call.userPrompt,
+          response,
+        });
+        if (!messages) {
+          continue;
+        }
+
+        examples.push({ messages });
       }
     }
   }

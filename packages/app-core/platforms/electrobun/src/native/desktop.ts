@@ -24,6 +24,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import Electrobun, {
 	type ApplicationMenuItemConfig,
 	BrowserView,
@@ -659,7 +660,9 @@ export class DesktopManager {
 		// Electrobun tray click is simpler — no bounds/modifiers
 		this.trayClickHandler = () => {
 			void this.showWindow().catch((err: unknown) => {
-				console.warn("[Desktop] Failed to show window from tray click:", err);
+				logger.warn(
+					`[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			});
 			this.send("desktopTrayClick", {
 				x: 0,
@@ -676,7 +679,9 @@ export class DesktopManager {
 				getAgentManager()
 					.restart()
 					.catch((err: unknown) => {
-						console.error("[Desktop] Agent restart failed:", err);
+						logger.error(
+							`[Desktop] Agent restart failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
 					});
 			});
 		};
@@ -694,11 +699,15 @@ export class DesktopManager {
 			// is not yet connected (e.g. PGLite init on Windows can take 240s).
 			if (action === "show" || action === "tray-show-window") {
 				void this.showWindow().catch((err: unknown) => {
-					console.warn("[Desktop] Failed to show window from tray menu:", err);
+					logger.warn(
+						`[Desktop] Failed to show window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+					);
 				});
 			} else if (action === "tray-hide-window") {
 				void this.hideWindow().catch((err: unknown) => {
-					console.warn("[Desktop] Failed to hide window from tray menu:", err);
+					logger.warn(
+						`[Desktop] Failed to hide window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+					);
 				});
 			} else if (action === "restart-agent" || action === "tray-restart") {
 				triggerAgentRestart();
@@ -818,7 +827,7 @@ export class DesktopManager {
 		} else if (process.platform === "win32") {
 			await this.setAutoLaunchWin(options.enabled, appPath, openAsHidden);
 		} else {
-			console.warn(
+			logger.warn(
 				`[DesktopManager] setAutoLaunch: unsupported platform ${process.platform}`,
 			);
 		}
@@ -1436,9 +1445,8 @@ X-GNOME-Autostart-enabled=true
 			// Detach so the new instance survives the parent quitting
 			child.unref?.();
 		} catch (err) {
-			console.error(
-				"[DesktopManager] relaunch: failed to spawn new instance:",
-				err,
+			logger.error(
+				`[DesktopManager] relaunch: failed to spawn new instance: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 		Utils.quit();
@@ -1478,7 +1486,7 @@ X-GNOME-Autostart-enabled=true
 		}
 
 		// Fallback: try to return a sensible default under userData
-		console.warn(
+		logger.warn(
 			`[DesktopManager] Unknown path name "${options.name}", falling back to userData`,
 		);
 		return { path: Utils.paths.userData };
@@ -1547,9 +1555,8 @@ X-GNOME-Autostart-enabled=true
 			const result = await Updater.checkForUpdate();
 			if (result?.updateAvailable) {
 				void this.downloadUpdateWithRetry().catch((error: unknown) => {
-					console.warn(
-						"[Desktop] Update download failed after retries:",
-						error,
+					logger.warn(
+						`[Desktop] Update download failed after retries: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				});
 			}
@@ -1575,9 +1582,8 @@ X-GNOME-Autostart-enabled=true
 				const isLastAttempt = attempt === maxAttempts;
 				if (isLastAttempt) throw error;
 				const delay = baseDelayMs * 2 ** (attempt - 1);
-				console.warn(
-					`[Desktop] Update download attempt ${attempt}/${maxAttempts} failed, retrying in ${delay}ms:`,
-					error,
+				logger.warn(
+					`[Desktop] Update download attempt ${attempt}/${maxAttempts} failed, retrying in ${delay}ms: ${error instanceof Error ? error.message : String(error)}`,
 				);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
@@ -1861,7 +1867,9 @@ X-GNOME-Autostart-enabled=true
 					return;
 				}
 			} catch (err) {
-				console.warn("[Desktop] openExternal handler failed:", err);
+				logger.warn(
+					`[Desktop] openExternal handler failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 

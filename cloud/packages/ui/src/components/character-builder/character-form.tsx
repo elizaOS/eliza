@@ -16,12 +16,12 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "../primitives";
 import { Globe, Info, Link as LinkIcon, Lock, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { ElizaCharacter } from "@/lib/types";
-import { AvatarGenerator } from "@/packages/ui/src/components/character-builder/avatar-generator";
+import { AvatarGenerator } from "./avatar-generator";
 
 export type FormTab = "basics" | "personality" | "style" | "avatar";
 

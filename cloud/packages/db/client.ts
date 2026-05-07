@@ -263,7 +263,7 @@ const connectionManager = new DatabaseConnectionManager();
 // ============================================================================
 
 /**
- * Primary database - routes to the NA primary write connection.
+ * Primary database - routes to the primary write connection.
  * Equivalent to `dbWrite`; prefer `dbRead` / `dbWrite` for read/write intent clarity.
  */
 export const db = new Proxy({} as Database, {
@@ -275,11 +275,12 @@ export const db = new Proxy({} as Database, {
 });
 
 /**
- * Read database - Routes to read replica in current region
- * Use for SELECT queries, reports, analytics
+ * Read-intent database connection.
+ * Currently uses the primary DATABASE_URL; keep this alias for repository
+ * read/write intent clarity after regional replicas were removed.
  *
  * @example
- * // Read from replica
+ * // Read-intent query
  * const users = await dbRead.query.users.findMany();
  */
 export const dbRead = new Proxy({} as Database, {
@@ -291,7 +292,7 @@ export const dbRead = new Proxy({} as Database, {
 });
 
 /**
- * Write database - Routes to primary in current region
+ * Write database - routes to the primary connection.
  * Use for INSERT, UPDATE, DELETE operations
  *
  * @example
@@ -318,7 +319,7 @@ export function getDbConnectionInfo() {
 }
 
 /**
- * Execute a read query (uses read replica)
+ * Execute a read-intent query.
  */
 export async function withReadDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
   return fn(connectionManager.getReadConnection());

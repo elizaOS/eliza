@@ -355,6 +355,12 @@ export const actionsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? -1,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: true,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 

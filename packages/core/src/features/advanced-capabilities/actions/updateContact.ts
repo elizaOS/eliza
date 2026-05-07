@@ -18,6 +18,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_CONTACT");
@@ -117,6 +118,8 @@ function readUpdateContactInput(
 
 export const updateContactAction: Action = {
 	name: spec.name,
+	contexts: ["contacts", "messaging", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	suppressPostActionContinuation: true,
@@ -125,7 +128,7 @@ export const updateContactAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
 		const hasService = !!runtime.getService("relationships");
@@ -138,6 +141,15 @@ export const updateContactAction: Action = {
 				params.preferences ||
 				params.customFields ||
 				params.notes)
+		) {
+			return true;
+		}
+		if (
+			hasService &&
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["contacts", "messaging", "knowledge"],
+				keywordKeys: ["action.updateContact.request"],
+			})
 		) {
 			return true;
 		}

@@ -282,6 +282,8 @@ export const paymentsAction: Action & {
     "Track payments and recurring charges: list connected payment sources (bank/CSV/Plaid/PayPal), import transactions from CSV, compute spending summaries, and detect recurring charges.",
   descriptionCompressed:
     "payments+spending: dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges; bank/CSV/Plaid/PayPal",
+  contexts: ["payments", "finance", "wallet", "crypto", "subscriptions"],
+  roleGate: { minRole: "OWNER" },
 
   parameters: [
     {

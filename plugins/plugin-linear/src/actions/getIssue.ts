@@ -22,6 +22,9 @@ type GetIssueParams = {
 
 export const getIssueAction: Action = {
   name: "GET_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "knowledge"],
+  contextGate: { anyOf: ["tasks", "connectors", "knowledge"] },
+  roleGate: { minRole: "USER" },
   description: "Get details of a specific Linear issue",
   descriptionCompressed: "get detail specific Linear issue",
   similes: [

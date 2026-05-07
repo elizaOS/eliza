@@ -35,6 +35,12 @@ export const contextBenchProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? 5,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
 		const meta = message.metadata;
 		const benchmarkContext = hasBenchmarkContext(meta)

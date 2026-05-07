@@ -20,6 +20,9 @@ function artifactTypeForTarget(type: string): string {
 
 export const taskShareAction: Action = {
   name: "TASK_SHARE",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "SHARE_TASK_RESULT",
     "SHOW_TASK_ARTIFACT",

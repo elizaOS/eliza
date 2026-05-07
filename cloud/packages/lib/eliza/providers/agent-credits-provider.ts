@@ -63,9 +63,15 @@ const OPERATION_COSTS = {
 export const agentCreditsProvider: Provider = {
   name: "AGENT_CREDITS",
   description: "Provides agent budget and credit information",
+  contexts: ["finance", "payments", "wallet", "crypto"],
+  contextGate: { anyOf: ["finance", "payments", "wallet", "crypto"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   get: async (runtime: IAgentRuntime, _message) => {
     const agentId = runtime.agentId;
+    try {
 
     // Try to get budget for this agent
     const budget = await agentBudgetService.getBudget(agentId);
@@ -140,10 +146,38 @@ export const agentCreditsProvider: Provider = {
       isPaused: creditsState.isPaused,
     });
 
-    return {
-      data: { credits: creditsState },
-      values: { credits: creditsState },
-    };
+      return {
+        data: { credits: creditsState },
+        values: { credits: creditsState },
+      };
+    } catch (error) {
+      logger.warn("[AgentCredits] Provider fallback", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        data: {
+          credits: {
+            hasBudget: false,
+            allocated: 0,
+            spent: 0,
+            available: 0,
+            dailyLimit: null,
+            dailySpent: 0,
+            dailyRemaining: null,
+            isPaused: false,
+            pauseReason: null,
+            canAffordChat: false,
+            canAffordImage: false,
+            canAffordVideo: false,
+            canAffordMcp: false,
+            statusText: "Budget information unavailable",
+            budgetWarning: null,
+          },
+        },
+        values: {},
+      };
+    }
   },
 };
 

@@ -8,6 +8,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { hasInstallPluginSignal } from "./plugin-action-validation.js";
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
   const svc = runtime.getService("plugin_manager");
@@ -16,6 +17,8 @@ function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
 
 export const installPluginAction: Action = {
   name: "INSTALL_PLUGIN",
+  contexts: ["admin", "settings", "connectors"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "INSTALL",
@@ -33,7 +36,9 @@ export const installPluginAction: Action = {
   descriptionCompressed:
     "install plugin yet install use user ask use, enable, set up, install plugin mark available (yet load) plugin download agent restart load",
 
-  validate: async () => true,
+  validate: async (runtime, message, state) =>
+    getPluginManager(runtime) !== null &&
+    hasInstallPluginSignal(message, state),
 
   handler: async (runtime, _message, _state, options) => {
     try {

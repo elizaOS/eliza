@@ -5,6 +5,10 @@ import type { KaminoService } from "../services/kaminoService";
 
 // Kamino Lend Program constants
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
+const MAX_KAMINO_WALLETS = 5;
+const MAX_KAMINO_POSITIONS = 10;
+const MAX_KAMINO_MARKETS = 10;
+const MAX_KAMINO_REPORT_CHARS = 8000;
 
 type AccountLike = {
   id?: unknown;
@@ -59,7 +63,7 @@ function formatAccountForPrompt(account: unknown): string {
 
   const solanaWallets = getSolanaWalletAddresses(account);
   lines.push(`solana_wallet_count: ${solanaWallets.length}`);
-  solanaWallets.forEach((wallet, index) => {
+  solanaWallets.slice(0, MAX_KAMINO_WALLETS).forEach((wallet, index) => {
     lines.push(`solana_wallets[${index}]: ${wallet}`);
   });
 
@@ -93,6 +97,11 @@ export const kaminoProvider: Provider = {
   descriptionCompressed:
     "provide information Kamino lend protocol position, market data, available lending/borrow opportunity",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_LENDING provider called");
 
@@ -155,7 +164,7 @@ export const kaminoProvider: Provider = {
           },
         );
 
-        kaminoInfo += enhancedReport;
+        kaminoInfo += enhancedReport.slice(0, MAX_KAMINO_REPORT_CHARS);
       } else {
         kaminoInfo =
           "Kamino lending protocol information is only available in private messages.";
@@ -169,7 +178,7 @@ export const kaminoProvider: Provider = {
       kaminoLending: kaminoInfo,
     };
 
-    const text = `${kaminoInfo}\n`;
+    const text = `${kaminoInfo}\n`.slice(0, MAX_KAMINO_REPORT_CHARS);
 
     return {
       data,
@@ -198,7 +207,7 @@ async function getUserKaminoPositions(
     }
 
     // Get positions for each wallet
-    for (const walletAddress of walletAddresses) {
+    for (const walletAddress of walletAddresses.slice(0, MAX_KAMINO_WALLETS)) {
       positionsInfo += `🔸 Wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}\n`;
 
       try {
@@ -225,7 +234,7 @@ async function getUserKaminoPositions(
           if (positions.lending.length > 0) {
             positionsInfo += `   💰 LENDING POSITIONS (${positions.lending.length}):\n\n`;
 
-            for (const position of positions.lending) {
+            for (const position of positions.lending.slice(0, MAX_KAMINO_POSITIONS)) {
               positionsInfo += `   📈 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;
@@ -238,7 +247,7 @@ async function getUserKaminoPositions(
           if (positions.borrowing.length > 0) {
             positionsInfo += `   💳 BORROWING POSITIONS (${positions.borrowing.length}):\n\n`;
 
-            for (const position of positions.borrowing) {
+            for (const position of positions.borrowing.slice(0, MAX_KAMINO_POSITIONS)) {
               positionsInfo += `   📉 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;
@@ -388,7 +397,7 @@ async function getDiscoveredKaminoMarkets(
     // Display discovered markets
     marketsInfo += "🏪 DISCOVERED MARKET ADDRESSES:\n\n";
 
-    for (let i = 0; i < markets.length; i++) {
+    for (let i = 0; i < Math.min(markets.length, MAX_KAMINO_MARKETS); i++) {
       const market = markets[i];
       marketsInfo += `${i + 1}. ${market.toString()}\n`;
     }

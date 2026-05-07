@@ -53,6 +53,9 @@ function inferOperation(
 
 export const taskControlAction: Action = {
   name: "TASK_CONTROL",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CONTROL_TASK",
     "PAUSE_TASK",

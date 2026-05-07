@@ -9,7 +9,7 @@ export type JsonSchemaPrimitiveType =
 	| "array";
 
 export interface JsonSchema {
-	type: JsonSchemaPrimitiveType;
+	type?: JsonSchemaPrimitiveType;
 	description?: string;
 	enum?: Array<string | number | boolean>;
 	default?: unknown;
@@ -20,13 +20,15 @@ export interface JsonSchema {
 	minimum?: number;
 	maximum?: number;
 	pattern?: string;
+	oneOf?: JsonSchema[];
+	anyOf?: JsonSchema[];
 }
 
 export interface ActionParametersJsonSchema extends JsonSchema {
 	type: "object";
 	properties: Record<string, JsonSchema>;
 	required: string[];
-	additionalProperties: false;
+	additionalProperties?: false;
 }
 
 const SUPPORTED_SCHEMA_TYPES = new Set<string>([
@@ -149,10 +151,43 @@ export function actionParameterSchemaToJsonSchema(
 	options: { path?: string; description?: string; enumValues?: unknown[] } = {},
 ): JsonSchema {
 	const path = options.path ?? "<anonymous>";
-	assertSupportedSchemaType(schema.type, path);
+	const descriptionFromSchema = getSchemaDescription(
+		schema,
+		options.description,
+	);
 
-	const jsonSchema: JsonSchema = { type: schema.type };
-	const description = getSchemaDescription(schema, options.description);
+	if (schema.anyOf?.length) {
+		return {
+			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+			anyOf: schema.anyOf.map((branch, index) =>
+				actionParameterSchemaToJsonSchema(branch, {
+					path: `${path}.anyOf[${index}]`,
+				}),
+			),
+		};
+	}
+
+	if (schema.oneOf?.length) {
+		return {
+			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+			oneOf: schema.oneOf.map((branch, index) =>
+				actionParameterSchemaToJsonSchema(branch, {
+					path: `${path}.oneOf[${index}]`,
+				}),
+			),
+		};
+	}
+
+	const schemaType = schema.type;
+	if (!schemaType) {
+		throw new Error(
+			`Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
+		);
+	}
+	assertSupportedSchemaType(schemaType, path);
+
+	const jsonSchema: JsonSchema = { type: schemaType };
+	const description = descriptionFromSchema;
 	if (description) {
 		jsonSchema.description = description;
 	}

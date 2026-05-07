@@ -1,5 +1,5 @@
 import { Helmet } from "react-helmet-async";
-import { AdminRedemptionsWrapper } from "@/packages/ui/src/components/admin/redemptions-wrapper";
+import { AdminRedemptionsWrapper } from "../_components/redemptions-wrapper";
 
 /** /dashboard/admin/redemptions — review and approve token redemption requests. */
 export default function AdminRedemptionsPage() {

@@ -14,6 +14,10 @@ export const websiteBlockerProvider: Provider = {
     "Owner-only provider for the local hosts-file website blocker integration. Use WEBSITE_BLOCK for timed or generic focus blocks, and BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task.",
   descriptionCompressed: "Owner: hosts-file website blocker.",
   dynamic: true,
+  contexts: ["screen_time", "settings"],
+  contextGate: { anyOf: ["screen_time", "settings"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -34,7 +38,27 @@ export const websiteBlockerProvider: Provider = {
       };
     }
 
-    const status = await getCachedSelfControlStatus();
+    let status;
+    try {
+      status = await getCachedSelfControlStatus();
+    } catch (error) {
+      return {
+        text: "Local website blocking status unavailable.",
+        values: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+        },
+        data: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
     if (!status.available) {
       return {
         text:

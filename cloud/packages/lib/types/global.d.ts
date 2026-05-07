@@ -15,25 +15,3 @@
 interface Window {
   webkitAudioContext: typeof AudioContext;
 }
-
-// =============================================================================
-// External Package Type Declarations
-// =============================================================================
-
-/**
- * @elizaos/plugin-sql/node - Database adapter factory
- * Type definitions are missing from the published package
- */
-declare module "@elizaos/plugin-sql/node" {
-  import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-
-  interface DatabaseAdapterConfig {
-    postgresUrl?: string;
-    dataDir?: string;
-  }
-
-  export function createDatabaseAdapter(
-    config: DatabaseAdapterConfig,
-    agentId: UUID,
-  ): IDatabaseAdapter;
-}

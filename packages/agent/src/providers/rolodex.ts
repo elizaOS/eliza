@@ -50,6 +50,11 @@ export const rolodexProvider: Provider = {
   relevanceKeywords: getValidationKeywordTerms("provider.rolodex.relevance", {
     includeAllLocales: true,
   }),
+  contexts: ["contacts", "memory"],
+  contextGate: { anyOf: ["contacts", "memory"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   async get(
     runtime: IAgentRuntime,

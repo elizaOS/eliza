@@ -1303,6 +1303,60 @@ export const messageOp: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "op",
+			description:
+				"Operation: send, reply, dm, edit, delete, react, pin, or unpin.",
+			required: false,
+			schema: {
+				type: "string",
+				enum: [
+					"send",
+					"reply",
+					"dm",
+					"edit",
+					"delete",
+					"react",
+					"pin",
+					"unpin",
+				],
+			},
+		},
+		{
+			name: "messageContent",
+			description: "Message text for send, reply, dm, or edit.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "channelIdentifier",
+			description: "Discord channel name/id or current channel.",
+			required: false,
+			schema: { type: "string", default: "current" },
+		},
+		{
+			name: "targetUser",
+			description: "Discord user id, mention, or username for a DM.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "messageRef",
+			description: "Message id, last/previous marker, or search text.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "emoji",
+			description: "Reaction emoji.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	...terminalActionInteractionSemantics,
 	validate: async (
 		_runtime: IAgentRuntime,

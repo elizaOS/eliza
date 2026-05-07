@@ -38,7 +38,9 @@ export interface ActionParameterSchema
 		| "items"
 		| "enumValues"
 		| "required"
+		| "type"
 	> {
+	type: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
@@ -59,6 +61,10 @@ export interface ActionParameterSchema
 	maxLength?: number;
 	/** Regular expression pattern for string-valued parameters */
 	pattern?: string;
+	/** JSON Schema `oneOf`: value must match exactly one sub-schema */
+	oneOf?: ReadonlyArray<ActionParameterSchema>;
+	/** JSON Schema `anyOf`: value must match at least one sub-schema */
+	anyOf?: ReadonlyArray<ActionParameterSchema>;
 }
 
 /**
@@ -132,11 +138,28 @@ export interface EvaluationExample
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+export interface MessageHandlerPlan {
+	contexts: AgentContext[];
+	reply?: string;
+	[key: string]: JsonValue | undefined;
+}
+
 export interface MessageHandlerResult {
+	processMessage: MessageHandlerAction;
+	plan: MessageHandlerPlan;
+	/**
+	 * @deprecated Use processMessage. Kept as a normalized compatibility alias
+	 * while older callers/tests and recorded trajectories are migrated.
+	 */
 	action: MessageHandlerAction;
-	simple: boolean;
+	/**
+	 * @deprecated Use plan.contexts.
+	 */
 	contexts: AgentContext[];
 	thought: string;
+	/**
+	 * @deprecated Use plan.reply.
+	 */
 	reply?: string;
 }
 
@@ -178,11 +201,15 @@ export type Handler = (
 
 /**
  * Validator function type for actions/evaluators
+ *
+ * `options` mirrors {@link Handler}: runtimes may omit it; actions that read
+ * structured parameters should treat it as optional.
  */
 export type Validator = (
 	runtime: IAgentRuntime,
 	message: Memory,
 	state?: State,
+	options?: HandlerOptions | Record<string, JsonValue | undefined>,
 ) => Promise<boolean>;
 
 /**
@@ -219,8 +246,8 @@ export interface Action {
 	tags?: string[];
 
 	/**
-	 * When true, the message service should stop after executing this action
-	 * instead of running a post-action continuation LLM turn.
+	 * When true, the message service treats this action as owning the turn
+	 * instead of adding extra planner follow-up text after execution.
 	 *
 	 * Use this for actions that already emit a complete user-facing reply or
 	 * that launch asynchronous background work whose progress will continue
@@ -451,10 +478,9 @@ export interface Provider {
 /**
  * Error codes an action handler may set on `ActionResult.values.error` or
  * `ActionResult.data.error` to signal that the next step requires a fresh
- * confirmation message from the user. The post-action continuation loop in
- * `MessagingService` checks for these (alongside the canonical
- * `requiresConfirmation: true` flag) and breaks the chain so the agent does
- * not spin re-running the same step until `MAX_MULTISTEP_ITERATIONS`.
+ * confirmation message from the user. Native planner execution checks for
+ * these (alongside the canonical `requiresConfirmation: true` flag) and
+ * pauses the chain so the agent does not spin re-running the same step.
  *
  * Keep this list aligned with `ACTION_CONFIRMATION_STATUS_VALUES` below —
  * both the type and the runtime set are exported so callers (actions,
@@ -570,7 +596,7 @@ export type StreamChunkCallback = (
 
 /**
  * Options passed to action handlers during execution
- * Provides context about the current execution and multi-step plans
+ * Provides context about the current execution and queued action plans
  */
 export interface HandlerOptions {
 	/** Context with previous action results and utilities */

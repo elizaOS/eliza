@@ -19,6 +19,11 @@ export const xUnreadDmsProvider: Provider = {
   description: "Unread Twitter/X direct messages.",
   descriptionCompressed: "Unread X direct messages list.",
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

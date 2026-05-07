@@ -4,3 +4,4 @@ export {
   getEstimatedReadyMessage,
   VoiceStatusBadge,
 } from "./voice-status-badge";
+export type { Voice, VoiceCloneJob, VoiceSettings } from "./types";

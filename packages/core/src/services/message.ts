@@ -11,12 +11,16 @@ import { looksLikeNonActionableChatter } from "../features/basic-capabilities/pr
 import { logger } from "../logger";
 import { imageDescriptionTemplate } from "../prompts";
 import {
+	v5DirectMessageHandlerSchema,
 	v5MessageHandlerSchema,
 	v5MessageHandlerTemplate,
 } from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
 import { filterByContextGate } from "../runtime/context-gates";
-import { createContextObject } from "../runtime/context-object";
+import {
+	appendContextEvent,
+	createContextObject,
+} from "../runtime/context-object";
 import type { ContextRegistry } from "../runtime/context-registry";
 import {
 	type EvaluatorEffects,
@@ -75,6 +79,7 @@ import type {
 } from "../types/message-service";
 import type {
 	GenerateTextAttachment,
+	GenerateTextParams,
 	GenerateTextResult,
 	TextToSpeechParams,
 	ToolDefinition,
@@ -87,10 +92,22 @@ import {
 	parallelWithShouldRespondPipelineHookContext,
 	preShouldRespondPipelineHookContext,
 } from "../types/pipeline-hooks";
-import type { Content, Media, MentionContext, UUID } from "../types/primitives";
+import type {
+	Content,
+	JsonValue,
+	Media,
+	MentionContext,
+	UUID,
+} from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import type {
+	StreamingContextEventPayload,
+	StreamingEvaluationPayload,
+	StreamingToolCallPayload,
+	StreamingToolResultPayload,
+} from "../types/streaming";
 import {
 	getLocalServerUrl,
 	parseBooleanFromText,
@@ -847,8 +864,6 @@ function _resolvePromptAttachments(
 type ResolvedMessageOptions = {
 	maxRetries: number;
 	timeoutDuration: number;
-	useMultiStep: boolean;
-	maxMultiStepIterations: number;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -974,6 +989,7 @@ function createV5MessageContextObject(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
+	userRoles?: readonly RoleGateRole[];
 }): ContextObject {
 	const events: ContextEvent[] = [];
 	const addInstruction = (
@@ -993,22 +1009,6 @@ function createV5MessageContextObject(args: {
 		});
 	};
 
-	addInstruction(
-		"character",
-		[
-			args.runtime.character.name
-				? `agent_name: ${args.runtime.character.name}`
-				: "",
-			typeof args.runtime.character.system === "string"
-				? args.runtime.character.system
-				: "",
-		]
-			.filter(Boolean)
-			.join("\n"),
-		true,
-	);
-	addInstruction("composed_state", args.state.text, false);
-
 	const availableContexts = parseContextList(
 		args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
 	);
@@ -1019,14 +1019,7 @@ function createV5MessageContextObject(args: {
 		}`,
 		true,
 	);
-
-	if (args.selectedContexts?.length) {
-		addInstruction(
-			"selected_contexts",
-			`selected_contexts: ${args.selectedContexts.join(", ")}`,
-			false,
-		);
-	}
+	addInstruction("composed_state", args.state.text, false);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -1048,6 +1041,7 @@ function createV5MessageContextObject(args: {
 		const actions = filterByContextGate(
 			args.runtime.actions,
 			args.selectedContexts,
+			args.userRoles,
 		);
 		for (const action of actions) {
 			try {
@@ -1072,6 +1066,32 @@ function createV5MessageContextObject(args: {
 		}
 	}
 
+	const characterContent = [
+		args.runtime.character.name
+			? `agent_name: ${args.runtime.character.name}`
+			: "",
+		typeof args.runtime.character.system === "string"
+			? args.runtime.character.system
+			: "",
+	]
+		.filter(Boolean)
+		.join("\n")
+		.trim();
+	const expandedTools = events
+		.filter((event) => event.type === "tool" && "tool" in event)
+		.map((event) => {
+			const tool = (
+				event as {
+					tool: { name: string; description?: string; parameters?: unknown };
+				}
+			).tool;
+			return {
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters as ToolDefinition["parameters"],
+				type: "function" as const,
+			};
+		});
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
 		createdAt: Date.now(),
@@ -1080,8 +1100,78 @@ function createV5MessageContextObject(args: {
 			messageId: args.message.id,
 			selectedContexts: [...(args.selectedContexts ?? [])],
 		},
+		staticPrefix: {
+			characterPrompt: characterContent
+				? {
+						id: "character",
+						label: "character",
+						content: characterContent,
+						stable: true,
+					}
+				: undefined,
+			contextRegistryDigest: availableContexts.join(","),
+		},
+		trajectoryPrefix: {
+			selectedContexts: [...(args.selectedContexts ?? [])],
+			expandedTools,
+			createdAtStageId: "message-handler",
+		},
+		plannedQueue: [],
+		metrics: {},
+		limits: {},
 		events,
 	});
+}
+
+function filterSelectedContextsForRole(
+	contexts: readonly AgentContext[],
+	availableContexts: readonly ContextDefinition[],
+): AgentContext[] {
+	if (contexts.length === 0) {
+		return [];
+	}
+	if (availableContexts.length === 0) {
+		return [...new Set(contexts)];
+	}
+	const allowed = new Set(
+		availableContexts.map((definition) => String(definition.id)),
+	);
+	const selected: AgentContext[] = [];
+	const seen = new Set<string>();
+	for (const context of contexts) {
+		const id = String(context);
+		if (!allowed.has(id) || seen.has(id)) {
+			continue;
+		}
+		seen.add(id);
+		selected.push(context);
+	}
+	return selected;
+}
+
+async function generateDirectReplyOnce(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	messageHandler: MessageHandlerResult;
+}): Promise<string> {
+	const latestText = getUserMessageText(args.message) ?? "";
+	const prompt = [
+		"task: Write one direct reply to the user.",
+		"",
+		"context:",
+		args.state.text,
+		"",
+		`user_message: ${latestText}`,
+		`routing_thought: ${args.messageHandler.thought}`,
+		"",
+		"rules:",
+		"- answer directly in the agent's voice",
+		"- do not select actions or tools",
+		"- do not include internal reasoning",
+	].join("\n");
+	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+	return getV5ModelText(raw).trim();
 }
 
 /**
@@ -1109,8 +1199,20 @@ export function formatAvailableContextsForPrompt(
 function renderV5MessageHandlerPrompt(
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
+	options?: { directMessage?: boolean },
 ): string {
-	return v5MessageHandlerTemplate
+	const template = options?.directMessage
+		? v5MessageHandlerTemplate
+				.replace(
+					"task: Decide processMessage and the plan for this message.",
+					"task: Decide the plan for this direct message.",
+				)
+				.replace(
+					"- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n",
+					"- this is a direct message, so processMessage is already hardcoded to RESPOND\n- do not include processMessage; only choose plan and thought\n",
+				)
+		: v5MessageHandlerTemplate;
+	return template
 		.replace("{{contextObject}}", JSON.stringify(context, null, 2))
 		.replace(
 			"{{availableContexts}}",
@@ -1320,16 +1422,24 @@ export async function runV5MessageRuntimeStage1(args: {
 	let endStatus: "finished" | "errored" = "finished";
 	try {
 		const messageHandlerStartedAt = Date.now();
+		const directMessageChannel =
+			args.message.content?.channelType === ChannelType.DM ||
+			args.message.content?.channelType === ChannelType.VOICE_DM ||
+			args.message.content?.channelType === ChannelType.API ||
+			args.message.content?.channelType === ChannelType.SELF;
 		const messageHandlerPrompt = renderV5MessageHandlerPrompt(
 			context,
 			availableContexts,
+			{ directMessage: directMessageChannel },
 		);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
 				prompt: messageHandlerPrompt,
 				responseFormat: { type: "json_object" },
-				responseSchema: v5MessageHandlerSchema,
+				responseSchema: directMessageChannel
+					? v5DirectMessageHandlerSchema
+					: v5MessageHandlerSchema,
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
@@ -1355,6 +1465,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		messageHandler.contexts = filterSelectedContextsForRole(
+			messageHandler.plan.contexts,
+			availableContexts,
+		);
+		messageHandler.plan.contexts = messageHandler.contexts;
 		const route = routeMessageHandlerOutput(messageHandler);
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -1366,12 +1481,20 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
+			const reply =
+				route.reply ||
+				(await generateDirectReplyOnce({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+				}));
 			return {
 				kind: "direct_reply",
 				messageHandler,
 				result: createV5ReplyStrategyResult({
 					...args,
-					text: route.reply,
+					text: reply,
 					thought: messageHandler.thought,
 				}),
 			};
@@ -1383,20 +1506,41 @@ export async function runV5MessageRuntimeStage1(args: {
 			...args,
 			selectedContexts,
 			includeTools: true,
+			userRoles: [senderRole],
+		});
+		const plannerContextWithDecision = appendContextEvent(plannerContext, {
+			id: `message-handler:${messageHandlerEndedAt}`,
+			type: "message_handler",
+			source: "message-service",
+			createdAt: messageHandlerEndedAt,
+			metadata: {
+				processMessage: messageHandler.processMessage,
+				plan: {
+					contexts: messageHandler.plan.contexts,
+					...(messageHandler.plan.reply !== undefined
+						? { reply: messageHandler.plan.reply }
+						: {}),
+				} as JsonValue,
+				thought: messageHandler.thought,
+			},
 		});
 		const plannerRuntime: PlannerRuntime = {
 			useModel: (modelType, modelParams, provider) =>
-				args.runtime.useModel(modelType, modelParams, provider),
+				args.runtime.useModel(
+					modelType,
+					modelParams as GenerateTextParams,
+					provider,
+				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		const plannerTools = collectPlannerTools(plannerContext);
+		const plannerTools = collectPlannerTools(plannerContextWithDecision);
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
 		};
 		const plannerResult = await runPlannerLoop({
 			runtime: plannerRuntime,
-			context: plannerContext,
+			context: plannerContextWithDecision,
 			tools: plannerTools.length > 0 ? plannerTools : undefined,
 			evaluatorEffects,
 			recorder,
@@ -1405,11 +1549,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				executeV5PlannedToolCall({
 					runtime: args.runtime,
 					toolCall,
-					plannerContext,
+					plannerContext: plannerContextWithDecision,
 					executorCtx: {
 						message: args.message,
 						state: args.state,
 						activeContexts: selectedContexts,
+						userRoles: [senderRole],
 						previousResults: collectPreviousActionResults(ctx.trajectory),
 					},
 					plannerRuntime,
@@ -3733,25 +3878,12 @@ async function _composeContinuationDecisionState(
 	);
 }
 
-function _isBenchmarkMode(state: Pick<State, "values">): boolean {
-	const benchmarkFlag = state.values?.benchmark_has_context;
-	if (typeof benchmarkFlag === "boolean") {
-		return benchmarkFlag;
-	}
-
-	if (typeof benchmarkFlag === "string") {
-		return parseBooleanFromText(benchmarkFlag);
-	}
-
-	return false;
-}
-
 /**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
  * - Message validation and memory creation
  * - Smart response decision (shouldRespond)
- * - Single-shot or multi-step processing strategies
+ * - Native planner processing
  * - Action execution and evaluation
  * - Attachment processing
  * - Message deletion and channel clearing
@@ -4026,17 +4158,6 @@ export class DefaultMessageService implements IMessageService {
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
 					timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
-					useMultiStep:
-						options?.useMultiStep ??
-						parseBooleanFromText(
-							String(runtime.getSetting("USE_MULTI_STEP") ?? ""),
-						),
-					maxMultiStepIterations:
-						options?.maxMultiStepIterations ??
-						parseInt(
-							String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"),
-							10,
-						),
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -4138,10 +4259,41 @@ export class DefaultMessageService implements IMessageService {
 						}, opts.timeoutDuration);
 					});
 
-					// Structured streaming is handled by dynamicPromptExecFromState,
-					// which receives opts.onStreamChunk directly and extracts only fields
-					// marked as streamable in the schema.
-					const streamingContext = undefined;
+					// Structured streaming is handled by dynamicPromptExecFromState for
+					// text fields. Native v5 planner/tool/evaluator events use the same
+					// callback with JSON event chunks so UIs can render tool progress.
+					const streamingContext = opts.onStreamChunk
+						? {
+								onStreamChunk: opts.onStreamChunk,
+								messageId: responseId,
+								onToolCall: async (payload: StreamingToolCallPayload) => {
+									await opts.onStreamChunk?.(
+										JSON.stringify({ type: "tool_call", ...payload }),
+										responseId,
+									);
+								},
+								onToolResult: async (payload: StreamingToolResultPayload) => {
+									await opts.onStreamChunk?.(
+										JSON.stringify({ type: "tool_result", ...payload }),
+										responseId,
+									);
+								},
+								onEvaluation: async (payload: StreamingEvaluationPayload) => {
+									await opts.onStreamChunk?.(
+										JSON.stringify({ type: "evaluation", ...payload }),
+										responseId,
+									);
+								},
+								onContextEvent: async (
+									payload: StreamingContextEventPayload,
+								) => {
+									await opts.onStreamChunk?.(
+										JSON.stringify({ type: "context_event", event: payload }),
+										responseId,
+									);
+								},
+							}
+						: undefined;
 					// Voice handling state
 					const firstSentenceSent = false;
 					const firstSentenceText = "";

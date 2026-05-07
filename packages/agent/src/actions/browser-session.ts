@@ -156,6 +156,8 @@ function formatBrowserSessionResult(
 
 export const browserSessionAction: Action = {
   name: "BROWSER_SESSION",
+  contexts: ["browser", "web", "automation"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "BROWSE_SITE",
     "CONTROL_BROWSER_SESSION",

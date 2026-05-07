@@ -1,6 +1,7 @@
 import type { Action } from "./components";
+import type { AgentContext, ContextDefinition } from "./contexts";
 import type { Memory } from "./memory";
-import type { PromptSegment } from "./model";
+import type { PromptSegment, ToolDefinition } from "./model";
 import type { Content, JsonValue } from "./primitives";
 
 export type ContextObjectEventType =
@@ -108,6 +109,32 @@ export interface ContextObject {
 	version?: "v5" | (string & {});
 	createdAt?: number;
 	metadata?: Record<string, JsonValue | undefined>;
+	staticPrefix?: {
+		systemPrompt?: ContextObjectPromptSegment;
+		characterPrompt?: ContextObjectPromptSegment;
+		staticProviders?: ContextObjectPromptSegment[];
+		alwaysTools?: ToolDefinition[];
+		contextRegistryDigest?: string;
+	};
+	trajectoryPrefix?: {
+		messageHandlerThought?: string;
+		selectedContexts?: AgentContext[];
+		contextDefinitions?: ContextDefinition[];
+		contextProviders?: ContextObjectPromptSegment[];
+		expandedTools?: ToolDefinition[];
+		createdAtStageId?: string;
+	};
+	plannedQueue?: Array<{
+		id?: string;
+		name: string;
+		args?: JsonValue;
+		status: "queued" | "running" | "completed" | "skipped" | "failed";
+		sourceStageId?: string;
+		contextScope?: AgentContext;
+		parentToolCallId?: string;
+	}>;
+	metrics?: Record<string, JsonValue | undefined>;
+	limits?: Record<string, JsonValue | undefined>;
 	/**
 	 * Append-only construction log. Consumers should render by walking this array
 	 * in order; updates are represented as new events rather than mutations.

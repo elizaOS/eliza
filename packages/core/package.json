@@ -20,8 +20,8 @@
 		"node": ">=24.0.0"
 	},
 	"type": "module",
-	"main": "./dist/index.node.js",
-	"module": "./dist/index.node.js",
+	"main": "./dist/node/index.node.js",
+	"module": "./dist/node/index.node.js",
 	"types": "./dist/index.d.ts",
 	"browser": "./dist/index.browser.js",
 	"sideEffects": false,
@@ -36,19 +36,19 @@
 			},
 			"node": {
 				"types": "./dist/index.node.d.ts",
-				"import": "./dist/index.node.js",
-				"default": "./dist/index.node.js"
+				"import": "./dist/node/index.node.js",
+				"default": "./dist/node/index.node.js"
 			},
 			"bun": {
 				"types": "./dist/index.node.d.ts",
-				"default": "./dist/index.node.js"
+				"default": "./dist/node/index.node.js"
 			},
-			"default": "./dist/index.node.js"
+			"default": "./dist/node/index.node.js"
 		},
 		"./node": {
 			"types": "./dist/index.node.d.ts",
-			"import": "./dist/index.node.js",
-			"default": "./dist/index.node.js"
+			"import": "./dist/node/index.node.js",
+			"default": "./dist/node/index.node.js"
 		},
 		"./browser": {
 			"types": "./dist/index.browser.d.ts",

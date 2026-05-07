@@ -7,11 +7,17 @@ import { getWalletKey } from "../keypairUtils";
 import type { WalletPortfolio } from "../types";
 
 const spec = requireProviderSpec("solana-wallet");
+const MAX_PORTFOLIO_ITEMS = 20;
 
 export const walletProvider: Provider = {
   name: spec.name,
   description: "your solana wallet information",
   descriptionCompressed: "Solana wallet info.",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, state: State): Promise<ProviderResult> => {
     try {
@@ -33,7 +39,12 @@ export const walletProvider: Provider = {
         total_sol: totalSol,
       };
 
-      portfolio.items.forEach((item, index) => {
+      const nonZeroItems = portfolio.items.filter((item) =>
+        new BigNumber(item.uiAmount).isGreaterThan(0)
+      );
+      const displayedItems = nonZeroItems.slice(0, MAX_PORTFOLIO_ITEMS);
+
+      displayedItems.forEach((item, index) => {
         if (new BigNumber(item.uiAmount).isGreaterThan(0)) {
           values[`token_${index}_name`] = item.name;
           values[`token_${index}_symbol`] = item.symbol;
@@ -52,19 +63,19 @@ export const walletProvider: Provider = {
       let text = `\n\n${agentName}'s Main Solana Wallet${pubkeyStr}\n`;
       text += `Total Value: $${values.total_usd} (${values.total_sol} SOL)\n\n`;
       text += "Token Balances:\n";
-      const nonZeroItems = portfolio.items.filter((item) =>
-        new BigNumber(item.uiAmount).isGreaterThan(0)
-      );
 
       if (nonZeroItems.length === 0) {
         text += "No tokens found with non-zero balance\n";
       } else {
-        for (const item of nonZeroItems) {
+        for (const item of displayedItems) {
           const valueUsd = new BigNumber(item.valueUsd).toFixed(2);
           const valueSol = item.valueSol ?? "0";
           text += `${item.name} (${item.symbol}): ${new BigNumber(item.uiAmount).toFixed(
             6
           )} ($${valueUsd} | ${valueSol} SOL)\n`;
+        }
+        if (nonZeroItems.length > displayedItems.length) {
+          text += `... and ${nonZeroItems.length - displayedItems.length} more token balances\n`;
         }
       }
 
@@ -78,7 +89,9 @@ export const walletProvider: Provider = {
       const data = {
         totalUsd: portfolio.totalUsd,
         totalSol: portfolio.totalSol,
-        items: portfolio.items,
+        items: displayedItems,
+        itemCount: portfolio.items.length,
+        displayedItemCount: displayedItems.length,
         prices: portfolio.prices,
         lastUpdated: portfolio.lastUpdated,
       };

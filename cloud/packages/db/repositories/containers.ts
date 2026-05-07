@@ -135,12 +135,12 @@ export class DuplicateContainerNameError extends Error {
 /**
  * Repository for container deployment database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class ContainersRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -250,7 +250,7 @@ export class ContainersRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

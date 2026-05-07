@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Bulk TOON round-trip survey.
+ * Legacy-only bulk TOON round-trip survey.
+ *
+ * Native v5 tool-calling exports are JSON; this survey is only for old
+ * compatibility corpora that still contain TOON expectedResponse strings.
  *
  * Walks every JSONL under data/normalized/ (excluding *.errors.jsonl),
  * extracts the `expectedResponse` (a TOON string) from each record,

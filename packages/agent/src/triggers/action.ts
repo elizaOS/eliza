@@ -16,6 +16,7 @@ import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
 } from "@elizaos/shared";
+import { hasSelectedActionContext } from "../actions/context-signal.js";
 import { hasOwnerAccess } from "../security/access.js";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
@@ -35,6 +36,11 @@ import {
 } from "./scheduling.js";
 
 const CREATE_TRIGGER_TASK_ACTION = "CREATE_TRIGGER_TASK";
+const CREATE_TRIGGER_TASK_CONTEXTS = [
+  "automation",
+  "tasks",
+  "agent_internal",
+] as const;
 const TRIGGER_INTENT_TERMS = getValidationKeywordTerms(
   "action.triggerCreate.request",
   {
@@ -149,6 +155,8 @@ export function looksLikeTriggerIntent(text: string): boolean {
 
 export const createTriggerTaskAction: Action = {
   name: CREATE_TRIGGER_TASK_ACTION,
+  contexts: [...CREATE_TRIGGER_TASK_CONTEXTS],
+  roleGate: { minRole: "OWNER" },
   // SET_REMINDER is deliberately absent: it collides with LIFE's same simile
   // (life.ts:2499) and LIFE owns the user-facing reminder/alarm concept.
   // CREATE_TRIGGER_TASK is for programmatic scheduled jobs (cron, interval,
@@ -171,9 +179,58 @@ export const createTriggerTaskAction: Action = {
   ],
   description:
     "Create a scheduled task that executes on a schedule (interval, once, or cron). Use when the user wants to schedule, automate, or create a recurring/timed task, trigger, or heartbeat.",
-  validate: async (runtime, message) => {
+  parameters: [
+    {
+      name: "displayName",
+      description: "Short name for the scheduled trigger.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "instructions",
+      description: "What the trigger should do when it fires.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "triggerType",
+      description: "Trigger schedule type.",
+      required: false,
+      schema: { type: "string", enum: ["interval", "once", "cron", "event"] },
+    },
+    {
+      name: "intervalMs",
+      description: "Interval in milliseconds for interval triggers.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "scheduledAtIso",
+      description: "ISO datetime for one-shot triggers.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "cronExpression",
+      description: "Cron expression for cron triggers.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "maxRuns",
+      description: "Optional maximum number of times to run the trigger.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
+  validate: async (runtime, message, state) => {
     if (!triggersFeatureEnabled(runtime)) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
+    if (
+      hasSelectedActionContext(message, state, CREATE_TRIGGER_TASK_CONTEXTS)
+    ) {
+      return true;
+    }
 
     // Permissive keyword check across the current message AND recent
     // conversation so that confirmations like "yes" still match when the

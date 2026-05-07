@@ -23,6 +23,11 @@ export const xTimelineProvider: Provider = {
   descriptionCompressed:
     "X home timeline top tweets ranked by likes + retweets*2.",
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

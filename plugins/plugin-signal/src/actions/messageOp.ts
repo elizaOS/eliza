@@ -224,6 +224,47 @@ export const messageOp: Action = {
   ],
   description: "Signal message operation router (send, react).",
   descriptionCompressed: "Signal message ops: send, react.",
+  contexts: ["phone", "messaging", "connectors"],
+  contextGate: { anyOf: ["phone", "messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "op",
+      description: "Operation to run: send or react.",
+      required: false,
+      schema: { type: "string", enum: ["send", "react"] },
+    },
+    {
+      name: "text",
+      description: "Message text for send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "recipient",
+      description: "E.164 phone number, Signal group id, or current.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "emoji",
+      description: "Reaction emoji.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "targetAuthor",
+      description: "Signal author id for the message being reacted to.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "targetTimestamp",
+      description: "Signal timestamp for the message being reacted to.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {

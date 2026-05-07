@@ -131,7 +131,7 @@ async function main() {
       }
 
       if (!pgliteAlreadyRunning) {
-        pgliteChild = spawn(bun, ["run", "packages/scripts/pglite-server.ts"], {
+        pgliteChild = spawn(bun, ["run", "packages/scripts/dev/pglite-server.ts"], {
           stdio: ["ignore", "inherit", "inherit"],
           env: {
             ...testEnv,

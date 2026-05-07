@@ -11,8 +11,8 @@ Pre-flight checks:
    ``validation``, ``test`` subdirs with at least one ``*.parquet``
    file each.
 3. ``data/final/README.md`` exists.
-4. ``previews/_stats.json`` shows 100% TOON round-trip — unless
-   ``--allow-imperfect-toon`` is passed.
+4. Legacy TOON round-trip stats are checked only when
+   ``--corpus-format legacy-toon`` is selected.
 
 Usage::
 
@@ -45,7 +45,8 @@ PARQUET_DIR = FINAL / "parquet"
 README = FINAL / "README.md"
 STATS_FILE = ROOT / "previews" / "_stats.json"
 
-DEFAULT_REPO_ID = "elizaos/eliza-toon-v1-sft"
+DEFAULT_REPO_ID = "elizaos/eliza-native-tool-calling-v1-sft"
+LEGACY_TOON_REPO_ID = "elizaos/eliza-toon-v1-sft"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -135,21 +136,24 @@ def preflight(args: argparse.Namespace) -> tuple[bool, list[str]]:
                 )
         msgs.append(f"[info] total parquet payload: {total_size / (1024 ** 3):.2f} GiB")
 
-    rate = toon_pass_rate()
-    if rate is None:
-        msgs.append("[warn] cannot read previews/_stats.json — TOON validity unknown")
-    elif rate >= 100.0:
-        msgs.append(f"[ok] TOON sample round-trip pass rate: {rate:.2f}%")
-    else:
-        msgs.append(
-            f"[warn] TOON sample round-trip pass rate: {rate:.2f}% (< 100%)"
-        )
-        if not args.allow_imperfect_toon and not args.dry_run:
+    if args.corpus_format == "legacy-toon":
+        rate = toon_pass_rate()
+        if rate is None:
+            msgs.append("[warn] cannot read previews/_stats.json — legacy TOON validity unknown")
+        elif rate >= 100.0:
+            msgs.append(f"[ok] legacy TOON sample round-trip pass rate: {rate:.2f}%")
+        else:
             msgs.append(
-                "[fail] refusing to upload below 100% TOON validity; "
-                "pass --allow-imperfect-toon to publish a snapshot anyway"
+                f"[warn] legacy TOON sample round-trip pass rate: {rate:.2f}% (< 100%)"
             )
-            ok = False
+            if not args.allow_imperfect_toon and not args.dry_run:
+                msgs.append(
+                    "[fail] refusing to upload below 100% legacy TOON validity; "
+                    "pass --allow-imperfect-toon to publish a snapshot anyway"
+                )
+                ok = False
+    else:
+        msgs.append("[ok] corpus format is native JSON; skipping legacy TOON round-trip gate")
 
     return ok, msgs
 
@@ -253,6 +257,12 @@ def main() -> int:
         help=f"HF repo id (default {DEFAULT_REPO_ID})",
     )
     ap.add_argument(
+        "--corpus-format",
+        choices=("json", "legacy-toon"),
+        default="json",
+        help="published corpus target format; legacy-toon enables old TOON gates",
+    )
+    ap.add_argument(
         "--public",
         action="store_true",
         help="create the repo as public (default: private)",
@@ -265,7 +275,7 @@ def main() -> int:
     ap.add_argument(
         "--allow-imperfect-toon",
         action="store_true",
-        help="upload even if TOON round-trip < 100%%",
+        help="legacy only: upload even if TOON round-trip < 100%%",
     )
     ap.add_argument(
         "--dry-run",

@@ -197,7 +197,7 @@ def main() -> int:
     ap.add_argument("--apollo-update-proj-gap", type=int, default=200)
     ap.add_argument(
         "--optimizer",
-        choices=["apollo", "apollo_mini", "adamw"],
+        choices=["apollo", "apollo_mini"],
         default="apollo",
     )
     ap.add_argument(
@@ -293,7 +293,12 @@ def main() -> int:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trainer_optim = os.environ.get("MILADY_TRAINER_OPTIM", "adamw_torch")
+    if os.environ.get("MILADY_TRAINER_OPTIM"):
+        raise SystemExit(
+            "MILADY_TRAINER_OPTIM is disabled. DPO always builds "
+            "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
+        )
+    trainer_optim = "adafactor"
     dpo_cfg = DPOConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -315,59 +320,57 @@ def main() -> int:
         run_name=out_dir.name,
     )
 
-    apollo_builder = None
-    if args.optimizer != "adamw":
-        from training.optimizer import (
-            _NON_LOWRANK_NAME_HINTS,
-            build_apollo_mini_optimizer_from_groups,
-            build_apollo_optimizer_from_groups,
-        )
-        lowrank_names: set[str] = set()
-        for name, p in policy.named_parameters():
+    from training.optimizer import (
+        _NON_LOWRANK_NAME_HINTS,
+        build_apollo_mini_optimizer_from_groups,
+        build_apollo_optimizer_from_groups,
+    )
+    lowrank_names: set[str] = set()
+    for name, p in policy.named_parameters():
+        if not p.requires_grad:
+            continue
+        lname = name.lower()
+        if any(h in lname for h in _NON_LOWRANK_NAME_HINTS):
+            continue
+        if p.dim() == 2:
+            lowrank_names.add(name)
+    log.info("APOLLO classification: %d lowrank names of %d total",
+             len(lowrank_names),
+             sum(1 for _ in policy.named_parameters()))
+
+    def _split(model: Any) -> tuple[list[Any], list[Any]]:
+        lr_, other_ = [], []
+        for name, p in model.named_parameters():
             if not p.requires_grad:
                 continue
-            lname = name.lower()
-            if any(h in lname for h in _NON_LOWRANK_NAME_HINTS):
-                continue
-            if p.dim() == 2:
-                lowrank_names.add(name)
-        log.info("APOLLO classification: %d lowrank names of %d total",
-                 len(lowrank_names),
-                 sum(1 for _ in policy.named_parameters()))
+            clean = name.replace("_fsdp_wrapped_module.", "")
+            (lr_ if clean in lowrank_names else other_).append(p)
+        return lr_, other_
 
-        def _split(model: Any) -> tuple[list[Any], list[Any]]:
-            lr_, other_ = [], []
-            for name, p in model.named_parameters():
-                if not p.requires_grad:
-                    continue
-                clean = name.replace("_fsdp_wrapped_module.", "")
-                (lr_ if clean in lowrank_names else other_).append(p)
-            return lr_, other_
-
-        if args.optimizer == "apollo":
-            def apollo_builder(m):
-                lr_, other_ = _split(m)
-                return build_apollo_optimizer_from_groups(
-                    lr_, other_, lr=args.lr,
-                    weight_decay=dpo_cfg.weight_decay,
-                    rank=args.apollo_rank, scale=args.apollo_scale,
-                    update_proj_gap=args.apollo_update_proj_gap,
-                )
-        else:
-            def apollo_builder(m):
-                lr_, other_ = _split(m)
-                return build_apollo_mini_optimizer_from_groups(
-                    lr_, other_, lr=args.lr,
-                    weight_decay=dpo_cfg.weight_decay,
-                )
+    if args.optimizer == "apollo":
+        def apollo_builder(m):
+            lr_, other_ = _split(m)
+            return build_apollo_optimizer_from_groups(
+                lr_, other_, lr=args.lr,
+                weight_decay=dpo_cfg.weight_decay,
+                rank=args.apollo_rank, scale=args.apollo_scale,
+                update_proj_gap=args.apollo_update_proj_gap,
+            )
+    else:
+        def apollo_builder(m):
+            lr_, other_ = _split(m)
+            return build_apollo_mini_optimizer_from_groups(
+                lr_, other_, lr=args.lr,
+                weight_decay=dpo_cfg.weight_decay,
+            )
 
     class _MiladyDPOTrainer(DPOTrainer):
         def create_optimizer(self, model=None):
-            if apollo_builder is not None and self.optimizer is None:
+            if self.optimizer is None:
                 target = model or self.model
                 self.optimizer = apollo_builder(target)
                 return self.optimizer
-            return super().create_optimizer() if model is None else super().create_optimizer(model)
+            return self.optimizer
 
     trainer = _MiladyDPOTrainer(
         model=policy,

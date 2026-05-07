@@ -1,6 +1,6 @@
 import type { JSONSchema } from "../types/model";
 
-export const v5MessageHandlerTemplate = `task: Decide whether the agent should respond and which contexts are needed.
+export const v5MessageHandlerTemplate = `task: Decide processMessage and the plan for this message.
 
 context:
 {{contextObject}}
@@ -9,15 +9,14 @@ available_contexts:
 {{availableContexts}}
 
 rules:
-- choose action=RESPOND only when the agent should answer or perform work for this message
-- choose action=IGNORE when the message should be ignored
-- choose action=STOP when the user asks the agent to stop or disengage
-- contexts is a list of context ids drawn from available_contexts, such as calendar or email
+- choose processMessage=RESPOND only when the agent should answer or perform work for this message
+- choose processMessage=IGNORE when the message should be ignored
+- choose processMessage=STOP when the user asks the agent to stop or disengage
+- plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email
 - never invent context ids that are not in available_contexts
-- only choose contexts when tools or context providers may be needed
-- simple=true only means the reply can be sent directly when contexts is empty
-- if contexts is non-empty, planning will run and simple will be ignored
-- include reply only for a direct user-visible response
+- choose plan.contexts=["simple"] (and only "simple") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply
+- otherwise list every relevant context id; planning will run and tools will be selected from those contexts
+- include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
 - thought is internal routing rationale and is not shown to the user
 
 return:
@@ -29,19 +28,37 @@ export const v5MessageHandlerSchema: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
-		action: {
+		processMessage: {
 			type: "string",
 			enum: ["RESPOND", "IGNORE", "STOP"],
 		},
-		simple: { type: "boolean" },
-		contexts: {
-			type: "array",
-			items: { type: "string" },
+		plan: {
+			type: "object",
+			additionalProperties: false,
+			properties: {
+				contexts: {
+					type: "array",
+					items: { type: "string" },
+				},
+				reply: { type: "string" },
+			},
+			required: ["contexts"],
 		},
 		thought: { type: "string" },
-		reply: { type: "string" },
 	},
-	required: ["action", "simple", "contexts", "thought"],
+	required: ["processMessage", "plan", "thought"],
 };
 
 export const V5_MESSAGE_HANDLER_SCHEMA = v5MessageHandlerSchema;
+
+export const v5DirectMessageHandlerSchema: JSONSchema = {
+	type: "object",
+	additionalProperties: false,
+	properties: {
+		plan: v5MessageHandlerSchema.properties?.plan as JSONSchema,
+		thought: { type: "string" },
+	},
+	required: ["plan", "thought"],
+};
+
+export const V5_DIRECT_MESSAGE_HANDLER_SCHEMA = v5DirectMessageHandlerSchema;

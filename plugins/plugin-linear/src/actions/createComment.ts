@@ -17,8 +17,25 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const createCommentAction: Action = {
   name: "CREATE_LINEAR_COMMENT",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Add a comment to a Linear issue",
   descriptionCompressed: "add comment Linear issue",
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue id or identifier to comment on.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "body",
+      description: "Comment body to add to the issue.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   similes: [
     "create-linear-comment",
     "add-linear-comment",

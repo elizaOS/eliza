@@ -1,7 +1,9 @@
 /** ACTIONS Provider - Provides available actions with parameter schemas to the LLM. */
 import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader, composeActionExamples, formatActionNames, logger } from "@elizaos/core";
+import { addHeader, logger } from "@elizaos/core";
 import { filterActionsByRouting, getContextRoutingFromMessage } from "../utils/context-routing";
+
+const HIDDEN_NATIVE_PLANNER_ACTIONS = new Set(["FINISH", "REPLY", "NONE"]);
 
 function formatActionsWithoutParams(actions: Action[]): string {
   return actions.map((a) => `## ${a.name}\n${a.description}`).join("\n\n---\n\n");
@@ -59,57 +61,22 @@ function buildNativeToolDefinitions(actions: Action[]): NativeToolDefinition[] {
   return actions.map(buildNativeToolDefinition);
 }
 
-function formatActionsWithParams(actions: Action[]): string {
-  return actions
-    .map((action) => {
-      const params = (action as ActionWithOptionalParams).parameters;
-      let formatted = `## ${action.name}\n${action.description}`;
-
-      if (!params || params.length === 0) {
-        return formatted + "\n\n**Parameters:** None (can be called directly without parameters)";
-      }
-
-      formatted += "\n\n**Parameters:**";
-      for (const def of params) {
-        const required = def.required ? "(required)" : "(optional)";
-        formatted += `\n- \`${def.name}\` ${required}: ${def.schema.type} - ${def.description}`;
-      }
-      return formatted;
-    })
-    .join("\n\n---\n\n");
-}
-
-function safeComposeActionExamples(actions: Action[], count: number): string {
-  try {
-    return composeActionExamples(actions, count);
-  } catch (error) {
-    logger.warn(
-      `[ACTIONS] Failed to compose action examples: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return "";
-  }
+function formatNativeToolCatalog(actions: Action[]): string {
+  return JSON.stringify(buildNativeToolDefinitions(actions), null, 2);
 }
 
 function buildFallbackActionsProviderResult() {
-  const actionsWithParams = addHeader(
-    "# Available Actions (with parameter schemas)",
-    [
-      "## FINISH\nComplete the task and respond to the user. Provide the final response in character.\n\n**Parameters:**\n- `response` (required): string - Final response to the user.",
-      "## REPLY\nReply directly to the user.\n\n**Parameters:**\n- `text` (optional): string - Response text to send.",
-      "## NONE\nRespond without taking an additional tool action.\n\n**Parameters:** None (can be called directly without parameters)",
-    ].join("\n\n---\n\n"),
-  );
-
   return {
     data: { actionsData: [], nativeTools: [] },
     values: {
-      actionNames: "Possible response actions: FINISH, REPLY, NONE",
+      actionNames: "",
       actionExamples: "",
-      actionsWithDescriptions: actionsWithParams,
-      actionsWithParams,
+      actionsWithDescriptions: "",
+      actionsWithParams: "",
+      nativeToolsJson: "[]",
       discoverableToolCount: "",
     },
-    text: actionsWithParams,
+    text: "",
   };
 }
 
@@ -139,6 +106,11 @@ export const actionsProvider: Provider = {
   name: "ACTIONS",
   description: "Available actions with parameter schemas",
   position: -1,
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
@@ -188,35 +160,34 @@ export const actionsProvider: Provider = {
       const actionsData = filterActionsByRouting(
         cached.actions,
         getContextRoutingFromMessage(message),
-      );
+      ).filter((action) => !HIDDEN_NATIVE_PLANNER_ACTIONS.has(action.name.trim().toUpperCase()));
       const discoverableToolCount = cached.discoverableToolCount;
       const hasActions = actionsData.length > 0;
-      const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
-      const actionExamples = hasActions ? safeComposeActionExamples(actionsData, 10) : "";
+      const nativeToolsJson = hasActions ? formatNativeToolCatalog(actionsData) : "[]";
+      const actionNames = actionsData.map((action) => action.name).join(", ");
+      const actionsWithParams = hasActions
+        ? addHeader("# Available Native Tools", nativeToolsJson)
+        : "";
 
       return {
         data: { actionsData, nativeTools: buildNativeToolDefinitions(actionsData) },
         values: {
           actionNames,
-          actionExamples: actionExamples ? addHeader("# Action Examples", actionExamples) : "",
+          actionExamples: "",
           actionsWithDescriptions: hasActions
-            ? addHeader("# Available Actions", formatActionsWithoutParams(actionsData))
+            ? addHeader("# Available Native Tools", nativeToolsJson)
             : "",
-          actionsWithParams: hasActions
-            ? addHeader(
-                "# Available Actions (with parameter schemas)",
-                formatActionsWithParams(actionsData),
-              )
-            : "",
+          actionsWithParams,
+          nativeToolsJson,
           discoverableToolCount: discoverableToolCount > 0 ? String(discoverableToolCount) : "",
         },
         text: hasActions
           ? [
-              actionNames,
-              addHeader("# Available Actions", formatActionsWithoutParams(actionsData)),
-              actionExamples ? addHeader("# Action Examples", actionExamples) : "",
+              addHeader("# Native Tool Names", actionNames),
+              actionsWithParams,
+              addHeader("# Native Tool Summaries", formatActionsWithoutParams(actionsData)),
             ].join("\n\n")
-          : actionNames,
+          : "",
       };
     } catch (error) {
       logger.error(

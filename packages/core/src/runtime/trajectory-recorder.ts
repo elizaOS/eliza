@@ -275,6 +275,13 @@ function applyMetricsForStage(
 	}
 }
 
+function cloneForRecord<T>(value: T): T {
+	if (typeof structuredClone === "function") {
+		return structuredClone(value);
+	}
+	return JSON.parse(JSON.stringify(value)) as T;
+}
+
 /**
  * Annotate a stage with `costUsd` if the model has known pricing and the
  * stage didn't already set it. The `model.modelName` is the lookup key.
@@ -369,9 +376,10 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			return;
 		}
 
-		annotateStageCost(stage);
-		trajectory.stages.push(stage);
-		applyMetricsForStage(trajectory.metrics, stage);
+		const recordedStage = cloneForRecord(stage);
+		annotateStageCost(recordedStage);
+		trajectory.stages.push(recordedStage);
+		applyMetricsForStage(trajectory.metrics, recordedStage);
 
 		await this.flushTrajectory(trajectory);
 	}

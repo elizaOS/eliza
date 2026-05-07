@@ -25,7 +25,10 @@ export const slackEmojisProvider: Provider = {
   description: "Lists custom emoji available in the Slack workspace.",
   descriptionCompressed: "Slack workspace custom emoji.",
   dynamic: true,
-  contexts: ["social", "connectors"],
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  cacheScope: "agent",
+  roleGate: { minRole: "ADMIN" },
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
   get: async (
     runtime: IAgentRuntime,
@@ -51,39 +54,56 @@ export const slackEmojisProvider: Provider = {
       return { data: {}, values: {}, text: "" };
     }
 
-    const emoji = await slackService.getEmojiList();
-    const names = Object.keys(emoji).sort();
-    const totalCount = names.length;
-    const display = names.slice(0, DISPLAY_LIMIT);
+    try {
+      const emoji = await slackService.getEmojiList();
+      const names = Object.keys(emoji).sort();
+      const totalCount = names.length;
+      const display = names.slice(0, DISPLAY_LIMIT);
 
-    const entries: SlackEmojiEntry[] = display.map((name) => {
-      const value = emoji[name] ?? "";
-      const isAlias = value.startsWith("alias:");
+      const entries: SlackEmojiEntry[] = display.map((name) => {
+        const value = emoji[name] ?? "";
+        const isAlias = value.startsWith("alias:");
+        return {
+          name,
+          alias: isAlias,
+          target: isAlias ? value.slice("alias:".length) : value,
+        };
+      });
+
       return {
-        name,
-        alias: isAlias,
-        target: isAlias ? value.slice("alias:".length) : value,
-      };
-    });
-
-    return {
-      data: {
-        emojiCount: totalCount,
-        displayedCount: entries.length,
-        emoji: entries,
-      },
-      values: {
-        emojiCount: totalCount,
-        displayedCount: entries.length,
-      },
-      text: JSON.stringify({
-        slack_emojis: {
-          total: totalCount,
-          shown: entries.length,
-          items: entries,
+        data: {
+          emojiCount: totalCount,
+          displayedCount: entries.length,
+          emoji: entries,
         },
-      }),
-    };
+        values: {
+          emojiCount: totalCount,
+          displayedCount: entries.length,
+        },
+        text: JSON.stringify({
+          slack_emojis: {
+            total: totalCount,
+            shown: entries.length,
+            items: entries,
+          },
+        }),
+      };
+    } catch (error) {
+      return {
+        data: {
+          emojiCount: 0,
+          displayedCount: 0,
+          emoji: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: {
+          emojiCount: 0,
+          displayedCount: 0,
+          slackEmojisAvailable: false,
+        },
+        text: JSON.stringify({ slack_emojis: { status: "error" } }),
+      };
+    }
   },
 };
 

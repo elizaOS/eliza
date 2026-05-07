@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/app-trajectory-logger",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Trajectory Logger",
+      "category": "developer",
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "assets"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

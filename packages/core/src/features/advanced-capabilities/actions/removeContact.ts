@@ -15,6 +15,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
@@ -63,6 +64,8 @@ function readRemoveContactInput(
 
 export const removeContactAction: Action = {
 	name: spec.name,
+	contexts: ["contacts", "messaging", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	suppressPostActionContinuation: true,
@@ -71,12 +74,21 @@ export const removeContactAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 	): Promise<boolean> => {
 		const hasService = !!runtime.getService("relationships");
 		const params = readRemoveContactInput(message, options);
 		if (hasService && params.contactName) return true;
+		if (
+			hasService &&
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["contacts", "messaging", "knowledge"],
+				keywordKeys: ["action.removeContact.request"],
+			})
+		) {
+			return true;
+		}
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = findKeywordTermMatch(text, REMOVE_CONTACT_TERMS);

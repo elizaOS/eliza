@@ -10,15 +10,49 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseManageMessageParams } from "./_shared.ts";
+import {
+	messageIdParameter,
+	parseManageMessageParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const manageMessageAction: Action = {
 	name: "MANAGE_MESSAGE",
+	contexts: ["messaging", "email", "contacts"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Mutate a single message: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, or unsubscribe. Routes to the source adapter; tag operations are stored locally if the connector lacks tagging.",
 	descriptionCompressed:
 		"manage one msg: archive trash spam mark-read label-add label-remove tag-add tag-remove mute-thread unsubscribe; capability-gated",
 	similes: ["ARCHIVE_MESSAGE", "TAG_MESSAGE", "UNSUBSCRIBE", "MARK_READ"],
+	parameters: [
+		messageIdParameter,
+		{
+			name: "source",
+			description: "Optional source connector for the message.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "operation",
+			description:
+				"Operation to apply: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "label",
+			description: "Label for label_add or label_remove.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "tag",
+			description: "Tag for tag_add or tag_remove.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 	examples: [
 		[
 			{
@@ -32,7 +66,11 @@ export const manageMessageAction: Action = {
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,

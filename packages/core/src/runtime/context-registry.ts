@@ -8,6 +8,7 @@ import { satisfiesRoleGate } from "./context-gates";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./default-contexts";
 
 export const FIRST_PARTY_CONTEXT_IDS = [
+	"simple",
 	"general",
 	"memory",
 	"knowledge",
@@ -23,8 +24,10 @@ export const FIRST_PARTY_CONTEXT_IDS = [
 	"health",
 	"screen_time",
 	"subscriptions",
+	"finance",
 	"payments",
 	"wallet",
+	"crypto",
 	"messaging",
 	"social_posting",
 	"media",
@@ -44,7 +47,10 @@ const LIFEOPS_ALIAS_CONTEXTS = [
 	"health",
 	"screen_time",
 	"subscriptions",
+	"finance",
 	"payments",
+	"wallet",
+	"crypto",
 	"messaging",
 	"social_posting",
 	"automation",
@@ -55,6 +61,12 @@ export const CONTEXT_ALIASES: Readonly<
 	Record<string, readonly AgentContext[]>
 > = Object.freeze({
 	lifeops: LIFEOPS_ALIAS_CONTEXTS,
+	money: ["finance", "wallet", "crypto"],
+	balance: ["finance", "wallet", "crypto"],
+	balances: ["finance", "wallet", "crypto"],
+	portfolio: ["finance", "wallet", "crypto"],
+	web3: ["crypto", "wallet", "finance"],
+	defi: ["crypto", "wallet", "finance"],
 	social: ["social_posting"],
 	system: ["admin", "settings"],
 });

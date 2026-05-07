@@ -26,6 +26,7 @@ import {
   ChannelType,
   createCharacter,
   createMessageMemory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -584,7 +585,7 @@ async function initializeGameSession(): Promise<GameSession> {
   // which is critical for game scenarios where state changes after each action
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, openaiPlugin],
+    plugins: [sqlPlugin, openaiPlugin] as Plugin[],
     settings: {
       OPENAI_API_KEY: config.openaiApiKey,
       POSTGRES_URL: config.postgresUrl || undefined,

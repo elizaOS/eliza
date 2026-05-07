@@ -389,6 +389,8 @@ async function handleGetPlayer(
 
 export const robloxAction: Action = {
   name: actionName,
+  contexts: ["media", "automation"],
+  contextGate: { anyOf: ["media", "automation"] },
   similes: ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
   description: "Route Roblox game integration with subaction message, execute, or get_player.",
   descriptionCompressed: "Route Roblox game subaction: message, execute, or get_player.",

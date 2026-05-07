@@ -120,7 +120,7 @@ export interface CostBreakdownItem {
  */
 export class UsageRecordsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -670,7 +670,7 @@ export class UsageRecordsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

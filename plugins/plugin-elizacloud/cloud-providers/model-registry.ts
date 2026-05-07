@@ -4,6 +4,8 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import type { CloudModelRegistryService, ModelsByProvider } from "../services/cloud-model-registry";
 
 const TTL = 300_000; // 5 minutes
+const MAX_MODEL_PROVIDERS = 12;
+const MAX_MODELS_PER_PROVIDER = 50;
 
 /**
  * Per-runtime cache using a WeakMap keyed by the runtime object.
@@ -17,33 +19,50 @@ export const modelRegistryProvider: Provider = {
   description: "Available AI models from ElizaCloud grouped by provider",
   descriptionCompressed: "Available AI models from ElizaCloud by provider.",
   dynamic: true,
+  contexts: ["settings", "finance"],
+  contextGate: { anyOf: ["settings", "finance"] },
+  cacheStable: false,
+  cacheScope: "turn",
   position: 92,
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
-    const registry = runtime.getService("CLOUD_MODEL_REGISTRY") as
-      | CloudModelRegistryService
-      | undefined;
+    try {
+      const registry = runtime.getService("CLOUD_MODEL_REGISTRY") as
+        | CloudModelRegistryService
+        | undefined;
 
-    if (!registry) return { text: "" };
+      if (!registry) return { text: "" };
 
-    const cached = runtimeCaches.get(runtime);
-    if (cached && Date.now() - cached.at < TTL) {
-      return formatModels(cached.value);
+      const cached = runtimeCaches.get(runtime);
+      if (cached && Date.now() - cached.at < TTL) {
+        const cachedValue = Object.fromEntries(
+          Object.entries(cached.value).slice(0, MAX_MODEL_PROVIDERS),
+        ) as ModelsByProvider;
+        return formatModels(cachedValue);
+      }
+
+      const byProvider = await registry.getModelsByProvider();
+
+      if (Object.keys(byProvider).length === 0) {
+        return { text: "" };
+      }
+
+      runtimeCaches.set(runtime, { value: byProvider, at: Date.now() });
+      const capped = Object.fromEntries(
+        Object.entries(byProvider).slice(0, MAX_MODEL_PROVIDERS),
+      ) as ModelsByProvider;
+      return formatModels(capped);
+    } catch {
+      return { text: "", values: {}, data: {} };
     }
-
-    const byProvider = await registry.getModelsByProvider();
-
-    if (Object.keys(byProvider).length === 0) {
-      return { text: "" };
-    }
-
-    runtimeCaches.set(runtime, { value: byProvider, at: Date.now() });
-    return formatModels(byProvider);
   },
 };
 
 function formatModels(byProvider: ModelsByProvider): ProviderResult {
-  const providers = Object.keys(byProvider).sort();
-  const total = Object.values(byProvider).reduce((n, m) => n + m.length, 0);
+  const providers = Object.keys(byProvider).sort().slice(0, MAX_MODEL_PROVIDERS);
+  const total = providers.reduce(
+    (n, provider) => n + byProvider[provider].slice(0, MAX_MODELS_PER_PROVIDER).length,
+    0,
+  );
 
   return {
     text: `ElizaCloud: ${total} models (${providers.join(", ")})`,

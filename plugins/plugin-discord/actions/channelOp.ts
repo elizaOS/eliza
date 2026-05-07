@@ -1064,6 +1064,35 @@ export const channelOp: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "connectors"],
+	contextGate: { anyOf: ["messaging", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "op",
+			description: "Operation: join, leave, read, or search.",
+			required: false,
+			schema: { type: "string", enum: ["join", "leave", "read", "search"] },
+		},
+		{
+			name: "channelIdentifier",
+			description: "Discord channel name/id or current channel.",
+			required: false,
+			schema: { type: "string", default: "current" },
+		},
+		{
+			name: "query",
+			description: "Search query for message search.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "messageCount",
+			description: "Number of recent messages to read.",
+			required: false,
+			schema: { type: "number", minimum: 1, maximum: 100, default: 10 },
+		},
+	],
 	...terminalActionInteractionSemantics,
 	validate: async (
 		_runtime: IAgentRuntime,

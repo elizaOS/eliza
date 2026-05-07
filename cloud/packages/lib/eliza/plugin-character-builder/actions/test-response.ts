@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -12,6 +13,88 @@ import {
 } from "@elizaos/core";
 import type { StreamChunkCallback } from "../../shared/types";
 import { cleanPrompt, isCreatorMode } from "../../shared/utils/helpers";
+
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const TEST_RESPONSE_KEYWORDS = [
+  "test",
+  "respond",
+  "response",
+  "reply",
+  "answer",
+  "say",
+  "roleplay",
+  "simulate",
+  "preview",
+  "how would",
+  "character",
+  "probar",
+  "responder",
+  "respuesta",
+  "contestar",
+  "decir",
+  "simular",
+  "vista previa",
+  "tester",
+  "repondre",
+  "reponse",
+  "dire",
+  "simuler",
+  "apercu",
+  "testen",
+  "antworten",
+  "antwort",
+  "sagen",
+  "simulieren",
+  "vorschau",
+  "testare",
+  "rispondere",
+  "risposta",
+  "dire",
+  "simulare",
+  "anteprima",
+  "testar",
+  "responder",
+  "resposta",
+  "dizer",
+  "simular",
+  "预览",
+  "测试",
+  "回复",
+  "回答",
+  "模拟",
+  "プレビュー",
+  "テスト",
+  "返答",
+  "回答",
+  "シミュレート",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "recentMessages", "currentCharacter"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
 
 /**
  * TEST_RESPONSE Action
@@ -65,10 +148,24 @@ This is a test to see how the character responds. Respond naturally as the chara
 
 export const testResponseAction = {
   name: "TEST_RESPONSE",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "testPrompt",
+      description: "The prompt to test against the current character voice.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description:
     "User wants to test how the character would respond. Use when: 'how would you respond to...', 'test the character', 'let me see how they talk', 'show me how you'd answer', 'roleplay as the character'. Only available in build mode for existing characters. Simulates authentic character response.",
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
-    return !isCreatorMode(runtime);
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      !isCreatorMode(runtime) &&
+      (hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+        hasKeyword(collectConversationText(message, state), TEST_RESPONSE_KEYWORDS))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -76,7 +173,7 @@ export const testResponseAction = {
     state: State,
     options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     const onStreamChunk = options?.onStreamChunk as StreamChunkCallback | undefined;
     logger.info(`[TEST_RESPONSE] Generating character test response, streaming=${!!onStreamChunk}`);
 
@@ -87,7 +184,12 @@ export const testResponseAction = {
         text: "Test Response is only available in **Edit Mode** after you've saved a character. Right now we're in Creator Mode - I'm Eliza, helping you design the character. Once you save it, you can test how they'd respond to specific prompts, or go to **Chat** to talk with them directly.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "Test Response is only available in Edit Mode after you've saved a character.",
+        error: "CREATOR_MODE",
+        data: { actionName: "TEST_RESPONSE" },
+      };
     }
 
     // Compose state with character identity
@@ -117,10 +219,24 @@ export const testResponseAction = {
       }),
     );
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-
-    // Restore original system prompt
-    runtime.character.system = originalSystemPrompt;
+    let response: string;
+    try {
+      response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    } catch (error) {
+      runtime.character.system = originalSystemPrompt;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[TEST_RESPONSE] Model call failed");
+      const text = "I had trouble generating a test response. Could you try a different prompt?";
+      await callback({ text, error: true });
+      return {
+        success: false,
+        text,
+        error: errorMessage,
+        data: { actionName: "TEST_RESPONSE" },
+      };
+    } finally {
+      runtime.character.system = originalSystemPrompt;
+    }
 
     const parsed = parseKeyValueXml(response) as {
       thought?: string;
@@ -133,7 +249,12 @@ export const testResponseAction = {
         text: "I had trouble generating a test response. Could you try a different prompt?",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "I had trouble generating a test response. Could you try a different prompt?",
+        error: "PARSE_FAILED",
+        data: { actionName: "TEST_RESPONSE" },
+      };
     }
 
     logger.debug("[TEST_RESPONSE] Test response generated successfully");
@@ -146,6 +267,20 @@ export const testResponseAction = {
         isTest: true,
       },
     });
+    return {
+      success: true,
+      text: parsed.text,
+      values: {
+        success: true,
+        isTest: true,
+        characterName: runtime.character.name,
+      },
+      data: {
+        actionName: "TEST_RESPONSE",
+        characterName: runtime.character.name,
+        thought: parsed.thought,
+      },
+    };
   },
   examples: [
     [

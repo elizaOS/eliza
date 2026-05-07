@@ -3,11 +3,16 @@ import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME, type RobloxExperienceInfo } from "../types";
 
 const providerName = "roblox-game-state";
+const EXPERIENCE_NAME_LIMIT = 160;
 
 export const gameStateProvider: Provider = {
   name: providerName,
   description: "Provides information about the connected Roblox game/experience",
   descriptionCompressed: "Read Roblox connection state, experience metadata, and messaging topic.",
+  contexts: ["automation", "agent_internal"],
+  contextGate: { anyOf: ["automation", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -92,7 +97,7 @@ export const gameStateProvider: Provider = {
       }
 
       if (experienceInfo) {
-        parts.push(`experienceName: ${experienceInfo.name}`);
+        parts.push(`experienceName: ${experienceInfo.name.slice(0, EXPERIENCE_NAME_LIMIT)}`);
         if (experienceInfo.playing !== undefined) {
           parts.push(`activePlayers: ${experienceInfo.playing}`);
         }

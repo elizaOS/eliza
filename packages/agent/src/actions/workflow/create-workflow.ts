@@ -34,6 +34,8 @@ function readString(value: unknown): string | undefined {
 
 export const createWorkflowAction: Action = {
   name: CREATE_WORKFLOW_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "GENERATE_WORKFLOW",
     "CREATE_N8N_WORKFLOW",

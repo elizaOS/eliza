@@ -110,6 +110,29 @@ export const readChannel: Action = {
   ],
   description: "Read message history from a Slack channel",
   descriptionCompressed: "Read Slack channel message history.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "channelRef",
+      description: "Slack channel name/id or current.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "limit",
+      description: "Maximum messages to read.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 100, default: 10 },
+    },
+    {
+      name: "after",
+      description: "Optional lower bound timestamp or date.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

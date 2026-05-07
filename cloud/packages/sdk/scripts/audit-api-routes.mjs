@@ -5,7 +5,9 @@ import path from "node:path";
 import {
   extractMethods,
   findCloudApiRoot,
+  isGeneratedPublicRoute,
   routePathFromSegments,
+  scopeForRoute,
   walkRoutes,
 } from "./route-discovery.mjs";
 
@@ -77,19 +79,6 @@ async function readGeneratedRouteMethods(cloudRoot) {
   return routes;
 }
 
-function scopeForRoute(route) {
-  if (route.startsWith("/api/v1/") || route === "/api/v1") return "public";
-  if (route.startsWith("/api/elevenlabs/")) return "public";
-  if (route.startsWith("/api/auth/")) return "auth";
-  if (route.startsWith("/api/internal/")) return "internal";
-  if (route.startsWith("/api/cron/")) return "cron";
-  if (route.startsWith("/api/webhooks/")) return "webhook";
-  if (route.includes("/webhook")) return "webhook";
-  if (route.startsWith("/api/stripe/")) return "billing-webhook-or-checkout";
-  if (route.startsWith("/api/mcp") || route.startsWith("/api/mcps/")) return "mcp-transport";
-  return "app-or-dashboard";
-}
-
 function groupRows(rows) {
   const groups = new Map();
   for (const row of rows) {
@@ -142,17 +131,24 @@ for (const routeFile of routeFiles) {
 
 routePairs.sort((a, b) => `${a.route} ${a.method}`.localeCompare(`${b.route} ${b.method}`));
 
-const publicPairs = routePairs.filter((row) => row.scope === "public");
+const publicPairs = routePairs.filter((row) => isGeneratedPublicRoute(row.route));
 const nonPublicPairs = routePairs.filter((row) => row.scope !== "public");
 const coveredRoutePairs = routePairs
   .filter((row) => generatedRoutes.has(`${row.method} ${row.route}`))
   .map((row) => ({ ...row, sdkMethod: generatedRoutes.get(`${row.method} ${row.route}`) }));
-const missingRoutePairs = routePairs.filter(
+const missingRoutePairs = publicPairs.filter(
   (row) => !generatedRoutes.has(`${row.method} ${row.route}`),
 );
 const generatedRoutesWithoutRouteFile = Array.from(generatedRoutes.entries())
   .filter(([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key))
   .map(([key, sdkMethod]) => ({ key, sdkMethod }));
+const generatedNonPublicRoutes = Array.from(generatedRoutes.entries())
+  .map(([key, sdkMethod]) => {
+    const [method, ...routeParts] = key.split(" ");
+    const route = routeParts.join(" ");
+    return { key, method, route, sdkMethod, scope: scopeForRoute(route) };
+  })
+  .filter((row) => !isGeneratedPublicRoute(row.route));
 const highLevelRoutesWithoutRouteFile = Array.from(SDK_TYPED_ROUTES.entries())
   .filter(([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key))
   .map(([key, sdkMethod]) => ({ key, sdkMethod }));
@@ -177,11 +173,12 @@ const lines = [
   "## Summary",
   "",
   `- Total route method pairs under \`${relativeApiRoot}\`: ${routePairs.length}`,
-  `- Public route method pairs under \`/api/v1\` and \`/api/elevenlabs\`: ${publicPairs.length}`,
+  `- Generated public route method pairs: ${publicPairs.length}`,
   `- Non-public route method pairs: ${nonPublicPairs.length}`,
   `- Route method pairs with generated SDK wrappers: ${coveredRoutePairs.length}`,
-  `- Route method pairs missing generated SDK wrappers: ${missingRoutePairs.length}`,
+  `- Public route method pairs missing generated SDK wrappers: ${missingRoutePairs.length}`,
   `- Generated SDK route wrappers with no matching route file: ${generatedRoutesWithoutRouteFile.length}`,
+  `- Generated SDK route wrappers outside public scope: ${generatedNonPublicRoutes.length}`,
   `- High-level SDK helper route declarations with no matching route file: ${highLevelRoutesWithoutRouteFile.length}`,
   "",
   "## Route Scope Counts",
@@ -190,7 +187,7 @@ const lines = [
   "| --- | --- |",
   ...routeScopeSummary.map(([scope, count]) => `| ${scope} | ${count} |`),
   "",
-  "## Missing SDK Wrappers By Group",
+  "## Missing Public SDK Wrappers By Group",
   "",
   "| Group | Missing Route Method Pairs |",
   "| --- | --- |",
@@ -200,7 +197,7 @@ const lines = [
   "",
   coverageTable(coveredRoutePairs),
   "",
-  "## Missing Routes",
+  "## Missing Public Routes",
   "",
 ];
 
@@ -227,6 +224,18 @@ if (generatedRoutesWithoutRouteFile.length > 0) {
   lines.push("");
 }
 
+if (generatedNonPublicRoutes.length > 0) {
+  lines.push("## Generated SDK Routes Outside Public Scope", "");
+  lines.push(
+    table(generatedNonPublicRoutes, [
+      { title: "Route", value: (row) => `\`${row.key}\`` },
+      { title: "SDK Method", value: (row) => `\`${row.sdkMethod}\`` },
+      { title: "Scope", value: (row) => row.scope },
+    ]),
+  );
+  lines.push("");
+}
+
 if (highLevelRoutesWithoutRouteFile.length > 0) {
   lines.push("## High-Level SDK Helper Routes Without Matching Route File", "");
   lines.push(
@@ -240,9 +249,13 @@ if (highLevelRoutesWithoutRouteFile.length > 0) {
 
 process.stdout.write(`${lines.join("\n")}\n`);
 
-if (missingRoutePairs.length > 0 || generatedRoutesWithoutRouteFile.length > 0) {
+if (
+  missingRoutePairs.length > 0 ||
+  generatedRoutesWithoutRouteFile.length > 0 ||
+  generatedNonPublicRoutes.length > 0
+) {
   console.error(
-    `Route coverage failed: ${missingRoutePairs.length} missing, ${generatedRoutesWithoutRouteFile.length} orphan generated routes.`,
+    `Route coverage failed: ${missingRoutePairs.length} missing public, ${generatedRoutesWithoutRouteFile.length} orphan generated, ${generatedNonPublicRoutes.length} non-public generated routes.`,
   );
   process.exitCode = 1;
 }

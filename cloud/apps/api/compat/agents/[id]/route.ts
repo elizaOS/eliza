@@ -94,6 +94,8 @@ async function deleteDockerBackedAgentViaControlPlane(
   headers.delete("host");
   const internalToken = readControlPlaneEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
   if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const databaseUrl = readControlPlaneEnv(c, ["DATABASE_URL"]);
+  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("x-eliza-user-id", user.id);
   headers.set("x-eliza-organization-id", user.organization_id);
 

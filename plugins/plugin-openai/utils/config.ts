@@ -77,7 +77,7 @@ export function isProxyMode(runtime: IAgentRuntime): boolean {
  * runtime as using Cerebras's OpenAI-compatible endpoint. Used to scope
  * the `CEREBRAS_API_KEY` alias so OpenAI users are not affected.
  */
-function isCerebrasMode(runtime: IAgentRuntime): boolean {
+export function isCerebrasMode(runtime: IAgentRuntime): boolean {
   const explicitProvider = getSetting(runtime, "MILADY_PROVIDER");
   if (explicitProvider && explicitProvider.toLowerCase() === "cerebras") {
     return true;

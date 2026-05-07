@@ -16,6 +16,7 @@ import {
 	type State,
 	type WorldSettings,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	composePrompt,
 	composePromptFromState,
@@ -304,7 +305,12 @@ async function extractSettingValues(
 	_message: Memory,
 	state: State,
 	worldSettings: WorldSettings,
+	explicitUpdates: SettingUpdate[] = [],
 ): Promise<SettingUpdate[]> {
+	if (explicitUpdates.length > 0) {
+		return explicitUpdates.filter((update) => worldSettings[update.key]);
+	}
+
 	const { requiredUnconfigured, optionalUnconfigured } =
 		categorizeSettings(worldSettings);
 
@@ -616,10 +622,27 @@ async function generateErrorResponse(
 
 export const updateSettingsAction: ElizaAction = {
 	name: "UPDATE_SETTINGS",
+	contexts: ["settings", "admin"],
+	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
 		"Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.",
+	parameters: [
+		{
+			name: "key",
+			description: "Exact setting key to update.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "value",
+			description:
+				"Setting value to save. Use strings for text settings and boolean-like settings.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -627,65 +650,39 @@ export const updateSettingsAction: ElizaAction = {
 		state?: State,
 		options?: Record<string, unknown>,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["update", "settings"];
-		const __avKeywordOk = __avKeywords.some(
-			(kw) => kw.length > 0 && __avText.includes(kw),
-		);
-		const __avRegex = /\b(?:update|settings)\b/i;
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+		const params =
+			options?.parameters && typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredUpdate =
+			typeof params.key === "string" && params.key.trim().length > 0;
+		const hasSettingsIntent =
+			hasStructuredUpdate ||
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["settings", "secrets", "connectors"],
+				keywords: [
+					"update settings",
+					"save setting",
+					"set configuration",
+					"configure setting",
+				],
+			});
+		if (!hasSettingsIntent || message.content.channelType !== ChannelType.DM) {
 			return false;
 		}
 
-		const __avLegacyValidate = async (
-			legacyRuntime: IAgentRuntime,
-			legacyMessage: Memory,
-			_legacyState?: State,
-		): Promise<boolean> => {
-			try {
-				if (legacyMessage.content.channelType !== ChannelType.DM) {
-					return false;
-				}
-
-				const worlds = await findWorldsForOwner(
-					legacyRuntime,
-					legacyMessage.entityId,
-				);
-				if (!worlds) {
-					return false;
-				}
-
-				const world = worlds.find((world) => world.metadata?.settings);
-
-				const worldSettings = world?.metadata?.settings;
-
-				if (!worldSettings) {
-					return false;
-				}
-
-				return true;
-			} catch (error) {
-				logger.error(`Error validating settings action: ${error}`);
+		try {
+			const worlds = await findWorldsForOwner(runtime, message.entityId);
+			if (!worlds) {
 				return false;
 			}
-		};
-		try {
-			return Boolean(await __avLegacyValidate(runtime, message, state));
-		} catch {
+
+			const world = worlds.find((world) => world.metadata?.settings);
+			const worldSettings = world?.metadata?.settings;
+
+			return Boolean(worldSettings);
+		} catch (error) {
+			logger.error(`Error validating settings action: ${error}`);
 			return false;
 		}
 	},
@@ -748,11 +745,23 @@ export const updateSettingsAction: ElizaAction = {
 				};
 			}
 
+			const params =
+				_options?.parameters && typeof _options.parameters === "object"
+					? (_options.parameters as Record<string, unknown>)
+					: {};
+			const explicitValue = normalizeSettingValue(params.value);
+			const explicitUpdates =
+				typeof params.key === "string" &&
+				params.key.trim().length > 0 &&
+				explicitValue !== null
+					? [{ key: params.key.trim(), value: explicitValue }]
+					: [];
 			const extractedSettings = await extractSettingValues(
 				runtime,
 				message,
 				state,
 				worldSettings,
+				explicitUpdates,
 			);
 
 			const updateResults = await processSettingUpdates(

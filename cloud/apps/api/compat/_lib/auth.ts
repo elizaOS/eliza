@@ -7,7 +7,7 @@
  *   3. Standard Steward/API-key auth (dashboard users)
  */
 
-import type { Organization } from "@/db/schemas/organizations";
+import type { Organization } from "@/db/repositories/organizations";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { requireServiceKey, ServiceKeyAuthError } from "@/lib/auth/service-key";
 import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";

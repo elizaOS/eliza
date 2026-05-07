@@ -4,8 +4,8 @@
  *
  * Handles complete development environment setup with minimal configuration:
  * 1. Checks and creates .env.local with defaults
- * 2. Validates database connection
- * 3. Sets up x402 configuration
+ * 2. Validates local configuration
+ * 3. Shows missing Steward/x402-related configuration
  *
  * Usage:
  *   bun run setup              # Full setup
@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { createPublicClient, formatUnits, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
+import { isPlaceholderValue, parseEnvFile, updateEnvFile } from "./local-dev-helpers";
 
 const ENV_FILE = ".env.local";
 const EXAMPLE_ENV = ".env.example";
@@ -25,48 +26,7 @@ const EXAMPLE_ENV = ".env.example";
 // ============================================================================
 
 function readEnvFile(): Record<string, string> {
-  if (!existsSync(ENV_FILE)) return {};
-
-  const content = readFileSync(ENV_FILE, "utf-8");
-  const env: Record<string, string> = {};
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const [key, ...valueParts] = trimmed.split("=");
-    if (key) {
-      env[key] = valueParts.join("=").replace(/^["']|["']$/g, "");
-    }
-  }
-
-  return env;
-}
-
-function updateEnvFile(key: string, value: string): void {
-  let content = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf-8") : "";
-
-  const regex = new RegExp(`^${key}=.*$`, "m");
-  if (regex.test(content)) {
-    content = content.replace(regex, `${key}=${value}`);
-  } else {
-    content = content.trim() + `\n${key}=${value}\n`;
-  }
-
-  writeFileSync(ENV_FILE, content);
-}
-
-function isPlaceholderValue(value: string | undefined): boolean {
-  if (!value) return false;
-
-  return (
-    value === "replace_with_strong_random_secret" ||
-    value.includes("your-redis.upstash.io") ||
-    value.includes("default:token@your-redis.upstash.io") ||
-    value === "your_upstash_token_here" ||
-    value === "your_readonly_token_here" ||
-    value === "token" ||
-    value === "unset"
-  );
+  return parseEnvFile(ENV_FILE);
 }
 
 function ensureEnvFile(): Record<string, string> {
@@ -200,7 +160,7 @@ async function setupDefaults(env: Record<string, string>): Promise<void> {
 
   for (const [key, value] of Object.entries(defaults)) {
     if (!env[key] || isPlaceholderValue(env[key])) {
-      updateEnvFile(key, value);
+      updateEnvFile(ENV_FILE, key, value);
       console.log(`   Set ${key}=${value}`);
     }
   }

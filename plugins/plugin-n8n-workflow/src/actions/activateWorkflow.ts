@@ -4,15 +4,19 @@ import {
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
-  type ProviderDataRecord,
   logger,
   type Memory,
+  type ProviderDataRecord,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import { matchWorkflow } from '../utils/generation';
-import { buildConversationContext } from '../utils/context';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 import type { WorkflowDraft } from '../types/index';
+import { buildConversationContext } from '../utils/context';
+import { matchWorkflow } from '../utils/generation';
+import { validateN8nWorkflowIntent } from './validation';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 
@@ -66,30 +70,62 @@ const examples: ActionExample[][] = [
 
 export const activateWorkflowAction: Action = {
   name: 'ACTIVATE_N8N_WORKFLOW',
-  similes: ['ACTIVATE_WORKFLOW', 'ENABLE_WORKFLOW', 'START_WORKFLOW', 'TURN_ON_WORKFLOW'],
+  contexts: ['automation', 'connectors', 'tasks'],
+  contextGate: { anyOf: ['automation', 'connectors', 'tasks'] },
+  roleGate: { minRole: 'USER' },
+  similes: [
+    'ACTIVATE_WORKFLOW',
+    'ENABLE_WORKFLOW',
+    'START_WORKFLOW',
+    'TURN_ON_WORKFLOW',
+  ],
   description:
     'Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.',
   descriptionCompressed:
     'activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language',
+  parameters: [
+    {
+      name: 'workflowId',
+      description: 'Optional exact n8n workflow id to activate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'workflowName',
+      description: 'Optional workflow name to activate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+    {
+      name: 'query',
+      description:
+        'Optional natural-language description of the workflow to activate.',
+      required: false,
+      schema: { type: 'string' },
+    },
+  ],
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
-    return !!service;
-  },
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => validateN8nWorkflowIntent(runtime, message, state),
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:activate' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         await callback({
@@ -116,7 +152,7 @@ export const activateWorkflowAction: Action = {
         if (pendingDraft.workflow._meta?.requiresClarification?.length) {
           logger.info(
             { src: 'plugin:n8n-workflow:action:activate' },
-            'Draft redirect: draft needs clarification, prompting user'
+            'Draft redirect: draft needs clarification, prompting user',
           );
           if (callback) {
             await callback({
@@ -129,16 +165,21 @@ export const activateWorkflowAction: Action = {
 
         logger.info(
           { src: 'plugin:n8n-workflow:action:activate' },
-          `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`
+          `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`,
         );
 
-        const result = await service.deployWorkflow(pendingDraft.workflow, message.entityId);
+        const result = await service.deployWorkflow(
+          pendingDraft.workflow,
+          message.entityId,
+        );
 
         // Deploy blocked — unresolved credentials
         if (result.missingCredentials.length > 0) {
           const connList = result.missingCredentials
             .map((m) =>
-              m.authUrl ? `- **${m.credType}**: [Connect](${m.authUrl})` : `- **${m.credType}**`
+              m.authUrl
+                ? `- **${m.credType}**: [Connect](${m.authUrl})`
+                : `- **${m.credType}**`,
             )
             .join('\n');
           if (callback) {
@@ -156,7 +197,8 @@ export const activateWorkflowAction: Action = {
         responseText += `**Workflow ID:** ${result.id}\n`;
         responseText += `**Nodes:** ${result.nodeCount}\n`;
         responseText += `**Status:** ${result.active ? 'Active' : 'Inactive'}\n`;
-        responseText += '\nAll credentials configured — workflow is ready to run!';
+        responseText +=
+          '\nAll credentials configured — workflow is ready to run!';
 
         if (callback) {
           await callback({ text: responseText, success: true });
@@ -183,7 +225,9 @@ export const activateWorkflowAction: Action = {
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+        const workflowList = matchResult.matches
+          .map((m) => `- ${m.name} (ID: ${m.id})`)
+          .join('\n');
 
         if (callback) {
           await callback({
@@ -198,7 +242,7 @@ export const activateWorkflowAction: Action = {
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:activate' },
-        `Activated workflow ${matchResult.matchedWorkflowId}`
+        `Activated workflow ${matchResult.matchedWorkflowId}`,
       );
 
       if (callback) {
@@ -210,10 +254,11 @@ export const activateWorkflowAction: Action = {
 
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:activate' },
-        `Failed to activate workflow: ${errorMessage}`
+        `Failed to activate workflow: ${errorMessage}`,
       );
 
       if (callback) {

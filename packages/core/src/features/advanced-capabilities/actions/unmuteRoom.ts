@@ -29,8 +29,11 @@ const UNMUTE_TERMS = getValidationKeywordTerms("action.unmuteRoom.request", {
 
 export const unmuteRoomAction: Action = {
 	name: spec.name,
+	contexts: ["messaging", "settings"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [],
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
 		const text =

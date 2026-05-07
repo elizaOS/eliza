@@ -11,10 +11,12 @@ import type {
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseSearchMessagesParams } from "./_shared.ts";
+import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
 	name: "SEARCH_MESSAGES",
+	contexts: ["messaging", "email", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations.",
 	descriptionCompressed:
@@ -87,9 +89,10 @@ export const searchMessagesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, ["messaging", "email", "knowledge"]),
 
 	handler: async (
 		runtime: IAgentRuntime,

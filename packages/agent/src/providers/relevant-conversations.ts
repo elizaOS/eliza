@@ -36,6 +36,11 @@ export const relevantConversationsProvider: Provider = {
       includeAllLocales: true,
     },
   ),
+  contexts: ["memory", "messaging"],
+  contextGate: { anyOf: ["memory", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   async get(
     runtime: IAgentRuntime,

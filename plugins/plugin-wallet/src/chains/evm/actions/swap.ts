@@ -675,6 +675,41 @@ export const swapAction = {
   name: spec.name,
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "fromToken",
+      description: "Input token symbol or address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toToken",
+      description: "Output token symbol or address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "Human-readable amount to swap.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "chain",
+      description: "EVM chain for the swap.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   handler: async (
     runtime: IAgentRuntime,

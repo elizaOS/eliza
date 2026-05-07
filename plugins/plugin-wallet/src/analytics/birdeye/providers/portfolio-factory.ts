@@ -155,6 +155,11 @@ export function createBirdeyePortfolioProvider(
     description: options.description,
     descriptionCompressed: options.descriptionCompressed,
     dynamic: true,
+    contexts: ["finance", "crypto", "wallet"],
+    contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "OWNER" },
     get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
       try {
         const walletAddr = runtime.getSetting("BIRDEYE_WALLET_ADDR");

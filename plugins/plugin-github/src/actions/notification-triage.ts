@@ -80,11 +80,22 @@ export { scoreNotification };
 
 export const notificationTriageAction: Action = {
   name: GitHubActions.GITHUB_NOTIFICATION_TRIAGE,
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["TRIAGE_GITHUB_NOTIFICATIONS", "GITHUB_INBOX"],
   description:
     "Returns unread GitHub notifications sorted by a priority score derived from reason, subject type, and repo freshness.",
   descriptionCompressed:
     "return unread GitHub notification sort priority score derive reason, subject type, repo freshness",
+  parameters: [
+    {
+      name: "as",
+      description: "Identity to use when reading notifications: user or agent.",
+      required: false,
+      schema: { type: "string", enum: ["user", "agent"], default: "user" },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,

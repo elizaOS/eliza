@@ -57,6 +57,8 @@ function notConfigured(subaction: string | undefined): ActionResult {
 
 export const agentInboxAction: Action = {
   name: "AGENT_INBOX",
+  contexts: ["messaging", "email", "connectors", "agent_internal"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "AGENT_MAILBOX",
     "AGENT_GMAIL",

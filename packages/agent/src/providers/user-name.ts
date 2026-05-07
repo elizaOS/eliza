@@ -25,6 +25,11 @@ export function createUserNameProvider(): Provider {
     descriptionCompressed: "inject app user display name context (app chat)",
     position: 10,
     dynamic: true,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,

@@ -7,6 +7,7 @@
 import type {
   GenerateTextParams,
   IAgentRuntime,
+  JsonValue,
   ModelTypeName,
   RecordLlmCallDetails,
 } from "@elizaos/core";
@@ -14,8 +15,10 @@ import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import {
   generateText,
   type JSONSchema7,
+  jsonSchema,
   type LanguageModelUsage,
   type ModelMessage,
+  Output,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -32,6 +35,7 @@ import {
   getNanoModel,
   getResponseHandlerModel,
   getSmallModel,
+  isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -57,16 +61,18 @@ interface OpenAIPromptCacheOptions {
 }
 
 interface GenerateTextParamsWithOpenAIOptions
-  extends Omit<GenerateTextParams, "messages" | "tools" | "toolChoice" | "responseSchema"> {
+  extends Omit<
+    GenerateTextParams,
+    "messages" | "tools" | "toolChoice" | "responseSchema" | "providerOptions"
+  > {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
   toolChoice?: ToolChoice<ToolSet>;
   responseSchema?: unknown;
-  providerOptions?: {
+  providerOptions?: Record<string, object | JsonValue> & {
     agentName?: string;
     openai?: OpenAIPromptCacheOptions;
-    [key: string]: unknown;
   };
 }
 
@@ -82,9 +88,25 @@ type NativeTextParams = Omit<NativeGenerateTextParams, "messages" | "prompt"> &
 type NativeProviderOptions = NativeTextParams["providerOptions"];
 type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
 
-interface LanguageModelUsageWithCache extends LanguageModelUsage {
+type LanguageModelUsageWithCache = Omit<LanguageModelUsage, "inputTokenDetails"> & {
+  inputTokenDetails?: LanguageModelUsage["inputTokenDetails"] & {
+    cachedInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cacheCreationTokens?: number;
+  };
   cachedInputTokens?: number;
-}
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  input_tokens_details?: {
+    cached_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+};
 
 interface NativeGenerateTextResult {
   text: string;
@@ -143,8 +165,25 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
   // The AI SDK uses inputTokens/outputTokens
   const promptTokens = usage.inputTokens ?? 0;
   const completionTokens = usage.outputTokens ?? 0;
-  const usageWithCache = usage as LanguageModelUsageWithCache;
-  const cachedInput = usageWithCache.cachedInputTokens;
+  const usageWithCache: LanguageModelUsageWithCache = usage;
+  const cachedInput =
+    firstNumber(
+      usageWithCache.cacheReadInputTokens,
+      usageWithCache.cachedInputTokens,
+      usageWithCache.inputTokenDetails?.cacheReadTokens,
+      usageWithCache.inputTokenDetails?.cachedInputTokens,
+      usageWithCache.input_tokens_details?.cache_read_input_tokens,
+      usageWithCache.input_tokens_details?.cached_tokens,
+      usageWithCache.prompt_tokens_details?.cached_tokens
+    ) ?? undefined;
+  const cacheCreationInput = firstNumber(
+    usageWithCache.cacheCreationInputTokens,
+    usageWithCache.cacheWriteInputTokens,
+    usageWithCache.inputTokenDetails?.cacheCreationInputTokens,
+    usageWithCache.inputTokenDetails?.cacheCreationTokens,
+    usageWithCache.inputTokenDetails?.cacheWriteTokens,
+    usageWithCache.input_tokens_details?.cache_creation_input_tokens
+  );
 
   return {
     promptTokens,
@@ -152,7 +191,23 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     totalTokens: promptTokens + completionTokens,
     cachedPromptTokens: cachedInput,
     cacheReadInputTokens: cachedInput,
+    cacheCreationInputTokens: cacheCreationInput,
   };
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
 }
 
 function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
@@ -163,7 +218,10 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
   };
 }
 
-function resolveProviderOptions(params: GenerateTextParams): Record<string, unknown> | undefined {
+function resolveProviderOptions(
+  params: GenerateTextParams,
+  runtime: IAgentRuntime
+): Record<string, unknown> | undefined {
   const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
@@ -176,13 +234,18 @@ function resolveProviderOptions(params: GenerateTextParams): Record<string, unkn
     return undefined;
   }
 
+  // `prompt_cache_retention` is an OpenAI-direct field not supported by
+  // OpenAI-compatible providers such as Cerebras. Skip it when in Cerebras mode
+  // so we don't send an unsupported field that causes HTTP 400 errors.
+  const skipCacheRetention = isCerebrasMode(runtime);
+
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
   const openaiOptions = {
     ...(rawOpenAIOptions ?? {}),
     ...(promptCacheOptions.promptCacheKey
       ? { promptCacheKey: promptCacheOptions.promptCacheKey }
       : {}),
-    ...(promptCacheOptions.promptCacheRetention
+    ...(!skipCacheRetention && promptCacheOptions.promptCacheRetention
       ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
       : {}),
   };
@@ -210,24 +273,11 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
 
-  return {
-    name: "object",
-    responseFormat: Promise.resolve({
-      type: "json" as const,
-      schema: schemaOptions.schema as JSONSchema7,
-      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
-      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
-    }),
-    async parseCompleteOutput({ text }: { text: string }) {
-      return JSON.parse(text);
-    },
-    async parsePartialOutput(): Promise<undefined> {
-      return undefined;
-    },
-    createElementStreamTransform(): undefined {
-      return undefined;
-    },
-  } satisfies NativeOutput;
+  return Output.object({
+    schema: jsonSchema(schemaOptions.schema as JSONSchema7),
+    ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+    ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+  }) as NativeOutput;
 }
 
 function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): boolean {
@@ -300,7 +350,7 @@ async function generateTextByModelType(
   const modelName = getModelFn(runtime);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
-  const providerOptions = resolveProviderOptions(params);
+  const providerOptions = resolveProviderOptions(params, runtime);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
   const userContent = hasAttachments ? buildUserContent(paramsWithAttachments) : undefined;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);

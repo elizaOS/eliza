@@ -21,6 +21,10 @@ const formatDuration = (seconds?: number): string => {
 export const musicQueueProvider: Provider = {
   name: "musicQueue",
   description: "Current music queue and now-playing track.",
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

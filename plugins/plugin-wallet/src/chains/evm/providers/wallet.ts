@@ -578,9 +578,17 @@ class LazyTeeWalletProvider extends WalletProvider {
 }
 
 const spec = requireProviderSpec("wallet");
+const MAX_EVM_CHAIN_BALANCES = 20;
 
 export const evmWalletProvider: Provider = {
   name: spec.name,
+  description: "EVM wallet address and balances",
+  descriptionCompressed: "EVM wallet address and balances.",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   dynamic: true,
   async get(runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> {
     try {
@@ -617,19 +625,26 @@ export const evmWalletProvider: Provider = {
       }
 
       const agentName = state?.agentName ?? "The agent";
-      const balanceText = walletData.chains
+      const chains = walletData.chains.slice(0, MAX_EVM_CHAIN_BALANCES);
+      const balanceText = chains
         .map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`)
         .join("\n");
+      const truncationText =
+        walletData.chains.length > chains.length
+          ? `\n... and ${walletData.chains.length - chains.length} more chains`
+          : "";
 
       return {
-        text: `${agentName}'s EVM Wallet Address: ${walletData.address}\n\nBalances:\n${balanceText}`,
+        text: `${agentName}'s EVM Wallet Address: ${walletData.address}\n\nBalances:\n${balanceText}${truncationText}`,
         data: {
           address: walletData.address,
-          chains: walletData.chains,
+          chains,
+          chainCount: walletData.chains.length,
+          displayedChainCount: chains.length,
         },
         values: {
           address: walletData.address,
-          chains: balanceText,
+          chains: `${balanceText}${truncationText}`,
         },
       };
     } catch (error) {
@@ -637,7 +652,16 @@ export const evmWalletProvider: Provider = {
         "Error in EVM wallet provider:",
         error instanceof Error ? error.message : String(error)
       );
-      throw error;
+      return {
+        text: `EVM wallet data unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        data: {},
+        values: {
+          walletReady: false,
+          walletError: error instanceof Error ? error.name : "EVMWalletProviderError",
+        },
+      };
     }
   },
 };
@@ -651,7 +675,7 @@ async function directFetchWalletData(
   const balances = await walletProvider.getWalletBalances();
   const agentName = state?.agentName ?? "The agent";
 
-  const chainDetails = Object.entries(balances).map(([chainName, balance]) => {
+  const allChainDetails = Object.entries(balances).map(([chainName, balance]) => {
     const chain = walletProvider.getChainConfigs(chainName as SupportedChain);
     return {
       chainName,
@@ -661,20 +685,27 @@ async function directFetchWalletData(
       name: chain.name,
     };
   });
+  const chainDetails = allChainDetails.slice(0, MAX_EVM_CHAIN_BALANCES);
 
   const balanceText = chainDetails
     .map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`)
     .join("\n");
+  const truncationText =
+    allChainDetails.length > chainDetails.length
+      ? `\n... and ${allChainDetails.length - chainDetails.length} more chains`
+      : "";
 
   return {
-    text: `${agentName}'s EVM Wallet Address: ${address}\n\nBalances:\n${balanceText}`,
+    text: `${agentName}'s EVM Wallet Address: ${address}\n\nBalances:\n${balanceText}${truncationText}`,
     data: {
       address,
       chains: chainDetails,
+      chainCount: allChainDetails.length,
+      displayedChainCount: chainDetails.length,
     },
     values: {
       address: address as string,
-      chains: balanceText,
+      chains: `${balanceText}${truncationText}`,
     },
   };
 }

@@ -159,6 +159,9 @@ async function deliverResult(
 
 export const useComputerAction: Action = {
   name: "USE_COMPUTER",
+  contexts: ["browser", "files", "terminal", "screen_time", "automation"],
+  contextGate: { anyOf: ["browser", "files", "terminal", "screen_time", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CONTROL_COMPUTER",
     "COMPUTER_ACTION",

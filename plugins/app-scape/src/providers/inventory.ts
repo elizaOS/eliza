@@ -15,46 +15,64 @@ import type {
 } from "@elizaos/core";
 
 import type { ScapeGameService } from "../services/game-service.js";
+const INVENTORY_ITEM_LIMIT = 28;
+const EQUIPMENT_ITEM_LIMIT = 14;
 
 export const inventoryProvider: Provider = {
   name: "SCAPE_INVENTORY",
   description:
     "Agent's current inventory and equipped items. Empty slots elided.",
   descriptionCompressed: "Inventory and equipped items.",
+  contexts: ["game", "automation", "world", "state"],
+  contextGate: { anyOf: ["game", "automation", "world", "state"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService(
-      "scape_game",
-    ) as unknown as ScapeGameService | null;
-    if (!service) return { text: "" };
-    const snapshot = service.getPerception();
-    if (!snapshot) return { text: "" };
+    try {
+      const service = runtime.getService(
+        "scape_game",
+      ) as unknown as ScapeGameService | null;
+      if (!service) return { text: "" };
+      const snapshot = service.getPerception();
+      if (!snapshot) return { text: "" };
 
-    const inv = snapshot.inventory;
-    const eq = snapshot.equipment;
+      const inv = snapshot.inventory;
+      const eq = snapshot.equipment;
 
-    return {
-      text: JSON.stringify({
-        scape_inventory: {
-          count: inv.length,
-          capacity: 28,
-          items: inv.map((item) => ({
+      return {
+        text: JSON.stringify({
+          scape_inventory: {
+            count: inv.length,
+            capacity: 28,
+            items: inv.slice(0, INVENTORY_ITEM_LIMIT).map((item) => ({
             slot: item.slot,
             itemId: item.itemId,
             name: item.name,
             count: item.count,
           })),
-          worn: eq.map((item) => ({
+            worn: eq.slice(0, EQUIPMENT_ITEM_LIMIT).map((item) => ({
             slot: item.slot,
             itemId: item.itemId,
             name: item.name,
             count: item.count,
           })),
-        },
-      }),
-    };
+          },
+        }),
+      };
+    } catch (error) {
+      return {
+        text: JSON.stringify({
+          scape_inventory: {
+            status: "error",
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        }),
+      };
+    }
   },
 };

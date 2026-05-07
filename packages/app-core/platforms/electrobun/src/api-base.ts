@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 
@@ -161,6 +162,8 @@ export function pushApiBaseToRenderer(
 		const rpcSend = (win.webview?.rpc as ApiBaseUpdateRpc | undefined)?.send;
 		rpcSend?.apiBaseUpdate?.(payload);
 	} catch (err) {
-		console.warn(`[ApiBase] Push failed:`, err);
+		logger.warn(
+			`[ApiBase] Push failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }

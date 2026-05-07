@@ -58,9 +58,10 @@ log = logging.getLogger("bench")
 
 
 SHOULD_RESPOND_TYPES = {"should_respond", "should_respond_with_context",
-                        "dialogue_routing"}
-PLANNER_TYPES = {"message_handler", "tool_call", "agent_trace"}
-REPLY_TYPES = {"reply"}
+                        "dialogue_routing", "context_routing"}
+PLANNER_TYPES = {"message_handler", "tool_call", "agent_trace",
+                 "action_planner", "planner"}
+REPLY_TYPES = {"reply", "response"}
 # Claude-distilled reasoning records — assistant content is
 # `<think>...</think>final` (verbatim, no TOON re-encoding). Scored by a
 # distinct path that checks the think-tag envelope rather than TOON fields.
@@ -129,7 +130,33 @@ def classify(record: dict) -> str | None:
     return None
 
 
+def _message_handler_doc(doc: dict) -> dict | None:
+    candidate = doc.get("messageHandler")
+    if isinstance(candidate, dict):
+        return candidate
+    if doc.get("action") in ("RESPOND", "IGNORE", "STOP"):
+        return doc
+    return None
+
+
 def score_should_respond(predicted: dict, expected: dict) -> tuple[bool, bool, dict[str, bool]]:
+    pred_handler = _message_handler_doc(predicted)
+    exp_handler = _message_handler_doc(expected)
+    if pred_handler is not None or exp_handler is not None:
+        pred_action = str((pred_handler or {}).get("action", "")).upper()
+        exp_action = str((exp_handler or {}).get("action", "")).upper()
+        pred_contexts = (pred_handler or {}).get("contexts")
+        exp_contexts = (exp_handler or {}).get("contexts")
+        fields = {
+            "action": pred_action == exp_action,
+            "contexts": isinstance(pred_contexts, list)
+                        and isinstance(exp_contexts, list)
+                        and pred_contexts == exp_contexts,
+            "thought_present": bool((pred_handler or {}).get("thought")),
+        }
+        fmt = pred_action in ("RESPOND", "IGNORE", "STOP") and isinstance(pred_contexts, list)
+        return fmt, fields["action"], fields
+
     required = ("name", "action", "reasoning", "primaryContext")
     fmt = all(k in predicted for k in required) and \
         str(predicted.get("action", "")).upper() in ("RESPOND", "IGNORE", "STOP")

@@ -1,4 +1,7 @@
-"""TOON encoder backed by the @toon-format/toon Bun package.
+"""Legacy TOON compatibility encoder backed by @toon-format/toon.
+
+Do not use this module for new v5 native tool-calling generation or export
+paths. Use `lib.expected_response.JsonExpectedResponseEncoder` instead.
 
 Spawns a long-lived Bun subprocess (`tools/toon_encode.mjs`) and pipes JSON
 records over stdin, reads JSON-wrapped TOON strings from stdout.

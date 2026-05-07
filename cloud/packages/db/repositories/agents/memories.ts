@@ -40,7 +40,7 @@ export interface SearchMemoriesOptions {
  */
 export class MemoriesRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -298,7 +298,7 @@ export class MemoriesRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

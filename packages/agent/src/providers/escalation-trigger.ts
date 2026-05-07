@@ -189,6 +189,11 @@ export function createEscalationTriggerProvider(): Provider {
       "monitor condition warrant escalat owner inject escalation context trigger detect",
     dynamic: true,
     position: 15,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,

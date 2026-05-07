@@ -142,6 +142,8 @@ export const passwordManagerAction: Action & {
     "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
   descriptionCompressed:
     "password manager 1Password|ProtonPass: search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+  contexts: ["secrets", "browser", "automation"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -152,104 +154,117 @@ export const passwordManagerAction: Action & {
       return failure("PERMISSION_DENIED");
     }
 
-    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const rawParams = ((typeof rawParameters === "object" &&
-    rawParameters !== null
-      ? (rawParameters as PasswordManagerParameters)
-      : {}) ?? {}) as PasswordManagerParameters;
-    const params = (await extractActionParamsViaLlm<PasswordManagerParameters>({
-      runtime,
-      message,
-      state,
-      actionName: "PASSWORD_MANAGER",
-      actionDescription: passwordManagerAction.description ?? "",
-      paramSchema: passwordManagerAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subaction"],
-    })) as PasswordManagerParameters;
-
-    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
-    const config = readConfig(runtime);
-
-    if (subaction === "search") {
-      const query = (params.query ?? params.intent ?? "").toString().trim();
-      if (!query) return failure("MISSING_QUERY");
-      const items = await searchPasswordItems(query, config);
-      const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;
-      return {
-        text,
-        success: true,
-        values: { success: true, count: items.length },
-        data: {
+    try {
+      const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+      const rawParams = ((typeof rawParameters === "object" &&
+      rawParameters !== null
+        ? (rawParameters as PasswordManagerParameters)
+        : {}) ?? {}) as PasswordManagerParameters;
+      const params =
+        (await extractActionParamsViaLlm<PasswordManagerParameters>({
+          runtime,
+          message,
+          state,
           actionName: "PASSWORD_MANAGER",
-          subaction: "search",
-          query,
-          items,
-        },
-      };
-    }
+          actionDescription: passwordManagerAction.description ?? "",
+          paramSchema: passwordManagerAction.parameters ?? [],
+          existingParams: rawParams,
+          requiredFields: ["subaction"],
+        })) as PasswordManagerParameters;
 
-    if (subaction === "list") {
-      const limit =
-        typeof params.limit === "number" && params.limit > 0
-          ? Math.floor(params.limit)
-          : 20;
-      const items = await listPasswordItems({ limit }, config);
-      return {
-        text: `Saved login items only — passwords remain hidden.\n${describeItems(items)}`,
-        success: true,
-        values: { success: true, count: items.length },
-        data: {
-          actionName: "PASSWORD_MANAGER",
-          subaction: "list",
-          items,
-        },
-      };
-    }
+      const subaction = (params.subaction ?? "")
+        .toString()
+        .trim()
+        .toLowerCase();
+      const config = readConfig(runtime);
 
-    if (subaction === "inject_username" || subaction === "inject_password") {
-      const field: "username" | "password" =
-        subaction === "inject_username" ? "username" : "password";
-      const itemId = (params.itemId ?? "").toString().trim();
-      if (!itemId) return failure("MISSING_ITEM_ID");
-      if (params.confirmed !== true) {
-        return failure("CONFIRMATION_REQUIRED", { itemId, field });
-      }
-      const result = await injectCredentialToClipboard(itemId, field, config);
-      logger.info(
-        {
-          action: "PASSWORD_MANAGER",
-          subaction,
-          itemId,
-          field,
-          fixtureMode: result.fixtureMode === true,
-        },
-        `[PASSWORD_MANAGER] Copied ${field} for item ${itemId} to clipboard`,
-      );
-      const fixtureSuffix = result.fixtureMode
-        ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
-        : "";
-      return {
-        text: `Copied ${field} for item '${itemId}' to clipboard (clears in ${result.expiresInSeconds}s).${fixtureSuffix}`,
-        success: true,
-        values: {
+      if (subaction === "search") {
+        const query = (params.query ?? params.intent ?? "").toString().trim();
+        if (!query) return failure("MISSING_QUERY");
+        const items = await searchPasswordItems(query, config);
+        const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;
+        return {
+          text,
           success: true,
-          field,
-          expiresInSeconds: result.expiresInSeconds,
-          fixtureMode: result.fixtureMode === true,
-        },
-        data: {
-          actionName: "PASSWORD_MANAGER",
-          subaction,
-          itemId,
-          field,
-          expiresInSeconds: result.expiresInSeconds,
-          fixtureMode: result.fixtureMode === true,
-        },
-      };
-    }
+          values: { success: true, count: items.length },
+          data: {
+            actionName: "PASSWORD_MANAGER",
+            subaction: "search",
+            query,
+            items,
+          },
+        };
+      }
 
-    return failure("UNKNOWN_SUBACTION", { subaction });
+      if (subaction === "list") {
+        const limit =
+          typeof params.limit === "number" && params.limit > 0
+            ? Math.floor(params.limit)
+            : 20;
+        const items = await listPasswordItems({ limit }, config);
+        return {
+          text: `Saved login items only — passwords remain hidden.\n${describeItems(items)}`,
+          success: true,
+          values: { success: true, count: items.length },
+          data: {
+            actionName: "PASSWORD_MANAGER",
+            subaction: "list",
+            items,
+          },
+        };
+      }
+
+      if (subaction === "inject_username" || subaction === "inject_password") {
+        const field: "username" | "password" =
+          subaction === "inject_username" ? "username" : "password";
+        const itemId = (params.itemId ?? "").toString().trim();
+        if (!itemId) return failure("MISSING_ITEM_ID");
+        if (params.confirmed !== true) {
+          return failure("CONFIRMATION_REQUIRED", { itemId, field });
+        }
+        const result = await injectCredentialToClipboard(itemId, field, config);
+        logger.info(
+          {
+            action: "PASSWORD_MANAGER",
+            subaction,
+            itemId,
+            field,
+            fixtureMode: result.fixtureMode === true,
+          },
+          `[PASSWORD_MANAGER] Copied ${field} for item ${itemId} to clipboard`,
+        );
+        const fixtureSuffix = result.fixtureMode
+          ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
+          : "";
+        return {
+          text: `Copied ${field} for item '${itemId}' to clipboard (clears in ${result.expiresInSeconds}s).${fixtureSuffix}`,
+          success: true,
+          values: {
+            success: true,
+            field,
+            expiresInSeconds: result.expiresInSeconds,
+            fixtureMode: result.fixtureMode === true,
+          },
+          data: {
+            actionName: "PASSWORD_MANAGER",
+            subaction,
+            itemId,
+            field,
+            expiresInSeconds: result.expiresInSeconds,
+            fixtureMode: result.fixtureMode === true,
+          },
+        };
+      }
+
+      return failure("UNKNOWN_SUBACTION", { subaction });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown password manager failure.";
+      logger.warn({ error }, "[PASSWORD_MANAGER] Action failed");
+      return failure("PASSWORD_MANAGER_FAILED", { error: message });
+    }
   },
 
   examples,

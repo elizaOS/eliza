@@ -4,8 +4,8 @@
  * Pure database operations for the elizaOS agents table.
  * Used to get agent info without spinning up the full runtime.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 
 import type { Agent } from "@elizaos/core";
@@ -48,7 +48,7 @@ export interface AgentInfo {
  */
 export class AgentsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -110,7 +110,7 @@ export class AgentsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -121,7 +121,7 @@ export class AgentsRepository {
    */
   async create(agent: Partial<Agent>): Promise<boolean> {
     // Check for existing agent with the same ID only (names can be duplicated)
-    // Note: Use write connection for the check to avoid replication lag issues
+    // Use the write connection so the duplicate check sees the latest row.
     if (agent.id) {
       const existing = await dbWrite
         .select({ id: agentTable.id })

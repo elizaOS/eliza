@@ -14,6 +14,7 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 const canModifyRole = (
 	currentRole: Role,
@@ -116,76 +117,71 @@ function extractRoleAssignments(result: unknown): RoleAssignment[] {
 
 export const updateRoleAction: ElizaAction = {
 	name: "UPDATE_ROLE",
+	contexts: ["admin", "settings"],
+	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	similes: ["CHANGE_ROLE", "SET_PERMISSIONS", "ASSIGN_ROLE", "MAKE_ADMIN"],
 	description:
 		"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
+	parameters: [
+		{
+			name: "roleAssignments",
+			description: "Role assignments with entityId and newRole.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						entityId: { type: "string" as const },
+						newRole: {
+							type: "string" as const,
+							enum: [Role.OWNER, Role.ADMIN, Role.NONE],
+						},
+					},
+					required: ["entityId", "newRole"],
+				},
+			},
+		},
+	],
 
 	validate: async (
-		runtime: IAgentRuntime,
+		_runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
 		options?: Record<string, unknown>,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avLegacyContextOk = Boolean(
-			(message?.content?.channelType === ChannelType.GROUP ||
-				message?.content?.channelType === ChannelType.WORLD) &&
-				message?.content?.serverId,
+		const channelType = message.content.channelType as ChannelType;
+		const serverId = message.content.serverId as string;
+		if (
+			channelType !== ChannelType.GROUP &&
+			channelType !== ChannelType.WORLD
+		) {
+			return false;
+		}
+		if (!serverId) {
+			return false;
+		}
+		const params =
+			options?.parameters && typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredAssignments =
+			Array.isArray(params.roleAssignments) &&
+			extractRoleAssignments(params.roleAssignments).length > 0;
+		return (
+			hasStructuredAssignments ||
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["admin", "settings"],
+				keywords: [
+					"update role",
+					"change role",
+					"assign role",
+					"make admin",
+					"set permissions",
+				],
+			})
 		);
-		const __avKeywords = ["update", "role", "roles"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			(__avKeywords.some(
-				(word) => word.length > 0 && __avText.includes(word),
-			) ||
-				__avLegacyContextOk);
-		const __avRegex = /\b(?:update|role|roles)\b/i;
-		const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(
-					__avSource ||
-						state ||
-						runtime?.agentId ||
-						runtime?.getService ||
-						runtime?.getSetting ||
-						__avLegacyContextOk ||
-						message?.content,
-				);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
-		const __avLegacyValidate = async (
-			_runtime: IAgentRuntime,
-			message: Memory,
-			_state?: State,
-		): Promise<boolean> => {
-			const channelType = message.content.channelType as ChannelType;
-			const serverId = message.content.serverId as string;
-
-			return (
-				(channelType === ChannelType.GROUP ||
-					channelType === ChannelType.WORLD) &&
-				!!serverId
-			);
-		};
-		try {
-			return Boolean(await __avLegacyValidate(runtime, message, state));
-		} catch {
-			return false;
-		}
 	},
 
 	handler: async (
@@ -266,6 +262,10 @@ export const updateRoleAction: ElizaAction = {
 				- newRole: The role to assign (OWNER, ADMIN, or NONE)
 			`;
 
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
 		const parsed = await runtime.dynamicPromptExecFromState({
 			state,
 			params: { prompt: extractionPrompt },
@@ -304,7 +304,10 @@ export const updateRoleAction: ElizaAction = {
 			},
 		});
 
-		const result = extractRoleAssignments(parsed);
+		const explicitAssignments = extractRoleAssignments(params.roleAssignments);
+		const result = explicitAssignments.length
+			? explicitAssignments
+			: extractRoleAssignments(parsed);
 
 		if (!result?.length) {
 			await callback?.({

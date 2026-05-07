@@ -10,27 +10,38 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CONTACTS");
+const MAX_CONTACTS = 50;
 
 export const contactsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["contacts", "memory"],
+	contextGate: { anyOf: ["contacts", "memory"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const relationshipsService = runtime.getService(
-			"relationships",
-		) as RelationshipsService;
-		if (!relationshipsService) {
-			runtime.logger.warn(
-				"[ContactsProvider] RelationshipsService not available",
-			);
-			return { text: "", values: {}, data: {} };
-		}
+		try {
+			const relationshipsService = runtime.getService(
+				"relationships",
+			) as RelationshipsService;
+			if (!relationshipsService) {
+				runtime.logger.warn(
+					"[ContactsProvider] RelationshipsService not available",
+				);
+				return { text: "", values: {}, data: {} };
+			}
 
-		// Get all contacts
-		const contacts = await relationshipsService.searchContacts({});
+			// Get all contacts
+			const contacts = (await relationshipsService.searchContacts({})).slice(
+				0,
+				MAX_CONTACTS,
+			);
 
 		if (contacts.length === 0) {
 			return {
@@ -95,13 +106,22 @@ export const contactsProvider: Provider = {
 
 		const textSummary = lines.join("\n").trim();
 
-		return {
-			text: textSummary,
-			values: {
-				contactCount: contacts.length,
-				...categoryCounts,
-			},
-			data: categoryCounts,
-		};
+			return {
+				text: textSummary,
+				values: {
+					contactCount: contacts.length,
+					...categoryCounts,
+				},
+				data: categoryCounts,
+			};
+		} catch (error) {
+			return {
+				text: "",
+				values: { contactCount: 0 },
+				data: {
+					error: error instanceof Error ? error.message : String(error),
+				},
+			};
+		}
 	},
 };

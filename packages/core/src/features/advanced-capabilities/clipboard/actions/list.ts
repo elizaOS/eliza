@@ -7,6 +7,7 @@ import {
 	type Memory,
 	type State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
 import { requireActionSpec } from "../specs.ts";
 
@@ -14,50 +15,22 @@ const spec = requireActionSpec("CLIPBOARD_LIST");
 
 export const clipboardListAction: Action = {
 	name: spec.name,
+	contexts: ["files", "knowledge", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [],
 
 	validate: async (
-		runtime: IAgentRuntime,
+		_runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
-		options?: HandlerOptions,
+		_options?: HandlerOptions,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["clipboard", "list"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-		const __avRegex = /\b(?:clipboard|list)\b/i;
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
-		const __avLegacyValidate = async (
-			_runtime: IAgentRuntime,
-			_message: Memory,
-		): Promise<boolean> => {
-			return true;
-		};
-		try {
-			return Boolean(await __avLegacyValidate(runtime, message));
-		} catch {
-			return false;
-		}
+		return hasActionContextOrKeyword(message, state, {
+			contexts: ["files", "knowledge", "agent_internal"],
+			keywords: ["clipboard", "list notes", "show notes", "saved notes"],
+		});
 	},
 
 	handler: async (

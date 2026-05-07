@@ -36,6 +36,9 @@ function formatGitHubAuthPrompt(
 
 export const manageIssuesAction: Action = {
   name: "MANAGE_ISSUES",
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_ISSUE",

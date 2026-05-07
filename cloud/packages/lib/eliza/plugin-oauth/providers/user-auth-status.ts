@@ -17,13 +17,18 @@ import { capitalize, formatConnectionIdentifier } from "../utils";
 export const userAuthStatusProvider: Provider = {
   name: "USER_AUTH_STATUS",
   description: "Provides user OAuth connection status and credits balance",
+  contexts: ["connectors", "settings"],
+  contextGate: { anyOf: ["connectors", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   get: async (_runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     if (!message.entityId) {
       return { text: "", values: {}, data: {} };
     }
-
-    const user = await usersRepository.findWithOrganization(message.entityId as string);
+    try {
+      const user = await usersRepository.findWithOrganization(message.entityId as string);
 
     if (!user || !user.organization_id) {
       logger.debug(`[USER_AUTH_STATUS] No user/org for entityId: ${message.entityId}`);
@@ -72,32 +77,50 @@ export const userAuthStatusProvider: Provider = {
       `[USER_AUTH_STATUS] User ${userId}: ${active.length} connections, ${creditBalance} credits`,
     );
 
-    return {
-      text,
-      values: {
-        userAuthenticated: active.length > 0,
-        hasGoogleConnected: !!googleConnection,
-        googleEmail: googleConnection?.email || null,
-        creditBalance,
-        hasCredits: creditBalance > 0,
-        connectionCount: active.length,
-        connectedPlatforms: active.map((c) => c.platform),
-        authStatus: status,
-      },
-      data: {
-        userAuthStatus: {
-          authenticated: active.length > 0,
-          userId,
-          organizationId,
+      return {
+        text,
+        values: {
+          userAuthenticated: active.length > 0,
+          hasGoogleConnected: !!googleConnection,
+          googleEmail: googleConnection?.email || null,
           creditBalance,
-          connections: active.map((c) => ({
-            platform: c.platform,
-            email: c.email,
-            username: c.username,
-            status: c.status,
-          })),
+          hasCredits: creditBalance > 0,
+          connectionCount: active.length,
+          connectedPlatforms: active.map((c) => c.platform),
+          authStatus: status,
         },
-      },
-    };
+        data: {
+          userAuthStatus: {
+            authenticated: active.length > 0,
+            userId,
+            organizationId,
+            creditBalance,
+            connections: active.slice(0, 20).map((c) => ({
+              platform: c.platform,
+              email: c.email,
+              username: c.username,
+              status: c.status,
+            })),
+          },
+        },
+      };
+    } catch (error) {
+      logger.warn(
+        `[USER_AUTH_STATUS] Provider fallback for entityId ${message.entityId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return {
+        text: "# User Status\n- Status: unavailable",
+        values: { userAuthenticated: false, hasOrganization: false },
+        data: {
+          userAuthStatus: {
+            authenticated: false,
+            connections: [],
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+      };
+    }
   },
 };

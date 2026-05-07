@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
+  getActiveRoutingContextsForTurn,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -14,11 +15,81 @@ import {
 } from "../utils/smartFetchService";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
+const DOWNLOAD_MUSIC_CONTEXTS = ["media", "files"] as const;
+const DOWNLOAD_MUSIC_KEYWORDS = [
+  "download",
+  "fetch",
+  "save",
+  "grab",
+  "music",
+  "song",
+  "track",
+  "album",
+  "library",
+  "descargar",
+  "guardar",
+  "música",
+  "canción",
+  "télécharger",
+  "musique",
+  "chanson",
+  "herunterladen",
+  "speichern",
+  "musik",
+  "lied",
+  "scaricare",
+  "salvare",
+  "baixar",
+  "下载",
+  "音乐",
+  "保存",
+  "ダウンロード",
+  "音楽",
+] as const;
+
+function hasDownloadMusicContext(message: Memory, state?: State): boolean {
+  const active = new Set(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") active.add(item.toLowerCase());
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  return DOWNLOAD_MUSIC_CONTEXTS.some((context) => active.has(context));
+}
+
+function hasDownloadMusicIntent(message: Memory, state?: State): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return DOWNLOAD_MUSIC_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
+
 /**
  * DOWNLOAD_MUSIC action - downloads music to library without playing
  */
 export const downloadMusic: Action = {
   name: "DOWNLOAD_MUSIC",
+  contexts: [...DOWNLOAD_MUSIC_CONTEXTS],
+  contextGate: { anyOf: [...DOWNLOAD_MUSIC_CONTEXTS] },
+  roleGate: { minRole: "USER" },
   similes: [
     "FETCH_MUSIC",
     "GET_MUSIC",
@@ -37,12 +108,11 @@ export const downloadMusic: Action = {
       schema: { type: "boolean", default: false },
     },
   ],
-  validate: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State,
-  ) => {
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      hasDownloadMusicContext(message, state) ||
+      hasDownloadMusicIntent(message, state)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

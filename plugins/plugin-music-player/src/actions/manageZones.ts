@@ -1,15 +1,155 @@
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ZoneManager } from "../router";
 
-interface MusicZoneService {
+interface MusicZoneService extends Service {
+  capabilityDescription: string;
+  stop(): Promise<void>;
   getZoneManager(): ZoneManager;
+}
+
+const ZONE_CONTEXTS = ["media", "automation", "settings"] as const;
+const ZONE_KEYWORDS = [
+  "zone",
+  "zones",
+  "mix",
+  "target",
+  "audio",
+  "music",
+  "create",
+  "delete",
+  "add",
+  "remove",
+  "list",
+  "zona",
+  "zonas",
+  "objetivo",
+  "añadir",
+  "eliminar",
+  "zone",
+  "cible",
+  "ajouter",
+  "supprimer",
+  "bereich",
+  "ziel",
+  "hinzufügen",
+  "entfernen",
+  "ゾーン",
+  "追加",
+  "削除",
+  "区域",
+  "添加",
+  "删除",
+  "구역",
+  "추가",
+  "삭제",
+] as const;
+
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function messageContainsAny(
+  message: Memory,
+  state: State | undefined,
+  keywords: readonly string[],
+): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+async function emit(
+  callback: HandlerCallback | undefined,
+  source: string,
+  text: string,
+  success: boolean,
+  data?: Record<string, unknown>,
+): Promise<ActionResult> {
+  await callback?.({ text, source });
+  return {
+    success,
+    text,
+    values: { success, ...(data ?? {}) },
+    data: { actionName: "MANAGE_ZONES", ...(data ?? {}) },
+  };
+}
+
+function readParams(options: unknown): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function zoneTextFromOptions(options: unknown): string | null {
+  const params = readParams(options);
+  const operation =
+    typeof params.operation === "string" ? params.operation.toLowerCase() : "";
+  const zoneName =
+    typeof params.zoneName === "string" ? params.zoneName.trim() : "";
+  const targetIds = Array.isArray(params.targetIds)
+    ? params.targetIds.filter(
+        (target): target is string => typeof target === "string",
+      )
+    : [];
+  if (operation === "create" && zoneName && targetIds.length > 0) {
+    return `create zone ${zoneName} with ${targetIds.join(", ")}`;
+  }
+  if (operation === "delete" && zoneName) return `delete zone ${zoneName}`;
+  if (operation === "show" && zoneName) return `show zone ${zoneName}`;
+  if (operation === "list") return "list zones";
+  if (operation === "add" && zoneName && targetIds[0]) {
+    return `add ${targetIds[0]} to zone ${zoneName}`;
+  }
+  if (operation === "remove" && zoneName && targetIds[0]) {
+    return `remove ${targetIds[0]} from zone ${zoneName}`;
+  }
+  return null;
 }
 
 function formatMetadata(metadata: Record<string, unknown>): string {
@@ -30,6 +170,9 @@ function formatMetadata(metadata: Record<string, unknown>): string {
  */
 export const manageZones = {
   name: "MANAGE_ZONES",
+  contexts: ["media", "automation", "settings"],
+  contextGate: { anyOf: ["media", "automation", "settings"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CREATE_ZONE",
     "DELETE_ZONE",
@@ -45,15 +188,10 @@ export const manageZones = {
   description: "Manage audio zones for multi-bot voice routing",
   descriptionCompressed: "manage audio zone multi-bot voice rout",
 
-  validate: async (
-    _runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    if (selectedContextMatches(state, ZONE_CONTEXTS)) return true;
     const text = message.content.text?.toLowerCase() || "";
 
-    // Check if message is about zone management
-    const zoneKeywords = ["zone", "zones", "mix"];
     const actionKeywords = [
       "create",
       "delete",
@@ -63,7 +201,7 @@ export const manageZones = {
       "show",
     ];
 
-    const hasZoneKeyword = zoneKeywords.some((kw) => text.includes(kw));
+    const hasZoneKeyword = messageContainsAny(message, state, ZONE_KEYWORDS);
     const hasActionKeyword = actionKeywords.some((kw) => text.includes(kw));
 
     return hasZoneKeyword && hasActionKeyword;
@@ -73,64 +211,102 @@ export const manageZones = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: any,
+    _options: unknown,
     callback?: HandlerCallback,
-  ) => {
-    if (!callback) return;
+  ): Promise<ActionResult> => {
     const source = message.content.source || "unknown";
+    const effectiveCallback: HandlerCallback = callback ?? (async () => []);
     try {
-      const musicService = await runtime.getService("music" as any);
+      const musicService = (await runtime.getService(
+        "music",
+      )) as MusicZoneService | null;
       if (!musicService) {
-        await callback({
-          text: "❌ Music service not available",
-          source,
+        return emit(callback, source, "Music service not available", false, {
+          error: "MUSIC_SERVICE_UNAVAILABLE",
         });
-        return;
       }
 
       const zoneManager = (
         musicService as unknown as MusicZoneService
       ).getZoneManager?.();
       if (!zoneManager) {
-        await callback({
-          text: "❌ Zone manager not available",
-          source,
+        return emit(callback, source, "Zone manager not available", false, {
+          error: "ZONE_MANAGER_UNAVAILABLE",
         });
-        return;
       }
 
-      const text = message.content.text?.toLowerCase() || "";
+      const text =
+        zoneTextFromOptions(_options)?.toLowerCase() ||
+        message.content.text?.toLowerCase() ||
+        "";
 
       // Parse command
       if (text.includes("create zone")) {
-        await handleCreateZone(zoneManager, text, callback, source);
+        return handleCreateZone(zoneManager, text, effectiveCallback, source);
       } else if (text.includes("delete zone") || text.includes("remove zone")) {
-        await handleDeleteZone(zoneManager, text, callback, source);
+        return handleDeleteZone(zoneManager, text, effectiveCallback, source);
       } else if (/\b(?:list|show)\s+zones?\b/.test(text)) {
-        await handleListZones(zoneManager, text, callback, source);
+        return handleListZones(zoneManager, text, effectiveCallback, source);
       } else if (/\badd\s+.+\s+to zone\b/.test(text)) {
-        await handleAddToZone(zoneManager, text, callback, source);
+        return handleAddToZone(zoneManager, text, effectiveCallback, source);
       } else if (/\bremove\s+.+\s+from zone\b/.test(text)) {
-        await handleRemoveFromZone(zoneManager, text, callback, source);
+        return handleRemoveFromZone(
+          zoneManager,
+          text,
+          effectiveCallback,
+          source,
+        );
       } else {
-        await callback({
-          text: `Available zone commands:
+        return emit(
+          callback,
+          source,
+          `Available zone commands:
 • create zone <name> with <targetIds>
 • delete zone <name>
 • list zones
 • add <targetId> to zone <name>
 • remove <targetId> from zone <name>`,
-          source,
-        });
+          false,
+          { error: "UNRECOGNIZED_ZONE_COMMAND" },
+        );
       }
     } catch (error) {
       logger.error(`Error managing zones: ${error}`);
-      await callback({
-        text: `❌ Error managing zones: ${error instanceof Error ? error.message : String(error)}`,
+      return emit(
+        callback,
         source,
-      });
+        `Error managing zones: ${error instanceof Error ? error.message : String(error)}`,
+        false,
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   },
+
+  parameters: [
+    {
+      name: "operation",
+      description: "Zone operation to perform.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["create", "delete", "list", "add", "remove", "show"],
+      },
+    },
+    {
+      name: "zoneName",
+      description: "Audio zone name.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "targetIds",
+      description: "Target ids to create, add, or remove from a zone.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+  ],
 
   examples: [
     [
@@ -182,15 +358,19 @@ async function handleCreateZone(
   text: string,
   callback: HandlerCallback,
   source: string,
-) {
+): Promise<ActionResult> {
   // Parse: "create zone <name> with <targetIds>"
   const match = text.match(/create zone (\w+[\w-]*) with (.+)/);
   if (!match) {
-    await callback({
-      text: "❌ Invalid format. Use: create zone <name> with <targetId1>, <targetId2>, ...",
+    return emit(
+      callback,
       source,
-    });
-    return;
+      "Invalid format. Use: create zone <name> with <targetId1>, <targetId2>, ...",
+      false,
+      {
+        error: "INVALID_CREATE_ZONE_FORMAT",
+      },
+    );
   }
 
   const [, zoneName, targetsStr] = match;
@@ -207,10 +387,16 @@ async function handleCreateZone(
     `[ManageZones] Created zone "${zone.name}" with targets: ${zone.targetIds.join(", ")}`,
   );
 
-  await callback({
-    text: `✅ Created zone "${zoneName}" with ${targetIds.length} target(s)`,
+  return emit(
+    callback,
     source,
-  });
+    `Created zone "${zoneName}" with ${targetIds.length} target(s)`,
+    true,
+    {
+      zoneName,
+      targetIds,
+    },
+  );
 }
 
 async function handleDeleteZone(
@@ -218,30 +404,32 @@ async function handleDeleteZone(
   text: string,
   callback: HandlerCallback,
   source: string,
-) {
+): Promise<ActionResult> {
   // Parse: "delete zone <name>"
   const match = text.match(/(?:delete|remove) zone (\w+[\w-]*)/);
   if (!match) {
-    await callback({
-      text: "❌ Invalid format. Use: delete zone <name>",
+    return emit(
+      callback,
       source,
-    });
-    return;
+      "Invalid format. Use: delete zone <name>",
+      false,
+      {
+        error: "INVALID_DELETE_ZONE_FORMAT",
+      },
+    );
   }
 
   const [, zoneName] = match;
   if (!zoneManager.delete(zoneName)) {
-    await callback({
-      text: `❌ Zone "${zoneName}" not found`,
-      source,
+    return emit(callback, source, `Zone "${zoneName}" not found`, false, {
+      error: "ZONE_NOT_FOUND",
+      zoneName,
     });
-    return;
   }
   logger.log(`[ManageZones] Deleted zone "${zoneName}"`);
 
-  await callback({
-    text: `✅ Deleted zone "${zoneName}"`,
-    source,
+  return emit(callback, source, `Deleted zone "${zoneName}"`, true, {
+    zoneName,
   });
 }
 
@@ -250,48 +438,56 @@ async function handleListZones(
   text: string,
   callback: HandlerCallback,
   source: string,
-) {
+): Promise<ActionResult> {
   const detailMatch = text.match(/show zone (\w+[\w-]*)/);
   if (detailMatch) {
     const zone = zoneManager.get(detailMatch[1]);
     if (!zone) {
-      await callback({
-        text: `❌ Zone "${detailMatch[1]}" not found`,
+      return emit(
+        callback,
         source,
-      });
-      return;
+        `Zone "${detailMatch[1]}" not found`,
+        false,
+        {
+          error: "ZONE_NOT_FOUND",
+          zoneName: detailMatch[1],
+        },
+      );
     }
 
     const metadata = zone.metadata
       ? `\nMetadata:\n${formatMetadata(zone.metadata)}`
       : "";
-    await callback({
-      text: `Zone "${zone.name}":
+    return emit(
+      callback,
+      source,
+      `Zone "${zone.name}":
 • Targets: ${zone.targetIds.length}
 • IDs: ${zone.targetIds.join(", ")}${metadata}`,
-      source,
-    });
-    return;
+      true,
+      { zone },
+    );
   }
 
   const zones = zoneManager.list();
   logger.log(`[ManageZones] Listing ${zones.length} zone(s)`);
 
   if (zones.length === 0) {
-    await callback({
-      text: "No zones configured yet.",
-      source,
+    return emit(callback, source, "No zones configured yet.", true, {
+      zones: [],
     });
-    return;
   }
 
-  await callback({
-    text: `Active zones:
+  return emit(
+    callback,
+    source,
+    `Active zones:
 ${zones.map((zone) => `• ${zone.name} (${zone.targetIds.length} targets)`).join("\n")}
 
 Use "show zone <name>" for details`,
-    source,
-  });
+    true,
+    { zones },
+  );
 }
 
 async function handleAddToZone(
@@ -299,24 +495,28 @@ async function handleAddToZone(
   text: string,
   callback: HandlerCallback,
   source: string,
-) {
+): Promise<ActionResult> {
   // Parse: "add <targetId> to zone <name>"
   const match = text.match(/add (.+?) to zone (\w+[\w-]*)/);
   if (!match) {
-    await callback({
-      text: "❌ Invalid format. Use: add <targetId> to zone <name>",
+    return emit(
+      callback,
       source,
-    });
-    return;
+      "Invalid format. Use: add <targetId> to zone <name>",
+      false,
+      {
+        error: "INVALID_ADD_TO_ZONE_FORMAT",
+      },
+    );
   }
 
   const [, targetId, zoneName] = match;
   zoneManager.addTarget(zoneName, targetId.trim());
   logger.log(`[ManageZones] Added "${targetId}" to zone "${zoneName}"`);
 
-  await callback({
-    text: `✅ Added target to zone "${zoneName}"`,
-    source,
+  return emit(callback, source, `Added target to zone "${zoneName}"`, true, {
+    zoneName,
+    targetId: targetId.trim(),
   });
 }
 
@@ -325,25 +525,35 @@ async function handleRemoveFromZone(
   text: string,
   callback: HandlerCallback,
   source: string,
-) {
+): Promise<ActionResult> {
   // Parse: "remove <targetId> from zone <name>"
   const match = text.match(/remove (.+?) from zone (\w+[\w-]*)/);
   if (!match) {
-    await callback({
-      text: "❌ Invalid format. Use: remove <targetId> from zone <name>",
+    return emit(
+      callback,
       source,
-    });
-    return;
+      "Invalid format. Use: remove <targetId> from zone <name>",
+      false,
+      {
+        error: "INVALID_REMOVE_FROM_ZONE_FORMAT",
+      },
+    );
   }
 
   const [, targetId, zoneName] = match;
   zoneManager.removeTarget(zoneName, targetId.trim());
   logger.log(`[ManageZones] Removed "${targetId}" from zone "${zoneName}"`);
 
-  await callback({
-    text: `✅ Removed target from zone "${zoneName}"`,
+  return emit(
+    callback,
     source,
-  });
+    `Removed target from zone "${zoneName}"`,
+    true,
+    {
+      zoneName,
+      targetId: targetId.trim(),
+    },
+  );
 }
 
 export default manageZones;

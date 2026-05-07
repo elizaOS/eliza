@@ -24,6 +24,9 @@ type GetSkillDetailsOptions = {
 
 export const getSkillDetailsAction: Action = {
 	name: "GET_SKILL_DETAILS",
+	contexts: ["knowledge", "automation", "settings"],
+	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
+	roleGate: { minRole: "USER" },
 	similes: ["SKILL_INFO", "SKILL_DETAILS"],
 	description:
 		"Get detailed information about a specific skill including version, owner, and stats.",

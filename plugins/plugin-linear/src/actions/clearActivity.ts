@@ -13,9 +13,13 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const clearActivityAction: Action = {
   name: "CLEAR_LINEAR_ACTIVITY",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Clear the Linear activity log",
   descriptionCompressed: "clear Linear activity log",
   similes: ["clear-linear-activity", "reset-linear-activity", "delete-linear-activity"],
+  parameters: [],
 
   examples: [
     [

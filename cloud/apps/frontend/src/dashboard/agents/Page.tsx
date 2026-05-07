@@ -1,18 +1,15 @@
-import {
-  ContainersSkeleton,
-  DashboardLoadingState,
-  DashboardPageContainer,
-} from "@elizaos/cloud-ui";
+import { DashboardLoadingState, DashboardPageContainer } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { ElizaAgentPricingBanner } from "@/packages/ui/src/components/containers/eliza-agent-pricing-banner";
-import { ElizaAgentsPageWrapper } from "@/packages/ui/src/components/containers/eliza-agents-page-wrapper";
 import {
   type ElizaAgentRow,
   ElizaAgentsTable,
-} from "@/packages/ui/src/components/containers/eliza-agents-table";
+} from "../containers/_components/eliza-agents-table";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { type AgentListItem, useAgents } from "../../lib/data/eliza-agents";
+import { ContainersSkeleton } from "../containers/_components/containers-skeleton";
+import { ElizaAgentPricingBanner } from "../containers/_components/eliza-agent-pricing-banner";
+import { ElizaAgentsPageWrapper } from "../containers/_components/eliza-agents-page-wrapper";
 
 function toAgentRow(a: AgentListItem): ElizaAgentRow {
   return {

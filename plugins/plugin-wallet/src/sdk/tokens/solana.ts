@@ -12,6 +12,7 @@
  */
 
 import type { TransactionInstruction } from "@solana/web3.js";
+import bs58 from "bs58";
 
 type SolanaWeb3Module = typeof import("@solana/web3.js");
 type SplTokenModule = typeof import("@solana/spl-token");
@@ -94,38 +95,8 @@ export const SOLANA_TOKEN_DECIMALS: Record<SolanaTokenSymbol, number> = {
 
 // ─── Dynamic import helper ────────────────────────────────────────────────────
 
-// ─── Base58 decode (built-in, no extra dependency) ───────────────────────────
-
-const BASE58_ALPHABET =
-  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function base58Decode(str: string): Uint8Array {
-  const bytes: number[] = [0];
-  for (const char of str) {
-    const idx = BASE58_ALPHABET.indexOf(char);
-    if (idx < 0) throw new Error(`base58Decode: invalid character "${char}"`);
-    let carry = idx;
-    for (let i = 0; i < bytes.length; i++) {
-      carry += bytes[i] * 58;
-      bytes[i] = carry & 0xff;
-      carry >>= 8;
-    }
-    while (carry > 0) {
-      bytes.push(carry & 0xff);
-      carry >>= 8;
-    }
-  }
-  // Add leading zeros for leading '1' chars
-  for (const char of str) {
-    if (char !== "1") break;
-    bytes.push(0);
-  }
-  return new Uint8Array(bytes.reverse());
-}
-
 async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
   try {
-    // @ts-expect-error — @solana/web3.js is an optional peer dependency
     const mod = await import("@solana/web3.js");
     return mod;
   } catch {
@@ -137,7 +108,6 @@ async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
 
 async function loadSplToken(): Promise<SplTokenModule> {
   try {
-    // @ts-expect-error — @solana/spl-token is an optional peer dependency
     const mod = await import("@solana/spl-token");
     return mod;
   } catch {
@@ -205,15 +175,7 @@ export class SolanaWallet {
     if (this.config.keypairBytes) {
       this._keypair = Keypair.fromSecretKey(this.config.keypairBytes);
     } else if (this.config.privateKeyBase58) {
-      // bs58 decode — use the solana web3 module's bundled bs58 or a custom decode
-      const solWeb3 = await loadSolanaWeb3();
-      let decoded: Uint8Array;
-      if (solWeb3.bs58) {
-        decoded = solWeb3.bs58.decode(this.config.privateKeyBase58);
-      } else {
-        // Fallback: manually decode base58 (no external dep needed)
-        decoded = base58Decode(this.config.privateKeyBase58);
-      }
+      const decoded = bs58.decode(this.config.privateKeyBase58);
       this._keypair = Keypair.fromSecretKey(decoded);
     } else {
       throw new Error(

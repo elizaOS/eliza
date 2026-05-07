@@ -23,6 +23,7 @@ async function setupFixtures() {
   const emailA = `test-affiliate-skus-${Date.now()}@test.local`;
   await dbWrite.insert(users).values({
     id: idA,
+    steward_user_id: `test-affiliate-skus-${idA}`,
     email: emailA,
     name: "Affiliate SKU Owner",
     created_at: now,
@@ -48,6 +49,7 @@ async function setupFixtures() {
   const emailB = `test-caller-${Date.now()}@test.local`;
   await dbWrite.insert(users).values({
     id: idB,
+    steward_user_id: `test-caller-${idB}`,
     email: emailB,
     name: "Caller User",
     organization_id: orgId,

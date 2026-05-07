@@ -20,12 +20,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { v4 as uuidv4 } from "uuid";
 import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("UsersService", () => {
   let connectionString: string;
@@ -428,6 +428,7 @@ describe("UsersService", () => {
     test("creates new user with required fields", async () => {
       // Arrange
       const newUserData = {
+        steward_user_id: `test-create-${uuidv4()}`,
         email: `create-test-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member" as const,
@@ -452,6 +453,7 @@ describe("UsersService", () => {
       // Arrange
       const walletAddress = `0x${uuidv4().replace(/-/g, "").substring(0, 40)}`;
       const newUserData = {
+        steward_user_id: `test-optional-${uuidv4()}`,
         email: `optional-test-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "admin" as const,
@@ -555,12 +557,14 @@ describe("UsersService", () => {
     test("deletes user from organization", async () => {
       // Arrange - Create a second user so org doesn't get deleted
       const _secondUser = await usersService.create({
+        steward_user_id: `test-second-${uuidv4()}`,
         email: `second-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",
       });
 
       const userToDelete = await usersService.create({
+        steward_user_id: `test-delete-${uuidv4()}`,
         email: `delete-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",
@@ -600,6 +604,7 @@ describe("UsersService", () => {
       });
 
       const onlyUser = await usersService.create({
+        steward_user_id: `test-only-user-${uuidv4()}`,
         email: `only-user-${uuidv4()}@test.local`,
         organization_id: newOrg.id,
         role: "owner",
@@ -625,6 +630,7 @@ describe("UsersService", () => {
     test("full user lifecycle: create, update, delete", async () => {
       // Create
       const user = await usersService.create({
+        steward_user_id: `test-lifecycle-${uuidv4()}`,
         email: `lifecycle-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",

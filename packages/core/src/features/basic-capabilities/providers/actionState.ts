@@ -4,6 +4,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderResult,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -42,7 +43,18 @@ export const actionStateProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? 150,
-	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+	): Promise<ProviderResult> => {
+		try {
 		const actionResults = state.data.actionResults ?? [];
 		const actionPlan = state.data.actionPlan;
 		const workingMemory = state.data.workingMemory;
@@ -250,23 +262,44 @@ export const actionStateProvider: Provider = {
 			.filter(Boolean)
 			.join("\n\n");
 
-		return {
-			data: {
-				actionResults,
-				actionPlan,
-				workingMemory,
-				recentActionMemories,
-			},
-			values: {
-				hasActionResults: actionResults.length > 0,
-				hasActionPlan: !!actionPlan,
-				currentActionStep: actionPlan?.currentStep || 0,
-				totalActionSteps: actionPlan?.totalSteps || 0,
-				actionResults: resultsText,
-				completedActions: actionResults.filter((r) => r.success).length,
-				failedActions: actionResults.filter((r) => !r.success).length,
-			},
-			text: allText || "No action state available",
-		};
+			return {
+				data: {
+					actionResults,
+					actionPlan,
+					workingMemory,
+					recentActionMemories,
+				},
+				values: {
+					hasActionResults: actionResults.length > 0,
+					hasActionPlan: !!actionPlan,
+					currentActionStep: actionPlan?.currentStep || 0,
+					totalActionSteps: actionPlan?.totalSteps || 0,
+					actionResults: resultsText,
+					completedActions: actionResults.filter((r) => r.success).length,
+					failedActions: actionResults.filter((r) => !r.success).length,
+				},
+				text: allText || "No action state available",
+			};
+		} catch (error) {
+			return {
+				data: {
+					actionResults: [],
+					actionPlan: null,
+					workingMemory: null,
+					recentActionMemories: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: {
+					hasActionResults: false,
+					hasActionPlan: false,
+					currentActionStep: 0,
+					totalActionSteps: 0,
+					actionResults: "",
+					completedActions: 0,
+					failedActions: 0,
+				},
+				text: "No action state available",
+			};
+		}
 	},
 };

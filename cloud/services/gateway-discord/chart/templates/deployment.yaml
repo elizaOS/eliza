@@ -36,6 +36,9 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "gateway-discord.serviceAccountName" . }}
+      {{- end }}
       containers:
         - name: gateway
           {{- if .Values.image.digest }}
@@ -47,6 +50,10 @@ spec:
           ports:
             - containerPort: {{ .Values.containerPort }}
               name: http
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
           env:
             - name: POD_NAME
               valueFrom:
@@ -56,6 +63,23 @@ spec:
               value: {{ .Values.config.nodeEnv | quote }}
             - name: PORT
               value: {{ .Values.config.port | quote }}
+            - name: MAX_BOTS_PER_POD
+              value: {{ .Values.config.maxBotsPerPod | quote }}
+            - name: FAILOVER_CHECK_INTERVAL_MS
+              value: {{ .Values.config.failoverCheckIntervalMs | quote }}
+            - name: DEAD_POD_THRESHOLD_MS
+              value: {{ .Values.config.deadPodThresholdMs | quote }}
+            - name: KEDA_COOLDOWN_SECONDS
+              value: {{ .Values.kedaCooldownSeconds | quote }}
+            {{- if .Values.elizaAppBot.enabled }}
+            - name: ELIZA_APP_DISCORD_BOT_ENABLED
+              value: "true"
+            {{- if .Values.elizaAppBot.leaderKey }}
+            - name: ELIZA_APP_LEADER_KEY
+              value: {{ .Values.elizaAppBot.leaderKey | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not .Values.envFrom }}
             - name: ELIZA_CLOUD_URL
               valueFrom:
                 secretKeyRef:
@@ -83,12 +107,6 @@ spec:
                   key: {{ .Values.secrets.keys.blobToken }}
                   optional: true
             {{- if .Values.elizaAppBot.enabled }}
-            - name: ELIZA_APP_DISCORD_BOT_ENABLED
-              value: "true"
-            {{- if .Values.elizaAppBot.leaderKey }}
-            - name: ELIZA_APP_LEADER_KEY
-              value: {{ .Values.elizaAppBot.leaderKey | quote }}
-            {{- end }}
             - name: ELIZA_APP_DISCORD_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -100,12 +118,7 @@ spec:
                   name: {{ .Values.secrets.name }}
                   key: {{ .Values.secrets.keys.elizaAppDiscordApplicationId }}
             {{- end }}
-            - name: MAX_BOTS_PER_POD
-              value: {{ .Values.config.maxBotsPerPod | quote }}
-            - name: FAILOVER_CHECK_INTERVAL_MS
-              value: {{ .Values.config.failoverCheckIntervalMs | quote }}
-            - name: DEAD_POD_THRESHOLD_MS
-              value: {{ .Values.config.deadPodThresholdMs | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:

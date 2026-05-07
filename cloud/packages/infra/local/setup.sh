@@ -16,6 +16,16 @@ pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; exit 1; }
 info() { echo -e "${YELLOW}[INFO]${NC} $1"; }
 
+require_cmd() {
+  local label="$1"
+  shift
+  if "$@" > /dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
 # 1. Check Docker
 info "Checking Docker..."
 docker info > /dev/null 2>&1 || fail "Docker is not running"
@@ -188,7 +198,7 @@ pass "Secret eliza-agent-secrets created from .env.agents"
 
 # 14. Build & deploy operator
 info "Building operator..."
-cd "$CLOUD_V2_DIR/packages/services/operator"
+cd "$CLOUD_V2_DIR/services/operator"
 npm install --silent 2>/dev/null
 npx pepr build 2>&1 | tail -1
 
@@ -204,7 +214,7 @@ kubectl label namespace pepr-system app.kubernetes.io/managed-by=Helm --overwrit
 kubectl annotate namespace pepr-system meta.helm.sh/release-name=eliza-operator --overwrite > /dev/null 2>&1
 kubectl annotate namespace pepr-system meta.helm.sh/release-namespace=pepr-system --overwrite > /dev/null 2>&1
 helm upgrade --install eliza-operator \
-  "$CLOUD_V2_DIR/packages/services/operator/dist/eliza-operator-chart/" \
+  "$CLOUD_V2_DIR/services/operator/dist/eliza-operator-chart/" \
   --namespace pepr-system --wait --timeout 120s
 
 kubectl rollout status deployment/pepr-eliza-operator-watcher -n pepr-system --timeout=60s > /dev/null 2>&1
@@ -212,23 +222,23 @@ pass "Operator deployed"
 
 # 15. Build & push agent-server image
 info "Building agent-server image..."
-cd "$CLOUD_V2_DIR/packages/services/agent-server"
+cd "$CLOUD_V2_DIR/services/agent-server"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/agent-server:dev" \
-  "$CLOUD_V2_DIR/packages/services/agent-server"
+  "$CLOUD_V2_DIR/services/agent-server"
 docker push "localhost:${REGISTRY_PORT}/agent-server:dev"
 pass "Agent-server image pushed to localhost:${REGISTRY_PORT}"
 
 # 16. Build & push gateway-discord image
 info "Building gateway-discord image..."
-cd "$CLOUD_V2_DIR/packages/services/gateway-discord"
+cd "$CLOUD_V2_DIR/services/gateway-discord"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/gateway-discord:dev" \
-  "$CLOUD_V2_DIR/packages/services/gateway-discord"
+  "$CLOUD_V2_DIR/services/gateway-discord"
 docker push "localhost:${REGISTRY_PORT}/gateway-discord:dev"
 pass "Gateway-discord image pushed to localhost:${REGISTRY_PORT}"
 
@@ -260,7 +270,7 @@ pass "Secret gateway-discord-secrets created from .env.gateway"
 # 18. Deploy gateway-discord via Helm chart
 info "Deploying gateway-discord via Helm..."
 helm upgrade --install gateway-discord \
-  "$CLOUD_V2_DIR/packages/infra/charts/gateway-discord" \
+  "$CLOUD_V2_DIR/services/gateway-discord/chart" \
   --namespace eliza-infra \
   --values "$SCRIPT_DIR/values-gateway.yaml" \
   --wait --timeout 120s
@@ -268,12 +278,12 @@ pass "Gateway-discord deployed via Helm"
 
 # 19. Build & push gateway-webhook image
 info "Building gateway-webhook image..."
-cd "$CLOUD_V2_DIR/packages/services/gateway-webhook"
+cd "$CLOUD_V2_DIR/services/gateway-webhook"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/gateway-webhook:dev" \
-  "$CLOUD_V2_DIR/packages/services/gateway-webhook"
+  "$CLOUD_V2_DIR/services/gateway-webhook"
 docker push "localhost:${REGISTRY_PORT}/gateway-webhook:dev"
 pass "Gateway-webhook image pushed to localhost:${REGISTRY_PORT}"
 
@@ -331,58 +341,82 @@ echo ""
 info "=== Verification ==="
 
 # Check namespaces
-kubectl get ns eliza-agents > /dev/null 2>&1 && pass "Namespace eliza-agents" || fail "Namespace eliza-agents missing"
-kubectl get ns eliza-infra > /dev/null 2>&1 && pass "Namespace eliza-infra" || fail "Namespace eliza-infra missing"
+require_cmd "Namespace eliza-agents" kubectl get ns eliza-agents
+require_cmd "Namespace eliza-infra" kubectl get ns eliza-infra
 
 # Check KEDA pods
 KEDA_READY=$(kubectl get pods -n keda --no-headers 2>/dev/null | grep -c "Running" || true)
-[ "$KEDA_READY" -ge 1 ] && pass "KEDA pods running ($KEDA_READY)" || fail "KEDA pods not ready"
+if [ "$KEDA_READY" -ge 1 ]; then
+  pass "KEDA pods running ($KEDA_READY)"
+else
+  fail "KEDA pods not ready"
+fi
 
 # Check KEDA CRDs
-kubectl get crd scaledobjects.keda.sh > /dev/null 2>&1 && pass "KEDA CRD: ScaledObject" || fail "KEDA CRD missing"
+require_cmd "KEDA CRD: ScaledObject" kubectl get crd scaledobjects.keda.sh
 
 # Check CNPG operator
 CNPG_READY=$(kubectl get pods -n cnpg-system --no-headers 2>/dev/null | grep -c "Running" || true)
-[ "$CNPG_READY" -ge 1 ] && pass "CNPG operator running ($CNPG_READY)" || fail "CNPG operator not ready"
+if [ "$CNPG_READY" -ge 1 ]; then
+  pass "CNPG operator running ($CNPG_READY)"
+else
+  fail "CNPG operator not ready"
+fi
 
 # Check CNPG cluster
-kubectl get cluster pg-local-cluster -n eliza-agents > /dev/null 2>&1 && pass "CNPG cluster: pg-local-cluster" || fail "CNPG cluster pg-local-cluster missing"
+require_cmd "CNPG cluster: pg-local-cluster" kubectl get cluster pg-local-cluster -n eliza-agents
 
 # Check Redis (Bitnami in-cluster)
 REDIS_READY=$(kubectl get pods -n eliza-infra -l app.kubernetes.io/name=redis --no-headers 2>/dev/null | grep -c "Running" || true)
-[ "$REDIS_READY" -ge 1 ] && pass "Redis pods running ($REDIS_READY)" || fail "Redis pods not ready"
+if [ "$REDIS_READY" -ge 1 ]; then
+  pass "Redis pods running ($REDIS_READY)"
+else
+  fail "Redis pods not ready"
+fi
 
 # Check redis-rest proxy
 REDIS_REST_READY=$(kubectl get pods -n eliza-infra -l app=redis-rest --no-headers 2>/dev/null | grep -c "Running" || true)
-[ "$REDIS_REST_READY" -ge 1 ] && pass "redis-rest proxy running ($REDIS_REST_READY)" || fail "redis-rest proxy not ready"
+if [ "$REDIS_REST_READY" -ge 1 ]; then
+  pass "redis-rest proxy running ($REDIS_REST_READY)"
+else
+  fail "redis-rest proxy not ready"
+fi
 
 # Check services
-kubectl get svc redis -n eliza-infra > /dev/null 2>&1 && pass "Service: redis.eliza-infra (alias)" || fail "Service redis alias missing"
-kubectl get svc redis-rest -n eliza-infra > /dev/null 2>&1 && pass "Service: redis-rest.eliza-infra" || fail "Service redis-rest missing"
-kubectl get svc eliza-cloud -n eliza-infra > /dev/null 2>&1 && pass "Service: eliza-cloud.eliza-infra" || fail "Service eliza-cloud missing"
+require_cmd "Service: redis.eliza-infra (alias)" kubectl get svc redis -n eliza-infra
+require_cmd "Service: redis-rest.eliza-infra" kubectl get svc redis-rest -n eliza-infra
+require_cmd "Service: eliza-cloud.eliza-infra" kubectl get svc eliza-cloud -n eliza-infra
 
 # Check operator
-kubectl get crd servers.eliza.ai > /dev/null 2>&1 && pass "CRD: servers.eliza.ai" || fail "Server CRD missing"
+require_cmd "CRD: servers.eliza.ai" kubectl get crd servers.eliza.ai
 OPERATOR_READY=$(kubectl get pods -n pepr-system --no-headers 2>/dev/null | grep -c "Running" || true)
-[ "$OPERATOR_READY" -ge 2 ] && pass "Operator pods running ($OPERATOR_READY)" || fail "Operator pods not ready"
+if [ "$OPERATOR_READY" -ge 2 ]; then
+  pass "Operator pods running ($OPERATOR_READY)"
+else
+  fail "Operator pods not ready"
+fi
 
 # Check CNPG PostgreSQL connectivity via pooler
 info "Testing CNPG PostgreSQL connectivity from cluster..."
 CNPG_TEST_URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
-kubectl run pg-test --rm -i --restart=Never -n eliza-agents \
+if kubectl run pg-test --rm -i --restart=Never -n eliza-agents \
   --image=postgres:17-alpine --quiet -- \
   psql "$CNPG_TEST_URI" \
-  -t -c "SELECT 'pg-ok'" 2>/dev/null | grep -q "pg-ok" \
-  && pass "CNPG PostgreSQL reachable from cluster" \
-  || fail "CNPG PostgreSQL NOT reachable from cluster"
+  -t -c "SELECT 'pg-ok'" 2>/dev/null | grep -q "pg-ok"; then
+  pass "CNPG PostgreSQL reachable from cluster"
+else
+  fail "CNPG PostgreSQL NOT reachable from cluster"
+fi
 
 # Check Redis connectivity from inside the cluster
 info "Testing Redis connectivity from cluster..."
-kubectl run redis-test --rm -i --restart=Never -n eliza-infra \
+if kubectl run redis-test --rm -i --restart=Never -n eliza-infra \
   --image=redis:7-alpine --quiet -- \
-  redis-cli -h redis PING 2>/dev/null | grep -q "PONG" \
-  && pass "Redis reachable from cluster" \
-  || fail "Redis NOT reachable from cluster"
+  redis-cli -h redis PING 2>/dev/null | grep -q "PONG"; then
+  pass "Redis reachable from cluster"
+else
+  fail "Redis NOT reachable from cluster"
+fi
 
 echo ""
 echo -e "${GREEN}=== All checks passed ===${NC}"

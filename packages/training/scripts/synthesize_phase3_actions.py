@@ -1,4 +1,8 @@
-"""Synthesize Phase-3 action-handler records via Anthropic Claude Opus 4.7.
+"""Legacy TOON synthesizer for Phase-3 action-handler records.
+
+This script is not a native v5 JSON export path yet. It remains quarantined
+for compatibility corpus rebuilds until the teacher prompts and validators are
+rewritten around JSON targets.
 
 The runtime tags the per-action LLM call with ``purpose: "action"`` (see
 docs/dataset/RUNTIME_PHASES.md). Several action templates have NO

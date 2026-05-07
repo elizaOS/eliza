@@ -33,6 +33,8 @@ function readString(value: unknown): string | undefined {
 
 export const deleteWorkflowAction: Action = {
   name: DELETE_WORKFLOW_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "DELETE_N8N_WORKFLOW",
     "REMOVE_WORKFLOW",

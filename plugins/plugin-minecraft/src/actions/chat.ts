@@ -16,6 +16,9 @@ const ACTION_NAME = "MC_CHAT";
 
 export const minecraftChatAction: Action = {
   name: ACTION_NAME,
+  contexts: ["messaging", "automation", "media"],
+  contextGate: { anyOf: ["messaging", "automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_SAY", "MC_MESSAGE"],
   description: "Send a chat message in Minecraft.",
   descriptionCompressed: "Send chat message in Minecraft.",

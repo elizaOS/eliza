@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -13,6 +14,103 @@ import {
 import type { StreamChunkCallback } from "../../shared/types";
 import { cleanPrompt } from "../../shared/utils/helpers";
 import { MESSAGE_EXAMPLES_FORMAT_INSTRUCTIONS } from "../providers/character-guide";
+
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const SUGGEST_CHANGES_KEYWORDS = [
+  "change",
+  "update",
+  "edit",
+  "improve",
+  "make",
+  "add",
+  "remove",
+  "rewrite",
+  "bio",
+  "system",
+  "prompt",
+  "personality",
+  "style",
+  "trait",
+  "topic",
+  "example",
+  "character",
+  "agent",
+  "cambiar",
+  "actualizar",
+  "editar",
+  "mejorar",
+  "agregar",
+  "quitar",
+  "biografia",
+  "personalidad",
+  "estilo",
+  "modifie",
+  "ameliorer",
+  "ajouter",
+  "retirer",
+  "biographie",
+  "personnalite",
+  "stil",
+  "andern",
+  "aktualisieren",
+  "verbessern",
+  "hinzufugen",
+  "entfernen",
+  "personlichkeit",
+  "modifica",
+  "aggiorna",
+  "migliora",
+  "aggiungi",
+  "rimuovi",
+  "personalita",
+  "alterar",
+  "atualizar",
+  "melhorar",
+  "adicionar",
+  "remover",
+  "personalidade",
+  "更改",
+  "更新",
+  "改进",
+  "添加",
+  "删除",
+  "个性",
+  "风格",
+  "変更",
+  "更新",
+  "改善",
+  "追加",
+  "削除",
+  "性格",
+  "スタイル",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "conversationLogWithAgentThoughts", "currentCharacter"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
 
 /**
  * SUGGEST_CHANGES Action
@@ -205,10 +303,29 @@ function expandDotNotation(obj: Record<string, unknown>): Record<string, unknown
 
 export const suggestChangesAction = {
   name: "SUGGEST_CHANGES",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "request",
+      description: "Requested character design guidance or field changes.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "fields",
+      description: "Optional character fields the user wants changed.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+  ],
   description:
     "User is asking about character design, requesting modifications, or needs guidance on best practices. Use for: 'make it funnier', 'improve the bio', 'how should I structure the system prompt?', 'add personality traits', 'what makes a good character?'. Provides expert guidance with field-level changes for interactive preview. Does NOT save changes.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+      hasKeyword(collectConversationText(message, state), SUGGEST_CHANGES_KEYWORDS)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -216,7 +333,7 @@ export const suggestChangesAction = {
     state: State,
     options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     const onStreamChunk = options?.onStreamChunk as StreamChunkCallback | undefined;
     logger.info(`[SUGGEST_CHANGES] Generating expert guidance, streaming=${!!onStreamChunk}`);
 
@@ -251,7 +368,23 @@ export const suggestChangesAction = {
     );
     const prompt = composedPrompt + MESSAGE_EXAMPLES_FORMAT_INSTRUCTIONS;
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    let response: string;
+    try {
+      response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    } catch (error) {
+      runtime.character.system = originalSystemPrompt;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[SUGGEST_CHANGES] Model call failed");
+      const text =
+        "I had trouble generating character suggestions. Could you rephrase your request?";
+      await callback({ text, error: true });
+      return {
+        success: false,
+        text,
+        error: errorMessage,
+        data: { actionName: "SUGGEST_CHANGES" },
+      };
+    }
 
     logger.debug("[SUGGEST_CHANGES] Raw LLM response:", response);
 
@@ -271,7 +404,12 @@ export const suggestChangesAction = {
         text: "I had trouble formulating my response. Could you rephrase your request?",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "I had trouble formulating my response. Could you rephrase your request?",
+        error: "PARSE_FAILED",
+        data: { actionName: "SUGGEST_CHANGES" },
+      };
     }
 
     const fieldsToChange =
@@ -317,6 +455,22 @@ export const suggestChangesAction = {
       thought: parsedResponse.thought,
       metadata: responseMetadata,
     });
+    return {
+      success: true,
+      text: parsedResponse.text,
+      values: {
+        success: true,
+        hasChanges: !!changes,
+        fieldsToChange,
+      },
+      data: {
+        actionName: "SUGGEST_CHANGES",
+        fieldsToChange,
+        hasChanges: !!changes,
+        changes: changes ?? undefined,
+        thought: parsedResponse.thought,
+      },
+    };
   },
   examples: [
     [

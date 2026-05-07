@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -51,16 +52,107 @@ Never use emojis in your response.
 const onboardingTemplate = `
 {{receivedMessageHeader}}`;
 
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const ONBOARDING_KEYWORDS = [
+  "hi",
+  "hello",
+  "hey",
+  "start",
+  "begin",
+  "new",
+  "first",
+  "onboarding",
+  "help",
+  "build",
+  "create",
+  "hola",
+  "buenas",
+  "empezar",
+  "nuevo",
+  "ayuda",
+  "crear",
+  "bonjour",
+  "salut",
+  "commencer",
+  "nouveau",
+  "aide",
+  "creer",
+  "hallo",
+  "starten",
+  "neu",
+  "hilfe",
+  "erstellen",
+  "ciao",
+  "iniziare",
+  "nuovo",
+  "aiuto",
+  "creare",
+  "ola",
+  "comecar",
+  "novo",
+  "ajuda",
+  "criar",
+  "你好",
+  "开始",
+  "新",
+  "帮助",
+  "こんにちは",
+  "開始",
+  "新規",
+  "ヘルプ",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "recentMessages", "receivedMessageHeader"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const guideOnboardingAction = {
   name: "GUIDE_ONBOARDING",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "request",
+      description: "Optional first user message that triggered onboarding.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description: `First-time welcome for new users. Gives a brief intro to what's possible (companions, assistants, hybrids).
 
 This action is ONLY available for users who haven't been onboarded yet.
 After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
-  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     if (!isCreatorMode(runtime)) return false;
     const onboarded = await isOnboarded(runtime, message.entityId as string);
-    return !onboarded;
+    return (
+      !onboarded &&
+      (hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+        hasKeyword(collectConversationText(message, state), ONBOARDING_KEYWORDS))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -68,7 +160,7 @@ After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
     state: State,
     options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     const entityId = message.entityId as string;
     const _onStreamChunk = options?.onStreamChunk as StreamChunkCallback | undefined;
 
@@ -82,8 +174,25 @@ After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
 
     const prompt = cleanPrompt(composePromptFromState({ state, template: onboardingTemplate }));
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    runtime.character.system = originalSystemPrompt;
+    let response: string;
+    try {
+      response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    } catch (error) {
+      runtime.character.system = originalSystemPrompt;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[GUIDE_ONBOARDING] Model call failed");
+      const text =
+        "Welcome! I'm Eliza, and I help you build AI agents. Would you like to create a companion, assistant, or hybrid?";
+      await callback({ text, error: true });
+      return {
+        success: false,
+        text,
+        error: errorMessage,
+        data: { actionName: "GUIDE_ONBOARDING" },
+      };
+    } finally {
+      runtime.character.system = originalSystemPrompt;
+    }
 
     const parsed = parseKeyValueXml(response) as {
       thought?: string;
@@ -96,7 +205,12 @@ After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
         text: "Welcome! I'm Eliza, and I help you build AI agents. Would you like to create a companion (personality-focused), assistant (capability-focused), or hybrid (both)?",
       });
       await markOnboarded(runtime, entityId);
-      return;
+      return {
+        success: false,
+        text: "Welcome! I'm Eliza, and I help you build AI agents. Would you like to create a companion, assistant, or hybrid?",
+        error: "PARSE_FAILED",
+        data: { actionName: "GUIDE_ONBOARDING" },
+      };
     }
 
     await markOnboarded(runtime, entityId);
@@ -108,6 +222,12 @@ After running once, it's disabled - use BUILDER_CHAT for follow-up questions.`,
         action: "GUIDE_ONBOARDING",
       },
     });
+    return {
+      success: true,
+      text: parsed.text,
+      values: { success: true, onboarded: true },
+      data: { actionName: "GUIDE_ONBOARDING", thought: parsed.thought },
+    };
   },
   examples: [
     [

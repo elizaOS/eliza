@@ -29,8 +29,33 @@ export const walkTo: Action = {
   description:
     "Walk the agent toward a specific world tile (x, z). Use this to move to banks, NPCs, resource nodes, or just to explore.",
   descriptionCompressed: "Walk to coordinate.",
+  contexts: ["game", "automation", "world", "state"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO", "HEAD_TO"],
   examples: [],
+  parameters: [
+    {
+      name: "x",
+      description: "Target world X coordinate.",
+      descriptionCompressed: "Target x.",
+      required: true,
+      schema: { type: "number" },
+    },
+    {
+      name: "z",
+      description: "Target world Z coordinate.",
+      descriptionCompressed: "Target z.",
+      required: true,
+      schema: { type: "number" },
+    },
+    {
+      name: "run",
+      description: "Whether to run toward the target when possible.",
+      descriptionCompressed: "Run toggle.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -66,16 +91,29 @@ export const walkTo: Action = {
       return { success: false, text: errMsg };
     }
 
-    const result = await service.executeAction({
-      action: "walkTo",
-      x,
-      z,
-      run,
-    });
+    try {
+      const result = await service.executeAction({
+        action: "walkTo",
+        x,
+        z,
+        run,
+      });
 
-    const displayText =
-      result.message ?? (result.success ? "walking…" : "walk failed");
-    callback?.({ text: displayText, action: "WALK_TO" });
-    return { success: result.success, text: displayText };
+      const displayText =
+        result.message ?? (result.success ? "walking..." : "walk failed");
+      callback?.({ text: displayText, action: "WALK_TO" });
+      return { success: result.success, text: displayText };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown walk failure.";
+      const displayText = `walk failed: ${message}`;
+      callback?.({ text: displayText, action: "WALK_TO" });
+      return {
+        success: false,
+        text: displayText,
+        error: message,
+        data: { action: "walkTo", x, z, run },
+      };
+    }
   },
 };

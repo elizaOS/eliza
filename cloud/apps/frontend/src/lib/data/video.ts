@@ -4,7 +4,7 @@ import type {
   GeneratedVideo,
   VideoGenerationStatus,
   VideoUsageSummary,
-} from "@/packages/ui/src/components/video/types";
+} from "../../dashboard/video/_components/types";
 import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 

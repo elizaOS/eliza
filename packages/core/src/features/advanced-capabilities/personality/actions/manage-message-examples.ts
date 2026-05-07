@@ -10,6 +10,7 @@ import type {
 	MessageExampleGroup,
 	State,
 } from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 
 type ExampleAction = "add" | "remove" | "edit";
@@ -69,6 +70,8 @@ function resolveExampleSpeaker(
  */
 export const manageMessageExamplesAction: Action = {
 	name: "MANAGE_MESSAGE_EXAMPLES",
+	contexts: ["settings", "messaging", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"UPDATE_MESSAGE_EXAMPLES",
 		"EDIT_MESSAGE_EXAMPLES",
@@ -124,9 +127,20 @@ export const manageMessageExamplesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["settings", "messaging", "agent_internal"],
+			keywords: [
+				"message examples",
+				"sample exchanges",
+				"example replies",
+				"add message example",
+				"edit message example",
+				"remove message example",
+			],
+		}),
 
 	handler: async (
 		runtime: IAgentRuntime,

@@ -18,6 +18,12 @@ export const uiContextProvider: Provider = {
 	description:
 		"Eliza UI surface that sent the current message and the forced capability context for this turn.",
 	position: -10,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (_runtime, message: Memory, state: State) => {
 		const metadata = asRecord(message.content?.metadata);
 		const uiView = asString(metadata?.uiView);

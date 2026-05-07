@@ -1,5 +1,5 @@
 import { Helmet } from "react-helmet-async";
-import { InfrastructureDashboard } from "@/packages/ui/src/components/admin/infrastructure-dashboard";
+import { InfrastructureDashboard } from "../_components/infrastructure-dashboard";
 
 /** /dashboard/admin/infrastructure — Docker nodes, containers, Headscale mesh. */
 export default function AdminInfrastructurePage() {

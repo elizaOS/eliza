@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Streaming TOON encoder for the training pipeline.
+ * Legacy-only streaming TOON encoder for compatibility corpus tooling.
+ *
+ * Native v5 tool-calling exports must be JSON and must not call this tool.
  *
  * Reads NDJSON from stdin (one JSON value per line) and writes one JSON-
  * encoded TOON string per line to stdout. Using JSON-encoding for the

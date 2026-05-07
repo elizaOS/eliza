@@ -41,6 +41,8 @@ export const setFollowupThresholdAction: Action = {
     "Set a recurring follow-up cadence threshold (in days) for a specific contact. " +
     "Use this for durable rules like 'every 14 days', not one-off reminders like 'next week'. " +
     "Requires a positive integer threshold and either contactId or an unambiguous contactName.",
+  contexts: ["contacts", "tasks", "calendar", "settings"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

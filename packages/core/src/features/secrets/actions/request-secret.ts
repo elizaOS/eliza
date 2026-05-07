@@ -10,6 +10,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -17,6 +18,8 @@ import {
 
 export const requestSecretAction: Action = {
 	name: "REQUEST_SECRET",
+	contexts: ["secrets", "settings", "connectors"],
+	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	similes: [
 		"ASK_FOR_SECRET",
@@ -25,6 +28,21 @@ export const requestSecretAction: Action = {
 		"MISSING_SECRET",
 	],
 	description: "Request a missing secret from the user or administrator",
+	parameters: [
+		{
+			name: "key",
+			description:
+				"Name of the missing secret, usually UPPERCASE_WITH_UNDERSCORES.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "reason",
+			description: "Why the secret is needed.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -32,15 +50,31 @@ export const requestSecretAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
-		const text = message.content?.text?.toLowerCase() ?? "";
-		const hasKeyword = ["request", "secret"].some(
-			(keyword) => keyword.length > 0 && text.includes(keyword),
-		);
-		if (!hasKeyword || !/\b(?:request|secret)\b/i.test(text)) {
+		if (!runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE)) {
 			return false;
 		}
-
-		return Boolean(runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE));
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredKey =
+			typeof params.key === "string" && params.key.trim().length > 0;
+		const text = message.content?.text?.toLowerCase() ?? "";
+		return (
+			hasStructuredKey ||
+			/\b(?:request|need|missing|require).*\b(?:secret|key|token|credential)\b/i.test(
+				text,
+			) ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["secrets", "settings", "connectors"],
+				keywords: [
+					"request secret",
+					"need secret",
+					"missing secret",
+					"require api key",
+				],
+			})
+		);
 	},
 
 	handler: async (
@@ -53,6 +87,11 @@ export const requestSecretAction: Action = {
 		logger.info("[RequestSecret] Processing secret request");
 
 		const currentState = state ?? (await runtime.composeState(message));
+
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
 
 		try {
 			const result = await runtime.dynamicPromptExecFromState({
@@ -85,7 +124,8 @@ export const requestSecretAction: Action = {
 				},
 			});
 
-			if (!result?.key) {
+			const rawKey = params.key ?? result?.key;
+			if (!rawKey) {
 				logger.warn(
 					"[RequestSecret] Failed to extract secret key from context",
 				);
@@ -96,7 +136,7 @@ export const requestSecretAction: Action = {
 				};
 			}
 
-			const key = String(result.key)
+			const key = String(rawKey)
 				.toUpperCase()
 				.replace(/[^A-Z0-9_]/g, "_");
 
@@ -124,9 +164,11 @@ export const requestSecretAction: Action = {
 			}
 
 			const reason =
-				typeof result.reason === "string" && result.reason.trim()
-					? result.reason.trim()
-					: undefined;
+				typeof params.reason === "string" && params.reason.trim()
+					? params.reason.trim()
+					: typeof result?.reason === "string" && result.reason.trim()
+						? result.reason.trim()
+						: undefined;
 			const text = `I require the secret '${key}' to proceed${reason ? ` (${reason})` : ""}. Please provide it securely using 'set secret ${key} <value>'.`;
 
 			if (callback) {

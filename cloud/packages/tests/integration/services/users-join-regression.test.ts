@@ -11,12 +11,12 @@ import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "@/db/helpers";
 import { users } from "@/db/schemas/users";
 import { usersService } from "@/lib/services/users";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("Steward read-path regression (5c31c7732)", () => {
   let connectionString: string;

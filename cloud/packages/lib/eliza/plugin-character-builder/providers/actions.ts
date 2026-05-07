@@ -1,4 +1,4 @@
-import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { addHeader, formatActions } from "@elizaos/core";
 
 /**
@@ -9,7 +9,13 @@ export const actionsProvider: Provider = {
   name: "ACTIONS",
   description: "Possible response actions",
   position: -1,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     // Get actions that validate for this message
     const actionPromises = runtime.actions.map(async (action: Action) => {
       const result = await action.validate(runtime, message, state);
@@ -33,23 +39,19 @@ export const actionsProvider: Provider = {
     //     ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
     //     : "";
 
-    const data = {
-      actionsData,
-    };
-
     // Combine all text sections - now including actionsWithDescriptions
     const text = [actionsWithDescriptions].filter(Boolean).join("\n\n");
 
-    const values = {
-      // actionExamples,
-      actionsWithDescriptions,
-      formattedActionsWithDescriptions: text,
-    };
-
     return {
-      data,
-      values,
       text,
+      values: {
+        // actionExamples,
+        actionsWithDescriptions,
+        formattedActionsWithDescriptions: text,
+      },
+      data: {
+        actionsData,
+      },
     };
   },
 };

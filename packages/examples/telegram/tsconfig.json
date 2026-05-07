@@ -10,7 +10,13 @@
     "declaration": false,
     "noEmit": true,
     "lib": ["ES2022"],
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../core/dist/*"]
+    }
   },
   "include": ["*.ts", "*.d.ts"],
   "exclude": ["node_modules"]

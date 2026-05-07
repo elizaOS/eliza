@@ -528,6 +528,53 @@ export const bridgeAction = {
   name: spec.name,
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  contexts: ["finance", "crypto", "wallet", "payments"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "fromChain",
+      description: "Source EVM chain.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toChain",
+      description: "Destination EVM chain.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "fromToken",
+      description: "Source token symbol or address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toToken",
+      description: "Destination token symbol or address.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "Human-readable amount to bridge.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toAddress",
+      description: "Optional destination recipient address.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   handler: async (
     runtime: IAgentRuntime,

@@ -1,14 +1,12 @@
-"""Synthesize ~3,400 supervised TOON tool_call records for elizaOS
+"""Synthesize ~3,400 supervised JSON tool_call records for elizaOS
 messaging-plugin actions (Discord, Twitter/X, Signal, BlueBubbles,
 iMessage, WhatsApp).
 
 Output: data/synthesized/action_examples/messaging.jsonl
 
 Each record is a flat ElizaRecord with `expectedResponse` set to the
-canonical TOON `tool_calls[1]{name,arguments}` envelope (or a TOON
-`thought:`/`text:` REPLY / `actions[1]: IGNORE` shape for subtle-null
-records). All TOON serialization goes through the @toon-format/toon
-runtime via lib.toon.ToonEncoder — no homemade serializer.
+canonical JSON `{tool_calls:[{name,arguments}]}` envelope (or JSON
+`{thought,text}` / `actions:["IGNORE"]` shape for subtle-null records).
 
 Diversity targets (per action, 100 records):
   - languages: ~70 en, ~30 split across zh/es/fr/ja/de/pt
@@ -38,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "messaging.jsonl"
@@ -1180,18 +1178,18 @@ SUBTLE_NULL_MESSAGES = [
 
 
 def _build_subtle_null_response(action: str,
-                                 encoder: ToonEncoder) -> tuple[str, list[str]]:
+                                 encoder: ExpectedResponseEncoder) -> tuple[str, list[str]]:
     """Either an IGNORE or a benign REPLY for cases where the action
     shouldn't fire."""
     # Half-half mix
     if hash(action) % 2 == 0:
-        toon = encoder.encode({"thought": "", "text": "Acknowledged."})
-        return toon, ["REPLY", "IGNORE", action]
-    toon = encoder.encode({
+        expected_response = encoder.encode({"thought": "", "text": "Acknowledged."})
+        return expected_response, ["REPLY", "IGNORE", action]
+    expected_response = encoder.encode({
         "thought": "User did not request the messaging action; nothing to do.",
         "actions": ["IGNORE"],
     })
-    return toon, ["IGNORE", "REPLY", action]
+    return expected_response, ["IGNORE", "REPLY", action]
 
 
 # ────────────────────────── Record builder ──────────────────────────
@@ -1247,7 +1245,7 @@ def _phrase(action: str, args: dict[str, Any], facts: dict[str, Any],
 
 
 def make_record(
-    *, encoder: ToonEncoder, action: str, plugin: str, idx: int,
+    *, encoder: ExpectedResponseEncoder, action: str, plugin: str, idx: int,
     rng: random.Random, action_description: str,
     action_param_specs: list[ParamSpec], lang: str,
 ) -> dict[str, Any]:
@@ -1261,10 +1259,10 @@ def make_record(
         msg = rng.choice(SUBTLE_NULL_MESSAGES)
         if lang != "en":
             msg = fallback_translate(lang, msg)
-        toon, available = _build_subtle_null_response(action, encoder)
+        expected_response, available = _build_subtle_null_response(action, encoder)
     else:
         msg = _phrase(action, args, facts, lang, style, rng)
-        toon = encoder.encode({
+        expected_response = encoder.encode({
             "tool_calls": [{"name": action, "arguments": args}],
         })
         available = [action, "REPLY", "IGNORE"]
@@ -1275,8 +1273,8 @@ def make_record(
 
     system_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
-        "from `availableActions` and respond with ONE TOON tool_calls[N]"
-        "{name,arguments} document. No fences, no <think>, no prose before "
+        "from `availableActions` and respond with one compact JSON "
+        "{tool_calls:[{name,arguments}]} document. No fences, no <think>, no prose before "
         "or after.\n\nAvailable actions: "
         f"{', '.join(available)}"
     )
@@ -1293,7 +1291,7 @@ def make_record(
         agentId="agent",
         memoryEntries=history,
         currentMessage={"role": "user", "speaker": persona, "content": msg},
-        expectedResponse=toon,
+        expectedResponse=expected_response,
         availableActions=available,
         task_type="tool_call",
         source_dataset="synth-messaging-actions",
@@ -1360,7 +1358,7 @@ def main() -> int:
     log.info("Generating %d records each for %d actions = %d total target",
              args.n_per, len(targets), args.n_per * len(targets))
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}

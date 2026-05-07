@@ -21,6 +21,9 @@ import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
 export const finalizeWorkspaceAction: Action = {
   name: "FINALIZE_WORKSPACE",
+  contexts: ["code", "tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["code", "tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
 
   similes: ["COMMIT_AND_PR", "CREATE_PR", "SUBMIT_CHANGES", "FINISH_WORKSPACE"],
 

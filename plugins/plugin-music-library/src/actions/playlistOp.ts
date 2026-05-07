@@ -505,6 +505,9 @@ async function handleAdd(
 
 export const playlistOp: Action = {
   name: "PLAYLIST_OP",
+  contexts: ["media", "automation"],
+  contextGate: { anyOf: ["media", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "MUSIC_PLAYLIST",
     "SAVE_PLAYLIST",

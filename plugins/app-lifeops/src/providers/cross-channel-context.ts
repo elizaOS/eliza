@@ -175,6 +175,10 @@ export const crossChannelContextProvider: Provider = {
   dynamic: true,
   // After inboxTriage (14) and before escalation (15).
   position: 14.5,
+  contexts: ["email", "messaging", "contacts", "memory"],
+  contextGate: { anyOf: ["email", "messaging", "contacts", "memory"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
 
   async get(
     runtime: IAgentRuntime,

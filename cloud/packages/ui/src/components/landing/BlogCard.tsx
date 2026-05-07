@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "@elizaos/cloud-ui/runtime/image";
+import Image from "../../runtime/image";
 import { Link } from "react-router-dom";
 import type { BlogPostMeta } from "@/lib/blog";
 

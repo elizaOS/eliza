@@ -130,6 +130,12 @@ const relationshipsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
+	contexts: ["contacts", "memory"],
+	contextGate: { anyOf: ["contacts", "memory"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const relatedEntityIds = await getRelatedEntityIds(
 			runtime,

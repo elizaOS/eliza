@@ -44,6 +44,9 @@ export const sendXPostAction: Action = {
     "Publish a tweet on Twitter/X with a confirmation gate. Supports replies via replyToTweetId. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
   descriptionCompressed:
     "Post tweet on X (Twitter); supports replies via replyToTweetId.",
+  contexts: ["social_posting", "connectors"],
+  contextGate: { anyOf: ["social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
   suppressPostActionContinuation: true,
   parameters: [
     {

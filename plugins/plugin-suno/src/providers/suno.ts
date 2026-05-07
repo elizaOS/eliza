@@ -92,6 +92,10 @@ export const sunoStatusProvider: Provider = {
     name: 'SUNO_STATUS',
     description: 'Suno music generation status',
     descriptionCompressed: 'Suno generation availability.',
+    contexts: ["media"],
+    contextGate: { anyOf: ["media"] },
+    cacheStable: false,
+    cacheScope: "turn",
     get: async (runtime: IAgentRuntime) => {
         const configured = Boolean(runtime.getSetting('SUNO_API_KEY'));
         return {

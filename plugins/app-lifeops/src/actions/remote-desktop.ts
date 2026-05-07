@@ -320,6 +320,8 @@ export const remoteDesktopAction: Action & {
     "revoke (revoke an active session by id via RemoteSessionService).",
   descriptionCompressed:
     "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId); RemoteSessionService+legacy",
+  contexts: ["browser", "automation", "settings", "admin"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>

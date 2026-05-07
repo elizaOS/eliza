@@ -22,6 +22,12 @@ export function createAdminTrustProvider(): Provider {
       "mark owner/admin chat identity trust contact assertion (relationships-orient)",
     dynamic: true,
     position: 11,
+    contexts: ["admin", "settings"],
+    contextGate: { anyOf: ["admin", "settings"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "ADMIN" },
+
     async get(
       runtime: IAgentRuntime,
       message: Memory,

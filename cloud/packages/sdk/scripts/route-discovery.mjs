@@ -61,6 +61,28 @@ export function routePathFromSegments(relativeSegments) {
   );
 }
 
+export function scopeForRoute(route) {
+  if (route.startsWith("/api/internal/")) return "internal";
+  if (route.startsWith("/api/cron/") || route.startsWith("/api/v1/cron/")) return "cron";
+  if (route.startsWith("/api/v1/admin/") || route === "/api/v1/admin") return "admin";
+  if (route.startsWith("/api/admin/") || route === "/api/admin") return "admin";
+  if (route.startsWith("/api/v1/dashboard") || route === "/api/v1/api-keys/explorer") {
+    return "app-or-dashboard";
+  }
+  if (route.startsWith("/api/webhooks/")) return "webhook";
+  if (route.includes("/webhook")) return "webhook";
+  if (route.startsWith("/api/stripe/")) return "billing-webhook-or-checkout";
+  if (route.startsWith("/api/mcp") || route.startsWith("/api/mcps/")) return "mcp-transport";
+  if (route.startsWith("/api/auth/")) return "auth";
+  if (route.startsWith("/api/v1/") || route === "/api/v1") return "public";
+  if (route.startsWith("/api/elevenlabs/")) return "public";
+  return "app-or-dashboard";
+}
+
+export function isGeneratedPublicRoute(route) {
+  return scopeForRoute(route) === "public";
+}
+
 export async function walkRoutes(dir, relativeSegments = [], out = []) {
   const entries = await readdir(dir, { withFileTypes: true });
   await Promise.all(

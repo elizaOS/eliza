@@ -30,7 +30,7 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const apps = await appsService.listByOrganization(user.organization_id);
+    const apps = await appsService.listByOrganizationWithDatabaseState(user.organization_id);
     return c.json({ success: true, apps });
   } catch (error) {
     logger.error("[Apps API] Failed to list apps:", error);
@@ -82,7 +82,7 @@ app.post("/", async (c) => {
 
       const response: Record<string, unknown> = {
         success: true,
-        app: result.app,
+        app: await appsService.withDatabaseState(result.app),
         apiKey: result.apiKey,
       };
       if (result.githubRepo) response.githubRepo = result.githubRepo;

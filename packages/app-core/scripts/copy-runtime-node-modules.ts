@@ -131,6 +131,8 @@ const ARCH_ALIASES = new Map<string, string>([
 const bunPackageIndex = new Map<string, Set<string>>();
 const registryPackageIndex = new Map<string, ResolvedPackage>();
 const trackedPackageIndex = new Map<string, ResolvedPackage>();
+const workspacePackageIndex = new Map<string, ResolvedPackage[]>();
+let workspacePackageIndexBuilt = false;
 
 function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   const normalizedPath = entryPath.split(path.sep).join("/");
@@ -168,6 +170,146 @@ function packagePath(name: string, baseDir: string): string {
     return path.join(baseDir, scope, pkg);
   }
   return path.join(baseDir, name);
+}
+
+function addWorkspacePackageCandidate(
+  name: string,
+  resolved: ResolvedPackage,
+): void {
+  const existing = workspacePackageIndex.get(name);
+  if (!existing) {
+    workspacePackageIndex.set(name, [resolved]);
+    return;
+  }
+
+  if (
+    existing.some(
+      (entry) =>
+        entry.sourceDir === resolved.sourceDir ||
+        entry.packageJsonPath === resolved.packageJsonPath,
+    )
+  ) {
+    return;
+  }
+
+  existing.push(resolved);
+}
+
+function readWorkspacePatterns(packageJsonPath: string): string[] {
+  type WorkspaceManifest = {
+    workspaces?: string[] | { packages?: string[] };
+  };
+
+  try {
+    const manifest = readJson<WorkspaceManifest>(packageJsonPath);
+    if (Array.isArray(manifest.workspaces)) {
+      return manifest.workspaces;
+    }
+    if (Array.isArray(manifest.workspaces?.packages)) {
+      return manifest.workspaces.packages;
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
+}
+
+function expandWorkspacePattern(baseDir: string, pattern: string): string[] {
+  const normalized = pattern.split(/[\\/]+/).filter(Boolean);
+  const results: string[] = [];
+
+  const visit = (segmentIndex: number, currentDir: string): void => {
+    if (segmentIndex >= normalized.length) {
+      results.push(currentDir);
+      return;
+    }
+
+    const segment = normalized[segmentIndex];
+    if (segment === "*") {
+      if (!fs.existsSync(currentDir)) {
+        return;
+      }
+      for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        visit(segmentIndex + 1, path.join(currentDir, entry.name));
+      }
+      return;
+    }
+
+    if (segment.includes("*")) {
+      const matcher = new RegExp(
+        `^${segment
+          .split("*")
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*")}$`,
+      );
+      if (!fs.existsSync(currentDir)) {
+        return;
+      }
+      for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !matcher.test(entry.name)) {
+          continue;
+        }
+        visit(segmentIndex + 1, path.join(currentDir, entry.name));
+      }
+      return;
+    }
+
+    visit(segmentIndex + 1, path.join(currentDir, segment));
+  };
+
+  visit(0, baseDir);
+  return results;
+}
+
+function indexWorkspacePackages(workspaceRoot: string): void {
+  const workspacePackageJson = path.join(workspaceRoot, "package.json");
+  const patterns = readWorkspacePatterns(workspacePackageJson);
+  for (const pattern of patterns) {
+    for (const candidateDir of expandWorkspacePattern(workspaceRoot, pattern)) {
+      const packageJsonPath = path.join(candidateDir, "package.json");
+      if (!fs.existsSync(packageJsonPath)) {
+        continue;
+      }
+
+      try {
+        const manifest = readJson<{ name?: string }>(packageJsonPath);
+        if (typeof manifest.name !== "string" || !manifest.name.trim()) {
+          continue;
+        }
+        addWorkspacePackageCandidate(manifest.name, {
+          sourceDir: candidateDir,
+          packageJsonPath,
+        });
+      } catch {
+        // Ignore malformed workspace manifests during best-effort indexing.
+      }
+    }
+  }
+}
+
+function buildWorkspacePackageIndex(): void {
+  if (workspacePackageIndexBuilt) {
+    return;
+  }
+  workspacePackageIndexBuilt = true;
+
+  indexWorkspacePackages(ROOT);
+
+  // The desktop wrapper repo builds from /milady while the active Eliza
+  // workspace lives at /milady/eliza. Prefer those local packages over stale
+  // published node_modules copies so deep runtime imports match the code that
+  // tsdown just compiled.
+  const nestedElizaRoot = path.join(ROOT, "eliza");
+  if (
+    nestedElizaRoot !== ROOT &&
+    fs.existsSync(path.join(nestedElizaRoot, "package.json"))
+  ) {
+    indexWorkspacePackages(nestedElizaRoot);
+  }
 }
 
 function addBunPackageCandidate(name: string, packageDir: string): void {
@@ -1214,6 +1356,7 @@ export function isPackageCompatibleWithCurrentPlatform(
 function collectInstalledPackageDirs(
   name: string,
   requesterDir: string,
+  opts?: { includeWorkspace?: boolean },
 ): string[] {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -1223,6 +1366,13 @@ function collectInstalledPackageDirs(
     seen.add(candidate);
     candidates.push(candidate);
   };
+
+  if (opts?.includeWorkspace !== false) {
+    buildWorkspacePackageIndex();
+    for (const candidate of workspacePackageIndex.get(name) ?? []) {
+      addCandidate(candidate.sourceDir);
+    }
+  }
 
   let dir = requesterDir;
   while (true) {
@@ -1243,10 +1393,15 @@ function collectInstalledPackageDirs(
 function collectResolvedCandidates(
   name: string,
   requesterDir: string,
+  opts?: { includeWorkspace?: boolean },
 ): ResolvedPackage[] {
   const resolved: ResolvedPackage[] = [];
 
-  for (const sourceDir of collectInstalledPackageDirs(name, requesterDir)) {
+  for (const sourceDir of collectInstalledPackageDirs(
+    name,
+    requesterDir,
+    opts,
+  )) {
     const normalized = normalizeResolvedPackage(sourceDir);
     if (normalized) resolved.push(normalized);
   }
@@ -1294,8 +1449,9 @@ function resolvePackage(
   name: string,
   requestedSpec: string | null,
   requesterDir: string,
+  opts?: { includeWorkspace?: boolean },
 ): ResolvedPackage | null {
-  const candidates = collectResolvedCandidates(name, requesterDir);
+  const candidates = collectResolvedCandidates(name, requesterDir, opts);
   const selected = selectResolvedCandidate(candidates, requestedSpec);
   if (selected) return selected;
 
@@ -1308,7 +1464,11 @@ function resolvePackage(
     return candidates[0];
   }
 
-  for (const sourceDir of collectInstalledPackageDirs(name, requesterDir)) {
+  for (const sourceDir of collectInstalledPackageDirs(
+    name,
+    requesterDir,
+    opts,
+  )) {
     let realSourceDir: string | null = null;
     try {
       realSourceDir = fs.realpathSync.native(sourceDir);
@@ -1493,7 +1653,7 @@ function main(): void {
     if (alwaysBundled.has(packageName)) {
       continue;
     }
-    if (resolvePackage(packageName, null, ROOT)) {
+    if (resolvePackage(packageName, null, ROOT, { includeWorkspace: false })) {
       alwaysBundled.add(packageName);
     }
   }

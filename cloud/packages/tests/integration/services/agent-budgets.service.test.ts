@@ -19,12 +19,12 @@ import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "@/db/client";
 import { agentBudgets, agentBudgetTransactions } from "@/db/schemas/agent-budgets";
 import { agentBudgetService } from "@/lib/services/agent-budgets";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("AgentBudgetService", () => {
   let connectionString: string;

@@ -546,66 +546,40 @@ memories[2]:
 
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
-export const messageHandlerTemplate = `task: Generate dialog and actions for {{agentName}}.
+export const messageHandlerTemplate = `task: Decide whether {{agentName}} should respond and which contexts are needed.
 
 context:
 {{providers}}
 
-rules[22]:
-- think briefly, then respond
-- always include a thought field, even for direct replies
-- actions execute in listed order
-- if replying without another grounded state/action query, REPLY goes first
-- REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
-- set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again
-- if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
-- use IGNORE or STOP only by themselves
-- in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}
-- include providers only when needed
-- use only action and provider names that appear in the listed runtime surface; never invent new action names, provider names, benchmark ids, or paraphrased tool labels
-- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
-- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
-- use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include them inside that action's params block
-- if a required param is unknown, ask for clarification in text
-- for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
-- when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
-- when the user asks you to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy, choose the matching action instead of handling it in prose only
-- when the request names an external integration (Gmail, Discord, Slack, Telegram, GitHub, Google Sheets, Google Calendar, Google Drive, Notion, etc.) AND describes data movement between services or scheduled invocation of an external API, prefer CREATE_N8N_WORKFLOW; reserve CREATE_TRIGGER_TASK for self-driven scheduled prompts to the agent itself with no external API calls
-- for standing or future-condition requests like "if/when X, do Y", still choose the action that records, queues, or routes that behavior on the first turn
-- if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
-- when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
-	- do not wait for portal names, deck attachments, updated-id uploads, exact flight times, reservation ids, fee-risk item names, priority labels, event IDs, exact travel preferences, or the definition of "important" before selecting the owning action; let the action gather those details
-	- future portal uploads, updated-id interventions, and cancellation-fee warning policies are operational workflows, not prose acknowledgements; choose COMPUTER_USE or DEVICE_INTENT first and let those actions ask the missing follow-up
-	- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
-- only choose actions that directly satisfy the user's request or an explicit live-state question; do not opportunistically triage inboxes, summarize calendars, propose meetings, or call adjacent tools just because provider context makes them available
-- when the user is venting, reflecting, stating an opinion, or asking for generic advice about a domain, stay in REPLY or NONE unless they explicitly ask you to inspect state, change state, send something, schedule something, or perform a real operation
-
-control_actions:
-- STOP means the task is done and the agent should end the run without executing more actions
-- STOP is a terminal control action even if it is not listed in available actions
+rules:
+- choose action=RESPOND only when {{agentName}} should answer or perform work for this message
+- choose action=IGNORE when the message should be ignored
+- choose action=STOP when the user asks {{agentName}} to stop or disengage
+- contexts is a list of registered context ids, such as calendar, email, wallet, browser, code, or automation
+- never invent context ids that are not registered
+- only choose contexts when tools or context providers may be needed
+- simple=true only means reply can be sent directly when contexts is empty
+- if contexts is non-empty, planning will run and simple will be ignored
+- include reply only for a direct user-visible response
+- thought is internal routing rationale and is not shown to the user
 
 fields:
-- thought: short plan
-- actions: ordered list of action entries, each with a name and optional params
-- providers: provider names, or empty array
-- text: next message for {{agentName}}
-- simple: true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
-
-formatting:
-- wrap multi-line code in fenced code blocks
-- use inline backticks for short code identifiers
+- action: RESPOND, IGNORE, or STOP
+- simple: boolean
+- contexts: array of context ids
+- thought: short routing rationale
+- reply: optional direct response for simple turns with no contexts
 
 output:
 JSON only. Return exactly one JSON object with the keys above. No prose before or after it. No <think>. No XML or markdown fences.
 
 Example:
 {
-  "thought": "Reply briefly. No extra providers needed.",
-  "actions": [{"name": "REPLY"}],
-  "providers": [],
-  "text": "Your message here",
-  "simple": true
+  "action": "RESPOND",
+  "simple": true,
+  "contexts": [],
+  "thought": "The user asked a direct conversational question that needs no tools.",
+  "reply": "Your message here"
 }`;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;

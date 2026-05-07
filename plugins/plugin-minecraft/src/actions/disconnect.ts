@@ -16,6 +16,9 @@ const ACTION_NAME = "MC_DISCONNECT";
 
 export const minecraftDisconnectAction: Action = {
   name: ACTION_NAME,
+  contexts: ["connectors", "automation", "media"],
+  contextGate: { anyOf: ["connectors", "automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_LEAVE", "MC_QUIT"],
   description: "Disconnect the active Minecraft bot session.",
   descriptionCompressed: "Disconnect Minecraft bot.",

@@ -44,6 +44,8 @@ interface MemoryBrowseResponseShape {
 
 export const recallMemoryFilteredAction: Action = {
   name: "RECALL_MEMORY_FILTERED",
+  contexts: ["memory", "knowledge", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["BROWSE_MEMORIES", "FILTER_MEMORIES", "FIND_MEMORIES"],
   description:
     "Recall memories filtered by type, entityId, roomId, or text query. Routes to /api/memories/by-entity when entityId is supplied; otherwise /api/memories/browse.",
@@ -186,6 +188,8 @@ interface ForgetMemoryParams {
 
 export const forgetMemoryAction: Action = {
   name: "FORGET_MEMORY",
+  contexts: ["memory", "knowledge", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["DELETE_MEMORY", "REMOVE_MEMORY"],
   description:
     "Permanently delete a memory by id. Requires explicit confirm:true.",
@@ -285,6 +289,8 @@ interface EditMemoryResponseShape {
 
 export const editMemoryAction: Action = {
   name: "EDIT_MEMORY",
+  contexts: ["memory", "knowledge", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["UPDATE_MEMORY", "MODIFY_MEMORY"],
   description:
     "Edit the text of an existing memory. Server re-embeds the new text. Requires explicit confirm:true.",

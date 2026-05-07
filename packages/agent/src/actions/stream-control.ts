@@ -38,6 +38,8 @@ async function apiPost(
 
 export const goLiveAction: Action = {
   name: "GO_LIVE",
+  contexts: ["general", "media", "automation", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "START_STREAM",
     "BEGIN_STREAM",
@@ -122,6 +124,8 @@ export const goLiveAction: Action = {
 
 export const goOfflineAction: Action = {
   name: "GO_OFFLINE",
+  contexts: ["general", "media", "automation", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "STOP_STREAM",
     "END_STREAM",

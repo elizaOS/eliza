@@ -38,6 +38,29 @@ export const publishProfile: Action = {
   similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
   description: "Publish or update the bot's Nostr profile (kind:0 metadata)",
   descriptionCompressed: "publish update bot Nostr profile (kind: 0 metadata)",
+  contexts: ["social_posting", "connectors"],
+  contextGate: { anyOf: ["social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "name",
+      description: "Display name for the Nostr profile.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "about",
+      description: "Profile bio/about text.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "picture",
+      description: "Profile picture URL.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "nostr";
   },

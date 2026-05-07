@@ -102,6 +102,8 @@ function buildTradeFailureText(args: {
 
 export const executeTradeAction: Action = {
   name: "EXECUTE_TRADE",
+  contexts: ["finance", "crypto", "wallet", "payments"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
 
   similes: ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
 

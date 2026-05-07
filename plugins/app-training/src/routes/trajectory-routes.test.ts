@@ -218,4 +218,51 @@ describe("trajectory routes", () => {
     expect(response.headers["content-type"]).toBe("application/json");
     expect(response.body).toBe("[]");
   });
+
+  it("supports JSONL trajectory export", async () => {
+    const exportTrajectories = vi.fn(async () => ({
+      data: `${JSON.stringify({
+        format: "trajectory_harness_v1",
+        trajectoryId: "traj-1",
+        callId: "call-1",
+        messages: [
+          { role: "system", content: "sys" },
+          { role: "user", content: "user" },
+          { role: "model", content: "resp" },
+        ],
+      })}\n`,
+      filename: "trajectories.harness.jsonl",
+      mimeType: "application/x-ndjson",
+    }));
+    const logger = createLogger({ exportTrajectories });
+    const response = createResponse();
+
+    await handleTrajectoryRoute(
+      createRequest({
+        format: "jsonl",
+        includePrompts: true,
+      }),
+      response,
+      createRuntime(logger),
+      "/api/trajectories/export",
+      "POST",
+    );
+
+    expect(exportTrajectories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: "jsonl",
+        includePrompts: true,
+      }),
+    );
+    expect(response.headers["content-type"]).toBe("application/x-ndjson");
+    expect(typeof response.body).toBe("string");
+    const lines = String(response.body)
+      .trim()
+      .split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
+      format: "trajectory_harness_v1",
+      trajectoryId: "traj-1",
+    });
+  });
 });

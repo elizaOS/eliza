@@ -234,6 +234,41 @@ export const messageOpAction: Action = {
   ],
   description: "WhatsApp message operations (send, react).",
   descriptionCompressed: "WhatsApp message ops: send, react.",
+  contexts: ["phone", "messaging", "connectors"],
+  contextGate: { anyOf: ["phone", "messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "op",
+      description: "Operation to run: send or react.",
+      required: false,
+      schema: { type: "string", enum: ["send", "react"] },
+    },
+    {
+      name: "text",
+      description: "Message text for send.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "to",
+      description: "WhatsApp recipient id or current conversation.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "messageId",
+      description: "Target message id for a reaction.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "emoji",
+      description: "Reaction emoji.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   suppressPostActionContinuation: true,
 
   validate: async (

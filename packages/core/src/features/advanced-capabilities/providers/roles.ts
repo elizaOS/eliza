@@ -97,6 +97,12 @@ function getRoleUser(entity: Entity | null | undefined): RoleUser | null {
 export const roleProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["admin", "settings"],
+	contextGate: { anyOf: ["admin", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "ADMIN" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

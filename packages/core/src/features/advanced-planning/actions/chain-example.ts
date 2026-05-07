@@ -1,25 +1,28 @@
 import { v4 as uuidv4 } from "uuid";
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../../../i18n/validation-keywords.ts";
 import type {
 	Action,
 	ActionResult,
+	AgentContext,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import type { JsonValue } from "../types.ts";
 
-const CREATE_PLAN_TERMS = getValidationKeywordTerms(
+const PLANNING_CONTEXTS = [
+	"general",
+	"tasks",
+	"automation",
+	"agent_internal",
+] satisfies AgentContext[];
+const PLANNING_KEYWORD_KEYS = [
 	"action.createPlan.request",
-	{
-		includeAllLocales: true,
-	},
-);
+	"action.triggerCreate.request",
+	"validate.taskIntent",
+];
 
 type PlanningActionOptions = HandlerOptions & {
 	abortSignal?: AbortSignal;
@@ -30,11 +33,43 @@ type PlanningActionOptions = HandlerOptions & {
 	};
 };
 
+function planningFailureResult(
+	actionName: string,
+	message: string,
+	extraData: Record<string, JsonValue> = {},
+): ActionResult {
+	return {
+		success: false,
+		text: message,
+		error: message,
+		data: {
+			actionName,
+			...extraData,
+		},
+	};
+}
+
 export const analyzeInputAction: Action = {
 	name: "ANALYZE_INPUT",
+	contexts: PLANNING_CONTEXTS,
+	roleGate: { minRole: "USER" },
 	description: "Analyzes user input and extracts key information",
+	parameters: [
+		{
+			name: "input",
+			description:
+				"Optional text to analyze. Defaults to the current message text.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
-	validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: PLANNING_CONTEXTS,
+			keywordKeys: PLANNING_KEYWORD_KEYS,
+			keywords: ["analyze", "analysis", "break down", "inspect input"],
+		}),
 
 	handler: async (
 		_runtime: IAgentRuntime,
@@ -44,7 +79,11 @@ export const analyzeInputAction: Action = {
 		_callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		if (options?.abortSignal?.aborted) {
-			throw new Error("Analysis aborted");
+			return planningFailureResult(
+				"ANALYZE_INPUT",
+				"Input analysis was canceled before it could finish.",
+				{ errorCode: "analysis_aborted" },
+			);
 		}
 
 		const text = message.content.text || "";
@@ -80,9 +119,17 @@ export const analyzeInputAction: Action = {
 
 export const processAnalysisAction: Action = {
 	name: "PROCESS_ANALYSIS",
+	contexts: PLANNING_CONTEXTS,
+	roleGate: { minRole: "USER" },
 	description: "Processes the analysis results and makes decisions",
+	parameters: [],
 
-	validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: PLANNING_CONTEXTS,
+			keywordKeys: PLANNING_KEYWORD_KEYS,
+			keywords: ["process analysis", "next step", "decide", "decision"],
+		}),
 
 	handler: async (
 		_runtime: IAgentRuntime,
@@ -95,7 +142,11 @@ export const processAnalysisAction: Action = {
 			options?.previousResults ?? options?.actionContext?.previousResults;
 		const previousResult = previousResults?.[0];
 		if (!previousResult?.data) {
-			throw new Error("No analysis data available");
+			return planningFailureResult(
+				"PROCESS_ANALYSIS",
+				"No analysis data was available to process.",
+				{ errorCode: "missing_analysis_data" },
+			);
 		}
 
 		const data = previousResult.data as {
@@ -118,7 +169,11 @@ export const processAnalysisAction: Action = {
 		await new Promise((resolve) => setTimeout(resolve, 200));
 
 		if (options?.abortSignal?.aborted) {
-			throw new Error("Processing aborted");
+			return planningFailureResult(
+				"PROCESS_ANALYSIS",
+				"Analysis processing was canceled before it could finish.",
+				{ errorCode: "processing_aborted" },
+			);
 		}
 
 		return {
@@ -138,10 +193,23 @@ export const processAnalysisAction: Action = {
 
 export const executeFinalAction: Action = {
 	name: "EXECUTE_FINAL",
+	contexts: PLANNING_CONTEXTS,
+	roleGate: { minRole: "USER" },
 	description: "Executes the final action based on processing results",
 	suppressPostActionContinuation: true,
+	parameters: [],
 
-	validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: PLANNING_CONTEXTS,
+			keywordKeys: PLANNING_KEYWORD_KEYS,
+			keywords: [
+				"execute final",
+				"finish plan",
+				"final action",
+				"complete plan",
+			],
+		}),
 
 	handler: async (
 		_runtime: IAgentRuntime,
@@ -163,7 +231,11 @@ export const executeFinalAction: Action = {
 			| undefined;
 
 		if (!processingData?.decisions) {
-			throw new Error("No processing results available");
+			return planningFailureResult(
+				"EXECUTE_FINAL",
+				"No processed planning result was available to execute.",
+				{ errorCode: "missing_processing_results" },
+			);
 		}
 
 		const execution = {
@@ -203,14 +275,32 @@ export const executeFinalAction: Action = {
 
 export const createPlanAction: Action = {
 	name: "CREATE_PLAN",
+	contexts: ["tasks", "automation", "code", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Creates a comprehensive project plan with multiple phases and tasks",
 	similes: ["PLAN_PROJECT", "GENERATE_PLAN", "MAKE_PLAN", "PROJECT_PLAN"],
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "goal",
+			description: "Optional goal or project outcome for the generated plan.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "phaseCount",
+			description: "Optional requested number of plan phases.",
+			required: false,
+			schema: { type: "number" },
+		},
+	],
 
-	validate: async (_runtime: IAgentRuntime, message: Memory) => {
-		const text = message.content.text?.trim() ?? "";
-		return findKeywordTermMatch(text, CREATE_PLAN_TERMS) !== undefined;
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+		return hasActionContextOrKeyword(message, state, {
+			contexts: ["tasks", "automation", "code", "agent_internal"],
+			keywordKeys: ["action.createPlan.request"],
+		});
 	},
 
 	handler: async (
@@ -220,53 +310,71 @@ export const createPlanAction: Action = {
 		_options?: PlanningActionOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const plan = {
-			id: uuidv4(),
-			name: "Comprehensive Project Plan",
-			description: "Multi-phase project plan with coordinated execution",
-			createdAt: Date.now(),
-			phases: [
-				{
-					id: "phase_1",
-					name: "Setup and Infrastructure",
-					description: "Initial project setup and infrastructure creation",
-					tasks: [
-						{
-							id: "task_1_1",
-							name: "Repository Setup",
-							description: "Create GitHub repository with proper documentation",
-							action: "CREATE_GITHUB_REPO",
-							dependencies: [],
-							estimatedDuration: "30 minutes",
-						},
-					],
-				},
-			],
-			executionStrategy: "sequential",
-			totalEstimatedDuration: "4 hours",
-			successCriteria: ["All phases completed successfully"],
-		};
+		try {
+			const plan = {
+				id: uuidv4(),
+				name: "Comprehensive Project Plan",
+				description: "Multi-phase project plan with coordinated execution",
+				createdAt: Date.now(),
+				phases: [
+					{
+						id: "phase_1",
+						name: "Setup and Infrastructure",
+						description: "Initial project setup and infrastructure creation",
+						tasks: [
+							{
+								id: "task_1_1",
+								name: "Repository Setup",
+								description:
+									"Create GitHub repository with proper documentation",
+								action: "CREATE_GITHUB_REPO",
+								dependencies: [],
+								estimatedDuration: "30 minutes",
+							},
+						],
+					},
+				],
+				executionStrategy: "sequential",
+				totalEstimatedDuration: "4 hours",
+				successCriteria: ["All phases completed successfully"],
+			};
 
-		if (callback) {
-			await callback({
-				text: `I've created a comprehensive project plan with ${plan.phases.length} phase(s).`,
-				actions: ["CREATE_PLAN"],
-				source: "planning",
+			if (callback) {
+				await callback({
+					text: `I've created a comprehensive project plan with ${plan.phases.length} phase(s).`,
+					actions: ["CREATE_PLAN"],
+					source: "planning",
+				});
+			}
+
+			return {
+				success: true,
+				data: {
+					actionName: "CREATE_PLAN",
+					phaseCount: plan.phases.length,
+					taskCount: plan.phases.reduce(
+						(total, phase) => total + phase.tasks.length,
+						0,
+					),
+					planId: plan.id,
+				},
+				text: `Created ${plan.phases.length}-phase plan`,
+			};
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			const text = `Failed to create plan: ${errorMessage}`;
+			if (callback) {
+				await callback({
+					text,
+					actions: ["CREATE_PLAN"],
+					source: "planning",
+				});
+			}
+			return planningFailureResult("CREATE_PLAN", text, {
+				errorCode: "plan_creation_failed",
+				errorMessage,
 			});
 		}
-
-		return {
-			success: true,
-			data: {
-				actionName: "CREATE_PLAN",
-				phaseCount: plan.phases.length,
-				taskCount: plan.phases.reduce(
-					(total, phase) => total + phase.tasks.length,
-					0,
-				),
-				planId: plan.id,
-			},
-			text: `Created ${plan.phases.length}-phase plan`,
-		};
 	},
 };

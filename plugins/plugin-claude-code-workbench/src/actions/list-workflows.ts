@@ -33,6 +33,8 @@ function toText(
 
 export const claudeCodeWorkbenchListAction: Action = {
   name: "CLAUDE_CODE_WORKBENCH_LIST",
+  contexts: ["code", "automation", "agent_internal"],
+  contextGate: { anyOf: ["code", "automation", "agent_internal"] },
   similes: ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"],
   description: "List available Claude Code workbench workflows.",
   descriptionCompressed: "list available Claude Code workbench workflow",

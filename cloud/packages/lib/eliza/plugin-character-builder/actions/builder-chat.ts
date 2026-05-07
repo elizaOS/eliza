@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -94,8 +95,109 @@ Note: This is the LIVE state from the user's editor. If marked "(UNSAVED)", chan
 
 {{receivedMessageHeader}}`;
 
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const BUILDER_CHAT_KEYWORDS = [
+  "help",
+  "question",
+  "explain",
+  "companion",
+  "assistant",
+  "hybrid",
+  "character",
+  "agent",
+  "build",
+  "create",
+  "design",
+  "how",
+  "what",
+  "why",
+  "hola",
+  "ayuda",
+  "pregunta",
+  "explica",
+  "personaje",
+  "asistente",
+  "crear",
+  "construir",
+  "aide",
+  "question",
+  "expliquer",
+  "personnage",
+  "assistant",
+  "creer",
+  "hilfe",
+  "frage",
+  "erklaren",
+  "charakter",
+  "assistent",
+  "erstellen",
+  "aiuto",
+  "domanda",
+  "spiega",
+  "personaggio",
+  "assistente",
+  "creare",
+  "ajuda",
+  "pergunta",
+  "explicar",
+  "personagem",
+  "assistente",
+  "criar",
+  "帮助",
+  "问题",
+  "解释",
+  "角色",
+  "助手",
+  "创建",
+  "質問",
+  "説明",
+  "キャラクター",
+  "アシスタント",
+  "作成",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+
+  for (const key of ["conversationLog", "recentMessages", "receivedMessageHeader"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const builderChatAction = {
   name: "BUILDER_CHAT",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "request",
+      description: "The user's character-builder question or general builder chat request.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description: `Conversation to understand user intent and explain building concepts.
 
 USE when:
@@ -109,8 +211,11 @@ DO NOT USE when:
 - User confirms they want to save → use CREATE_CHARACTER or SAVE_CHANGES
 
 This is your main tool for understanding what the user wants before taking action.`,
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+      hasKeyword(collectConversationText(message, state), BUILDER_CHAT_KEYWORDS)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -118,7 +223,7 @@ This is your main tool for understanding what the user wants before taking actio
     state: State,
     options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     const creatorMode = isCreatorMode(runtime);
     const modeLabel = creatorMode ? "Creator" : "Build";
     const onStreamChunk = options?.onStreamChunk as StreamChunkCallback | undefined;
@@ -148,8 +253,24 @@ This is your main tool for understanding what the user wants before taking actio
 
     const prompt = cleanPrompt(composePromptFromState({ state, template: chatTemplate }));
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    runtime.character.system = originalSystemPrompt;
+    let response: string;
+    try {
+      response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    } catch (error) {
+      runtime.character.system = originalSystemPrompt;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[BUILDER_CHAT] Model call failed");
+      const text = "I'm having trouble responding right now. What would you like to build?";
+      await callback({ text, error: true });
+      return {
+        success: false,
+        text,
+        error: errorMessage,
+        data: { actionName: "BUILDER_CHAT", mode: modeLabel },
+      };
+    } finally {
+      runtime.character.system = originalSystemPrompt;
+    }
 
     const parsed = parseKeyValueXml(response) as {
       thought?: string;
@@ -161,7 +282,12 @@ This is your main tool for understanding what the user wants before taking actio
       await callback({
         text: "I'm here to help you build! What would you like to create?",
       });
-      return;
+      return {
+        success: false,
+        text: "I'm here to help you build! What would you like to create?",
+        error: "PARSE_FAILED",
+        data: { actionName: "BUILDER_CHAT", mode: modeLabel },
+      };
     }
 
     await callback({
@@ -172,6 +298,19 @@ This is your main tool for understanding what the user wants before taking actio
         mode: modeLabel,
       },
     });
+    return {
+      success: true,
+      text: parsed.text,
+      values: {
+        success: true,
+        mode: modeLabel,
+      },
+      data: {
+        actionName: "BUILDER_CHAT",
+        mode: modeLabel,
+        thought: parsed.thought,
+      },
+    };
   },
   examples: [
     [

@@ -9,12 +9,9 @@
  *   bun run cache:clear session   # Clear session cache only
  */
 
-import { config } from "dotenv";
-import { resolve } from "path";
+import { loadEnvFiles } from "./local-dev-helpers";
 
-// Load .env first, then .env.local with override (local takes priority)
-config({ path: resolve(process.cwd(), ".env") });
-config({ path: resolve(process.cwd(), ".env.local"), override: true });
+loadEnvFiles();
 
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";

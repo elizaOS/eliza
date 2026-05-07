@@ -2,6 +2,7 @@ import {
   type Action,
   elizaLogger,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   type State,
@@ -67,6 +68,8 @@ function resolveLogLevel(text: string): CanonicalLogLevel | null {
 
 export const logLevelAction: Action = {
   name: "LOG_LEVEL",
+  contexts: ["admin", "settings", "agent_internal"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "SET_LOG_LEVEL",
     "CHANGE_LOG_LEVEL",
@@ -95,12 +98,17 @@ export const logLevelAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: unknown,
+    _options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<import("@elizaos/core").ActionResult> => {
+    const params = _options?.parameters as { level?: string } | undefined;
     const text = message.content.text || "";
     const levels = Object.keys(LOG_LEVEL_ALIASES) as CanonicalLogLevel[];
-    const level = resolveLogLevel(text);
+    const requestedLevel =
+      typeof params?.level === "string" ? params.level.toLowerCase() : "";
+    const level = levels.includes(requestedLevel as CanonicalLogLevel)
+      ? (requestedLevel as CanonicalLogLevel)
+      : resolveLogLevel(text);
 
     if (!level) {
       if (callback) {
@@ -109,7 +117,13 @@ export const logLevelAction: Action = {
           action: "LOG_LEVEL_FAILED",
         });
       }
-      return { success: false, error: "Invalid log level" };
+      return {
+        success: false,
+        text: "Invalid log level.",
+        values: { error: "INVALID_LOG_LEVEL" },
+        data: { actionName: "LOG_LEVEL", validLevels: levels },
+        error: "Invalid log level",
+      };
     }
 
     // Set the override
@@ -127,7 +141,12 @@ export const logLevelAction: Action = {
           action: "LOG_LEVEL_SET",
         });
       }
-      return { success: true };
+      return {
+        success: true,
+        text: `Log level changed to ${level.toUpperCase()} for this room.`,
+        values: { level },
+        data: { actionName: "LOG_LEVEL", level },
+      };
     } else {
       if (callback) {
         callback({
@@ -135,10 +154,26 @@ export const logLevelAction: Action = {
           action: "LOG_LEVEL_FAILED",
         });
       }
-      return { success: false, error: "Not supported" };
+      return {
+        success: false,
+        text: "Dynamic log levels are not supported by this runtime version.",
+        values: { error: "NOT_SUPPORTED" },
+        data: { actionName: "LOG_LEVEL" },
+        error: "Not supported",
+      };
     }
   },
-  parameters: [],
+  parameters: [
+    {
+      name: "level",
+      description: "Log level to set for the current room.",
+      required: true,
+      schema: {
+        type: "string" as const,
+        enum: ["trace", "debug", "info", "warn", "error"],
+      },
+    },
+  ],
   examples: [
     [
       {

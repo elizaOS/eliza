@@ -60,6 +60,10 @@ export const appBrowserWorkspaceProvider: Provider = {
     "Summarizes Eliza browser workspace tabs plus Steward wallet signing state for the agent.",
   descriptionCompressed:
     "Browser workspace tabs + Steward wallet signing state.",
+  contexts: ["browser", "web"],
+  contextGate: { anyOf: ["browser", "web"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async () => {
     try {
       const summary = await formatWorkspaceSummary();

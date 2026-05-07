@@ -274,6 +274,11 @@ export const platformChatContextProvider: Provider = {
 	dynamic: true,
 	position: 125,
 	contexts: PLATFORM_CONTEXTS,
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -368,6 +373,11 @@ export const platformUserContextProvider: Provider = {
 	dynamic: true,
 	position: 126,
 	contexts: PLATFORM_CONTEXTS,
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

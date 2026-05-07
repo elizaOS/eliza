@@ -138,7 +138,7 @@ export class UsersService {
 
   async getStewardIdentityForWrite(
     stewardUserId: string,
-  ): Promise<{ user_id: string; steward_user_id: string | null } | undefined> {
+  ): Promise<{ user_id: string; steward_user_id: string } | undefined> {
     return await usersRepository.findIdentityByStewardIdForWrite(stewardUserId);
   }
 

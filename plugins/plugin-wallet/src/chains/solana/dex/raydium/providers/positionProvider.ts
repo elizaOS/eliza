@@ -11,6 +11,8 @@ import {
 import { Clmm, type ClmmPoolInfo, Position } from "@raydium-io/raydium-sdk";
 import { Connection, type PublicKey } from "@solana/web3.js";
 
+const POSITION_LIMIT = 20;
+
 export interface FetchedPositionStatistics {
   poolAddress: PublicKey;
   positionNftMint: PublicKey;
@@ -24,6 +26,11 @@ export const raydiumPositionProvider: Provider = {
   description: "Provides Raydium LP position status.",
   descriptionCompressed: "Raydium LP positions status.",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   relevanceKeywords: [
     "raydium",
     "position",
@@ -75,7 +82,11 @@ export const raydiumPositionProvider: Provider = {
       const privateKey = runtime.getSetting("SOLANA_PRIVATE_KEY");
       if (!privateKey || typeof privateKey !== "string") {
         logger.warn("SOLANA_PRIVATE_KEY not configured");
-        return null;
+        return {
+          text: "Raydium LP positions unavailable.",
+          data: { positions: [], error: "SOLANA_PRIVATE_KEY not configured" },
+          values: { positionCount: 0, hasPositions: false },
+        };
       }
 
       // Decode the private key to get public address
@@ -89,12 +100,19 @@ export const raydiumPositionProvider: Provider = {
       const connection = new Connection(rpcUrl as string);
       const positions = await fetchPositions(connection, ownerAddress);
       return {
-        text: formatPositionsForPrompt(positions),
-        data: { positions },
+        text: formatPositionsForPrompt(positions.slice(0, POSITION_LIMIT)),
+        data: { positions: positions.slice(0, POSITION_LIMIT) },
       };
     } catch (error) {
       logger.error("Error in Raydium position provider:", error);
-      return null;
+      return {
+        text: "Raydium LP positions unavailable.",
+        data: {
+          positions: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: { positionCount: 0, hasPositions: false },
+      };
     }
   },
 };

@@ -180,6 +180,44 @@ export const messageOp: Action = {
     "Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
   descriptionCompressed:
     "Slack message ops: send, edit, delete, react, pin, unpin.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "op",
+      description: "Operation: send, edit, delete, react, pin, or unpin.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["send", "edit", "delete", "react", "pin", "unpin"],
+      },
+    },
+    {
+      name: "text",
+      description: "Message text for send or edit.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "channelRef",
+      description: "Slack channel name/id or current.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "messageTs",
+      description: "Slack message timestamp for edit/delete/react/pin/unpin.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "emoji",
+      description: "Reaction emoji name without colons.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

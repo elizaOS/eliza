@@ -20,12 +20,23 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 export const installSkillAction: Action = {
 	name: "INSTALL_SKILL",
+	contexts: ["automation", "settings", "connectors"],
+	contextGate: { anyOf: ["automation", "settings", "connectors"] },
+	roleGate: { minRole: "USER" },
 	similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
 	description:
 		"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " +
 		'Provide a skill slug or search term, e.g. "install weather" or "add github".',
 	descriptionCompressed:
 		"Install skill from ClawHub registry. Security-scanned before activation.",
+	parameters: [
+		{
+			name: "slug",
+			description: "Skill slug or search term to install.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	validate: createAgentSkillsActionValidator({
 		keywords: ["install", "download", "add", "get", "skill"],
 		regex:

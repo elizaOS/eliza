@@ -100,6 +100,41 @@ function normalizeTokenValue(value: string | null | undefined): string | null {
 export const executeSwap: Action = {
   name: spec.name,
   similes: spec.similes ? [...spec.similes] : [],
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "fromToken",
+      description: "Input token symbol, mint address, or SOL.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toToken",
+      description: "Output token symbol, mint address, or SOL.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "Human-readable amount to swap.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "slippageBps",
+      description: "Maximum slippage in basis points.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

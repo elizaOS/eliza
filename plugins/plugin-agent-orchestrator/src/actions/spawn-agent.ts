@@ -116,6 +116,9 @@ function getMessageText(message: Memory): string {
 
 export const spawnAgentAction: Action = {
   name: "SPAWN_AGENT",
+  contexts: ["tasks", "automation", "agent_internal"],
+  contextGate: { anyOf: ["tasks", "automation", "agent_internal"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "SPAWN_CODING_AGENT",

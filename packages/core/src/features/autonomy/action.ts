@@ -34,8 +34,18 @@ const ADMIN_KEYWORDS = getValidationKeywordTerms("action.sendToAdmin.request", {
  */
 export const sendToAdminAction: Action = {
 	name: "SEND_TO_ADMIN",
+	contexts: ["admin", "messaging", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Send a message directly to the admin user from autonomous context",
+	parameters: [
+		{
+			name: "message",
+			description: "Optional message to send to the configured admin user.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
 	examples: [
 		[

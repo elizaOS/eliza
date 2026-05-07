@@ -480,6 +480,8 @@ export const proposeMeetingTimesAction: Action & {
     "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
   descriptionCompressed:
     "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
+  contexts: ["calendar", "contacts", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
@@ -677,6 +679,8 @@ export const checkAvailabilityAction: Action = {
     "time window. Returns a free/busy summary and any overlapping events.",
   descriptionCompressed:
     "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
+  contexts: ["calendar", "contacts", "tasks"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     const respond = makeSchedulingRespond({
@@ -851,6 +855,8 @@ export const updateMeetingPreferencesAction: Action & {
     "sleep windows, no-call hours, and other recurring scheduling rules.",
   descriptionCompressed:
     "Persist owner meeting preferences: preferred hours, blackout windows, default duration, and travel buffer.",
+  contexts: ["calendar", "contacts", "tasks", "settings"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
@@ -1184,6 +1190,8 @@ export const schedulingAction: Action & {
     "or SEND_DRAFT.",
   descriptionCompressed:
     "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
+  contexts: ["calendar", "contacts", "tasks", "messaging"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
@@ -1450,9 +1458,8 @@ export const schedulingAction: Action & {
         // Selection + execution were correct: the user asked to schedule, the
         // action ran, and the lifeops service surfaced a needs-human signal
         // (no counterparty contact, missing scheduling field, dispatch
-        // failed, etc.). Mark as awaiting-confirmation so the runtime stops
-        // the multi-step continuation and the benchmark scorer treats this
-        // as completed.
+        // failed, etc.). Mark as awaiting-confirmation so the native planner
+        // stops chaining and the benchmark scorer treats this as completed.
         return respond({
           success: false,
           scenario: "scheduling_negotiation_service_error",

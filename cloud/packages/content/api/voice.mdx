@@ -74,7 +74,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/voice/tts', {
 const audioBlob = await response.blob();
 const audioUrl = URL.createObjectURL(audioBlob);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
@@ -95,7 +95,7 @@ response = requests.post(
 
 with open('speech.mp3', 'wb') as f:
     f.write(response.content)
-````
+```
 
   </Tabs.Tab>
 </Tabs>
@@ -378,11 +378,9 @@ Check status of active voice cloning jobs.
 
 ## Pricing
 
-| Operation                     | Credits |
-| ----------------------------- | ------- |
-| Text-to-Speech (per 1K chars) | 1       |
-| Speech-to-Text (per minute)   | 2       |
-| Voice Clone (one-time)        | 10      |
+Voice pricing can vary by provider configuration and clone tier. See
+[Billing & Credits](/docs/billing) and the dashboard/API Explorer for current
+rates.
 
 ---
 

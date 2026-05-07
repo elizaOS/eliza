@@ -41,6 +41,35 @@ const LEGACY_TRANSFER_ACTIONS = new Set([
 
 const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
 
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
 function objectRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -208,7 +237,9 @@ export const walletRouterAction: Action = {
     "Route wallet token operations through the registered chain handlers. Use subaction transfer, swap, or bridge with uniform params: subaction, chain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun. Omit chain only when one registered handler supports the subaction.",
   descriptionCompressed:
     "Route wallet transfer/swap/bridge via chain registry; params: subaction, chain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun.",
-  contexts: ["wallet"],
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "SWAP",
     "SWAP_SOLANA",
@@ -298,9 +329,12 @@ export const walletRouterAction: Action = {
         return true;
       }
     }
+    if (selectedContextMatches(state, ["finance", "crypto", "wallet"])) {
+      return true;
+    }
     const text = message.content?.text;
     if (typeof text !== "string") return false;
-    return /\b(wallet|swap|transfer|send|token|solana|evm|ethereum|base|arbitrum)\b/i.test(
+    return /\b(wallet|swap|transfer|send|token|crypto|money|balance|solana|evm|ethereum|base|arbitrum)\b/i.test(
       text,
     );
   },

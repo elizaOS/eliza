@@ -418,6 +418,8 @@ export const appBlockAction: Action & {
     "Do NOT use it for screen-time analytics (SCREEN_TIME) or remote desktop sessions (REMOTE_DESKTOP).",
   descriptionCompressed:
     "phone app block native iOS-Family-Controls Android-Usage-Access: block(apps,duration) unblock status",
+  contexts: ["screen_time", "automation", "settings", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

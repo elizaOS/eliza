@@ -2,14 +2,14 @@ import { Badge, DashboardErrorState, DashboardLoadingState } from "@elizaos/clou
 import { AlertCircle, ArrowLeft, Cloud, ExternalLink, Terminal } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { ElizaAgentActions } from "@/packages/ui/src/components/containers/agent-actions";
-import { DockerLogsViewer } from "@/packages/ui/src/components/containers/docker-logs-viewer";
-import { ElizaAgentBackupsPanel } from "@/packages/ui/src/components/containers/eliza-agent-backups-panel";
-import { ElizaAgentLogsViewer } from "@/packages/ui/src/components/containers/eliza-agent-logs-viewer";
-import { ElizaConnectButton } from "@/packages/ui/src/components/containers/eliza-connect-button";
 import { ApiError } from "../../../../lib/api-client";
 import { useRequireAuth } from "../../../../lib/auth-hooks";
 import { useAgent } from "../../../../lib/data/eliza-agents";
+import { ElizaAgentActions } from "../../_components/agent-actions";
+import { DockerLogsViewer } from "../../_components/docker-logs-viewer";
+import { ElizaAgentBackupsPanel } from "../../_components/eliza-agent-backups-panel";
+import { ElizaAgentLogsViewer } from "../../_components/eliza-agent-logs-viewer";
+import { ElizaConnectButton } from "../../_components/eliza-connect-button";
 
 function statusBadgeColor(status: string): string {
   switch (status) {

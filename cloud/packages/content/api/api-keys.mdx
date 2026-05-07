@@ -11,6 +11,13 @@ import { Callout, Tabs } from "@/docs/components";
 
 Create and manage API keys for authentication.
 
+<Callout type="info">
+  Listing and creating API keys require a Steward browser session. Updating,
+  deleting, and regenerating existing keys can use a Steward session or an API
+  key from the same organization; use a different key than the one you are
+  changing.
+</Callout>
+
 ## List API Keys
 
 <div className="api-endpoint">
@@ -28,7 +35,7 @@ Get all your API keys.
     {
       "id": "key_abc123",
       "name": "Production Key",
-      "prefix": "ek_live_abc...",
+      "prefix": "eliza_abc...",
       "permissions": ["chat", "embeddings"],
       "createdAt": "2024-01-15T10:30:00Z",
       "lastUsed": "2024-01-16T15:45:00Z"
@@ -78,13 +85,13 @@ Create a new API key.
     "id": "key_abc123",
     "name": "Production Key",
     "description": null,
-    "key_prefix": "ek_live_abc...",
+    "key_prefix": "eliza_abc...",
     "created_at": "2024-01-15T10:30:00Z",
     "permissions": ["chat", "embeddings", "images"],
     "rate_limit": 1000,
     "expires_at": null
   },
-  "plainKey": "ek_live_abc123xyz..."
+  "plainKey": "eliza_abc123xyz..."
 }
 ```
 
@@ -153,7 +160,7 @@ Generate a new secret for an existing key.
 ```json
 {
   "id": "key_abc123",
-  "key": "ek_live_newkey789...",
+  "key": "eliza_newkey789...",
   "regeneratedAt": "2024-01-16T10:30:00Z"
 }
 ```

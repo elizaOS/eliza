@@ -21,7 +21,7 @@ export { PLATFORM_MARKUP_MULTIPLIER };
 // Base provider costs (before markup).
 // These are fallback/display defaults only; live media billing uses the
 // ai_pricing catalog where available.
-const BASE_IMAGE_GENERATION_COST = 0.039; // Gemini 2.5 Flash Image default output estimate
+export const BASE_IMAGE_GENERATION_COST = 0.039; // Gemini 2.5 Flash Image default output estimate
 const BASE_VIDEO_GENERATION_COST = 3.2; // Veo 3/3.1 8s 1080p video with audio
 const BASE_VIDEO_GENERATION_FALLBACK_COST = 0.28; // Lowest curated default video request
 

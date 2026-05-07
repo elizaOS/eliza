@@ -98,6 +98,8 @@ function formatResultsWithLineNumbers(
 
 export const searchConversationsAction: Action = {
   name: "SEARCH_CONVERSATIONS",
+  contexts: ["messaging", "social", "knowledge"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "SEARCH_CHATS",
     "FIND_MESSAGES",

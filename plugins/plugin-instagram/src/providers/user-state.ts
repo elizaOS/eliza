@@ -43,6 +43,10 @@ export const userStateProvider: Provider = {
     "provide Instagram user context state includ user ID, thread ID, interaction type",
 
   dynamic: true,
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   async get(_runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> {
     const content = message.content as Record<string, unknown>;
 

@@ -95,8 +95,8 @@ function formatAvailability(days: CalendlyAvailability[]): string {
 // (missing required params, missing connector grant) — selection + execution
 // were correct, we just need the user to fill in the gap; vs. real failures
 // from the Calendly API. Both stay `success: false`, but the human-input
-// group is flagged with `requiresConfirmation` so the runtime stops the
-// multi-step continuation and the benchmark scorer treats them as completed.
+// group is flagged with `requiresConfirmation` so the native planner stops
+// chaining and the benchmark scorer treats them as completed.
 const CALENDLY_NEEDS_INPUT_ERRORS = new Set([
   "MISSING_EVENT_TYPE_URI",
   "MISSING_DATE_RANGE",
@@ -160,6 +160,8 @@ export const calendlyAction: Action = {
     "name or passes a calendly.com / api.calendly.com URL. Calendly is a " +
     "separate third-party scheduling product with its own API, event-type " +
     "URIs, and booking-link flow.",
+  contexts: ["calendar", "contacts", "tasks"],
+  roleGate: { minRole: "OWNER" },
 
   validate: async (
     runtime: IAgentRuntime,

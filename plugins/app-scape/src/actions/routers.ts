@@ -163,6 +163,8 @@ function createRouterAction(definition: ScapeRouterDefinition): Action {
     name: definition.name,
     description: `${definition.description} Return JSON with action: ${definition.name}, op: one of ${definition.subactions.map((s) => s.name).join("|")}.`,
     descriptionCompressed: definition.descriptionCompressed,
+    contexts: ["game", "automation", "world", "state"],
+    roleGate: { minRole: "ADMIN" },
     similes: definition.subactions.map((subaction) => subaction.description),
     examples: [],
     parameters: [

@@ -35,6 +35,41 @@ const configSchema = z.object({
     }),
 });
 
+const HELLO_WORLD_CONTEXTS = ["general"] as const;
+const HELLO_WORLD_TERMS = [
+  "hello",
+  "hi",
+  "hey",
+  "greet",
+  "hello world",
+  "hola",
+  "buenas",
+  "bonjour",
+  "salut",
+  "hallo",
+  "ciao",
+  "olá",
+  "ola",
+  "你好",
+  "您好",
+  "こんにちは",
+  "안녕",
+  "kamusta",
+  "xin chao",
+  "xin chào",
+];
+
+function helloWorldValidationText(message: Memory, state?: State): string {
+  const values = state?.values ?? {};
+  return [
+    message.content.text,
+    typeof values.recentMessages === "string" ? values.recentMessages : undefined,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+    .toLowerCase();
+}
+
 /**
  * Example HelloWorld action
  * This demonstrates the simplest possible action structure
@@ -53,14 +88,16 @@ const helloWorldAction: Action = {
   name: "HELLO_WORLD",
   similes: ["GREET", "SAY_HELLO"],
   description: "Responds with a simple hello world message",
+  contexts: [...HELLO_WORLD_CONTEXTS],
+  contextGate: { anyOf: [...HELLO_WORLD_CONTEXTS] },
 
   validate: async (
     _runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State | undefined,
+    message: Memory,
+    state: State | undefined,
   ): Promise<boolean> => {
-    // Always valid
-    return true;
+    const text = helloWorldValidationText(message, state);
+    return HELLO_WORLD_TERMS.some((term) => text.includes(term.toLowerCase()));
   },
 
   handler: async (
@@ -118,6 +155,10 @@ const helloWorldAction: Action = {
 const helloWorldProvider: Provider = {
   name: "HELLO_WORLD_PROVIDER",
   description: "A simple example provider",
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  cacheStable: true,
+  cacheScope: "agent",
 
   get: async (
     _runtime: IAgentRuntime,

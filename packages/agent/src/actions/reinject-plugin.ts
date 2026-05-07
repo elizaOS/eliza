@@ -9,6 +9,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { hasReinjectPluginSignal } from "./plugin-action-validation.js";
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
   const svc = runtime.getService("plugin_manager");
@@ -17,6 +18,8 @@ function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
 
 export const reinjectPluginAction: Action = {
   name: "REINJECT_PLUGIN",
+  contexts: ["admin", "settings", "code", "files"],
+  roleGate: { minRole: "OWNER" },
 
   similes: ["UNEJECT_PLUGIN", "RESTORE_PLUGIN", "REMOVE_LOCAL_PLUGIN"],
 
@@ -25,7 +28,9 @@ export const reinjectPluginAction: Action = {
   descriptionCompressed:
     "remove eject plugin copy runtime fall back npm package",
 
-  validate: async () => true,
+  validate: async (runtime, message, state) =>
+    getPluginManager(runtime) !== null &&
+    hasReinjectPluginSignal(message, state),
 
   handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;

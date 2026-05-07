@@ -26,13 +26,12 @@
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { config } from "dotenv";
 import pg from "pg";
+import { loadEnvFiles } from "./local-dev-helpers";
 
 // Existing shell env wins so a one-off `NEW_POSTGRES_URL=… bun run …` works.
 // Then .env.local fills gaps; then .env fills the rest.
-config({ path: ".env.local" });
-config({ path: ".env" });
+loadEnvFiles([".env.local", ".env"]);
 
 // Imports below depend on env being loaded first because they read process.env at module init.
 const { putObjectText } = await import("../lib/storage/object-store");

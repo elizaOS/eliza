@@ -9,6 +9,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { hasEjectPluginSignal } from "./plugin-action-validation.js";
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
   const svc = runtime.getService("plugin_manager");
@@ -17,6 +18,8 @@ function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
 
 export const ejectPluginAction: Action = {
   name: "EJECT_PLUGIN",
+  contexts: ["admin", "settings", "code", "files"],
+  roleGate: { minRole: "OWNER" },
 
   similes: ["EJECT", "FORK_PLUGIN", "CLONE_PLUGIN", "EDIT_PLUGIN_SOURCE"],
 
@@ -26,7 +29,8 @@ export const ejectPluginAction: Action = {
   descriptionCompressed:
     "clone plugin source code locally edit override npm version runtime use before modify upstream plugin code",
 
-  validate: async () => true,
+  validate: async (runtime, message, state) =>
+    getPluginManager(runtime) !== null && hasEjectPluginSignal(message, state),
 
   handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;

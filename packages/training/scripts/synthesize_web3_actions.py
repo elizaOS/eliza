@@ -35,7 +35,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "web3.jsonl"
 
@@ -747,7 +747,7 @@ def make_memory(rng: random.Random, n: int, persona_id: str) -> list[dict[str, A
 
 def build_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     action_name: str,
     plugin: str,
     user_msg: str,
@@ -880,7 +880,7 @@ def fmt(template: str, **kwargs) -> str:
     return template.format(**kwargs)
 
 
-def gen_evm_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_evm_transfer(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -942,7 +942,7 @@ def gen_evm_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterat
         )
 
 
-def gen_evm_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_evm_swap(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -995,7 +995,7 @@ def gen_evm_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[d
         )
 
 
-def gen_cross_chain_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_cross_chain_transfer(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1057,7 +1057,7 @@ def gen_cross_chain_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -
         )
 
 
-def gen_gov_propose(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_gov_propose(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1109,7 +1109,7 @@ def gen_gov_propose(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterato
         )
 
 
-def gen_gov_vote(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_gov_vote(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1160,7 +1160,7 @@ def gen_gov_vote(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[d
         )
 
 
-def gen_gov_queue(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_gov_queue(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1206,7 +1206,7 @@ def gen_gov_queue(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[
         )
 
 
-def gen_gov_execute(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_gov_execute(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1254,7 +1254,7 @@ def gen_gov_execute(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterato
         )
 
 
-def gen_solana_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_solana_transfer(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1304,7 +1304,7 @@ def gen_solana_transfer(encoder: ToonEncoder, rng: random.Random, n: int) -> Ite
         )
 
 
-def gen_solana_swap(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
+def gen_solana_swap(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> Iterator[dict[str, Any]]:
     langs = LANGS[:n]
     for i in range(n):
         lang = langs[i]
@@ -1374,7 +1374,7 @@ def main() -> int:
     args = p.parse_args()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     total = 0
     by_action: dict[str, int] = {}
     null_count: dict[str, int] = {}

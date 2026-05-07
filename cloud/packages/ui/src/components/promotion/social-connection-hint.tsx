@@ -8,7 +8,7 @@
  * their social platforms for promotion automation.
  */
 
-import { BrandCard, Button } from "@elizaos/cloud-ui";
+import { BrandCard, Button } from "../primitives";
 import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

@@ -39,6 +39,8 @@ interface RuntimeStatusParams {
 
 export const getRuntimeStatusAction: Action = {
   name: "GET_RUNTIME_STATUS",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: ["RUNTIME_STATUS", "AGENT_STATUS_RUNTIME", "RUNTIME_SNAPSHOT"],
   description:
     "Fetch a high-level runtime snapshot from /api/runtime: agent state, model, plugin / action / provider / evaluator / service counts.",
@@ -133,6 +135,8 @@ interface DescribeActionsParams {
 
 export const describeRegisteredActionsAction: Action = {
   name: "DESCRIBE_REGISTERED_ACTIONS",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: ["LIST_ACTIONS", "REGISTERED_ACTIONS", "AVAILABLE_ACTIONS"],
   description:
     "List all actions currently registered on the runtime, with descriptions. Optionally filter by name substring (case-insensitive).",
@@ -218,6 +222,8 @@ interface ReloadConfigResponse {
 
 export const reloadRuntimeConfigAction: Action = {
   name: "RELOAD_RUNTIME_CONFIG",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: ["RELOAD_CONFIG", "REFRESH_CONFIG"],
   description:
     "Reload eliza.json from disk and apply hot-reloadable fields (character name/system/bio, voice config, provider API keys, feature flags) to the running runtime. Plugin list, model registry, and database changes still require RESTART_RUNTIME.",
@@ -306,6 +312,8 @@ export const reloadRuntimeConfigAction: Action = {
 
 export const restartRuntimeAction: Action = {
   name: "RESTART_RUNTIME",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: ["RESTART_PROCESS", "RELOAD_RUNTIME", "BOUNCE_RUNTIME"],
   description:
     "Restart the agent runtime by hitting POST /api/restart. The process exits and the supervisor relaunches it.",

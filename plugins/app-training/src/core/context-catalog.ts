@@ -12,6 +12,17 @@
 
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 
+const FINANCE_CRYPTO_WALLET_CONTEXTS: AgentContext[] = [
+  "finance",
+  "crypto",
+  "wallet",
+];
+
+const FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS: AgentContext[] = [
+  ...FINANCE_CRYPTO_WALLET_CONTEXTS,
+  "automation",
+];
+
 export type ContextResolutionSource =
   | "component"
   | "plugin"
@@ -55,24 +66,27 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   CREATE_TRIGGER_TASK: ["automation"],
 
   // --- Wallet / DeFi ---
-  SEND_TOKEN: ["wallet"],
-  TRANSFER: ["wallet"],
-  CHECK_BALANCE: ["wallet"],
-  GET_BALANCE: ["wallet"],
-  SWAP_TOKEN: ["wallet", "automation"],
-  BRIDGE_TOKEN: ["wallet"],
-  APPROVE_TOKEN: ["wallet"],
-  SIGN_MESSAGE: ["wallet"],
-  DEPLOY_CONTRACT: ["wallet", "code"],
-  CREATE_GOVERNANCE_PROPOSAL: ["wallet", "social"],
-  VOTE_ON_PROPOSAL: ["wallet", "social"],
-  STAKE: ["wallet"],
-  UNSTAKE: ["wallet"],
-  CLAIM_REWARDS: ["wallet"],
-  GET_TOKEN_PRICE: ["wallet", "knowledge"],
-  GET_PORTFOLIO: ["wallet"],
-  CREATE_WALLET: ["wallet"],
-  IMPORT_WALLET: ["wallet"],
+  SEND_TOKEN: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "payments"],
+  TRANSFER: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "payments"],
+  CHECK_BALANCE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  GET_BALANCE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  SWAP_TOKEN: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  BRIDGE_TOKEN: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  APPROVE_TOKEN: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  SIGN_MESSAGE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  DEPLOY_CONTRACT: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "code"],
+  CREATE_GOVERNANCE_PROPOSAL: [
+    ...FINANCE_CRYPTO_WALLET_CONTEXTS,
+    "social",
+  ],
+  VOTE_ON_PROPOSAL: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "social"],
+  STAKE: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  UNSTAKE: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  CLAIM_REWARDS: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  GET_TOKEN_PRICE: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "knowledge"],
+  GET_PORTFOLIO: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  CREATE_WALLET: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  IMPORT_WALLET: FINANCE_CRYPTO_WALLET_CONTEXTS,
 
   // --- Knowledge / RAG ---
   SEARCH_KNOWLEDGE: ["knowledge"],
@@ -160,10 +174,10 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   settings: ["system"],
 
   // Wallet providers
-  walletBalance: ["wallet"],
-  walletPortfolio: ["wallet"],
-  tokenPrices: ["wallet", "knowledge"],
-  chainInfo: ["wallet"],
+  walletBalance: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  walletPortfolio: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  tokenPrices: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "knowledge"],
+  chainInfo: FINANCE_CRYPTO_WALLET_CONTEXTS,
 
   // Social providers
   contacts: ["social"],

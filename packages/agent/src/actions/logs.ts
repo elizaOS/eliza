@@ -70,6 +70,8 @@ function formatLogPreview(entries: LogEntry[], limit: number): string {
 
 export const queryLogsAction: Action = {
   name: "QUERY_LOGS",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "READ_LOGS",
     "GET_LOGS",
@@ -216,6 +218,8 @@ interface ExportLogsParams {
 
 export const exportLogsAction: Action = {
   name: "EXPORT_LOGS",
+  contexts: ["admin", "agent_internal", "settings", "files"],
+  roleGate: { minRole: "OWNER" },
   similes: ["DOWNLOAD_LOGS", "DUMP_LOGS", "SAVE_LOGS"],
   description:
     "Export the agent's log buffer to JSON or CSV via POST /api/logs/export.",
@@ -327,6 +331,8 @@ export const exportLogsAction: Action = {
 
 export const clearLogsAction: Action = {
   name: "CLEAR_LOGS",
+  contexts: ["admin", "agent_internal", "settings"],
+  roleGate: { minRole: "OWNER" },
   similes: ["WIPE_LOGS", "RESET_LOGS", "EMPTY_LOGS"],
   description:
     "Clear the agent's in-memory log buffer via DELETE /api/logs. Owner-only destructive reset when the user wants diagnostic logs wiped or the buffer emptied.",

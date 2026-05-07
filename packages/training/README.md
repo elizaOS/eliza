@@ -19,7 +19,7 @@ a curated set of tool-calling and agentic-trace datasets.
 
 The base models are catalogued in `scripts/training/model_registry.py`;
 each entry is tagged `local | workstation | cloud`. Default optimizer is
-**APOLLO** (full-parameter SFT, SGD-like memory at AdamW perf —
+**APOLLO** (full-parameter SFT, low-memory projected optimizer state,
 arXiv:2412.05270), not LoRA.
 
 | eliza release | base               | tier        | trains on             | optimizer    |
@@ -98,7 +98,7 @@ Bootstrap flow:
 
 ```bash
 uv run python scripts/download_datasets.py --priority all \
-    --skip nubilio-trajectories,scam-defense-corpus,light-multilight \
+    --skip nubilio-trajectories,light-multilight \
     --max-workers 2 --min-free-gb 40
 uv run python scripts/normalize.py
 uv run python scripts/prepare_native_tool_calling_data.py --write-matrix
@@ -109,12 +109,35 @@ uv run python scripts/prepare_native_tool_calling_data.py \
 The source matrix is written to `data/native/source_matrix.json` and
 `data/native/SOURCE_MATRIX.md`. It records every datasource's transform family,
 strengths, weaknesses, raw-data status, and recommended native-training weight.
-The three skipped corpora are local-path sources; drop the `--skip` once those
-local corpora are mounted under `local-corpora/`.
+
+Trajectory alignment audit:
+
+```bash
+uv run --with pyyaml --with pyarrow \
+    python scripts/sample_native_trajectory_alignment.py \
+    --samples-per-source 3 --run-cerebras
+```
+
+This writes ignored review artifacts under `data/native/audit/`: three raw
+samples per downloaded dataset, reference simple/wallet/email/calendar
+trajectories, model-call envelopes for Cerebras and the Vercel AI Gateway
+bridge, and a composition audit. See
+[`docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`](docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md).
 
 ### Quick reference
 
 ```bash
+# Build train/val/test directly from runtime trajectory exports
+uv run --extra train python scripts/trajectories_to_sft.py \
+    --input ../trajectory-export.jsonl \
+    --output-dir data/trajectory-runs/local-review
+
+# One-command local APOLLO fine-tune from trajectory export(s)
+uv run --extra train python scripts/run_pipeline.py \
+    --registry-key qwen3.5-2b \
+    --trajectory-export ../trajectory-export.jsonl \
+    --epochs 1 --skip-base-bench
+
 # Smoke test on 2B (smallest eliza-1 size, trains on 16 GB)
 uv run --extra train python scripts/run_pipeline.py \
     --registry-key qwen3.5-2b --max-samples 1000 --epochs 1
@@ -310,8 +333,8 @@ For inference see `scripts/inference/serve_vllm.py` (vLLM serve launcher) and
 
 The full quantization stack at inference is:
 
-- **APOLLO / APOLLO-Mini** at training time — optimizer state shrinks
-  from ~200 GB (AdamW @ 27B) to ~24 GB (APOLLO-Mini @ 27B).
+- **APOLLO / APOLLO-Mini** at training time — projected optimizer state
+  keeps the 2B local run inside the consumer-GPU budget.
 - **PolarQuant** — 4-bit weight quantization (arXiv:2603.29078).
 - **QJL** — 1-bit JL-projected K cache (arXiv:2406.03482).
 - **Fused TurboQuant** — Triton-fused 4-bit V cache (arXiv:2504.19874).
@@ -326,9 +349,9 @@ uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-9b
 uv run --extra train python scripts/training/memory_calc.py --shape qwen3.6-27b
 ```
 
-The `memory_calc` output covers training memory across `seq_len ∈
-{4k…147k}` for `{adamw, apollo, apollo_mini}`, inference memory at the
-same context lengths for every (weight-quant, K-quant, V-quant)
+The `memory_calc` output covers APOLLO training memory across `seq_len ∈
+{4k…147k}`, inference memory at the same context lengths for every
+(weight-quant, K-quant, V-quant)
 combination, an inference fit table across {RTX 5090, RTX Pro 5000/6000
 Blackwell, H100, H200}, and the maximum context per card with the full
 quant stack. The 27B fits ≥1M tokens on every listed card; the

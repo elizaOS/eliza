@@ -70,6 +70,13 @@ describe("trajectory task datasets", () => {
         reply: "Sure.",
       },
     });
+    expect(example.metadata).toMatchObject({
+      task_type: "should_respond",
+      source_dataset: "harness/should_respond",
+      trajectory_id: "traj-1",
+      call_id: "call-1",
+      agent_id: "agent-1",
+    });
   });
 
   it("skips legacy should_respond rows with a warning", async () => {
@@ -107,5 +114,25 @@ describe("trajectory task datasets", () => {
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
+  });
+
+  it("accepts JSONL trajectory export text as input", () => {
+    const exportText = `${JSON.stringify(
+      baseTrajectory(
+        JSON.stringify({
+          messageHandler: {
+            action: "RESPOND",
+            simple: true,
+            contexts: [],
+            thought: "Direct mention.",
+            reply: "Sure.",
+          },
+        }),
+      ),
+    )}\n`;
+    const examples = extractTrajectoryExamplesByTask(exportText, [
+      "should_respond",
+    ]);
+    expect(examples.should_respond).toHaveLength(1);
   });
 });

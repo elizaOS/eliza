@@ -13,7 +13,7 @@ export type { NewProviderHealth, ProviderHealth };
  */
 export class ProviderHealthRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -35,7 +35,7 @@ export class ProviderHealthRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

@@ -119,6 +119,8 @@ interface UpdateIdentityParams {
 
 export const updateIdentityAction: Action = {
   name: "UPDATE_IDENTITY",
+  contexts: ["settings", "admin", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "SET_IDENTITY",
@@ -260,6 +262,8 @@ interface UpdateAiProviderParams {
 
 export const updateAiProviderAction: Action = {
   name: "UPDATE_AI_PROVIDER",
+  contexts: ["settings", "secrets", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "SWITCH_PROVIDER",
@@ -457,6 +461,8 @@ interface ToggleCapabilityParams {
 
 export const toggleCapabilityAction: Action = {
   name: "TOGGLE_CAPABILITY",
+  contexts: ["settings", "admin", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "ENABLE_CAPABILITY",
@@ -605,6 +611,8 @@ interface ToggleAutoTrainingParams {
 
 export const toggleAutoTrainingAction: Action = {
   name: "TOGGLE_AUTO_TRAINING",
+  contexts: ["settings", "admin", "agent_internal", "automation"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "ENABLE_AUTO_TRAINING",

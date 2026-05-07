@@ -510,6 +510,28 @@ describe("JSONB fallback for agent agents", () => {
     expect(resolved.token_name).toBe("Canonical");
     expect(resolved.token_ticker).toBe("CAN");
   });
+
+  test("ignores non-string JSONB token fallback values", () => {
+    function stringConfigValue(
+      config: Record<string, unknown> | null,
+      key: "tokenContractAddress" | "chain" | "tokenName" | "tokenTicker",
+    ): string | null {
+      const value = config?.[key];
+      return typeof value === "string" ? value : null;
+    }
+
+    const cfg = {
+      tokenContractAddress: 12345,
+      chain: { id: 1 },
+      tokenName: null,
+      tokenTicker: undefined,
+    };
+
+    expect(stringConfigValue(cfg, "tokenContractAddress")).toBeNull();
+    expect(stringConfigValue(cfg, "chain")).toBeNull();
+    expect(stringConfigValue(cfg, "tokenName")).toBeNull();
+    expect(stringConfigValue(cfg, "tokenTicker")).toBeNull();
+  });
 });
 
 // ─── Migration backfill logic ───────────────────────────────────────────────

@@ -1,6 +1,9 @@
 export const AGENT_CONTEXTS = [
   "general",
+  "finance",
+  "crypto",
   "wallet",
+  "payments",
   "knowledge",
   "browser",
   "code",

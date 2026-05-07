@@ -1,6 +1,7 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import {
   type Action,
+  type ActionResult,
   elizaLogger,
   generateText,
   type HandlerCallback,
@@ -82,8 +83,58 @@ interface PoolData {
   };
 }
 
+const REBALANCE_SUMMARY_LIMIT = 5;
+
+function toActionError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function buildActionResult(
+  success: boolean,
+  text: string,
+  data?: Record<string, unknown>,
+  error?: string
+): ActionResult {
+  return { success, text, data, ...(error ? { error } : {}) };
+}
+
+function readManagePositionsOptions(
+  params: Record<string, unknown> | undefined
+): ManagePositionsInput | null {
+  if (!params) return null;
+  try {
+    return validateManagePositionsInput(params);
+  } catch {
+    return null;
+  }
+}
+
+function selectedContextMatches(state: State | undefined, contexts: readonly string[]): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
 export const managePositions: Action = {
   name: "manage_raydium_positions",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "AUTOMATE_RAYDIUM_REBALANCING",
     "AUTOMATE_RAYDIUM_POSITIONS",
@@ -92,8 +143,31 @@ export const managePositions: Action = {
   description:
     "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
   descriptionCompressed: "automatically manage Raydium position rebalance drift too far pool price",
+  parameters: [
+    {
+      name: "repositionThresholdBps",
+      description: "Required drift threshold in basis points before rebalancing.",
+      required: true,
+      schema: { type: "integer", minimum: 1, maximum: 10000 },
+    },
+    {
+      name: "intervalSeconds",
+      description: "Requested monitoring interval in seconds for the automation policy.",
+      required: true,
+      schema: { type: "integer", minimum: 1, maximum: 86400 },
+    },
+    {
+      name: "slippageToleranceBps",
+      description: "Required slippage tolerance in basis points for reopen transactions.",
+      required: true,
+      schema: { type: "integer", minimum: 1, maximum: 5000 },
+    },
+  ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    if (selectedContextMatches(state, ["finance", "crypto", "wallet"])) {
+      return true;
+    }
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["manage", "raydium", "positions"];
@@ -123,6 +197,13 @@ export const managePositions: Action = {
         elizaLogger.warn("Validation failed: No valid configuration provided.");
         return false;
       }
+      if (
+        config.repositionThresholdBps <= 0 ||
+        config.intervalSeconds <= 0 ||
+        config.slippageToleranceBps <= 0
+      ) {
+        return false;
+      }
       return true;
     };
     try {
@@ -136,35 +217,82 @@ export const managePositions: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _params: { [key: string]: unknown },
+    params: { [key: string]: unknown },
     _callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     elizaLogger.log("Start managing Raydium positions");
-    if (!state) {
-      state = (await runtime.composeState(message)) as State;
-    } else {
-      state = await runtime.updateRecentMessageState(state);
+    try {
+      if (!state) {
+        state = (await runtime.composeState(message)) as State;
+      } else {
+        state = await runtime.updateRecentMessageState(state);
+      }
+
+      const config =
+        readManagePositionsOptions(params) ??
+        (await extractAndValidateConfiguration(message.content.text, runtime));
+      if (!config) {
+        return buildActionResult(
+          false,
+          "Missing or invalid Raydium position-management config. Provide repositionThresholdBps, intervalSeconds, and slippageToleranceBps.",
+          { providedParams: Object.keys(params ?? {}) },
+          "INVALID_MANAGE_POSITIONS_CONFIG"
+        );
+      }
+
+      const { repositionThresholdBps, intervalSeconds, slippageToleranceBps } = config;
+      const fetchedPositions = extractRaydiumPositionsFromState(state);
+      elizaLogger.log(
+        `Validated configuration: repositionThresholdBps=${repositionThresholdBps}, slippageTolerance=${slippageToleranceBps}`
+      );
+      const { signer: wallet } = await loadWallet(runtime, true);
+      const solanaRpcUrl = settings.SOLANA_RPC_URL;
+      if (!solanaRpcUrl) {
+        return buildActionResult(
+          false,
+          "SOLANA_RPC_URL setting is required to manage Raydium positions.",
+          undefined,
+          "SOLANA_RPC_URL setting is required to manage Raydium positions."
+        );
+      }
+      const connection = new Connection(solanaRpcUrl);
+
+      const results = await handleRepositioning(
+        fetchedPositions,
+        repositionThresholdBps,
+        connection,
+        wallet
+      );
+      const changed = results.filter((item): item is NonNullable<(typeof results)[number]> =>
+        Boolean(item)
+      );
+      const unchangedCount = fetchedPositions.length - changed.length;
+      return buildActionResult(
+        true,
+        changed.length > 0
+          ? `Managed ${fetchedPositions.length} Raydium positions; rebalanced ${changed.length} and skipped ${unchangedCount}.`
+          : `Checked ${fetchedPositions.length} Raydium positions; all remained in range.`,
+        {
+          config: { repositionThresholdBps, intervalSeconds, slippageToleranceBps },
+          totalPositions: fetchedPositions.length,
+          rebalancedCount: changed.length,
+          skippedCount: unchangedCount,
+          rebalancedPositions: changed.slice(0, REBALANCE_SUMMARY_LIMIT).map((item) => ({
+            positionMint: item.positionMint,
+            closeTxId: item.closeTxId,
+            openTxId: item.openTxId,
+          })),
+        }
+      );
+    } catch (error) {
+      const errorMessage = toActionError(error);
+      return buildActionResult(
+        false,
+        `Failed to manage Raydium positions: ${errorMessage}`,
+        { providedParams: Object.keys(params ?? {}) },
+        errorMessage
+      );
     }
-
-    const { repositionThresholdBps, slippageToleranceBps }: ManagePositionsInput =
-      await extractAndValidateConfiguration(message.content.text, runtime);
-    const fetchedPositions = extractRaydiumPositionsFromState(state);
-
-    elizaLogger.log(
-      `Validated configuration: repositionThresholdBps=${repositionThresholdBps}, slippageTolerance=${slippageToleranceBps}`
-    );
-    elizaLogger.log("Fetched positions:", fetchedPositions);
-
-    const { signer: wallet } = await loadWallet(runtime, true);
-    const solanaRpcUrl = settings.SOLANA_RPC_URL;
-    if (!solanaRpcUrl) {
-      throw new Error("SOLANA_RPC_URL setting is required to manage Raydium positions.");
-    }
-    const connection = new Connection(solanaRpcUrl);
-
-    await handleRepositioning(fetchedPositions, repositionThresholdBps, connection, wallet);
-
-    return true;
   },
   examples: [],
 };

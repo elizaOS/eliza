@@ -10,26 +10,34 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("FOLLOW_UPS");
+const MAX_FOLLOW_UPS = 20;
+const MAX_FOLLOW_UP_SUGGESTIONS = 3;
 
 export const followUpsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const followUpService = runtime.getService("follow_up") as FollowUpService;
-		if (!followUpService) {
-			runtime.logger.warn("[FollowUpsProvider] FollowUpService not available");
-			return { text: "", values: {}, data: {} };
-		}
+		try {
+			const followUpService = runtime.getService("follow_up") as FollowUpService;
+			if (!followUpService) {
+				runtime.logger.warn("[FollowUpsProvider] FollowUpService not available");
+				return { text: "", values: {}, data: {} };
+			}
 
-		// Get upcoming follow-ups for the next 7 days
-		const upcomingFollowUps = await followUpService.getUpcomingFollowUps(
-			7,
-			true,
-		);
+			// Get upcoming follow-ups for the next 7 days
+			const upcomingFollowUps = (
+				await followUpService.getUpcomingFollowUps(7, true)
+			).slice(0, MAX_FOLLOW_UPS);
 
 		if (upcomingFollowUps.length === 0) {
 			return {
@@ -118,29 +126,46 @@ export const followUpsProvider: Provider = {
 		}
 
 		// Get follow-up suggestions
-		const suggestions = await followUpService.getFollowUpSuggestions();
+			const suggestions = (
+				await followUpService.getFollowUpSuggestions()
+			).slice(0, MAX_FOLLOW_UP_SUGGESTIONS);
 
-		if (suggestions.length > 0) {
-			textSummary += `\nSuggested follow-ups:\n`;
-			suggestions.slice(0, 3).forEach((s) => {
-				textSummary += `- ${s.entityName} (${s.daysSinceLastContact} days since last contact)\n`;
-			});
+			if (suggestions.length > 0) {
+				textSummary += `\nSuggested follow-ups:\n`;
+				suggestions.forEach((s) => {
+					textSummary += `- ${s.entityName} (${s.daysSinceLastContact} days since last contact)\n`;
+				});
+			}
+
+			return {
+				text: textSummary.trim(),
+				values: {
+					followUpCount: upcomingFollowUps.length,
+					overdueCount: overdue.length,
+					upcomingCount: upcoming.length,
+					suggestionsCount: suggestions.length,
+				},
+				data: {
+					followUpCount: upcomingFollowUps.length,
+					overdueCount: overdue.length,
+					upcomingCount: upcoming.length,
+					suggestionsCount: suggestions.length,
+				},
+			};
+		} catch (error) {
+			return {
+				text: "",
+				values: {
+					followUpCount: 0,
+					overdueCount: 0,
+					upcomingCount: 0,
+					suggestionsCount: 0,
+				},
+				data: {
+					followUpCount: 0,
+					error: error instanceof Error ? error.message : String(error),
+				},
+			};
 		}
-
-		return {
-			text: textSummary.trim(),
-			values: {
-				followUpCount: upcomingFollowUps.length,
-				overdueCount: overdue.length,
-				upcomingCount: upcoming.length,
-				suggestionsCount: suggestions.length,
-			},
-			data: {
-				followUpCount: upcomingFollowUps.length,
-				overdueCount: overdue.length,
-				upcomingCount: upcoming.length,
-				suggestionsCount: suggestions.length,
-			},
-		};
 	},
 };

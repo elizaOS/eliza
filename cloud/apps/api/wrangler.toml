@@ -26,7 +26,7 @@ __filename = '"/worker.js"'
 
 [alias]
 "@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
-"@elizaos/core" = "../../packages/stubs/elizaos-core.ts"
+"@elizaos/core" = "./src/stubs/elizaos-core.ts"
 "@elizaos/cloud-sdk" = "../../packages/sdk/src/index.ts"
 # ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
 # sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any

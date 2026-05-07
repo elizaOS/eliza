@@ -111,6 +111,8 @@ const sharedStorage = new MemoryStorage();
 const SIM_ROOM_ID = stringToUuid("game-of-life");
 const SIM_WORLD_ID = stringToUuid("game-of-life-world");
 const ENV_ENTITY_ID = stringToUuid("game-of-life-environment");
+const GAME_CONTEXTS = ["game"] as const;
+const GAME_CONTEXT_GATE = { anyOf: [...GAME_CONTEXTS] };
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -183,6 +185,8 @@ function mutateDNA(parent: DNA): DNA {
 const moveTowardFoodAction: Action = {
   name: "MOVE_TOWARD_FOOD",
   description: "Move toward the nearest visible food",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["SEEK_FOOD", "HUNT_FOOD", "FORAGE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -255,6 +259,8 @@ const moveTowardFoodAction: Action = {
 const eatAction: Action = {
   name: "EAT",
   description: "Eat food at current position",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["CONSUME", "FEED"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -296,6 +302,8 @@ const eatAction: Action = {
 const fleeAction: Action = {
   name: "FLEE",
   description: "Run away from nearby aggressive agents",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["RUN", "ESCAPE", "EVADE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -372,6 +380,8 @@ const fleeAction: Action = {
 const attackAction: Action = {
   name: "ATTACK",
   description: "Attack a nearby weaker agent to steal energy",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["FIGHT", "HUNT_PREY", "ASSAULT"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -450,6 +460,8 @@ const attackAction: Action = {
 const reproduceAction: Action = {
   name: "REPRODUCE",
   description: "Create offspring when energy is high enough",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["SPAWN", "BREED", "REPLICATE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -515,6 +527,8 @@ const reproduceAction: Action = {
 const wanderAction: Action = {
   name: "WANDER",
   description: "Move in a random direction when nothing else to do",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
   similes: ["EXPLORE", "ROAM", "MOVE_RANDOM"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

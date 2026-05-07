@@ -9,6 +9,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderResult,
   State,
 } from "@elizaos/core";
 import { currentPlatform } from "../platform/helpers.js";
@@ -21,13 +22,22 @@ export const computerStateProvider: Provider = {
 
   descriptionCompressed:
     "Platform, screen size, tools, recent actions, approval queue.",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const service = runtime.getService("computeruse") as unknown as
-      | ComputerUseService
-      | undefined;
-    if (!service) {
-      return { text: "" };
-    }
+  contexts: ["browser", "files", "terminal"],
+  contextGate: { anyOf: ["browser", "files", "terminal"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    try {
+      const service = runtime.getService("computeruse") as unknown as
+        | ComputerUseService
+        | undefined;
+      if (!service) {
+        return { text: "" };
+      }
 
     const caps = service.getCapabilities();
     const screen = service.getScreenDimensions();
@@ -71,19 +81,25 @@ export const computerStateProvider: Provider = {
       },
     }, null, 2)}\n\`\`\``;
 
-    return {
-      text,
-      values: {
-        platform: currentPlatform(),
-        screenWidth: screen.width,
-        screenHeight: screen.height,
-      },
-      data: {
-        approvals,
-        capabilities: caps,
-        screenSize: screen,
-        recentActions: recent,
-      },
-    };
+      return {
+        text,
+        values: {
+          platform: currentPlatform(),
+          screenWidth: screen.width,
+          screenHeight: screen.height,
+        },
+        data: {
+          approvals: {
+            ...approvals,
+            pendingApprovals: approvals.pendingApprovals.slice(0, 5),
+          },
+          capabilities: caps,
+          screenSize: screen,
+          recentActions: recent.slice(-5),
+        },
+      };
+    } catch {
+      return { text: "", values: {}, data: {} };
+    }
   },
 };

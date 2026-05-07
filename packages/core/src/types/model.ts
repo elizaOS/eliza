@@ -381,6 +381,13 @@ export interface GenerateTextParams
 	 * those that use segments must send the same total text so model behavior is unchanged.
 	 */
 	promptSegments?: PromptSegment[];
+	/**
+	 * Provider-specific options forwarded by adapters that support them. This is
+	 * intentionally open-ended so callers can pass cache routing hints, gateway
+	 * caching policy, or model-specific knobs without changing the core API for
+	 * every provider.
+	 */
+	providerOptions?: Record<string, JsonValue | object | undefined>;
 }
 
 /**

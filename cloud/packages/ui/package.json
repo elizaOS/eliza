@@ -67,6 +67,9 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./brand": "./src/components/brand/index.ts",
+    "./layout": "./src/components/layout/index.ts",
+    "./primitives": "./src/components/primitives.ts",
     "./components/*": "./src/components/*",
     "./runtime/*": "./src/runtime/*",
     "./styles/docs.css": "./src/styles/docs.css"

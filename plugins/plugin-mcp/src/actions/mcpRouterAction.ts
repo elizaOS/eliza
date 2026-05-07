@@ -92,8 +92,10 @@ export const mcpRouterAction: RouterAction = {
   similes: ["MCP", "MCP_ROUTER", "USE_MCP"],
   description: "Route MCP tool calls and resource reads through one action.",
   descriptionCompressed: "route MCP tool call resource read list",
-  contexts: ["general", "automation", "knowledge", MCP_ACTION_CONTEXT],
-  actionGroup: { contexts: [MCP_ACTION_CONTEXT] },
+  contexts: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT],
+  contextGate: { anyOf: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT] },
+  roleGate: { minRole: "USER" },
+  actionGroup: { contexts: ["connectors", MCP_ACTION_CONTEXT] },
 
   validate: async (runtime, message) => {
     if (!hasConnectedCapability(runtime)) return false;

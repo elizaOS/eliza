@@ -9,6 +9,8 @@ import { hasOwnerAccess } from "../security/access.js";
 
 export const updateCorePromptAction: Action = {
   name: "UPDATE_CORE_PROMPT",
+  contexts: ["admin", "settings", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: ["SET_CORE_PROMPT", "EDIT_CORE_PROMPT"],
   description:
     "Overrides a core system prompt in the database cache. Use this to permanently change how the agent thinks or formats its output.",
@@ -66,6 +68,20 @@ export const updateCorePromptAction: Action = {
       };
     }
   },
+  parameters: [
+    {
+      name: "promptKey",
+      description: "The core prompt cache key to override.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "promptText",
+      description: "The full replacement prompt text.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {

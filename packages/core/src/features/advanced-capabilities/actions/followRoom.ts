@@ -29,8 +29,11 @@ const FOLLOW_KEYWORDS = getValidationKeywordTerms("action.followRoom.request", {
 
 export const followRoomAction: Action = {
 	name: spec.name,
+	contexts: ["messaging", "contacts", "settings"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	parameters: [],
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
 		const messageContentText = message.content.text;

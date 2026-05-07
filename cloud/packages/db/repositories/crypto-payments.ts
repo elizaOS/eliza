@@ -11,12 +11,12 @@ export type { CryptoPayment, NewCryptoPayment };
 /**
  * Repository for crypto payment database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class CryptoPaymentsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   async findById(id: string): Promise<CryptoPayment | undefined> {
@@ -74,7 +74,7 @@ export class CryptoPaymentsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   async create(data: NewCryptoPayment): Promise<CryptoPayment> {

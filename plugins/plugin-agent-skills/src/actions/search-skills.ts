@@ -181,6 +181,9 @@ export async function runSkillSearch(
 
 export const searchSkillsAction: Action = {
 	name: "SEARCH_SKILLS",
+	contexts: ["knowledge", "automation", "settings"],
+	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
+	roleGate: { minRole: "USER" },
 	similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 	description:
 		"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",

@@ -22,6 +22,7 @@ import type {
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { State } from "../../../types/state.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { hasOwnerAccess as defaultOwnerAccessFn } from "../security.ts";
 import { runCoreStatus } from "./plugin-handlers/core-status.ts";
 import {
@@ -316,6 +317,8 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 
 	return {
 		name: "MANAGE_PLUGINS",
+		contexts: ["admin", "settings", "connectors"],
+		roleGate: { minRole: "OWNER" },
 		suppressPostActionContinuation: true,
 		similes: [
 			"PLUGIN",
@@ -400,17 +403,43 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		validate: async (
 			runtime: IAgentRuntime,
 			message: Memory,
+			state?: State,
+			options?: ActionOptions,
 		): Promise<boolean> => {
 			if (!(await canManagePlugins(runtime, message))) return false;
 			const text = message.content?.text ?? "";
+			const hasStructuredMode = Boolean(
+				readStringOption(options, "subaction") ||
+					readStringOption(options, "mode"),
+			);
 
+			let hasPendingCreateChoice = false;
 			if (isPluginCreateChoiceReply(text)) {
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-				if (await hasPendingPluginCreateIntent(runtime, roomId)) return true;
+				hasPendingCreateChoice = await hasPendingPluginCreateIntent(
+					runtime,
+					roomId,
+				);
 			}
 
-			return KEYWORD_HEURISTIC.test(text);
+			return (
+				hasStructuredMode ||
+				hasPendingCreateChoice ||
+				KEYWORD_HEURISTIC.test(text) ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "settings", "connectors"],
+					keywords: [
+						"plugin",
+						"plugins",
+						"install plugin",
+						"eject plugin",
+						"sync plugin",
+						"plugin status",
+						"plugin details",
+					],
+				})
+			);
 		},
 
 		handler: async (

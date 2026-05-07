@@ -1347,6 +1347,8 @@ def export_trajectories(
         # Write eval manifest
         eval_manifest = {
             "exportedAt": datetime.now(tz=timezone.utc).isoformat(),
+            "exportFormat": "json",
+            "expectedResponseFormat": "json",
             "split": "eval",
             "trajectoryCount": eval_count,
             "sampleCount": eval_samples,
@@ -1366,6 +1368,8 @@ def export_trajectories(
 
     manifest = {
         "exportedAt": datetime.now(tz=timezone.utc).isoformat(),
+        "exportFormat": "json",
+        "expectedResponseFormat": "json",
         "split": "train" if held_out_ratio > 0.0 else "all",
         "trajectoryCount": trajectory_count,
         "sampleCount": exported,

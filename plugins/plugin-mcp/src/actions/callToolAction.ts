@@ -15,6 +15,9 @@ import { createToolSelectionArgument, createToolSelectionName } from "../utils/s
 
 export const callToolAction: Action = {
   name: "CALL_MCP_TOOL",
+  contexts: ["connectors", "automation", "knowledge"],
+  contextGate: { anyOf: ["connectors", "automation", "knowledge"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CALL_TOOL",
     "CALL_MCP_TOOL",
@@ -29,6 +32,32 @@ export const callToolAction: Action = {
   ],
   description: "Calls a tool from an MCP server to perform a specific task",
   descriptionCompressed: "call tool MCP server perform specific task",
+  parameters: [
+    {
+      name: "serverName",
+      description: "Optional MCP server name that owns the tool.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "toolName",
+      description: "Optional exact MCP tool name to call.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "arguments",
+      description: "Optional JSON arguments to pass to the selected MCP tool.",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "query",
+      description: "Natural-language description of the tool call to select.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";

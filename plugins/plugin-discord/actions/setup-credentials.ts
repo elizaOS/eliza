@@ -506,6 +506,23 @@ export const setupCredentials: Action = {
 	description:
 		"Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
 	descriptionCompressed: "Set up Discord credentials.",
+	contexts: ["messaging", "connectors", "settings"],
+	contextGate: { anyOf: ["messaging", "connectors", "settings"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "service",
+			description: "Third-party service to configure from Discord.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "credentials",
+			description: "Credential values supplied by the user, when present.",
+			required: false,
+			schema: { type: "object" },
+		},
+	],
 	...terminalActionInteractionSemantics,
 	validate: async (_runtime, message) => {
 		if (message.content.source !== "discord") {

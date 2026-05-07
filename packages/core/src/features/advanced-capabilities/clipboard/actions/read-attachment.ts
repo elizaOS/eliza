@@ -188,6 +188,8 @@ function readAttachmentId(params: Record<string, unknown>): string | null {
 
 export const readAttachmentAction: Action = {
 	name: "READ_ATTACHMENT",
+	contexts: ["files", "media", "messaging", "knowledge"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"OPEN_ATTACHMENT",
 		"INSPECT_ATTACHMENT",

@@ -31,6 +31,7 @@ import {
 	type TriggerWakeMode,
 } from "../../../types/trigger";
 import { stringToUuid } from "../../../utils";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 const CREATE_TASK_KEYWORDS = getValidationKeywordTerms(
 	"action.createTask.request",
@@ -130,6 +131,8 @@ function readTriggerParameters(options?: HandlerOptions): TriggerExtraction {
 
 export const createTaskAction: Action = {
 	name: "CREATE_TASK",
+	contexts: ["tasks", "automation", "calendar", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	similes: ["CREATE_TRIGGER", "SCHEDULE_TRIGGER", "SCHEDULE_TASK"],
 	description: "Create an autonomous trigger task (interval, once, or cron)",
 	suppressPostActionContinuation: true,
@@ -159,13 +162,22 @@ export const createTaskAction: Action = {
 	): Promise<boolean> => {
 		if (!runtime.enableAutonomy) return false;
 		const params = readTriggerParameters(options);
-		if (params.instructions?.trim() || params.displayName?.trim()) {
-			return true;
-		}
+		const hasStructuredTrigger =
+			Boolean(params.instructions?.trim()) ||
+			Boolean(params.displayName?.trim());
+		const hasContextOrKeyword = hasActionContextOrKeyword(message, _state, {
+			contexts: ["tasks", "automation", "calendar", "agent_internal"],
+			keywordKeys: [
+				"action.createTask.request",
+				"action.triggerCreate.request",
+			],
+		});
 		const text = message.content.text ?? "";
 		return (
-			text.trim().length > 0 &&
-			findKeywordTermMatch(text, CREATE_TASK_KEYWORDS) !== undefined
+			hasStructuredTrigger ||
+			hasContextOrKeyword ||
+			(text.trim().length > 0 &&
+				findKeywordTermMatch(text, CREATE_TASK_KEYWORDS) !== undefined)
 		);
 	},
 

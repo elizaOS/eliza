@@ -23,6 +23,9 @@ export const searchXAction: Action = {
     "Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
   descriptionCompressed:
     "search x recent tweet use v2 recent search endpoint parameter: query (require), maxresult (optional, default 10)",
+  contexts: ["knowledge", "web", "social_posting", "connectors"],
+  contextGate: { anyOf: ["knowledge", "web", "social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "query",

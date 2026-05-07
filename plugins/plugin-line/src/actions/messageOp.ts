@@ -269,6 +269,35 @@ export const messageOp: Action = {
   ],
   description: "LINE message operation router. Send text, flex/card, or location.",
   descriptionCompressed: "LINE message ops: text, flex, location.",
+  contexts: ["messaging", "connectors"],
+  contextGate: { anyOf: ["messaging", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "op",
+      description: "Operation to run: text, flex, or location.",
+      required: false,
+      schema: { type: "string", enum: ["text", "flex", "location"] },
+    },
+    {
+      name: "text",
+      description: "Text message content.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "targetId",
+      description: "LINE user/group/room id or current conversation.",
+      required: false,
+      schema: { type: "string", default: "current" },
+    },
+    {
+      name: "title",
+      description: "Location title or flex/card title.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   suppressPostActionContinuation: true,
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> =>

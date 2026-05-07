@@ -30,8 +30,19 @@ export const chatPublic: Action = {
   description:
     "Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
   descriptionCompressed: "Say something in public chat.",
+  contexts: ["game", "automation", "world", "state", "messaging"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["SAY", "SPEAK", "TALK", "BROADCAST"],
   examples: [],
+  parameters: [
+    {
+      name: "message",
+      description: "Public chat text to send, capped to 80 characters.",
+      descriptionCompressed: "Chat text.",
+      required: true,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -65,13 +76,27 @@ export const chatPublic: Action = {
     }
 
     const trimmed = chatMessage.slice(0, MAX_MESSAGE_LENGTH);
-    const result = await service.executeAction({
-      action: "chatPublic",
-      text: trimmed,
-    });
-    const displayText =
-      result.message ?? (result.success ? `said "${trimmed}"` : "chat failed");
-    callback?.({ text: displayText, action: "CHAT_PUBLIC" });
-    return { success: result.success, text: displayText };
+    try {
+      const result = await service.executeAction({
+        action: "chatPublic",
+        text: trimmed,
+      });
+      const displayText =
+        result.message ??
+        (result.success ? `said "${trimmed}"` : "chat failed");
+      callback?.({ text: displayText, action: "CHAT_PUBLIC" });
+      return { success: result.success, text: displayText };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown chat failure.";
+      const displayText = `chat failed: ${message}`;
+      callback?.({ text: displayText, action: "CHAT_PUBLIC" });
+      return {
+        success: false,
+        text: displayText,
+        error: message,
+        data: { action: "chatPublic" },
+      };
+    }
   },
 };

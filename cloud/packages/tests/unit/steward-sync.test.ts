@@ -97,10 +97,10 @@ describe("syncUserFromSteward", () => {
     let linked = false;
     let upserted = false;
 
-    usersService.getByWalletAddress = (async (address) => {
+    usersService.getByWalletAddress = (async (address: string) => {
       expect(address).toBe("0xabc123");
       return existingUser;
-    }) as typeof usersService.getByWalletAddress;
+    }) as unknown as typeof usersService.getByWalletAddress;
     usersService.linkStewardId = (async (userId, stewardUserId) => {
       expect(userId).toBe(existingUser.id);
       expect(stewardUserId).toBe("stwd-wallet-1");
@@ -197,10 +197,10 @@ describe("syncUserFromSteward", () => {
 
     let updatedPayload: Parameters<typeof usersService.update>[1] | undefined;
 
-    usersService.getByEmailWithOrganization = (async (email) => {
+    usersService.getByEmailWithOrganization = (async (email: string) => {
       expect(email).toBe("shadow@example.com");
       return existingByEmail;
-    }) as typeof usersService.getByEmailWithOrganization;
+    }) as unknown as typeof usersService.getByEmailWithOrganization;
     usersService.update = (async (id, data) => {
       expect(id).toBe(existingByEmail.id);
       updatedPayload = data;

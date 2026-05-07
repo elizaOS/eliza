@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -44,18 +45,116 @@ interface ClientCharacterState {
   avatarUrl?: string;
 }
 
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const CREATE_CHARACTER_KEYWORDS = [
+  "create",
+  "save",
+  "publish",
+  "done",
+  "confirm",
+  "looks good",
+  "let's go",
+  "go ahead",
+  "finish",
+  "character",
+  "agent",
+  "crear",
+  "guardar",
+  "publicar",
+  "listo",
+  "confirmar",
+  "personaje",
+  "agente",
+  "creer",
+  "enregistrer",
+  "publier",
+  "terminer",
+  "confirmer",
+  "personnage",
+  "agent",
+  "erstellen",
+  "speichern",
+  "fertig",
+  "bestatigen",
+  "charakter",
+  "agent",
+  "creare",
+  "salvare",
+  "finito",
+  "conferma",
+  "personaggio",
+  "agente",
+  "criar",
+  "salvar",
+  "pronto",
+  "confirmar",
+  "personagem",
+  "agente",
+  "创建",
+  "保存",
+  "确认",
+  "完成",
+  "角色",
+  "作成",
+  "保存",
+  "確認",
+  "完了",
+  "キャラクター",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "recentMessages", "receivedMessageHeader"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 export const createCharacterAction = {
   name: "CREATE_CHARACTER",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "confirmation",
+      description: "The user's confirmation that the current character should be created.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description:
     "User has confirmed they want to save the character. ONLY use when: (1) a character definition exists in the UI with at least a name populated from previous SUGGEST_CHANGES, AND (2) user explicitly confirms with phrases like 'create it', 'save this', 'looks good', 'let's go'. Do NOT use if character JSON is empty or user is still exploring ideas.",
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     if (!isCreatorMode(runtime)) return false;
 
     // Check if we have client character state with at least a name
     const settings = runtime.character.settings as Record<string, unknown> | undefined;
     const clientState = settings?.clientCharacterState as ClientCharacterState | undefined;
 
-    return Boolean(clientState?.name);
+    return (
+      Boolean(clientState?.name) &&
+      (hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+        hasKeyword(collectConversationText(message, state), CREATE_CHARACTER_KEYWORDS))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -63,7 +162,7 @@ export const createCharacterAction = {
     _state: State,
     _options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info("[CREATE_CHARACTER] Storing character from UI state");
 
     // Verify we're in creator mode
@@ -73,7 +172,12 @@ export const createCharacterAction = {
         text: "I can only create new characters when you're in creator mode. To update an existing character, use the save action.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "I can only create new characters when you're in creator mode. To update an existing character, use the save action.",
+        error: "NOT_CREATOR_MODE",
+        data: { actionName: "CREATE_CHARACTER" },
+      };
     }
 
     // Get user context from runtime settings
@@ -87,7 +191,12 @@ export const createCharacterAction = {
         text: "Unable to create character: User context is missing.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "Unable to create character: User context is missing.",
+        error: "MISSING_USER_CONTEXT",
+        data: { actionName: "CREATE_CHARACTER" },
+      };
     }
 
     // Get the client character state - this is what the UI currently shows
@@ -103,34 +212,55 @@ export const createCharacterAction = {
           shouldSuggest: true,
         },
       });
-      return;
+      return {
+        success: false,
+        text: "I don't have a character to save yet.",
+        error: "MISSING_CHARACTER_STATE",
+        data: { actionName: "CREATE_CHARACTER", shouldSuggest: true },
+      };
     }
 
     logger.info(`[CREATE_CHARACTER] Creating character: ${clientState.name}`);
 
-    // Create the character in the database using the UI state
-    const savedCharacter = await charactersService.create({
-      name: clientState.name,
-      username: clientState.username || undefined,
-      user_id: userId,
-      organization_id: organizationId,
-      system: clientState.system || undefined,
-      bio: clientState.bio || [],
-      adjectives: clientState.adjectives || undefined,
-      topics: clientState.topics || undefined,
-      style: clientState.style || undefined,
-      message_examples: clientState.messageExamples || undefined,
-      post_examples: clientState.postExamples || undefined,
-      knowledge: clientState.knowledge || undefined,
-      plugins: clientState.plugins || undefined,
-      settings: clientState.settings || undefined,
-      secrets: clientState.secrets || undefined,
-      character_data: {},
-      is_public: false,
-      is_template: false,
-      featured: false,
-      source: "cloud",
-    });
+    let savedCharacter;
+    try {
+      // Create the character in the database using the UI state
+      savedCharacter = await charactersService.create({
+        name: clientState.name,
+        username: clientState.username || undefined,
+        user_id: userId,
+        organization_id: organizationId,
+        system: clientState.system || undefined,
+        bio: clientState.bio || [],
+        adjectives: clientState.adjectives || undefined,
+        topics: clientState.topics || undefined,
+        style: clientState.style || undefined,
+        message_examples: clientState.messageExamples || undefined,
+        post_examples: clientState.postExamples || undefined,
+        knowledge: clientState.knowledge || undefined,
+        plugins: clientState.plugins || undefined,
+        settings: clientState.settings || undefined,
+        secrets: clientState.secrets || undefined,
+        character_data: {},
+        is_public: false,
+        is_template: false,
+        featured: false,
+        source: "cloud",
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[CREATE_CHARACTER] Database create failed");
+      await callback({
+        text: "There was an error saving your character. Please try again.",
+        error: true,
+      });
+      return {
+        success: false,
+        text: "There was an error saving your character. Please try again.",
+        error: errorMessage,
+        data: { actionName: "CREATE_CHARACTER", characterName: clientState.name },
+      };
+    }
 
     if (!savedCharacter?.id) {
       logger.error("[CREATE_CHARACTER] Failed to save character to database");
@@ -138,7 +268,12 @@ export const createCharacterAction = {
         text: "There was an error saving your character. Please try again.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "There was an error saving your character. Please try again.",
+        error: "SAVE_FAILED",
+        data: { actionName: "CREATE_CHARACTER", characterName: clientState.name },
+      };
     }
 
     logger.info(`[CREATE_CHARACTER] Character created with ID: ${savedCharacter.id}`);
@@ -146,12 +281,19 @@ export const createCharacterAction = {
     // Lock the room - this creator session is complete
     const roomId = message.roomId;
     if (roomId) {
-      await roomsService.updateMetadata(roomId, {
-        locked: true,
-        createdCharacterId: savedCharacter.id,
-        createdCharacterName: savedCharacter.name,
-        lockedAt: Date.now(),
-      });
+      try {
+        await roomsService.updateMetadata(roomId, {
+          locked: true,
+          createdCharacterId: savedCharacter.id,
+          createdCharacterName: savedCharacter.name,
+          lockedAt: Date.now(),
+        });
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          "[CREATE_CHARACTER] Failed to lock room after character create",
+        );
+      }
     }
 
     // Callback with success and character ID for frontend redirect
@@ -165,6 +307,22 @@ export const createCharacterAction = {
         roomLocked: true,
       },
     });
+    return {
+      success: true,
+      text: `Created character ${savedCharacter.name}.`,
+      values: {
+        success: true,
+        characterCreated: true,
+        characterId: savedCharacter.id,
+        characterName: savedCharacter.name,
+      },
+      data: {
+        actionName: "CREATE_CHARACTER",
+        characterId: savedCharacter.id,
+        characterName: savedCharacter.name,
+        roomLocked: true,
+      },
+    };
   },
   examples: [
     [

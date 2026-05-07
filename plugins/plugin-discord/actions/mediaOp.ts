@@ -415,6 +415,29 @@ export const mediaOp: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	contexts: ["messaging", "media", "connectors"],
+	contextGate: { anyOf: ["messaging", "media", "connectors"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "op",
+			description: "Media operation to run: transcribe or download.",
+			required: false,
+			schema: { type: "string", enum: ["transcribe", "download"] },
+		},
+		{
+			name: "attachmentId",
+			description: "Discord attachment id or current attachment.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "url",
+			description: "Media URL to download or transcribe.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	suppressPostActionContinuation: true,
 	validate: async (
 		_runtime: IAgentRuntime,

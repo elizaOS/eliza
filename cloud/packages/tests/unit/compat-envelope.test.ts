@@ -121,6 +121,12 @@ describe("toCompatAgent", () => {
     expect(agent.webUiUrl).toBe("https://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.agents.example.com");
   });
 
+  test("falls back to waifu.fun when agent base domain is unset", () => {
+    delete process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
+    const agent = toCompatAgent(makeSandbox());
+    expect(agent.web_ui_url).toBe("https://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.waifu.fun");
+  });
+
   test("last_heartbeat_at is null when never heartbeated", () => {
     expect(toCompatAgent(makeSandbox({ last_heartbeat_at: null })).last_heartbeat_at).toBeNull();
   });

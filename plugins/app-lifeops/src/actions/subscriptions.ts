@@ -496,6 +496,8 @@ export const subscriptionsAction: Action & {
     "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states.",
   descriptionCompressed:
     "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
+  contexts: ["subscriptions", "payments", "finance", "browser", "automation"],
+  roleGate: { minRole: "OWNER" },
 
   parameters: [
     {

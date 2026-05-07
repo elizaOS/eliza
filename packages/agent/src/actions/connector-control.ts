@@ -89,6 +89,8 @@ async function fetchConnectors(base: string): Promise<PluginInfoShape[]> {
 
 export const toggleConnectorAction: Action = {
   name: "TOGGLE_CONNECTOR",
+  contexts: ["connectors", "settings", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "ENABLE_CONNECTOR",
@@ -211,6 +213,8 @@ export const toggleConnectorAction: Action = {
 
 export const saveConnectorConfigAction: Action = {
   name: "SAVE_CONNECTOR_CONFIG",
+  contexts: ["connectors", "settings", "secrets", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "CONFIGURE_CONNECTOR",
@@ -380,6 +384,8 @@ const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
 
 export const disconnectConnectorAction: Action = {
   name: "DISCONNECT_CONNECTOR",
+  contexts: ["connectors", "settings", "secrets", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "LOGOUT_CONNECTOR",
@@ -524,6 +530,8 @@ export const disconnectConnectorAction: Action = {
 
 export const listConnectorsAction: Action = {
   name: "LIST_CONNECTORS",
+  contexts: ["connectors", "settings", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "SHOW_CONNECTORS",

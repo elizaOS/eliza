@@ -19,6 +19,9 @@ function formatTerminalResultText(result: TerminalActionResult): string {
 
 export const terminalAction: Action = {
   name: "TERMINAL_ACTION",
+  contexts: ["terminal", "code", "automation"],
+  contextGate: { anyOf: ["terminal", "code", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "RUN_COMMAND",
     "EXECUTE_COMMAND",

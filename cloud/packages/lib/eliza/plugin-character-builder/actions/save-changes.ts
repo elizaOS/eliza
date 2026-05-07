@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -12,6 +13,82 @@ import {
 } from "@elizaos/core";
 import { charactersService } from "@/lib/services/characters/characters";
 import { cleanPrompt, isCreatorMode } from "../../shared/utils/helpers";
+
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const SAVE_CHANGES_KEYWORDS = [
+  "save",
+  "apply",
+  "update",
+  "confirm",
+  "yes",
+  "looks good",
+  "do it",
+  "go ahead",
+  "commit",
+  "guardar",
+  "aplicar",
+  "actualizar",
+  "confirmar",
+  "si",
+  "adelante",
+  "enregistrer",
+  "appliquer",
+  "mettre a jour",
+  "confirmer",
+  "oui",
+  "speichern",
+  "anwenden",
+  "aktualisieren",
+  "bestatigen",
+  "ja",
+  "salvare",
+  "applica",
+  "aggiorna",
+  "conferma",
+  "si",
+  "salvar",
+  "aplicar",
+  "atualizar",
+  "confirmar",
+  "sim",
+  "保存",
+  "应用",
+  "更新",
+  "确认",
+  "是",
+  "保存",
+  "適用",
+  "更新",
+  "確認",
+  "はい",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "conversationLogWithAgentThoughts", "currentCharacter"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
 
 /**
  * SAVE_CHANGES Action
@@ -233,10 +310,24 @@ function mapChangesToDbFormat(
 
 export const saveChangesAction = {
   name: "SAVE_CHANGES",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "confirmation",
+      description: "The user's confirmation to save the proposed character changes.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description:
     "User has confirmed they want to save changes to their existing character. Use when user says: 'yes', 'save it', 'apply changes', 'looks good', 'do it', 'update it'. Only available in build mode when editing an EXISTING character.",
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
-    return !isCreatorMode(runtime);
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      !isCreatorMode(runtime) &&
+      (hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+        hasKeyword(collectConversationText(message, state), SAVE_CHANGES_KEYWORDS))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -244,7 +335,7 @@ export const saveChangesAction = {
     state: State,
     _options: Record<string, unknown>,
     callback: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info("[SAVE_CHANGES] Saving character changes");
 
     // Verify we're in build mode
@@ -254,7 +345,12 @@ export const saveChangesAction = {
         text: "To create a new character, use the create action instead.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "To create a new character, use the create action instead.",
+        error: "CREATOR_MODE",
+        data: { actionName: "SAVE_CHANGES" },
+      };
     }
 
     // Use getSetting() to properly resolve from request context (not direct character.settings access)
@@ -266,7 +362,12 @@ export const saveChangesAction = {
         text: "Unable to save: User context is missing.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "Unable to save: User context is missing.",
+        error: "MISSING_USER_CONTEXT",
+        data: { actionName: "SAVE_CHANGES" },
+      };
     }
 
     if (!runtime.character.id) {
@@ -275,7 +376,12 @@ export const saveChangesAction = {
         text: "Unable to save: No character ID found.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "Unable to save: No character ID found.",
+        error: "MISSING_CHARACTER_ID",
+        data: { actionName: "SAVE_CHANGES" },
+      };
     }
 
     // Extract changes from conversation
@@ -298,11 +404,27 @@ export const saveChangesAction = {
       state,
       template: extractTemplate,
     });
-    const extractionResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: extractPrompt,
-    });
-
-    runtime.character.system = originalSystemPrompt;
+    let extractionResponse: string;
+    try {
+      extractionResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: extractPrompt,
+      });
+    } catch (error) {
+      runtime.character.system = originalSystemPrompt;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[SAVE_CHANGES] Extraction model call failed");
+      const text =
+        "I couldn't determine what changes to save. Could you be more specific about what you'd like to update?";
+      await callback({ text, error: true });
+      return {
+        success: false,
+        text,
+        error: errorMessage,
+        data: { actionName: "SAVE_CHANGES" },
+      };
+    } finally {
+      runtime.character.system = originalSystemPrompt;
+    }
 
     const extraction = parseKeyValueXml(extractionResponse) as {
       thought?: string;
@@ -317,10 +439,31 @@ export const saveChangesAction = {
         text: "I couldn't determine what changes to save. Could you be more specific about what you'd like to update?",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "I couldn't determine what changes to save.",
+        error: "PARSE_FAILED",
+        data: { actionName: "SAVE_CHANGES" },
+      };
     }
 
-    const changesObj: Record<string, unknown> = JSON.parse(extraction.changes);
+    let changesObj: Record<string, unknown>;
+    try {
+      changesObj = JSON.parse(extraction.changes);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[SAVE_CHANGES] Failed to parse changes JSON");
+      await callback({
+        text: "I couldn't parse the changes to save. Could you be more specific?",
+        error: true,
+      });
+      return {
+        success: false,
+        text: "I couldn't parse the changes to save. Could you be more specific?",
+        error: errorMessage,
+        data: { actionName: "SAVE_CHANGES" },
+      };
+    }
 
     logger.info(`[SAVE_CHANGES] Saving changes: ${Object.keys(changesObj).join(", ")}`);
 
@@ -357,11 +500,27 @@ export const saveChangesAction = {
     logger.debug(`[SAVE_CHANGES] DB updates: ${JSON.stringify(dbUpdates, null, 2)}`);
 
     // Save to database
-    const savedCharacter = await charactersService.updateForUser(
-      runtime.character.id as string,
-      userId,
-      dbUpdates,
-    );
+    let savedCharacter;
+    try {
+      savedCharacter = await charactersService.updateForUser(
+        runtime.character.id as string,
+        userId,
+        dbUpdates,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[SAVE_CHANGES] Database update failed");
+      await callback({
+        text: "Unable to save: there was an error updating this character.",
+        error: true,
+      });
+      return {
+        success: false,
+        text: "Unable to save: there was an error updating this character.",
+        error: errorMessage,
+        data: { actionName: "SAVE_CHANGES", fieldsUpdated: Object.keys(changesObj) },
+      };
+    }
 
     if (!savedCharacter) {
       logger.error(`[SAVE_CHANGES] Failed to save: access denied for user ${userId}`);
@@ -369,7 +528,12 @@ export const saveChangesAction = {
         text: "Unable to save: You may not have permission to update this character.",
         error: true,
       });
-      return;
+      return {
+        success: false,
+        text: "Unable to save: You may not have permission to update this character.",
+        error: "PERMISSION_DENIED",
+        data: { actionName: "SAVE_CHANGES", fieldsUpdated: Object.keys(changesObj) },
+      };
     }
 
     // Update in-memory character
@@ -405,11 +569,19 @@ export const saveChangesAction = {
 
     runtime.character.system = confirmSystem;
 
-    const confirmResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: `Confirm that these fields were updated: ${fieldsUpdated.join(", ")}`,
-    });
-
-    runtime.character.system = originalSystemForConfirm;
+    let confirmResponse = "";
+    try {
+      confirmResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: `Confirm that these fields were updated: ${fieldsUpdated.join(", ")}`,
+      });
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "[SAVE_CHANGES] Confirmation model call failed",
+      );
+    } finally {
+      runtime.character.system = originalSystemForConfirm;
+    }
 
     const parsed = parseKeyValueXml(confirmResponse) as {
       thought?: string;
@@ -428,6 +600,22 @@ export const saveChangesAction = {
         characterName: runtime.character.name,
       },
     });
+    return {
+      success: true,
+      text: confirmText,
+      values: {
+        success: true,
+        characterId: runtime.character.id,
+        characterName: runtime.character.name,
+        fieldsUpdated,
+      },
+      data: {
+        actionName: "SAVE_CHANGES",
+        characterId: runtime.character.id,
+        characterName: runtime.character.name,
+        fieldsUpdated,
+      },
+    };
   },
   examples: [
     [

@@ -131,6 +131,12 @@ export const settingsProvider: Provider = {
 	name: "SETTINGS",
 	description: "Current settings for the server",
 	dynamic: true,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "ADMIN" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

@@ -80,6 +80,12 @@ export function createSessionKeyProvider(options?: {
 	return {
 		name: "elizaSessionKey",
 		description: "Eliza session key (DM/group/thread isolation)",
+		contexts: ["general", "messaging"],
+		contextGate: { anyOf: ["general", "messaging"] },
+		cacheStable: false,
+		cacheScope: "turn",
+		roleGate: { minRole: "USER" },
+
 		get: async (
 			runtime: IAgentRuntime,
 			message: Memory,

@@ -1,11 +1,21 @@
-import { and, asc, eq, isNotNull, isNull, ne, type SQL, sql } from "drizzle-orm";
+import { and, eq, ne, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization } from "../schemas/organizations";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 
-export type { NewUser, User };
+export type { NewUser, User, UserIdentity };
+
+export type IdentityProvider = "steward" | "telegram" | "discord" | "whatsapp" | "phone";
+
+export interface ResolvedIdentity {
+  user: User;
+  identity?: UserIdentity;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const EVM_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 
 /**
  * User with associated organization data.
@@ -17,12 +27,12 @@ export interface UserWithOrganization extends User {
 /**
  * Repository for user database operations.
  *
- * Read operations → dbRead (read replica)
+ * Read operations → dbRead (read-intent connection)
  * Write operations → dbWrite (primary)
  */
 export class UsersRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -52,7 +62,7 @@ export class UsersRepository {
 
   /**
    * Finds a user by Steward user ID with organization data from primary.
-   * Use after writes when replica lag could hide the just-written identity row.
+   * Use after writes when the just-written identity row must be visible.
    */
   async findByStewardIdWithOrganizationForWrite(
     stewardUserId: string,
@@ -211,6 +221,40 @@ export class UsersRepository {
     return await this.listUsersByPredicate(dbRead, eq(users.organization_id, organizationId));
   }
 
+  async resolveIdentity(
+    identifier: string,
+    provider?: IdentityProvider,
+  ): Promise<ResolvedIdentity | null> {
+    if (provider) {
+      const identity = await this.findIdentityByProvider(provider, identifier);
+      if (!identity) return null;
+      const user = await this.findById(identity.user_id);
+      return user ? { user, identity } : null;
+    }
+
+    let user: User | undefined;
+    if (UUID_RE.test(identifier)) {
+      user = await this.findById(identifier);
+    } else if (identifier.includes("@")) {
+      user = await this.findByEmail(identifier.toLowerCase());
+    } else if (EVM_ADDRESS_RE.test(identifier)) {
+      user = await this.findByWalletAddress(identifier);
+    }
+
+    if (user) {
+      const identity = await dbRead.query.userIdentities.findFirst({
+        where: eq(userIdentities.user_id, user.id),
+      });
+      return { user, identity };
+    }
+
+    const identity = await this.findFirstIdentity(identifier);
+    if (!identity) return null;
+
+    user = await this.findById(identity.user_id);
+    return user ? { user, identity } : null;
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
@@ -255,7 +299,7 @@ export class UsersRepository {
 
   /**
    * Finds the identity projection row for a user from primary.
-   * Use after writes when replica lag could return a stale identity row.
+   * Use after writes when the latest identity row must be visible.
    */
   async findIdentityByUserIdForWrite(userId: string): Promise<UserIdentity | undefined> {
     return await dbWrite.query.userIdentities.findFirst({
@@ -339,6 +383,43 @@ export class UsersRepository {
       .limit(1);
 
     return identity?.user_id;
+  }
+
+  private async findIdentityByProvider(
+    provider: IdentityProvider,
+    identifier: string,
+  ): Promise<UserIdentity | undefined> {
+    switch (provider) {
+      case "steward":
+        return dbRead.query.userIdentities.findFirst({
+          where: eq(userIdentities.steward_user_id, identifier),
+        });
+      case "telegram":
+        return dbRead.query.userIdentities.findFirst({
+          where: eq(userIdentities.telegram_id, identifier),
+        });
+      case "discord":
+        return dbRead.query.userIdentities.findFirst({
+          where: eq(userIdentities.discord_id, identifier),
+        });
+      case "whatsapp":
+        return dbRead.query.userIdentities.findFirst({
+          where: eq(userIdentities.whatsapp_id, identifier),
+        });
+      case "phone":
+        return dbRead.query.userIdentities.findFirst({
+          where: eq(userIdentities.phone_number, identifier),
+        });
+    }
+  }
+
+  private async findFirstIdentity(identifier: string): Promise<UserIdentity | undefined> {
+    const providers: IdentityProvider[] = ["steward", "telegram", "discord", "whatsapp"];
+    for (const provider of providers) {
+      const identity = await this.findIdentityByProvider(provider, identifier);
+      if (identity) return identity;
+    }
+    return this.findIdentityByProvider("phone", identifier);
   }
 
   private async findUserByPredicate(
@@ -474,34 +555,6 @@ export class UsersRepository {
     }
 
     return identity;
-  }
-
-  /**
-   * Lists active, non-anonymous users with email addresses that still need a
-   * Steward user mapping.
-   */
-  async listPendingStewardProvisioning(
-    limit: number,
-  ): Promise<Array<Pick<User, "id" | "email" | "email_verified" | "name" | "steward_user_id">>> {
-    return await dbWrite
-      .select({
-        id: users.id,
-        email: users.email,
-        email_verified: users.email_verified,
-        name: users.name,
-        steward_user_id: users.steward_user_id,
-      })
-      .from(users)
-      .where(
-        and(
-          eq(users.is_active, true),
-          eq(users.is_anonymous, false),
-          isNull(users.steward_user_id),
-          isNotNull(users.email),
-        ),
-      )
-      .orderBy(asc(users.created_at), asc(users.id))
-      .limit(limit);
   }
 
   /**

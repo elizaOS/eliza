@@ -125,6 +125,12 @@ export const assistantGuideProvider: Provider = {
   name: "ASSISTANT_GUIDE",
   description:
     "Documentation for building AI assistants with RAG knowledge, MCP tools, and web search",
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "USER" },
+
   get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
     return {
       values: {

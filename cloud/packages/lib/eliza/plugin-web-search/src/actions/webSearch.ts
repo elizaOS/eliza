@@ -7,9 +7,10 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { normalizeCloudActionArgs } from "@/lib/eliza/plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";
 import type { SearchResult } from "../types";
 
@@ -43,19 +44,14 @@ Extract the search query and parameters from the conversation above. The user wa
 - Determine the exact search query the user wants
 - If the topic is about crypto, DeFi, finance, or markets, set topic to "finance"
 - Only include optional parameters if clearly indicated by the user
-- Use Chain of Thought: explain your reasoning before providing parameters
+- Briefly explain parameter choices in the JSON thought field
 
-Respond ONLY with the following XML format:
-<response>
-    <thought>
-        Explain in 2-3 sentences:
-        - What information the user is seeking
-        - Why you chose this search query
-        - What search parameters are most appropriate
-    </thought>
-    <query>the exact query to search</query>
-    <topic>general or finance</topic>
-</response>`;
+Respond using JSON only. No markdown, no prose, no XML.
+{
+  "thought": "2-3 sentence rationale for the query and parameters",
+  "query": "the exact query to search",
+  "topic": "general or finance"
+}`;
 }
 
 function MaxTokens(data: string, maxTokens: number = DEFAULT_MAX_WEB_SEARCH_CHARS): string {
@@ -66,14 +62,30 @@ function MaxTokens(data: string, maxTokens: number = DEFAULT_MAX_WEB_SEARCH_CHAR
 /**
  * Extract search parameters from state or via LLM.
  * Supports multiple runtime patterns:
- * 1. actionParams from custom bootstrap (otaku pattern)
- * 2. LLM extraction from conversation context (cloud, elizav2)
+ * 1. Native keyed params from tool execution
+ * 2. Legacy direct actionParams/actionInput
+ * 3. LLM extraction from conversation context
  */
 async function extractSearchParams(
   runtime: IAgentRuntime,
   message: Memory,
   _state?: State,
 ): Promise<WebSearchParams> {
+  const content = message.content as Record<string, unknown>;
+  const messageParams = normalizeCloudActionArgs("WEB_SEARCH", {
+    params: content.params,
+    actionParams: content.actionParams,
+    actionInput: content.actionInput,
+  }) as WebSearchParams;
+
+  if (messageParams?.query?.trim()) {
+    logger.info(
+      { src: "webSearch:extractParams", source: "message.params" },
+      "Using params from action message",
+    );
+    return messageParams;
+  }
+
   // First, try to get params from state (custom bootstrap pattern)
   const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
   const stateParamSources = [
@@ -129,7 +141,7 @@ async function extractSearchParams(
     });
 
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseKeyValueXml(response || "");
+    const parsed = parseJSONObjectFromText(response || "");
 
     if (parsed?.query) {
       const extractedParams: WebSearchParams = {
@@ -166,6 +178,8 @@ async function extractSearchParams(
 
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
+  contexts: ["web", "knowledge", "finance", "crypto"],
+  contextGate: { anyOf: ["web", "knowledge", "finance", "crypto"] },
   similes: [
     "SEARCH_WEB",
     "INTERNET_SEARCH",

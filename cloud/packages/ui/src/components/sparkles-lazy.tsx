@@ -5,7 +5,7 @@
 
 "use client";
 
-import dynamic from "@elizaos/cloud-ui/runtime/dynamic";
+import dynamic from "../runtime/dynamic";
 import type { ParticlesProps } from "./sparkles";
 
 // Dynamic import to reduce initial bundle size

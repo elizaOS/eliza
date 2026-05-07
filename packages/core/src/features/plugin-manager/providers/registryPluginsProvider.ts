@@ -13,6 +13,9 @@ import {
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 } from "./relevance.ts";
 
+const MAX_REGISTRY_PROVIDER_ITEMS = 25;
+const MAX_REGISTRY_TAGS = 6;
+
 const REGISTRY_PROVIDER_KEYWORDS = buildProviderKeywords(
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 	COMMON_CONNECTOR_KEYWORDS,
@@ -43,6 +46,12 @@ export const registryPluginsProvider: Provider & {
 
 	dynamic: true,
 	relevanceKeywords: REGISTRY_PROVIDER_KEYWORDS,
+	contexts: ["connectors", "settings"],
+	contextGate: { anyOf: ["connectors", "settings"] },
+	cacheStable: true,
+	cacheScope: "agent",
+	roleGate: { minRole: "USER" },
+
 	async get(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -86,6 +95,14 @@ export const registryPluginsProvider: Provider & {
 		}
 
 		const installedPlugins = await pluginManagerService.listInstalledPlugins();
+		const visibleRegistryPlugins = registryPlugins.slice(
+			0,
+			MAX_REGISTRY_PROVIDER_ITEMS,
+		);
+		const visibleInstalledPlugins = installedPlugins.slice(
+			0,
+			MAX_REGISTRY_PROVIDER_ITEMS,
+		);
 
 		let text = "";
 
@@ -95,17 +112,17 @@ export const registryPluginsProvider: Provider & {
 			text += "No plugins available in registry.\n";
 		} else {
 			text += `**Available Plugins from Registry (${registryPlugins.length} total):**\n`;
-			for (const plugin of registryPlugins) {
+			for (const plugin of visibleRegistryPlugins) {
 				text += `- **${plugin.name}**: ${plugin.description || "No description"}\n`;
 				if (plugin.tags && plugin.tags.length > 0) {
-					text += `  Tags: ${plugin.tags.join(", ")}\n`;
+					text += `  Tags: ${plugin.tags.slice(0, MAX_REGISTRY_TAGS).join(", ")}\n`;
 				}
 			}
 		}
 
 		if (installedPlugins.length > 0) {
 			text += "\n**Installed Registry Plugins:**\n";
-			for (const plugin of installedPlugins) {
+			for (const plugin of visibleInstalledPlugins) {
 				text += `- **${plugin.name}** v${plugin.version} (Path: ${plugin.path})\n`;
 			}
 		}
@@ -113,15 +130,18 @@ export const registryPluginsProvider: Provider & {
 		return {
 			text,
 			data: {
-				availablePlugins: registryPlugins.map((p) => ({
+				availablePlugins: visibleRegistryPlugins.map((p) => ({
 					name: p.name,
 					description: p.description,
 					repository: p.repository,
-					tags: p.tags || [],
+					tags: (p.tags || []).slice(0, MAX_REGISTRY_TAGS),
 					version: p.latestVersion,
 				})),
-				installedPlugins,
+				installedPlugins: visibleInstalledPlugins,
 				registryError,
+				truncated:
+					registryPlugins.length > visibleRegistryPlugins.length ||
+					installedPlugins.length > visibleInstalledPlugins.length,
 			},
 			values: {
 				availableCount: registryPlugins.length,

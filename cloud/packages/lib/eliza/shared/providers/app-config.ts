@@ -23,6 +23,12 @@ import {
 export const appConfigProvider: Provider = {
   name: "APP_CONFIG",
   description: "App-specific prompt configuration for behavior customization",
+  contexts: ["settings"],
+  contextGate: { anyOf: ["settings"] },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     // Get config from runtime settings (passed from userContext)
     const runtimeConfig = runtime.character.settings?.appPromptConfig as PromptConfig | undefined;

@@ -27,6 +27,35 @@ import { getChainConfig } from "../types.ts";
 const SOLANA_DEXES = new Set(["raydium", "orca", "meteora"]);
 const EVM_DEXES = new Set(["uniswap", "aerodrome", "pancakeswap"]);
 
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
 const formatPositions = (positions: LpPositionDetails[]): string => {
   if (!positions || positions.length === 0) {
     return "No active LP positions found.";
@@ -554,10 +583,96 @@ async function handleLpOperation(
 
 export const LpManagementAgentAction: Action = {
   name: "lp_management",
+  contexts: ["finance", "crypto", "wallet", "automation"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "automation"] },
+  roleGate: { minRole: "USER" },
   description:
     "Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
   descriptionCompressed:
     "Manage LP positions by subaction, chain, dex, pool, position, amount, range, token filters.",
+  parameters: [
+    {
+      name: "subaction",
+      description:
+        "LP operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
+      required: true,
+      schema: {
+        type: "string",
+        enum: [
+          "onboard",
+          "list_pools",
+          "open",
+          "close",
+          "reposition",
+          "list_positions",
+          "get_position",
+          "set_preferences",
+        ],
+      },
+    },
+    {
+      name: "chain",
+      description: "Chain for the LP operation.",
+      required: false,
+      schema: { type: "string", enum: ["solana", "evm"] },
+    },
+    {
+      name: "dex",
+      description: "DEX/protocol name.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "pool",
+      description:
+        "Pool id/address for open, close, reposition, or position lookup.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "position",
+      description: "LP position id/mint/address.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description:
+        "Liquidity amount for open, close, or reposition operations.",
+      required: false,
+      schema: { type: ["string", "number"] },
+    },
+    {
+      name: "range",
+      description: "Desired concentrated liquidity price range.",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "tokenA",
+      description: "First token filter or deposit token.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "tokenB",
+      description: "Second token filter or deposit token.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "chainId",
+      description: "Optional numeric EVM chain id.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "slippageBps",
+      description: "Maximum allowed slippage in basis points.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
 
   similes: [
     "LP_MANAGEMENT",
@@ -572,10 +687,20 @@ export const LpManagementAgentAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
+    state?: State,
   ): Promise<boolean> => {
     if (!message?.content) return false;
     if ((message.content as LpActionParams).subaction) return true;
+    if (
+      selectedContextMatches(state, [
+        "finance",
+        "crypto",
+        "wallet",
+        "automation",
+      ])
+    ) {
+      return true;
+    }
 
     const text = message.content.text?.toLowerCase() || "";
     const lpKeywords = [
@@ -598,6 +723,30 @@ export const LpManagementAgentAction: Action = {
       "concentrated",
       "price range",
       "out of range",
+      "liquidez",
+      "posición",
+      "rendimiento",
+      "rebalancear",
+      "liquidité",
+      "position",
+      "rendement",
+      "rééquilibrer",
+      "liquidität",
+      "position",
+      "rendite",
+      "neu ausrichten",
+      "流動性",
+      "ポジション",
+      "利回り",
+      "再調整",
+      "流动性",
+      "仓位",
+      "收益",
+      "再平衡",
+      "유동성",
+      "포지션",
+      "수익률",
+      "리밸런싱",
     ];
 
     return lpKeywords.some((keyword) => text.includes(keyword));

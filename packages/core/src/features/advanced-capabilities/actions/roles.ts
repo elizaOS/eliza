@@ -132,6 +132,8 @@ interface RoleAssignment {
  */
 export const updateRoleAction: Action = {
 	name: spec.name,
+	contexts: ["admin", "settings"],
+	roleGate: { minRole: "OWNER" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],

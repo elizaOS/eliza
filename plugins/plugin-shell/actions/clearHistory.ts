@@ -16,9 +16,13 @@ const spec = requireActionSpec("CLEAR_SHELL_HISTORY");
 
 export const clearHistory: Action = {
   name: spec.name,
+  contexts: ["terminal", "settings"],
+  contextGate: { anyOf: ["terminal", "settings"] },
+  roleGate: { minRole: "USER" },
   similes: spec.similes ? [...spec.similes] : [],
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  parameters: [],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

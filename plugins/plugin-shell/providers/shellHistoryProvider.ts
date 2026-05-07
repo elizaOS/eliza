@@ -21,9 +21,14 @@ export const shellHistoryProvider: Provider = {
     "Provides recent shell command history, current working directory, and file operations within the restricted environment",
   descriptionCompressed: "Recent shell history, cwd, and file ops in restricted env.",
   position: 99,
+  contexts: ["terminal", "code"],
+  contextGate: { anyOf: ["terminal", "code"] },
+  cacheStable: false,
+  cacheScope: "turn",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const shellService = runtime.getService<ShellService>("shell");
+    try {
+      const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
       logger.warn("[shellHistoryProvider] Shell service not found");
@@ -119,19 +124,30 @@ Allowed Directory: ${allowedDir}
 
 ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
 
-    return {
-      values: {
-        shellHistory: historyText,
-        currentWorkingDirectory: cwd,
-        allowedDirectory: allowedDir,
-      },
-      text,
-      data: {
-        historyCount: history.length,
-        cwd,
-        allowedDir,
-      },
-    };
+      return {
+        values: {
+          shellHistory: historyText,
+          currentWorkingDirectory: cwd,
+          allowedDirectory: allowedDir,
+        },
+        text,
+        data: {
+          historyCount: history.length,
+          cwd,
+          allowedDir,
+        },
+      };
+    } catch {
+      return {
+        values: {
+          shellHistory: "",
+          currentWorkingDirectory: "N/A",
+          allowedDirectory: "N/A",
+        },
+        text: "",
+        data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
+      };
+    }
   },
 };
 

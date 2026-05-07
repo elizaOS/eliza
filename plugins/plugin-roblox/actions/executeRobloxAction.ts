@@ -191,6 +191,8 @@ function parseGameAction(text: string, params: Record<string, unknown>): RobloxG
 
 export const executeRobloxAction: Action = {
   name: actionName,
+  contexts: ["media", "automation"],
+  contextGate: { anyOf: ["media", "automation"] },
   similes: ["ROBLOX_RUN", "ROBLOX_TRIGGER", "ROBLOX_GAME_ACTION"],
   description:
     "Trigger a server-side Roblox game action such as move-npc, give-coins, teleport, spawn-entity, or start-event.",

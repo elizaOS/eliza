@@ -32,6 +32,10 @@ export const enabledSkillsProvider: Provider = {
 		"Canonical list of enabled, eligible skills with descriptions for USE_SKILL",
 	descriptionCompressed: "Enabled skills with descriptions for USE_SKILL.",
 	position: -10,
+	contexts: ["agent_internal", "settings"],
+	contextGate: { anyOf: ["agent_internal", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	dynamic: true,
 
 	get: async (
@@ -39,22 +43,23 @@ export const enabledSkillsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsService>(
-			"AGENT_SKILLS_SERVICE",
-		);
-		if (!service) return { text: "" };
+		try {
+			const service = runtime.getService<AgentSkillsService>(
+				"AGENT_SKILLS_SERVICE",
+			);
+			if (!service) return { text: "" };
 
-		const eligible = await service.getEligibleSkills();
-		const enabled = eligible.filter((skill) =>
-			service.isSkillEnabled(skill.slug),
-		);
+			const eligible = await service.getEligibleSkills();
+			const enabled = eligible.filter((skill) =>
+				service.isSkillEnabled(skill.slug),
+			);
 
-		if (enabled.length === 0) {
-			return { text: "" };
-		}
+			if (enabled.length === 0) {
+				return { text: "" };
+			}
 
-		const listed = enabled.slice(0, MAX_SKILLS_LISTED);
-		const remaining = enabled.length - listed.length;
+			const listed = enabled.slice(0, MAX_SKILLS_LISTED);
+			const remaining = enabled.length - listed.length;
 
 		const lines = listed.map((skill) => {
 			const description = truncateDescription(skill.description || "");
@@ -72,22 +77,25 @@ export const enabledSkillsProvider: Provider = {
 			`Use USE_SKILL with one of these slugs to invoke:\n` +
 			`${lines.join("\n")}${overflow}`;
 
-		return {
-			text,
-			values: {
-				enabledSkillCount: enabled.length,
-				enabledSkillSlugs: listed.map((s) => s.slug).join(", "),
-			},
-			data: {
-				enabledSkills: listed.map((skill) => ({
-					slug: skill.slug,
-					name: skill.name,
-					description: skill.description,
-				})),
-				truncated: remaining > 0,
-				totalEnabled: enabled.length,
-			},
-		};
+			return {
+				text,
+				values: {
+					enabledSkillCount: enabled.length,
+					enabledSkillSlugs: listed.map((s) => s.slug).join(", "),
+				},
+				data: {
+					enabledSkills: listed.map((skill) => ({
+						slug: skill.slug,
+						name: skill.name,
+						description: skill.description,
+					})),
+					truncated: remaining > 0,
+					totalEnabled: enabled.length,
+				},
+			};
+		} catch {
+			return { text: "", values: {}, data: {} };
+		}
 	},
 };
 

@@ -7,7 +7,7 @@ vi.mock("../security/access.js", () => ({
 }));
 
 describe("SHELL_COMMAND action", () => {
-  it("stops post-action continuation when terminal access is denied", async () => {
+  it("marks the turn as owned when terminal access is denied", async () => {
     const result = await terminalAction.handler?.(
       { agentId: "agent-id" } as IAgentRuntime,
       {

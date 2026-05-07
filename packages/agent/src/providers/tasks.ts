@@ -57,6 +57,12 @@ export function createOngoingTasksProvider(): Provider {
     description:
       "Provides context about the user's active tasks and scheduled tasks.",
     position: 20,
+    contexts: ["tasks", "automation"],
+    contextGate: { anyOf: ["tasks", "automation"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
+
     async get(
       runtime: IAgentRuntime,
       _message: Memory,

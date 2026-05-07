@@ -578,6 +578,8 @@ export const relationshipAction: Action & {
     "Owner-only. Contacts / rolodex / follow-up tracker. The owner's people graph: list/add contacts, log interactions, ask how long since the owner talked to someone, create or complete a follow-up, list overdue follow-ups, tune the overdue threshold.",
   descriptionCompressed:
     "contacts rolodex follow-ups: list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold",
+  contexts: ["contacts", "tasks", "calendar", "messaging"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (

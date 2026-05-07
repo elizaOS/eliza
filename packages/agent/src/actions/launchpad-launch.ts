@@ -94,6 +94,8 @@ function resolveImageUrl(
 
 export const launchpadLaunchAction: Action = {
   name: "LAUNCHPAD_LAUNCH",
+  contexts: ["finance", "payments", "wallet", "crypto", "browser"],
+  roleGate: { minRole: "OWNER" },
   similes: ["LAUNCH_TOKEN", "CREATE_MEME_COIN", "LAUNCH_MEME", "LAUNCH_COIN"],
   description:
     "Drive an in-app browser tab through a launchpad (four.meme or flap.sh, both on BNB Chain) to launch a token while the user watches. Generates token metadata + image, fills the form with realistic cursor movement, and stops at the wallet confirmation sheet — the user approves each transaction. Use dryRun: 'stop-before-tx' for testnet runs.",

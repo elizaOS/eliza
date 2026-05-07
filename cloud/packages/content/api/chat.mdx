@@ -59,7 +59,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/chat/completions', {
 const data = await response.json();
 console.log(data.choices[0].message.content);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
@@ -83,7 +83,7 @@ response = requests.post(
 
 data = response.json()
 print(data['choices'][0]['message']['content'])
-````
+```
 
   </Tabs.Tab>
 </Tabs>
@@ -200,11 +200,6 @@ You can use an agent ID as the model to chat with your custom AI agents:
 
 ## Available Models
 
-| Model                        | Provider  | Description              |
-| ---------------------------- | --------- | ------------------------ |
-| `gpt-4o`                     | OpenAI    | Most capable GPT-4 model |
-| `gpt-5-mini`                | OpenAI    | Fast and efficient       |
-| `claude-sonnet-4-6` | Anthropic | Latest Claude model      |
-| `gemini-1.5-pro`             | Google    | Gemini Pro model         |
-
-See the [Models API](/docs/api/models) for a complete list.
+Model availability changes as provider catalogs and account configuration
+change. See the [Models API](/docs/api/models) or API Explorer for the current
+catalog and defaults.

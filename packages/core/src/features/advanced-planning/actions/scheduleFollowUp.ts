@@ -17,6 +17,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { asUUID, ModelType } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -45,6 +46,21 @@ function normalizePriority(
 		return normalized;
 	}
 	return "medium";
+}
+
+function scheduleFollowUpFailureResult(
+	message: string,
+	extraData: Record<string, unknown> = {},
+): ActionResult {
+	return {
+		success: false,
+		text: message,
+		error: message,
+		data: {
+			actionName: "SCHEDULE_FOLLOW_UP",
+			...extraData,
+		},
+	};
 }
 
 const scheduleFollowUpTemplate = `# Schedule Follow-up
@@ -80,6 +96,8 @@ IMPORTANT: Your response must ONLY contain the JSON object above. Do not include
 
 export const scheduleFollowUpAction: Action = {
 	name: "SCHEDULE_FOLLOW_UP",
+	contexts: ["tasks", "contacts", "calendar", "automation"],
+	roleGate: { minRole: "ADMIN" },
 	description: "Schedule a follow-up reminder for a contact",
 	suppressPostActionContinuation: true,
 	similes: [
@@ -92,6 +110,44 @@ export const scheduleFollowUpAction: Action = {
 		"reach out to",
 		"schedule follow-up",
 		"remind me about",
+	],
+	parameters: [
+		{
+			name: "contactName",
+			description: "Name of the contact to follow up with.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "entityId",
+			description: "Known entity ID for the contact.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "scheduledAt",
+			description: "Follow-up date/time as an ISO timestamp.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "reason",
+			description: "Reason for the follow-up.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "priority",
+			description: "Follow-up priority.",
+			required: false,
+			schema: { type: "string" as const, enum: ["high", "medium", "low"] },
+		},
+		{
+			name: "message",
+			description: "Optional message or notes for the follow-up.",
+			required: false,
+			schema: { type: "string" as const },
+		},
 	],
 	examples: [
 		[
@@ -137,7 +193,7 @@ export const scheduleFollowUpAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 	): Promise<boolean> => {
 		if (
 			runtime.actions.some(
@@ -159,7 +215,13 @@ export const scheduleFollowUpAction: Action = {
 		}
 
 		const messageText = message.content.text ?? "";
-		return findKeywordTermMatch(messageText, FOLLOW_UP_KEYWORDS) !== undefined;
+		return (
+			findKeywordTermMatch(messageText, FOLLOW_UP_KEYWORDS) !== undefined ||
+			hasActionContextOrKeyword(message, state, {
+				contexts: ["tasks", "contacts", "calendar", "automation"],
+				keywordKeys: ["action.scheduleFollowUp.request"],
+			})
+		);
 	},
 
 	handler: async (
@@ -175,7 +237,10 @@ export const scheduleFollowUpAction: Action = {
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
 		if (!relationshipsService || !followUpService) {
-			throw new Error("Required services not available");
+			return scheduleFollowUpFailureResult(
+				"I couldn't schedule that follow-up because the required services are unavailable right now.",
+				{ errorCode: "services_unavailable" },
+			);
 		}
 
 		if (!state) {
@@ -186,9 +251,28 @@ export const scheduleFollowUpAction: Action = {
 			};
 		}
 
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const parameterMessage = [
+			typeof params.contactName === "string"
+				? `contactName: ${params.contactName}`
+				: "",
+			typeof params.entityId === "string" ? `entityId: ${params.entityId}` : "",
+			typeof params.scheduledAt === "string"
+				? `scheduledAt: ${params.scheduledAt}`
+				: "",
+			typeof params.reason === "string" ? `reason: ${params.reason}` : "",
+			typeof params.priority === "string" ? `priority: ${params.priority}` : "",
+			typeof params.message === "string" ? `message: ${params.message}` : "",
+		]
+			.filter(Boolean)
+			.join("\n");
+
 		state.values = {
 			...state.values,
-			message: message.content.text,
+			message: parameterMessage || message.content.text,
 			senderId: message.entityId,
 			senderName: state.values?.senderName || "User",
 			currentDateTime: getPromptReferenceDate({
@@ -204,103 +288,135 @@ export const scheduleFollowUpAction: Action = {
 			template: scheduleFollowUpTemplate,
 		});
 
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
+		try {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt,
+			});
 
-		const parsedResponse =
-			(parseJSONObjectFromText(
-				response,
-			) as ParsedScheduleFollowUpResponse | null) ??
-			extractScheduleFollowUpResponseFromText(response);
-		if (
-			!parsedResponse ||
-			(!parsedResponse.contactName && !parsedResponse.entityId)
-		) {
-			logger.warn(
-				"[ScheduleFollowUp] Failed to parse follow-up information from response",
-			);
-			throw new Error("Could not extract follow-up information");
-		}
-
-		let entityId = parsedResponse.entityId
-			? asUUID(parsedResponse.entityId)
-			: null;
-
-		if (!entityId && parsedResponse.contactName) {
-			const entity = await findEntityByName(runtime, message, state);
-
-			if (entity?.id) {
-				entityId = entity.id;
-			} else {
-				throw new Error(
-					`Contact "${parsedResponse.contactName}" not found in relationships`,
+			const parsedResponse =
+				(parseJSONObjectFromText(
+					response,
+				) as ParsedScheduleFollowUpResponse | null) ??
+				extractScheduleFollowUpResponseFromText(response);
+			if (
+				!parsedResponse ||
+				(!parsedResponse.contactName && !parsedResponse.entityId)
+			) {
+				logger.warn(
+					"[ScheduleFollowUp] Failed to parse follow-up information from response",
+				);
+				return scheduleFollowUpFailureResult(
+					"I couldn't extract enough follow-up details from that request.",
+					{ errorCode: "parse_failed" },
 				);
 			}
-		}
 
-		if (!entityId) {
-			throw new Error("Could not determine contact to follow up with");
-		}
+			let entityId = parsedResponse.entityId
+				? asUUID(parsedResponse.entityId)
+				: null;
 
-		const contact = await relationshipsService.getContact(entityId);
-		if (!contact) {
-			throw new Error(
-				"Contact not found in relationships. Please add them first.",
+			if (!entityId && parsedResponse.contactName) {
+				const entity = await findEntityByName(runtime, message, state);
+
+				if (entity?.id) {
+					entityId = entity.id;
+				} else {
+					return scheduleFollowUpFailureResult(
+						`I couldn't find ${parsedResponse.contactName} in your relationships yet.`,
+						{
+							errorCode: "contact_not_found",
+							contactName: parsedResponse.contactName,
+						},
+					);
+				}
+			}
+
+			if (!entityId) {
+				return scheduleFollowUpFailureResult(
+					"I couldn't determine who the follow-up should be for.",
+					{ errorCode: "missing_contact" },
+				);
+			}
+
+			const contact = await relationshipsService.getContact(entityId);
+			if (!contact) {
+				return scheduleFollowUpFailureResult(
+					"That contact isn't available in relationships yet. Add them first, then try again.",
+					{ errorCode: "relationship_missing", contactId: entityId },
+				);
+			}
+
+			const scheduledAt = new Date(parsedResponse.scheduledAt || "");
+			if (Number.isNaN(scheduledAt.getTime())) {
+				return scheduleFollowUpFailureResult(
+					"I couldn't determine a valid follow-up date or time from that request.",
+					{
+						errorCode: "invalid_datetime",
+						scheduledAt: parsedResponse.scheduledAt || "",
+					},
+				);
+			}
+
+			const task = await followUpService.scheduleFollowUp(
+				entityId,
+				scheduledAt,
+				parsedResponse.reason || "Follow-up",
+				normalizePriority(parsedResponse.priority),
+				parsedResponse.message,
+			);
+
+			logger.info(
+				`[ScheduleFollowUp] Scheduled follow-up for ${parsedResponse.contactName} at ${scheduledAt.toISOString()}`,
+			);
+
+			const responseText = `I've scheduled a follow-up with ${parsedResponse.contactName} for ${scheduledAt.toLocaleString()}. ${
+				parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ""
+			}`;
+
+			if (callback) {
+				await callback({
+					text: responseText,
+					action: "SCHEDULE_FOLLOW_UP",
+					metadata: {
+						contactId: entityId,
+						contactName: parsedResponse.contactName,
+						scheduledAt: scheduledAt.toISOString(),
+						taskId: task.id,
+						success: true,
+					},
+				});
+			}
+
+			return {
+				success: true,
+				values: {
+					contactId: entityId,
+					taskId: task.id ?? "",
+				},
+				data: {
+					actionName: "SCHEDULE_FOLLOW_UP",
+					contactId: entityId,
+					contactName: parsedResponse.contactName ?? "",
+					scheduledAt: scheduledAt.toISOString(),
+					taskId: task.id ?? "",
+					reason: parsedResponse.reason ?? "",
+					priority: parsedResponse.priority ?? "medium",
+				},
+				text: responseText,
+			};
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to schedule follow-up.";
+			logger.error(
+				error instanceof Error ? error : { error },
+				"[ScheduleFollowUp] Unexpected scheduling failure",
+			);
+			return scheduleFollowUpFailureResult(
+				"I couldn't schedule that follow-up right now.",
+				{ errorCode: "schedule_failed", errorMessage },
 			);
 		}
-
-		const scheduledAt = new Date(parsedResponse.scheduledAt || "");
-		if (Number.isNaN(scheduledAt.getTime())) {
-			throw new Error("Invalid follow-up date/time");
-		}
-
-		const task = await followUpService.scheduleFollowUp(
-			entityId,
-			scheduledAt,
-			parsedResponse.reason || "Follow-up",
-			normalizePriority(parsedResponse.priority),
-			parsedResponse.message,
-		);
-
-		logger.info(
-			`[ScheduleFollowUp] Scheduled follow-up for ${parsedResponse.contactName} at ${scheduledAt.toISOString()}`,
-		);
-
-		const responseText = `I've scheduled a follow-up with ${parsedResponse.contactName} for ${scheduledAt.toLocaleString()}. ${
-			parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ""
-		}`;
-
-		if (callback) {
-			await callback({
-				text: responseText,
-				action: "SCHEDULE_FOLLOW_UP",
-				metadata: {
-					contactId: entityId,
-					contactName: parsedResponse.contactName,
-					scheduledAt: scheduledAt.toISOString(),
-					taskId: task.id,
-					success: true,
-				},
-			});
-		}
-
-		return {
-			success: true,
-			values: {
-				contactId: entityId,
-				taskId: task.id ?? "",
-			},
-			data: {
-				actionName: "SCHEDULE_FOLLOW_UP",
-				contactId: entityId,
-				contactName: parsedResponse.contactName ?? "",
-				scheduledAt: scheduledAt.toISOString(),
-				taskId: task.id ?? "",
-				reason: parsedResponse.reason ?? "",
-				priority: parsedResponse.priority ?? "medium",
-			},
-			text: responseText,
-		};
 	},
 };

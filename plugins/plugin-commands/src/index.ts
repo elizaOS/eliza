@@ -61,6 +61,10 @@ export const commandRegistryProvider: Provider = {
 	description: "Available chat commands and their descriptions",
 	descriptionCompressed: "Available chat commands and descriptions.",
 	dynamic: true,
+	contexts: ["general", "automation"],
+	contextGate: { anyOf: ["general", "automation"] },
+	cacheStable: true,
+	cacheScope: "agent",
 	async get(
 		runtime: IAgentRuntime,
 		message: Memory,

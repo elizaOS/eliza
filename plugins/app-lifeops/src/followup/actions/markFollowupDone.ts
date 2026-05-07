@@ -68,6 +68,8 @@ export const markFollowupDoneAction: Action = {
     "Use this only when the interaction already happened, not for future reminders. " +
     "Requires either an explicit contactId (UUID) or an unambiguous contactName. " +
     "Ambiguous names return a clarifying response without modifying any contact.",
+  contexts: ["contacts", "tasks", "calendar", "messaging"],
+  roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

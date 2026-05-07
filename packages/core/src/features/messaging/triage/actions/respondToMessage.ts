@@ -12,7 +12,12 @@ import type {
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import type { DraftRequest } from "../types.ts";
-import { parseRespondToMessageParams } from "./_shared.ts";
+import {
+	bodyParameter,
+	messageIdParameter,
+	parseRespondToMessageParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 /**
  * One-shot reply: drafts a reply, then either sends immediately or hands off
@@ -21,11 +26,14 @@ import { parseRespondToMessageParams } from "./_shared.ts";
  */
 export const respondToMessageAction: Action = {
 	name: "RESPOND_TO_MESSAGE",
+	contexts: ["messaging", "email", "contacts"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Reply to a message in one step: drafts the reply, then sends or queues it for owner approval per the registered SendPolicy.",
 	descriptionCompressed:
 		"reply to msg: draft then policy-gate then send; one-shot",
 	similes: ["REPLY_TO_MESSAGE", "QUICK_REPLY", "ONE_SHOT_REPLY"],
+	parameters: [messageIdParameter, bodyParameter],
 	examples: [
 		[
 			{
@@ -42,7 +50,11 @@ export const respondToMessageAction: Action = {
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,

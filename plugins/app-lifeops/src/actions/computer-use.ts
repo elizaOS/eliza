@@ -16,6 +16,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 
 const ACTION_NAME = "COMPUTER_USE";
@@ -27,6 +28,53 @@ const ACTION_NAMES = {
   file: "FILE_ACTION",
   terminal: "TERMINAL_ACTION",
 } as const;
+const COMPUTER_USE_CONTEXTS = ["browser", "automation", "files", "terminal", "admin"] as const;
+const COMPUTER_USE_KEYWORDS = [
+  "computer",
+  "desktop",
+  "screenshot",
+  "screen",
+  "click",
+  "drag",
+  "keyboard",
+  "window",
+  "finder",
+  "terminal",
+  "browser",
+  "file",
+  "carpeta",
+  "pantalla",
+  "clic",
+  "teclado",
+  "ordinateur",
+  "bureau",
+  "écran",
+  "clavier",
+  "fenêtre",
+  "computer",
+  "bildschirm",
+  "tastatur",
+  "fenster",
+  "computador",
+  "tela",
+  "teclado",
+  "computadora",
+  "schermo",
+  "tastiera",
+  "finestra",
+  "スクリーンショット",
+  "画面",
+  "クリック",
+  "キーボード",
+  "截图",
+  "屏幕",
+  "点击",
+  "键盘",
+  "스크린샷",
+  "화면",
+  "클릭",
+  "키보드",
+] as const;
 
 type ComputerUseSurface = keyof typeof ACTION_NAMES;
 
@@ -36,6 +84,34 @@ interface LoadedComputerUseActions {
   window: Action | null;
   file: Action | null;
   terminal: Action | null;
+}
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
+  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
+  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
+    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return COMPUTER_USE_CONTEXTS.some((context) => selected.has(context));
+}
+
+function hasComputerUseIntent(message: Memory, state: State | undefined): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return COMPUTER_USE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 function isComputerUseEnabled(): boolean {
@@ -254,15 +330,19 @@ export const computerUseAction: Action & {
     "Owner-only. Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   descriptionCompressed:
     "control owner desktop OS via plugin-computeruse: desktop browser window file terminal surfaces; feature-gated",
+  contexts: [...COMPUTER_USE_CONTEXTS],
+  contextGate: { anyOf: [...COMPUTER_USE_CONTEXTS] },
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
+    state?: State,
   ): Promise<boolean> => {
     if (!isComputerUseEnabled()) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
-    return true;
+    return hasSelectedContext(state) || hasComputerUseIntent(message, state);
   },
 
   parameters: [

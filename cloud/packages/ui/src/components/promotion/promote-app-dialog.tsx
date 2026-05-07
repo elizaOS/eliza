@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "../primitives";
 import {
   AlertCircle,
   ArrowLeft,

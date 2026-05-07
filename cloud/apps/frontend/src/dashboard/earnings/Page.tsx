@@ -1,7 +1,7 @@
 import { DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { EarningsPageWrapper } from "@/packages/ui/src/components/earnings/earnings-page-wrapper";
 import { useRequireAuth } from "../../lib/auth-hooks";
+import { EarningsPageWrapper } from "./_components/earnings-page-wrapper";
 
 /**
  * /dashboard/earnings — `EarningsPageWrapper` already drives its own

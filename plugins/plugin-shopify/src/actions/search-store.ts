@@ -149,6 +149,9 @@ const examples: ActionExample[][] = [
 
 export const searchStoreAction: Action = {
   name: "SEARCH_SHOPIFY_STORE",
+  contexts: ["payments", "connectors", "automation", "knowledge"],
+  contextGate: { anyOf: ["payments", "connectors", "automation", "knowledge"] },
+  roleGate: { minRole: "USER" },
   similes: ["SHOPIFY_SEARCH", "STORE_SEARCH"],
   description:
     "Search across products, orders, and customers in a connected Shopify store.",

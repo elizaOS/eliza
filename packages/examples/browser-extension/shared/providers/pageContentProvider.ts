@@ -48,6 +48,10 @@ export const pageContentProvider: Provider = {
   description:
     "Current webpage content for contextual chat - allows the agent to answer questions about the page the user is viewing",
   position: 10, // Run early to establish context
+  contexts: ["browser", "web"],
+  contextGate: { anyOf: ["browser", "web"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     runtime: IAgentRuntime,

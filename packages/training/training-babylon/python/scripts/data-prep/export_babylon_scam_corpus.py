@@ -346,6 +346,8 @@ def export_training_rows(
 
     manifest = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "exportFormat": "json",
+        "expectedResponseFormat": "json",
         "sourceDir": str(source_dir),
         "trajectoryCount": len(trajectories),
         "sampleCount": len(rows),

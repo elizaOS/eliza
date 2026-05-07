@@ -94,6 +94,9 @@ function parseWaypointName(text: string, params: Record<string, unknown>): strin
 
 export const minecraftLocomoteOpAction: Action = {
   name: ACTION_NAME,
+  contexts: ["automation", "media"],
+  contextGate: { anyOf: ["automation", "media"] },
+  roleGate: { minRole: "USER" },
   similes: ["MC_MOVE", "MC_GOTO", "MC_STOP", "MC_LOOK", "MC_CONTROL"],
   description:
     "Locomote the Minecraft bot: goto coords, stop movement, look yaw/pitch, set a control key, or navigate to a saved waypoint.",

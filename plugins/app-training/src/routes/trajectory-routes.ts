@@ -39,7 +39,10 @@ import type {
   TrajectoryStatus,
   TrajectoryStep,
 } from "@elizaos/agent/types/trajectory";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, TrajectoryJsonShape } from "@elizaos/core";
+import {
+  listTrajectoryCallEntries,
+} from "../core/trajectory-consumer.js";
 
 export type { TrajectoryExportFormat };
 
@@ -254,7 +257,7 @@ interface UICacheStats {
 }
 
 type RouteTrajectoryExportOptions = TrajectoryExportOptions & {
-  jsonShape?: "legacy" | "context_object_events_v5";
+  jsonShape?: TrajectoryJsonShape;
 };
 
 // ============================================================================
@@ -927,7 +930,7 @@ function estimateTokenCount(text: string): number {
 
 function buildDisplayMetadata(traj: Trajectory): Record<string, unknown> {
   const metadata = { ...(asRecord(traj.metadata) ?? {}) };
-  const calls = (traj.steps ?? []).flatMap((step) => step.llmCalls ?? []);
+  const calls = listTrajectoryCallEntries(traj).map((entry) => entry.call);
   if (
     calls.length > 0 &&
     !calls.every((call) => isSyntheticTrajectoryCall(call))
@@ -973,7 +976,7 @@ function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
       llmCalls: (step.llmCalls ?? []).map((call, callIndex) => {
         const normalizedCall = enrichTrajectoryLlmCall(
           call as Record<string, unknown>,
-        ) as TrajectoryLlmCall;
+        ) as unknown as TrajectoryLlmCall;
         return {
           callId:
             typeof normalizedCall.callId === "string" &&
@@ -1123,50 +1126,46 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
 
-  const steps = traj.steps || [];
   const trajectoryId = String(traj.trajectoryId);
+  for (const entry of listTrajectoryCallEntries(traj)) {
+    const call = enrichTrajectoryLlmCall(
+      entry.call as Record<string, unknown>,
+    ) as unknown as TrajectoryLlmCall;
+    llmCalls.push({
+      id: call.callId || `${entry.stepId}-call-${entry.callIndex}`,
+      trajectoryId,
+      stepId: entry.stepId,
+      model: call.model || "unknown",
+      systemPrompt: call.systemPrompt || "",
+      userPrompt: call.userPrompt || "",
+      response: call.response || "",
+      temperature: typeof call.temperature === "number" ? call.temperature : 0,
+      maxTokens: typeof call.maxTokens === "number" ? call.maxTokens : 0,
+      purpose: call.purpose || "",
+      actionType: call.actionType || "",
+      stepType: call.stepType || "",
+      tags: Array.isArray(call.tags)
+        ? call.tags.filter((tag): tag is string => typeof tag === "string")
+        : [],
+      latencyMs: call.latencyMs || 0,
+      promptTokens: call.promptTokens,
+      completionTokens: call.completionTokens,
+      timestamp: call.timestamp || entry.step.timestamp,
+      createdAt: new Date(
+        call.timestamp || entry.step.timestamp,
+      ).toISOString(),
+    });
+    totalPromptTokens += call.promptTokens || 0;
+    totalCompletionTokens += call.completionTokens || 0;
+  }
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
+  for (let i = 0; i < (traj.steps || []).length; i++) {
+    const step = traj.steps?.[i];
+    if (!step) continue;
     const stepId = typeof step.stepId === "string" ? step.stepId : `step-${i}`;
-
-    // Process LLM Calls
-    const calls = step.llmCalls || [];
-    for (let j = 0; j < calls.length; j++) {
-      const call = enrichTrajectoryLlmCall(
-        calls[j] as Record<string, unknown>,
-      ) as TrajectoryLlmCall;
-      llmCalls.push({
-        id: call.callId || `${stepId}-call-${j}`,
-        trajectoryId,
-        stepId,
-        model: call.model || "unknown",
-        systemPrompt: call.systemPrompt || "",
-        userPrompt: call.userPrompt || "",
-        response: call.response || "",
-        temperature:
-          typeof call.temperature === "number" ? call.temperature : 0,
-        maxTokens: typeof call.maxTokens === "number" ? call.maxTokens : 0,
-        purpose: call.purpose || "",
-        actionType: call.actionType || "",
-        stepType: call.stepType || "",
-        tags: Array.isArray(call.tags)
-          ? call.tags.filter((tag): tag is string => typeof tag === "string")
-          : [],
-        latencyMs: call.latencyMs || 0,
-        promptTokens: call.promptTokens,
-        completionTokens: call.completionTokens,
-        timestamp: call.timestamp || step.timestamp,
-        createdAt: new Date(call.timestamp || step.timestamp).toISOString(),
-      });
-      totalPromptTokens += call.promptTokens || 0;
-      totalCompletionTokens += call.completionTokens || 0;
-    }
-
-    // Process Provider Accesses
-    const accesses = step.providerAccesses || [];
-    for (let k = 0; k < accesses.length; k++) {
-      const access = accesses[k];
+    const providerAccessList = step.providerAccesses ?? [];
+    for (let k = 0; k < providerAccessList.length; k++) {
+      const access = providerAccessList[k];
       providerAccesses.push({
         id: access.providerId || `${stepId}-provider-${k}`,
         trajectoryId,
@@ -1231,7 +1230,7 @@ function isSyntheticTrajectoryCall(call: TrajectoryLlmCall): boolean {
 }
 
 function needsConversationBackfill(traj: Trajectory): boolean {
-  const calls = (traj.steps ?? []).flatMap((step) => step.llmCalls ?? []);
+  const calls = listTrajectoryCallEntries(traj).map((entry) => entry.call);
   if (calls.length === 0) {
     return true;
   }
@@ -1437,10 +1436,10 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
     delete nextMetadata.syntheticLlmCall;
     delete nextMetadata.syntheticLlmCallSource;
 
-    const enriched = {
+    const enriched: Trajectory = {
       ...traj,
       steps: baseSteps,
-      metadata: nextMetadata,
+      metadata: nextMetadata as Trajectory["metadata"],
     };
 
     try {
@@ -1580,6 +1579,8 @@ async function maybeBackfillTrajectoryFromConversationMemory(
             "[backfilled from conversation memory because the trajectory logger did not capture the live LLM call]",
           userPrompt,
           response,
+          temperature: 0,
+          maxTokens: 0,
           purpose: "chat",
           actionType: "conversation-memory-backfill",
           latencyMs: Math.max(
@@ -1598,10 +1599,10 @@ async function maybeBackfillTrajectoryFromConversationMemory(
     delete nextMetadata.syntheticLlmCall;
     delete nextMetadata.syntheticLlmCallSource;
 
-    const enriched = {
+    const enriched: Trajectory = {
       ...traj,
       steps: baseSteps,
-      metadata: nextMetadata,
+      metadata: nextMetadata as Trajectory["metadata"],
     };
     try {
       await saveTrajectory(runtime, toPersistedTrajectory(enriched));
@@ -1895,35 +1896,44 @@ async function handleExportTrajectories(
 
   if (
     body.format !== "json" &&
+    body.format !== "jsonl" &&
     body.format !== "csv" &&
     body.format !== "art"
   ) {
-    sendJsonError(res, "Format must be 'json', 'csv', 'art', or 'zip'", 400);
+    sendJsonError(
+      res,
+      "Format must be 'json', 'jsonl', 'csv', 'art', or 'zip'",
+      400,
+    );
     return;
   }
 
   const jsonShape =
-    body.jsonShape === "legacy" || body.jsonShape === "context_object_events_v5"
+    body.jsonShape === "legacy" ||
+    body.jsonShape === "context_object_events_v5" ||
+    body.jsonShape === "harness_v1"
       ? body.jsonShape
       : undefined;
   if (body.jsonShape !== undefined && !jsonShape) {
     sendJsonError(
       res,
-      "jsonShape must be 'legacy' or 'context_object_events_v5'",
+      "jsonShape must be 'legacy', 'context_object_events_v5', or 'harness_v1'",
       400,
     );
     return;
   }
 
   const result = await logger.exportTrajectories({
-    format: body.format,
+    format: body.format as TrajectoryExportFormat,
     includePrompts: body.includePrompts,
     trajectoryIds: body.trajectoryIds,
     startDate: body.startDate,
     endDate: body.endDate,
     scenarioId: body.scenarioId,
     batchId: body.batchId,
-    ...(body.format === "json" && jsonShape ? { jsonShape } : {}),
+    ...((body.format === "json" || body.format === "jsonl") && jsonShape
+      ? { jsonShape }
+      : {}),
   });
 
   res.statusCode = 200;

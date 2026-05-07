@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { ElizaPageClient } from "@/packages/ui/src/components/chat/eliza-page-client";
+import { ElizaPageClient } from "../../components/chat/eliza-page-client";
 
 /**
  * /dashboard/chat — free-mode chat page. Auth is optional; the underlying

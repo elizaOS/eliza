@@ -45,6 +45,8 @@ async function resolveAdminEntityId(
 
 export const sendAdminMessageAction: Action = {
   name: "SEND_ADMIN_MESSAGE",
+  contexts: ["admin", "messaging", "agent_internal"],
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "MESSAGE_ADMIN",
     "NOTIFY_OWNER",

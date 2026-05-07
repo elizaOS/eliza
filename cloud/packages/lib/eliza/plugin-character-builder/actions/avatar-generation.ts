@@ -17,6 +17,89 @@ import { v4 } from "uuid";
 import { charactersService } from "@/lib/services/characters/characters";
 import { isCreatorMode } from "../../shared/utils/helpers";
 
+const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal", "media"];
+const AVATAR_KEYWORDS = [
+  "avatar",
+  "profile picture",
+  "profile pic",
+  "picture",
+  "photo",
+  "portrait",
+  "image",
+  "generate",
+  "create",
+  "make",
+  "draw",
+  "look",
+  "visual",
+  "pfp",
+  "foto",
+  "imagen",
+  "retrato",
+  "avatar",
+  "perfil",
+  "crear",
+  "generar",
+  "image",
+  "photo",
+  "portrait",
+  "profil",
+  "creer",
+  "generer",
+  "bild",
+  "foto",
+  "portrat",
+  "profilbild",
+  "erstellen",
+  "generieren",
+  "immagine",
+  "foto",
+  "ritratto",
+  "profilo",
+  "creare",
+  "gerar",
+  "imagem",
+  "perfil",
+  "retrato",
+  "头像",
+  "图片",
+  "照片",
+  "肖像",
+  "生成",
+  "アバター",
+  "画像",
+  "写真",
+  "プロフィール",
+  "生成",
+];
+
+function collectConversationText(message: Memory, state?: State): string {
+  const parts: string[] = [];
+  const text = message.content?.text;
+  if (typeof text === "string") parts.push(text);
+  for (const key of ["conversationLog", "recentMessages", "currentCharacter"]) {
+    const value = state?.values?.[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join("\n").toLowerCase();
+}
+
+function hasSelectedContext(state: State | undefined, contexts: string[]): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => contexts.includes(String(context).toLowerCase()));
+}
+
+function hasKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
 /**
  * Avatar generation prompt template.
  * Crafts a detailed, stylized prompt based on character traits.
@@ -76,14 +159,33 @@ Based on the user's request and character context:
  */
 export const generateAvatarAction = {
   name: "GENERATE_AVATAR",
+  contexts: CHARACTER_BUILDER_CONTEXTS,
+  contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  parameters: [
+    {
+      name: "prompt",
+      description: "Optional visual direction for the avatar portrait.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "style",
+      description: "Optional avatar style or mood requested by the user.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   description: `Generate an AI avatar portrait for the character. Use when:
 - User asks to create, generate, or make an avatar
 - User wants a profile picture for their character
 - User says "give me an avatar", "create avatar", "generate profile pic"
 - User describes how their character should look
 Returns the avatar URL for immediate preview and update.`,
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    return (
+      hasSelectedContext(state, CHARACTER_BUILDER_CONTEXTS) ||
+      hasKeyword(collectConversationText(message, state), AVATAR_KEYWORDS)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -131,9 +233,26 @@ Returns the avatar URL for immediate preview and update.`,
       template: promptTemplate,
     });
 
-    const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    let promptResponse: string;
+    try {
+      promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[GENERATE_AVATAR] Prompt generation failed");
+      await callback({
+        text: "I couldn't generate an avatar prompt right now. Want me to try again?",
+        error: true,
+        metadata: { action: "GENERATE_AVATAR", success: false },
+      });
+      return {
+        success: false,
+        text: "Avatar prompt generation failed",
+        error: errorMessage,
+        data: { actionName: "GENERATE_AVATAR" },
+      };
+    }
 
     // Parse the response using parseKeyValueXml
     const parsed = parseKeyValueXml(promptResponse) as {
@@ -152,9 +271,39 @@ Returns the avatar URL for immediate preview and update.`,
     logger.info(`[GENERATE_AVATAR] Generated prompt: ${avatarPrompt.substring(0, 100)}...`);
 
     // Generate the avatar image
-    const imageResponse = await runtime.useModel(ModelType.IMAGE, {
-      prompt: avatarPrompt,
-    });
+    let imageResponse;
+    try {
+      imageResponse = await runtime.useModel(ModelType.IMAGE, {
+        prompt: avatarPrompt,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "[GENERATE_AVATAR] Image generation failed");
+      await callback({
+        text: "I couldn't generate the avatar right now. Want me to try again?",
+        thought: "Avatar generation model call failed",
+        error: true,
+        metadata: {
+          action: "GENERATE_AVATAR",
+          success: false,
+          error: "IMAGE_GENERATION_FAILED",
+        },
+      });
+      return {
+        text: "Avatar generation failed",
+        values: {
+          success: false,
+          error: "IMAGE_GENERATION_FAILED",
+          prompt: avatarPrompt,
+        },
+        data: {
+          actionName: "GENERATE_AVATAR",
+          prompt: avatarPrompt,
+        },
+        error: errorMessage,
+        success: false,
+      };
+    }
 
     if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
       logger.error(
@@ -207,11 +356,19 @@ Returns the avatar URL for immediate preview and update.`,
       if (userId) {
         logger.info(`[GENERATE_AVATAR] Auto-saving avatar for character ${runtime.character.id}`);
 
-        const savedCharacter = await charactersService.updateForUser(
-          runtime.character.id as string,
-          userId,
-          { avatar_url: avatarUrl },
-        );
+        let savedCharacter = null;
+        try {
+          savedCharacter = await charactersService.updateForUser(
+            runtime.character.id as string,
+            userId,
+            { avatar_url: avatarUrl },
+          );
+        } catch (error) {
+          logger.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            "[GENERATE_AVATAR] Failed to auto-save avatar",
+          );
+        }
 
         if (savedCharacter) {
           avatarSaved = true;

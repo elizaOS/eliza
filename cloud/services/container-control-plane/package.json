@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/cloud-db": "workspace:*",
+    "@elizaos/cloud-lib": "workspace:*",
     "hono": "4.12.16"
   },
   "devDependencies": {

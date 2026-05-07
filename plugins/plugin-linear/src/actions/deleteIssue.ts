@@ -17,8 +17,19 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteIssueAction: Action = {
   name: "DELETE_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Delete (archive) an issue in Linear",
   descriptionCompressed: "delete (archive) issue Linear",
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue id or identifier to archive.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   similes: [
     "delete-linear-issue",
     "archive-linear-issue",

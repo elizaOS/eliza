@@ -10,15 +10,31 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseScheduleDraftSendParams } from "./_shared.ts";
+import {
+	draftIdParameter,
+	parseScheduleDraftSendParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const scheduleDraftSendAction: Action = {
 	name: "SCHEDULE_DRAFT_SEND",
+	contexts: ["messaging", "email", "calendar", "automation"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Schedule a previously created draft to send at a future time. Uses the adapter's native scheduling if supported; otherwise enqueues a process-local timer.",
 	descriptionCompressed:
 		"schedule draft send sendAtMs adapter-native or fallback queue",
 	similes: ["DEFER_SEND", "SCHEDULE_SEND", "SEND_LATER"],
+	parameters: [
+		draftIdParameter,
+		{
+			name: "sendAt",
+			description:
+				"When to send the draft, as an ISO timestamp or parseable date.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+	],
 	examples: [
 		[
 			{
@@ -35,7 +51,17 @@ export const scheduleDraftSendAction: Action = {
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, [
+			"messaging",
+			"email",
+			"calendar",
+			"automation",
+		]),
 
 	handler: async (
 		runtime: IAgentRuntime,

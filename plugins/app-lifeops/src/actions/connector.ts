@@ -1338,6 +1338,17 @@ export const connectorAction: Action & {
     `Subactions: ${VALID_SUBACTIONS.join(" | ")}.`,
   descriptionCompressed:
     "connector lifecycle+verify-probes (google|x|telegram|signal|discord|imessage|whatsapp|health|browser-bridge): connect disconnect verify status list",
+  contexts: [
+    "connectors",
+    "settings",
+    "calendar",
+    "email",
+    "messaging",
+    "contacts",
+    "health",
+    "browser",
+  ],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory) =>

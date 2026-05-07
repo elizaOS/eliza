@@ -24,6 +24,9 @@ import type {
 
 export const provisionWorkspaceAction: Action = {
   name: "PROVISION_WORKSPACE",
+  contexts: ["code", "files", "tasks", "automation"],
+  contextGate: { anyOf: ["code", "files", "tasks", "automation"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "CREATE_WORKSPACE",

@@ -1,9 +1,18 @@
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
+export * from "./trajectory-export";
+export * from "./trajectory-types";
 
-export type TrajectoryScalar = string | number | boolean | null;
-export type TrajectoryData = Record<string, TrajectoryScalar>;
+import type {
+	TrajectoryData as SharedTrajectoryData,
+	TrajectoryScalar as SharedTrajectoryScalar,
+	TrajectoryLlmCallRecord,
+	TrajectoryProviderAccessRecord,
+} from "./trajectory-types";
 
-export type TrajectoryProviderAccess = {
+export type TrajectoryScalar = SharedTrajectoryScalar;
+export type TrajectoryData = SharedTrajectoryData;
+
+export type TrajectoryProviderAccess = TrajectoryProviderAccessRecord & {
 	stepId: string;
 	providerName: string;
 	purpose: string;
@@ -16,7 +25,7 @@ export type TrajectoryProviderAccess = {
 	executionTraceId?: string;
 };
 
-export type TrajectoryLlmCall = {
+export type TrajectoryLlmCall = TrajectoryLlmCallRecord & {
 	stepId: string;
 	model: string;
 	systemPrompt: string;

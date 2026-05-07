@@ -18,6 +18,7 @@ import type {
 	State,
 	UUID,
 } from "../../types";
+import { hasActionContextOrKeyword } from "../../utils/action-validation.ts";
 import { addKnowledgeFromFilePath } from "./docs-loader.ts";
 import { KnowledgeService } from "./service.ts";
 import { fetchKnowledgeFromUrl, isYouTubeUrl } from "./url-ingest.ts";
@@ -88,9 +89,31 @@ export function registerKnowledgeSearchCategory(runtime: IAgentRuntime): void {
 
 export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
+	contexts: ["knowledge", "memory", "files"],
+	roleGate: { minRole: "USER" },
 	description:
 		"Process and store knowledge from a file path or text content into the knowledge base",
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "filePath",
+			description: "Optional local file path to ingest into knowledge.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "content",
+			description: "Optional text content to store in knowledge.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "title",
+			description: "Optional title for text-backed knowledge.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 
 	similes: [],
 
@@ -155,8 +178,20 @@ export const processKnowledgeAction: Action = {
 			return hasKeyword || hasPath;
 		};
 		try {
-			await __avLegacyValidate(runtime, message, state, options);
-			return false;
+			const hasLegacySignal = await __avLegacyValidate(
+				runtime,
+				message,
+				state,
+				options,
+			);
+			return (
+				hasLegacySignal ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["knowledge", "memory", "files"],
+					keywordKeys: ["action.processKnowledge.request"],
+					keywords: ["document", "file", "pdf", "remember this"],
+				})
+			);
 		} catch {
 			return false;
 		}
@@ -178,7 +213,24 @@ export const processKnowledgeAction: Action = {
 				throw new Error("Knowledge service not available");
 			}
 
-			const text = message.content.text || "";
+			const params =
+				_options?.parameters && typeof _options.parameters === "object"
+					? (_options.parameters as Record<string, unknown>)
+					: {};
+			const explicitPath =
+				typeof params.filePath === "string" && params.filePath.trim()
+					? params.filePath.trim()
+					: undefined;
+			const explicitContent =
+				typeof params.content === "string" && params.content.trim()
+					? params.content.trim()
+					: undefined;
+			const explicitTitle =
+				typeof params.title === "string" && params.title.trim()
+					? params.title.trim()
+					: undefined;
+			const text =
+				explicitContent ?? explicitPath ?? message.content.text ?? "";
 			const pathMatch = text.match(KNOWLEDGE_PATH_PATTERN);
 
 			let response: Content;
@@ -242,10 +294,9 @@ export const processKnowledgeAction: Action = {
 					};
 				}
 
-				const title = deriveKnowledgeTitle(
-					knowledgeContent,
-					"Learned knowledge",
-				);
+				const title =
+					explicitTitle ??
+					deriveKnowledgeTitle(knowledgeContent, "Learned knowledge");
 				const filename = createKnowledgeNoteFilename(title);
 				const knowledgeOptions = {
 					clientDocumentId: "" as UUID,
@@ -306,6 +357,8 @@ export const processKnowledgeAction: Action = {
 
 export const searchKnowledgeAction: Action = {
 	name: "SEARCH_KNOWLEDGE",
+	contexts: ["knowledge", "memory", "web"],
+	roleGate: { minRole: "USER" },
 	description: "Search the knowledge base for specific information",
 	suppressPostActionContinuation: true,
 	parameters: [
@@ -515,6 +568,8 @@ function isUuid(value: string): value is UUID {
 
 export const ingestKnowledgeFromUrlAction: Action = {
 	name: "INGEST_KNOWLEDGE_FROM_URL",
+	contexts: ["knowledge", "web", "browser", "files"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"FETCH_KNOWLEDGE_FROM_URL",
 		"IMPORT_KNOWLEDGE_FROM_URL",
@@ -700,6 +755,8 @@ export const ingestKnowledgeFromUrlAction: Action = {
 
 export const updateKnowledgeDocumentAction: Action = {
 	name: "UPDATE_KNOWLEDGE_DOCUMENT",
+	contexts: ["knowledge", "memory", "files"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"EDIT_KNOWLEDGE_DOCUMENT",
 		"REPLACE_KNOWLEDGE_DOCUMENT",
@@ -855,6 +912,8 @@ export const updateKnowledgeDocumentAction: Action = {
 
 export const deleteKnowledgeDocumentAction: Action = {
 	name: "DELETE_KNOWLEDGE_DOCUMENT",
+	contexts: ["knowledge", "memory", "files"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"REMOVE_KNOWLEDGE_DOCUMENT",
 		"DELETE_DOCUMENT",

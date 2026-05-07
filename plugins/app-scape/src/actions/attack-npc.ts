@@ -28,8 +28,19 @@ export const attackNpc: Action = {
   description:
     "Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
   descriptionCompressed: "Attack NPC by id.",
+  contexts: ["game", "automation", "world", "state"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
   examples: [],
+  parameters: [
+    {
+      name: "npcId",
+      description: "Nearby NPC instance id from the SCAPE_NEARBY provider.",
+      descriptionCompressed: "NPC id.",
+      required: true,
+      schema: { type: "number" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -61,13 +72,26 @@ export const attackNpc: Action = {
       return { success: false, text: err };
     }
 
-    const result = await service.executeAction({
-      action: "attackNpc",
-      npcId,
-    });
-    const displayText =
-      result.message ?? (result.success ? "engaging" : "attack failed");
-    callback?.({ text: displayText, action: "ATTACK_NPC" });
-    return { success: result.success, text: displayText };
+    try {
+      const result = await service.executeAction({
+        action: "attackNpc",
+        npcId,
+      });
+      const displayText =
+        result.message ?? (result.success ? "engaging" : "attack failed");
+      callback?.({ text: displayText, action: "ATTACK_NPC" });
+      return { success: result.success, text: displayText };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown attack failure.";
+      const displayText = `attack failed: ${message}`;
+      callback?.({ text: displayText, action: "ATTACK_NPC" });
+      return {
+        success: false,
+        text: displayText,
+        error: message,
+        data: { action: "attackNpc", npcId },
+      };
+    }
   },
 };

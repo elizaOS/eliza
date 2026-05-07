@@ -68,7 +68,7 @@ export interface ProviderCacheEntry
 }
 
 /**
- * Working memory entry for multi-step action execution
+ * Working memory entry for action execution
  */
 export interface WorkingMemoryEntry
 	extends Omit<
@@ -109,11 +109,11 @@ export interface StateData
 	entity?: Entity;
 	/** Provider results cache keyed by provider name */
 	providers?: Record<string, ProviderCacheEntry>;
-	/** Current action plan for multi-step actions */
+	/** Current action plan for queued action execution */
 	actionPlan?: ActionPlan;
 	/** Results from previous action executions */
 	actionResults?: ActionResult[];
-	/** Working memory for temporary state during multi-step action execution */
+	/** Working memory for temporary state during action execution */
 	workingMemory?: WorkingMemory;
 	/** Latest structured-output failure captured during this run */
 	structuredOutputFailure?: StructuredOutputFailure;

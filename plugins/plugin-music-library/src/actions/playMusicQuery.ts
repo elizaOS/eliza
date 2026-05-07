@@ -503,6 +503,9 @@ Respond with ONLY the album name, nothing else.`;
  */
 export const playMusicQuery: Action = {
   name: "PLAY_MUSIC_QUERY",
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "SMART_PLAY",
     "RESEARCH_AND_PLAY",

@@ -8,6 +8,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { hasSyncPluginSignal } from "./plugin-action-validation.js";
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
   const svc = runtime.getService("plugin_manager");
@@ -16,6 +17,8 @@ function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
 
 export const syncPluginAction: Action = {
   name: "SYNC_PLUGIN",
+  contexts: ["admin", "settings", "code", "files"],
+  roleGate: { minRole: "OWNER" },
 
   similes: ["UPDATE_PLUGIN", "PULL_PLUGIN_UPSTREAM", "SYNC_EJECTED_PLUGIN"],
 
@@ -23,7 +26,8 @@ export const syncPluginAction: Action = {
     "Sync an ejected plugin with upstream by fetching and merging new commits.",
   descriptionCompressed: "sync eject plugin w/ upstream fetch merge new commit",
 
-  validate: async () => true,
+  validate: async (runtime, message, state) =>
+    getPluginManager(runtime) !== null && hasSyncPluginSignal(message, state),
 
   handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;

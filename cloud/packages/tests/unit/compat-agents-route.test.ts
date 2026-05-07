@@ -120,3 +120,48 @@ describe("compat agents route", () => {
     expect(createCalls).toEqual([]);
   });
 });
+
+describe("compat agent route source regressions", () => {
+  test("logs route clamps requested tail lines", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(
+      new URL("../../../apps/api/compat/agents/[id]/logs/route.ts", import.meta.url),
+      "utf-8",
+    );
+
+    expect(source).toContain('parseInt(url.searchParams.get("tail") ?? "100", 10)');
+    expect(source).toContain("Math.max(1, Math.min");
+    expect(source).toContain("5000");
+  });
+
+  test("suspend and resume routes use org-scoped getAgentForWrite pre-checks", async () => {
+    const { readFileSync } = await import("node:fs");
+    const suspendSource = readFileSync(
+      new URL("../../../apps/api/compat/agents/[id]/suspend/route.ts", import.meta.url),
+      "utf-8",
+    );
+    const resumeSource = readFileSync(
+      new URL("../../../apps/api/compat/agents/[id]/resume/route.ts", import.meta.url),
+      "utf-8",
+    );
+
+    for (const source of [suspendSource, resumeSource]) {
+      expect(source).toContain("getAgentForWrite(");
+      expect(source).toContain("user.organization_id");
+      expect(source).toContain('"Agent not found"');
+      expect(source).toContain("404");
+    }
+  });
+
+  test("delete route keeps character cleanup best effort", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(
+      new URL("../../../apps/api/compat/agents/[id]/route.ts", import.meta.url),
+      "utf-8",
+    );
+
+    expect(source).toContain("await userCharactersRepository.delete(characterId)");
+    expect(source).toContain("Failed to clean up linked character");
+    expect(source).toContain("Agent deleted");
+  });
+});

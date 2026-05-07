@@ -87,6 +87,8 @@ function buildPromotePrompt(
 
 export const promoteTaskToWorkflowAction: Action = {
   name: PROMOTE_TASK_TO_WORKFLOW_ACTION,
+  contexts: ["automation", "tasks", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "PROMOTE_TASK",
     "PROMOTE_TO_WORKFLOW",

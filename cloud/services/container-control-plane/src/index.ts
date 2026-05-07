@@ -1,22 +1,30 @@
 import { type Context, Hono } from "hono";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
-import { containersEnv } from "@/lib/config/containers-env";
-import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
-import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
+import { userCharactersRepository } from "@elizaos/cloud-db/repositories/characters";
+import {
+  type DockerNode,
+  dockerNodesRepository,
+} from "@elizaos/cloud-db/repositories/docker-nodes";
+import {
+  envelope,
+  errorEnvelope,
+  toCompatOpResult,
+} from "@elizaos/cloud-lib/internal/api/compat-envelope";
+import { containersEnv } from "@elizaos/cloud-lib/config/containers-env";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-lib/internal/runtime/cloud-bindings";
+import { WarmPoolManager } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool";
+import { getHetznerPoolContainerCreator } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool-creator";
 import {
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
-} from "@/lib/services/containers/hetzner-client";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { dockerNodeManager } from "@/lib/services/docker-node-manager";
-import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-lib/internal/services/containers/hetzner-client";
+import { getNodeAutoscaler } from "@elizaos/cloud-lib/internal/services/containers/node-autoscaler";
+import { dockerNodeManager } from "@elizaos/cloud-lib/internal/services/docker-node-manager";
+import { reusesExistingElizaCharacter } from "@elizaos/cloud-lib/internal/services/eliza-agent-config";
+import type { BridgeRequest } from "@elizaos/cloud-lib/internal/services/eliza-sandbox";
+import { elizaSandboxService } from "@elizaos/cloud-lib/internal/services/eliza-sandbox";
+import { provisioningJobService } from "@elizaos/cloud-lib/internal/services/provisioning-jobs";
+import { logger } from "@elizaos/cloud-lib/utils/logger";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {
@@ -170,6 +178,14 @@ function toCreateInput(body: Record<string, unknown>, auth: ForwardedAuth): Crea
 async function handle(c: Context, fn: (auth: ForwardedAuth) => Promise<Response>) {
   try {
     const auth = requireForwardedAuth(c);
+    const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
+    if (databaseUrl) {
+      const controlPlaneNodes = await dockerNodesRepository.findAll();
+      return await runWithCloudBindingsAsync({ DATABASE_URL: databaseUrl }, async () => {
+        await mirrorControlPlaneNodes(controlPlaneNodes);
+        return await fn(auth);
+      });
+    }
     return await fn(auth);
   } catch (error) {
     if (error instanceof Response) return error;
@@ -183,6 +199,14 @@ async function handle(c: Context, fn: (auth: ForwardedAuth) => Promise<Response>
 async function handleInternal(c: Context, fn: () => Promise<Response>) {
   try {
     requireInternalToken(c);
+    const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
+    if (databaseUrl) {
+      const controlPlaneNodes = await dockerNodesRepository.findAll();
+      return await runWithCloudBindingsAsync({ DATABASE_URL: databaseUrl }, async () => {
+        await mirrorControlPlaneNodes(controlPlaneNodes);
+        return await fn();
+      });
+    }
     return await fn();
   } catch (error) {
     if (error instanceof Response) return error;
@@ -190,6 +214,33 @@ async function handleInternal(c: Context, fn: () => Promise<Response>) {
       status: errorStatus(error),
       headers: { "content-type": "application/json" },
     });
+  }
+}
+
+async function mirrorControlPlaneNodes(nodes: DockerNode[]): Promise<void> {
+  for (const node of nodes) {
+    const data = {
+      node_id: node.node_id,
+      hostname: node.hostname,
+      ssh_port: node.ssh_port,
+      capacity: node.capacity,
+      enabled: node.enabled,
+      status: node.status,
+      last_health_check: node.last_health_check,
+      ssh_user: node.ssh_user,
+      host_key_fingerprint: node.host_key_fingerprint,
+      metadata: node.metadata,
+    };
+
+    const existing = await dockerNodesRepository.findByNodeId(node.node_id);
+    if (existing) {
+      await dockerNodesRepository.update(existing.id, data);
+    } else {
+      await dockerNodesRepository.create({
+        ...data,
+        allocated_count: 0,
+      });
+    }
   }
 }
 

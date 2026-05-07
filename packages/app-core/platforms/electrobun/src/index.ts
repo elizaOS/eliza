@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import Electrobun, {
 	ApplicationMenu,
@@ -202,14 +203,13 @@ async function resolveReachableApiBaseForMainReset(): Promise<string | null> {
 		buildHeaders: buildApiRequestHeaders,
 	});
 	if (base) {
-		console.info("[Main][reset] Using reachable API base", {
-			base,
-			tried: candidates,
-		});
+		logger.info(
+			`[Main][reset] Using reachable API base ${base} (tried: ${candidates.join(", ")})`,
+		);
 	} else {
-		console.warn("[Main][reset] No reachable API base among candidates", {
-			tried: candidates,
-		});
+		logger.warn(
+			`[Main][reset] No reachable API base among candidates (tried: ${candidates.join(", ")})`,
+		);
 	}
 	return base;
 }
@@ -226,15 +226,14 @@ async function resolveReachableApiBaseForMainReset(): Promise<string | null> {
  * @see `docs/apps/desktop-main-process-reset.md`
  */
 async function resetTheAppFromApplicationMenu(): Promise<void> {
-	console.info(
+	logger.info(
 		`[Main][reset] App menu: Reset ${BRAND.appName} — confirm + POST /api/agent/reset + restart (main process)`,
 	);
 	await getDesktopManager()
 		.showWindow()
 		.catch((err: unknown) => {
-			console.warn(
-				"[Main][reset] showWindow failed (continuing):",
-				err instanceof Error ? err.message : err,
+			logger.warn(
+				`[Main][reset] showWindow failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
 			);
 		});
 
@@ -261,7 +260,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 						: 1,
 			);
 	if (response !== 0) {
-		console.info("[Main][reset] User cancelled native confirm");
+		logger.info("[Main][reset] User cancelled native confirm");
 		return;
 	}
 
@@ -321,11 +320,13 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 				sendToActiveRenderer("desktopTrayMenuClick", payload);
 			},
 		});
-		console.info(
+		logger.info(
 			"[Main][reset] Pushed menu-reset-app-applied to renderer with /api/status snapshot",
 		);
 	} catch (err) {
-		console.error("[Main][reset] Main-process reset failed:", err);
+		logger.error(
+			`[Main][reset] Main-process reset failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		Utils.showNotification({
 			title: "Reset Failed",
 			body: summarizeDesktopActionError(err, "Reset failed"),
@@ -354,7 +355,7 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
 
 	const ptr = (win as { ptr?: unknown }).ptr;
 	if (!ptr) {
-		console.warn("[MacEffects] win.ptr unavailable — skipping native effects");
+		logger.warn("[MacEffects] win.ptr unavailable — skipping native effects");
 		return;
 	}
 
@@ -647,7 +648,7 @@ function shouldRestoreWindowBeforeMenuAction(
 async function startRendererServer(): Promise<string> {
 	const rendererDir = resolveRendererAssetDir(import.meta.dir);
 	if (!fs.existsSync(rendererDir)) {
-		console.warn("[Renderer] renderer dir not found:", rendererDir);
+		logger.warn("[Renderer] renderer dir not found:", rendererDir);
 		return "";
 	}
 
@@ -837,7 +838,7 @@ async function resolveRendererUrl(): Promise<string> {
 	if (!rendererUrl) {
 		// Last resort: file:// (may have CORS issues with crossorigin module scripts)
 		rendererUrl = `file://${path.join(resolveRendererAssetDir(import.meta.dir), "index.html")}`;
-		console.warn(
+		logger.warn(
 			"[Main] Falling back to file:// renderer URL — CORS issues possible",
 		);
 	}
@@ -849,7 +850,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 	const rendererUrl = await resolveRendererUrl();
 	const mainWindowPartition = resolveMainWindowPartition(process.env);
 	if (mainWindowPartition) {
-		console.log(
+		logger.info(
 			`[Main] Using isolated main window partition ${mainWindowPartition}`,
 		);
 	}
@@ -861,7 +862,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
 	try {
 		preload = readResolvedPreloadScript(import.meta.dir);
 	} catch (err) {
-		console.error("[Main] Failed to read preload script:", err);
+		logger.error(
+			`[Main] Failed to read preload script: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		preload = "// preload unavailable";
 	}
 
@@ -882,7 +885,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 		(forceMainWindowCef && canUseCefView && !!mainWindowPartition);
 
 	if (forceMainWindowCef && !canUseCefView) {
-		console.warn(
+		logger.warn(
 			"[Main] ELIZA_DESKTOP_FORCE_CEF=1 requested, but this Electrobun build does not bundle the CEF renderer. Falling back to the native renderer.",
 		);
 	}
@@ -918,7 +921,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 		});
 		win.webviewId = mainView.id;
 		if (forceMainWindowCef) {
-			console.log(
+			logger.info(
 				`[Main] Using CEF main-window workaround with persistent partition ${mainWindowPartition}`,
 			);
 		}
@@ -951,7 +954,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 		} catch (err) {
 			// Non-fatal — if maximize() isn't available on this electrobun
 			// build, the window still opens at the default dimensions.
-			console.warn(
+			logger.warn(
 				`[main-window] maximize() failed: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
@@ -1033,7 +1036,7 @@ async function ensureBackgroundWindow(): Promise<void> {
 	// Don't recreate the window — just keep the process alive in the
 	// background (exitOnLastWindowClosed is false in electrobun.config.ts).
 	// The dock icon click fires the "reopen" event which restores the window.
-	console.log("[Main] Window closed — agent continues in background");
+	logger.info("[Main] Window closed — agent continues in background");
 	showBackgroundRunNoticeOnce();
 }
 
@@ -1055,7 +1058,7 @@ async function restoreWindow(): Promise<void> {
 	backgroundWindowPromise = (async () => {
 		const win = attachMainWindow(await createMainWindow());
 		injectApiBase(win);
-		console.log("[Main] Restored window from dock click");
+		logger.info("[Main] Restored window from dock click");
 	})().finally(() => {
 		backgroundWindowPromise = null;
 	});
@@ -1072,7 +1075,9 @@ function showBackgroundRunNoticeOnce(): void {
 			},
 		});
 	} catch (error) {
-		console.warn("[Main] Failed to persist background notice marker:", error);
+		logger.warn(
+			`[Main] Failed to persist background notice marker: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 }
 
@@ -1287,7 +1292,7 @@ function wireRpcAndModules(
 				return;
 			}
 		}
-		console.warn(`[sendToWebview] No RPC method for message: ${message}`);
+		logger.warn(`[sendToWebview] No RPC method for message: ${message}`);
 	};
 
 	initializeNativeModules(win, sendToWebview);
@@ -1313,7 +1318,7 @@ function wireSettingsRpc(win: BrowserWindow): void {
 				return;
 			}
 		}
-		console.warn(
+		logger.warn(
 			`[sendToWebview:settings] No RPC method for message: ${message}`,
 		);
 	};
@@ -1329,7 +1334,7 @@ function injectApiBase(win: BrowserWindow): void {
 	);
 
 	if (runtimeResolution.externalApi.invalidSources.length > 0) {
-		console.warn(
+		logger.warn(
 			`[Main] Invalid API base env vars: ${runtimeResolution.externalApi.invalidSources.join(", ")}`,
 		);
 	}
@@ -1380,7 +1385,9 @@ async function syncPermissionsToRestApi(
 			body: JSON.stringify({ permissions, startup }),
 		});
 	} catch (err) {
-		console.warn("[Main] Permission sync failed:", err);
+		logger.warn(
+			`[Main] Permission sync failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 
@@ -1390,7 +1397,7 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
 	);
 
 	if (runtimeResolution.mode !== "local") {
-		console.log(
+		logger.info(
 			`[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
 		);
 		injectApiBase(win);
@@ -1429,7 +1436,9 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
 			syncPermissionsToRestApi(status.port, true);
 		}
 	} catch (err) {
-		console.error("[Main] Agent start failed:", err);
+		logger.error(
+			`[Main] Agent start failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 
@@ -1439,9 +1448,8 @@ async function setupUpdater(): Promise<void> {
 			const updaterState = await getDesktopManager().getUpdaterState();
 			if (!updaterState.canAutoUpdate) {
 				if (updaterState.autoUpdateDisabledReason) {
-					console.info(
-						"[Updater] Skipping auto-update check:",
-						updaterState.autoUpdateDisabledReason,
+					logger.info(
+						`[Updater] Skipping auto-update check: ${updaterState.autoUpdateDisabledReason}`,
 					);
 					if (notifyOnNoUpdate) {
 						Utils.showNotification({
@@ -1456,7 +1464,9 @@ async function setupUpdater(): Promise<void> {
 			const updateResult = await Updater.checkForUpdate();
 			if (updateResult?.updateAvailable) {
 				Updater.downloadUpdate().catch((err: unknown) => {
-					console.warn("[Updater] Download failed:", err);
+					logger.warn(
+						`[Updater] Download failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
 				});
 				return;
 			}
@@ -1468,7 +1478,9 @@ async function setupUpdater(): Promise<void> {
 				});
 			}
 		} catch (err) {
-			console.warn("[Updater] Update check failed:", err);
+			logger.warn(
+				`[Updater] Update check failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
 			if (notifyOnNoUpdate) {
 				Utils.showNotification({
 					title: "Update Check Failed",
@@ -1576,7 +1588,9 @@ async function setupUpdater(): Promise<void> {
 			} else if (action === "restart-steward") {
 				if (isStewardLocalEnabled()) {
 					restartSteward().catch((err: unknown) => {
-						console.error("[Main] Steward restart failed:", err);
+						logger.error(
+							`[Main] Steward restart failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
 						Utils.showNotification({
 							title: "Steward Restart Failed",
 							body: err instanceof Error ? err.message : "Unknown error",
@@ -1586,7 +1600,9 @@ async function setupUpdater(): Promise<void> {
 			} else if (action === "reset-steward") {
 				if (isStewardLocalEnabled()) {
 					resetSteward().catch((err: unknown) => {
-						console.error("[Main] Steward reset failed:", err);
+						logger.error(
+							`[Main] Steward reset failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
 						Utils.showNotification({
 							title: "Steward Reset Failed",
 							body: err instanceof Error ? err.message : "Unknown error",
@@ -1631,7 +1647,9 @@ async function setupUpdater(): Promise<void> {
 				getAgentManager()
 					.restart()
 					.catch((err: unknown) => {
-						console.error("[Main] Agent restart failed:", err);
+						logger.error(
+							`[Main] Agent restart failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
 					});
 			} else if (action === "quit") {
 				void getDesktopManager().quit();
@@ -1675,7 +1693,9 @@ async function setupUpdater(): Promise<void> {
 
 		await runUpdateCheck(false);
 	} catch (err) {
-		console.warn("[Updater] Update check failed:", err);
+		logger.warn(
+			`[Updater] Update check failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 
@@ -1744,7 +1764,7 @@ function setupDockReopen(): void {
 }
 
 async function runShutdownCleanup(reason: string): Promise<void> {
-	console.log(`[Main] App quitting (${reason}), disposing native modules...`);
+	logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
 	isQuitting = true;
 	sendToActiveRenderer("desktopShutdownStarted", { reason });
 	for (const cleanupFn of cleanupFns) {
@@ -1801,14 +1821,14 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
 
 function initializeBundledWebGPU(): void {
 	if (!WGPU.native.available) {
-		console.log(
+		logger.info(
 			"[WebGPU] Native Dawn runtime not bundled for this run; renderer-side WebGPU remains available through the webview/browser path.",
 		);
 		return;
 	}
 
 	webgpu.install();
-	console.log(`[WebGPU] Native Dawn runtime ready at ${WGPU.native.path}`);
+	logger.info(`[WebGPU] Native Dawn runtime ready at ${WGPU.native.path}`);
 }
 
 /**
@@ -1824,15 +1844,15 @@ function initializeBundledWebGPU(): void {
 function checkWebGpuBrowserSupport(): void {
 	const status = checkWebGpuSupport();
 	if (status.available) {
-		console.log(`[WebGPU Browser] ${status.reason}`);
+		logger.info(`[WebGPU Browser] ${status.reason}`);
 	} else {
-		console.warn(`[WebGPU Browser] ${status.reason}`);
+		logger.warn(`[WebGPU Browser] ${status.reason}`);
 		if (status.chromeBetaPath) {
-			console.log(
+			logger.info(
 				`[WebGPU Browser] Chrome Beta found at: ${status.chromeBetaPath}`,
 			);
 		} else if (status.downloadUrl) {
-			console.log(
+			logger.info(
 				`[WebGPU Browser] Download Chrome Beta: ${status.downloadUrl}`,
 			);
 		}
@@ -1905,7 +1925,7 @@ async function main(): Promise<void> {
 					cefDirExists: fs.existsSync(cefDir),
 				})
 			) {
-				console.log(
+				logger.info(
 					`[Main] CEF version mismatch (${previousVersion ?? "none"} → ${currentVersion}), clearing stale CEF profile`,
 				);
 				// Remove everything except the version marker we're about to write.
@@ -1915,7 +1935,9 @@ async function main(): Promise<void> {
 					try {
 						fs.rmSync(entryPath, { recursive: true, force: true });
 					} catch (err) {
-						console.warn(`[Main] Could not remove ${entryPath}:`, err);
+						logger.warn(
+							`[Main] Could not remove ${entryPath}: ${err instanceof Error ? err.message : String(err)}`,
+						);
 					}
 				}
 			}
@@ -1925,7 +1947,9 @@ async function main(): Promise<void> {
 				fs.writeFileSync(cefVersionMarker, currentVersion);
 			}
 		} catch (err) {
-			console.warn("[Main] CEF profile cleanup failed (non-fatal):", err);
+			logger.warn(
+				`[Main] CEF profile cleanup failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 
@@ -2057,9 +2081,8 @@ async function main(): Promise<void> {
 		try {
 			mainWin.minimize();
 		} catch (err) {
-			console.warn(
-				"[Main] Failed to minimize window on --hidden startup:",
-				err,
+			logger.warn(
+				`[Main] Failed to minimize window on --hidden startup: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -2100,7 +2123,9 @@ async function main(): Promise<void> {
 			],
 		});
 	} catch (err) {
-		console.warn("[Main] Tray creation failed:", err);
+		logger.warn(
+			`[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
 	// ── Steward sidecar startup (must happen BEFORE agent) ────────────
@@ -2108,7 +2133,7 @@ async function main(): Promise<void> {
 	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The the app agent's
 	// steward-bridge.ts reads these on boot to discover local steward.
 	if (isStewardLocalEnabled()) {
-		console.log("[Main] STEWARD_LOCAL=true — starting steward sidecar...");
+		logger.info("[Main] STEWARD_LOCAL=true — starting steward sidecar...");
 		cleanupFns.push(() => stopSteward());
 
 		// Listen for steward status changes and push to renderer
@@ -2121,11 +2146,11 @@ async function main(): Promise<void> {
 		try {
 			const stewardResult = await startSteward();
 			if (stewardResult.state === "running") {
-				console.log(
+				logger.info(
 					`[Main] Steward sidecar ready on port ${stewardResult.port}, wallet: ${stewardResult.walletAddress ?? "pending"}`,
 				);
 			} else {
-				console.warn(
+				logger.warn(
 					`[Main] Steward sidecar in state "${stewardResult.state}": ${stewardResult.error ?? "unknown"}`,
 				);
 				sendToActiveRenderer("stewardStartupFailed", {
@@ -2135,7 +2160,7 @@ async function main(): Promise<void> {
 			}
 		} catch (err) {
 			const error = err instanceof Error ? err.message : String(err);
-			console.error("[Main] Steward sidecar startup failed:", error);
+			logger.error(`[Main] Steward sidecar startup failed: ${error}`);
 			sendToActiveRenderer("stewardStartupFailed", {
 				error,
 				canRetry: true,
@@ -2157,9 +2182,11 @@ async function main(): Promise<void> {
 		if (rt.mode === "external") {
 			injectApiBase(currentWindow);
 		} else if (rt.mode === "local") {
-			console.log("[Main] Starting embedded agent (local mode).");
+			logger.info("[Main] Starting embedded agent (local mode).");
 			_startAgent(currentWindow).catch((err) => {
-				console.error("[Main] Agent auto-start failed:", err);
+				logger.error(
+					`[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				const error = err instanceof Error ? err.message : String(err);
 				sendToActiveRenderer("agentStartupFailed", { error });
 				console.error(`title: "${BRAND.appName} startup failed"`);
@@ -2234,15 +2261,16 @@ function persistStartupCrashReport(options: {
 		fs.mkdirSync(path.dirname(primaryReportPath), { recursive: true });
 		fs.writeFileSync(primaryReportPath, report, "utf8");
 	} catch (err) {
-		console.warn("[Main] Failed to write startup crash report:", err);
+		logger.warn(
+			`[Main] Failed to write startup crash report: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		try {
 			fs.mkdirSync(path.dirname(fallbackReportPath), { recursive: true });
 			fs.writeFileSync(fallbackReportPath, report, "utf8");
 			reportPath = fallbackReportPath;
 		} catch (fallbackErr) {
-			console.warn(
-				"[Main] Failed to write fallback startup crash report:",
-				fallbackErr,
+			logger.warn(
+				`[Main] Failed to write fallback startup crash report: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
 			);
 		}
 	}
@@ -2316,13 +2344,17 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 				body: "Paste in Discord and ping @iono.",
 			});
 		} catch (err) {
-			console.warn("[Main] Failed to copy startup crash report:", err);
+			logger.warn(
+				`[Main] Failed to copy startup crash report: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	} else if (response === 1) {
 		try {
 			Utils.openPath(path.dirname(reportPath));
 		} catch (err) {
-			console.warn("[Main] Failed to open startup logs folder:", err);
+			logger.warn(
+				`[Main] Failed to open startup logs folder: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 }

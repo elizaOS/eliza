@@ -469,7 +469,7 @@ function buildCompletion(prompt: string): string {
     });
   }
 
-  // multiStepDecisionTemplate
+  // Legacy native planner decision prompt
   if (
     prompt.includes("Determine the next step") &&
     prompt.includes("isFinish")
@@ -482,7 +482,7 @@ function buildCompletion(prompt: string): string {
     });
   }
 
-  // multiStepSummaryTemplate
+  // Legacy native response prompt
   if (prompt.includes("Summarize what the assistant has done so far")) {
     return buildJsonResponse(prompt, {
       thought: "Summarizing completed benchmark execution.",

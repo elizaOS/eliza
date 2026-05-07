@@ -15,7 +15,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getActiveRoutingContextsForTurn, logger } from "@elizaos/core";
 import type { CalendlyService } from "../services/CalendlyService.js";
 import {
   CALENDLY_SERVICE_TYPE,
@@ -43,6 +43,68 @@ const DURATION_RE = /(\d{1,3})\s*(?:min|minute|minutes|m)\b/i;
 const UUID_FROM_URI_RE =
   /scheduled_events\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
 const BECAUSE_RE = /\bbecause\s+(.+?)(?:[.!?]|$)/i;
+const CALENDLY_CONTEXTS = ["calendar", "automation", "connectors"] as const;
+const CALENDLY_KEYWORDS = [
+  "calendly",
+  "book",
+  "booking",
+  "schedule",
+  "cancel",
+  "meeting",
+  "appointment",
+  "event",
+  "reservar",
+  "programar",
+  "cancelar",
+  "reunión",
+  "réserver",
+  "planifier",
+  "annuler",
+  "buchen",
+  "absagen",
+  "prenotare",
+  "annullare",
+  "agendar",
+  "预约",
+  "取消",
+  "予約",
+  "キャンセル",
+] as const;
+
+function hasCalendlyContext(message: Memory, state?: State): boolean {
+  const active = new Set(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") active.add(item.toLowerCase());
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  return CALENDLY_CONTEXTS.some((context) => active.has(context));
+}
+
+function hasCalendlyIntent(message: Memory, state?: State): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return CALENDLY_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
 
 function extractCalendlyUrl(text: string): string | null {
   const match = CALENDLY_URL_RE.exec(text);
@@ -151,7 +213,7 @@ async function handleBook(
   }
 
   const service = getService(runtime);
-  if (!service || !service.isConnected()) {
+  if (!service?.isConnected()) {
     const error =
       "No third-party Calendly URL found and Calendly is not connected — set CALENDLY_ACCESS_TOKEN to resolve your own booking link";
     await callback?.({ text: error });
@@ -192,7 +254,7 @@ async function handleCancel(
   callback?: HandlerCallback,
 ): Promise<CalendlyActionResult<CancelData>> {
   const service = getService(runtime);
-  if (!service || !service.isConnected()) {
+  if (!service?.isConnected()) {
     const error =
       "Calendly is not connected — set CALENDLY_ACCESS_TOKEN to cancel bookings";
     await callback?.({ text: error });
@@ -237,6 +299,8 @@ async function handleCancel(
 
 export const calendlyOpAction: Action = {
   name: CalendlyActions.CALENDLY_OP,
+  contexts: [...CALENDLY_CONTEXTS],
+  contextGate: { anyOf: [...CALENDLY_CONTEXTS] },
   similes: [
     "BOOK_CALENDLY",
     "CALENDLY_BOOK_SLOT",
@@ -260,13 +324,41 @@ export const calendlyOpAction: Action = {
       required: false,
       schema: { type: "boolean" as const, default: false },
     },
+    {
+      name: "slug",
+      description: "Calendly event-type slug for own-event booking.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "durationMinutes",
+      description: "Desired own-event duration in minutes.",
+      required: false,
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "eventUuid",
+      description: "Scheduled event UUID for cancellation.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "reason",
+      description: "Optional cancellation reason.",
+      required: false,
+      schema: { type: "string" as const },
+    },
   ],
 
   validate: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
   ): Promise<boolean> => {
-    return true;
+    return (
+      Boolean(runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE)) &&
+      (hasCalendlyContext(message, state) || hasCalendlyIntent(message, state))
+    );
   },
 
   handler: async (

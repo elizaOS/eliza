@@ -95,6 +95,8 @@ async function deleteDockerBackedAgentViaControlPlane(
   headers.delete("host");
   const internalToken = readControlPlaneEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
   if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const databaseUrl = readControlPlaneEnv(c, ["DATABASE_URL"]);
+  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("x-eliza-user-id", user.id);
   headers.set("x-eliza-organization-id", user.organization_id);
 
@@ -103,7 +105,10 @@ async function deleteDockerBackedAgentViaControlPlane(
     method: "DELETE",
     redirect: "manual",
   });
-  const upstreamBody = await upstream.json().catch(() => null);
+  const upstreamBody = (await upstream.json().catch(() => null)) as {
+    error?: string;
+    message?: string;
+  } | null;
 
   if (upstream.ok) {
     return Response.json(

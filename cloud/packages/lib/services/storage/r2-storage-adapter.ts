@@ -12,12 +12,11 @@
  * not the adapter's.
  */
 
-import {
-  type BrighterS3ClientOptions,
-  type BrighterS3StorageInstance,
-  Storage,
-} from "@brighter/storage-adapter-s3";
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+import { Storage } from "@brighter/storage-adapter-s3";
 import type { Bindings } from "@/types/cloud-worker-env";
+
+type BrighterS3StorageInstance = ReturnType<typeof Storage>;
 
 /** Stat output for a single stored object. */
 export interface StorageObjectStat {
@@ -128,7 +127,7 @@ export function getR2StorageAdapter(env: Bindings): R2StorageAdapter | null {
   if (cachedAdapter && cachedAdapterFingerprint === fingerprint) {
     return cachedAdapter;
   }
-  const clientOptions: BrighterS3ClientOptions = {
+  const clientOptions: S3ClientConfig = {
     region: config.region,
     endpoint: config.endpoint,
     credentials: {
@@ -137,7 +136,7 @@ export function getR2StorageAdapter(env: Bindings): R2StorageAdapter | null {
     },
     forcePathStyle: true,
   };
-  const storage = Storage({ type: "s3", path: config.bucket }, clientOptions);
+  const storage = Storage({ path: config.bucket }, clientOptions);
   cachedAdapter = new R2StorageAdapter(storage);
   cachedAdapterFingerprint = fingerprint;
   return cachedAdapter;

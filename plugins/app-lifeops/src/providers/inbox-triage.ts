@@ -27,6 +27,10 @@ export const inboxTriageProvider: Provider = {
     "Pending inbox triage items across all channels incl email.",
   dynamic: true,
   position: 14, // after lifeops (12), before escalation (15)
+  contexts: ["email", "messaging", "tasks"],
+  contextGate: { anyOf: ["email", "messaging", "tasks"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
 
   async get(
     runtime: IAgentRuntime,
