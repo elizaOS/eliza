@@ -63,7 +63,7 @@ const state: State | undefined = undefined;
 describe("GLOB", () => {
   it("matches **/*.ts and returns expected count", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: { pattern: "**/*.ts" },
     });
 
@@ -82,7 +82,7 @@ describe("GLOB", () => {
 
   it("rejects a relative path", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
     expect(result.success).toBe(false);
@@ -91,7 +91,7 @@ describe("GLOB", () => {
 
   it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: { pattern: "**/*", path: blockedPath },
     });
     expect(result.success).toBe(false);
@@ -100,7 +100,7 @@ describe("GLOB", () => {
 
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
-    const result = await globAction.handler!(runtime, {} as Memory, state, {
+    const result = await globAction.handler?.(runtime, {} as Memory, state, {
       parameters: { pattern: "**/*.ts" },
     });
     expect(result.success).toBe(false);
@@ -109,7 +109,7 @@ describe("GLOB", () => {
 
   it("fails when pattern is missing", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await globAction.handler!(runtime, message, state, {
+    const result = await globAction.handler?.(runtime, message, state, {
       parameters: {},
     });
     expect(result.success).toBe(false);

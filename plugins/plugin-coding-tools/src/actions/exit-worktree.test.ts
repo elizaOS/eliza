@@ -31,7 +31,10 @@ async function initRepo(repoDir: string): Promise<void> {
     GIT_COMMITTER_EMAIL: "t@t",
   };
   execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, env });
-  execFileSync("git", ["commit", "--allow-empty", "-m", "init"], { cwd: repoDir, env });
+  execFileSync("git", ["commit", "--allow-empty", "-m", "init"], {
+    cwd: repoDir,
+    env,
+  });
 }
 
 async function setupRepo(): Promise<TestEnv> {
@@ -55,8 +58,9 @@ async function setupRepo(): Promise<TestEnv> {
     [SANDBOX_SERVICE]: sandbox,
     [SESSION_CWD_SERVICE]: session,
   };
-  (runtime as unknown as { getService: (k: string) => unknown }).getService = (key: string) =>
-    services[key] ?? null;
+  (runtime as unknown as { getService: (k: string) => unknown }).getService = (
+    key: string,
+  ) => services[key] ?? null;
 
   return {
     repoDir,
@@ -82,7 +86,7 @@ function makeMessage(conversationId: string): Memory {
 }
 
 async function enter(env: TestEnv): Promise<string> {
-  const result = await enterWorktreeAction.handler!(
+  const result = await enterWorktreeAction.handler?.(
     env.runtime,
     makeMessage(env.conversationId),
     undefined,
@@ -110,9 +114,11 @@ describe("EXIT_WORKTREE", () => {
 
   it("pops the most recent worktree, restores cwd, and removes the sandbox root", async () => {
     const worktreePath = await enter(env);
-    expect(env.session.getCwd(env.conversationId)).toBe(path.resolve(worktreePath));
+    expect(env.session.getCwd(env.conversationId)).toBe(
+      path.resolve(worktreePath),
+    );
 
-    const result = await exitWorktreeAction.handler!(
+    const result = await exitWorktreeAction.handler?.(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -122,10 +128,14 @@ describe("EXIT_WORKTREE", () => {
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
     expect(path.resolve(String(data?.exited))).toBe(path.resolve(worktreePath));
-    expect(path.resolve(String(data?.restoredTo))).toBe(path.resolve(env.repoDir));
+    expect(path.resolve(String(data?.restoredTo))).toBe(
+      path.resolve(env.repoDir),
+    );
     expect(data?.cleaned).toBe(false);
 
-    expect(env.session.getCwd(env.conversationId)).toBe(path.resolve(env.repoDir));
+    expect(env.session.getCwd(env.conversationId)).toBe(
+      path.resolve(env.repoDir),
+    );
 
     const stillThere = await fs
       .stat(worktreePath)
@@ -135,7 +145,7 @@ describe("EXIT_WORKTREE", () => {
   });
 
   it("fails with invalid_param when no worktree is on the stack", async () => {
-    const result = await exitWorktreeAction.handler!(
+    const result = await exitWorktreeAction.handler?.(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -149,7 +159,7 @@ describe("EXIT_WORKTREE", () => {
   it("with cleanup=true removes the worktree directory", async () => {
     const worktreePath = await enter(env);
 
-    const result = await exitWorktreeAction.handler!(
+    const result = await exitWorktreeAction.handler?.(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -174,7 +184,7 @@ describe("EXIT_WORKTREE", () => {
   });
 
   it("fails with missing_param when message has no roomId", async () => {
-    const result = await exitWorktreeAction.handler!(
+    const result = await exitWorktreeAction.handler?.(
       env.runtime,
       {} as unknown as Memory,
       state,
