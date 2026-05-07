@@ -9,7 +9,6 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -32,15 +31,8 @@ Extract the operation and its parameters:
 7. emoji: For react — the emoji name (without colons, e.g. "thumbsup").
 8. remove: For react — true to remove the reaction, false (default) to add it.
 
-Respond with TOON only:
-op: send
-text:
-messageTs:
-channelRef: current
-channelId:
-threadTs:
-emoji:
-remove: false`;
+Respond with JSON only. Return exactly one JSON object with this shape:
+{"op":"send","text":"","messageTs":null,"channelRef":"current","channelId":null,"threadTs":null,"emoji":null,"remove":false}`;
 
 interface MessageOpInfo {
   op: "send" | "edit" | "delete" | "react" | "pin" | "unpin";
@@ -54,6 +46,81 @@ interface MessageOpInfo {
 }
 
 const VALID_OPS = new Set(["send", "edit", "delete", "react", "pin", "unpin"]);
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value.trim()) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readParams(
+  options?: HandlerOptions | unknown,
+): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function normalizeMessageOpInfo(
+  params: Record<string, unknown>,
+): MessageOpInfo | null {
+  const opRaw =
+    typeof params.op === "string" ? params.op.toLowerCase().trim() : "";
+  if (!VALID_OPS.has(opRaw)) {
+    return null;
+  }
+
+  return {
+    op: opRaw as MessageOpInfo["op"],
+    text:
+      typeof params.text === "string" && params.text.trim().length > 0
+        ? params.text
+        : undefined,
+    messageTs:
+      typeof params.messageTs === "string" &&
+      params.messageTs.trim().length > 0
+        ? params.messageTs
+        : undefined,
+    channelRef:
+      typeof params.channelRef === "string" &&
+      params.channelRef.trim().length > 0
+        ? params.channelRef
+        : "current",
+    channelId:
+      typeof params.channelId === "string" &&
+      params.channelId.trim().length > 0
+        ? params.channelId
+        : null,
+    threadTs:
+      typeof params.threadTs === "string" && params.threadTs.trim().length > 0
+        ? params.threadTs
+        : null,
+    emoji:
+      typeof params.emoji === "string" && params.emoji.trim().length > 0
+        ? params.emoji
+        : undefined,
+    remove:
+      params.remove === true ||
+      String(params.remove ?? "").toLowerCase() === "true",
+  };
+}
 
 async function resolveChannelId(
   slackService: SlackService,
@@ -124,6 +191,7 @@ export const messageOp: Action = {
     const __avTextRaw =
       typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
+    const __avStructuredOp = normalizeMessageOpInfo(readParams(options));
     const __avKeywords = [
       "slack",
       "send",
@@ -135,10 +203,11 @@ export const messageOp: Action = {
       "message",
     ];
     const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+      Boolean(__avStructuredOp) ||
+      (__avKeywords.length > 0 &&
+        __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)));
     const __avRegex = /\b(?:slack|send|edit|delete|react|pin|unpin|message)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
+    const __avRegexOk = Boolean(__avStructuredOp) || __avRegex.test(__avText);
     const __avSource = String(
       message?.content?.source ?? message?.metadata?.source ?? "",
     );
@@ -175,60 +244,29 @@ export const messageOp: Action = {
       return { success: false, error: "Slack service not available" };
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: messageOpTemplate,
-    });
+    let info: MessageOpInfo | null = normalizeMessageOpInfo(
+      readParams(_options),
+    );
 
-    let info: MessageOpInfo | null = null;
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
+    if (!info) {
+      const prompt = composePromptFromState({
+        state,
+        template: messageOpTemplate,
       });
 
-      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-      if (!parsed) continue;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        });
 
-      const opRaw =
-        typeof parsed.op === "string" ? parsed.op.toLowerCase().trim() : "";
-      if (!VALID_OPS.has(opRaw)) continue;
+        const parsed = parseJsonObject(response);
+        if (!parsed) continue;
 
-      info = {
-        op: opRaw as MessageOpInfo["op"],
-        text:
-          typeof parsed.text === "string" && parsed.text.trim().length > 0
-            ? String(parsed.text)
-            : undefined,
-        messageTs:
-          typeof parsed.messageTs === "string" &&
-          parsed.messageTs.trim().length > 0
-            ? String(parsed.messageTs)
-            : undefined,
-        channelRef:
-          typeof parsed.channelRef === "string" &&
-          parsed.channelRef.trim().length > 0
-            ? String(parsed.channelRef)
-            : "current",
-        channelId:
-          typeof parsed.channelId === "string" &&
-          parsed.channelId.trim().length > 0
-            ? String(parsed.channelId)
-            : null,
-        threadTs:
-          typeof parsed.threadTs === "string" &&
-          parsed.threadTs.trim().length > 0
-            ? String(parsed.threadTs)
-            : null,
-        emoji:
-          typeof parsed.emoji === "string" && parsed.emoji.trim().length > 0
-            ? String(parsed.emoji)
-            : undefined,
-        remove:
-          parsed.remove === true ||
-          String(parsed.remove).toLowerCase() === "true",
-      };
-      break;
+        info = normalizeMessageOpInfo(parsed);
+        if (info) {
+          break;
+        }
+      }
     }
 
     if (!info) {

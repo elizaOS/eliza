@@ -24,15 +24,6 @@ interface RoleAssignmentToon {
 	newRole?: string;
 }
 
-/** Shape of the role extraction structured response. */
-interface RoleExtractionResult {
-	assignments?:
-		| {
-				assignment?: RoleAssignmentToon | RoleAssignmentToon[];
-		  }
-		| RoleAssignmentToon[];
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

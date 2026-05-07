@@ -15,12 +15,12 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 	splitChunks,
 	trimTokens,
 } from "@elizaos/core";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 
 /**
  * Normalizes a numeric timestamp to milliseconds.
@@ -137,7 +137,28 @@ const getDateRange = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
 	state: State,
+	options?: HandlerOptions,
 ): Promise<{ objective: string; start: number; end: number } | null> => {
+	const parameters = getActionParameters(options);
+	if (parameters.objective && parameters.start && parameters.end) {
+		const startRaw = parseTimeToTimestamp(
+			parameters.start as string | number,
+		);
+		const endRaw = parseTimeToTimestamp(parameters.end as string | number);
+		if (Number.isFinite(startRaw) && Number.isFinite(endRaw)) {
+			let start = startRaw <= endRaw ? startRaw : endRaw;
+			const end = startRaw <= endRaw ? endRaw : startRaw;
+			if (start === end) {
+				start = end - 3600 * 1000;
+			}
+			return {
+				objective: String(parameters.objective),
+				start,
+				end,
+			};
+		}
+	}
+
 	const prompt = composePromptFromState({
 		state,
 		template: dateRangeTemplate,
@@ -148,10 +169,7 @@ const getDateRange = async (
 			prompt,
 		});
 
-		// Try parsing the TOON response.
-		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
-			response,
-		) as {
+		const parsedResponse = parseJsonObjectFromText(response) as {
 			objective: string;
 			start: string | number;
 			end: string | number;
@@ -311,7 +329,7 @@ export const summarize: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
-		_options?: HandlerOptions,
+		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		if (!state) {
@@ -333,7 +351,7 @@ export const summarize: Action = {
 		const { roomId } = message;
 
 		// 1. extract date range from the message
-		const dateRange = await getDateRange(runtime, message, state);
+		const dateRange = await getDateRange(runtime, message, state, options);
 		if (!dateRange) {
 			runtime.logger.warn(
 				{

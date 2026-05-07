@@ -94,7 +94,6 @@
     "access": "public"
   },
   "devDependencies": {
-    "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
     "tsdown": "^0.21.0",
