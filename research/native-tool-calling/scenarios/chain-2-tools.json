@@ -1,0 +1,8 @@
+{
+  "message": "Search the web for information about the elizaOS framework and save your findings as a document titled 'elizaOS overview'.",
+  "expect": {
+    "tools": ["WEB_SEARCH", "WRITE_DOCUMENT"],
+    "stages": ["planner", "tool", "tool"],
+    "rationale": "Two-tool chain: web search then write document. Should execute WEB_SEARCH first and WRITE_DOCUMENT second."
+  }
+}
