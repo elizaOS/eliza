@@ -12,6 +12,7 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
+import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import { renderContextObject } from "./context-renderer";
@@ -334,24 +335,73 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const trajectory = stringifyForModel(params.trajectory.steps);
 	const template = params.template ?? v5PlannerTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const trajectoryContent = `trajectory:\n${trajectory}`;
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	// For the legacy prompt string, still serialize as JSON so existing
+	// prompt-hash / segment-hash logic is unaffected.
+	const trajectoryContent = `trajectory:\n${stringifyForModel(params.trajectory.steps)}`;
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: false },
 		{ content: trajectoryContent, stable: false },
 	]);
 	const prompt = promptSegments.map((segment) => segment.content).join("");
-	const messages: ChatMessage[] = [
-		...toChatMessages(renderedContext.messages),
-		{ role: "system", content: `planner_stage:\n${instructions}` },
-		{ role: "user", content: trajectoryContent },
-	];
+	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
+	// completed step. This grows append-only across planner iterations so the
+	// base prefix remains byte-identical and Cerebras's prompt cache can hit.
+	// The trajectory JSON is NOT included in dynamicBlocks here — it is conveyed
+	// through stepMessages (proper assistant/tool pairs). Including it as a
+	// dynamic block would re-introduce the JSON-dump anti-pattern in the user
+	// message and invalidate the cache prefix on every iteration.
+	const messages = buildStageChatMessages({
+		contextSegments: renderedContext.promptSegments,
+		stageLabel: "planner_stage",
+		instructions,
+		dynamicBlocks: [],
+		stepMessages,
+	});
 	return { prompt, messages, promptSegments };
+}
+
+/**
+ * Convert completed trajectory steps into proper assistant/tool message pairs
+ * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
+ * terminal-only steps). The resulting array grows append-only across planner
+ * iterations, which keeps the prefix byte-identical for cache hits.
+ */
+export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
+	const messages: ChatMessage[] = [];
+	for (const step of steps) {
+		if (!step.toolCall || !step.result) {
+			continue;
+		}
+		const toolCallId =
+			step.toolCall.id ?? `tc-${step.iteration}-${step.toolCall.name}`;
+		// The model's prior decision: assistant message with a tool call.
+		messages.push({
+			role: "assistant",
+			content: step.thought ?? null,
+			toolCalls: [
+				{
+					id: toolCallId,
+					type: "function",
+					name: step.toolCall.name,
+					arguments: JSON.stringify(step.toolCall.params ?? {}),
+				},
+			],
+		});
+		// The tool result.
+		messages.push({
+			role: "tool",
+			toolCallId,
+			name: step.toolCall.name,
+			content: step.result ? JSON.stringify(step.result) : "",
+		});
+	}
+	return messages;
 }
 
 function compactPromptSegments(segments: PromptSegment[]): PromptSegment[] {
@@ -367,36 +417,42 @@ function normalizePromptSegments(segments: PromptSegment[]): PromptSegment[] {
 	);
 }
 
-function toChatMessages(
-	messages: Array<{
-		role: string;
-		content?: unknown;
-		name?: string;
-		toolCallId?: string;
-	}>,
-): ChatMessage[] {
-	return messages.map((message) => {
-		const role =
-			message.role === "system" ||
-			message.role === "developer" ||
-			message.role === "user" ||
-			message.role === "assistant" ||
-			message.role === "tool"
-				? message.role
-				: "system";
-		const content =
-			typeof message.content === "string"
-				? message.content
-				: message.content == null
-					? null
-					: stringifyForModel(message.content);
-		return {
-			role,
-			content,
-			...(message.name ? { name: message.name } : {}),
-			...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-		};
-	});
+function segmentBlock(segment: PromptSegment): string {
+	const content = segment.content.trim();
+	const label = (segment as PromptSegment & { label?: unknown }).label;
+	return typeof label === "string" && label ? `${label}:\n${content}` : content;
+}
+
+function buildStageChatMessages(args: {
+	contextSegments: PromptSegment[];
+	stageLabel: string;
+	instructions: string;
+	dynamicBlocks: string[];
+	stepMessages: ChatMessage[];
+}): ChatMessage[] {
+	const stableContext = args.contextSegments
+		.filter((segment) => segment.stable)
+		.map(segmentBlock)
+		.filter(Boolean);
+	const dynamicContext = args.contextSegments
+		.filter((segment) => !segment.stable)
+		.map(segmentBlock)
+		.filter(Boolean);
+	const systemContent = [
+		...stableContext,
+		`${args.stageLabel}:\n${args.instructions}`,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+	const userContent = [...dynamicContext, ...args.dynamicBlocks]
+		.map((block) => block.trim())
+		.filter(Boolean)
+		.join("\n\n");
+	return [
+		{ role: "system", content: systemContent },
+		{ role: "user", content: userContent },
+		...args.stepMessages,
+	];
 }
 
 function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
@@ -408,10 +464,10 @@ function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
 	return prefix.length > 0 ? prefix : segments.slice(0, 1);
 }
 
-function cacheProviderOptions(args: {
+export function cacheProviderOptions(args: {
 	prefixHash: string;
 	segmentHashes?: readonly string[];
-}): Record<string, unknown> {
+}): Record<string, JsonValue | object | undefined> {
 	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
 	return {
 		eliza: {
@@ -911,12 +967,16 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const name = String(record.name ?? record.toolName ?? record.tool ?? record.action ?? "").trim();
+	const name = String(
+		record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+	).trim();
 	if (!name) {
 		return null;
 	}
 
-	const args = normalizeArgs(record.input ?? record.args ?? record.arguments ?? record.params);
+	const args = normalizeArgs(
+		record.input ?? record.args ?? record.arguments ?? record.params,
+	);
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
