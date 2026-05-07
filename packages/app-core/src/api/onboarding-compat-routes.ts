@@ -13,7 +13,7 @@ import {
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
-import { getCloudSecret } from "./cloud-secrets";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 import {

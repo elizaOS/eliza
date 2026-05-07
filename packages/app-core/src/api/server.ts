@@ -63,7 +63,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "./server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
 export {
   filterConfigEnvForResponse,
   SENSITIVE_ENV_RESPONSE_KEYS,
@@ -155,7 +155,10 @@ const lazyEnsureTTS = () =>
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
-import { clearCloudSecrets, getCloudSecret } from "./cloud-secrets";
+import {
+  clearCloudSecrets,
+  getCloudSecret,
+} from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
@@ -165,7 +168,7 @@ import {
   handleCloudTtsPreviewRoute as _handleCloudTtsPreviewRoute,
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "./server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------

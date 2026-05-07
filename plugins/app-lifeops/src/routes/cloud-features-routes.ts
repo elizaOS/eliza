@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { sendJson, sendJsonError } from "@elizaos/agent/api/http-helpers";
-import { resolveCloudApiKey } from "@elizaos/agent/api/wallet-rpc";
+import { resolveCloudApiKey } from "@elizaos/agent/cloud/cloud-api-key";
 import { normalizeCloudSiteUrl } from "@elizaos/agent/cloud/base-url";
 import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
 import type { CloudProxyConfigLike } from "@elizaos/agent/types/config-like";
