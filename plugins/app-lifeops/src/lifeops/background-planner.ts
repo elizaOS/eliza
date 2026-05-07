@@ -82,7 +82,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
@@ -471,7 +470,7 @@ function coercePayload(
 }
 
 function parsePlannerOutput(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function coerceBoolean(value: unknown): boolean | null {

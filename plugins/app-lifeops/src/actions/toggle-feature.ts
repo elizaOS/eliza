@@ -11,9 +11,9 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
@@ -115,7 +115,7 @@ async function extractToggleWithLlm(args: {
     () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
   );
   const rawText = typeof raw === "string" ? raw : "";
-  const parsed = parseToonKeyValue<Record<string, unknown>>(rawText);
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(rawText);
 
   const featureKeyRaw = parsed?.featureKey;
   const featureKey = isLifeOpsFeatureKey(featureKeyRaw) ? featureKeyRaw : null;

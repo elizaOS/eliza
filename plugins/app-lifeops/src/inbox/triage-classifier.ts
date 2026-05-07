@@ -2,9 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   InboundMessage,
   InboxTriageConfig,
@@ -259,8 +259,8 @@ function asStructuredArray(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
 }
 
-function parseTriageToonArray(raw: string): unknown[] | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+function parseTriageJsonObjectArray(raw: string): unknown[] | null {
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
   if (!parsed) {
     return null;
   }
@@ -297,9 +297,9 @@ function parseTriageToonArray(raw: string): unknown[] | null {
 }
 
 function parseTriageStructuredArray(raw: string): unknown[] {
-  const toonParsed = parseTriageToonArray(raw);
-  if (toonParsed) {
-    return toonParsed;
+  const jsonParsed = parseTriageJsonObjectArray(raw);
+  if (jsonParsed) {
+    return jsonParsed;
   }
   return parseTriageJsonArray(raw);
 }

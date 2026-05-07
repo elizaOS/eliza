@@ -2,14 +2,14 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(raw);
-  if (parsedToon && typeof parsedToon === "object") {
-    return parsedToon;
+  const parsedJson = parseJsonModelRecord<Record<string, unknown>>(raw);
+  if (parsedJson && typeof parsedJson === "object") {
+    return parsedJson;
   }
   return null;
 }

@@ -18,7 +18,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
@@ -262,7 +261,7 @@ function scoreFromDelimitedRow(row: string): PriorityScore {
   };
 }
 
-function parseScoresFromToon(
+function parseScoresFromJsonObject(
   parsed: Record<string, unknown>,
   expectedLength: number,
 ): PriorityScore[] | null {
@@ -316,9 +315,9 @@ function parseLegacyJsonScores(
 
 function parseScores(raw: string, expectedLength: number): PriorityScore[] {
   const candidate = stripModelWrapper(raw);
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(candidate);
-  if (parsedToon) {
-    const scores = parseScoresFromToon(parsedToon, expectedLength);
+  const parsedJson = parseJsonModelRecord<Record<string, unknown>>(candidate);
+  if (parsedJson) {
+    const scores = parseScoresFromJsonObject(parsedJson, expectedLength);
     if (scores) return scores;
   }
   return parseLegacyJsonScores(candidate, expectedLength);

@@ -31,10 +31,10 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import {
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
@@ -1139,7 +1139,7 @@ async function resolveSchedulingPlanWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,

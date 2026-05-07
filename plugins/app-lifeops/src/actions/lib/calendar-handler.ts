@@ -44,9 +44,9 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
-  parseLifeOpsToonRecord,
+  parseLifeOpsJsonRecord,
   runLifeOpsTextModel,
-  runLifeOpsToonModel,
+  runLifeOpsJsonModel,
   toActionData,
 } from "../lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
@@ -549,7 +549,7 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     `Current planner candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_read_intent",
@@ -594,7 +594,7 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_lookup_boundary",
@@ -643,7 +643,7 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_mutation_boundary",
@@ -1980,11 +1980,11 @@ export async function extractCalendarPlanWithLlm(
   ].join("\n");
 
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
-    const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(raw);
+    const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(raw);
     return parsed ? buildCalendarPlanFromParsed(parsed) : null;
   };
 
-  const plannerResult = await runLifeOpsToonModel<Record<string, unknown>>({
+  const plannerResult = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.plan",
@@ -2090,7 +2090,7 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     `Current planner output:\n${formatCalendarPromptValue(args.llmPlan ?? null)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.extract_search_queries",
@@ -2490,7 +2490,7 @@ async function inferCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_create_event",
@@ -2547,7 +2547,7 @@ async function inferUpdateEventDetails(
     `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_update_event",
@@ -2614,7 +2614,7 @@ async function repairCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.repair_create_event",
@@ -2761,7 +2761,7 @@ function extractCalendarGroundedMatchIds(
   rawResponse: string,
   allowedIds: Set<string>,
 ): string[] | null {
-  const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(rawResponse);
+  const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(rawResponse);
   if (!parsed) {
     return null;
   }

@@ -16,7 +16,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { EmailLikeMessage } from "./email-classifier.js";
@@ -313,7 +312,7 @@ function resolveModelType(modelSetting: string): keyof typeof ModelType {
 function parseStructuredExtraction(
   raw: string,
 ): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function parseLlmExtraction(raw: unknown): BillExtraction | null {

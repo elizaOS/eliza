@@ -156,52 +156,83 @@ export async function llmIntentAndExtract(
     .map((c) => {
       const handler = getTypeHandler(c.type);
       const typeHint = handler?.extractionPrompt || c.type;
-      const hints = c.extractHints?.join(", ") || "";
-      const options = c.options?.map((o) => o.value).join(", ") || "";
-
-      return `  ${toonCell(c.key)},${toonCell(c.label)},${toonCell(typeHint)},${toonCell(c.description || typeHint)},${toonCell(hints)},${toonCell(options)}`;
+      return {
+        key: c.key,
+        label: c.label,
+        type: typeHint,
+        description: c.description || typeHint,
+        hints: c.extractHints ?? [],
+        options: c.options?.map((o) => o.value) ?? [],
+      };
     })
-    .join("\n");
+    .filter(Boolean);
 
   // The prompt instructs LLM on what to do
   // WHY explicit intent list: Constrains LLM to known intents
   // WHY confidence scores: Enables confirmation flow for uncertain values
-  const prompt = `task: form_intent_and_extraction
-form:
-  name: ${toonCell(form.name)}
-  description: ${toonCell(form.description)}
-fields[${visibleControls.length}]{key,label,type,description,hints,options}:
-${fieldsDescription || "  none,none,none,none,none,none"}
-user_message: ${toonCell(text)}
-intent_options[12]: fill_form, submit, stash, restore, cancel, undo, skip, explain, example, progress, autofill, other
-intent_meanings[12]{intent,meaning}:
-  fill_form,user is providing field values
-  submit,user wants to submit or finish the form
-  stash,user wants to save or pause the form for later
-  restore,user wants to resume a saved form
-  cancel,user wants to cancel or abandon the form
-  undo,user wants to undo the last change
-  skip,user wants to skip the current field
-  explain,user wants an explanation
-  example,user wants an example value
-  progress,user wants a progress update
-  autofill,user wants to use saved values
-  other,none of the above
-rules[3]:
-  choose exactly one intent
-  for fill_form extract every mentioned field value
-  include confidence from 0.0 to 1.0 and mark corrections
-output_schema:
-  intent: one intent option
-  extractions[N]{key,value,confidence,reasoning,is_correction}: zero or more extracted fields
-example:
-intent: fill_form
-extractions[2]{key,value,confidence,reasoning,is_correction}:
-  name,Jane Doe,0.95,User said their name is Jane,false
-  email,jane@example.com,0.9,Email mentioned in message,false
+  const prompt = `Extract form intent and field values from the user message.
 
-response_rules[1]:
-  return only the TOON output document`;
+Context JSON:
+${JSON.stringify(
+  {
+    form: {
+      name: form.name,
+      description: form.description,
+    },
+    fields: fieldsDescription,
+    user_message: text,
+    intent_options: [
+      "fill_form",
+      "submit",
+      "stash",
+      "restore",
+      "cancel",
+      "undo",
+      "skip",
+      "explain",
+      "example",
+      "progress",
+      "autofill",
+      "other",
+    ],
+    intent_meanings: {
+      fill_form: "user is providing field values",
+      submit: "user wants to submit or finish the form",
+      stash: "user wants to save or pause the form for later",
+      restore: "user wants to resume a saved form",
+      cancel: "user wants to cancel or abandon the form",
+      undo: "user wants to undo the last change",
+      skip: "user wants to skip the current field",
+      explain: "user wants an explanation",
+      example: "user wants an example value",
+      progress: "user wants a progress update",
+      autofill: "user wants to use saved values",
+      other: "none of the above",
+    },
+  },
+  null,
+  2,
+)}
+
+Return only a valid JSON object with this schema:
+{
+  "intent": "one intent option",
+  "extractions": [
+    {
+      "key": "field key",
+      "value": "extracted value",
+      "confidence": 0.95,
+      "reasoning": "brief explanation",
+      "is_correction": false
+    }
+  ]
+}
+
+Rules:
+- Choose exactly one intent.
+- For fill_form, extract every mentioned field value.
+- Include confidence from 0.0 to 1.0 and mark corrections.
+- Use an empty extractions array when no fields were extracted.`;
 
   try {
     // Use TEXT_SMALL for faster extraction
@@ -212,7 +243,7 @@ response_rules[1]:
       temperature: 0.1,
     });
 
-    // Parse the TOON response
+    // Parse the JSON response
     const parsed = parseExtractionResponse(response);
 
     // Validate and parse extracted values
@@ -255,11 +286,11 @@ response_rules[1]:
 }
 
 /**
- * Parse the structured extraction response (TOON).
+ * Parse the structured extraction response (JSON).
  *
  * WHY structured parsing:
  * - Structured output is easier to parse than free text
- * - elizaOS parseToonKeyValue handles TOON natively
+ * - JSON output keeps the model contract aligned with native tool calling
  *
  * @param response - LLM's structured response string
  * @returns Parsed intent and extractions
@@ -271,24 +302,17 @@ function parseExtractionResponse(response: string): IntentResult {
   };
 
   try {
-    // Try to parse as structured output (TOON)
-    const parsed = parseToonKeyValue<ExtractionToonResponse>(response);
+    const parsed = parseJsonObjectResponse<ExtractionJsonResponse>(response);
 
     if (parsed) {
       // Get intent
       const intentStr = parsed.intent?.toLowerCase() ?? "other";
       result.intent = isValidIntent(intentStr) ? intentStr : "other";
 
-      // Get extractions - handle various structured output formats
-      // WHY flexible parsing: LLM might format arrays differently
       if (parsed.extractions) {
         const fields = Array.isArray(parsed.extractions)
           ? parsed.extractions
-          : parsed.extractions.field
-            ? Array.isArray(parsed.extractions.field)
-              ? parsed.extractions.field
-              : [parsed.extractions.field]
-            : [];
+          : [];
 
         const seen = new Set<string>();
         for (const field of fields) {
@@ -302,7 +326,7 @@ function parseExtractionResponse(response: string): IntentResult {
               value: field.value ?? null,
               confidence: parseFloat(String(field.confidence ?? "")) || 0.5,
               reasoning: field.reasoning ? String(field.reasoning) : undefined,
-              isCorrection: toonBoolean(field.is_correction),
+              isCorrection: parseBoolean(field.is_correction),
             };
             result.extractions.push(extraction);
           }
@@ -377,23 +401,33 @@ export async function extractSingleField(
   const typeHint = handler?.extractionPrompt || resolvedControl.type;
 
   // Focused prompt for single field extraction
-  const prompt = `task: extract_single_form_field
-field:
-  key: ${toonCell(resolvedControl.key)}
-  label: ${toonCell(resolvedControl.label)}
-  type: ${toonCell(typeHint)}
-  description: ${toonCell(resolvedControl.description)}
-  hints: ${toonCell(resolvedControl.extractHints?.join("; "))}
-  options: ${toonCell(resolvedControl.options?.map((o) => o.value).join("; "))}
-  example: ${toonCell(resolvedControl.example)}
-user_message: ${toonCell(text)}
-output_schema:
-  found: true or false
-  value: extracted value or empty if not found
-  confidence: 0.0 to 1.0
-  reasoning: brief explanation
-response_rules[1]:
-  return only the TOON output document`;
+  const prompt = `Extract a single form field value from the user message.
+
+Context JSON:
+${JSON.stringify(
+  {
+    field: {
+      key: resolvedControl.key,
+      label: resolvedControl.label,
+      type: typeHint,
+      description: resolvedControl.description,
+      hints: resolvedControl.extractHints ?? [],
+      options: resolvedControl.options?.map((o) => o.value) ?? [],
+      example: resolvedControl.example,
+    },
+    user_message: text,
+  },
+  null,
+  2,
+)}
+
+Return only a valid JSON object with this schema:
+{
+  "found": true,
+  "value": "extracted value or null if not found",
+  "confidence": 0.95,
+  "reasoning": "brief explanation"
+}`;
 
   try {
     const runModel = runtime.useModel.bind(runtime);
@@ -402,7 +436,7 @@ response_rules[1]:
       temperature: 0.1,
     });
 
-    const parsed = parseToonKeyValue<SingleFieldToonResponse>(response);
+    const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(response);
 
     const found = parsed?.found === true || parsed?.found === "true";
     if (found) {
@@ -485,33 +519,46 @@ export async function detectCorrection(
     (c) => currentValues[c.key] !== undefined,
   );
   const currentValueRows = currentValueEntries
-    .map(
-      (c) =>
-        `  ${toonCell(c.key)},${toonCell(c.label)},${toonCell(currentValues[c.key])}`,
-    )
-    .join("\n");
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      value: currentValues[c.key],
+    }));
 
   // If nothing to correct, return early
-  if (!currentValueRows) {
+  if (currentValueEntries.length === 0) {
     return [];
   }
 
-  const prompt = `task: detect_form_value_corrections
-current_values[${currentValueEntries.length}]{key,label,value}:
-${currentValueRows}
-user_message: ${toonCell(text)}
-rules[2]:
-  decide whether the user is correcting a previous value
-  when correcting extract the replacement value
-output_schema:
-  has_correction: true or false
-  corrections[N]{field,old_value,new_value,confidence}: zero or more corrections
-example:
-has_correction: true
-corrections[1]{field,old_value,new_value,confidence}:
-  email,old@example.com,new@example.com,0.9
-response_rules[1]:
-  return only the TOON output document`;
+  const prompt = `Detect whether the user is correcting a previous form value.
+
+Context JSON:
+${JSON.stringify(
+  {
+    current_values: currentValueRows,
+    user_message: text,
+  },
+  null,
+  2,
+)}
+
+Return only a valid JSON object with this schema:
+{
+  "has_correction": true,
+  "corrections": [
+    {
+      "field": "email",
+      "old_value": "old@example.com",
+      "new_value": "new@example.com",
+      "confidence": 0.9
+    }
+  ]
+}
+
+Rules:
+- Decide whether the user is correcting a previous value.
+- When correcting, extract the replacement value.
+- Use an empty corrections array when no corrections were found.`;
 
   try {
     const runModel = runtime.useModel.bind(runtime);
@@ -520,21 +567,16 @@ response_rules[1]:
       temperature: 0.1,
     });
 
-    const parsed = parseToonKeyValue<CorrectionToonResponse>(response);
+    const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(response);
     const hasCorrection =
       parsed?.has_correction === true || parsed?.has_correction === "true";
 
     if (parsed && hasCorrection && parsed.corrections) {
       const corrections: ExtractionResult[] = [];
 
-      // Handle the structured TOON shapes used by older and newer prompts.
       const correctionList = Array.isArray(parsed.corrections)
         ? parsed.corrections
-        : parsed.corrections.correction
-          ? Array.isArray(parsed.corrections.correction)
-            ? parsed.corrections.correction
-            : [parsed.corrections.correction]
-          : [];
+        : [];
 
       const seen = new Set<string>();
       for (const correction of correctionList) {

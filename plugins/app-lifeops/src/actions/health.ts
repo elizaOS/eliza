@@ -27,7 +27,7 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
   hasLifeOpsAccess,
-  runLifeOpsToonModel,
+  runLifeOpsJsonModel,
 } from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
@@ -191,7 +191,7 @@ async function resolveHealthPlanWithLlm(args: {
     recentConversation || "(none)",
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "HEALTH.plan",

@@ -18,7 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
 import { recentConversationTextsFromState } from "./recent-context.js";
 
@@ -245,7 +245,7 @@ function parseExtractionEnvelope<TSubaction extends string>(
   if (typeof raw !== "string" || raw.trim().length === 0) {
     return null;
   }
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
   if (!parsed || typeof parsed !== "object") {
     return null;
   }

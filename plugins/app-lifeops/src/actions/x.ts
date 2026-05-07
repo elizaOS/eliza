@@ -12,9 +12,9 @@ import type {
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -165,7 +165,7 @@ async function resolveXReadPlanWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,

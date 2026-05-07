@@ -9,9 +9,9 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -393,7 +393,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return { websites: [], shouldAct: null };
     }
@@ -459,7 +459,7 @@ async function recoverWebsiteContextWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     return normalizeWebsiteCandidates(parsed?.websites);
   } catch (error) {
     args.runtime.logger?.warn?.(

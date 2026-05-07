@@ -1,10 +1,10 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
 import { resolveContextWindow } from "../lifeops-extraction-config.js";
 
@@ -323,7 +323,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
   } catch (error) {
     args.runtime.logger?.warn?.(
@@ -423,7 +423,7 @@ export async function extractLifeOperationWithLlm(args: {
   ].join("\n");
 
   const parseResponse = (rawResponse: string) => {
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeOperationPlan(parsed) : null;
   };
 

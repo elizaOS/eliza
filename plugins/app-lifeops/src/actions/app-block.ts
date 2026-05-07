@@ -8,9 +8,9 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -198,7 +198,7 @@ async function resolveAppBlockPlanWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return { packageNames: [], shouldAct: null };
     }
