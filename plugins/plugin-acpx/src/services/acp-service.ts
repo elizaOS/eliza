@@ -43,6 +43,7 @@ type ProcessRecord = {
   stderr: string;
   stdoutBuffer: string;
   killedByService: boolean;
+  cancelled: boolean;
   exited: boolean;
   killTimer?: ReturnType<typeof setTimeout>;
 };
@@ -66,6 +67,7 @@ type RunResult = {
   stderr: string;
   finalText: string;
   stopReason?: string;
+  cancelled?: boolean;
   durationMs: number;
 };
 
@@ -304,7 +306,12 @@ export class AcpService {
     });
 
     const stopReason =
-      result.stopReason ?? (result.code === 0 ? "end_turn" : "error");
+      result.stopReason ??
+      (result.cancelled
+        ? "cancelled"
+        : result.code === 0
+          ? "end_turn"
+          : "error");
     const promptResult: PromptResult = {
       sessionId,
       response: result.finalText,
@@ -313,10 +320,15 @@ export class AcpService {
       durationMs: result.durationMs || Date.now() - startedAt,
       exitCode: result.code,
       signal: result.signal,
-      ...(result.code !== 0
+      ...(result.code !== 0 && !result.cancelled
         ? { error: this.classifyExitError(result.code, result.stderr) }
         : {}),
     };
+
+    if (result.cancelled || stopReason === "cancelled") {
+      await this.store.updateStatus(sessionId, "cancelled");
+      return promptResult;
+    }
 
     if (result.code === 0 && stopReason !== "error") {
       await this.store.update(sessionId, {
@@ -341,6 +353,7 @@ export class AcpService {
     const session = await this.requireSession(sessionId);
     const active = this.activeProcesses.get(sessionId);
     if (active) {
+      active.cancelled = true;
       this.terminateProcess(sessionId, active);
     } else {
       const args = [
@@ -356,7 +369,7 @@ export class AcpService {
         args,
       });
     }
-    await this.store.updateStatus(sessionId, "stopped");
+    await this.store.updateStatus(sessionId, "cancelled");
   }
 
   async closeSession(sessionId: string): Promise<void> {
@@ -530,6 +543,7 @@ export class AcpService {
         stderr: "",
         stdoutBuffer: "",
         killedByService: false,
+        cancelled: false,
         exited: false,
       };
       if (opts.activeForSession && opts.sessionId)
@@ -600,14 +614,20 @@ export class AcpService {
           this.activeProcesses.delete(opts.sessionId);
         }
         if (record.killTimer) clearTimeout(record.killTimer);
-        if (opts.sessionId && code !== 0 && isAuthText(record.stderr)) {
+        if (
+          opts.sessionId &&
+          !record.cancelled &&
+          code !== 0 &&
+          isAuthText(record.stderr)
+        ) {
           this.emitSessionEvent(opts.sessionId, "error", {
             message: this.classifyExitError(code, record.stderr),
             failureKind: "auth",
           });
         }
         if (opts.sessionId && opts.activeForSession) {
-          this.emitSessionEvent(opts.sessionId, "stopped", {
+          const event = record.cancelled ? "cancelled" : "stopped";
+          this.emitSessionEvent(opts.sessionId, event, {
             sessionId: opts.sessionId,
             response: finalText,
             exitCode: code,
@@ -619,7 +639,8 @@ export class AcpService {
           signal,
           stderr: record.stderr,
           finalText,
-          stopReason,
+          stopReason: record.cancelled ? "cancelled" : stopReason,
+          cancelled: record.cancelled,
           durationMs: Date.now() - startedAt,
         });
       });
