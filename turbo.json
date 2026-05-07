@@ -84,19 +84,19 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/plugin-cli-root#build": {
+    "@elizaos/plugin-cli#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-commands-root#build": {
+    "@elizaos/plugin-commands#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-discord-root#build": {
+    "@elizaos/plugin-discord#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-elizacloud-root#build": {
+    "@elizaos/plugin-elizacloud#build": {
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/cloud-sdk#build",
@@ -104,11 +104,11 @@
       ],
       "outputs": []
     },
-    "@elizaos/plugin-groq-root#build": {
+    "@elizaos/plugin-groq#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-imessage-root#build": {
+    "@elizaos/plugin-imessage#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
@@ -116,43 +116,43 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/plugin-app-control-root#build": {
+    "@elizaos/plugin-app-control#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-edge-tts-root#build": {
+    "@elizaos/plugin-edge-tts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-local-ai-root#build": {
+    "@elizaos/plugin-local-ai#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-local-embedding-root#build": {
+    "@elizaos/plugin-local-embedding#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-ollama-root#build": {
+    "@elizaos/plugin-ollama#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-openai-root#build": {
+    "@elizaos/plugin-openai#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-openrouter-root#build": {
+    "@elizaos/plugin-openrouter#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-pdf-root#build": {
+    "@elizaos/plugin-pdf#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-plugin-manager-root#build": {
+    "@elizaos/plugin-plugin-manager#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-shell-root#build": {
+    "@elizaos/plugin-shell#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
@@ -160,15 +160,11 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-sql-root#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/plugin-sql#build": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": ["typescript/dist/**"]
     },
-    "@elizaos/plugin-whatsapp-root#build": {
+    "@elizaos/plugin-whatsapp#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
