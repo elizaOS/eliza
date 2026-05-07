@@ -24,6 +24,7 @@ function locateSystemRg(): string | undefined {
 }
 
 let tmpRoot: string;
+let blockedPath: string;
 
 interface RuntimeBundle {
   runtime: IAgentRuntime;
@@ -36,7 +37,7 @@ async function buildRuntime(
 ): Promise<RuntimeBundle | null> {
   const root = rootOverride ?? tmpRoot;
   const mergedSettings = {
-    CODING_TOOLS_WORKSPACE_ROOTS: root,
+    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
     ...settings,
   };
   const stub = {
@@ -142,7 +143,7 @@ describe("GREP", () => {
     expect(insensitiveCount).toBeGreaterThan(sensitiveCount);
   });
 
-  it("rejects a path outside the workspace roots", async () => {
+  it("rejects a path under the blocklist", async () => {
     const bundle = await buildRuntime();
     if (!bundle) {
       console.warn("no ripgrep available, skipping");
@@ -150,16 +151,11 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), "ct-other-"));
-    try {
-      const result = await grepAction.handler!(runtime, message, state, {
-        parameters: { pattern: "NEEDLE", path: otherDir },
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("path_outside_roots");
-    } finally {
-      await fs.rm(otherDir, { recursive: true, force: true });
-    }
+    const result = await grepAction.handler!(runtime, message, state, {
+      parameters: { pattern: "NEEDLE", path: blockedPath },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
   });
 
   it("returns 'no matches' for an unmatched pattern", async () => {

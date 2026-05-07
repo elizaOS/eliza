@@ -70,9 +70,7 @@ export const documentsProvider: Provider = {
 			const visibleDocuments = documents.slice(0, MAX_DOCUMENT_PROVIDER_ITEMS);
 			const documentsList = visibleDocuments
 				.map((doc, index) => {
-					const metadata = doc.metadata as
-						| DocumentMetadataExtended
-						| undefined;
+					const metadata = doc.metadata as DocumentMetadataExtended | undefined;
 					const filename =
 						metadata?.filename || metadata?.title || `Document ${index + 1}`;
 					const fileType = metadata?.fileExt || metadata?.fileType || "";

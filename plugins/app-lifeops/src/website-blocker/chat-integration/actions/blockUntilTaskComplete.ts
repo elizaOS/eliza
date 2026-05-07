@@ -156,10 +156,9 @@ export const blockUntilTaskCompleteAction: Action = {
     "FOCUS_UNTIL_TASK_DONE",
   ],
   description:
-    "Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. " +
-    "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
-    "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are OWNER_WEBSITE_BLOCK.",
-  descriptionCompressed: "Block websites until a named todo is completed.",
+    "Create a website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (e.g. 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, the todo is created first; an optional unlockDurationMinutes re-locks the same hosts after the gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking') — those belong to OWNER_WEBSITE_BLOCK.",
+  descriptionCompressed:
+    "block-websites-until-todo-complete: websites + todoId|todoName + optional unlockDurationMinutes",
   contexts: ["screen_time", "browser", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
   validate: async (_runtime, message) =>

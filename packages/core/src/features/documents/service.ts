@@ -24,9 +24,9 @@ import {
 } from "./document-processor.ts";
 import type {
 	AddDocumentOptions,
-	DocumentsConfig,
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	DocumentsConfig,
 	LoadResult,
 	StoredDocument,
 } from "./types.ts";

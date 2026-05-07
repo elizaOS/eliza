@@ -91,22 +91,6 @@ describe("bashAction", () => {
     expect(result.text).toContain("[exit 0]");
   });
 
-  it("denies a command on the sandbox denylist", async () => {
-    const tmpRoot = path.resolve(os.tmpdir());
-    const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
-    started = tasks;
-
-    const result = await bashAction.handler!(
-      runtime,
-      makeMessage(),
-      undefined,
-      { command: "rm -rf /" },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("command_denied");
-  });
-
   it("returns a timeout failure when the command exceeds its budget", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const { runtime, tasks } = await makeRuntime({

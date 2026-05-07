@@ -1,4 +1,5 @@
-import type { Action } from "../../../../types/index.ts";
+import type { Action, IAgentRuntime } from "../../../../types/index.ts";
+import { getTodosService } from "../services/todoService.ts";
 
 /**
  * Parent umbrella action for the todo system.
@@ -21,7 +22,15 @@ export const todoAction: Action = {
 		"DELETE_TODO",
 	],
 
-	validate: async (): Promise<boolean> => true,
+	subPlanner: {
+		name: "todo_subplanner",
+		description:
+			"Explodes CREATE_TODO, COMPLETE_TODO, LIST_TODOS, EDIT_TODO, DELETE_TODO so the planner can chain multi-step todo operations.",
+	},
+
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return Boolean(getTodosService(runtime));
+	},
 
 	// Handler is bypassed when subActions is present — sub-planner takes over.
 	handler: async () => {

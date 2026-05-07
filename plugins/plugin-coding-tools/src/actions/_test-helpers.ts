@@ -13,19 +13,27 @@ export interface TestEnv {
   sandbox: SandboxService;
   message: Memory;
   tmpDir: string;
+  /**
+   * Absolute path the SandboxService is configured to refuse. Tests can
+   * read/write under this path to verify blocklist enforcement. Lives inside
+   * tmpDir so it's removed automatically by `cleanup`.
+   */
+  blockedPath: string;
   cleanup: () => Promise<void>;
 }
 
 export async function makeTempDir(prefix: string): Promise<string> {
   const created = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
-  // realpath on macOS resolves /var → /private/var; downstream code uses
-  // realpath for sandbox checks, so the tests must use the realpath form.
   return await fs.realpath(created);
 }
 
 export interface SetupOptions {
+  /** Optional pre-existing tmp dir to use instead of mkdtemp. */
   rootsPath?: string;
+  /** Additional runtime settings to merge in. */
   extraSettings?: Record<string, unknown>;
+  /** Override the blocked path; defaults to <tmpDir>/_blocked. */
+  blockedPath?: string;
 }
 
 export async function setupEnv(
@@ -33,8 +41,11 @@ export async function setupEnv(
   options: SetupOptions = {},
 ): Promise<TestEnv> {
   const tmpDir = options.rootsPath ?? (await makeTempDir(prefix));
+  const blockedPath = options.blockedPath ?? path.join(tmpDir, "_blocked");
+  await fs.mkdir(blockedPath, { recursive: true });
+
   const settings: Record<string, unknown> = {
-    CODING_TOOLS_WORKSPACE_ROOTS: tmpDir,
+    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
     ...options.extraSettings,
   };
 
@@ -61,6 +72,7 @@ export async function setupEnv(
     sandbox,
     message,
     tmpDir,
+    blockedPath,
     cleanup: async () => {
       await sandbox.stop();
       await fileState.stop();

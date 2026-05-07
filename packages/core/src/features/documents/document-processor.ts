@@ -22,8 +22,8 @@ import {
 } from "./ctx-embeddings.ts";
 import { generateText } from "./llm.ts";
 import type {
-	DocumentMemoryMetadata,
 	DocumentFragmentMemoryMetadata,
+	DocumentMemoryMetadata,
 } from "./types.ts";
 import {
 	convertPdfToTextFromBuffer,

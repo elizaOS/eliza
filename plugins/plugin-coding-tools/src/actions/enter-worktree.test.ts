@@ -115,9 +115,6 @@ describe("ENTER_WORKTREE", () => {
 
     expect(env.session.getCwd(env.conversationId)).toBe(path.resolve(worktreePath));
 
-    const roots = env.sandbox.rootsFor(env.conversationId);
-    expect(roots.some((r) => path.resolve(r) === path.resolve(worktreePath))).toBe(true);
-
     expect(typeof data?.branch).toBe("string");
     expect(result.text).toContain("Entered worktree");
   });
