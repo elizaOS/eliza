@@ -5068,37 +5068,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "GET_TAILSCALE_STATUS",
-			description: "Get the current status of the Tailscale tunnel",
-			parameters: [
-				{
-					name: "verbose",
-					description:
-						"When true, include backend provider details in the status text.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"When true, include backend provider details in the status text.",
-				},
-			],
-			descriptionCompressed: "get current status Tailscale tunnel",
-			similes: ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"],
-			exampleCalls: [
-				{
-					user: "Use GET_TAILSCALE_STATUS with the provided parameters.",
-					actions: ["GET_TAILSCALE_STATUS"],
-					params: {
-						GET_TAILSCALE_STATUS: {
-							verbose: false,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "GLOB",
 			description:
 				"Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
@@ -8471,37 +8440,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "START_TAILSCALE",
-			description:
-				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
-			parameters: [
-				{
-					name: "port",
-					description: "Local port to expose through the Tailscale tunnel.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Local port to expose through the Tailscale tunnel.",
-				},
-			],
-			descriptionCompressed:
-				"start Tailscale tunnel expose local port tailnet (public internet via Funnel)",
-			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
-			exampleCalls: [
-				{
-					user: "Use START_TAILSCALE with the provided parameters.",
-					actions: ["START_TAILSCALE"],
-					params: {
-						START_TAILSCALE: {
-							port: 1,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "STOP_AGENT",
 			description:
 				"Stop a running task-agent session, terminating the session and cleaning up resources.",
@@ -8548,13 +8486,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Stop a running task-agent session, terminating the session and cleaning up resources.",
-		},
-		{
-			name: "STOP_TAILSCALE",
-			description: "Stop the running Tailscale tunnel",
-			parameters: [],
-			descriptionCompressed: "stop run Tailscale tunnel",
-			similes: ["STOP_TUNNEL", "CLOSE_TUNNEL", "TAILSCALE_DOWN"],
 		},
 		{
 			name: "SUMMARIZE_FEED",

@@ -24,5 +24,5 @@ This plugin has no configuration parameters. It works out of the box once instal
 
 ## Related
 
-- [Code Plugin](/plugin-registry/code) - Filesystem, shell, and git capabilities
+- [Coding Tools Plugin](/plugin-registry/coding-tools) - Filesystem, shell, and search tooling (READ, WRITE, BASH, GREP, …)
 - [Directives Plugin](/plugin-registry/directives) - Inline directive parsing for agents

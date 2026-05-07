@@ -51,8 +51,8 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
   elizacloud_health: "admin",
   elizacloud_models: "admin",
 
-  // Clipboard
-  clipboard: "admin",
+  // Todos
+  todos: "user",
 
   // Browser / wallet operational state
   app_browser_workspace: "owner",

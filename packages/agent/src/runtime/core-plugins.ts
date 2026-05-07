@@ -72,7 +72,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-browser-bridge", // Agent Browser Bridge: Chrome/Safari companion pairing, tab + page context sync, packaging artifacts
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
-  // - experience, clipboard, personality: advanced capabilities (advancedCapabilities: true)
+  // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
   // - trust: core capability (enableTrust: true)
   // - secrets (SECRETS): core capability (enableSecretsManager: true)
@@ -91,7 +91,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
-  "@elizaos/plugin-code", // code writing and file operations
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration
   "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows for this monorepo
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)
@@ -111,5 +110,5 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-directives", // directive processing - not yet ready
   // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
   // "@elizaos/plugin-scheduling", // scheduling - not yet ready
-  // clipboard: now built-in as advanced capability (advancedCapabilities: true)
+  // todos: now built-in as advanced capability (advancedCapabilities: true)
 ];

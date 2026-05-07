@@ -765,8 +765,9 @@ export class ElizaSandboxService {
     >,
     path: string,
   ): Promise<string> {
+    const isWorkerRuntime = this.isCloudflareWorkerRuntime();
     const baseDomain = this.getConfiguredAgentBaseDomain();
-    if (baseDomain || this.isCloudflareWorkerRuntime()) {
+    if (isWorkerRuntime) {
       const publicEndpoint = getElizaAgentPublicWebUiUrl(
         rec,
         baseDomain ? { baseDomain, path } : { path },
@@ -777,6 +778,14 @@ export class ElizaSandboxService {
     const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
     if (trustedWebBaseUrl) {
       return new URL(path, trustedWebBaseUrl).toString();
+    }
+
+    if (baseDomain) {
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, {
+        baseDomain,
+        path,
+      });
+      if (publicEndpoint) return publicEndpoint;
     }
 
     return this.getSafeBridgeEndpoint(rec, path);

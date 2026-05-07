@@ -651,7 +651,6 @@ async function buildNode() {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/roles.ts`,
-				`${TS_SRC}/features/advanced-capabilities/clipboard/index.ts`,
 			],
 			outdir: "dist/node",
 			target: "node",

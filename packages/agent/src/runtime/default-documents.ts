@@ -8,23 +8,23 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-const KNOWLEDGE_BATCH_SIZE = 100;
-const DEFAULT_KNOWLEDGE_SOURCE = "eliza-default-knowledge";
+const DOCUMENT_BATCH_SIZE = 100;
+const DEFAULT_DOCUMENTS_SOURCE = "eliza-default-documents";
 
 type SeededMemory = Memory & { id: UUID };
 
-export interface DefaultKnowledgeFragmentDefinition {
+export interface DefaultDocumentFragmentDefinition {
   text: string;
   embedding?: number[];
 }
 
-export interface DefaultKnowledgeDocumentDefinition {
+export interface DefaultDocumentDefinition {
   key: string;
   version: number;
   filename: string;
   contentType: string;
   text: string;
-  fragments: readonly DefaultKnowledgeFragmentDefinition[];
+  fragments: readonly DefaultDocumentFragmentDefinition[];
   metadata?: Record<string, unknown>;
 }
 
@@ -37,7 +37,7 @@ export const ELIZA_HISTORY_TEXT =
 export const ELIZA_CLOUD_BASICS_TEXT =
   "Eliza Cloud is the managed backend and app platform for Eliza when cloud mode is enabled. Builders can create an app, keep its appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media APIs through Cloud, monetize app usage with inference markup and purchase-share settings, and deploy Docker containers when an app needs server-side execution.";
 
-export const DEFAULT_KNOWLEDGE_DOCUMENTS: readonly DefaultKnowledgeDocumentDefinition[] =
+export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] =
   [
     {
       key: "eliza-overview",
@@ -102,7 +102,7 @@ function getExpectedEmbeddingDimensions(
 
 function normalizeProvidedEmbedding(
   runtime: AgentRuntime,
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
   index: number,
   embedding: readonly number[] | undefined,
 ): number[] | undefined {
@@ -140,7 +140,7 @@ function extractTimestamp(memory: Memory | null): number {
 }
 
 function buildDocumentMetadata(
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
   documentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
@@ -156,7 +156,7 @@ function buildDocumentMetadata(
     fileType: document.contentType,
     contentType: document.contentType,
     fileSize: Buffer.byteLength(document.text, "utf8"),
-    source: DEFAULT_KNOWLEDGE_SOURCE,
+    source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
     bundledKnowledge: true,
     bundledKnowledgeKey: document.key,
@@ -166,7 +166,7 @@ function buildDocumentMetadata(
 }
 
 function buildFragmentMetadata(
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
   documentId: UUID,
   index: number,
   timestamp: number,
@@ -175,7 +175,7 @@ function buildFragmentMetadata(
     type: MemoryType.FRAGMENT,
     documentId,
     position: index,
-    source: DEFAULT_KNOWLEDGE_SOURCE,
+    source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
     bundledKnowledge: true,
     bundledKnowledgeKey: document.key,
@@ -195,7 +195,7 @@ function embeddingsEqual(
 
 function documentMatchesDefinition(
   existing: Memory | null,
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
   documentId: UUID,
 ): boolean {
   if (!existing) return false;
@@ -214,7 +214,7 @@ function documentMatchesDefinition(
 
 function fragmentMatchesDefinition(
   existing: Memory | null,
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
   documentId: UUID,
   index: number,
   text: string,
@@ -249,7 +249,7 @@ async function listFragmentIdsForDocument(
     const batch = await runtime.getMemories({
       tableName: "knowledge",
       roomId: runtime.agentId,
-      limit: KNOWLEDGE_BATCH_SIZE,
+      limit: DOCUMENT_BATCH_SIZE,
       start: offset,
     });
 
@@ -265,16 +265,16 @@ async function listFragmentIdsForDocument(
       }
     }
 
-    if (batch.length < KNOWLEDGE_BATCH_SIZE) break;
-    offset += KNOWLEDGE_BATCH_SIZE;
+    if (batch.length < DOCUMENT_BATCH_SIZE) break;
+    offset += DOCUMENT_BATCH_SIZE;
   }
 
   return fragmentIds;
 }
 
-async function seedBundledKnowledgeDocument(
+async function seedBundledDocument(
   runtime: AgentRuntime,
-  document: DefaultKnowledgeDocumentDefinition,
+  document: DefaultDocumentDefinition,
 ): Promise<void> {
   const documentId = getDocumentId(runtime.agentId, document.key);
   const existingDocument = await runtime.getMemoryById(documentId);
@@ -386,11 +386,20 @@ async function seedBundledKnowledgeDocument(
   }
 }
 
-export async function seedBundledKnowledge(
+export async function seedBundledDocuments(
   runtime: AgentRuntime,
-  documents: readonly DefaultKnowledgeDocumentDefinition[] = DEFAULT_KNOWLEDGE_DOCUMENTS,
+  documents: readonly DefaultDocumentDefinition[] = DEFAULT_DOCUMENTS,
 ): Promise<void> {
   for (const document of documents) {
-    await seedBundledKnowledgeDocument(runtime, document);
+    await seedBundledDocument(runtime, document);
   }
 }
+
+/** @deprecated Use seedBundledDocuments */
+export const seedBundledKnowledge = seedBundledDocuments;
+
+// Legacy type aliases
+export type DefaultKnowledgeFragmentDefinition = DefaultDocumentFragmentDefinition;
+export type DefaultKnowledgeDocumentDefinition = DefaultDocumentDefinition;
+/** @deprecated Use DEFAULT_DOCUMENTS */
+export const DEFAULT_KNOWLEDGE_DOCUMENTS = DEFAULT_DOCUMENTS;

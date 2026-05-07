@@ -64,11 +64,6 @@
 			"types": "./src/testing/index.ts",
 			"import": "./dist/testing/index.js",
 			"default": "./dist/testing/index.js"
-		},
-		"./advanced-capabilities/clipboard/index": {
-			"types": "./src/features/advanced-capabilities/clipboard/index.ts",
-			"import": "./dist/node/features/advanced-capabilities/clipboard/index.js",
-			"default": "./dist/node/features/advanced-capabilities/clipboard/index.js"
 		}
 	},
 	"files": [

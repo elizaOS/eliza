@@ -439,14 +439,17 @@ function buildMockActions(): Action[] {
   // RESEARCH_AND_SAVE — umbrella action with subActions for sub-planner
   // scenario. The real runtime triggers runSubPlanner automatically when
   // it sees `action.subActions.length > 0`, so this handler never runs.
+  // Scoped to its own `research_workflow` context so it does not bleed
+  // into the chain-2-tools scenario, which expects flat WEB_SEARCH +
+  // CLIPBOARD_WRITE calls under the `web` context.
   // -------------------------------------------------------------------
 
   const researchAndSave = {
     ...makeMockAction({
       name: "RESEARCH_AND_SAVE",
       description:
-        "Research a topic on the web and save the findings to the clipboard.",
-      contexts: ["web"],
+        "Research a topic on the web and save the findings to the clipboard with a structured title label.",
+      contexts: ["research_workflow"],
       parameters: [
         {
           name: "query",
@@ -588,6 +591,19 @@ async function buildRuntime(
     selectionGuidance:
       "Select when the user explicitly asks to run BROKEN_ACTION or validate action failure handling.",
     covers: ["BROKEN_ACTION", "failure-path validation"],
+    sensitivity: "public",
+    cacheStable: true,
+    cacheScope: "global",
+    roleGate: { minRole: "USER" },
+  });
+  runtime.contexts.tryRegister({
+    id: "research_workflow",
+    label: "Research Workflow",
+    description:
+      "Bundled umbrella research workflows that combine web lookup with structured, titled output to clipboard. Distinct from raw web search.",
+    selectionGuidance:
+      "Select when the user explicitly asks for a titled or labeled research artifact (e.g. 'with title X', 'save findings as Y', 'research and store under name Z'). Do NOT select for plain 'search and save' requests.",
+    covers: ["RESEARCH_AND_SAVE", "titled research output", "umbrella research workflow"],
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",

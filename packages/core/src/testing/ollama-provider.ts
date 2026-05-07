@@ -233,15 +233,19 @@ async function handleTextSmall(
 		"TEXT_SMALL request",
 	);
 
-	return generateTextWithOllama(DEFAULT_MODELS.text_small, params.prompt, {
-		system: resolveEffectiveSystemPrompt({
-			params,
-			fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
-		}),
-		temperature: params.temperature,
-		maxTokens: params.maxTokens,
-		stopSequences: params.stopSequences,
-	});
+	return generateTextWithOllama(
+		DEFAULT_MODELS.text_small,
+		params.prompt ?? "",
+		{
+			system: resolveEffectiveSystemPrompt({
+				params,
+				fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+			}),
+			temperature: params.temperature,
+			maxTokens: params.maxTokens,
+			stopSequences: params.stopSequences,
+		},
+	);
 }
 
 /**
@@ -256,15 +260,19 @@ async function handleTextLarge(
 		"TEXT_LARGE request",
 	);
 
-	return generateTextWithOllama(DEFAULT_MODELS.text_large, params.prompt, {
-		system: resolveEffectiveSystemPrompt({
-			params,
-			fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
-		}),
-		temperature: params.temperature,
-		maxTokens: params.maxTokens,
-		stopSequences: params.stopSequences,
-	});
+	return generateTextWithOllama(
+		DEFAULT_MODELS.text_large,
+		params.prompt ?? "",
+		{
+			system: resolveEffectiveSystemPrompt({
+				params,
+				fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+			}),
+			temperature: params.temperature,
+			maxTokens: params.maxTokens,
+			stopSequences: params.stopSequences,
+		},
+	);
 }
 
 /**

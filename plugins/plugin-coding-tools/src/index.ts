@@ -19,9 +19,7 @@ import {
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
-  BashAstService,
   FileStateService,
-  OsSandboxService,
   RipgrepService,
   SandboxService,
   SessionCwdService,
@@ -31,15 +29,13 @@ import {
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, WEB_SEARCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. All operations are sealed to configured workspace roots.",
+    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, WEB_SEARCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. Blocks user-private paths (~/pvt, ~/Library, ~/.ssh, etc.) by default; otherwise unrestricted.",
   services: [
     FileStateService,
     SandboxService,
     SessionCwdService,
     RipgrepService,
     ShellTaskService,
-    BashAstService,
-    OsSandboxService,
   ],
   providers: [availableToolsProvider],
   actions: [
@@ -65,9 +61,7 @@ export const codingToolsPlugin: Plugin = {
 export default codingToolsPlugin;
 
 export {
-  BashAstService,
   FileStateService,
-  OsSandboxService,
   RipgrepService,
   SandboxService,
   SessionCwdService,

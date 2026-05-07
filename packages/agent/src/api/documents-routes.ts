@@ -3,23 +3,25 @@ import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
 
 const KNOWLEDGE_ROUTES_MODULE: string = "@elizaos/app-knowledge";
 
-export type KnowledgeRouteHelpers = RouteHelpers;
+export type DocumentRouteHelpers = RouteHelpers;
+/** @deprecated Use DocumentRouteHelpers */
+export type KnowledgeRouteHelpers = DocumentRouteHelpers;
 
-export interface KnowledgeRouteContext extends RouteRequestContext {
+export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
 }
+/** @deprecated Use DocumentRouteContext */
+export type KnowledgeRouteContext = DocumentRouteContext;
 
 type KnowledgeRoutesModule = {
-  handleKnowledgeRoutes?: (
-    ctx: KnowledgeRouteContext,
-  ) => Promise<boolean> | boolean;
+  handleKnowledgeRoutes?: (ctx: DocumentRouteContext) => Promise<boolean> | boolean;
 };
 
-export async function handleKnowledgeRoutes(
-  ctx: KnowledgeRouteContext,
+export async function handleDocumentsRoutes(
+  ctx: DocumentRouteContext,
 ): Promise<boolean> {
-  if (!ctx.pathname.startsWith("/api/knowledge")) return false;
+  if (!ctx.pathname.startsWith("/api/knowledge") && !ctx.pathname.startsWith("/api/documents")) return false;
 
   try {
     const loaded = (await import(
@@ -35,3 +37,6 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 }
+
+/** @deprecated Use handleDocumentsRoutes */
+export const handleKnowledgeRoutes = handleDocumentsRoutes;

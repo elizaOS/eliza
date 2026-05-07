@@ -5,29 +5,15 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, clipboard, personality)
- * - Advanced actions (contacts management, room management, image generation, clipboard, personality, etc.)
+ * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, todos, personality)
+ * - Advanced actions (contacts management, room management, image generation, todos, personality, etc.)
  * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
- * - Additional services (experience, clipboard, personality)
+ * - Additional services (experience, todos, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
 import type { IAgentRuntime } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-// Clipboard imports
-import {
-	clipboardAppendAction,
-	clipboardDeleteAction,
-	clipboardListAction,
-	clipboardProvider,
-	clipboardReadAction,
-	clipboardSearchAction,
-	clipboardWriteAction,
-	readAttachmentAction,
-	readFileAction,
-	removeFromClipboardAction,
-	saveAttachmentToClipboardAction,
-} from "./clipboard/index.ts";
 import {
 	experienceEvaluator,
 	experienceProvider,
@@ -47,14 +33,25 @@ import {
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
+// Todos imports
+import {
+	completeTodoAction,
+	createTodoAction,
+	deleteTodoAction,
+	editTodoAction,
+	listTodosAction,
+	todoAction,
+	todosProvider,
+} from "./todos/index.ts";
+
 // Re-export action, provider, and evaluator modules
 export * from "./actions/index.ts";
-export * from "./clipboard/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
 export type * from "./form/index.ts";
 export * from "./personality/index.ts";
 export * from "./providers/index.ts";
+export * from "./todos/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
@@ -73,7 +70,7 @@ export const advancedProviders = [
 	providers.roleProvider,
 	providers.settingsProvider,
 	experienceProvider,
-	clipboardProvider,
+	todosProvider,
 	userPersonalityProvider,
 ];
 
@@ -91,17 +88,13 @@ export const advancedActions = [
 	withCanonicalActionDocs(actions.updateSettingsAction),
 	withCanonicalActionDocs(recordExperienceAction),
 	withCanonicalActionDocs(searchExperiencesAction),
-	// Clipboard actions
-	clipboardWriteAction,
-	clipboardReadAction,
-	clipboardSearchAction,
-	clipboardListAction,
-	clipboardDeleteAction,
-	clipboardAppendAction,
-	readFileAction,
-	readAttachmentAction,
-	saveAttachmentToClipboardAction,
-	removeFromClipboardAction,
+	// Todo actions
+	todoAction,
+	createTodoAction,
+	completeTodoAction,
+	listTodosAction,
+	editTodoAction,
+	deleteTodoAction,
 	// Personality actions
 	modifyCharacterAction,
 	setVoiceConfigAction,

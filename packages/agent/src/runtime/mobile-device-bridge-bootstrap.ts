@@ -652,7 +652,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
     }
     await mobileDeviceBridge.loadModel({ modelPath });
     return mobileDeviceBridge.generate({
-      prompt: params.prompt,
+      prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
       maxTokens: params.maxTokens,
       temperature: params.temperature,

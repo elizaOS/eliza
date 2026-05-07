@@ -1,14 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
 import { N8nWorkflowService, N8nCredentialStore } from './services/index';
 import * as dbSchema from './db/index';
-import {
-  createWorkflowAction,
-  getExecutionsAction,
-  activateWorkflowAction,
-  deactivateWorkflowAction,
-  deleteWorkflowAction,
-  modifyExistingWorkflowAction,
-} from './actions/index';
+import { n8nAction } from './actions/n8n';
 import {
   workflowStatusProvider,
   activeWorkflowsProvider,
@@ -58,14 +51,7 @@ export const n8nWorkflowPlugin: Plugin = {
 
   schema: dbSchema,
 
-  actions: [
-    createWorkflowAction,
-    modifyExistingWorkflowAction,
-    getExecutionsAction,
-    activateWorkflowAction,
-    deactivateWorkflowAction,
-    deleteWorkflowAction,
-  ],
+  actions: [n8nAction],
 
   providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
 

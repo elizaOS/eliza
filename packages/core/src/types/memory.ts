@@ -578,8 +578,6 @@ export interface FactMetadata {
 	confidence?: number;
 	/** Existing field — ISO timestamp of last reinforcement. */
 	lastReinforced?: string;
-	/** Existing field — message IDs that supplied evidence for this fact. */
-	evidenceMessageIds?: UUID[];
 	/** Existing field — trajectory that produced the fact, when known. */
 	sourceTrajectoryId?: UUID;
 

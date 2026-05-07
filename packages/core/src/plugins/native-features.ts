@@ -21,7 +21,7 @@ import {
 } from "../features/advanced-capabilities/providers/index";
 import {
 	__setKnowledgeUrlFetchImplForTests,
-	createKnowledgePlugin,
+	documentsPlugin,
 	type FetchedKnowledgeUrl,
 	type FetchedKnowledgeUrlKind,
 	type FetchKnowledgeFromUrlOptions,
@@ -29,16 +29,15 @@ import {
 	isYouTubeUrl,
 	KnowledgeService,
 	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
-} from "../features/knowledge/index";
+} from "../features/documents/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
 import { RelationshipsService } from "../services/relationships";
 import type { Plugin } from "../types/plugin";
 
 export type NativeRuntimeFeature =
-	| "knowledge"
+	| "documents"
+	| "knowledge" // legacy alias for "documents"
 	| "relationships"
 	| "trajectories";
 
@@ -71,7 +70,8 @@ export const relationshipsPlugin: Plugin = {
 
 export const nativeRuntimeFeaturePlugins: Record<NativeRuntimeFeature, Plugin> =
 	{
-		knowledge: knowledgePlugin,
+		documents: documentsPlugin,
+		knowledge: knowledgePlugin, // legacy alias
 		relationships: relationshipsPlugin,
 		trajectories: trajectoriesPlugin,
 	};
@@ -86,7 +86,8 @@ export const nativeRuntimeFeaturePluginNames: Record<
 	NativeRuntimeFeature,
 	string
 > = {
-	knowledge: knowledgePlugin.name,
+	documents: documentsPlugin.name,
+	knowledge: knowledgePlugin.name, // legacy alias
 	relationships: relationshipsPlugin.name,
 	trajectories: trajectoriesPlugin.name,
 };
@@ -95,7 +96,8 @@ export const nativeRuntimeFeatureDefaults: Record<
 	NativeRuntimeFeature,
 	boolean
 > = {
-	knowledge: true,
+	documents: true,
+	knowledge: true, // legacy alias
 	relationships: true,
 	trajectories: true,
 };
@@ -118,6 +120,16 @@ export function resolveNativeRuntimeFeatureFromPluginName(
 	return null;
 }
 
+export {
+	createDocumentsPlugin,
+	createKnowledgePlugin,
+	documentsPlugin,
+	documentsPluginCore,
+	documentsPluginHeadless,
+	knowledgePlugin,
+	knowledgePluginCore,
+	knowledgePluginHeadless,
+} from "../features/documents/index";
 export type {
 	FetchedKnowledgeUrl,
 	FetchedKnowledgeUrlKind,
@@ -125,14 +137,10 @@ export type {
 };
 export {
 	__setKnowledgeUrlFetchImplForTests,
-	createKnowledgePlugin,
 	FollowUpService,
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
 	KnowledgeService,
-	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
 	RelationshipsService,
 	trajectoriesPlugin,
 };

@@ -68,6 +68,7 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 | `trajectories` | `trajectories` | 调试和 RL 训练轨迹捕获 |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | 多代理任务协调和生成 |
 | `@elizaos/plugin-shell` | Shell service | 带安全控制的 shell 命令执行 |
+| `@elizaos/plugin-coding-tools` | 文件/shell 沙箱相关服务 | 原生编码工具（READ、WRITE、EDIT、BASH、GREP、GLOB 等）；路径限定在工作区根目录 |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | 技能目录加载和执行 |
 | `@elizaos/plugin-commands` | Commands service | 斜杠命令处理（技能自动注册为 /commands） |
 | 内置（`plugin_manager` / `@elizaos/core`） | Plugin manager service | 运行时动态安装/卸载插件 |
@@ -86,7 +87,6 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 | `@elizaos/plugin-pdf` | PDF 文档处理 |
 | `@elizaos/plugin-cua` | CUA 计算机使用代理（云沙箱自动化） |
 | `@elizaos/plugin-obsidian` | Obsidian vault CLI 集成 |
-| `@elizaos/plugin-code` | 代码编写和文件操作 |
 | `@elizaos/plugin-repoprompt` | RepoPrompt CLI 集成 |
 | `@elizaos/plugin-claude-code-workbench` | Claude Code 协作工作流 |
 | `@elizaos/plugin-computeruse` | 计算机使用自动化（特定平台） |

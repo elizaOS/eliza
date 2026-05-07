@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { readAttachmentAction } from "../features/advanced-capabilities/clipboard/actions/read-attachment.ts";
+import { readAttachmentAction } from "../features/working-memory/readAttachmentAction.ts";
 import type {
 	HandlerCallback,
 	IAgentRuntime,

@@ -68,6 +68,7 @@ Los plugins principales siempre se cargan y cada uno proporciona uno o más serv
 | `trajectories` | `trajectories` | Captura de trayectorias de depuración y entrenamiento RL |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Coordinación y generación de tareas multi-agente |
 | `@elizaos/plugin-shell` | Shell service | Ejecución de comandos de shell con controles de seguridad |
+| `@elizaos/plugin-coding-tools` | Servicios sandbox de archivos/shell | Herramientas de código nativas (READ, WRITE, EDIT, BASH, GREP, GLOB, …); rutas limitadas a raíces de workspace |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | Carga y ejecución del catálogo de habilidades |
 | `@elizaos/plugin-commands` | Commands service | Manejo de comandos slash (las habilidades se registran automáticamente como /commands) |
 | Integrado (`plugin_manager` / `@elizaos/core`) | Plugin manager service | Instalación/desinstalación dinámica de plugins en tiempo de ejecución |
@@ -86,7 +87,6 @@ Estos servicios están disponibles pero no se cargan por defecto — se habilita
 | `@elizaos/plugin-pdf` | Procesamiento de documentos PDF |
 | `@elizaos/plugin-cua` | Agente CUA de uso de computadora (automatización de sandbox en la nube) |
 | `@elizaos/plugin-obsidian` | Integración CLI con Obsidian vault |
-| `@elizaos/plugin-code` | Escritura de código y operaciones de archivos |
 | `@elizaos/plugin-repoprompt` | Integración CLI con RepoPrompt |
 | `@elizaos/plugin-claude-code-workbench` | Flujos de trabajo complementarios de Claude Code |
 | `@elizaos/plugin-computeruse` | Automatización de uso de computadora (específico de plataforma) |
