@@ -41,6 +41,10 @@ export interface AIUsage {
   // AI SDK v4+ format
   inputTokens?: number;
   outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheWriteInputTokens?: number;
 }
 
 export interface BillingContext {

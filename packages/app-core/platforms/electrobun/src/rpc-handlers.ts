@@ -9,7 +9,7 @@
  */
 
 import * as fs from "node:fs";
-import { logger } from "@elizaos/core";
+import { logger } from "./logger";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
 import { resolveDesktopRuntimeMode } from "./api-base";

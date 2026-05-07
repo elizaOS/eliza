@@ -159,7 +159,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	SERVER_INFO: ["messaging"],
 	VOICE_CALL: ["messaging", "connectors"],
 	LIFE: ["tasks", "health"],
-	COMPUTER_USE: ["browser", "admin"],
+	COMPUTER_USE: ["browser", "files", "terminal", "automation", "admin"],
 	COMPUTE_TRAVEL_BUFFER: ["calendar", "tasks"],
 	BOOK_TRAVEL: ["calendar", "payments"],
 	SUBSCRIPTIONS: ["subscriptions", "payments"],

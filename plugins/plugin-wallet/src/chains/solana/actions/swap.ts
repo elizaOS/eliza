@@ -37,9 +37,9 @@ async function getTokenFromWallet(
       return null;
     }
 
-    const token = walletData.items.slice(0, WALLET_TOKEN_LOOKUP_LIMIT).find(
-      (item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase()
-    );
+    const token = walletData.items
+      .slice(0, WALLET_TOKEN_LOOKUP_LIMIT)
+      .find((item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase());
 
     return token ? token.address : null;
   } catch (error) {

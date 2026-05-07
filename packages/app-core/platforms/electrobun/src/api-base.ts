@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "./logger";
 import { resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 

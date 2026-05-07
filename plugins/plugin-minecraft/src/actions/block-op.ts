@@ -130,7 +130,7 @@ export const minecraftBlockOpAction: Action = {
       if (op === "dig") {
         const data = await withMinecraftTimeout(
           service.request("dig", { x: vec.x, y: vec.y, z: vec.z }),
-          "minecraft dig",
+          "minecraft dig"
         );
         const blockName = typeof data.blockName === "string" ? data.blockName : "block";
         return await emit(
@@ -154,7 +154,7 @@ export const minecraftBlockOpAction: Action = {
       }
       await withMinecraftTimeout(
         service.request("place", { x: vec.x, y: vec.y, z: vec.z, face }),
-        "minecraft place",
+        "minecraft place"
       );
       return await emit(
         ACTION_NAME,

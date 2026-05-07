@@ -230,7 +230,7 @@ export const minecraftLocomoteOpAction: Action = {
           }
           await withMinecraftTimeout(
             service.request("look", { yaw: req.yaw, pitch: req.pitch }),
-            "minecraft look",
+            "minecraft look"
           );
           return await emit(ACTION_NAME, callback, "Adjusted view.", message.content.source, {
             success: true,
@@ -247,9 +247,11 @@ export const minecraftLocomoteOpAction: Action = {
             service.request("control", {
               control: req.control,
               state: req.state,
-              ...(typeof req.durationMs === "number" ? { durationMs: Math.min(req.durationMs, 10_000) } : {}),
+              ...(typeof req.durationMs === "number"
+                ? { durationMs: Math.min(req.durationMs, 10_000) }
+                : {}),
             }),
-            "minecraft control",
+            "minecraft control"
           );
           return await emit(
             ACTION_NAME,
@@ -288,7 +290,7 @@ export const minecraftLocomoteOpAction: Action = {
           }
           await withMinecraftTimeout(
             service.request("goto", { x: wp.x, y: wp.y, z: wp.z }),
-            "minecraft waypoint goto",
+            "minecraft waypoint goto"
           );
           return await emit(
             ACTION_NAME,
@@ -311,7 +313,7 @@ export const minecraftLocomoteOpAction: Action = {
           }
           await withMinecraftTimeout(
             service.request("goto", { x: vec.x, y: vec.y, z: vec.z }),
-            "minecraft goto",
+            "minecraft goto"
           );
           return await emit(
             ACTION_NAME,

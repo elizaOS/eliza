@@ -19,12 +19,15 @@
  *   MILADY_TRAJECTORY_RECORDING  Set to 0 to disable recording.
  */
 
-import path from "node:path";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Load .env from repo root
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 try {
   const { config } = await import("dotenv");
   config({ path: path.join(REPO_ROOT, ".env") });
@@ -33,9 +36,10 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Env wiring — plugin-cerebras reads CEREBRAS_API_KEY / CEREBRAS_BASE_URL /
-// CEREBRAS_*_MODEL directly. We just normalize the env so per-tier models pin
-// to the same Cerebras id and the trajectory recorder writes to the right dir.
+// Env wiring — plugin-openai reads OPENAI_BASE_URL and accepts CEREBRAS_API_KEY
+// as the API key when the base URL points at cerebras.ai. Pin each OpenAI model
+// tier to the same Cerebras id so message handler, planner, and evaluator route
+// to the same provider/model in this validation harness.
 // ---------------------------------------------------------------------------
 
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY?.trim();
@@ -44,16 +48,23 @@ if (!CEREBRAS_API_KEY) {
   process.exit(1);
 }
 
-const CEREBRAS_BASE_URL = process.env.CEREBRAS_BASE_URL?.trim() ?? "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = process.env.CEREBRAS_LARGE_MODEL?.trim() ?? "gpt-oss-120b";
-const TRAJECTORY_DIR = process.env.MILADY_TRAJECTORY_DIR?.trim() ?? "./trajectories-eliza-cerebras";
+const CEREBRAS_BASE_URL =
+  process.env.CEREBRAS_BASE_URL?.trim() ??
+  process.env.OPENAI_BASE_URL?.trim() ??
+  "https://api.cerebras.ai/v1";
+const CEREBRAS_MODEL =
+  process.env.CEREBRAS_LARGE_MODEL?.trim() ??
+  process.env.OPENAI_LARGE_MODEL?.trim() ??
+  "gpt-oss-120b";
+const TRAJECTORY_DIR =
+  process.env.MILADY_TRAJECTORY_DIR?.trim() ?? "./trajectories-eliza-cerebras";
 
-process.env.CEREBRAS_BASE_URL = CEREBRAS_BASE_URL;
-process.env.CEREBRAS_LARGE_MODEL = CEREBRAS_MODEL;
-process.env.CEREBRAS_SMALL_MODEL = CEREBRAS_MODEL;
-process.env.CEREBRAS_NANO_MODEL = CEREBRAS_MODEL;
-process.env.CEREBRAS_RESPONSE_HANDLER_MODEL = CEREBRAS_MODEL;
-process.env.CEREBRAS_ACTION_PLANNER_MODEL = CEREBRAS_MODEL;
+process.env.OPENAI_BASE_URL = CEREBRAS_BASE_URL;
+process.env.OPENAI_LARGE_MODEL = CEREBRAS_MODEL;
+process.env.OPENAI_SMALL_MODEL = CEREBRAS_MODEL;
+process.env.OPENAI_NANO_MODEL = CEREBRAS_MODEL;
+process.env.OPENAI_RESPONSE_HANDLER_MODEL = CEREBRAS_MODEL;
+process.env.OPENAI_ACTION_PLANNER_MODEL = CEREBRAS_MODEL;
 process.env.MILADY_TRAJECTORY_DIR = path.resolve(TRAJECTORY_DIR);
 process.env.MILADY_TRAJECTORY_RECORDING = "1";
 process.env.ALLOW_NO_DATABASE = "true";
@@ -62,21 +73,22 @@ process.env.ALLOW_NO_DATABASE = "true";
 // Now import runtime (after env is set)
 // ---------------------------------------------------------------------------
 
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
 import {
   AgentRuntime,
   InMemoryDatabaseAdapter,
-  ModelType,
+  runV5MessageRuntimeStage1,
 } from "@elizaos/core";
-import { runV5MessageRuntimeStage1 } from "@elizaos/core";
-import type { Action, ActionResult, HandlerOptions, HandlerCallback } from "@elizaos/core";
-import type { Memory, State, UUID } from "@elizaos/core";
 
-// plugin-cerebras is a local workspace package — import direct from source path
-// so we don't need a built dist. It owns Cerebras-specific shims (dotted name
-// sanitization for the grammar compiler, gzip/msgpack payload hooks, prompt
-// cache key passthrough). Falling back to plugin-openai with OPENAI_BASE_URL=
-// cerebras would also work but loses those shims.
-const { cerebrasPlugin } = await import("../plugins/plugin-cerebras/index.ts");
+const { openaiPlugin } = await import("../plugins/plugin-openai/index.ts");
 
 // ---------------------------------------------------------------------------
 // Scenario loading
@@ -84,7 +96,7 @@ const { cerebrasPlugin } = await import("../plugins/plugin-cerebras/index.ts");
 
 const SCENARIOS_DIR = path.join(
   REPO_ROOT,
-  "research/native-tool-calling/scenarios"
+  "research/native-tool-calling/scenarios",
 );
 
 interface Scenario {
@@ -120,14 +132,17 @@ function parseArgs(): {
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--scenario" && args[i + 1]) {
-      scenarioName = args[++i]!;
+      i += 1;
+      scenarioName = args[i] ?? null;
     } else if (args[i] === "--message" && args[i + 1]) {
-      messageText = args[++i]!;
+      i += 1;
+      messageText = args[i] ?? null;
     } else if (args[i] === "--model" && args[i + 1]) {
-      model = args[++i]!;
+      i += 1;
+      model = args[i] ?? model;
     } else if (!args[i].startsWith("--")) {
       // positional message
-      messageText = args[i]!;
+      messageText = args[i] ?? null;
     }
   }
 
@@ -141,6 +156,7 @@ function parseArgs(): {
 function makeMockAction(opts: {
   name: string;
   description: string;
+  contexts?: string[];
   parameters?: Array<{
     name: string;
     description: string;
@@ -152,12 +168,15 @@ function makeMockAction(opts: {
     message: Memory,
     state: State | undefined,
     options: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ) => Promise<ActionResult>;
 }): Action {
   return {
     name: opts.name,
     description: opts.description,
+    compressedDescription: opts.description,
+    contexts: opts.contexts,
+    cacheStable: true,
     similes: [],
     examples: [],
     parameters: opts.parameters ?? [],
@@ -170,6 +189,7 @@ function buildMockActions(): Action[] {
   const webSearch = makeMockAction({
     name: "WEB_SEARCH",
     description: "Search the web for information",
+    contexts: ["web", "browser"],
     parameters: [
       {
         name: "q",
@@ -179,7 +199,9 @@ function buildMockActions(): Action[] {
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
-      const q = (options.parameters as Record<string, unknown>)?.q as string ?? "unknown";
+      const q =
+        ((options.parameters as Record<string, unknown>)?.q as string) ??
+        "unknown";
       printStage("TOOL", `WEB_SEARCH called with q="${q}"`);
       return {
         success: true,
@@ -188,7 +210,10 @@ function buildMockActions(): Action[] {
           actionName: "WEB_SEARCH",
           results: [
             { title: "elizaOS", url: "https://github.com/elizaOS/eliza" },
-            { title: "ELIZA chatbot", url: "https://en.wikipedia.org/wiki/ELIZA" },
+            {
+              title: "ELIZA chatbot",
+              url: "https://en.wikipedia.org/wiki/ELIZA",
+            },
             { title: "Eliza docs", url: "https://elizaos.ai/docs" },
           ],
         },
@@ -199,6 +224,7 @@ function buildMockActions(): Action[] {
   const clipboardWrite = makeMockAction({
     name: "CLIPBOARD_WRITE",
     description: "Write content to the system clipboard",
+    contexts: ["general", "files", "web"],
     parameters: [
       {
         name: "content",
@@ -208,8 +234,13 @@ function buildMockActions(): Action[] {
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
-      const content = (options.parameters as Record<string, unknown>)?.content as string ?? "";
-      printStage("TOOL", `CLIPBOARD_WRITE called with content="${content.slice(0, 60)}..."`);
+      const content =
+        ((options.parameters as Record<string, unknown>)?.content as string) ??
+        "";
+      printStage(
+        "TOOL",
+        `CLIPBOARD_WRITE called with content="${content.slice(0, 60)}..."`,
+      );
       return {
         success: true,
         text: "Content written to clipboard successfully.",
@@ -221,6 +252,7 @@ function buildMockActions(): Action[] {
   const brokenAction = makeMockAction({
     name: "BROKEN_ACTION",
     description: "A deliberately broken action for testing failure paths",
+    contexts: ["broken_action"],
     parameters: [],
     handler: async () => {
       printStage("TOOL", "BROKEN_ACTION called — returning failure");
@@ -267,24 +299,18 @@ function printStage(kind: string, detail: string): void {
   console.log(`${color}[${kind}]${RESET} ${detail}`);
 }
 
-function printJson(label: string, obj: unknown): void {
-  console.log(`${DIM}--- ${label} ---${RESET}`);
-  console.log(JSON.stringify(obj, null, 2));
-}
-
 // ---------------------------------------------------------------------------
 // Build and initialize the real AgentRuntime
 // ---------------------------------------------------------------------------
 
-async function buildRuntime(model: string): Promise<InstanceType<typeof AgentRuntime>> {
-  // Pin model on every Cerebras tier so the agent's planner/responder/etc all
-  // route to the same Cerebras model id. plugin-cerebras reads CEREBRAS_*_MODEL
-  // and falls back to the generic *_MODEL settings.
-  process.env.CEREBRAS_LARGE_MODEL = model;
-  process.env.CEREBRAS_SMALL_MODEL = model;
-  process.env.CEREBRAS_NANO_MODEL = model;
-  process.env.CEREBRAS_RESPONSE_HANDLER_MODEL = model;
-  process.env.CEREBRAS_ACTION_PLANNER_MODEL = model;
+async function buildRuntime(
+  model: string,
+): Promise<InstanceType<typeof AgentRuntime>> {
+  process.env.OPENAI_LARGE_MODEL = model;
+  process.env.OPENAI_SMALL_MODEL = model;
+  process.env.OPENAI_NANO_MODEL = model;
+  process.env.OPENAI_RESPONSE_HANDLER_MODEL = model;
+  process.env.OPENAI_ACTION_PLANNER_MODEL = model;
 
   const runtime = new AgentRuntime({
     character: {
@@ -300,18 +326,18 @@ async function buildRuntime(model: string): Promise<InstanceType<typeof AgentRun
       knowledge: [],
       plugins: [],
       secrets: {
-        CEREBRAS_API_KEY: CEREBRAS_API_KEY!,
-        CEREBRAS_BASE_URL: CEREBRAS_BASE_URL,
-        CEREBRAS_LARGE_MODEL: model,
-        CEREBRAS_SMALL_MODEL: model,
-        CEREBRAS_NANO_MODEL: model,
-        CEREBRAS_RESPONSE_HANDLER_MODEL: model,
-        CEREBRAS_ACTION_PLANNER_MODEL: model,
+        CEREBRAS_API_KEY,
+        OPENAI_BASE_URL: CEREBRAS_BASE_URL,
+        OPENAI_LARGE_MODEL: model,
+        OPENAI_SMALL_MODEL: model,
+        OPENAI_NANO_MODEL: model,
+        OPENAI_RESPONSE_HANDLER_MODEL: model,
+        OPENAI_ACTION_PLANNER_MODEL: model,
       },
     },
     adapter: new InMemoryDatabaseAdapter(),
     plugins: [
-      cerebrasPlugin,
+      openaiPlugin,
       ...buildMockActions().map((a) => ({
         name: `action-${a.name}`,
         description: `Mock action: ${a.name}`,
@@ -319,13 +345,13 @@ async function buildRuntime(model: string): Promise<InstanceType<typeof AgentRun
       })),
     ],
     settings: {
-      CEREBRAS_API_KEY: CEREBRAS_API_KEY!,
-      CEREBRAS_BASE_URL: CEREBRAS_BASE_URL,
-      CEREBRAS_LARGE_MODEL: model,
-      CEREBRAS_SMALL_MODEL: model,
-      CEREBRAS_NANO_MODEL: model,
-      CEREBRAS_RESPONSE_HANDLER_MODEL: model,
-      CEREBRAS_ACTION_PLANNER_MODEL: model,
+      CEREBRAS_API_KEY,
+      OPENAI_BASE_URL: CEREBRAS_BASE_URL,
+      OPENAI_LARGE_MODEL: model,
+      OPENAI_SMALL_MODEL: model,
+      OPENAI_NANO_MODEL: model,
+      OPENAI_RESPONSE_HANDLER_MODEL: model,
+      OPENAI_ACTION_PLANNER_MODEL: model,
       ALLOW_NO_DATABASE: "true",
     },
     logLevel: "warn",
@@ -333,6 +359,19 @@ async function buildRuntime(model: string): Promise<InstanceType<typeof AgentRun
   });
 
   await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  runtime.contexts.tryRegister({
+    id: "broken_action",
+    label: "Broken Action",
+    description:
+      "Testing-only context that exposes BROKEN_ACTION for failure-path validation.",
+    selectionGuidance:
+      "Select when the user explicitly asks to run BROKEN_ACTION or validate action failure handling.",
+    covers: ["BROKEN_ACTION", "failure-path validation"],
+    sensitivity: "public",
+    cacheStable: true,
+    cacheScope: "global",
+    roleGate: { minRole: "USER" },
+  });
   return runtime;
 }
 
@@ -348,15 +387,18 @@ async function readTrajectoryFromDir(
   const agentDir = path.join(dir, agentId);
   try {
     const entries = await fs.readdir(agentDir);
-    const jsonFiles = entries.filter((e) => e.endsWith(".json"));
-    // Find file written after startMs
-    for (const fname of jsonFiles) {
+    const candidates: Array<{ fname: string; mtimeMs: number }> = [];
+    for (const fname of entries.filter((e) => e.endsWith(".json"))) {
       const fpath = path.join(agentDir, fname);
       const stat = await fs.stat(fpath);
       if (stat.mtimeMs >= startMs - 5000) {
-        const raw = await fs.readFile(fpath, "utf8");
-        return JSON.parse(raw);
+        candidates.push({ fname, mtimeMs: stat.mtimeMs });
       }
+    }
+    const newest = candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+    if (newest) {
+      const raw = await fs.readFile(path.join(agentDir, newest.fname), "utf8");
+      return JSON.parse(raw);
     }
   } catch {
     // directory may not exist yet
@@ -368,7 +410,10 @@ async function readTrajectoryFromDir(
 // Run a single scenario
 // ---------------------------------------------------------------------------
 
-async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<void> {
+async function runScenario(
+  scenario: Scenario,
+  scenarioLabel: string,
+): Promise<void> {
   printBanner(`Scenario: ${scenarioLabel}`);
   console.log(`${DIM}Message: "${scenario.message}"${RESET}`);
   if (scenario.expect?.rationale) {
@@ -379,10 +424,14 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
 
   const { model } = parseArgs();
   console.log(`${CYAN}[SETUP]${RESET} Using model: ${model}`);
-  console.log(`${CYAN}[SETUP]${RESET} Trajectory dir: ${path.resolve(TRAJECTORY_DIR)}`);
+  console.log(
+    `${CYAN}[SETUP]${RESET} Trajectory dir: ${path.resolve(TRAJECTORY_DIR)}`,
+  );
 
   const runtime = await buildRuntime(model);
-  console.log(`${GREEN}[SETUP]${RESET} AgentRuntime initialized (agentId: ${runtime.agentId})`);
+  console.log(
+    `${GREEN}[SETUP]${RESET} AgentRuntime initialized (agentId: ${runtime.agentId})`,
+  );
 
   // Send as the agent itself so resolveStage1SenderRole returns "OWNER" and
   // every gated context (calendar/email/finance/etc) becomes available to the
@@ -413,7 +462,7 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
 
   console.log(`\n${CYAN}[RUN]${RESET} Calling runV5MessageRuntimeStage1 ...\n`);
 
-  let result;
+  let result: Awaited<ReturnType<typeof runV5MessageRuntimeStage1>> | undefined;
   let err: Error | null = null;
   try {
     result = await runV5MessageRuntimeStage1({
@@ -457,7 +506,10 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
       status: string;
       stages?: Array<{
         kind: string;
-        model?: { usage?: Record<string, unknown>; toolCalls?: Array<{ name?: string }> };
+        model?: {
+          usage?: Record<string, unknown>;
+          toolCalls?: Array<{ name?: string }>;
+        };
         tool?: { name?: string; success?: boolean };
         evaluation?: { decision?: string; messageToUser?: string };
       }>;
@@ -493,12 +545,14 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
     console.log(`    total: ${totalTokens}`);
     console.log(`    cacheRead: ${totalCacheRead}`);
     if (totalPrompt > 0) {
-      console.log(`    cacheRate: ${((totalCacheRead / totalPrompt) * 100).toFixed(1)}%`);
+      console.log(
+        `    cacheRate: ${((totalCacheRead / totalPrompt) * 100).toFixed(1)}%`,
+      );
     }
 
     // Rough cost (Cerebras pricing: ~$0.60/1M input, ~$0.60/1M output)
-    const COST_PER_M = 0.60;
-    const costUsd = ((totalTokens) / 1_000_000) * COST_PER_M;
+    const COST_PER_M = 0.6;
+    const costUsd = (totalTokens / 1_000_000) * COST_PER_M;
     console.log(`    estimatedCost: $${costUsd.toFixed(5)}`);
 
     // Validation
@@ -507,16 +561,18 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
 
     if (scenario.expect?.noPlanner) {
       const hasPlanner = stageKinds.includes("planner");
+      const status = !hasPlanner ? `${GREEN}PASS` : `${RED}FAIL`;
       console.log(
-        `  noPlanner: ${!hasPlanner ? GREEN + "PASS" : RED + "FAIL"} (stages: ${stageKinds.join(",")})${RESET}`,
+        `  noPlanner: ${status} (stages: ${stageKinds.join(",")})${RESET}`,
       );
     }
 
     if (scenario.expect?.stages) {
       const expectedStages = scenario.expect.stages;
       const allPresent = expectedStages.every((k) => stageKinds.includes(k));
+      const status = allPresent ? `${GREEN}PASS` : `${YELLOW}PARTIAL`;
       console.log(
-        `  expected stages [${expectedStages.join(",")}]: ${allPresent ? GREEN + "PASS" : YELLOW + "PARTIAL"} (got: ${stageKinds.join(",")})${RESET}`,
+        `  expected stages [${expectedStages.join(",")}]: ${status} (got: ${stageKinds.join(",")})${RESET}`,
       );
     }
 
@@ -530,8 +586,9 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
     if (scenario.expect?.tools) {
       const expectedTools = scenario.expect.tools;
       const allCalled = expectedTools.every((tool) => toolNames.includes(tool));
+      const status = allCalled ? `${GREEN}PASS` : `${YELLOW}PARTIAL`;
       console.log(
-        `  expected tools [${expectedTools.join(",")}]: ${allCalled ? GREEN + "PASS" : YELLOW + "PARTIAL"}${RESET}`,
+        `  expected tools [${expectedTools.join(",")}]: ${status}${RESET}`,
       );
     }
 
@@ -543,7 +600,12 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
         // Best-effort: look at the message_handler context event in any stage's
         // recorded contextObject.
         const stagesWithContext = (t.stages ?? []) as unknown as Array<{
-          contextObject?: { events?: Array<{ type?: string; metadata?: { plan?: { contexts?: string[] } } }> };
+          contextObject?: {
+            events?: Array<{
+              type?: string;
+              metadata?: { plan?: { contexts?: string[] } };
+            }>;
+          };
         }>;
         for (const stage of stagesWithContext) {
           const events = stage.contextObject?.events ?? [];
@@ -560,9 +622,12 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
     }
     if (scenario.expect?.contexts && selectedContexts) {
       const expectedContexts = scenario.expect.contexts;
-      const allPresent = expectedContexts.every((ctx) => selectedContexts.includes(ctx));
+      const allPresent = expectedContexts.every((ctx) =>
+        selectedContexts.includes(ctx),
+      );
+      const status = allPresent ? `${GREEN}PASS` : `${YELLOW}PARTIAL`;
       console.log(
-        `  expected contexts [${expectedContexts.join(",")}]: ${allPresent ? GREEN + "PASS" : YELLOW + "PARTIAL"}${RESET}`,
+        `  expected contexts [${expectedContexts.join(",")}]: ${status}${RESET}`,
       );
     }
 
@@ -573,13 +638,28 @@ async function runScenario(scenario: Scenario, scenarioLabel: string): Promise<v
     );
     console.log(`\n${GREEN}[FILE]${RESET} ${trajectoryFile}`);
   } else if (!err) {
-    console.log(`\n${YELLOW}[TRAJECTORY]${RESET} No trajectory file found (recording may be off)`);
+    console.log(
+      `\n${YELLOW}[TRAJECTORY]${RESET} No trajectory file found (recording may be off)`,
+    );
   }
 
   if (err) {
     printStage("ERROR", `Run failed: ${err.message}`);
   } else {
-    printStage("DONE", `Scenario '${scenarioLabel}' completed in ${durationMs}ms`);
+    printStage(
+      "DONE",
+      `Scenario '${scenarioLabel}' completed in ${durationMs}ms`,
+    );
+  }
+
+  try {
+    await runtime.stop();
+    await runtime.close();
+  } catch (teardownError) {
+    printStage(
+      "ERROR",
+      `Runtime teardown warning: ${(teardownError as Error).message}`,
+    );
   }
 }
 
@@ -600,7 +680,9 @@ async function main(): Promise<void> {
     try {
       scenario = await loadScenario(scenarioName);
     } catch (e) {
-      console.error(`[run-eliza-cerebras] Cannot load scenario '${scenarioName}': ${(e as Error).message}`);
+      console.error(
+        `[run-eliza-cerebras] Cannot load scenario '${scenarioName}': ${(e as Error).message}`,
+      );
       process.exit(1);
     }
     await runScenario(scenario, scenarioName);
@@ -624,7 +706,9 @@ async function main(): Promise<void> {
         const scenario = await loadScenario(name);
         await runScenario(scenario, name);
       } catch (e) {
-        console.error(`[run-eliza-cerebras] Scenario '${name}' threw: ${(e as Error).message}`);
+        console.error(
+          `[run-eliza-cerebras] Scenario '${name}' threw: ${(e as Error).message}`,
+        );
       }
       console.log("\n\n");
     }

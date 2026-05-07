@@ -158,11 +158,28 @@ async function deliverResult(
 }
 
 export const useComputerAction: Action = {
-  name: "USE_COMPUTER",
-  contexts: ["browser", "files", "terminal", "screen_time", "automation"],
-  contextGate: { anyOf: ["browser", "files", "terminal", "screen_time", "automation"] },
-  roleGate: { minRole: "USER" },
+  name: "COMPUTER_USE",
+  contexts: [
+    "browser",
+    "files",
+    "terminal",
+    "screen_time",
+    "automation",
+    "admin",
+  ],
+  contextGate: {
+    anyOf: [
+      "browser",
+      "files",
+      "terminal",
+      "screen_time",
+      "automation",
+      "admin",
+    ],
+  },
+  roleGate: { minRole: "OWNER" },
   similes: [
+    "USE_COMPUTER",
     "CONTROL_COMPUTER",
     "COMPUTER_ACTION",
     "DESKTOP_ACTION",
@@ -181,9 +198,9 @@ export const useComputerAction: Action = {
     "SEE_SCREEN",
   ],
   description:
-    "use_computer_action:\n  purpose: Control the local desktop for real application interaction when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+    "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
   descriptionCompressed:
-    "Desktop control router: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr; screenshot before acting.",
+    "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
 
   parameters: [
     {
@@ -289,8 +306,7 @@ export const useComputerAction: Action = {
         return { success: false, error: "ComputerUseService not available" };
       }
       const mockResult = buildMockDesktopResult(params);
-      const maxActionResultBytes = 4000;
-      const text = formatDesktopResultText(params, mockResult).slice(0, maxActionResultBytes);
+      const text = formatDesktopResultText(params, mockResult);
       await deliverResult(params, mockResult, text, callback);
       return toComputerUseActionResult({
         action: params.action,
@@ -301,8 +317,7 @@ export const useComputerAction: Action = {
     }
 
     const result = await service.executeDesktopAction(params);
-    const maxActionResultBytes = 4000;
-    const text = formatDesktopResultText(params, result).slice(0, maxActionResultBytes);
+    const text = formatDesktopResultText(params, result);
     await deliverResult(params, result, text, callback);
     return toComputerUseActionResult({
       action: params.action,

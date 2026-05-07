@@ -228,7 +228,6 @@
     "tailwind-merge": "^3.0.0",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-cerebras": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",

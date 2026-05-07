@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger } from "./logger";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import Electrobun, {
 	ApplicationMenu,

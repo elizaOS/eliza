@@ -12,27 +12,6 @@ export interface NativeComputerUseResult {
   frontendScreenshot?: string;
 }
 
-const MAX_COMPUTER_USE_TEXT_LENGTH = 4000;
-const MAX_COMPUTER_USE_ITEMS = 50;
-const MAX_COMPUTER_USE_OBJECT_KEYS = 80;
-
-function truncateText(value: string, maxLength = MAX_COMPUTER_USE_TEXT_LENGTH): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength)}... [truncated]` : value;
-}
-
-function capNativeValue(value: unknown): unknown {
-  if (typeof value === "string") return truncateText(value);
-  if (Array.isArray(value)) return value.slice(0, MAX_COMPUTER_USE_ITEMS).map(capNativeValue);
-  if (value && typeof value === "object") {
-    const capped: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value).slice(0, MAX_COMPUTER_USE_OBJECT_KEYS)) {
-      capped[key] = capNativeValue(item);
-    }
-    return capped;
-  }
-  return value;
-}
-
 export function resolveActionParams<T>(
   message: Memory,
   options?: HandlerOptions,
@@ -85,7 +64,7 @@ function sanitizeNativeResult<T extends NativeComputerUseResult>(
         typeof value === "string" && value.length > 0;
       continue;
     }
-    sanitized[key] = capNativeValue(value);
+    sanitized[key] = value;
   }
   return sanitized;
 }
@@ -101,16 +80,13 @@ export function toComputerUseActionResult<T extends NativeComputerUseResult>({
   text: string;
   suppressClipboard?: boolean;
 }): ActionResult {
-  const cappedText = truncateText(text);
   return {
     success: result.success,
-    text: cappedText,
+    text,
     ...(result.success ? {} : { error: result.error ?? "Computer-use failed" }),
     data: {
       source: "computeruse",
       computerUseAction: action,
-      maxTextLength: MAX_COMPUTER_USE_TEXT_LENGTH,
-      maxItems: MAX_COMPUTER_USE_ITEMS,
       result: sanitizeNativeResult(result),
       ...(suppressClipboard ? { suppressActionResultClipboard: true } : {}),
     },

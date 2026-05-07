@@ -127,6 +127,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				],
 			},
 		]);
+		const fullRecentPayload = `${"# Conversation Messages\n"}${"x".repeat(
+			12_000,
+		)}`;
 		const state: State = {
 			values: {
 				availableContexts: "simple, general",
@@ -135,7 +138,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				providerOrder: ["RECENT_MESSAGES", "PROVIDERS", "CHARACTER"],
 				providers: {
 					RECENT_MESSAGES: {
-						text: "# Conversation Messages\nOperator: hello",
+						text: fullRecentPayload,
 						values: { shouldNotRender: "value leak" },
 						data: { secret: "secret leak" },
 						providerName: "RECENT_MESSAGES",
@@ -166,6 +169,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ role?: string; content?: string | null }>;
 			prompt?: string;
 			promptSegments?: Array<{ content?: string; stable?: boolean }>;
+			providerOptions?: {
+				eliza?: {
+					modelInputBudget?: {
+						reserveTokens?: number;
+						shouldCompact?: boolean;
+					};
+				};
+			};
 		};
 		expect(params.messages?.map((message) => message.role)).toEqual([
 			"system",
@@ -176,6 +187,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("message_handler_stage:");
 		expect(systemContent).toContain("available_contexts:");
 		expect(userContent).toContain("# Conversation Messages");
+		expect(userContent.match(/x/g)?.length).toBe(12_000);
 		expect(userContent).toContain("Can you check my calendar?");
 		const fullPrompt = `${params.prompt ?? ""}\n${systemContent}\n${userContent}`;
 		expect(fullPrompt).not.toContain("values:");
@@ -187,6 +199,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.promptSegments?.some((segment) => !segment.stable)).toBe(
 			true,
 		);
+		expect(params.providerOptions?.eliza?.modelInputBudget).toMatchObject({
+			reserveTokens: 10_000,
+			shouldCompact: false,
+		});
 	});
 
 	it("recomposes planner state with selected context providers but excludes catalogs", async () => {

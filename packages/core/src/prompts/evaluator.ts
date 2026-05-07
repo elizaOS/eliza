@@ -20,6 +20,12 @@ rules:
 
 return:
 JSON object only. No markdown, no prose, no XML, no legacy formats.
+Required top-level fields:
+- success: boolean
+- decision: one of "FINISH", "NEXT_RECOMMENDED", "CONTINUE"
+- thought: string
+Use decision, not route.
+Set success=true only when completed tool results fully satisfy the user's request.
 
 context_object:
 {{contextObject}}

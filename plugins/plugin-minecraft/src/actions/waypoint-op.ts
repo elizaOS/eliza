@@ -168,7 +168,7 @@ export const minecraftWaypointOpAction: Action = {
       }
       await withMinecraftTimeout(
         mc.request("goto", { x: wp.x, y: wp.y, z: wp.z }),
-        "minecraft waypoint goto",
+        "minecraft waypoint goto"
       );
       return await emit(
         ACTION_NAME,

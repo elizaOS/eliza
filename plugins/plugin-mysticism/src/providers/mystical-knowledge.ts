@@ -144,10 +144,7 @@ export const mysticalKnowledgeProvider: Provider = {
         activeSession = roomId ? service.getSession(entityId, roomId) : null;
       }
 
-      const text = buildKnowledgeText(activeSession).slice(
-        0,
-        MAX_KNOWLEDGE_TEXT_CHARS,
-      );
+      const text = buildKnowledgeText(activeSession).slice(0, MAX_KNOWLEDGE_TEXT_CHARS);
 
       return {
         text,

@@ -65,7 +65,10 @@ export const emoteAction: Action = {
     if (!emote) return { text: "", success: false };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), EMOTE_REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      EMOTE_REQUEST_TIMEOUT_MS,
+    );
     try {
       const response = await fetch(`http://localhost:${API_PORT}/api/emote`, {
         method: "POST",

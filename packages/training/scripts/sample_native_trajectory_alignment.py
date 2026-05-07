@@ -1401,7 +1401,7 @@ def write_model_call_shapes(path: Path, trajectories: list[dict[str, Any]]) -> N
             "schema": SCHEMA,
             "notes": [
                 "runtimeUseModelParams is the eliza runtime abstraction.",
-                "cerebrasChatCompletionsPayload mirrors plugins/plugin-cerebras/index.ts buildRequestPayload.",
+                "cerebrasChatCompletionsPayload mirrors plugin-openai with OPENAI_BASE_URL=https://api.cerebras.ai/v1.",
                 "vercelGatewayCommon mirrors cloud/packages/lib/providers/vercel-ai-gateway.ts before generateText/streamText.",
             ],
             "shapes": shapes,

@@ -405,7 +405,85 @@ export const __nativeToolingTestHooks = {
   convertTools,
   mapToolChoice,
   mapResponseFormat,
+  formatOpenAIUsage,
 };
+
+function formatOpenAIUsage(
+  billing: { inputTokens: number; outputTokens: number; totalTokens: number },
+  usage: unknown,
+) {
+  const record = usage && typeof usage === "object" ? (usage as Record<string, unknown>) : {};
+  const inputTokenDetails =
+    record.inputTokenDetails && typeof record.inputTokenDetails === "object"
+      ? (record.inputTokenDetails as Record<string, unknown>)
+      : {};
+  const promptTokenDetails =
+    record.prompt_tokens_details && typeof record.prompt_tokens_details === "object"
+      ? (record.prompt_tokens_details as Record<string, unknown>)
+      : {};
+  const cacheReadInputTokens = firstNumber(
+    record.cacheReadInputTokens,
+    record.cachedInputTokens,
+    inputTokenDetails.cacheReadTokens,
+    inputTokenDetails.cachedInputTokens,
+    inputTokenDetails.cachedTokens,
+    promptTokenDetails.cached_tokens,
+  );
+  const cacheCreationInputTokens = firstNumber(
+    record.cacheCreationInputTokens,
+    record.cacheWriteInputTokens,
+    inputTokenDetails.cacheCreationInputTokens,
+    inputTokenDetails.cacheCreationTokens,
+    inputTokenDetails.cacheWriteTokens,
+  );
+  const out: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  } = {
+    prompt_tokens: billing.inputTokens,
+    completion_tokens: billing.outputTokens,
+    total_tokens: billing.totalTokens,
+  };
+  if (cacheReadInputTokens !== undefined || cacheCreationInputTokens !== undefined) {
+    out.prompt_tokens_details = {
+      ...(cacheReadInputTokens !== undefined
+        ? {
+            cached_tokens: cacheReadInputTokens,
+            cache_read_input_tokens: cacheReadInputTokens,
+          }
+        : {}),
+      ...(cacheCreationInputTokens !== undefined
+        ? { cache_creation_input_tokens: cacheCreationInputTokens }
+        : {}),
+    };
+    if (cacheReadInputTokens !== undefined) {
+      out.cache_read_input_tokens = cacheReadInputTokens;
+    }
+    if (cacheCreationInputTokens !== undefined) {
+      out.cache_creation_input_tokens = cacheCreationInputTokens;
+    }
+  }
+  return out;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
 
 function getMessageContent(msg: ChatMessage): string {
   if (msg.content == null) return "";
@@ -1241,11 +1319,7 @@ async function handleNonStreamingRequest(
                     : "stop",
           },
         ],
-        usage: {
-          prompt_tokens: billing.inputTokens,
-          completion_tokens: billing.outputTokens,
-          total_tokens: billing.totalTokens,
-        },
+        usage: formatOpenAIUsage(billing, result.usage),
       }),
     );
   } catch (error) {

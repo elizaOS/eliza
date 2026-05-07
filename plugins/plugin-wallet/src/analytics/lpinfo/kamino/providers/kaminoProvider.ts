@@ -234,7 +234,10 @@ async function getUserKaminoPositions(
           if (positions.lending.length > 0) {
             positionsInfo += `   💰 LENDING POSITIONS (${positions.lending.length}):\n\n`;
 
-            for (const position of positions.lending.slice(0, MAX_KAMINO_POSITIONS)) {
+            for (const position of positions.lending.slice(
+              0,
+              MAX_KAMINO_POSITIONS,
+            )) {
               positionsInfo += `   📈 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;
@@ -247,7 +250,10 @@ async function getUserKaminoPositions(
           if (positions.borrowing.length > 0) {
             positionsInfo += `   💳 BORROWING POSITIONS (${positions.borrowing.length}):\n\n`;
 
-            for (const position of positions.borrowing.slice(0, MAX_KAMINO_POSITIONS)) {
+            for (const position of positions.borrowing.slice(
+              0,
+              MAX_KAMINO_POSITIONS,
+            )) {
               positionsInfo += `   📉 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;

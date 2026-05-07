@@ -11,7 +11,7 @@
  *
  * Skip rules:
  *   - Linux: skipped unless DISPLAY is set (CI must use Xvfb / xvfb-run)
- *   - Windows: skipped (post-merge real-API lane only)
+ *   - Windows: runs when the selected driver and desktop session are available
  *   - macOS: runs normally (Accessibility/Screen Recording permissions are a
  *     prerequisite; if denied the assertion-level check is converted to skip).
  *
@@ -38,7 +38,13 @@ const requestedDriver = (
 
 function shouldSkip(): { skip: boolean; reason: string } {
   if (os === "win32") {
-    return { skip: true, reason: "Windows runs in post-merge real-API lane" };
+    if (requestedDriver !== "nutjs") {
+      return {
+        skip: true,
+        reason:
+          "Windows cross-platform smoke uses the nutjs driver; legacy PowerShell coverage is validated by platform capability tests.",
+      };
+    }
   }
   if (os === "linux" && !process.env.DISPLAY) {
     return {
@@ -93,9 +99,9 @@ describe("plugin-computeruse cross-platform driver e2e", () => {
         }
         expect(screenshotBefore.success).toBe(true);
         expect(screenshotBefore.screenshot).toBeTruthy();
-        expect(
-          (screenshotBefore.screenshot as string).length,
-        ).toBeGreaterThan(100);
+        expect((screenshotBefore.screenshot as string).length).toBeGreaterThan(
+          100,
+        );
 
         const move = (await service.executeCommand("mouse_move", {
           coordinate: [100, 100],

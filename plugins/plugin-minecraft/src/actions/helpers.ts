@@ -123,7 +123,7 @@ export async function withMinecraftTimeout<T>(promise: Promise<T>, label: string
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), MINECRAFT_ACTION_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), MINECRAFT_ACTION_TIMEOUT_MS)
     ),
   ]);
 }
