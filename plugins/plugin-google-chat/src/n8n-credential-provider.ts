@@ -18,6 +18,8 @@ export class GoogleChatN8nCredentialProvider extends Service {
     return new GoogleChatN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'googleChatOAuth2Api') return null;
     // Google Chat service account credentials — prefer JSON inline, fallback to file path.

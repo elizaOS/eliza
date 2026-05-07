@@ -18,6 +18,8 @@ export class MatrixN8nCredentialProvider extends Service {
     return new MatrixN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'matrixApi') return null;
     const accessToken = this.runtime.getSetting('MATRIX_ACCESS_TOKEN') as string | undefined;

@@ -19,6 +19,8 @@ export class LineN8nCredentialProvider extends Service {
     return new LineN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const accessToken = this.runtime.getSetting('LINE_CHANNEL_ACCESS_TOKEN') as string | undefined;

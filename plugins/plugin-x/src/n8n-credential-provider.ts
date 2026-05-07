@@ -18,6 +18,8 @@ export class XN8nCredentialProvider extends Service {
     return new XN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     const accessToken = this.runtime.getSetting('TWITTER_ACCESS_TOKEN') as string | undefined;
     const apiKey = this.runtime.getSetting('TWITTER_API_KEY') as string | undefined;

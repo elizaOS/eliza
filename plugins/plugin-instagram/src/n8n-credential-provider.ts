@@ -21,6 +21,8 @@ export class InstagramN8nCredentialProvider extends Service {
     return new InstagramN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'facebookGraphApi') return null;
     const pageAccessToken = this.runtime.getSetting('INSTAGRAM_PAGE_ACCESS_TOKEN') as string | undefined;

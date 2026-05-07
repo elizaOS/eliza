@@ -20,6 +20,8 @@ export class SignalN8nCredentialProvider extends Service {
     return new SignalN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const httpUrl = this.runtime.getSetting('SIGNAL_HTTP_URL') as string | undefined;

@@ -1,16 +1,22 @@
 import { type IAgentRuntime, Service } from '@elizaos/core';
-import { N8N_CREDENTIAL_PROVIDER_TYPE } from '@elizaos/plugin-n8n-workflow/types/index';
-import type { CredentialProvider, CredentialProviderResult, CheckCredentialTypesResult } from '@elizaos/plugin-n8n-workflow/types/index';
+
+const N8N_CREDENTIAL_PROVIDER_TYPE = 'n8n_credential_provider';
+type CredentialProviderResult =
+  | { status: 'credential_data'; data: Record<string, unknown> }
+  | { status: 'needs_auth'; authUrl: string }
+  | null;
 
 const SUPPORTED = ['whatsAppApi'];
 
-export class WhatsAppN8nCredentialProvider extends Service implements CredentialProvider {
+export class WhatsAppN8nCredentialProvider extends Service {
   static override readonly serviceType = N8N_CREDENTIAL_PROVIDER_TYPE;
   override capabilityDescription = 'Supplies WhatsApp credentials to the n8n workflow plugin.';
 
   static async start(runtime: IAgentRuntime): Promise<WhatsAppN8nCredentialProvider> {
     return new WhatsAppN8nCredentialProvider(runtime);
   }
+
+  async stop(): Promise<void> {}
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'whatsAppApi') return null;
@@ -20,7 +26,7 @@ export class WhatsAppN8nCredentialProvider extends Service implements Credential
     return { status: 'credential_data', data: { accessToken: accessToken.trim(), phoneNumberId: phoneNumberId.trim() } };
   }
 
-  checkCredentialTypes(credTypes: string[]): CheckCredentialTypesResult {
+  checkCredentialTypes(credTypes: string[]): { supported: string[]; unsupported: string[] } {
     return {
       supported: credTypes.filter((t) => SUPPORTED.includes(t)),
       unsupported: credTypes.filter((t) => !SUPPORTED.includes(t)),

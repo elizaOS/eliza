@@ -20,6 +20,8 @@ export class BlueBubblesN8nCredentialProvider extends Service {
     return new BlueBubblesN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpQueryAuth') return null;
     const password = this.runtime.getSetting('BLUEBUBBLES_PASSWORD') as string | undefined;

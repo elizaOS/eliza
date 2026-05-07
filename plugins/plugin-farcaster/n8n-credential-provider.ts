@@ -19,6 +19,8 @@ export class FarcasterN8nCredentialProvider extends Service {
     return new FarcasterN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const neynarApiKey = this.runtime.getSetting('FARCASTER_NEYNAR_API_KEY') as string | undefined;

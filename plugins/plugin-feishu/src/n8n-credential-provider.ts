@@ -20,6 +20,8 @@ export class FeishuN8nCredentialProvider extends Service {
     return new FeishuN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const appId = this.runtime.getSetting('FEISHU_APP_ID') as string | undefined;

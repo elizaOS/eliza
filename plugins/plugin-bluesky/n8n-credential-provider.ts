@@ -20,6 +20,8 @@ export class BlueskyN8nCredentialProvider extends Service {
     return new BlueskyN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const handle = this.runtime.getSetting('BLUESKY_HANDLE') as string | undefined;

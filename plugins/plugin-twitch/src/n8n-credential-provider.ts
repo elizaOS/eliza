@@ -19,6 +19,8 @@ export class TwitchN8nCredentialProvider extends Service {
     return new TwitchN8nCredentialProvider(runtime);
   }
 
+  async stop(): Promise<void> {}
+
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'httpHeaderAuth') return null;
     const accessToken = this.runtime.getSetting('TWITCH_ACCESS_TOKEN') as string | undefined;
