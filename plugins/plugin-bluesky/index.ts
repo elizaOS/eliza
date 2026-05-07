@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { postBlueskyAction } from "./actions/post";
+import { BlueskyN8nCredentialProvider } from "./n8n-credential-provider";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
 
@@ -95,7 +96,7 @@ export const blueSkyPlugin: Plugin = {
 
 	actions: [postBlueskyAction],
 
-	services: [BlueSkyService],
+	services: [BlueSkyService, BlueskyN8nCredentialProvider],
 
 	tests: pluginTests,
 };
