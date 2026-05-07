@@ -11,11 +11,12 @@ import { signalSetupRoutes } from "./setup-routes";
 
 // Types
 import { normalizeE164 } from "./types";
+import { SignalN8nCredentialProvider } from "./n8n-credential-provider";
 
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
-  services: [SignalService],
+  services: [SignalService, SignalN8nCredentialProvider],
   actions: [messageOp, readRecentMessages],
   providers: [signalContactsProvider, signalGroupsProvider],
   routes: signalSetupRoutes,
