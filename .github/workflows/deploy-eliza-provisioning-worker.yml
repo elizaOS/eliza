@@ -98,7 +98,11 @@ jobs:
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
 
-            cd /opt/eliza
+            # cloud/ is a separate bun project (not a sub-workspace of the
+            # outer monorepo, whose `workspaces` is `packages/*`). Install from
+            # /opt/eliza/cloud so the worker's deps (drizzle-orm, @neondatabase
+            # /serverless, etc.) end up in /opt/eliza/cloud/node_modules.
+            cd /opt/eliza/cloud
             for attempt in 1 2 3; do
               if bun install --frozen-lockfile; then
                 break
@@ -107,6 +111,7 @@ jobs:
               echo "bun install attempt $attempt failed; retrying in 10s..."
               sleep 10
             done
+            cd /opt/eliza
 
             # Install/refresh the systemd unit.
             sudo install -m 0644 \
@@ -130,25 +135,34 @@ jobs:
           envs: SYSTEMD_UNIT
           script: |
             set -euo pipefail
-            # Anchor the journal window once so it does not shrink across retries.
+            # The worker logs to journald via systemd's stdout/stderr capture.
+            # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
+            # rely on systemd's own signals: process is active AND no fatal
+            # error / restart-loop in the journal since deploy.
             SINCE_TS="$(date -u -d '30 seconds ago' '+%Y-%m-%d %H:%M:%S')"
+            STABLE_THRESHOLD_SEC=20
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$SINCE_TS" --no-pager 2>/dev/null || true)
-                # Detect a restart loop: the worker prints "starting" each boot,
-                # then crashes if env or DB is misconfigured. Treat any fatal log
-                # since deploy as a hard failure even if the unit is currently active.
-                if echo "$JOURNAL" | grep -qE "\[provisioning-worker\] (fatal|unhandled rejection)"; then
-                  echo "::error::Worker logged a fatal/unhandled rejection since deploy."
+                if echo "$JOURNAL" | grep -qE "\[provisioning-worker\] (fatal|unhandled rejection)|node:internal/.*Error:|^[A-Za-z]+Error:"; then
+                  echo "::error::Worker logged a fatal error since deploy."
                   echo "$JOURNAL" | tail -n 50
                   exit 1
                 fi
-                if echo "$JOURNAL" | grep -q "\[provisioning-worker\] starting"; then
-                  echo "Worker is active and emitted startup log on attempt $attempt."
+                # Active + uptime past the threshold = healthy. systemd's Restart=always
+                # means a crashing process would resurrect; an uptime > threshold
+                # therefore proves it stayed up across at least one poll cycle.
+                UPTIME_SEC=$(systemctl show "$SYSTEMD_UNIT" --property=ActiveEnterTimestampMonotonic --value | awk '{ print int($1 / 1e6) }')
+                NOW_SEC=$(awk '{print int($1)}' /proc/uptime)
+                AGE=$(( NOW_SEC - UPTIME_SEC ))
+                if [ "$AGE" -ge "$STABLE_THRESHOLD_SEC" ]; then
+                  echo "Worker active and stable for ${AGE}s (>= ${STABLE_THRESHOLD_SEC}s threshold) on attempt $attempt."
                   exit 0
                 fi
+                echo "Health check attempt $attempt/18: active but only ${AGE}s old, waiting for stability..."
+              else
+                echo "Health check attempt $attempt/18: not active yet."
               fi
-              echo "Health check attempt $attempt/18: not ready yet, retrying in 5s..."
               sleep 5
             done
 
