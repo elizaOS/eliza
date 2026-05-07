@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -19,6 +19,7 @@ import {
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
+import { parseJsonObject } from "./json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,22 +80,19 @@ async function classifyIntent(
   text: string,
 ): Promise<OrderIntent | null> {
   const prompt = `Analyze the user message and determine what order action they want.
-Respond with TOON only in one of these shapes:
-action: list
-query: optional filter like unfulfilled or last week
+Respond with JSON only in one of these shapes:
+{"action":"list","query":"optional filter like unfulfilled or last week"}
 
-action: get
-orderName: order number like #1001 or 1001
+{"action":"get","orderName":"order number like #1001 or 1001"}
 
-action: fulfill
-orderName: order number to fulfill
+{"action":"fulfill","orderName":"order number to fulfill"}
 
 User message: "${text}"
 `;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+    const parsed = parseJsonObject<Record<string, unknown>>(response);
     if (parsed?.action) {
       return readOrderIntent(parsed as HandlerOptions);
     }

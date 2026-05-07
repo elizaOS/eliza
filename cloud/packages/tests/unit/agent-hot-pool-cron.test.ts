@@ -12,6 +12,22 @@ describe("agent hot-pool cron schedule", () => {
     expect(CRON_FANOUT["* * * * *"]).toContain("/api/v1/cron/process-provisioning-jobs");
   });
 
+  test("warm pool replenisher runs every minute", () => {
+    expect(CRON_FANOUT["* * * * *"]).toContain("/api/v1/cron/pool-replenish");
+  });
+
+  test("warm pool drain-idle runs on the five-minute fanout", () => {
+    expect(CRON_FANOUT["*/5 * * * *"]).toContain("/api/v1/cron/pool-drain-idle");
+  });
+
+  test("warm pool health-check runs every two minutes", () => {
+    expect(CRON_FANOUT["*/2 * * * *"]).toContain("/api/v1/cron/pool-health-check");
+  });
+
+  test("warm pool image rollout runs every ten minutes", () => {
+    expect(CRON_FANOUT["*/10 * * * *"]).toContain("/api/v1/cron/pool-image-rollout");
+  });
+
   test("accepts HETZNER_CLOUD_API_KEY as a Hetzner token alias", () => {
     const originalHcloud = process.env.HCLOUD_TOKEN;
     const originalHetznerToken = process.env.HETZNER_CLOUD_TOKEN;
