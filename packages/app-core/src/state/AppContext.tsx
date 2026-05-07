@@ -25,13 +25,9 @@ import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
-  canonicalPathForPath,
   getWindowNavigationPath,
-  isRouteRootPath,
   resolveInitialTabForPath,
-  shouldUseHashNavigation,
   type Tab,
-  tabFromPath,
 } from "../navigation";
 import { copyTextToClipboard } from "../utils";
 import {
@@ -45,17 +41,17 @@ import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
-  fetchServerFavoriteApps,
-  loadFavoriteApps,
-  loadRecentApps,
-  replaceServerFavoriteApps,
-  saveFavoriteApps,
   savePersistedActiveServer,
-  saveRecentApps,
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
 import { TranslationProvider, useTranslation } from "./TranslationContext";
+import {
+  useAgentGreetingEffects,
+  useBackendConnectionSync,
+  useNavigationPathSync,
+} from "./useAppProviderEffects";
+import { useAppShellState } from "./useAppShellState";
 import { useCharacterState } from "./useCharacterState";
 import { useChatCallbacks } from "./useChatCallbacks";
 import { useChatState } from "./useChatState";
@@ -158,19 +154,6 @@ export { AGENT_READY_TIMEOUT_MS } from "./types";
 
 /** RuntimeGate and bare `completeOnboarding()` land on chat; the wizard opens the companion overlay separately. */
 const DEFAULT_LANDING_TAB: Tab = "chat";
-
-function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
-  try {
-    if (
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("elizaos:debug:greeting") === "1"
-    ) {
-      console.info(`[eliza][greeting] ${phase}`, detail ?? "");
-    }
-  } catch {
-    /* noop */
-  }
-}
 
 // ── Provider ───────────────────────────────────────────────────────────
 
@@ -623,11 +606,29 @@ function AppProviderInner({
   } = characterHook;
 
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
-
-  const [ownerName, setOwnerNameState] = useState<string | null>(null);
-  const [_ownerNameHydrated, _setOwnerNameHydrated] = useState(false);
-  const [_pendingOwnerNamePrompt, _setPendingOwnerNamePrompt] = useState(false);
-  const [_showOwnerNamePrompt, _setShowOwnerNamePrompt] = useState(false);
+  const shellState = useAppShellState();
+  const {
+    state: {
+      ownerName,
+      appsSubTab,
+      agentSubTab,
+      pluginsSubTab,
+      databaseSubTab,
+      favoriteApps,
+      recentApps,
+      configRaw,
+      configText,
+    },
+    setOwnerNameState,
+    setAppsSubTab,
+    setAgentSubTab,
+    setPluginsSubTab,
+    setDatabaseSubTab,
+    setFavoriteApps,
+    setRecentApps,
+    setConfigRaw,
+    setConfigText,
+  } = shellState;
 
   // Updates, Extension, and Workbench state are now in useDataLoaders (dataLoaders).
 
@@ -836,91 +837,12 @@ function AppProviderInner({
 
   // chatPendingImages now comes from useChatState
 
-  // --- Admin ---
-  const [appsSubTab, setAppsSubTabRaw] = useState<
-    "browse" | "running" | "games"
-  >(() => {
-    try {
-      const stored = sessionStorage.getItem("eliza:appsSubTab");
-      if (stored === "browse" || stored === "running" || stored === "games")
-        return stored;
-    } catch {
-      /* ignore */
-    }
-    return "browse";
-  });
-  const setAppsSubTab = useCallback((v: "browse" | "running" | "games") => {
-    setAppsSubTabRaw(v);
-    try {
-      sessionStorage.setItem("eliza:appsSubTab", v);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const [agentSubTab, setAgentSubTab] = useState<
-    "character" | "inventory" | "knowledge"
-  >("character");
-  const [pluginsSubTab, setPluginsSubTab] = useState<
-    "features" | "connectors" | "plugins"
-  >("features");
-  const [databaseSubTab, setDatabaseSubTab] = useState<
-    "tables" | "media" | "vectors"
-  >("tables");
-
-  // --- Favorite apps ---
-  const [favoriteApps, setFavoriteAppsRaw] = useState<string[]>(() =>
-    loadFavoriteApps(),
-  );
-  const setFavoriteApps = useCallback((apps: string[]) => {
-    setFavoriteAppsRaw(apps);
-    saveFavoriteApps(apps);
-    // Mirror the change to the server so the agent's FAVORITE_APP action
-    // and the dashboard share a single source of truth. Fire-and-forget;
-    // failures keep the local cache as the optimistic source.
-    void replaceServerFavoriteApps(apps);
-  }, []);
-
-  // Hydrate favorites from the server on mount. The local cache primes the
-  // first paint; the server response is authoritative if it differs.
-  useEffect(() => {
-    let cancelled = false;
-    void fetchServerFavoriteApps().then((serverApps) => {
-      if (cancelled || serverApps == null) return;
-      setFavoriteAppsRaw((current) => {
-        if (
-          current.length === serverApps.length &&
-          current.every((entry, idx) => entry === serverApps[idx])
-        ) {
-          return current;
-        }
-        return serverApps;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // --- Recently launched apps ---
-  const [recentApps, setRecentAppsRaw] = useState<string[]>(() =>
-    loadRecentApps(),
-  );
-  const setRecentApps = useCallback((apps: string[]) => {
-    setRecentAppsRaw(apps);
-    saveRecentApps(apps);
-  }, []);
-
-  // --- Config ---
-  const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
-  const [configText, setConfigText] = useState("");
-
   // --- Refs for timers ---
   // actionNoticeTimer, shownOnceNotices, agentStatusRef, lifecycleBusyRef,
   // lifecycleActionRef, setAgentStatusIfChanged are now in useLifecycleState
   // elizaCloudPollInterval, elizaCloudDisconnectInFlightRef,
   // elizaCloudPreferDisconnectedUntilLoginRef, lastElizaCloudPollConnectedRef,
   // elizaCloudLoginPollTimer are now in useCloudState (cloudHook)
-  const prevAgentStateRef = useRef<string | null>(null);
   const _restartNotificationSignatureRef = useRef<string | null>(null);
   const _heartbeatNotificationKeyRef = useRef<string | null>(null);
   // Onboarding refs now come from useOnboardingState
@@ -1082,28 +1004,7 @@ function AppProviderInner({
     navigation,
   } = navHook;
 
-  useEffect(() => {
-    const navPath = getWindowNavigationPath();
-    if (isRouteRootPath(navPath)) {
-      return;
-    }
-    const routeTab = tabFromPath(navPath);
-    const canonicalPath = canonicalPathForPath(navPath);
-    if (canonicalPath && typeof window !== "undefined") {
-      if (shouldUseHashNavigation()) {
-        window.location.hash = canonicalPath;
-      } else {
-        window.history.replaceState(
-          null,
-          "",
-          `${canonicalPath}${window.location.search}${window.location.hash}`,
-        );
-      }
-    }
-    if (routeTab && routeTab !== tab) {
-      setTabRaw(routeTab);
-    }
-  }, [tab, setTabRaw]);
+  useNavigationPathSync({ tab, setTabRaw });
 
   // loadLogs is now in useLogsState (logsHook)
 
@@ -1680,6 +1581,11 @@ function AppProviderInner({
       setActiveTerminalSessionId,
       setAnalysisMode,
       setRecentApps,
+      setConfigRaw,
+      setPluginsSubTab,
+      setDatabaseSubTab,
+      setConfigText,
+      setAgentSubTab,
     ],
   );
 
@@ -1688,32 +1594,7 @@ function AppProviderInner({
     requestGreetingWhenRunningRef.current = requestGreetingWhenRunning;
   }, [requestGreetingWhenRunning]);
 
-  useEffect(() => {
-    const publishConnectionState = (state: {
-      state: "connected" | "disconnected" | "reconnecting" | "failed";
-      reconnectAttempt: number;
-      maxReconnectAttempts: number;
-    }) => {
-      setBackendConnection({
-        state: state.state,
-        reconnectAttempt: state.reconnectAttempt,
-        maxReconnectAttempts: state.maxReconnectAttempts,
-        showDisconnectedUI: state.state === "failed",
-      });
-    };
-
-    if (typeof client.getConnectionState === "function") {
-      publishConnectionState(client.getConnectionState());
-    }
-
-    if (typeof client.onConnectionStateChange !== "function") {
-      return;
-    }
-
-    return client.onConnectionStateChange((state) => {
-      publishConnectionState(state);
-    });
-  }, [setBackendConnection]);
+  useBackendConnectionSync({ setBackendConnection });
 
   // Passed to the startup coordinator so the PTY poll interval can skip API
   // calls when no sessions are active.
@@ -1845,80 +1726,18 @@ function AppProviderInner({
     [startupCoordinator],
   );
 
-  // When agent transitions to "running", send a greeting if conversation is empty
-  useEffect(() => {
-    const current = agentStatus?.state ?? null;
-    const prev = prevAgentStateRef.current;
-    prevAgentStateRef.current = current;
-
-    if (current === "running" && prev !== "running") {
-      void loadWorkbench();
-
-      // Agent just started — greet if conversation is empty.
-      // The greetingFiredRef guard prevents double-greeting when both the
-      // init mount effect and this state-transition effect race to fire.
-      if (
-        activeConversationId &&
-        conversationMessages.length === 0 &&
-        !chatSending &&
-        !greetingFiredRef.current &&
-        greetingInFlightConversationRef.current !== activeConversationId
-      ) {
-        void fetchGreeting(activeConversationId);
-      }
-    }
-  }, [
-    agentStatus?.state,
+  useAgentGreetingEffects({
+    agentState: agentStatus?.state,
     loadWorkbench,
     activeConversationId,
-    conversationMessages.length,
+    conversationMessages,
     chatSending,
     fetchGreeting,
-    greetingInFlightConversationRef.current,
-    greetingFiredRef.current,
-  ]);
-
-  // Empty thread + running agent: ensure a first assistant message is requested
-  // (covers races where startup/transition greeting paths miss the active conv id).
-  useEffect(() => {
-    if (
-      !activeConversationId ||
-      conversationMessages.length > 0 ||
-      agentStatus?.state !== "running" ||
-      chatSending
-    ) {
-      return;
-    }
-    if (greetingFiredRef.current) return;
-    if (greetingInFlightConversationRef.current === activeConversationId) {
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      if (activeConversationIdRef.current !== activeConversationId) return;
-      if (conversationMessagesRef.current.length > 0) return;
-      if (greetingFiredRef.current) return;
-      if (greetingInFlightConversationRef.current === activeConversationId) {
-        return;
-      }
-      traceGreeting("effect:empty_thread_auto_greet", {
-        activeConversationId,
-      });
-      void fetchGreeting(activeConversationId);
-    }, 0);
-
-    return () => window.clearTimeout(timerId);
-  }, [
-    activeConversationId,
-    agentStatus?.state,
-    chatSending,
-    conversationMessages.length,
-    fetchGreeting,
-    activeConversationIdRef.current,
-    greetingFiredRef.current,
-    greetingInFlightConversationRef.current,
-    conversationMessagesRef.current.length,
-  ]);
+    activeConversationIdRef,
+    conversationMessagesRef,
+    greetingFiredRef,
+    greetingInFlightConversationRef,
+  });
 
   // ── Context value ──────────────────────────────────────────────────
 
