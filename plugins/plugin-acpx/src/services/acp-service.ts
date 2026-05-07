@@ -653,7 +653,17 @@ export class AcpService {
     currentFinalText: string,
     startedAt: number,
   ): { finalText: string; stopReason?: string } {
-    const sessionId = extractSessionId(event) ?? fallbackSessionId;
+    const protocolSessionId = extractSessionId(event);
+    const sessionId = fallbackSessionId ?? protocolSessionId;
+    if (
+      fallbackSessionId &&
+      protocolSessionId &&
+      protocolSessionId !== fallbackSessionId
+    ) {
+      void this.store
+        .update(fallbackSessionId, { acpxSessionId: protocolSessionId })
+        .catch(() => undefined);
+    }
     for (const callback of this.acpCallbacks) callback(event, sessionId);
     const method = typeof event.method === "string" ? event.method : undefined;
     const params = asRecord(event.params);
