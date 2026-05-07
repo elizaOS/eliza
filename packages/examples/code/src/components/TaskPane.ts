@@ -1,12 +1,10 @@
 import type { AgentRuntime } from "@elizaos/core";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CodeTaskService = any;
-
 import { type Component, Editor, type Focusable, type TUI } from "@elizaos/tui";
 import chalk from "chalk";
+import { getCodeTaskService } from "../lib/get-code-task-service.js";
 import { useStore } from "../lib/store.js";
 import type {
+  CodeTaskService,
   SubAgentType,
   TaskStatus,
   TaskTraceEvent,
@@ -158,7 +156,7 @@ export class TaskPane implements Component, Focusable {
   }
 
   private getTaskService(): CodeTaskService | null {
-    return this.props.runtime.getService("CODE_TASK") as CodeTaskService | null;
+    return getCodeTaskService(this.props.runtime);
   }
 
   handleInput(char: string): void {

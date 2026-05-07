@@ -10,10 +10,10 @@
 
 import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
 import { Building2, Calendar, CreditCard } from "lucide-react";
-import type { Organization } from "@/lib/types";
+import type { OrganizationDto } from "@/types/cloud-api";
 
 interface OrganizationInfoProps {
-  organization: Organization;
+  organization: OrganizationDto;
 }
 
 export function OrganizationInfo({ organization }: OrganizationInfoProps) {

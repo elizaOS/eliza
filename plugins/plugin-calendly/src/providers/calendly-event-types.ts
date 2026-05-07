@@ -1,7 +1,7 @@
 /**
  * @module providers/calendly-event-types
  * @description calendlyEventTypes — read-only provider that surfaces the
- * connected Calendly user's active event types as a TOON document.
+ * connected Calendly user's active event types as JSON context.
  *
  * Replaces the legacy LIST_CALENDLY_EVENT_TYPES action: enumerating the user's
  * own event types is read-only context for planning a booking, not a
@@ -15,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { CalendlyService } from "../services/CalendlyService.js";
 import { CALENDLY_SERVICE_TYPE } from "../types.js";
 
@@ -83,7 +82,7 @@ export const calendlyEventTypesProvider: Provider = {
         calendlyConnected: true,
         eventTypeCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         calendly_event_types: {
           count: entries.length,
           items: entries,

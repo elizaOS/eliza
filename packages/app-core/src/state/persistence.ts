@@ -1,4 +1,5 @@
 import { logger } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared";
 import type { ConversationMode } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getBootConfig } from "../config/boot-config-store";
@@ -34,10 +35,6 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
 
 function describePersistenceError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /* ── Theme persistence ────────────────────────────────────────────────── */
@@ -938,25 +935,28 @@ export function createPersistedActiveServer(args: {
 function normalizePersistedActiveServer(
   value: unknown,
 ): PersistedActiveServer | null {
-  if (!isPlainObject(value)) {
+  const record = asRecord(value);
+  if (!record) {
     return null;
   }
 
   const kind =
-    value.kind === "local" || value.kind === "cloud" || value.kind === "remote"
-      ? value.kind
+    record.kind === "local" ||
+    record.kind === "cloud" ||
+    record.kind === "remote"
+      ? record.kind
       : null;
-  const id = trimPersistedValue(value.id);
-  const label = trimPersistedValue(value.label);
+  const id = trimPersistedValue(record.id);
+  const label = trimPersistedValue(record.label);
   if (!kind || !id || !label) {
     return null;
   }
 
-  const normalizedApiBase = normalizeApiBase(value.apiBase);
+  const normalizedApiBase = normalizeApiBase(record.apiBase);
   const apiBase = isElizaCloudControlPlaneApiBase(normalizedApiBase)
     ? undefined
     : normalizedApiBase;
-  const accessToken = trimPersistedValue(value.accessToken);
+  const accessToken = trimPersistedValue(record.accessToken);
 
   return {
     id,

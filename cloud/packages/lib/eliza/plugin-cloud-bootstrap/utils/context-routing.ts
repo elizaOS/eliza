@@ -176,8 +176,15 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
   }
 
   const value = raw as Record<string, unknown>;
-  const primaryContext = normalizeContext(value.primaryContext);
-  const secondaryContexts = parseContextList(value.secondaryContexts);
+  const contexts = parseContextList(value.contexts);
+  const primaryContext = normalizeContext(value.primaryContext) ?? contexts[0];
+  const secondaryContextSet = new Set<AgentContext>();
+  for (const context of [...parseContextList(value.secondaryContexts), ...contexts.slice(1)]) {
+    if (context !== primaryContext) {
+      secondaryContextSet.add(context);
+    }
+  }
+  const secondaryContexts = [...secondaryContextSet];
 
   return {
     primaryContext,

@@ -2,11 +2,15 @@ Extract the token ticker and blockchain from the user's message.
 
 User message: "{{userMessage}}"
 
-Respond using TOON like this:
-token: TOKEN_SYMBOL
-chain: CHAIN_NAME
+Respond using JSON like this:
+{
+  "token": "TOKEN_SYMBOL",
+  "chain": "CHAIN_NAME"
+}
 
 If no token is mentioned or it's not a balance inquiry, return:
-error: Not a token balance request
+{
+  "error": "Not a token balance request"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.
+IMPORTANT: Your response must ONLY contain the JSON object above. No preamble or explanation.

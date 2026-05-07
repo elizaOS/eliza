@@ -18,7 +18,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
-  encodeToonValue,
   getTrajectoryContext,
   runWithTrajectoryContext,
 } from "@elizaos/core";
@@ -915,7 +914,7 @@ function formatBrowserWorkspaceCommandResult(
 
 export const manageElizaBrowserWorkspaceAction: Action = {
   name: "MANAGE_ELIZA_BROWSER_WORKSPACE",
-  description: encodeToonValue({
+  description: JSON.stringify({
     browser_workspace_action: {
       purpose:
         "Control the Eliza browser workspace through one compact router action.",

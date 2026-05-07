@@ -151,7 +151,7 @@ export const elizaRoomCharactersRepository = {
         AND c.user_id != ${userId}
         AND (
           u.is_anonymous = true 
-          OR (u.email LIKE 'affiliate-%@anonymous.elizacloud.ai' AND u.privy_user_id IS NULL)
+          OR (u.email LIKE 'affiliate-%@anonymous.elizacloud.ai' AND u.steward_user_id IS NULL)
         )
     `,
     );

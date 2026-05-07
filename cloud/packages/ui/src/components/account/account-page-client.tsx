@@ -14,14 +14,14 @@ import {
   DashboardPageContainer,
   useSetPageHeader,
 } from "@elizaos/cloud-ui";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import { AccountDetails } from "./account-details";
 import { OrganizationInfo } from "./organization-info";
 import { ProfileForm } from "./profile-form";
 import { SecurityPreferences } from "./security-preferences";
 
 interface AccountPageClientProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 export function AccountPageClient({ user }: AccountPageClientProps) {

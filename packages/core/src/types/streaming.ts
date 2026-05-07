@@ -64,7 +64,7 @@ export interface StreamingEventHooks {
  * Interface for stream content extractors.
  *
  * Implementations decide HOW to filter LLM output for streaming.
- * Could be TOON field extraction, JSON suppression, plain text passthrough, or
+ * Could be structured field extraction, JSON suppression, plain text passthrough, or
  * custom logic.
  *
  * The framework doesn't care about format - that's implementation choice.
@@ -76,8 +76,8 @@ export interface StreamingEventHooks {
  * // Simple passthrough - streams everything as-is
  * const extractor = new PassthroughExtractor();
  *
- * // TOON field extraction - extracts content from the text field
- * const extractor = new ToonFieldStreamExtractor(config);
+ * // Structured field extraction - extracts content from the text field
+ * const extractor = new StructuredFieldStreamExtractor(config);
  *
  * // Action output filtering
  * const extractor = new ActionStreamFilter();

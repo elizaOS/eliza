@@ -21,7 +21,7 @@ import { AlertTriangle, Key, Loader2, Plus, Save, Settings, Shield, Trash2, X } 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import type { App } from "@/db/schemas";
+import type { AppDto as App } from "@/types/cloud-api";
 
 interface AppSettingsProps {
   app: App;

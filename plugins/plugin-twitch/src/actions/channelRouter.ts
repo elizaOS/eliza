@@ -13,8 +13,8 @@ import type {
 } from "@elizaos/core";
 import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
-import { parseToonKeyValue } from "../toon.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
+import { parseJSONObjectFromText } from "@elizaos/core";
 
 type TwitchChannelOp = "join" | "leave";
 
@@ -27,9 +27,11 @@ Extract:
 op: join or leave
 channel: channel name without #
 
-Respond with TOON only:
-op: join
-channel:`;
+Respond with JSON only, with no prose or fences:
+{
+  "op": "join",
+  "channel": ""
+}`;
 
 function readStringOption(
   options: Record<string, unknown> | undefined,
@@ -67,7 +69,7 @@ async function extractChannelParams(
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
+    const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
     const op = normalizeOp(parsed?.op ? String(parsed.op) : null);
     if (op) {
       return {

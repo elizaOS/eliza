@@ -2,7 +2,7 @@
  * stewardBalance provider — read-only wallet balance snapshot for the planner.
  *
  * Replaces the legacy CHECK_BALANCE action. Fetches `/api/wallet/balances` and
- * renders a TOON-encoded summary so the LLM can see chain holdings without a
+ * renders a JSON-encoded summary so the LLM can see chain holdings without a
  * mutating action call.
  *
  * @module providers/steward-balance
@@ -16,7 +16,6 @@ import type {
   State,
 } from "@elizaos/core";
 import type { WalletBalancesResponse } from "@elizaos/shared";
-import { encode } from "@toon-format/toon";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,
@@ -146,7 +145,7 @@ export const stewardBalanceProvider: Provider = {
     }
 
     return {
-      text: encode({ steward_balance: snapshot }),
+      text: JSON.stringify({ steward_balance: snapshot }),
       data: { snapshot },
     };
   },

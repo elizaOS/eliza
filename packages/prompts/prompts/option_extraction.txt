@@ -13,11 +13,11 @@
 4. If no clear selection is made, return null for both fields
 
 
-Return in TOON format:
+Return in JSON format:
 taskId: string_or_null
 selectedOption: OPTION_NAME_or_null
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

@@ -9,10 +9,10 @@
 "use client";
 
 import { Badge, Card, CardContent, CardHeader, CardTitle, Progress } from "@elizaos/cloud-ui";
-import type { EnhancedAnalyticsData } from "@/lib/actions/analytics-enhanced";
+import type { EnhancedAnalyticsDataDto } from "@/types/cloud-api";
 
 interface ProviderBreakdownProps {
-  providers: EnhancedAnalyticsData["providerBreakdown"];
+  providers: EnhancedAnalyticsDataDto["providerBreakdown"];
 }
 
 const numberFormatter = new Intl.NumberFormat();

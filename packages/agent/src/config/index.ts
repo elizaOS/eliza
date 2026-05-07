@@ -3,7 +3,6 @@ export * from "./config.js";
 export * from "./env-vars.js";
 export * from "./includes.js";
 export * from "./model-metadata.js";
-export * from "./object-utils.js";
 export * from "./owner-contacts.js";
 export * from "./paths.js";
 export * from "./plugin-auto-enable.js";

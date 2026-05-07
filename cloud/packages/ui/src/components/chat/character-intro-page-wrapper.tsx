@@ -15,12 +15,12 @@
 
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type { UserCharacter } from "@/db/schemas";
+import type { UserCharacterDto } from "@/types/cloud-api";
 import type { AffiliateTheme } from "@/lib/config/affiliate-themes";
 import { CharacterIntroPage } from "./character-intro-page";
 
 interface CharacterIntroPageWrapperProps {
-  character: UserCharacter;
+  character: UserCharacterDto;
   characterId: string;
   source?: string;
   theme: AffiliateTheme;

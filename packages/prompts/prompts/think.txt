@@ -18,8 +18,8 @@ Approach this systematically:
 
 Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
 
-Respond using TOON:
+Respond using JSON:
 thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
 text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it.
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any preamble or explanation outside of it.

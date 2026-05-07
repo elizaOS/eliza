@@ -9,11 +9,11 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 # Recent conversation:
 {{recentMessages}}
 
-Respond using TOON like this:
+Respond using JSON like this:
 thought: Your reasoning for the image prompt
 prompt: Detailed image generation prompt
 
-IMPORTANT: Your response must ONLY contain the TOON document above.
+IMPORTANT: Your response must ONLY contain the JSON object above.
 
 
 

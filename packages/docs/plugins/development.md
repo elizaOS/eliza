@@ -1085,4 +1085,4 @@ const myPlugin: Plugin = {
 
 - [Skills Documentation](/plugins/skills) — Learn about markdown-based skill extensions
 - [Registry Guide](/plugins/registry) — Publishing to the plugin registry
-- [Contributing Guide](/guides/contribution-guide) — Contributing to Eliza/elizaOS
+- [Contributing Guide](/guides/contributing) — Contributing to Eliza/elizaOS

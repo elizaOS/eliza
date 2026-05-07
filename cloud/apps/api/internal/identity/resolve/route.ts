@@ -9,7 +9,6 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const identityProviderSchema = z.enum([
   "steward",
-  "privy",
   "telegram",
   "discord",
   "whatsapp",
@@ -70,10 +69,6 @@ async function findIdentityByProvider(
       return dbRead.query.userIdentities.findFirst({
         where: eq(userIdentities.steward_user_id, identifier),
       });
-    case "privy":
-      return dbRead.query.userIdentities.findFirst({
-        where: eq(userIdentities.privy_user_id, identifier),
-      });
     case "telegram":
       return dbRead.query.userIdentities.findFirst({
         where: eq(userIdentities.telegram_id, identifier),
@@ -94,7 +89,7 @@ async function findIdentityByProvider(
 }
 
 async function findFirstIdentity(identifier: string): Promise<UserIdentity | undefined> {
-  const providers: IdentityProvider[] = ["steward", "privy", "telegram", "discord", "whatsapp"];
+  const providers: IdentityProvider[] = ["steward", "telegram", "discord", "whatsapp"];
   for (const provider of providers) {
     const identity = await findIdentityByProvider(provider, identifier);
     if (identity) return identity;
@@ -174,7 +169,6 @@ app.post("/", async (c) => {
         identity: identity
           ? {
               stewardUserId: identity.steward_user_id,
-              privyUserId: identity.privy_user_id,
               telegramId: identity.telegram_id,
               discordId: identity.discord_id,
               whatsappId: identity.whatsapp_id,

@@ -14,7 +14,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { GoogleChatService } from "../service.js";
@@ -51,19 +51,22 @@ Operations:
 - send: send a message to a space. Provide \`text\`, \`space\` (spaces/xxx or "current"), and optional \`thread\`.
 - react: add or remove an emoji reaction. Provide \`emoji\`, \`messageName\` (spaces/xxx/messages/yyy), and \`remove\` (true to remove).
 
-Respond with TOON only:
-op: send
-text:
-space: current
-thread:
-emoji:
-messageName:
-remove: false`;
+Respond with JSON only, with no prose or fences:
+{
+  "op": "send",
+  "text": "",
+  "space": "current",
+  "thread": "",
+  "emoji": "",
+  "messageName": "",
+  "remove": false
+}`;
 
 function parseInfo(raw: unknown): GoogleChatOpInfo | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(
-    typeof raw === "string" ? raw : String(raw)
-  );
+  const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : String(raw)) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) {
     return null;
   }

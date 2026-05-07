@@ -10,7 +10,7 @@ The user might ask for activity in various ways:
 - "Recent comment activity" → action type + recency
 - "Failed operations this week" → success filter + time range
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 timeRange:
   period: today, yesterday, this-week, last-week, or this-month
   from: ISO datetime if a specific start is mentioned
@@ -23,6 +23,5 @@ successFilter: success, failed, or all
 limit: Number of activity entries to show; default 10
 
 Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.
-
 
 

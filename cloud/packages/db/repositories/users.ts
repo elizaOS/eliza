@@ -51,47 +51,6 @@ export class UsersRepository {
   }
 
   /**
-   * Finds a user by Privy user ID with organization data.
-   * Prefer the identity projection, which is the steady-state auth lookup,
-   * but fall back to the legacy users column while backfill or projection
-   * repair may still be catching up.
-   */
-  async findByPrivyIdWithOrganization(
-    privyUserId: string,
-  ): Promise<UserWithOrganization | undefined> {
-    return this.findByPrivyIdWithOrganizationUsingDb(dbRead, privyUserId);
-  }
-
-  /**
-   * Finds a user by Privy user ID with organization data from primary.
-   * Use after writes when replica lag could hide the just-written identity row.
-   * On primary, prefer the canonical users column first so stale projection rows
-   * do not shadow the just-written auth state during create or link flows.
-   * This is safe because those flows write users.privy_user_id immediately and
-   * only treat projection conflicts as recovered after separately verifying the
-   * primary projection row ownership.
-   */
-  async findByPrivyIdWithOrganizationForWrite(
-    privyUserId: string,
-  ): Promise<UserWithOrganization | undefined> {
-    // Try canonical users.privy_user_id first (just-written auth state)
-    const user = await this.findUserWithOrganizationByPrivyId(dbWrite, privyUserId);
-
-    if (user) {
-      return user;
-    }
-
-    // Fallback: look up via identity projection (two-query approach for safety)
-    const identityUserId = await this.findIdentityUserIdByPrivyId(dbWrite, privyUserId);
-
-    if (!identityUserId) {
-      return undefined;
-    }
-
-    return await this.findUserWithOrganizationById(dbWrite, identityUserId);
-  }
-
-  /**
    * Finds a user by Steward user ID with organization data from primary.
    * Use after writes when replica lag could hide the just-written identity row.
    */
@@ -306,8 +265,6 @@ export class UsersRepository {
 
   /**
    * Refreshes WhatsApp projection fields from the canonical users row.
-   * This is used on the same-Privy-ID fast path so WhatsApp relinks do not
-   * require a full projection rewrite on every authenticated request.
    */
   async refreshWhatsAppProjectionForWrite(userId: string): Promise<void> {
     const [canonicalIdentity] = await dbWrite
@@ -349,16 +306,6 @@ export class UsersRepository {
   }
 
   /**
-   * Finds the identity projection row for a Privy user ID from primary.
-   * Use when recovery must verify the projection row ownership directly.
-   */
-  async findIdentityByPrivyIdForWrite(privyUserId: string): Promise<UserIdentity | undefined> {
-    return await dbWrite.query.userIdentities.findFirst({
-      where: eq(userIdentities.privy_user_id, privyUserId),
-    });
-  }
-
-  /**
    * Finds the identity projection row for a Steward user ID from primary.
    * Use when recovery or auth linking must verify projection row ownership directly.
    */
@@ -366,19 +313,6 @@ export class UsersRepository {
     return await dbWrite.query.userIdentities.findFirst({
       where: eq(userIdentities.steward_user_id, stewardUserId),
     });
-  }
-
-  private async findByPrivyIdWithOrganizationUsingDb(
-    database: typeof dbRead,
-    privyUserId: string,
-  ): Promise<UserWithOrganization | undefined> {
-    const identityUserId = await this.findIdentityUserIdByPrivyId(database, privyUserId);
-
-    if (identityUserId) {
-      return await this.findUserWithOrganizationById(database, identityUserId);
-    }
-
-    return await this.findUserWithOrganizationByPrivyId(database, privyUserId);
   }
 
   private async findByStewardIdWithOrganizationUsingDb(
@@ -392,19 +326,6 @@ export class UsersRepository {
     }
 
     return await this.findUserWithOrganizationByStewardId(database, stewardUserId);
-  }
-
-  private async findIdentityUserIdByPrivyId(
-    database: typeof dbRead,
-    privyUserId: string,
-  ): Promise<string | undefined> {
-    const [identity] = await database
-      .select({ user_id: userIdentities.user_id })
-      .from(userIdentities)
-      .where(eq(userIdentities.privy_user_id, privyUserId))
-      .limit(1);
-
-    return identity?.user_id;
   }
 
   private async findIdentityUserIdByStewardId(
@@ -450,16 +371,6 @@ export class UsersRepository {
     return await this.findUserWithOrganizationByPredicate(database, eq(users.id, userId));
   }
 
-  private async findUserWithOrganizationByPrivyId(
-    database: typeof dbRead,
-    privyUserId: string,
-  ): Promise<UserWithOrganization | undefined> {
-    return await this.findUserWithOrganizationByPredicate(
-      database,
-      eq(users.privy_user_id, privyUserId),
-    );
-  }
-
   private async findUserWithOrganizationByStewardId(
     database: typeof dbRead,
     stewardUserId: string,
@@ -500,78 +411,6 @@ export class UsersRepository {
       ...user,
       organization: relationalUser?.organization ?? null,
     };
-  }
-
-  /**
-   * Upserts the Privy identity projection for a user.
-   */
-  async upsertPrivyIdentity(userId: string, privyUserId: string): Promise<UserIdentity> {
-    // UserIdentity uses the table's snake_case column names, so the raw RETURNING
-    // payload shape matches the inferred Drizzle select type here.
-    const rows = await sqlRows<UserIdentity>(
-      dbWrite,
-      sql`
-      INSERT INTO ${userIdentities} (
-        user_id,
-        privy_user_id,
-        is_anonymous,
-        anonymous_session_id,
-        expires_at,
-        telegram_id,
-        telegram_username,
-        telegram_first_name,
-        telegram_photo_url,
-        phone_number,
-        phone_verified,
-        discord_id,
-        discord_username,
-        discord_global_name,
-        discord_avatar_url,
-        whatsapp_id,
-        whatsapp_name
-      )
-      SELECT
-        ${userId},
-        ${privyUserId},
-        u.is_anonymous,
-        u.anonymous_session_id,
-        u.expires_at,
-        u.telegram_id,
-        u.telegram_username,
-        u.telegram_first_name,
-        u.telegram_photo_url,
-        u.phone_number,
-        u.phone_verified,
-        u.discord_id,
-        u.discord_username,
-        u.discord_global_name,
-        u.discord_avatar_url,
-        u.whatsapp_id,
-        u.whatsapp_name
-      FROM ${users} u
-      WHERE u.id = ${userId}
-      ON CONFLICT (user_id) DO UPDATE
-      SET
-        -- The conflict target is the per-user projection row, not the global
-        -- privy_user_id unique constraint. If a different user already owns this
-        -- privy_user_id, Postgres still raises user_identities_privy_user_id_unique
-        -- and the caller decides whether recovery is safe.
-        -- Keep unique cross-account identities on their existing rows here.
-        -- WhatsApp refresh happens separately on a guarded primary-only path so
-        -- projection repair does not introduce new unique-key failure modes.
-        privy_user_id = EXCLUDED.privy_user_id,
-        updated_at = NOW()
-      RETURNING *
-    `,
-    );
-
-    const [identity] = rows;
-
-    if (!identity) {
-      throw new Error(`User ${userId} not found while upserting Privy identity ${privyUserId}`);
-    }
-
-    return identity;
   }
 
   /**

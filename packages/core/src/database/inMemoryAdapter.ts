@@ -27,6 +27,7 @@ import type {
 	World,
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
+import { isPlainObject } from "../utils/type-guards";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -48,10 +49,6 @@ function componentNaturalKey(params: {
 		String(params.worldId ?? ""),
 		String(params.sourceEntityId ?? ""),
 	].join("::");
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function dataContainsFilter(

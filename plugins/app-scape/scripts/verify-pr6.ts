@@ -2,10 +2,10 @@
  * PR 6 verification — Scape Journal.
  *
  * Offline (always run):
- *   1. JournalStore round-trips a state through TOON to disk and back
+ *   1. JournalStore round-trips a state through JSON to disk and back
  *   2. addMemory appends, bounded by MAX_MEMORIES with prune-by-weight
  *   3. setGoal / markGoalStatus round-trip through disk
- *   4. Journal + goals providers render TOON blocks for a mock runtime
+ *   4. Journal + goals providers render JSON blocks for a mock runtime
  *   5. scapeActions has the 3 new journal actions registered
  *
  * Live (SCAPE_PR6_LIVE=1, requires xRSPS + BOT_SDK_TOKEN):
@@ -20,7 +20,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JournalStore, type PerceptionSnapshot } from "@elizaos/app-scape";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { decode } from "@toon-format/toon";
 import { scapeActions } from "../src/actions/index.js";
 import { goalsProvider } from "../src/providers/goals.js";
 import { journalProvider } from "../src/providers/journal.js";
@@ -94,7 +93,7 @@ async function main(): Promise<void> {
       displayName: "test-agent",
       rootDir: testDir,
     });
-    assertTrue("store has a file path", store1.getFilePath().endsWith(".toon"));
+    assertTrue("store has a file path", store1.getFilePath().endsWith(".json"));
     store1.beginSession();
     store1.addMemory({ kind: "observation", text: "First step", weight: 2 });
     const state1 = store1.getState();
@@ -117,15 +116,12 @@ async function main(): Promise<void> {
     );
     assertTrue("sessionCount persisted as 1", state2.sessionCount === 1);
 
-    // File is actually TOON, not JSON
+    // File is JSON and can be inspected directly
     const fileContents = readFileSync(store1.getFilePath(), "utf-8");
+    assertTrue("disk file is JSON object shape", fileContents.startsWith("{"));
+    const decoded = JSON.parse(fileContents) as Record<string, unknown>;
     assertTrue(
-      "disk file is TOON (not JSON-object shape)",
-      !fileContents.startsWith("{"),
-    );
-    const decoded = decode(fileContents) as Record<string, unknown>;
-    assertTrue(
-      "TOON decodes back to a valid JournalState",
+      "JSON parses back to a valid JournalState",
       typeof decoded.agentId === "string" && Array.isArray(decoded.memories),
     );
 
@@ -158,8 +154,8 @@ async function main(): Promise<void> {
       ),
     );
 
-    // 3. Providers render TOON blocks
-    console.log("\n[3] providers render TOON blocks");
+    // 3. Providers render JSON blocks
+    console.log("\n[3] providers render JSON blocks");
     const journal = new JournalService({
       agentId: "provider-test",
       displayName: "provider-test",

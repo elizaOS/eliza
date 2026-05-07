@@ -5,10 +5,13 @@ import {
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { dexScreenerErrorMessage } from "./errors";
 import type {
+  DexScreenerBoostedToken,
   DexScreenerChainParams,
   DexScreenerConfig,
   DexScreenerNewPairsParams,
+  DexScreenerOrder,
   DexScreenerPair,
   DexScreenerPairParams,
   DexScreenerProfile,
@@ -17,6 +20,12 @@ import type {
   DexScreenerTokenParams,
   DexScreenerTrendingParams,
 } from "./types";
+
+type DexScreenerBoostedWire = DexScreenerBoostedToken & {
+  labels?: string[];
+};
+
+type TokensV1Wire = DexScreenerPair | DexScreenerPair[];
 
 export class DexScreenerService extends Service {
   static serviceType = "dexscreener" as const;
@@ -80,10 +89,10 @@ export class DexScreenerService extends Service {
     console.log("DexScreener service stopped");
   }
 
-  private async get(
+  private async get<T>(
     path: string,
     params?: Record<string, string>,
-  ): Promise<any> {
+  ): Promise<T> {
     let url = `${this.baseUrl}${path}`;
     if (params && Object.keys(params).length > 0) {
       url += `?${new URLSearchParams(params).toString()}`;
@@ -98,18 +107,16 @@ export class DexScreenerService extends Service {
         },
       );
     }
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   private async rateLimit(): Promise<void> {
+    const delayMs = this.dexConfig.rateLimitDelay ?? 100;
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    if (timeSinceLastRequest < this.dexConfig.rateLimitDelay!) {
+    if (timeSinceLastRequest < delayMs) {
       await new Promise((resolve) =>
-        setTimeout(
-          resolve,
-          this.dexConfig.rateLimitDelay! - timeSinceLastRequest,
-        ),
+        setTimeout(resolve, delayMs - timeSinceLastRequest),
       );
     }
     this.lastRequestTime = Date.now();
@@ -120,20 +127,20 @@ export class DexScreenerService extends Service {
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get(`/latest/dex/search`, { q: params.query });
+      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
+        `/latest/dex/search`,
+        { q: params.query },
+      );
 
       return {
         success: true,
         data: data.pairs || [],
       };
-    } catch (error: any) {
-      console.error("DexScreener search error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener search error:", caught);
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to search tokens",
+        error: dexScreenerErrorMessage(caught) || "Failed to search tokens",
       };
     }
   }
@@ -143,20 +150,19 @@ export class DexScreenerService extends Service {
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get(`/latest/dex/tokens/${params.tokenAddress}`);
+      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
+        `/latest/dex/tokens/${params.tokenAddress}`,
+      );
 
       return {
         success: true,
         data: data.pairs || [],
       };
-    } catch (error: any) {
-      console.error("DexScreener getTokenPairs error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getTokenPairs error:", caught);
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get token pairs",
+        error: dexScreenerErrorMessage(caught) || "Failed to get token pairs",
       };
     }
   }
@@ -166,7 +172,9 @@ export class DexScreenerService extends Service {
   ): Promise<DexScreenerServiceResponse<DexScreenerPair>> {
     try {
       await this.rateLimit();
-      const data = await this.get(`/latest/dex/pairs/${params.pairAddress}`);
+      const data = await this.get<{ pair?: DexScreenerPair }>(
+        `/latest/dex/pairs/${params.pairAddress}`,
+      );
 
       if (!data.pair) {
         return {
@@ -179,14 +187,11 @@ export class DexScreenerService extends Service {
         success: true,
         data: data.pair,
       };
-    } catch (error: any) {
-      console.error("DexScreener getPair error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getPair error:", caught);
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get pair",
+        error: dexScreenerErrorMessage(caught) || "Failed to get pair",
       };
     }
   }
@@ -199,7 +204,9 @@ export class DexScreenerService extends Service {
 
       // DexScreener doesn't have a direct trending endpoint
       // We'll use the boosted tokens endpoint as a proxy for trending
-      const responseData = await this.get(`/token-boosts/top/v1`);
+      const responseData = await this.get<
+        DexScreenerBoostedToken[] | DexScreenerBoostedToken
+      >(`/token-boosts/top/v1`);
 
       // The boosted tokens response is an array of boosted tokens
       const boostedTokens = Array.isArray(responseData)
@@ -211,7 +218,7 @@ export class DexScreenerService extends Service {
         .slice(0, params.limit || 10)
         .map(async (token) => {
           try {
-            const pairData = await this.get(
+            const pairData = await this.get<TokensV1Wire>(
               `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
             );
             return Array.isArray(pairData) ? pairData[0] : null;
@@ -232,14 +239,12 @@ export class DexScreenerService extends Service {
         success: true,
         data: pairs,
       };
-    } catch (error: any) {
-      console.error("DexScreener getTrending error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getTrending error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get trending pairs",
+          dexScreenerErrorMessage(caught) || "Failed to get trending pairs",
       };
     }
   }
@@ -251,7 +256,10 @@ export class DexScreenerService extends Service {
       await this.rateLimit();
 
       // Use search API with chain filter
-      const data = await this.get(`/latest/dex/search`, { q: params.chain });
+      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
+        `/latest/dex/search`,
+        { q: params.chain },
+      );
 
       let pairs: DexScreenerPair[] = data.pairs || [];
 
@@ -290,14 +298,12 @@ export class DexScreenerService extends Service {
         success: true,
         data: limitedPairs,
       };
-    } catch (error: any) {
-      console.error("DexScreener getPairsByChain error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getPairsByChain error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get pairs by chain",
+          dexScreenerErrorMessage(caught) || "Failed to get pairs by chain",
       };
     }
   }
@@ -310,7 +316,9 @@ export class DexScreenerService extends Service {
 
       // DexScreener doesn't have a direct new pairs endpoint
       // We'll use the latest token profiles as a proxy for new tokens
-      const responseData = await this.get(`/token-profiles/latest/v1`);
+      const responseData = await this.get<
+        DexScreenerProfile[] | DexScreenerProfile
+      >(`/token-profiles/latest/v1`);
 
       // The latest token profiles response is an array of profiles
       const profiles = Array.isArray(responseData)
@@ -329,7 +337,7 @@ export class DexScreenerService extends Service {
         .slice(0, params.limit || 10)
         .map(async (profile) => {
           try {
-            const pairData = await this.get(
+            const pairData = await this.get<TokensV1Wire>(
               `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`,
             );
             const pairs = Array.isArray(pairData) ? pairData : [];
@@ -360,14 +368,11 @@ export class DexScreenerService extends Service {
         success: true,
         data: pairs,
       };
-    } catch (error: any) {
-      console.error("DexScreener getNewPairs error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getNewPairs error:", caught);
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get new pairs",
+        error: dexScreenerErrorMessage(caught) || "Failed to get new pairs",
       };
     }
   }
@@ -379,7 +384,9 @@ export class DexScreenerService extends Service {
       await this.rateLimit();
       // Token profiles are available through the latest profiles endpoint
       // We need to fetch all and find the matching one
-      const responseData = await this.get(`/token-profiles/latest/v1`);
+      const responseData = await this.get<
+        DexScreenerProfile[] | DexScreenerProfile
+      >(`/token-profiles/latest/v1`);
       const profiles = Array.isArray(responseData)
         ? responseData
         : [responseData];
@@ -399,14 +406,11 @@ export class DexScreenerService extends Service {
         success: true,
         data: profile,
       };
-    } catch (error: any) {
-      console.error("DexScreener getTokenProfile error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getTokenProfile error:", caught);
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get token profile",
+        error: dexScreenerErrorMessage(caught) || "Failed to get token profile",
       };
     }
   }
@@ -451,20 +455,20 @@ export class DexScreenerService extends Service {
 
       await this.rateLimit();
       const addresses = tokenAddresses.join(",");
-      const data = await this.get(`/tokens/v1/${chainId}/${addresses}`);
+      const data = await this.get<DexScreenerPair[] | DexScreenerPair>(
+        `/tokens/v1/${chainId}/${addresses}`,
+      );
 
       return {
         success: true,
-        data: data || [],
+        data: Array.isArray(data) ? data : data ? [data] : [],
       };
-    } catch (error: any) {
-      console.error("DexScreener getMultipleTokens error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getMultipleTokens error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get multiple tokens",
+          dexScreenerErrorMessage(caught) || "Failed to get multiple tokens",
       };
     }
   }
@@ -474,62 +478,68 @@ export class DexScreenerService extends Service {
   > {
     try {
       await this.rateLimit();
-      const data = await this.get(`/token-profiles/latest/v1`);
+      const data = await this.get<DexScreenerProfile[] | DexScreenerProfile>(
+        `/token-profiles/latest/v1`,
+      );
 
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
       };
-    } catch (error: any) {
-      console.error("DexScreener getLatestTokenProfiles error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getLatestTokenProfiles error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
+          dexScreenerErrorMessage(caught) ||
           "Failed to get latest token profiles",
       };
     }
   }
 
-  async getLatestBoostedTokens(): Promise<DexScreenerServiceResponse<any[]>> {
+  async getLatestBoostedTokens(): Promise<
+    DexScreenerServiceResponse<DexScreenerBoostedWire[]>
+  > {
     try {
       await this.rateLimit();
-      const data = await this.get(`/token-boosts/latest/v1`);
+      const data = await this.get<
+        DexScreenerBoostedWire[] | DexScreenerBoostedWire
+      >(`/token-boosts/latest/v1`);
 
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
       };
-    } catch (error: any) {
-      console.error("DexScreener getLatestBoostedTokens error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getLatestBoostedTokens error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
+          dexScreenerErrorMessage(caught) ||
           "Failed to get latest boosted tokens",
       };
     }
   }
 
-  async getTopBoostedTokens(): Promise<DexScreenerServiceResponse<any[]>> {
+  async getTopBoostedTokens(): Promise<
+    DexScreenerServiceResponse<DexScreenerBoostedWire[]>
+  > {
     try {
       await this.rateLimit();
-      const data = await this.get(`/token-boosts/top/v1`);
+      const data = await this.get<
+        DexScreenerBoostedWire[] | DexScreenerBoostedWire
+      >(`/token-boosts/top/v1`);
 
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
       };
-    } catch (error: any) {
-      console.error("DexScreener getTopBoostedTokens error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getTopBoostedTokens error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to get top boosted tokens",
+          dexScreenerErrorMessage(caught) || "Failed to get top boosted tokens",
       };
     }
   }
@@ -537,23 +547,23 @@ export class DexScreenerService extends Service {
   async checkOrderStatus(
     chainId: string,
     tokenAddress: string,
-  ): Promise<DexScreenerServiceResponse<any[]>> {
+  ): Promise<DexScreenerServiceResponse<DexScreenerOrder[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get(`/orders/v1/${chainId}/${tokenAddress}`);
+      const data = await this.get<DexScreenerOrder[] | DexScreenerOrder>(
+        `/orders/v1/${chainId}/${tokenAddress}`,
+      );
 
       return {
         success: true,
-        data: data || [],
+        data: Array.isArray(data) ? data : data ? [data] : [],
       };
-    } catch (error: any) {
-      console.error("DexScreener checkOrderStatus error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener checkOrderStatus error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to check order status",
+          dexScreenerErrorMessage(caught) || "Failed to check order status",
       };
     }
   }
@@ -564,19 +574,20 @@ export class DexScreenerService extends Service {
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get(`/token-pairs/v1/${chainId}/${tokenAddress}`);
+      const data = await this.get<DexScreenerPair[] | DexScreenerPair>(
+        `/token-pairs/v1/${chainId}/${tokenAddress}`,
+      );
 
       return {
         success: true,
-        data: data || [],
+        data: Array.isArray(data) ? data : data ? [data] : [],
       };
-    } catch (error: any) {
-      console.error("DexScreener getTokenPairsByChain error:", error);
+    } catch (caught: unknown) {
+      console.error("DexScreener getTokenPairsByChain error:", caught);
       return {
         success: false,
         error:
-          error.response?.data?.message ||
-          error.message ||
+          dexScreenerErrorMessage(caught) ||
           "Failed to get token pairs by chain",
       };
     }

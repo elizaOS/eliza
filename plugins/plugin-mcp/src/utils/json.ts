@@ -72,7 +72,5 @@ export function parseStructuredModelOutput<T = Record<string, unknown>>(input: s
     errors.push("JSON object parse failed");
   }
 
-  throw new Error(
-    `No valid JSON object found: ${errors.join("; ")}`
-  );
+  throw new Error(`No valid JSON object found: ${errors.join("; ")}`);
 }

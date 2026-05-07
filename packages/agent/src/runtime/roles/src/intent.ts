@@ -1,9 +1,5 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import {
   findKeywordTermMatch,
   getRecentMessagesData,
@@ -312,28 +308,16 @@ export async function extractRoleIntentWithLlm(args: {
     "  - When the user uses an explicit role name like admin or guest, leave label empty.",
     "  - Never return prose, markdown, or explanations.",
     "",
-    "TOON only.",
+    "JSON only.",
     "",
     "Example:",
-    "kind: role",
-    "targetName: Odi",
-    "newRole: ADMIN",
-    "label: boss",
-    "confidence: 0.94",
+    '{"kind":"role","targetName":"Odi","newRole":"ADMIN","label":"boss","confidence":0.94}',
     "",
     "Example:",
-    "kind: revoke",
-    "targetName: Alice",
-    "newRole: GUEST",
-    "label: coworker",
-    "confidence: 0.88",
+    '{"kind":"revoke","targetName":"Alice","newRole":"GUEST","label":"coworker","confidence":0.88}',
     "",
     "Example:",
-    "kind: none",
-    "targetName:",
-    "newRole:",
-    "label:",
-    "confidence: 0.0",
+    '{"kind":"none","targetName":null,"newRole":null,"label":null,"confidence":0.0}',
     "",
     `Current request: ${JSON.stringify(currentMessage)}`,
     `Recent requester messages: ${JSON.stringify(recentConversation)}`,
@@ -359,9 +343,10 @@ export async function extractRoleIntentWithLlm(args: {
     };
   }
 
-  const parsed =
-    parseToonKeyValue<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse);
+  const parsed = parseJSONObjectFromText(rawResponse) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) {
     return {
       kind: null,

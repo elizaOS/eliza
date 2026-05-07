@@ -27,7 +27,7 @@ export interface StructuredOutputFailure {
 	source: "dynamicPromptExecFromState";
 	kind: "model_error" | "parse_error" | "parse_problem" | "validation_error";
 	model: string;
-	format: "JSON" | "TOON";
+	format: "JSON";
 	schemaFields: string[];
 	attempts: number;
 	maxRetries: number;
@@ -222,7 +222,7 @@ export type SchemaValueSpec = {
 };
 
 export type SchemaRow = SchemaValueSpec & {
-	/** Field name in structured TOON or JSON output */
+	/** Field name in structured JSON output */
 	field: string;
 	/**
 	 * Control per-field validation codes for streaming (levels 0-1 only).

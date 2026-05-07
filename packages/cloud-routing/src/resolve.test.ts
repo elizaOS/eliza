@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   cloudServiceApisBaseUrl,
   isCloudConnected,
+  type RuntimeSettings,
   resolveCloudRoute,
   toRuntimeSettings,
-  type RuntimeSettings,
 } from "./resolve.ts";
 import type { RouteSpec } from "./types.ts";
 

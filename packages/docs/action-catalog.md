@@ -1,12 +1,12 @@
 ---
 title: "Action Catalog"
 sidebarTitle: "Action Catalog"
-description: "Complete reference of all 151 actions available across Eliza plugins."
+description: "Snapshot reference of actions available across Eliza plugins."
 ---
 
 # Action Catalog
 
-_Generated on: 2026-04-16. Total actions: 147._
+_Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ## Summary Statistics
 

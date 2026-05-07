@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 

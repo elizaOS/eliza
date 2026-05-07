@@ -4,7 +4,7 @@ This document describes how clients authenticate to Eliza Cloud APIs, how CORS i
 
 ## Why this model exists
 
-- **Edge** skips Privy for API-key-shaped requests so handlers can validate keys against the database (**why not validate keys at the edge:** avoid duplicating DB logic, permissions, and rate limits in middleware).
+- **Edge** skips session auth for API-key-shaped requests so handlers can validate keys against the database (**why not validate keys at the edge:** avoid duplicating DB logic, permissions, and rate limits in middleware).
 - **Handlers** choose `requireAuth*` (cookies only) vs `requireAuthOrApiKey*` (cookies + keys + wallet rules) per route (**why both:** browsers and automation are first-class; some flows must stay human-session-only for abuse and UX reasons).
 - **Session-only lists at the edge** return `session_auth_required` when a client sends `X-API-Key` or `Bearer eliza_…` to a cookie-only route (**why:** clear errors instead of passing the edge then failing inside the handler).
 
@@ -12,23 +12,23 @@ For a longer rationale (CLI session public split, crypto GET/POST, key managemen
 
 ## Authentication methods
 
-### Cookie session (Privy)
+### Cookie session
 
-- **Cookie**: `privy-token` (and related Privy cookies).
+- **Cookie**: session token cookie.
 - **Used by**: Dashboard and browser flows via `getCurrentUser()` / `requireAuth()` / `requireAuthWithOrg()`.
-- **Edge**: Non-public routes require a valid Privy JWT unless another bypass applies (see [Edge middleware](#edge-middleware)).
+- **Edge**: Non-public routes require a valid session JWT unless another bypass applies (see [Edge middleware](#edge-middleware)).
 - **Session-only routes**: Some endpoints reject `X-API-Key` and `Authorization: Bearer eliza_…` at the edge and require a cookie session; see [Session-only routes](#session-only-routes-edge--handlers).
 
 ### API key
 
 - **Header**: `X-API-Key: eliza_<secret>` (prefix is `eliza_`).
 - **Used by**: Server and browser clients calling routes that use `requireAuthOrApiKey` / `requireAuthOrApiKeyWithOrg`.
-- **Edge**: Requests with `X-API-Key` or `Authorization: Bearer eliza_…` skip Privy verification in the proxy so the route handler can validate the key.
+- **Edge**: Requests with `X-API-Key` or `Authorization: Bearer eliza_...` skip session verification in the proxy so the route handler can validate the key.
 
 ### Bearer token
 
 - **Header**: `Authorization: Bearer <token>`.
-- **JWT (Privy)**: Three-segment JWT verified as a session token; user loaded from DB.
+- **JWT**: Three-segment JWT verified as a session token; user loaded from DB.
 - **API key**: Same value as `X-API-Key` may be sent as Bearer; keys are validated via `apiKeysService.validateApiKey`.
 
 ### Wallet-signed requests
@@ -39,7 +39,7 @@ For a longer rationale (CLI session public split, crypto GET/POST, key managemen
 
 ### Internal service JWT
 
-- **Prefix**: `/api/internal` is listed as a public path in the proxy (no Privy gate).
+- **Prefix**: `/api/internal` is listed as a public path in the proxy (no session gate).
 - **Auth**: Bearer JWT validated by `validateInternalJWTAsync` / `withInternalAuth` in `packages/lib/auth/internal-api.ts`.
 - **Purpose**: Service-to-service calls (e.g. gateways); not end-user API keys.
 
@@ -53,9 +53,9 @@ For a longer rationale (CLI session public split, crypto GET/POST, key managemen
 
 ## Edge middleware (`proxy.ts`)
 
-- **`publicPaths` / `publicPathPatterns`**: No Privy session required; handlers enforce their own auth. CLI login: `POST /api/auth/cli-session` and `GET /api/auth/cli-session/:sessionId` (poll) are matched by patterns; `POST .../:sessionId/complete` is not public so session-only / API-key rules apply at the edge.
+- **`publicPaths` / `publicPathPatterns`**: No session required; handlers enforce their own auth. CLI login: `POST /api/auth/cli-session` and `GET /api/auth/cli-session/:sessionId` (poll) are matched by patterns; `POST .../:sessionId/complete` is not public so session-only / API-key rules apply at the edge.
 - **`protectedPaths`**: Non-API paths (e.g. `/dashboard`) redirect to login when unauthenticated.
-- **Other `/api/*`**: Requires Privy cookie or Bearer JWT, or API-key style bypass as implemented in `proxy.ts`.
+- **Other `/api/*`**: Requires session cookie or Bearer JWT, or API-key style bypass as implemented in `proxy.ts`.
 - **`sessionOnlyPaths` / `sessionOnlyPathPatterns`**: For these paths, requests that present `X-API-Key` or `Authorization: Bearer eliza_…` receive **401** with `code: "session_auth_required"` at the edge (cookie session required). Wallet-signature passthrough for allowed topup/wallet paths is unchanged.
 - **OPTIONS** for `/api/*`: CORS preflight uses shared constants from `packages/lib/cors-constants.ts`.
 
@@ -108,7 +108,7 @@ Infrastructure, billing reads, voices, keys, org admin, profile:
 
 - **Wrapper**: `withRateLimit(handler, config)` in `packages/lib/middleware/rate-limit.ts`.
 - **Storage**: Redis when `REDIS_RATE_LIMITING=true` (recommended in multi-instance production); otherwise in-memory per instance.
-- **Keying**: Prefers API key, then `x-privy-user-id`, then anonymous session; see `getDefaultKey` in the same file.
+- **Keying**: Prefers API key, then authenticated user id, then anonymous session; see `getDefaultKey` in the same file.
 - **Org burst (MCP / A2A)**: `ORGANIZATION_SERVICE_BURST_LIMIT` (100 req / 60s) keys Redis as `mcp:ratelimit[:slug]:orgId` and `a2a:orgId`. Use `enforceMcpOrganizationRateLimit` so 429 bodies match `withRateLimit` (`success`, `code`, `message`, `retryAfter`, `X-RateLimit-*`).
 
 ### Presets (`RateLimitPresets`)

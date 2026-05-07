@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -91,8 +90,8 @@ function identifyArea(x: number, z: number): KnownArea | null {
 export const mapAreaProvider: Provider = {
   name: "RS_SDK_MAP_AREA",
   description:
-    "TOON current 2004scape map area with features, NPCs, and travel destinations.",
-  descriptionCompressed: "TOON current area, features, NPCs, destinations.",
+    "JSON current 2004scape map area with features, NPCs, and travel destinations.",
+  descriptionCompressed: "JSON current area, features, NPCs, destinations.",
 
   async get(
     runtime: IAgentRuntime,
@@ -105,9 +104,9 @@ export const mapAreaProvider: Provider = {
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {
-        text: encodeToonValue({
+        text: JSON.stringify({
           rs_2004_map_area: { status: "not_in_game" },
-        }),
+        }, null, 2),
       };
     }
 
@@ -115,7 +114,7 @@ export const mapAreaProvider: Provider = {
     const area = identifyArea(x, z);
 
     return {
-      text: encodeToonValue({
+      text: JSON.stringify({
         rs_2004_map_area: area
           ? {
               status: "known",
@@ -137,7 +136,7 @@ export const mapAreaProvider: Provider = {
               position: { x, z },
               instruction: "Explore cautiously and update nearby context.",
             },
-      }),
+      }, null, 2),
     };
   },
 };

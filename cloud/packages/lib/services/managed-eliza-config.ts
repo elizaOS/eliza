@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { apiKeysService } from "@/lib/services/api-keys";
 
 const DEFAULT_ELIZA_APP_URL = "https://eliza.app";
@@ -101,6 +102,16 @@ export function mergeManagedAllowedOrigins(existingValue?: string): string {
   return [...merged].join(",");
 }
 
+function copyProviderSecret(
+  target: Record<string, string>,
+  key: string,
+  source: NodeJS.ProcessEnv = process.env,
+): void {
+  if (target[key]?.trim()) return;
+  const value = source[key]?.trim();
+  if (value) target[key] = value;
+}
+
 function isActiveApiKeyForUser(
   key: {
     user_id: string;
@@ -176,6 +187,11 @@ export async function prepareManagedElizaSharedEnvironment(
   const environmentVars: Record<string, string> = {
     ...baseEnvironment.environmentVars,
   };
+  const env = getCloudAwareEnv();
+  copyProviderSecret(environmentVars, "OPENAI_API_KEY", env);
+  copyProviderSecret(environmentVars, "ANTHROPIC_API_KEY", env);
+  copyProviderSecret(environmentVars, "AI_GATEWAY_API_KEY", env);
+  copyProviderSecret(environmentVars, "VERCEL_AI_GATEWAY_API_KEY", env);
 
   return {
     apiToken: environmentVars.ELIZA_API_TOKEN,

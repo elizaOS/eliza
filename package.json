@@ -134,6 +134,7 @@
     "vitest": "^4.0.17"
   },
   "resolutions": {
+    "@elizaos/core": "workspace:*",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "@types/react": "19.2.14",
@@ -146,6 +147,7 @@
     "@solana/web3.js": "1.98.4"
   },
   "overrides": {
+    "@elizaos/core": "workspace:*",
     "@biomejs/biome": "2.4.14",
     "@types/node": "25.6.0",
     "@nrwl/devkit": "19.8.4",

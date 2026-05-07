@@ -1,7 +1,7 @@
 /**
  * GET /api/credits/balance
  * Gets the credit balance for the authenticated user's organization.
- * Supports both Privy session and API key authentication.
+ * Supports both session and API key authentication.
  *
  * Query: `fresh=true` bypasses cache and reads from DB (kept for parity —
  * the Workers shim doesn't have the Next session cache so every read is fresh).

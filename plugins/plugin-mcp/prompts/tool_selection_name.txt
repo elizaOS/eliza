@@ -4,7 +4,7 @@
 
 # TASK: Select the Most Appropriate Tool and Server
 
-You must select the most appropriate tool from the list above to fulfill the user's request. Respond with compact TOON/plain text.
+You must select the most appropriate tool from the list above to fulfill the user's request. Respond with compact JSON.
 
 ## CRITICAL INSTRUCTIONS
 1. Provide both serverName and toolName from the options listed above.
@@ -17,8 +17,7 @@ You must select the most appropriate tool from the list above to fulfill the use
 5. If no tool is appropriate, set noToolAvailable: true.
 
 ## STRICT FORMAT REQUIREMENTS
-- The response MUST be one TOON document.
-- Use one key per line.
+- The response MUST be one JSON object.
 - DO NOT wrap it in triple backticks, code blocks, or include any explanatory text.
 - DO NOT include comments anywhere.
 - DO NOT use placeholders (e.g., "replace with...", "example", "your...", etc.)
@@ -36,19 +35,22 @@ Your response MUST contain ONLY these top-level keys:
 4. noToolAvailable - true or false
 
 ## EXAMPLE RESPONSE
-serverName: github
-toolName: get_file_contents
-reasoning: The user wants to retrieve the README from the facebook/react repository.
-noToolAvailable: false
+{
+  "serverName": "github",
+  "toolName": "get_file_contents",
+  "reasoning": "The user wants to retrieve the README from the facebook/react repository.",
+  "noToolAvailable": false
+}
 
 ## NO TOOL EXAMPLE
-reasoning: None of the available tools match the user's request.
-noToolAvailable: true
+{
+  "reasoning": "None of the available tools match the user's request.",
+  "noToolAvailable": true
+}
 
 ## REMINDERS
 - Use "github" as serverName for GitHub tools.
 - Use "notion" as serverName for Notion tools.
 - For search and knowledge-based tasks, MCP tools are often appropriate.
-
 
 

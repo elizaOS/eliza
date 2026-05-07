@@ -11,11 +11,13 @@ Extract the following information about the requested token bridge:
 - Amount to bridge: Must be a string representing the amount in ether (only number without coin symbol, e.g., "0.1")
 - Destination address (if specified)
 
-Respond using TOON like this:
-token: token symbol or address, or empty if unknown
-fromChain: source chain from {{supportedChains}}, or empty
-toChain: destination chain from {{supportedChains}}, or empty
-amount: amount as string (e.g. 0.1), or empty
-toAddress: destination address, or empty
+Respond using JSON like this:
+{
+  "token": "token symbol or address, or empty if unknown",
+  "fromChain": "source chain from {{supportedChains}}, or empty",
+  "toChain": "destination chain from {{supportedChains}}, or empty",
+  "amount": "amount as string (e.g. 0.1), or empty",
+  "toAddress": "destination address, or empty"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.
+IMPORTANT: Your response must ONLY contain the JSON object above. No preamble or explanation.

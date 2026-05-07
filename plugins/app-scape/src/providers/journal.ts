@@ -1,5 +1,5 @@
 /**
- * journal provider — recent memories in TOON form.
+ * journal provider — recent memories in JSON form.
  *
  * The LLM sees the 8 newest memories prefixed with their kind and
  * weight, so it can weigh novelty ("I just levelled up!") against
@@ -14,7 +14,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 import type { ScapeGameService } from "../services/game-service.js";
 
@@ -41,7 +40,7 @@ export const journalProvider: Provider = {
     const memories = journal.getMemories(RECENT_MEMORY_COUNT);
     if (memories.length === 0) {
       return {
-        text: encode({
+        text: JSON.stringify({
           scape_journal: {
             status: "empty",
             memories: [],
@@ -50,7 +49,7 @@ export const journalProvider: Provider = {
       };
     }
 
-    const toon = encode({
+    const context = JSON.stringify({
       scape_journal: {
         status: "ready",
         memories: memories.map((m) => ({
@@ -60,6 +59,6 @@ export const journalProvider: Provider = {
         })),
       },
     });
-    return { text: toon };
+    return { text: context };
   },
 };

@@ -1,6 +1,10 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { SteerLiquidityService } from "../services/steerLiquidityService";
+import type {
+  SteerStakingPoolDetailInput,
+  SteerVaultDetailInput,
+} from "../steer-display-types.js";
 
 /**
  * Steer Finance Liquidity Protocol Provider
@@ -244,7 +248,7 @@ async function getSteerLiquidityStats(
 /**
  * Get detailed information about a specific vault
  */
-async function getVaultDetails(vault: any): Promise<string> {
+async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
   let details = `🏦 VAULT: ${vault.address}\n`;
   details += `   📈 Name: ${vault.name}\n`;
   details += `   🌐 Chain: ${getChainName(vault.chainId)}\n`;
@@ -324,7 +328,9 @@ async function getVaultDetails(vault: any): Promise<string> {
 /**
  * Get detailed information about a specific staking pool
  */
-async function getStakingPoolDetails(pool: any): Promise<string> {
+async function getStakingPoolDetails(
+  pool: SteerStakingPoolDetailInput,
+): Promise<string> {
   let details = `🔒 STAKING POOL: ${pool.address}\n`;
   details += `   📈 Name: ${pool.name}\n`;
   details += `   🌐 Chain: ${getChainName(pool.chainId)}\n`;

@@ -19,10 +19,10 @@ import {
 } from "@elizaos/cloud-ui";
 import { Activity, BarChart, Coins, Loader2, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface AnalyticsTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 type TimeRange = "7days" | "30days" | "90days";

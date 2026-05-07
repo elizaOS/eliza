@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { logger } from "@elizaos/core";
 import puppeteer from "puppeteer-core";
 
 const CHROME_PATH =
@@ -87,7 +88,7 @@ function ensurePopoutUrl(raw: string): string {
 
 export async function startBrowserCapture(config: BrowserCaptureConfig) {
   if (activeBrowser) {
-    console.log("[browser-capture] Already running");
+    logger.info("[browser-capture] Already running");
     return;
   }
 
@@ -101,7 +102,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
   const captureUrl = ensurePopoutUrl(url);
 
   stopSignal = false;
-  console.log(`[browser-capture] Launching headless Chrome → ${captureUrl}`);
+  logger.info(`[browser-capture] Launching headless Chrome to ${captureUrl}`);
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
@@ -166,7 +167,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
     timeout: 60_000,
   });
 
-  console.log(`[browser-capture] Page loaded, writing frames to ${FRAME_FILE}`);
+  logger.info(`[browser-capture] Page loaded, writing frames to ${FRAME_FILE}`);
 
   let frameCount = 0;
   const frameIntervalMs = Math.max(100, Math.round(1000 / Math.max(1, fps)));
@@ -180,11 +181,11 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
         });
         frameCount += 1;
         if (frameCount % 20 === 0) {
-          console.log(`[browser-capture] ${frameCount} frames written`);
+          logger.debug(`[browser-capture] ${frameCount} frames written`);
         }
       } catch (error) {
         if (!stopSignal) {
-          console.warn(
+          logger.warn(
             `[browser-capture] frame capture failed: ${
               error instanceof Error ? error.message : String(error)
             }`,
@@ -197,7 +198,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
     }
   })();
 
-  console.log(
+  logger.info(
     `[browser-capture] Screenshot loop active (${fps} fps), saving to ${FRAME_FILE}`,
   );
 }
@@ -216,7 +217,7 @@ export async function stopBrowserCapture() {
     } catch {}
     activeBrowser = null;
   }
-  console.log("[browser-capture] Stopped");
+  logger.info("[browser-capture] Stopped");
 }
 
 export function isBrowserCaptureRunning(): boolean {

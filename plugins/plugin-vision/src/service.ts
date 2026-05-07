@@ -5,7 +5,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   ModelType,
@@ -45,13 +44,13 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
-const SCENE_DESCRIPTION_PROMPT = encodeToonValue({
+const SCENE_DESCRIPTION_PROMPT = JSON.stringify({
   task: "describe_visual_scene",
   instructions: [
     "Describe visible people, objects, UI, text, and notable scene changes.",
     "Keep the answer concise and factual.",
   ],
-});
+}, null, 2);
 
 interface CameraDevice {
   id: string;
@@ -961,14 +960,18 @@ export class VisionService extends Service {
               {
                 model: "florence2-local",
                 systemPrompt: "",
-                userPrompt: encodeToonValue({
-                  task: "describe_visual_scene",
-                  image: {
-                    source: "camera_frame",
-                    mimeType: "image/jpeg",
-                    bytes: imageBuffer.byteLength,
+                userPrompt: JSON.stringify(
+                  {
+                    task: "describe_visual_scene",
+                    image: {
+                      source: "camera_frame",
+                      mimeType: "image/jpeg",
+                      bytes: imageBuffer.byteLength,
+                    },
                   },
-                }),
+                  null,
+                  2,
+                ),
                 temperature: 0,
                 maxTokens: 0,
                 purpose: "background",

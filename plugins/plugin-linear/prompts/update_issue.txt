@@ -2,7 +2,7 @@ Given the user's request to update a Linear issue, extract the information neede
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only. Use this shape:
+Respond with JSON/plain text only. Use this shape:
 issueId: Issue identifier such as ENG-123 or COM2-7
 updates:
   title: New title if changing the title
@@ -14,6 +14,5 @@ updates:
   labels: Comma-separated labels if changing labels; use none to clear all labels
 
 Only include fields that are being updated. Output only the fields, with no prose before or after them.
-
 
 

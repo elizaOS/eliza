@@ -1,9 +1,14 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runV5MessageRuntimeStage1 } from "../services/message";
-import type { Action, ActionResult, HandlerCallback, HandlerOptions } from "../types/components";
+import type {
+	Action,
+	ActionResult,
+	HandlerCallback,
+	HandlerOptions,
+} from "../types/components";
 import type { ContextRegistry } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -17,7 +22,9 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000003" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000004" as UUID;
 const RESPONSE_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
-function makeMessage(text = "search for eliza and tell me what you found"): Memory {
+function makeMessage(
+	text = "search for eliza and tell me what you found",
+): Memory {
 	return {
 		id: MSG_ID,
 		entityId: SENDER_ID,
@@ -47,28 +54,37 @@ function makeRuntime(opts: {
 	contextRegistry?: ContextRegistry;
 }): IAgentRuntime {
 	const queue = [...opts.responses];
-	const calls: Array<{ modelType: unknown; params: unknown; provider: unknown }> = [];
+	const calls: Array<{
+		modelType: unknown;
+		params: unknown;
+		provider: unknown;
+	}> = [];
 	const runtime = {
 		agentId: AGENT_ID,
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
-		useModel: vi.fn(async (modelType: unknown, params: unknown, provider: unknown) => {
-			calls.push({ modelType, params, provider });
-			if (queue.length === 0) {
-				throw new Error(
-					`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
-				);
-			}
-			const next = queue.shift();
-			if (next?.expectModelType && String(modelType) !== next.expectModelType) {
-				throw new Error(
-					`Expected ${next.expectModelType} but received ${String(modelType)}`,
-				);
-			}
-			return next?.body;
-		}),
+		useModel: vi.fn(
+			async (modelType: unknown, params: unknown, provider: unknown) => {
+				calls.push({ modelType, params, provider });
+				if (queue.length === 0) {
+					throw new Error(
+						`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
+					);
+				}
+				const next = queue.shift();
+				if (
+					next?.expectModelType &&
+					String(modelType) !== next.expectModelType
+				) {
+					throw new Error(
+						`Expected ${next.expectModelType} but received ${String(modelType)}`,
+					);
+				}
+				return next?.body;
+			},
+		),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -86,7 +102,15 @@ function getCalls(runtime: IAgentRuntime): Array<{
 	params: unknown;
 	provider: unknown;
 }> {
-	return (runtime as unknown as { __calls: Array<{ modelType: unknown; params: unknown; provider: unknown }> }).__calls;
+	return (
+		runtime as unknown as {
+			__calls: Array<{
+				modelType: unknown;
+				params: unknown;
+				provider: unknown;
+			}>;
+		}
+	).__calls;
 }
 
 function makeMockAction(opts: {
@@ -176,7 +200,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						actionName: "WEB_SEARCH",
 						results: [
 							{ title: "elizaOS", url: "https://github.com/elizaOS" },
-							{ title: "Eliza chatbot", url: "https://en.wikipedia.org/wiki/ELIZA" },
+							{
+								title: "Eliza chatbot",
+								url: "https://en.wikipedia.org/wiki/ELIZA",
+							},
 							{ title: "Eliza framework", url: "https://eliza.os/docs" },
 						],
 					},
@@ -257,7 +284,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const trajectory = recorded[0] as {
 			trajectoryId: string;
 			status: string;
-			stages: Array<{ kind: string; tool?: { success: boolean }; evaluation?: { success: boolean; decision: string }; model?: { usage?: Record<string, unknown> } }>;
+			stages: Array<{
+				kind: string;
+				tool?: { success: boolean };
+				evaluation?: { success: boolean; decision: string };
+				model?: { usage?: Record<string, unknown> };
+			}>;
 			metrics: {
 				totalCacheReadTokens: number;
 				toolCallsExecuted: number;
@@ -322,9 +354,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Trying the broken action.",
-						toolCalls: [
-							{ id: "call-1", name: "BROKEN_ACTION", args: {} },
-						],
+						toolCalls: [{ id: "call-1", name: "BROKEN_ACTION", args: {} }],
 						usage: {
 							promptTokens: 100,
 							completionTokens: 20,
@@ -352,8 +382,16 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
-			metrics: { evaluatorFailures: number; toolCallFailures: number; finalDecision: string };
-			stages: Array<{ kind: string; tool?: { success: boolean }; evaluation?: { success: boolean } }>;
+			metrics: {
+				evaluatorFailures: number;
+				toolCallFailures: number;
+				finalDecision: string;
+			};
+			stages: Array<{
+				kind: string;
+				tool?: { success: boolean };
+				evaluation?: { success: boolean };
+			}>;
 		};
 
 		expect(trajectory.metrics.toolCallFailures).toBe(1);
@@ -428,7 +466,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				{
 					body: {
 						text: "Now saving.",
-						toolCalls: [{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } }],
+						toolCalls: [
+							{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } },
+						],
 					},
 				},
 				// Evaluator iter 2: FINISH
@@ -800,7 +840,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		// Critical: only ONE planner call (the second tool came from NEXT_RECOMMENDED,
 		// not a replan). Total calls: messageHandler + planner + evaluator + evaluator = 4.
 		const calls = getCalls(runtime);
-		const plannerCalls = calls.filter((c) => c.modelType === ModelType.ACTION_PLANNER);
+		const plannerCalls = calls.filter(
+			(c) => c.modelType === ModelType.ACTION_PLANNER,
+		);
 		expect(plannerCalls.length).toBe(1);
 
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {

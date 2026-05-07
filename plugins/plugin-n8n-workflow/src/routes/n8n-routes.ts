@@ -224,7 +224,11 @@ async function probeCloudHealth(baseUrl: string, fetchImpl: typeof fetch): Promi
     return res.ok ? 'ok' : 'degraded';
   } catch (err) {
     logger.debug(
-      `[n8n-routes] cloud health probe failed: ${err instanceof Error ? err.message : String(err)}`
+      {
+        src: 'plugin:n8n-routes',
+        error: err instanceof Error ? err.message : String(err),
+      },
+      'Cloud health probe failed'
     );
     return 'degraded';
   }
@@ -530,21 +534,17 @@ async function fetchTargetAsJson(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[n8n-routes] proxy fetch failed: ${message}`);
+    logger.warn(
+      { src: 'plugin:n8n-routes', error: message, url: target.url },
+      'Proxy fetch failed'
+    );
     return { ok: false, status: 502, body: { error: message } };
   }
 
-  let parsed: unknown = null;
   const contentType = res.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
-    try {
-      parsed = await res.json();
-    } catch {}
-  } else {
-    try {
-      parsed = await res.text();
-    } catch {}
-  }
+  const parsed: unknown = contentType.includes('application/json')
+    ? await res.json().catch(() => null)
+    : await res.text().catch(() => null);
   return { ok: res.ok, status: res.status, body: parsed };
 }
 
@@ -654,9 +654,11 @@ async function buildTriggerContextFromConversation(
     }>;
   } catch (err) {
     logger.debug?.(
-      `[n8n-routes] buildTriggerContextFromConversation: getMemories threw: ${
-        err instanceof Error ? err.message : String(err)
-      }`
+      {
+        src: 'plugin:n8n-routes',
+        error: err instanceof Error ? err.message : String(err),
+      },
+      'buildTriggerContextFromConversation: getMemories threw'
     );
     return undefined;
   }

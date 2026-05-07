@@ -21,7 +21,6 @@ export interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: ConfirmVariant;
-  tone?: ConfirmVariant;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -33,11 +32,10 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant: variantProp,
-  tone,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const variant = variantProp ?? tone ?? "default";
+  const variant = variantProp ?? "default";
 
   return (
     <Dialog

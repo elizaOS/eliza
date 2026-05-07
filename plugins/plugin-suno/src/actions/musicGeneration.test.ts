@@ -5,7 +5,7 @@ const recordLlmCallMock = vi.hoisted(() =>
 );
 
 vi.mock('@elizaos/core', () => ({
-    encodeToonValue: (value: unknown) => JSON.stringify(value),
+    parseJSONObjectFromText: (text: string) => JSON.parse(text),
     recordLlmCall: recordLlmCallMock,
 }));
 

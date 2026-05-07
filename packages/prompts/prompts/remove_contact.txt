@@ -13,7 +13,7 @@ instructions[4]:
 - return only the requested contact
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
 contactName: Jane Doe

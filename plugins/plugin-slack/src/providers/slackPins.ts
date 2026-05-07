@@ -6,7 +6,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { SlackService } from "../service";
 import { ServiceType } from "../types";
 
@@ -87,7 +86,7 @@ export const slackPinsProvider: Provider = {
         channelName,
         pinCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         slack_pins: {
           channel: channelName,
           count: entries.length,

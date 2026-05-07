@@ -1,5 +1,6 @@
 // [MAX-ADDED] x402 Middleware — wraps fetch/axios to be x402-aware
 
+import type { AgentWallet } from "../wallet-core.js";
 import { X402Client } from "./client.js";
 import type { X402ClientConfig } from "./types.js";
 
@@ -16,7 +17,7 @@ import type { X402ClientConfig } from "./types.js";
  * @returns X402Client with .fetch() method and budget controls
  */
 export function createX402Client(
-  wallet: any,
+  wallet: AgentWallet,
   config?: X402ClientConfig,
 ): X402Client {
   return new X402Client(wallet, config);
@@ -34,7 +35,7 @@ export function createX402Client(
  * @returns A fetch-compatible function that handles 402 payments
  */
 export function createX402Fetch(
-  wallet: any,
+  wallet: AgentWallet,
   config?: X402ClientConfig,
 ): typeof globalThis.fetch {
   const client = new X402Client(wallet, config);
@@ -54,7 +55,7 @@ export function createX402Fetch(
  */
 export function wrapWithX402(
   fetchFn: typeof globalThis.fetch,
-  wallet: any,
+  wallet: AgentWallet,
   config?: X402ClientConfig,
 ): typeof globalThis.fetch {
   const wrappedClient = new X402Client(wallet, config);

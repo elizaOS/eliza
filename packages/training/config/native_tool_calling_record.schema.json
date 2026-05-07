@@ -29,7 +29,6 @@
         "conversion": {
           "enum": [
             "native_direct",
-            "legacy_toon_compat",
             "legacy_xml_compat",
             "inferred",
             "synthetic"

@@ -11,7 +11,10 @@ import {
 	getErrorMessage,
 	isTransientModelError,
 } from "../../../utils/model-errors.ts";
-import { composePromptFromState, parseJSONObjectFromText } from "../../../utils.ts";
+import {
+	composePromptFromState,
+	parseJSONObjectFromText,
+} from "../../../utils.ts";
 import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
@@ -26,7 +29,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
-	const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
+	const parsed = parseJSONObjectFromText(text) as Record<
+		string,
+		unknown
+	> | null;
 	if (parsed) {
 		const rawMemories = parsed.memories;
 		const candidateEntries = Array.isArray(rawMemories)

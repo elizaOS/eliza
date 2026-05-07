@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -12,7 +11,7 @@ import { resolveXFeedAdapter } from "../actions/x-feed-adapter.js";
 const DEFAULT_LIMIT = 20;
 
 function providerText(value: unknown): string {
-  return encodeToonValue({ x_unread_dms: value });
+  return JSON.stringify({ x_unread_dms: value }, null, 2);
 }
 
 export const xUnreadDmsProvider: Provider = {

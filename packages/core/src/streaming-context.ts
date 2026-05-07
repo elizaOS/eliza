@@ -17,6 +17,7 @@ import type {
 	StreamingToolCallPayload,
 	StreamingToolResultPayload,
 } from "./types/streaming";
+import { StackContextManager } from "./utils/stack-context-manager";
 
 /**
  * Streaming context containing callbacks for streaming lifecycle.
@@ -79,30 +80,6 @@ export interface IStreamingContextManager {
 	active(): StreamingContext | undefined;
 }
 
-/**
- * Stack-based context manager for browser environments.
- * Safe because browser typically has 1 runtime per request.
- * Supports nested contexts via stack push/pop.
- */
-class StackContextManager implements IStreamingContextManager {
-	private stack: Array<StreamingContext | undefined> = [];
-
-	run<T>(context: StreamingContext | undefined, fn: () => T): T {
-		this.stack.push(context);
-		try {
-			return fn();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	active(): StreamingContext | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
-}
-
 // Global singleton - auto-configured on first access
 let globalContextManager: IStreamingContextManager | null = null;
 
@@ -135,7 +112,7 @@ function initContextManagerSync(): IStreamingContextManager {
 			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
-	return new StackContextManager();
+	return new StackContextManager<StreamingContext | undefined>();
 }
 
 function getOrCreateContextManager(): IStreamingContextManager {

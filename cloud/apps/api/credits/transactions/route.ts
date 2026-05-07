@@ -1,7 +1,7 @@
 /**
  * GET /api/credits/transactions
  * Lists credit transactions for the authenticated user's organization.
- * Supports Privy session and API key authentication.
+ * Supports session and API key authentication.
  */
 
 import { Hono } from "hono";

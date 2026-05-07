@@ -13,7 +13,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import {
@@ -56,21 +56,24 @@ Operations:
 
 \`to\` is the user/group/room ID, or "current" to reply in the current chat.
 
-Respond with TOON only:
-op: text
-text:
-altText:
-title:
-body:
-address:
-latitude:
-longitude:
-to: current`;
+Respond with JSON only, with no prose or fences:
+{
+  "op": "text",
+  "text": "",
+  "altText": "",
+  "title": "",
+  "body": "",
+  "address": "",
+  "latitude": null,
+  "longitude": null,
+  "to": "current"
+}`;
 
 function parseInfo(raw: unknown): LineOpInfo | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(
-    typeof raw === "string" ? raw : String(raw)
-  );
+  const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : String(raw)) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) {
     return null;
   }

@@ -9,7 +9,7 @@ import {
 
 const spec = requireActionSpec("SWAP");
 
-import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import {
   createConfig,
   type ExtendedChain,
@@ -615,7 +615,7 @@ export async function buildSwapDetails(
     modelType: ModelType.TEXT_LARGE,
   });
 
-  const parsedResponse = parseToonKeyValue(llmResponse);
+  const parsedResponse = parseJSONObjectFromText(llmResponse) as Record<string, unknown> | null;
 
   if (!parsedResponse) {
     throw new EVMError(

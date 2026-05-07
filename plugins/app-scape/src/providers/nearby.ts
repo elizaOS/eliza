@@ -17,7 +17,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 import type { ScapeGameService } from "../services/game-service.js";
 
@@ -39,7 +38,7 @@ export const nearbyProvider: Provider = {
     if (!snapshot) return { text: "" };
 
     return {
-      text: encode({
+      text: JSON.stringify({
         scape_nearby: {
           npcs: snapshot.nearbyNpcs.map((n) => ({
             id: n.id,

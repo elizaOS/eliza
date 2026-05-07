@@ -393,7 +393,7 @@ export const formatPrice = (price?: number): string => {
     : "N/A";
 };
 
-export const formatToonScalar = (value: unknown): string => {
+export const formatJsonScalar = (value: unknown): string => {
   if (value === undefined || value === null || value === "") {
     return "null";
   }
@@ -407,7 +407,7 @@ export const formatToonScalar = (value: unknown): string => {
   return `"${normalized.replace(/"/g, '\\"')}"`;
 };
 
-export const formatToonTable = (
+export const formatJsonTable = (
   label: string,
   rows: Array<Record<string, unknown>>,
   fields: string[],
@@ -419,7 +419,7 @@ export const formatToonTable = (
   const lines = [`${label}[${rows.length}]{${fields.join(",")}}:`];
   for (const row of rows) {
     lines.push(
-      `${indent}  - ${fields.map((field) => formatToonScalar(row[field])).join(",")}`,
+      `${indent}  - ${fields.map((field) => formatJsonScalar(row[field])).join(",")}`,
     );
   }
   return lines.join("\n");

@@ -281,13 +281,13 @@ export const coreProvidersSpec = {
     },
     {
       "name": "discordChannels",
-      "description": "Lists Discord channels the bot is currently listening to, grouped by server. TOON-encoded.",
+      "description": "Lists Discord channels the bot is currently listening to, grouped by server.",
       "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
       "dynamic": true
     },
     {
       "name": "discordServerInfo",
-      "description": "Discord server overview: members, channels, roles, owner, premium tier. TOON-encoded.",
+      "description": "Discord server overview: members, channels, roles, owner, premium tier.",
       "descriptionCompressed": "Discord server overview (members, channels, roles).",
       "dynamic": true
     }
@@ -313,13 +313,13 @@ export const allProvidersSpec = {
     },
     {
       "name": "discordChannels",
-      "description": "Lists Discord channels the bot is currently listening to, grouped by server. TOON-encoded.",
+      "description": "Lists Discord channels the bot is currently listening to, grouped by server.",
       "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
       "dynamic": true
     },
     {
       "name": "discordServerInfo",
-      "description": "Discord server overview: members, channels, roles, owner, premium tier. TOON-encoded.",
+      "description": "Discord server overview: members, channels, roles, owner, premium tier.",
       "descriptionCompressed": "Discord server overview (members, channels, roles).",
       "dynamic": true
     }

@@ -15,7 +15,7 @@
  *        - Use a real BotManager to connect + spawn
  *        - Wait for perception
  *        - Call each provider against a mock runtime that returns the
- *          live service → verify each produces a TOON string
+ *          live service → verify each produces a JSON string
  *      This exercises the full read path without booting the eliza
  *      runtime.
  */
@@ -25,7 +25,6 @@ import appScapePlugin, {
   type PerceptionSnapshot,
 } from "@elizaos/app-scape";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import { scapeActions } from "../src/actions/index.js";
 import {
   extractParam,
@@ -38,14 +37,11 @@ import { scapeProviders } from "../src/providers/index.js";
 import { inventoryProvider } from "../src/providers/inventory.js";
 import { nearbyProvider } from "../src/providers/nearby.js";
 
-/** TOON-based deep-equality for arrays / objects — matches the
- *  plugin's own "TOON everywhere" rule so tests read the same way
+/** JSON-based deep-equality for arrays / objects — matches the
+ *  plugin's structured-context rule so tests read the same way
  *  the runtime does. */
-function deepEqualViaToon(a: unknown, b: unknown): boolean {
-  return (
-    encode(a as Record<string, unknown>) ===
-    encode(b as Record<string, unknown>)
-  );
+function deepEqualViaJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function assertTrue(label: string, ok: boolean): void {
@@ -127,7 +123,7 @@ async function main(): Promise<void> {
   const actionNames = scapeActions.map((a) => a.name);
   assertTrue(
     "actions = WALK_TO, CHAT_PUBLIC, ATTACK_NPC, DROP_ITEM, EAT_FOOD, SET_GOAL, COMPLETE_GOAL, REMEMBER",
-    deepEqualViaToon(
+    deepEqualViaJson(
       { names: actionNames },
       {
         names: [
@@ -150,7 +146,7 @@ async function main(): Promise<void> {
   const providerNames = scapeProviders.map((p) => p.name);
   assertTrue(
     "providers = SCAPE_BOT_STATE, SCAPE_INVENTORY, SCAPE_NEARBY, SCAPE_JOURNAL, SCAPE_GOALS",
-    deepEqualViaToon(
+    deepEqualViaJson(
       { names: providerNames },
       {
         names: [
@@ -238,7 +234,7 @@ async function main(): Promise<void> {
     emptyNearby === "",
   );
 
-  // 7b. Providers produce TOON output when perception exists
+  // 7b. Providers produce JSON output when perception exists
   console.log("\n[7b] provider output shape");
   const liveRt = mockRuntime(makeSamplePerception());
   const botText = await botStateProvider.get(liveRt, makeDummyMemory());

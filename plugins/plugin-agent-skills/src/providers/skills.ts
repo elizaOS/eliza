@@ -55,7 +55,7 @@ export const skillsSummaryProvider: Provider = {
 			};
 		}
 
-		const skillsToon = service.generateSkillsPromptToon({
+		const skillsJson = service.generateSkillsPromptJson({
 			includeLocation: true,
 		});
 
@@ -77,7 +77,7 @@ export const skillsSummaryProvider: Provider = {
 
 		const text = `## Installed Skills (${skills.length})
 
-${skillsToon}${scanSection}
+${skillsJson}${scanSection}
 
 *Use TOGGLE_SKILL to enable/disable skills. Use INSTALL_SKILL to add new skills. Use UNINSTALL_SKILL to remove installed skills.*`;
 

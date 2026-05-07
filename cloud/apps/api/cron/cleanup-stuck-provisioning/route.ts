@@ -32,7 +32,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { dbWrite } from "@/db/client";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { jobs } from "@/db/schemas/jobs";
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 import { logger } from "@/lib/utils/logger";
 
 /** How long an agent must be stuck before we reset it (ms). */

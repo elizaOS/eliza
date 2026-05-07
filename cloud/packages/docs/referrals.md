@@ -33,7 +33,7 @@ This document describes the **referral program** (signup attribution, bonuses, 5
 ### Where the link appears
 
 1. **Dashboard header — “Invite”**  
-   - Visible only when the user is **not** anonymous and **not** in `authGraceActive` (session still settling). **Why:** Avoids 401s and confusing errors during Privy grace; keeps anonymous users on sign-up CTAs only.
+   - Visible only when the user is **not** anonymous and **not** in `authGraceActive` (session still settling). **Why:** Avoids 401s and confusing errors during session grace; keeps anonymous users on sign-up CTAs only.
 
 2. **`/dashboard/affiliates` — “Invite friends” card**  
    - Placed **above** the affiliate link card, with a distinct visual treatment. **Why:** Both programs live under Monetization, but mixing orange “affiliate” styling with “invite friends” caused low-signal UIs to merge them mentally.

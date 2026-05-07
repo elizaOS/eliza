@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -102,10 +101,10 @@ export const minecraftWorldStateProvider: Provider = {
         `Minecraft: hp=${state.health ?? "?"} food=${state.food ?? "?"} pos=${pos} invItems=${inventoryRows.length} nearbyEntities=${entityRows.length}`,
       ];
       if (inventoryRows.length > 0) {
-        headerLines.push(encodeToonValue({ inventory: inventoryRows }));
+        headerLines.push(JSON.stringify({ inventory: inventoryRows }));
       }
       if (entityRows.length > 0) {
-        headerLines.push(encodeToonValue({ nearbyEntities: entityRows }));
+        headerLines.push(JSON.stringify({ nearbyEntities: entityRows }));
       }
 
       return {

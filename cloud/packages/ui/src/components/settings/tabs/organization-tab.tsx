@@ -18,12 +18,12 @@ import {
 } from "@elizaos/cloud-ui";
 import { Settings, Users } from "lucide-react";
 import { useState } from "react";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import { MembersTab } from "@/packages/ui/src/components/organization/members-tab";
 import { OrganizationGeneralTab } from "@/packages/ui/src/components/organization/organization-general-tab";
 
 interface OrganizationTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 export function OrganizationTab({ user }: OrganizationTabProps) {

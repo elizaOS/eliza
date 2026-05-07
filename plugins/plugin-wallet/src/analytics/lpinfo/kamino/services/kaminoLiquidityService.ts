@@ -65,6 +65,102 @@ interface TokenInfo {
   priceChange24h?: number;
 }
 
+/** Minimal Birdeye service surface used for token resolution */
+interface BirdeyeTokenOverviewData {
+  name?: string;
+  symbol?: string;
+  address?: string;
+  price?: number;
+  liquidity?: number;
+  decimals?: number;
+  mc?: number;
+  volume24h?: number;
+  priceChange24hPercent?: number;
+}
+
+interface BirdeyeOverviewResponse {
+  data?: BirdeyeTokenOverviewData;
+}
+
+interface BirdeyeMarketDataPayload {
+  price?: number;
+  liquidity?: number;
+  marketCap?: number;
+  volume24h?: number;
+}
+
+interface BirdeyeMarketDataResponse {
+  data?: BirdeyeMarketDataPayload;
+}
+
+interface BirdeyeResolveService {
+  fetchTokenOverview(
+    params: { address: string },
+    init?: { headers?: Record<string, string> },
+  ): Promise<BirdeyeOverviewResponse | undefined>;
+  fetchTokenMarketData(
+    params: { address: string },
+    init?: { headers?: Record<string, string> },
+  ): Promise<BirdeyeMarketDataResponse | undefined>;
+}
+
+interface KaminoMarketStatistics {
+  timestamp: string;
+  stakingYields: {
+    total: number;
+    averageApy: number;
+    maxApy: number;
+    minApy: number;
+  };
+  medianYields: {
+    total: number;
+    averageApy: number;
+  };
+  limoTrades: {
+    total: number;
+    totalVolume: number;
+    averageTip: number;
+    averageSurplus: number;
+  };
+}
+
+interface KaminoPoolInfoWithStrategy {
+  address: string;
+  strategy: KaminoStrategy;
+  tokenInfo: TokenInfo | null;
+  timestamp: string;
+  metrics: {
+    totalValueLocked: number;
+    volume24h: number;
+    apy: number;
+    feeTier: string;
+    rebalancing: string;
+    lastRebalance: string;
+    positionCount: number;
+  };
+}
+
+interface KaminoPoolInfoTokenFallback {
+  address: string;
+  tokenInfo: TokenInfo;
+  timestamp: string;
+  note: string;
+}
+
+type KaminoPoolByAddressResult =
+  | KaminoPoolInfoWithStrategy
+  | KaminoPoolInfoTokenFallback
+  | null;
+
+interface KaminoLiquidityConnectionTest {
+  apiBaseUrl: string;
+  connectionTest: boolean;
+  stakingYieldsTest: boolean;
+  limoTradesTest: boolean;
+  strategyCount: number;
+  timestamp: string;
+}
+
 interface StakingYield {
   apy: string;
   tokenMint: string;
@@ -141,7 +237,9 @@ export class KaminoLiquidityService extends Service {
     tokenIdentifier: string,
   ): Promise<TokenInfo | null> {
     try {
-      const birdeyeService = this.runtime.getService("birdeye") as any;
+      const birdeyeService = this.runtime.getService(
+        "birdeye",
+      ) as BirdeyeResolveService | null;
       if (!birdeyeService) {
         logger.warn("Birdeye service not available for token resolution");
         return null;
@@ -276,7 +374,7 @@ export class KaminoLiquidityService extends Service {
   /**
    * Get real-time market statistics from Kamino API
    */
-  async getMarketStatistics(): Promise<any> {
+  async getMarketStatistics(): Promise<KaminoMarketStatistics | null> {
     try {
       logger.log("Fetching real-time market statistics from Kamino API...");
 
@@ -512,7 +610,9 @@ export class KaminoLiquidityService extends Service {
   /**
    * Get detailed pool information by pool address
    */
-  async getPoolByAddress(poolAddress: string): Promise<any> {
+  async getPoolByAddress(
+    poolAddress: string,
+  ): Promise<KaminoPoolByAddressResult> {
     try {
       logger.log(`Getting pool information for address: ${poolAddress}`);
 
@@ -905,7 +1005,7 @@ export class KaminoLiquidityService extends Service {
   /**
    * Test connection and basic functionality
    */
-  async testConnection(): Promise<any> {
+  async testConnection(): Promise<KaminoLiquidityConnectionTest> {
     try {
       logger.log("Testing Kamino liquidity service connection...");
 

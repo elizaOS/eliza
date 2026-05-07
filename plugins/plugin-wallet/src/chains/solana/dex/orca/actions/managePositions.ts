@@ -7,7 +7,7 @@ import {
   type HandlerCallback,
   type Memory,
   ModelClass,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
   settings,
 } from "@elizaos/core";
@@ -140,7 +140,11 @@ export const managePositions: typeof actions = {
     elizaLogger.log("Fetched positions:", fetchedPositions);
 
     const { signer: wallet } = await loadWallet(runtime, true);
-    const rpc = createSolanaRpc(settings.SOLANA_RPC_URL!);
+    const solanaRpcUrl = settings.SOLANA_RPC_URL;
+    if (!solanaRpcUrl) {
+      throw new Error("SOLANA_RPC_URL setting is required to manage Orca positions.");
+    }
+    const rpc = createSolanaRpc(solanaRpcUrl);
     setDefaultSlippageToleranceBps(slippageToleranceBps);
     setDefaultFunder(wallet);
 
@@ -229,10 +233,12 @@ export async function extractAndValidateConfiguration(
   const prompt = `Given this message: "${text}". Extract the reposition threshold value, time interval, and slippage tolerance.
         The threshold value and the slippage tolerance can be given in percentages or bps. You will always respond with the reposition threshold in bps.
         Very important: Use null for each field that is not present in the message.
-        Respond with TOON only using this shape:
-        repositionThresholdBps: 120
-        intervalSeconds: 300
-        slippageToleranceBps: 50
+        Respond with JSON only using this shape:
+        {
+          "repositionThresholdBps": 120,
+          "intervalSeconds": 300,
+          "slippageToleranceBps": 50
+        }
     `;
 
   const content = await generateText({
@@ -242,7 +248,7 @@ export async function extractAndValidateConfiguration(
   });
 
   try {
-    const configuration = parseToonKeyValue<Record<string, unknown>>(content);
+    const configuration = parseJSONObjectFromText(content) as Record<string, unknown> | null;
     if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
       throw new Error("Configuration must be a structured object");
     }

@@ -4,7 +4,7 @@
  * Auth priority:
  *   1. X-Service-Key header (existing S2S auth for eliza-cloud)
  *   2. Service JWT in Authorization header (waifu-core bridge)
- *   3. Standard Privy/API-key auth (dashboard users)
+ *   3. Standard Steward/API-key auth (dashboard users)
  */
 
 import type { Organization } from "@/db/schemas/organizations";
@@ -57,7 +57,7 @@ export async function requireCompatAuth(request: Request): Promise<CompatAuthRes
     };
   }
 
-  // 3. Standard auth (Privy / API key)
+  // 3. Standard auth (Steward / API key)
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   return {
     user,

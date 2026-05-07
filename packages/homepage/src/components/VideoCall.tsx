@@ -1,11 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import type { ComponentType, HTMLAttributes } from "react";
 import { useSpring, animated } from "@react-spring/web";
-
-type SpringAnimatedStyle = Record<
-  string,
-  string | number | boolean | null | undefined | object
->;
+import type { SpringAnimatedStyle } from "@/lib/spring-types";
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
 };

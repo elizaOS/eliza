@@ -10,7 +10,6 @@ import type {
   AppSessionJsonValue,
   AppSessionState,
 } from "@elizaos/shared";
-import { decode, encode } from "@toon-format/toon";
 
 import type { JournalGoal, JournalMemory } from "./journal/types.js";
 import type {
@@ -32,8 +31,8 @@ import type { ScapeGameService } from "./services/game-service.js";
  *                                                     xRSPS React client
  *   POST /api/apps/scape/prompt                     — legacy operator-steering
  *                                                     endpoint (pre-session)
- *   GET  /api/apps/scape/journal                    — recent memories (TOON)
- *   GET  /api/apps/scape/goals                      — current goals (TOON)
+ *   GET  /api/apps/scape/journal                    — recent memories (JSON)
+ *   GET  /api/apps/scape/goals                      — current goals (JSON)
  *   GET  /api/apps/scape/session/:sessionId         — session snapshot
  *   POST /api/apps/scape/session/:sessionId/message — operator goal / verb
  *   POST /api/apps/scape/session/:sessionId/control — pause|resume
@@ -46,17 +45,14 @@ import type { ScapeGameService } from "./services/game-service.js";
  * ## Bodies
  *
  * Requests may arrive as JSON (Content-Type `application/json`) or as
- * TOON (Content-Type `text/toon`). The host's built-in `readJsonBody`
- * is JSON-only, so for any non-JSON content type we read the raw
- * request body ourselves, try to decode it as TOON, and fall back to
- * treating it as a raw text directive.
+ * raw text. The host's built-in `readJsonBody` helper is JSON-only, so for
+ * non-JSON content types we read the raw request body ourselves and fall
+ * back to treating it as a raw text directive.
  *
  * ## Responses
  *
  * Viewer → `text/html`
- * Everything else → `text/toon; charset=utf-8` with a TOON-encoded
- * payload. The eliza host is fine with any content type as long as
- * the status line is correct.
+ * Everything else → `application/json; charset=utf-8`.
  *
  * ## Why a wrapper HTML and not a direct `launchUrl` iframe?
  *
@@ -335,12 +331,10 @@ function sendHtmlResponse(res: unknown, html: string): void {
 }
 
 /**
- * Send a TOON-encoded response. Mirrors `sendHtmlResponse` above but
- * for the agent-facing endpoints; response body is the TOON-encoded
- * version of `payload`. We set `text/toon` so clients that know the
- * format can decode directly, but the eliza host doesn't care.
+ * Send a JSON response. Mirrors `sendHtmlResponse` above but for the
+ * agent-facing endpoints.
  */
-function sendToonResponse(
+function sendJsonResponse(
   res: unknown,
   status: number,
   payload: unknown,
@@ -348,8 +342,8 @@ function sendToonResponse(
   const response = res as MutableResponse;
   response.statusCode = status;
   response.setHeader("Cache-Control", "no-store");
-  response.setHeader("Content-Type", "text/toon; charset=utf-8");
-  const body = encode(payload as Record<string, unknown>);
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  const body = JSON.stringify(payload);
   response.end(body);
 }
 
@@ -360,7 +354,7 @@ function sendToonResponse(
 /**
  * Read the request body as a Node Buffer and decode it. We need this
  * because the host's `readJsonBody` helper rejects anything with a
- * non-JSON Content-Type, and our routes accept TOON. Size-capped at
+ * non-JSON Content-Type, and our routes accept plain text. Size-capped at
  * 64KB so a pathological client can't OOM the eliza host.
  */
 async function readRawBody(
@@ -410,13 +404,12 @@ async function readRawBody(
 
 /**
  * Resolve an operator directive body to a plain string, regardless of
- * whether the caller sent JSON, TOON, or raw text. Priority order:
+ * whether the caller sent JSON or raw text. Priority order:
  *
  *   1. If the host already parsed the body as JSON, check the known
  *      keys (`text`, `prompt`, `directive`, `message`, `content`).
- *   2. Otherwise read the raw body. If the Content-Type is JSON-ish
- *      try JSON.parse first; otherwise try TOON decode; otherwise
- *      fall back to treating the raw body as a plain text directive.
+ *   2. Otherwise read the raw body and fall back to treating the raw body
+ *      as a plain text directive.
  *
  * Returns `null` if nothing usable was provided.
  */
@@ -444,19 +437,6 @@ async function readDirectiveBody(
     return null;
   }
   if (!raw) return null;
-
-  // TOON decode (covers text/toon and unlabeled body that happens
-  // to be TOON — the 2004scape app-manager proxy forwards with
-  // application/toon, elizaOS's run-steering uses text/toon).
-  try {
-    const decoded = decode(raw);
-    if (decoded && typeof decoded === "object") {
-      const fromToon = extractDirectiveText(decoded);
-      if (fromToon) return fromToon;
-    }
-  } catch {
-    // Not TOON — fall through.
-  }
 
   // Final fallback: the body is a plain text directive.
   return raw.trim() || null;
@@ -928,13 +908,13 @@ export async function handleAppRoutes(
       const service = getScapeService(runtime);
       const journal = service?.getJournalService?.();
       if (!journal) {
-        sendToonResponse(ctx.res, 503, {
+        sendJsonResponse(ctx.res, 503, {
           error: "journal not available",
         });
         return true;
       }
       const state = journal.getState();
-      sendToonResponse(ctx.res, 200, {
+      sendJsonResponse(ctx.res, 200, {
         agentId: state.agentId,
         displayName: state.displayName,
         sessionCount: state.sessionCount,
@@ -942,7 +922,7 @@ export async function handleAppRoutes(
         updatedAt: state.updatedAt,
       });
     } catch (error) {
-      sendToonResponse(ctx.res, 500, {
+      sendJsonResponse(ctx.res, 500, {
         error:
           error instanceof Error ? error.message : "Failed to read journal",
       });
@@ -958,19 +938,19 @@ export async function handleAppRoutes(
       const service = getScapeService(runtime);
       const journal = service?.getJournalService?.();
       if (!journal) {
-        sendToonResponse(ctx.res, 503, {
+        sendJsonResponse(ctx.res, 503, {
           error: "journal not available",
         });
         return true;
       }
       const active = journal.getActiveGoal();
       const all = journal.getGoals();
-      sendToonResponse(ctx.res, 200, {
+      sendJsonResponse(ctx.res, 200, {
         active,
         goals: all,
       });
     } catch (error) {
-      sendToonResponse(ctx.res, 500, {
+      sendJsonResponse(ctx.res, 500, {
         error: error instanceof Error ? error.message : "Failed to read goals",
       });
     }
@@ -1015,7 +995,7 @@ async function handleSessionRoute(ctx: ScapeRouteContext): Promise<boolean> {
   // silently and act on the wrong run we return a structured error
   // so the host can re-resolve and retry.
   if (parsed.sessionId !== expectedSessionId) {
-    sendToonResponse(ctx.res, 404, {
+    sendJsonResponse(ctx.res, 404, {
       error: "session id does not match current 'scape session",
       expected: expectedSessionId,
       received: parsed.sessionId,
@@ -1025,7 +1005,7 @@ async function handleSessionRoute(ctx: ScapeRouteContext): Promise<boolean> {
 
   // GET session snapshot
   if (ctx.method === "GET" && parsed.subroute === "") {
-    sendToonResponse(ctx.res, 200, {
+    sendJsonResponse(ctx.res, 200, {
       success: true,
       session: buildScapeSessionState(runtime),
     });
@@ -1042,7 +1022,7 @@ async function handleSessionRoute(ctx: ScapeRouteContext): Promise<boolean> {
     try {
       const service = getScapeService(runtime);
       if (!service) {
-        sendToonResponse(ctx.res, 503, {
+        sendJsonResponse(ctx.res, 503, {
           success: false,
           error: "scape_game service not available",
           disposition: "unsupported",
@@ -1056,21 +1036,21 @@ async function handleSessionRoute(ctx: ScapeRouteContext): Promise<boolean> {
       } else if (action === "resume") {
         service.resume();
       } else {
-        sendToonResponse(ctx.res, 400, {
+        sendJsonResponse(ctx.res, 400, {
           success: false,
           error: "control action must be 'pause' or 'resume'",
           disposition: "rejected",
         });
         return true;
       }
-      sendToonResponse(ctx.res, 200, {
+      sendJsonResponse(ctx.res, 200, {
         success: true,
         disposition: "accepted",
         message: action === "pause" ? "autoplay paused" : "autoplay resumed",
         session: buildScapeSessionState(runtime),
       });
     } catch (error) {
-      sendToonResponse(ctx.res, 500, {
+      sendJsonResponse(ctx.res, 500, {
         success: false,
         error: error instanceof Error ? error.message : "control action failed",
         disposition: "unsupported",
@@ -1084,7 +1064,7 @@ async function handleSessionRoute(ctx: ScapeRouteContext): Promise<boolean> {
 
 /**
  * Shared directive handler for `/prompt` and
- * `/session/:id/message`. Reads the body (JSON or TOON or raw text),
+ * `/session/:id/message`. Reads the body (JSON or raw text),
  * hands it to the service's `applyOperatorMessage`, and responds with
  * a disposition the app-manager expects.
  */
@@ -1097,7 +1077,7 @@ async function handleOperatorDirective(
       (asRuntimeLike(ctx.runtime) as IAgentRuntime | null) ?? null;
     const service = getScapeService(runtime);
     if (!service) {
-      sendToonResponse(ctx.res, 503, {
+      sendJsonResponse(ctx.res, 503, {
         success: false,
         error: "scape_game service not available",
         disposition: "unsupported",
@@ -1107,7 +1087,7 @@ async function handleOperatorDirective(
 
     const text = await readDirectiveBody(ctx);
     if (!text) {
-      sendToonResponse(ctx.res, 400, {
+      sendJsonResponse(ctx.res, 400, {
         success: false,
         error:
           "expected body with `text`, `prompt`, `directive`, `message`, or `content`",
@@ -1117,7 +1097,7 @@ async function handleOperatorDirective(
     }
 
     const outcome = service.applyOperatorMessage(text);
-    sendToonResponse(ctx.res, outcome.disposition === "queued" ? 202 : 200, {
+    sendJsonResponse(ctx.res, outcome.disposition === "queued" ? 202 : 200, {
       success: true,
       disposition: outcome.disposition,
       message: outcome.note,
@@ -1127,7 +1107,7 @@ async function handleOperatorDirective(
       session: buildScapeSessionState(runtime),
     });
   } catch (error) {
-    sendToonResponse(ctx.res, 500, {
+    sendJsonResponse(ctx.res, 500, {
       success: false,
       error:
         error instanceof Error ? error.message : "failed to accept directive",

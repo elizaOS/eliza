@@ -118,7 +118,7 @@ bun run dev  # or however you start eliza
 
 The plugin connects, auto-registers `scape-agent` as a real account
 on first run, and starts its autonomous loop. The journal file appears
-at `~/.eliza/scape-journals/scape-scape-agent.toon` (TOON-encoded,
+at `~/.eliza/scape-journals/scape-scape-agent.json` (JSON-encoded,
 not JSON).
 
 Click the 'scape tile in the eliza apps grid and the viewer iframe
@@ -136,7 +136,7 @@ Follow `xrsps-typescript/docs/deployment.md` for the Caddy reverse
 proxy setup. Your xRSPS server ends up at `wss://game.yourdomain.com`.
 The bot-SDK shares the main HTTP server and is routed by URL path
 at `/botsdk`, so the same host/port handles both the binary game
-protocol and the TOON agent protocol — TLS is terminated once at
+protocol and the JSON agent protocol — TLS is terminated once at
 the ingress.
 
 **Important**: the bot-SDK is gated on `BOT_SDK_TOKEN` (if the env
@@ -172,7 +172,7 @@ From the eliza runtime host:
 ```bash
 # HTTP ping: POST a directive to the agent
 curl -X POST https://your-eliza-host/api/apps/scape/prompt \
-  -H "Content-Type: text/toon" \
+  -H "Content-Type: application/json" \
   -d 'text: mine copper ore near Lumbridge'
 
 # Read the journal
@@ -192,7 +192,7 @@ The next LLM step should honor the directive.
 
 ## Operational tips
 
-- **Journal backups**: `~/.eliza/scape-journals/*.toon` is the
+- **Journal backups**: `~/.eliza/scape-journals/*.json` is the
   agent's long-term memory. Back it up alongside xRSPS
   `accounts.json` and `player-state.json`.
 - **Multiple agents**: spin up multiple eliza characters, give each
@@ -209,12 +209,12 @@ The plugin ships 7 verify scripts, all in `plugins/app-scape/scripts/`:
 | Script                   | What it proves                                                                |
 |--------------------------|-------------------------------------------------------------------------------|
 | `verify-pr2.ts`          | Plugin loads, metadata shape is correct, curated registry lookup works       |
-| `verify-pr3.ts`          | TOON codec round-trips, BotSdk/BotManager API shape, live connect+spawn+perception |
-| `verify-pr4.ts`          | Autonomous loop scaffolding, providers render TOON, param parser             |
+| `verify-pr3.ts`          | JSON codec round-trips, BotSdk/BotManager API shape, live connect+spawn+perception |
+| `verify-pr4.ts`          | Autonomous loop scaffolding, providers render JSON, param parser             |
 | `verify-pr4-live-loop.ts`| Full end-to-end LLM step via stub runtime — agent visibly moves              |
 | `verify-pr5.ts`          | All 5 world actions (walkTo, chat, attack, drop, eat) work + negative paths  |
-| `verify-pr6.ts`          | Journal TOON persistence, memory prune-by-weight, goal lifecycle             |
-| `verify-pr7.ts`          | HTTP routes (POST /prompt, GET /journal, GET /goals) accept TOON             |
+| `verify-pr6.ts`          | Journal JSON persistence, memory prune-by-weight, goal lifecycle             |
+| `verify-pr7.ts`          | HTTP routes (POST /prompt, GET /journal, GET /goals) accept JSON             |
 | `verify-pr7-live.ts`     | Real ScapeGameService + xRSPS + HTTP POST → operator goal → journal         |
 
 And xrsps ships two verify scripts in `scripts/`:

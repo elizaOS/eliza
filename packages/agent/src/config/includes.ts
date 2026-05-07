@@ -9,8 +9,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isPlainObject } from "@elizaos/shared";
 import JSON5 from "json5";
-import { isPlainObject } from "./object-utils.js";
 
 export const INCLUDE_KEY = "$include";
 export const MAX_INCLUDE_DEPTH = 10;

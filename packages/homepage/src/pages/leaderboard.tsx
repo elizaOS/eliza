@@ -19,12 +19,10 @@ import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
+import { ELIZA_PHONE_NUMBER } from "@/lib/contact";
+import type { SpringAnimatedStyle } from "@/lib/spring-types";
 import VideoCall from "@/components/VideoCall";
 
-type SpringAnimatedStyle = Record<
-  string,
-  string | number | boolean | null | undefined | object
->;
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
   HTMLAttributes<T>,
   "style"
@@ -815,7 +813,7 @@ export default function Leaderboard() {
           </div>
           <nav className="flex items-center gap-4">
             <BlobButton
-              href="sms:+14245074963?body=Hi%20Eliza"
+              href={`sms:${ELIZA_PHONE_NUMBER}?body=Hi%20Eliza`}
               onClick={() => {
                 // Try to open native Messages, fallback to /get-started if it doesn't work
                 const fallbackTimeout = setTimeout(() => {

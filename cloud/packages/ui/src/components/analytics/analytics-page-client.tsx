@@ -22,7 +22,7 @@ import {
 } from "@elizaos/cloud-ui";
 import { format } from "date-fns";
 import { Activity, BarChart3, CalendarRange, Coins, ShieldCheck, TrendingUp } from "lucide-react";
-import type { EnhancedAnalyticsData, ProjectionsData } from "@/lib/actions/analytics-enhanced";
+import type { EnhancedAnalyticsDataDto, ProjectionsDataDto } from "@/types/cloud-api";
 import { CostInsightsCard } from "./cost-insights-card";
 import { AnalyticsFilters } from "./filters";
 import { ModelBreakdown } from "./model-breakdown";
@@ -31,8 +31,8 @@ import { ProviderBreakdown } from "./provider-breakdown";
 import { UsageChart } from "./usage-chart";
 
 interface AnalyticsPageClientProps {
-  data: EnhancedAnalyticsData;
-  projectionsData: ProjectionsData;
+  data: EnhancedAnalyticsDataDto;
+  projectionsData: ProjectionsDataDto;
 }
 
 export function AnalyticsPageClient({ data, projectionsData }: AnalyticsPageClientProps) {

@@ -23,10 +23,10 @@ import {
 } from "@elizaos/cloud-ui";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface GeneralTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 interface FormState {

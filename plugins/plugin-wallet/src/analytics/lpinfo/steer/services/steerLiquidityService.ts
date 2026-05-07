@@ -1,17 +1,63 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, JsonValue } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
-
-// Import Steer Protocol SDK
+import type { StakingPool } from "@steerprotocol/sdk";
 import {
   AMMType,
   StakingClient,
   SteerClient,
   VaultClient,
 } from "@steerprotocol/sdk";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, createWalletClient, http } from "viem";
 // Import Viem for proper chain and transport configuration
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
+
+import type {
+  SteerStakingPoolDetailInput,
+  SteerVaultDetailInput,
+} from "../steer-display-types.js";
+
+type StakingClientCtor = ConstructorParameters<typeof StakingClient>;
+
+type SteerEarnedRewardsResult = Awaited<ReturnType<StakingClient["earned"]>>;
+type SteerStakingSupplyResult = Awaited<
+  ReturnType<StakingClient["totalSupply"]>
+>;
+type SteerStakingBalanceResult = Awaited<
+  ReturnType<StakingClient["balanceOf"]>
+>;
+type SteerPreviewDepositResult = Awaited<
+  ReturnType<VaultClient["previewSingleAssetDeposit"]>
+>;
+type SteerSingleDepositResult = Awaited<
+  ReturnType<VaultClient["singleAssetDeposit"]>
+>;
+
+interface SteerPoolNode {
+  poolAddress?: string;
+  id?: string;
+  totalValueLockedUSD?: string;
+  volumeUSD?: string;
+  feeTier?: string;
+  liquidity?: number;
+}
+
+/** Raw vault node shape returned by `@steerprotocol/sdk` before enrichment */
+interface RawSteerVault {
+  vaultAddress?: string;
+  address?: string;
+  name?: string;
+  token0?: string | { address?: string };
+  token1?: string | { address?: string };
+  pool?: { poolAddress?: string; feeTier?: number };
+  poolAddress?: string;
+  fee?: number;
+  aprData?: Record<string, number>;
+  apy?: number;
+  apr?: number;
+  tvl?: number;
+  volume24h?: number;
+}
 
 // Supported chain IDs
 const SUPPORTED_CHAIN_IDS = [1, 137, 42161, 10, 8453]; // mainnet, polygon, arbitrum, optimism, base
@@ -26,8 +72,8 @@ interface TokenLiquidityStats {
   normalizedToken: string;
   tokenName: string;
   timestamp: string;
-  vaults: any[];
-  stakingPools: any[];
+  vaults: SteerVaultDetailInput[];
+  stakingPools: SteerStakingPoolDetailInput[];
   totalTvl: number;
   totalVolume: number;
   apyRange: { min: number; max: number };
@@ -90,7 +136,8 @@ export class SteerLiquidityService extends Service {
   private supportedChains: number[];
   private vaultClients: Map<number, VaultClient> = new Map();
   private stakingClients: Map<number, StakingClient> = new Map();
-  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private cache: Map<string, { data: JsonValue; timestamp: number }> =
+    new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 
   static serviceType = "STEER_LIQUIDITY_SERVICE";
@@ -177,21 +224,23 @@ export class SteerLiquidityService extends Service {
           transport: http(),
         });
 
-        const walletClient = createPublicClient({
+        const walletClient = createWalletClient({
           chain: viemChain,
           transport: http(),
         });
 
         // Initialize vault client for this chain
         const vaultClient = new VaultClient(
-          publicClient as any,
-          walletClient as any,
+          publicClient,
+          walletClient,
           "production",
         );
         this.vaultClients.set(chainId, vaultClient);
 
         // Initialize staking client for this chain
-        const stakingClient = new StakingClient(publicClient as any);
+        const stakingClient = new StakingClient(
+          walletClient as StakingClientCtor[0],
+        );
         this.stakingClients.set(chainId, stakingClient);
 
         logger.log(`Initialized clients for chain ${chainId}`);
@@ -224,8 +273,8 @@ export class SteerLiquidityService extends Service {
       const normalizedToken = this.normalizeTokenIdentifier(tokenIdentifier);
       const tokenName = this.getTokenName(normalizedToken);
 
-      const allVaults: any[] = [];
-      const allStakingPools: any[] = [];
+      const allVaults: SteerVaultDetailInput[] = [];
+      const allStakingPools: SteerStakingPoolDetailInput[] = [];
 
       // Determine which chains to search
       let chainsToSearch: number[];
@@ -389,7 +438,9 @@ export class SteerLiquidityService extends Service {
   /**
    * Get all vaults for a specific chain using the SDK
    */
-  private async getAllVaultsForChain(chainId: number): Promise<any[]> {
+  private async getAllVaultsForChain(
+    chainId: number,
+  ): Promise<SteerVaultDetailInput[]> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -397,8 +448,12 @@ export class SteerLiquidityService extends Service {
         return [];
       }
 
-      // Get all vaults for the chain using SDK
-      let vaultsResponse;
+      type VaultSdkList = {
+        success: boolean;
+        data?: { edges?: Array<{ node?: RawSteerVault }> };
+        error?: string;
+      };
+      let vaultsResponse: VaultSdkList;
       try {
         vaultsResponse = await vaultClient.getVaults({ chainId }, 100, null);
       } catch (error) {
@@ -428,8 +483,10 @@ export class SteerLiquidityService extends Service {
       });
 
       // Extract vaults from the paginated response structure
-      const vaults =
-        vaultsResponse.data?.edges?.map((edge: any) => edge.node) || [];
+      const vaults: RawSteerVault[] =
+        vaultsResponse.data?.edges
+          ?.map((edge: { node?: RawSteerVault }) => edge.node)
+          .filter((n): n is RawSteerVault => n !== undefined) || [];
       logger.log(
         `Retrieved ${vaults.length} vaults from SDK for chain ${chainId}`,
       );
@@ -438,6 +495,7 @@ export class SteerLiquidityService extends Service {
       const processedVaults = await Promise.all(
         vaults.map(async (vault) => {
           try {
+            if (!vault) return null;
             return await this.processVaultData(vault, chainId);
           } catch (error) {
             logger.error(`Error processing vault ${vault.address}:`, error);
@@ -446,7 +504,9 @@ export class SteerLiquidityService extends Service {
         }),
       );
 
-      return processedVaults.filter((vault) => vault !== null);
+      return processedVaults.filter(
+        (vault): vault is SteerVaultDetailInput => vault !== null,
+      );
     } catch (error) {
       logger.error(`Error getting vaults for chain ${chainId}:`, error);
       return [];
@@ -459,7 +519,7 @@ export class SteerLiquidityService extends Service {
   private async getVaultsForToken(
     chainId: number,
     tokenAddress: string,
-  ): Promise<any[]> {
+  ): Promise<SteerVaultDetailInput[]> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -467,8 +527,12 @@ export class SteerLiquidityService extends Service {
         return [];
       }
 
-      // Get all vaults for the chain
-      let vaultsResponse;
+      type VaultSdkList = {
+        success: boolean;
+        data?: { edges?: Array<{ node?: RawSteerVault }> };
+        error?: string;
+      };
+      let vaultsResponse: VaultSdkList;
       try {
         vaultsResponse = await vaultClient.getVaults({ chainId }, 100, null);
       } catch (error) {
@@ -484,8 +548,10 @@ export class SteerLiquidityService extends Service {
       }
 
       // Extract vaults from the paginated response structure
-      const allVaults =
-        vaultsResponse.data?.edges?.map((edge: any) => edge.node) || [];
+      const allVaults: RawSteerVault[] =
+        vaultsResponse.data?.edges
+          ?.map((edge: { node?: RawSteerVault }) => edge.node)
+          .filter((n): n is RawSteerVault => n !== undefined) || [];
       logger.log(
         `Searching ${allVaults.length} vaults for token ${tokenAddress} on chain ${chainId}`,
       );
@@ -503,7 +569,7 @@ export class SteerLiquidityService extends Service {
         });
       }
 
-      const matchingVaults: any[] = [];
+      const matchingVaults: SteerVaultDetailInput[] = [];
 
       // Filter vaults that contain the target token
       for (const vault of allVaults) {
@@ -541,7 +607,10 @@ export class SteerLiquidityService extends Service {
   /**
    * Check if a vault contains a specific token
    */
-  private vaultContainsToken(vault: any, tokenAddress: string): boolean {
+  private vaultContainsToken(
+    vault: RawSteerVault,
+    tokenAddress: string,
+  ): boolean {
     const targetAddress = tokenAddress.toLowerCase();
 
     // Check token0 and token1 - handle both string and object formats
@@ -568,7 +637,10 @@ export class SteerLiquidityService extends Service {
   /**
    * Process vault data from SDK response
    */
-  private async processVaultData(vault: any, chainId: number): Promise<any> {
+  private async processVaultData(
+    vault: RawSteerVault,
+    chainId: number,
+  ): Promise<SteerVaultDetailInput | null> {
     try {
       // Extract basic vault information
       const vaultAddress = vault.vaultAddress || vault.address || "";
@@ -596,7 +668,12 @@ export class SteerLiquidityService extends Service {
         volume24h: vault.volume24h || 0,
         apy: apy,
         isActive: vault.isActive !== false, // Default to true unless explicitly false
-        createdAt: vault.createdAt || new Date().toISOString(),
+        createdAt:
+          typeof vault.createdAt === "number"
+            ? vault.createdAt
+            : typeof vault.createdAt === "string"
+              ? Number.parseInt(vault.createdAt, 10) || Date.now()
+              : Date.now(),
         strategyType: vault.protocol || vault.strategyType || "Unknown",
         positions: vault.positions || [],
         poolAddress: poolAddress,
@@ -619,14 +696,19 @@ export class SteerLiquidityService extends Service {
 
       // Try to get additional data from SDK if available
       try {
-        const vaultDetails = await this.getVaultDetails(vaultAddress, chainId);
-        if (vaultDetails) {
-          // Update with real data if available
-          if (vaultDetails.tvl) processedVault.tvl = vaultDetails.tvl;
-          if (vaultDetails.volume24h)
-            processedVault.volume24h = vaultDetails.volume24h;
-          if (vaultDetails.apy) processedVault.apy = vaultDetails.apy;
-          if (vaultDetails.apr) processedVault.apy = vaultDetails.apr;
+        const gqlPeek = await this.getVaultDataFromGraphQL(vaultAddress);
+        if (gqlPeek) {
+          const gqlTvl = this.calculateTvlFromBalances(
+            gqlPeek.token0Balance,
+            gqlPeek.token1Balance,
+            parseInt(gqlPeek.token0Decimals, 10) || 18,
+            parseInt(gqlPeek.token1Decimals, 10) || 18,
+          );
+          if (gqlTvl > 0) processedVault.tvl = gqlTvl;
+          const wApr = parseFloat(gqlPeek.weeklyFeeAPR);
+          if (Number.isFinite(wApr) && wApr > 0) {
+            processedVault.apy = wApr * 52;
+          }
         }
 
         // Try to get pool-specific data if we have a pool address
@@ -702,12 +784,13 @@ export class SteerLiquidityService extends Service {
   async getVaultDetails(
     vaultAddress: string,
     chainId: number,
-  ): Promise<any | null> {
+  ): Promise<SteerVaultDetailInput | RawSteerVault | null> {
     try {
       // First try to get data from GraphQL
       const graphqlData = await this.getVaultDataFromGraphQL(vaultAddress);
       if (graphqlData) {
         logger.log(`Found vault ${vaultAddress} via GraphQL`);
+        const feeTierBp = parseInt(graphqlData.feeTier, 10) || 3000;
         return {
           address: vaultAddress,
           name: graphqlData.name,
@@ -720,13 +803,17 @@ export class SteerLiquidityService extends Service {
           token0Balance: graphqlData.token0Balance,
           token1Balance: graphqlData.token1Balance,
           totalLPTokensIssued: graphqlData.totalLPTokensIssued,
-          feeTier: parseInt(graphqlData.feeTier, 10) || 3000,
+          feeTier: feeTierBp,
           fees0: graphqlData.fees0,
           fees1: graphqlData.fees1,
           strategyToken: graphqlData.strategyToken,
           beaconName: graphqlData.beaconName,
           deployer: graphqlData.deployer,
           chainId,
+          volume24h: 0,
+          strategyType: "graphql",
+          fee: feeTierBp / 10000,
+          createdAt: Date.now(),
           // Calculate basic metrics
           tvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
@@ -756,7 +843,7 @@ export class SteerLiquidityService extends Service {
   private async getVaultDetailsFromSDK(
     vaultAddress: string,
     chainId: number,
-  ): Promise<any | null> {
+  ): Promise<RawSteerVault | null> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -775,8 +862,10 @@ export class SteerLiquidityService extends Service {
       }
 
       // Extract vaults from the paginated response structure
-      const vaults =
-        vaultResponse.data?.edges?.map((edge: any) => edge.node) || [];
+      const vaults: RawSteerVault[] =
+        vaultResponse.data?.edges
+          ?.map((edge: { node?: RawSteerVault }) => edge.node)
+          .filter((n): n is RawSteerVault => n !== undefined) || [];
       return vaults.length > 0 ? vaults[0] : null;
     } catch (error) {
       logger.error(
@@ -808,7 +897,15 @@ export class SteerLiquidityService extends Service {
   /**
    * Get pool data including TVL, volume, and fee information
    */
-  async getPoolData(poolAddress: string, chainId: number): Promise<any | null> {
+  async getPoolData(
+    poolAddress: string,
+    chainId: number,
+  ): Promise<{
+    tvl: number;
+    volume24h: number;
+    fee: number;
+    liquidity: number;
+  } | null> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -824,10 +921,12 @@ export class SteerLiquidityService extends Service {
           null,
         );
         if (poolsResponse.success && poolsResponse.data) {
-          const pools =
-            poolsResponse.data.edges?.map((edge: any) => edge.node) || [];
+          const pools: SteerPoolNode[] =
+            poolsResponse.data.edges
+              ?.map((edge: { node?: SteerPoolNode }) => edge.node)
+              .filter((n): n is SteerPoolNode => n !== undefined) || [];
           const matchingPool = pools.find(
-            (pool: any) =>
+            (pool: SteerPoolNode) =>
               pool.poolAddress?.toLowerCase() === poolAddress.toLowerCase() ||
               pool.id?.toLowerCase() === poolAddress.toLowerCase(),
           );
@@ -876,7 +975,7 @@ export class SteerLiquidityService extends Service {
   async getStakingPoolDetails(
     poolAddress: string,
     chainId: number,
-  ): Promise<any | null> {
+  ): Promise<StakingPool | null> {
     try {
       const stakingClient = this.stakingClients.get(chainId);
       if (!stakingClient) {
@@ -894,11 +993,7 @@ export class SteerLiquidityService extends Service {
         return null;
       }
 
-      // Handle both array and paginated response structures
-      const pools = Array.isArray(poolResponse.data)
-        ? poolResponse.data
-        : (poolResponse.data as any)?.edges?.map((edge: any) => edge.node) ||
-          [];
+      const pools = poolResponse.data;
       return pools.length > 0 ? pools[0] : null;
     } catch (error) {
       logger.error(
@@ -1023,7 +1118,9 @@ export class SteerLiquidityService extends Service {
 
             if (vaultsResponse.success && vaultsResponse.data) {
               const vaults =
-                vaultsResponse.data.edges?.map((edge: any) => edge.node) || [];
+                vaultsResponse.data.edges
+                  ?.map((edge: { node?: RawSteerVault }) => edge.node)
+                  .filter((n): n is RawSteerVault => n !== undefined) || [];
               totalVaultCount += vaults.length;
               logger.log(`Chain ${chainId}: Found ${vaults.length} vaults`);
             }
@@ -1036,12 +1133,7 @@ export class SteerLiquidityService extends Service {
               chainId,
             });
             if (poolsResponse.success && poolsResponse.data) {
-              // Handle both array and paginated response structures
-              const pools = Array.isArray(poolsResponse.data)
-                ? poolsResponse.data
-                : (poolsResponse.data as any)?.edges?.map(
-                    (edge: any) => edge.node,
-                  ) || [];
+              const pools = poolsResponse.data;
               totalStakingPoolCount += pools.length;
               logger.log(
                 `Chain ${chainId}: Found ${pools.length} staking pools`,
@@ -1214,7 +1306,7 @@ export class SteerLiquidityService extends Service {
     isToken0: boolean,
     depositSlippagePercent: bigint = 5n,
     swapSlippageBP: number = 500,
-  ): Promise<any> {
+  ): Promise<SteerPreviewDepositResult> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -1270,7 +1362,7 @@ export class SteerLiquidityService extends Service {
     isToken0: boolean,
     depositSlippagePercent: bigint = 5n,
     swapSlippageBP: number = 500,
-  ): Promise<any> {
+  ): Promise<SteerSingleDepositResult> {
     try {
       const vaultClient = this.vaultClients.get(chainId);
       if (!vaultClient) {
@@ -1318,7 +1410,7 @@ export class SteerLiquidityService extends Service {
     poolAddress: string,
     accountAddress: string,
     chainId: number,
-  ): Promise<any> {
+  ): Promise<SteerEarnedRewardsResult> {
     try {
       const stakingClient = this.stakingClients.get(chainId);
       if (!stakingClient) {
@@ -1345,7 +1437,7 @@ export class SteerLiquidityService extends Service {
   async getStakingPoolTotalSupply(
     poolAddress: string,
     chainId: number,
-  ): Promise<any> {
+  ): Promise<SteerStakingSupplyResult> {
     try {
       const stakingClient = this.stakingClients.get(chainId);
       if (!stakingClient) {
@@ -1372,7 +1464,7 @@ export class SteerLiquidityService extends Service {
     poolAddress: string,
     accountAddress: string,
     chainId: number,
-  ): Promise<any> {
+  ): Promise<SteerStakingBalanceResult> {
     try {
       const stakingClient = this.stakingClients.get(chainId);
       if (!stakingClient) {
@@ -1489,7 +1581,10 @@ export class SteerLiquidityService extends Service {
   /**
    * Enrich vault data with GraphQL information
    */
-  async enrichVaultWithGraphQLData(vault: any, _chainId: number): Promise<any> {
+  async enrichVaultWithGraphQLData(
+    vault: SteerVaultDetailInput,
+    _chainId: number,
+  ): Promise<SteerVaultDetailInput> {
     try {
       if (!vault.address && !vault.vaultAddress) {
         logger.warn("Vault missing address, cannot fetch GraphQL data");

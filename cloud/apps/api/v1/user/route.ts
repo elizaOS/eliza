@@ -77,7 +77,6 @@ function toUpdatedUserDto(user: UpdatedUser): UpdatedUserDto {
     organization_id: user.organization_id,
     role: user.role,
     steward_user_id: user.steward_user_id,
-    privy_user_id: user.privy_user_id,
     telegram_id: user.telegram_id,
     telegram_username: user.telegram_username,
     telegram_first_name: user.telegram_first_name,

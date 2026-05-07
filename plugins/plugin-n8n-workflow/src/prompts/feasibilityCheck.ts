@@ -15,6 +15,6 @@ Some integrations the user might need are NOT available on this platform. You mu
 
 - Utility nodes (Schedule, Webhook, Code, IF, Set) are always available and don't count as replacements for service integrations
 
-Respond with structured TOON-style fields:
+Respond with structured JSON-style fields:
 feasible: true | false
 reason: brief explanation`;

@@ -10,7 +10,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonActionParams,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
@@ -32,13 +32,12 @@ Based on the conversation, determine what message to send and to whom.
 Recent conversation:
 {{recentMessages}}
 
-Output a TOON action-call block:
+Respond with JSON only, no prose or fences:
 
-actions: NOSTR_SEND_DM
-params:
-  NOSTR_SEND_DM:
-    text: message content here
-    toPubkey: npub1... or hex pubkey or current
+{
+  "text": "message content here",
+  "toPubkey": "npub1... or hex pubkey or current"
+}
 `;
 
 export const sendDm: Action = {
@@ -82,8 +81,10 @@ export const sendDm: Action = {
         prompt,
       });
 
-      const parsed = parseToonActionParams(String(response));
-      const actionParams = parsed.get("NOSTR_SEND_DM");
+      const actionParams = parseJSONObjectFromText(String(response)) as Record<
+        string,
+        unknown
+      > | null;
       if (actionParams?.text) {
         dmInfo = {
           text: String(actionParams.text),

@@ -88,7 +88,7 @@ browser-extension/
 │   ├── manifest.json          # Extension manifest (MV3)
 │   ├── popup.html/css         # Chat UI
 │   ├── src/
-│   │   ├── popup.ts           # Popup logic
+│   │   ├── popup-full.ts      # Popup logic
 │   │   ├── background.ts      # Service worker
 │   │   └── content.ts         # Page content extraction
 │   └── package.json
@@ -102,7 +102,7 @@ browser-extension/
 
 1. **Content Script** (`content.ts`) - Runs on every page and extracts the main content (title, URL, text)
 2. **Background Script** (`background.ts`) - Manages communication between popup and content scripts
-3. **Popup** (`popup.ts`) - The chat interface that users interact with
+3. **Popup** (`popup-full.ts`) - The chat interface that users interact with
 4. **Page Content Provider** - A custom ElizaOS provider that injects the current page content into the AI's context
 5. **Eliza Runtime** - Manages the AI conversation with support for multiple providers
 

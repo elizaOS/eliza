@@ -39,7 +39,7 @@ export interface RunIntentModelParams {
  * Run an intent-extraction LLM call and record it on the active trajectory.
  *
  * Returns the raw model text so callers can continue parsing with their
- * existing TOON/JSON pipeline. Uses `recordLlmCall` when available; otherwise
+ * existing JSON pipeline. Uses `recordLlmCall` when available; otherwise
  * runs the model and emits a `logActiveTrajectoryLlmCall` entry directly.
  */
 export async function runIntentModel(

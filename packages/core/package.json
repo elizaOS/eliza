@@ -120,7 +120,6 @@
 		"@noble/ciphers": "2.2.0",
 		"@noble/hashes": "2.2.0",
 		"@openrouter/ai-sdk-provider": "^2.0.0",
-		"@toon-format/toon": "^2.1.0",
 		"adze": "^2.2.5",
 		"ai": "^6.0.30",
 		"coding-agent-adapters": "0.16.3",

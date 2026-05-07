@@ -5,7 +5,6 @@ import type {
 	ProviderResult,
 	State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
@@ -46,7 +45,7 @@ export const discordChannelsProvider: Provider = {
 			return {
 				data: { listeningToAll: true, channels: [] },
 				values: { listeningToAll: true, channelCount: 0 },
-				text: encode({
+				text: JSON.stringify({
 					discord_channels: { listening_to_all: true, count: 0, items: [] },
 				}),
 			};
@@ -85,7 +84,7 @@ export const discordChannelsProvider: Provider = {
 				listeningToAll: false,
 				channelCount: channelInfos.length,
 			},
-			text: encode({
+			text: JSON.stringify({
 				discord_channels: {
 					listening_to_all: false,
 					count: channelInfos.length,

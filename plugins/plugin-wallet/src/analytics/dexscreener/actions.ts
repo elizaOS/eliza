@@ -2,10 +2,13 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import type { DexScreenerService } from "./service";
+import type { DexScreenerBoostedToken } from "./types";
 
 function readParams(options?: unknown): Record<string, unknown> {
   const direct =
@@ -59,8 +62,8 @@ export const searchTokensAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -177,8 +180,8 @@ export const getTokenInfoAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    options: any,
+    _state?: State,
+    options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -302,8 +305,8 @@ export const getTrendingAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -397,8 +400,8 @@ export const getNewPairsAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -499,8 +502,8 @@ export const getPairsByChainAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -632,8 +635,8 @@ export const getBoostedTokensAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -673,7 +676,7 @@ export const getBoostedTokensAction: Action = {
     }
 
     const tokenList = tokens
-      .map((token: any, i: number) => {
+      .map((token: DexScreenerBoostedToken, i: number) => {
         return (
           `**${i + 1}. ${token.tokenAddress}** on ${token.chainId}\n` +
           `   💰 Boost Amount: ${token.amount} (Total: ${token.totalAmount})\n` +
@@ -730,8 +733,8 @@ export const getTokenProfilesAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _: any,
-    __: any,
+    _state?: State,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {

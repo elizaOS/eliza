@@ -113,13 +113,10 @@ def main() -> int:
         print(f"{k:<35} {b:>10} {a:>10}  {d:>+10}")
 
     out = {"before": before, "after": after}
-    Path("/home/shaw/milady/training/data/final/manifest_cleaned_verification.json").write_text(
-        json.dumps(out, indent=2) + "\n"
-    )
+    out_path = ROOT / "data" / "final" / "manifest_cleaned_verification.json"
+    out_path.write_text(json.dumps(out, indent=2) + "\n")
     print()
-    print(
-        "Wrote /home/shaw/milady/training/data/final/manifest_cleaned_verification.json"
-    )
+    print(f"Wrote {out_path}")
     return 0
 
 

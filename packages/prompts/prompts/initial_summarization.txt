@@ -19,7 +19,7 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in TOON:
+Respond in JSON:
 text: Your comprehensive summary here
 topics[0]: topic1
 topics[1]: topic2

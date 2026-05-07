@@ -22,7 +22,7 @@ Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}}
 Your response should be 1, 2, or 3 sentences (choose the length at random).
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \n\n (double spaces) between statements if there are multiple statements in your response.
 
-Your output should be formatted as TOON like this:
+Your output should be formatted as JSON like this:
 thought: Your thought here
 post: Your post text here
 imagePrompt: Optional image prompt here
@@ -32,7 +32,7 @@ The "imagePrompt" field is optional and should be a prompt for an image that is 
 The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
 
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

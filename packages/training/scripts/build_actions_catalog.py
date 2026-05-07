@@ -1,4 +1,4 @@
-"""Build /home/shaw/milady/training/data/prompts/actions-catalog.json.
+"""Build packages/training/data/prompts/actions-catalog.json.
 
 Sources:
 - eliza/plugins/<plugin>/typescript/generated/specs/specs.ts (auto-generated; clean)

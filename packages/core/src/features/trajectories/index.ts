@@ -8,6 +8,7 @@ import type {
 	Plugin,
 	RunEventPayload,
 } from "../../types";
+import { asRecordOrUndefined } from "../../utils/type-guards.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 const pendingTrajectoryStepByReplyId = new Map<string, string>();
@@ -75,12 +76,6 @@ const WEB_CONVERSATION_STRING_KEYS = [
 	"terminalBridgeConversationId",
 ] as const;
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === "object"
-		? (value as Record<string, unknown>)
-		: undefined;
-}
-
 function readNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -105,7 +100,9 @@ function copyJsonMetadataField(
 function readStoredWebConversation(
 	roomMetadata: unknown,
 ): Record<string, JsonValue> | undefined {
-	const stored = asRecord(asRecord(roomMetadata)?.webConversation);
+	const stored = asRecordOrUndefined(
+		asRecordOrUndefined(roomMetadata)?.webConversation,
+	);
 	if (!stored) return undefined;
 
 	const webConversation: Record<string, JsonValue> = {};

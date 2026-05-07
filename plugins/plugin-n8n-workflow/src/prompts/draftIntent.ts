@@ -16,7 +16,7 @@ Rules:
 - If the user provides additional context or answers clarification questions about the same topic, treat as "modify".
 - For "modify", extract the modification request as a clear instruction.
 
-Respond with structured TOON-style fields:
+Respond with structured JSON-style fields:
 intent: confirm | cancel | modify | new
 modificationRequest: only for modify; concise instruction
 reason: brief classification explanation`;

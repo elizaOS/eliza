@@ -25,8 +25,8 @@ import {
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("REFLECTION");
 
-/** Shape of a single fact in structured TOON responses. */
-interface FactToon {
+/** Shape of a single fact in structured JSON responses. */
+interface FactJson {
 	claim?: string;
 	type?: string;
 	in_bio?: string;
@@ -34,7 +34,7 @@ interface FactToon {
 }
 
 /** Shape of a single relationship in structured responses. */
-interface RelationshipToon {
+interface RelationshipJson {
 	sourceEntityId?: string;
 	targetEntityId?: string;
 	tags?: string;
@@ -42,25 +42,25 @@ interface RelationshipToon {
 }
 
 /** Shape of task completion in structured responses. */
-interface TaskCompletionToon {
+interface TaskCompletionJson {
 	completed?: string | boolean;
 	reason?: string;
 }
 
-interface ReflectionToonResult {
+interface ReflectionJsonResult {
 	thought?: string;
 	facts?:
 		| {
-				fact?: FactToon | FactToon[];
+				fact?: FactJson | FactJson[];
 		  }
-		| FactToon[];
+		| FactJson[];
 	relationships?:
 		| {
-				relationship?: RelationshipToon | RelationshipToon[];
+				relationship?: RelationshipJson | RelationshipJson[];
 		  }
-		| RelationshipToon[];
-	task?: TaskCompletionToon;
-	taskCompletion?: TaskCompletionToon;
+		| RelationshipJson[];
+	task?: TaskCompletionJson;
+	taskCompletion?: TaskCompletionJson;
 	task_completed?: string | boolean;
 	taskCompleted?: string | boolean;
 	task_completion_reason?: string;
@@ -84,28 +84,28 @@ function formatPromptData(value: unknown): string {
 	}
 }
 
-function normalizeFactEntries(value: unknown): FactToon[] {
+function normalizeFactEntries(value: unknown): FactJson[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as FactToon[];
+		return value.filter(isRecord) as FactJson[];
 	}
 
 	if (isRecord(value) && "fact" in value) {
 		return normalizeFactEntries(value.fact);
 	}
 
-	return isRecord(value) ? [value as FactToon] : [];
+	return isRecord(value) ? [value as FactJson] : [];
 }
 
-function normalizeRelationshipEntries(value: unknown): RelationshipToon[] {
+function normalizeRelationshipEntries(value: unknown): RelationshipJson[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as RelationshipToon[];
+		return value.filter(isRecord) as RelationshipJson[];
 	}
 
 	if (isRecord(value) && "relationship" in value) {
 		return normalizeRelationshipEntries(value.relationship);
 	}
 
-	return isRecord(value) ? [value as RelationshipToon] : [];
+	return isRecord(value) ? [value as RelationshipJson] : [];
 }
 
 function isOmittedStructuredList(value: unknown, itemKey: string): boolean {
@@ -173,16 +173,17 @@ function parseBooleanLike(value: unknown): boolean | null {
 	return null;
 }
 
-const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
-const TOON_FIELD_PATTERN =
+const JSON_HEADER_PATTERN = /^JSON(?:\s+OBJECT)?[:\s-]*$/i;
+const STRUCTURED_FIELD_PATTERN =
 	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/;
 
-function extractEmbeddedToonDocument(text: string): string | null {
+function extractEmbeddedStructuredDocument(text: string): string | null {
 	const lines = text.trim().split(/\r?\n/);
 	const startIndex = lines.findIndex((line) => {
 		const trimmed = line.trim();
 		return (
-			TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+			JSON_HEADER_PATTERN.test(trimmed) ||
+			STRUCTURED_FIELD_PATTERN.test(trimmed)
 		);
 	});
 
@@ -196,9 +197,9 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	for (let index = startIndex; index < lines.length; index++) {
 		const line = lines[index] ?? "";
 		const trimmed = line.trim();
-		const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
+		const isStructuredField = STRUCTURED_FIELD_PATTERN.test(trimmed);
 		const isIndented = /^[\t ]+/.test(line);
-		const isHeader = TOON_HEADER_PATTERN.test(trimmed);
+		const isHeader = JSON_HEADER_PATTERN.test(trimmed);
 
 		if (isHeader && !sawStructuredField) {
 			collected.push(line);
@@ -230,7 +231,7 @@ function extractEmbeddedToonDocument(text: string): string | null {
 
 function extractJsonReflectionRecord(
 	value: Record<string, unknown>,
-): ReflectionToonResult | null {
+): ReflectionJsonResult | null {
 	const candidates = [
 		value,
 		isRecord(value.response) ? value.response : null,
@@ -254,31 +255,31 @@ function extractJsonReflectionRecord(
 			continue;
 		}
 
-		const reflection: ReflectionToonResult = {};
+		const reflection: ReflectionJsonResult = {};
 		if ("thought" in candidate && typeof candidate.thought === "string") {
 			reflection.thought = candidate.thought;
 		}
 		if ("facts" in candidate) {
-			reflection.facts = candidate.facts as ReflectionToonResult["facts"];
+			reflection.facts = candidate.facts as ReflectionJsonResult["facts"];
 		}
 		if ("relationships" in candidate) {
 			reflection.relationships =
-				candidate.relationships as ReflectionToonResult["relationships"];
+				candidate.relationships as ReflectionJsonResult["relationships"];
 		}
 		if ("task" in candidate && isRecord(candidate.task)) {
-			reflection.task = candidate.task as TaskCompletionToon;
+			reflection.task = candidate.task as TaskCompletionJson;
 		}
 		if ("taskCompletion" in candidate && isRecord(candidate.taskCompletion)) {
 			reflection.taskCompletion =
-				candidate.taskCompletion as TaskCompletionToon;
+				candidate.taskCompletion as TaskCompletionJson;
 		}
 		if ("task_completed" in candidate) {
 			reflection.task_completed =
-				candidate.task_completed as ReflectionToonResult["task_completed"];
+				candidate.task_completed as ReflectionJsonResult["task_completed"];
 		}
 		if ("taskCompleted" in candidate) {
 			reflection.taskCompleted =
-				candidate.taskCompleted as ReflectionToonResult["taskCompleted"];
+				candidate.taskCompleted as ReflectionJsonResult["taskCompleted"];
 		}
 		if ("task_completion_reason" in candidate) {
 			reflection.task_completion_reason =
@@ -296,7 +297,7 @@ function extractJsonReflectionRecord(
 }
 
 function parseReflectionResponse(response: string): {
-	reflection: ReflectionToonResult | null;
+	reflection: ReflectionJsonResult | null;
 	lookedStructured: boolean;
 } {
 	const trimmed = response.trim();
@@ -305,9 +306,7 @@ function parseReflectionResponse(response: string): {
 	}
 
 	const candidates = new Set<string>([trimmed]);
-	const fencedBlocks = trimmed.matchAll(
-		/```(?:toon|json)?\s*([\s\S]*?)\s*```/gi,
-	);
+	const fencedBlocks = trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
 		if (candidate) {
@@ -315,9 +314,9 @@ function parseReflectionResponse(response: string): {
 		}
 	}
 
-	const embeddedToon = extractEmbeddedToonDocument(trimmed);
-	if (embeddedToon) {
-		candidates.add(embeddedToon);
+	const embeddedStructured = extractEmbeddedStructuredDocument(trimmed);
+	if (embeddedStructured) {
+		candidates.add(embeddedStructured);
 	}
 
 	for (const candidate of candidates) {
@@ -333,8 +332,8 @@ function parseReflectionResponse(response: string): {
 	const lookedStructured =
 		candidates.size > 1 ||
 		trimmed.startsWith("{") ||
-		TOON_FIELD_PATTERN.test(trimmed) ||
-		TOON_HEADER_PATTERN.test(trimmed);
+		STRUCTURED_FIELD_PATTERN.test(trimmed) ||
+		JSON_HEADER_PATTERN.test(trimmed);
 
 	return { reflection: null, lookedStructured };
 }
@@ -484,7 +483,7 @@ function formatActionResults(actionResults: ActionResult[]): string {
 }
 
 function normalizeTaskCompletion(
-	reflection: ReflectionToonResult,
+	reflection: ReflectionJsonResult,
 	messageId?: UUID,
 ): TaskCompletionAssessment {
 	const nestedTask = isRecord(reflection.task)
@@ -531,7 +530,7 @@ function normalizeTaskCompletion(
 async function storeTaskCompletionReflection(
 	runtime: IAgentRuntime,
 	message: Memory,
-	reflection: ReflectionToonResult,
+	reflection: ReflectionJsonResult,
 	taskCompletion: TaskCompletionAssessment,
 ): Promise<void> {
 	const summaryText = taskCompletion.assessed

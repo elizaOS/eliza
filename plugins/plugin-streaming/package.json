@@ -23,8 +23,7 @@
   ],
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@toon-format/toon": "2.1.0"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

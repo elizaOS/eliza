@@ -115,18 +115,25 @@ export function isRoutePaymentWrapped(route: unknown): boolean {
  * Debug logging helper - only logs if DEBUG_X402_PAYMENTS is enabled
  */
 const DEBUG = process.env.DEBUG_X402_PAYMENTS === "true";
+function formatLogArg(arg: unknown): string {
+  if (typeof arg === "string") return arg;
+  if (typeof arg === "bigint") return arg.toString();
+  try {
+    return JSON.stringify(arg);
+  } catch {
+    return String(arg);
+  }
+}
 function log(...args: unknown[]) {
-  if (DEBUG) console.log(...args);
+  if (DEBUG) logger.debug(args.map(formatLogArg).join(" "));
 }
 function logSection(title: string) {
   if (DEBUG) {
-    console.log(`\n${"═".repeat(60)}`);
-    console.log(`  ${title}`);
-    console.log("═".repeat(60));
+    logger.debug(`[x402] ${title}`);
   }
 }
 function logError(...args: unknown[]) {
-  console.error(...args);
+  logger.error(args.map(formatLogArg).join(" "));
 }
 
 /**
@@ -1111,12 +1118,12 @@ async function verifyEip712Authorization(
 
     // Null check before toLowerCase()
     if (!authorization.to) {
-      console.error('Authorization missing "to" field');
+      logError('Authorization missing "to" field');
       return false;
     }
 
     if (authorization.to.toLowerCase() !== expectedRecipient.toLowerCase()) {
-      console.error(
+      logError(
         "Recipient mismatch:",
         authorization.to,
         "vs",
@@ -1128,12 +1135,7 @@ async function verifyEip712Authorization(
     const need = BigInt(expectedAmountAtomic);
     const authValue = BigInt(authorization.value);
     if (authValue < need) {
-      console.error(
-        "Amount too low:",
-        authValue.toString(),
-        "vs",
-        need.toString(),
-      );
+      logError("Amount too low:", authValue.toString(), "vs", need.toString());
       return false;
     }
 
@@ -1145,12 +1147,12 @@ async function verifyEip712Authorization(
     );
 
     if (now < validAfter) {
-      console.error("Authorization not yet valid:", now, "<", validAfter);
+      logError("Authorization not yet valid:", now, "<", validAfter);
       return false;
     }
 
     if (now > validBefore) {
-      console.error("Authorization expired:", now, ">", validBefore);
+      logError("Authorization expired:", now, ">", validBefore);
       return false;
     }
 
@@ -1374,7 +1376,7 @@ export function createPaymentAwareHandler(
       process.env.X402_TEST_MODE === "true" ||
       process.env.X402_TEST_MODE === "1";
     if (testMode) {
-      console.warn(
+      logger.warn(
         "[@elizaos/agent x402] X402_TEST_MODE is set — skipping payment verification (development only)",
       );
       if (originalHandler) {

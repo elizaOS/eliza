@@ -11,10 +11,10 @@
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@elizaos/cloud-ui";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
-import type { EnhancedAnalyticsData } from "@/lib/actions/analytics-enhanced";
+import type { EnhancedAnalyticsDataDto } from "@/types/cloud-api";
 
 interface ModelBreakdownProps {
-  models: EnhancedAnalyticsData["modelBreakdown"];
+  models: EnhancedAnalyticsDataDto["modelBreakdown"];
 }
 
 const numberFormatter = new Intl.NumberFormat();

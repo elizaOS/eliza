@@ -147,7 +147,7 @@ export type MessagesConfig = {
    * - special value: `"auto"` derives `[{agents.list[].identity.name}]` for the routed agent (when set)
    *
    * Supported template variables (case-insensitive):
-   * - `{model}` - short model name (e.g., `claude-opus-4-7`, `gpt-5.4`)
+   * - `{model}` - short model name (e.g., `claude-opus-4-7`, `gpt-5.5`)
    * - `{modelFull}` - full model identifier (e.g., `anthropic/claude-opus-4.7`)
    * - `{provider}` - provider name (e.g., `anthropic`, `openai`)
    * - `{thinkingLevel}` or `{think}` - current thinking level (`high`, `low`, `off`)

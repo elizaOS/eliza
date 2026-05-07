@@ -1,6 +1,6 @@
+import { applyMarkup } from "@elizaos/billing";
 import crypto from "crypto";
 import { z } from "zod";
-import { applyMarkup } from "../billing";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 

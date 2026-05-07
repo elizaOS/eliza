@@ -18,6 +18,7 @@ import {
   type MentionContext,
   ModelType,
   parseBooleanFromText,
+  parseJSONObjectFromText,
   parseKeyValueXml,
   type Room,
   type State,
@@ -29,8 +30,8 @@ import { getRequestContext } from "@/lib/services/entity-settings/request-contex
 import { createPerfTrace } from "@/lib/utils/perf-trace";
 import { invalidateActionValidationCache } from "../providers/actions";
 import {
-  multiStepDecisionTemplate,
-  multiStepSummaryTemplate,
+  nativePlannerTemplate,
+  nativeResponseTemplate,
   shouldRespondTemplate,
 } from "../templates/multi-step";
 import {
@@ -194,6 +195,10 @@ async function withScopedTextModel<T>(
   return await withScopedSettings(overrides, operation);
 }
 
+function parseStructuredModelObject(raw: string): Record<string, unknown> | null {
+  return parseJSONObjectFromText(raw) || parseKeyValueXml(raw);
+}
+
 const SINGLE_SHOT_TEMPLATE = `<task>Generate a response for the character {{agentName}}.</task>
 
 <providers>
@@ -296,7 +301,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     logger.info(`[LLM:shouldRespond] Response:\n${response}`);
 
-    const responseObject = parseKeyValueXml(String(response)) as Record<string, unknown> | null;
+    const responseObject = parseStructuredModelObject(String(response));
 
     return {
       responseObject,
@@ -553,9 +558,9 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     perfTrace.mark("compose-state");
     // PERF: Compose initial state with minimal providers.
-    // runMultiStepCore fetches the full provider set (RECENT_MESSAGES, ACTIONS, etc.)
-    // at the start of its decision loop. runSingleShotCore fetches them before prompt
-    // composition. This avoids double-fetching in the multi-step path.
+    // runNativePlannerCore fetches the full provider set (RECENT_MESSAGES, ACTIONS, etc.)
+    // at the start of its decision loop. runNativeSinglePassCore fetches them before prompt
+    // composition. This avoids double-fetching in the native planner path.
     let state = await runtime.composeState(message, ["ENTITIES", "CHARACTER"], true);
     state = attachAvailableContexts(state, runtime as never);
 
@@ -569,10 +574,10 @@ export class CloudBootstrapMessageService implements IMessageService {
     let result: StrategyResult;
     if (useMultiStep) {
       logger.debug("[CloudBootstrap] Using multi-step processing");
-      result = await this.runMultiStepCore(runtime, message, state, responseId, callback, options);
+      result = await this.runNativePlannerCore(runtime, message, state, responseId, callback, options);
     } else {
       logger.debug("[CloudBootstrap] Using single-shot processing");
-      result = await this.runSingleShotCore(runtime, message, state, callback, options);
+      result = await this.runNativeSinglePassCore(runtime, message, state, callback, options);
     }
 
     const responseContent = result.responseContent;
@@ -676,10 +681,10 @@ export class CloudBootstrapMessageService implements IMessageService {
   }
 
   /**
-   * Multi-step execution: ONE action at a time, LLM decides next step.
-   * Decision phase: functional system prompt. Summary phase: character personality.
+   * Native planner execution: ONE JSON planner tool call at a time.
+   * Decision phase selects the next action; summary phase writes the user-facing response.
    */
-  private async runMultiStepCore(
+  private async runNativePlannerCore(
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
@@ -694,7 +699,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     let accumulatedState: State = state;
     let finishResponse: string | null = null;
 
-    // Save the original system prompt so we can restore it after the multi-step loop.
+    // Save the original system prompt so we can restore it after the native planner loop.
     // The decision phase uses a functional system prompt (embedded in the template),
     // but runtime.character.system is still passed to the LLM by the OpenAI plugin.
     // If the agent has no system prompt configured, the empty string causes OpenAI to
@@ -838,15 +843,15 @@ export class CloudBootstrapMessageService implements IMessageService {
         const prompt = composePromptFromState({
           state: stateWithIterationContext,
           template:
-            runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+            runtime.character.templates?.nativePlannerTemplate || nativePlannerTemplate,
         });
 
-        // === LLM CALL LOG: multiStepDecision ===
+        // === LLM CALL LOG: nativePlanner ===
         logger.info(
-          `========== LLM CALL: multiStepDecision (iteration ${iterationCount}/${maxIterations}) ==========`,
+          `========== LLM CALL: nativePlanner (iteration ${iterationCount}/${maxIterations}) ==========`,
         );
-        logger.info(`[LLM:multiStepDecision] System Prompt:\n${runtime.character.system}`);
-        logger.info(`[LLM:multiStepDecision] User Prompt:\n${prompt}`);
+        logger.info(`[LLM:nativePlanner] System Prompt:\n${runtime.character.system}`);
+        logger.info(`[LLM:nativePlanner] User Prompt:\n${prompt}`);
         logger.info("==============================================");
 
         // PERF: Reduced from 5 to 3 retries. Each retry adds 1-4s with exponential backoff.
@@ -874,7 +879,7 @@ export class CloudBootstrapMessageService implements IMessageService {
             );
 
             logger.info(
-              `[LLM:multiStepDecision] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
+              `[LLM:nativePlanner] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
             );
             const rawParsedStep =
               parseNativeMultiStepDecision(stepResultRaw) ||
@@ -906,7 +911,7 @@ export class CloudBootstrapMessageService implements IMessageService {
               break;
             } else {
               logger.warn(
-                `[MultiStep] Failed to parse XML on attempt ${parseAttempt}/${maxParseRetries}`,
+                `[MultiStep] Failed to parse planner JSON on attempt ${parseAttempt}/${maxParseRetries}`,
               );
               if (parseAttempt < maxParseRetries) {
                 const delay = getRetryDelay(parseAttempt);
@@ -975,14 +980,16 @@ export class CloudBootstrapMessageService implements IMessageService {
           break;
         }
 
-        // Handle FINISH action — extract response param, skip normal action execution
+        // Terminal planner calls produce the user-facing response directly.
+        // FINISH is kept as a compatibility tool while v5 planners prefer
+        // toolCalls: [] plus messageToUser.
         if (action === "FINISH") {
           const actionParams = parameters || {};
           finishResponse = (actionParams.response as string) || "";
           logger.info(
-            `[MultiStep] FINISH called at iteration ${iterationCount}, response length: ${finishResponse.length}`,
+            `[MultiStep] Terminal response returned at iteration ${iterationCount}, response length: ${finishResponse.length}`,
           );
-          await streamThinking("response", "\n--- FINISH ---\n");
+          await streamThinking("response", "\n--- Final response ---\n");
           break;
         }
 
@@ -1032,7 +1039,7 @@ export class CloudBootstrapMessageService implements IMessageService {
             const actionKey = action.toLowerCase().replace(/_/g, "");
             accumulatedState.data[actionKey] = {
               ...actionParams,
-              _source: "multiStepDecisionTemplate",
+              _source: "jsonPlanner",
               _timestamp: Date.now(),
             };
             logger.info(
@@ -1169,7 +1176,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           break;
         }
 
-        // Fallback: isFinish flag set without an explicit FINISH action
+        // Compatibility fallback for older planners that set isFinish separately.
         if (isFinish) {
           logger.info(
             `[MultiStep] Task complete (isFinish fallback) at iteration ${iterationCount}`,
@@ -1194,14 +1201,14 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
       }
 
-      // If FINISH was called, use its response directly — skip summary LLM call
+      // If a terminal response was returned, use it directly and skip summary generation.
       if (finishResponse !== null) {
-        logger.info("[MultiStep] Using FINISH response, skipping summary LLM call");
+        logger.info("[MultiStep] Using terminal response, skipping summary LLM call");
 
         const responseContent: Content = {
           actions: ["FINISH"],
           text: finishResponse,
-          thought: "FINISH action called by decision LLM.",
+          thought: "Terminal response returned by planner.",
           simple: true,
         };
 
@@ -1228,7 +1235,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
       }
 
-      // Fallback: summary LLM call (FINISH wasn't called — hit max iterations or isFinish fallback)
+      // Fallback: summary LLM call when the planner stopped without a terminal response.
       await streamThinking("response", "\n--- Generating final response ---\n");
 
       // Inject actionResults into message metadata BEFORE composeState
@@ -1278,7 +1285,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       const summaryPrompt = composePromptFromState({
         state: accumulatedState,
-        template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+        template: runtime.character.templates?.nativeResponseTemplate || nativeResponseTemplate,
       });
 
       // === LLM CALL LOG: multiStepSummary ===
@@ -1308,14 +1315,14 @@ export class CloudBootstrapMessageService implements IMessageService {
           logger.info(
             `[LLM:multiStepSummary] Response (attempt ${summaryAttempt}):\n${finalOutput}`,
           );
-          summary = parseKeyValueXml(finalOutput);
+          summary = parseStructuredModelObject(finalOutput);
 
           if (summary?.text) {
             logger.debug(`[MultiStep] Parsed summary on attempt ${summaryAttempt}`);
             break;
           } else {
             logger.warn(
-              `[MultiStep] Failed to parse summary on attempt ${summaryAttempt}/${maxSummaryRetries}`,
+              `[MultiStep] Failed to parse JSON summary on attempt ${summaryAttempt}/${maxSummaryRetries}`,
             );
             if (summaryAttempt < maxSummaryRetries) {
               const delay = getRetryDelay(summaryAttempt);
@@ -1393,7 +1400,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     }
   }
 
-  private async runSingleShotCore(
+  private async runNativeSinglePassCore(
     runtime: IAgentRuntime,
     message: Memory,
     state: State,

@@ -60,7 +60,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@toon-format/toon": "2.1.0",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

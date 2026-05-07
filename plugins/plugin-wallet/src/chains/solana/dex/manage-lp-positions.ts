@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import { runIntentModel } from "../../../utils/intent-trajectory";
@@ -49,10 +49,12 @@ export async function extractManageLpConfig(
   const prompt = `Given this message: "${text}". Extract the reposition threshold value, time interval, and slippage tolerance.
         The threshold value and the slippage tolerance can be given in percentages or bps. You will always respond with the reposition threshold in bps.
         Very important: Use null for each field that is not present in the message.
-        Respond with TOON only using this shape:
-        repositionThresholdBps: 120
-        intervalSeconds: 300
-        slippageToleranceBps: 50
+        Respond with JSON only using this shape:
+        {
+          "repositionThresholdBps": 120,
+          "intervalSeconds": 300,
+          "slippageToleranceBps": 50
+        }
     `;
   const response = await runIntentModel({
     runtime,
@@ -62,7 +64,7 @@ export async function extractManageLpConfig(
   });
 
   try {
-    const cfg = parseToonKeyValue<Record<string, unknown>>(response);
+    const cfg = parseJSONObjectFromText(response) as Record<string, unknown> | null;
     if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) {
       return null;
     }

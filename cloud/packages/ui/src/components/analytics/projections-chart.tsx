@@ -25,10 +25,10 @@ import { format } from "date-fns";
 import { Activity, AlertTriangle, Info, TrendingUp } from "lucide-react";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, XAxis, YAxis } from "recharts";
-import type { ProjectionsData } from "@/lib/actions/analytics-enhanced";
+import type { ProjectionsDataDto } from "@/types/cloud-api";
 
 interface ProjectionsChartProps {
-  data: ProjectionsData;
+  data: ProjectionsDataDto;
 }
 
 const chartConfig = {

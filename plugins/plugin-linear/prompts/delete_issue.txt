@@ -2,10 +2,9 @@ Given the user's request to delete/archive a Linear issue, extract the issue ide
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only:
+Respond with JSON/plain text only:
 issueId: The issue identifier, such as ENG-123 or COM2-7
 
 Output only the field, with no prose before or after it.
-
 
 

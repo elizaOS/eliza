@@ -24,7 +24,7 @@ import {
   type IAgentRuntime,
   ModelType,
   type Plugin,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   stringToUuid,
   type TextStreamResult,
   type UUID,
@@ -426,11 +426,14 @@ function parseMoveFromAgentText(text: string): number | null {
   const direct = parseInt(trimmed, 10);
   if (!Number.isNaN(direct) && direct >= 0 && direct <= 8) return direct;
 
-  const parsed = parseToonKeyValue<{ text?: unknown }>(trimmed);
-  if (typeof parsed?.text === "string") {
-    const toonMove = parseInt(parsed.text.trim(), 10);
-    if (!Number.isNaN(toonMove) && toonMove >= 0 && toonMove <= 8) {
-      return toonMove;
+  const parsed = parseJSONObjectFromText(trimmed);
+  for (const key of ["text", "move", "bestMove"]) {
+    const value = parsed?.[key];
+    if (typeof value === "string" || typeof value === "number") {
+      const jsonMove = parseInt(String(value).trim(), 10);
+      if (!Number.isNaN(jsonMove) && jsonMove >= 0 && jsonMove <= 8) {
+        return jsonMove;
+      }
     }
   }
 

@@ -1,27 +1,15 @@
 import { v4 } from "uuid";
 import z from "zod";
-import {
-	formatActionNames,
-	formatActions,
-	parseActionParams,
-	validateActionParams,
-} from "../actions";
+import { formatActionNames, formatActions } from "../actions";
 import { actionToTool } from "../actions/to-tool";
 import { createUniqueUuid } from "../entities";
 import {
 	formatTaskCompletionStatus,
-	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
 } from "../features/advanced-capabilities/evaluators/task-completion";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
-import {
-	imageDescriptionTemplate,
-	messageHandlerTemplate,
-	multiStepDecisionTemplate,
-	multiStepSummaryTemplate,
-	postActionDecisionTemplate,
-} from "../prompts";
+import { imageDescriptionTemplate } from "../prompts";
 import {
 	v5MessageHandlerSchema,
 	v5MessageHandlerTemplate,
@@ -63,20 +51,15 @@ import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
 } from "../streaming-context";
-import {
-	runWithTrajectoryContext,
-	setTrajectoryPurpose,
-} from "../trajectory-context";
+import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
-	ActionParameters,
 	ActionResult,
 	AgentContext,
 	HandlerCallback,
 	MessageHandlerResult,
 	StreamChunkCallback,
 } from "../types/components";
-import { isActionConfirmationStatus } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import type { Room } from "../types/environment";
@@ -109,7 +92,6 @@ import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import {
-	composePromptFromState,
 	getLocalServerUrl,
 	parseBooleanFromText,
 	parseJSONObjectFromText,
@@ -127,13 +109,11 @@ import {
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
 	inferContextRoutingFromMessage,
-	mergeContextRouting,
 	parseContextList,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import { getUserMessageText } from "../utils/message-text";
-import { createStreamingContext, MarkableExtractor } from "../utils/streaming";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
@@ -260,7 +240,7 @@ export function extractPlannerActionNames(
 	})();
 }
 
-function normalizePlannerActions(
+function _normalizePlannerActions(
 	parsedPlanner: Record<string, unknown>,
 	runtime: IAgentRuntime,
 ): string[] {
@@ -643,7 +623,7 @@ function composeResponseState(
 	return runtime.composeState(message, providers, true, skipCache);
 }
 
-function composeStructuredResponseState(
+function _composeStructuredResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
@@ -670,7 +650,7 @@ function composeProviderGroundedResponseState(
 	);
 }
 
-function composeFocusedProviderReplyState(
+function _composeFocusedProviderReplyState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	providers: string[],
@@ -684,7 +664,7 @@ function composeFocusedProviderReplyState(
 	);
 }
 
-function ensureActionStateValues(
+function _ensureActionStateValues(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
@@ -784,7 +764,7 @@ function ensureActionStateValues(
  * @param text - Text that may contain Handlebars-like syntax
  * @returns Text with {{ escaped to prevent interpretation
  */
-function escapeHandlebars(text: string): string {
+function _escapeHandlebars(text: string): string {
 	// Single-pass replacement to avoid double-escaping triple braces.
 	return text.replace(/\{\{\{|\{\{/g, (match) => `\\${match}`);
 }
@@ -819,7 +799,7 @@ function sanitizeAttachmentsForStorage(
 	});
 }
 
-function resolvePromptAttachments(
+function _resolvePromptAttachments(
 	attachments: Media[] | undefined,
 ): GenerateTextAttachment[] | undefined {
 	if (!attachments?.length) {
@@ -917,19 +897,6 @@ function normalizeShouldRespondModelType(
 			return "response-handler";
 	}
 }
-
-/**
- * Multi-step workflow action result with action name tracking
- */
-interface MultiStepActionResult extends ActionResult {
-	data: { actionName: string };
-}
-
-/**
- * Multi-step workflow state - uses standard State since StateData.actionResults
- * already supports ActionResult[] properly
- */
-type MultiStepState = State;
 
 /**
  * Strategy mode for response generation
@@ -1823,7 +1790,7 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
-function shouldAttemptCanonicalActionRepair(
+function _shouldAttemptCanonicalActionRepair(
 	rawPlannerActions: string[],
 	normalizedActions: string[],
 ): boolean {
@@ -1908,7 +1875,7 @@ function buildCanonicalActionRepairPrompt(args: {
 	].join("\n");
 }
 
-async function repairCanonicalPlannerActions(args: {
+async function _repairCanonicalPlannerActions(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	rawPlannerActions: string[];
@@ -1986,31 +1953,7 @@ async function repairCanonicalPlannerActions(args: {
 	});
 }
 
-function shouldRunProviderFollowup(
-	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
-): boolean {
-	if (!responseContent?.providers?.length) {
-		return false;
-	}
-
-	const normalizedActions = (responseContent.actions ?? [])
-		.map((actionName) =>
-			typeof actionName === "string"
-				? normalizeActionIdentifier(actionName)
-				: "",
-		)
-		.filter((actionName) => actionName.length > 0);
-
-	if (normalizedActions.length === 0) {
-		return true;
-	}
-
-	return normalizedActions.every((actionName) =>
-		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
-	);
-}
-
-function buildProviderFollowupPrompt(basePrompt: string): string {
+function _buildProviderFollowupPrompt(basePrompt: string): string {
 	return `${basePrompt}
 
 [PROVIDER FOLLOW-UP]
@@ -2022,7 +1965,7 @@ If KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVA
 Do not ask "which file?" when the grounded KNOWLEDGE result already resolves the request.`;
 }
 
-function buildActionRescuePrompt(
+function _buildActionRescuePrompt(
 	basePrompt: string,
 	draftReply: string,
 ): string {
@@ -2046,7 +1989,7 @@ function buildActionRescuePrompt(
 	Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
-function buildActionOnlyRescuePrompt(draftReply: string): string {
+function _buildActionOnlyRescuePrompt(draftReply: string): string {
 	const trimmedDraftReply = draftReply.trim();
 	const draftSection =
 		trimmedDraftReply.length > 0
@@ -2572,7 +2515,7 @@ export function inferWebSearchQueryFromMessageText(
 	return query.length > 0 ? query : messageText.trim();
 }
 
-function hasSelectedShellCommandAction(
+function _hasSelectedShellCommandAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
 	return (
@@ -2585,7 +2528,7 @@ function hasSelectedShellCommandAction(
 	);
 }
 
-function hasSelectedSearchAction(
+function _hasSelectedSearchAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
 	return (
@@ -2602,7 +2545,7 @@ function hasSelectedSearchAction(
 	);
 }
 
-function mergeLocalShellCommandParams(
+function _mergeLocalShellCommandParams(
 	existingParams: Content["params"],
 	command: string,
 ): Content["params"] {
@@ -2627,7 +2570,7 @@ function mergeLocalShellCommandParams(
 	} as Content["params"];
 }
 
-function mergeWebSearchQueryParams(
+function _mergeWebSearchQueryParams(
 	existingParams: Content["params"],
 	query: string,
 ): Content["params"] {
@@ -2849,7 +2792,7 @@ export function shouldPromoteExplicitReplyToOwnedAction(
 	);
 }
 
-function shouldAttemptActionRescue(
+function _shouldAttemptActionRescue(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
 	state: State,
@@ -2923,7 +2866,7 @@ function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
 	].some((pattern) => pattern.test(text));
 }
 
-function shouldAttemptOwnershipRepair(
+function _shouldAttemptOwnershipRepair(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
 	state: State,
@@ -2968,7 +2911,7 @@ function shouldAttemptOwnershipRepair(
 	);
 }
 
-function buildOwnershipRepairPrompt(
+function _buildOwnershipRepairPrompt(
 	basePrompt: string,
 	selectedActionName: string,
 	draftReply: string,
@@ -2993,7 +2936,7 @@ Flight-conflict rebooking belongs to CALENDAR even when the exact flight time or
 If the current action is already the most specific owner, keep it.${draftSection}`;
 }
 
-function shouldAttemptProviderRescue(
+function _shouldAttemptProviderRescue(
 	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
 ): boolean {
 	if (!responseContent) {
@@ -3159,7 +3102,7 @@ Examples:
   {"providers":[]}`;
 }
 
-async function recoverProvidersForTurn(args: {
+async function _recoverProvidersForTurn(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -3221,7 +3164,7 @@ async function recoverProvidersForTurn(args: {
 	}
 }
 
-function buildGroundedFallbackReplyPrompt(): string {
+function _buildGroundedFallbackReplyPrompt(): string {
 	return `task: Write the next assistant reply using grounded context.
 
 grounded context:
@@ -3404,14 +3347,14 @@ export function getActionContinuationDecision(
 	};
 }
 
-function shouldContinueAfterActions(
+function _shouldContinueAfterActions(
 	runtime: IAgentRuntime,
 	responseContent: Content | null | undefined,
 ): boolean {
 	return getActionContinuationDecision(runtime, responseContent).shouldContinue;
 }
 
-function suppressesPostActionContinuation(
+function _suppressesPostActionContinuation(
 	runtime: IAgentRuntime,
 	responseContent: Content | null | undefined,
 ): boolean {
@@ -3631,7 +3574,7 @@ function isLikelyClarifyingQuestion(text: string): boolean {
 	);
 }
 
-function shouldWaitForUserAfterIncompleteReflection(
+function _shouldWaitForUserAfterIncompleteReflection(
 	responseContent: Content | null | undefined,
 	actionResults: ActionResult[],
 ): boolean {
@@ -3673,9 +3616,9 @@ export function withActionResultsForPrompt(
 	};
 }
 
-const withActionResults = withActionResultsForPrompt;
+const _withActionResults = withActionResultsForPrompt;
 
-function preparePromptActionResult<T extends ActionResult>(
+function _preparePromptActionResult<T extends ActionResult>(
 	runtime: IAgentRuntime,
 	message: Memory,
 	result: T,
@@ -3700,7 +3643,7 @@ function preparePromptActionResult<T extends ActionResult>(
 	return trimActionResultForPromptState(result);
 }
 
-function withTaskCompletion(
+function _withTaskCompletion(
 	state: State,
 	taskCompletion: TaskCompletionAssessment | null | undefined,
 ): State {
@@ -3770,7 +3713,7 @@ function withInferredContextRoutingFallback(
 	return inferred;
 }
 
-async function composeContinuationDecisionState(
+async function _composeContinuationDecisionState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	contextRoutingStateValues?: ContextRoutingStateValues,
@@ -3790,7 +3733,7 @@ async function composeContinuationDecisionState(
 	);
 }
 
-function isBenchmarkMode(state: Pick<State, "values">): boolean {
+function _isBenchmarkMode(state: Pick<State, "values">): boolean {
 	const benchmarkFlag = state.values?.benchmark_has_context;
 	if (typeof benchmarkFlag === "boolean") {
 		return benchmarkFlag;
@@ -4486,10 +4429,6 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		const promptAttachments = resolvePromptAttachments(
-			message.content.attachments,
-		);
-
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
 		let state = await composeResponseState(runtime, message);
 		state = attachAvailableContexts(state, runtime);
@@ -4518,6 +4457,7 @@ export class DefaultMessageService implements IMessageService {
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		let routedDecision: ContextRoutingDecision | null = null;
 		let v5StrategyResult: StrategyResult | null = null;
+		let _usedV5Runtime = false;
 
 		const parallelJoin: { translatedUserText?: string } = {};
 		const setTranslatedUserText = (text: string) => {
@@ -4535,48 +4475,67 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		if (isAutonomous) {
-			runtime.logger.debug(
-				{ src: "service:message", autonomyMode },
-				"Autonomy message bypassing shouldRespond checks",
-			);
-			shouldRespondToMessage = true;
-			await runtime.applyPipelineHooks(
-				"parallel_with_should_respond",
-				parallelHookCtx,
-			);
-		} else if (hasTextGenerationHandler(runtime)) {
-			const [v5Outcome] = await Promise.all([
-				runV5MessageRuntimeStage1({
+		if (hasTextGenerationHandler(runtime)) {
+			if (isAutonomous) {
+				runtime.logger.debug(
+					{ src: "service:message", autonomyMode },
+					"Autonomy message using v5 messageHandler/planner runtime",
+				);
+			}
+			try {
+				const [v5Outcome] = await Promise.all([
+					runV5MessageRuntimeStage1({
+						runtime,
+						message,
+						state,
+						responseId,
+					}),
+					runtime.applyPipelineHooks(
+						"parallel_with_should_respond",
+						parallelHookCtx,
+					),
+				]);
+				const routedContexts = v5Outcome.messageHandler.contexts;
+				routedDecision =
+					routedContexts.length > 0
+						? {
+								primaryContext: routedContexts[0],
+								secondaryContexts: routedContexts.slice(1),
+							}
+						: {};
+				setContextRoutingMetadata(message, routedDecision);
+
+				if (v5Outcome.kind === "terminal") {
+					shouldRespondToMessage = false;
+					terminalDecision = v5Outcome.action;
+					state = v5Outcome.state;
+				} else {
+					shouldRespondToMessage = true;
+					terminalDecision = null;
+					v5StrategyResult = v5Outcome.result;
+					_usedV5Runtime = true;
+					state = v5Outcome.result.state;
+				}
+			} catch (error) {
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"v5 message runtime failed; returning structured failure reply",
+				);
+				shouldRespondToMessage = true;
+				terminalDecision = null;
+				v5StrategyResult = await this.buildStructuredFailureReply(
 					runtime,
 					message,
 					state,
 					responseId,
-				}),
-				runtime.applyPipelineHooks(
-					"parallel_with_should_respond",
-					parallelHookCtx,
-				),
-			]);
-			const routedContexts = v5Outcome.messageHandler.contexts;
-			routedDecision =
-				routedContexts.length > 0
-					? {
-							primaryContext: routedContexts[0],
-							secondaryContexts: routedContexts.slice(1),
-						}
-					: {};
-			setContextRoutingMetadata(message, routedDecision);
-
-			if (v5Outcome.kind === "terminal") {
-				shouldRespondToMessage = false;
-				terminalDecision = v5Outcome.action;
-				state = v5Outcome.state;
-			} else {
-				shouldRespondToMessage = true;
-				terminalDecision = null;
-				v5StrategyResult = v5Outcome.result;
-				state = v5Outcome.result.state;
+					"running the native tool message runtime",
+				);
+				_usedV5Runtime = true;
+				state = v5StrategyResult.state;
 			}
 		} else if (!hasTextGenerationHandler(runtime)) {
 			await runtime.applyPipelineHooks(
@@ -4616,6 +4575,16 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespondToMessage = false;
 			}
 			terminalDecision = null;
+			if (shouldRespondToMessage) {
+				v5StrategyResult = this.buildNoModelProviderReply(
+					runtime,
+					message,
+					state,
+					responseId,
+					"v5 message handling",
+				);
+				_usedV5Runtime = true;
+			}
 		}
 
 		const joinedTranslation =
@@ -4655,57 +4624,21 @@ export class DefaultMessageService implements IMessageService {
 		let pendingSimpleEmit: Content | null = null;
 		// Track memory IDs created for the simple-mode reply so we can clean
 		// them up if reflection overrides the deferred emit (Greptile P1 fix).
-		let pendingSimpleMemoryIds: string[] = [];
+		const pendingSimpleMemoryIds: string[] = [];
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
 			if (v5StrategyResult) {
 				result = v5StrategyResult;
 			} else {
-				const resolvedRouting = mergeContextRouting(state, message);
-				const hasResolvedRouting =
-					getActiveRoutingContexts(resolvedRouting).length > 0;
-				let executionState = state;
-				if (hasResolvedRouting) {
-					executionState = withContextRoutingValues(
-						await runtime.composeState(
-							message,
-							["ACTIONS", "PROVIDERS"],
-							false,
-							false,
-						),
-						{
-							[AVAILABLE_CONTEXTS_STATE_KEY]:
-								state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-							[CONTEXT_ROUTING_STATE_KEY]: resolvedRouting,
-						},
-					);
-				}
-
-				result = opts.useMultiStep
-					? await this.runMultiStepCore(
-							runtime,
-							message,
-							executionState,
-							callback,
-							opts,
-							responseId,
-							promptAttachments,
-							{
-								precomposedState: executionState,
-							},
-						)
-					: await this.runSingleShotCore(
-							runtime,
-							message,
-							executionState,
-							opts,
-							responseId,
-							promptAttachments,
-							{
-								precomposedState: executionState,
-							},
-						);
+				_usedV5Runtime = true;
+				result = await this.buildStructuredFailureReply(
+					runtime,
+					message,
+					state,
+					responseId,
+					"running the native tool message runtime",
+				);
 			}
 
 			responseContent = result.responseContent;
@@ -4775,76 +4708,6 @@ export class DefaultMessageService implements IMessageService {
 					),
 					providerStateValues,
 				);
-			}
-
-			if (responseContent && shouldRunProviderFollowup(responseContent)) {
-				const providerFollowupState =
-					responseContent.providers && responseContent.providers.length > 0
-						? withContextRoutingValues(
-								await composeFocusedProviderReplyState(
-									runtime,
-									message,
-									responseContent.providers,
-								),
-								providerStateValues,
-							)
-						: state;
-				runtime.logger.info(
-					{
-						src: "service:message",
-						providers: responseContent.providers ?? [],
-						actions: responseContent.actions ?? [],
-					},
-					"Running provider follow-up pass",
-				);
-				const providerContinuation = await this.runSingleShotCore(
-					runtime,
-					message,
-					providerFollowupState,
-					opts,
-					responseId,
-					promptAttachments,
-					{
-						precomposedState: providerFollowupState,
-						failureStage: "answering from requested provider results",
-						providerFollowup: true,
-					},
-				);
-				responseContent = providerContinuation.responseContent;
-				responseMessages = providerContinuation.responseMessages;
-				state = providerContinuation.state;
-				mode = providerContinuation.mode;
-
-				if (responseContent && message.id) {
-					responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
-				}
-
-				runtime.logger.info(
-					{
-						src: "service:message",
-						finalActions: responseContent?.actions ?? [],
-						finalProviders: responseContent?.providers ?? [],
-						hasText:
-							typeof responseContent?.text === "string" &&
-							responseContent.text.length > 0,
-					},
-					"Provider follow-up pass completed",
-				);
-
-				if (
-					responseContent?.providers &&
-					responseContent.providers.length > 0
-				) {
-					state = withContextRoutingValues(
-						await runtime.composeState(
-							message,
-							responseContent.providers,
-							false,
-							false,
-						),
-						providerStateValues,
-					);
-				}
 			}
 
 			// Save response memory to database.
@@ -4948,37 +4811,6 @@ export class DefaultMessageService implements IMessageService {
 						},
 						{ onStreamChunk: opts.onStreamChunk },
 					);
-
-					const latestActionResults = message.id
-						? runtime.getActionResults(message.id)
-						: [];
-					if (
-						opts.continueAfterActions &&
-						message.id &&
-						shouldContinueAfterActions(runtime, responseContent) &&
-						!suppressesPostActionContinuation(runtime, responseContent) &&
-						!actionResultsSuppressPostActionContinuation(latestActionResults)
-					) {
-						const continuation = await this.runPostActionContinuation(
-							runtime,
-							message,
-							state,
-							callback,
-							opts,
-							latestActionResults,
-						);
-						if (continuation.responseMessages.length > 0) {
-							responseMessages = [
-								...responseMessages,
-								...continuation.responseMessages,
-							];
-						}
-						if (continuation.responseContent) {
-							responseContent = continuation.responseContent;
-							mode = continuation.mode;
-						}
-						state = continuation.state;
-					}
 				}
 			}
 		} else {
@@ -5113,99 +4945,8 @@ export class DefaultMessageService implements IMessageService {
 
 		await runEvaluate();
 
-		if (opts.continueAfterActions && message.id && !isBenchmarkMode(state)) {
-			const taskCompletion = await runtime.getCache<TaskCompletionAssessment>(
-				getTaskCompletionCacheKey(message.id),
-			);
-			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
-
-			if (
-				taskCompletion?.assessed &&
-				!taskCompletion.completed &&
-				// Honor `suppressPostActionContinuation` here too. The flag's
-				// contract per Action.suppressPostActionContinuation is "stop after
-				// this action — don't run any continuation LLM turn." Without this
-				// guard, an action that already emitted a complete user-facing
-				// reply (e.g. CALENDAR) will get a second visible callback
-				// when the reflection evaluator marks the task as incomplete and
-				// triggers another LLM/processActions pass.
-				!suppressesPostActionContinuation(runtime, responseContent)
-			) {
-				const directReplyText =
-					typeof responseContent?.text === "string"
-						? responseContent.text.trim()
-						: "";
-				let latestActionResults: ActionResult[] = [];
-				const shouldWaitForUser =
-					isSimpleReplyResponse(responseContent) && directReplyText.length > 0
-						? isLikelyClarifyingQuestion(directReplyText)
-						: (() => {
-								latestActionResults = runtime.getActionResults(message.id);
-								return shouldWaitForUserAfterIncompleteReflection(
-									responseContent,
-									latestActionResults,
-								);
-							})();
-
-				if (shouldWaitForUser) {
-					runtime.logger.debug(
-						{
-							src: "service:message",
-							messageId: message.id,
-							taskCompletionReason: taskCompletion.reason,
-							replyPreview: getLatestVisibleReplyText(
-								responseContent,
-								latestActionResults,
-							).slice(0, 200),
-						},
-						"Skipping reflection continuation because the agent is waiting for user input",
-					);
-				} else {
-					const continuation = await this.runReflectionTaskContinuation(
-						runtime,
-						message,
-						state,
-						callback,
-						opts,
-						taskCompletion,
-					);
-					if (continuation.responseMessages.length > 0) {
-						responseMessages = [
-							...responseMessages,
-							...continuation.responseMessages,
-						];
-					}
-					if (continuation.responseContent) {
-						responseContent = continuation.responseContent;
-						mode = continuation.mode;
-					}
-					// Reflection produced a continuation (may or may not have
-					// responseContent — e.g. actions that set results but the
-					// helper returned early). Drop the deferred chatty REPLY
-					// either way: emitting both would show two contradictory
-					// messages, and even when responseContent is null the
-					// continuation's action callbacks already went to the user.
-					if (
-						pendingSimpleEmit &&
-						(continuation.responseContent ||
-							continuation.responseMessages.length > 0)
-					) {
-						// Clean up orphaned memories that were persisted before
-						// we knew reflection would override (Greptile P1 fix).
-						for (const memId of pendingSimpleMemoryIds) {
-							await runtime.deleteMemory(memId as UUID);
-						}
-						pendingSimpleMemoryIds = [];
-						pendingSimpleEmit = null;
-					}
-					state = continuation.state;
-				}
-			}
-		}
-
-		// Flush the deferred simple-mode reply now that reflection has had its
-		// chance to override. If reflection produced its own response, this is
-		// already null and the original chatty REPLY is dropped.
+		// Flush the deferred simple-mode reply after evaluators have had a chance
+		// to attach callbacks. Chaining is handled inside the v5 planner loop.
 		if (pendingSimpleEmit && callback) {
 			await callback(pendingSimpleEmit);
 		}
@@ -5717,1465 +5458,6 @@ export class DefaultMessageService implements IMessageService {
 		return processedAttachments;
 	}
 
-	private async runPostActionContinuation(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		callback: HandlerCallback | undefined,
-		opts: ResolvedMessageOptions,
-		initialActionResults: ActionResult[],
-	): Promise<StrategyResult> {
-		const contextRoutingStateValues = {
-			[AVAILABLE_CONTEXTS_STATE_KEY]:
-				state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-			[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
-		};
-		const taskCompletion = state.data?.taskCompletion as
-			| TaskCompletionAssessment
-			| undefined;
-
-		if (!message.id || initialActionResults.length === 0) {
-			return {
-				responseContent: null,
-				responseMessages: [],
-				state,
-				mode: "none",
-			};
-		}
-
-		if (actionResultsSuppressPostActionContinuation(initialActionResults)) {
-			return {
-				responseContent: null,
-				responseMessages: [],
-				state,
-				mode: "none",
-			};
-		}
-
-		const traceActionResults: ActionResult[] = [...initialActionResults];
-		const responseMessages: Memory[] = [];
-		let accumulatedState = state;
-		let responseContent: Content | null = null;
-
-		for (
-			let iterationCount = 0;
-			iterationCount < opts.maxMultiStepIterations;
-			iterationCount++
-		) {
-			accumulatedState = withTaskCompletion(
-				withActionResults(
-					await composeContinuationDecisionState(
-						runtime,
-						message,
-						contextRoutingStateValues,
-					),
-					traceActionResults,
-				),
-				taskCompletion,
-			);
-
-			const continuation = await this.runSingleShotCore(
-				runtime,
-				message,
-				accumulatedState,
-				opts,
-				asUUID(v4()),
-				resolvePromptAttachments(message.content.attachments),
-				{
-					prompt:
-						runtime.character.templates?.postActionDecisionTemplate ||
-						postActionDecisionTemplate,
-					precomposedState: accumulatedState,
-					failureStage: "preparing the follow-up reply after actions",
-				},
-			);
-
-			if (!continuation.responseContent) {
-				runtime.logger.debug(
-					{ src: "service:message", iteration: iterationCount + 1 },
-					"Post-action continuation produced no response",
-				);
-				break;
-			}
-
-			responseContent = continuation.responseContent;
-			if (message.id) {
-				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
-			}
-
-			if (responseContent.providers && responseContent.providers.length > 0) {
-				accumulatedState = withActionResults(
-					withContextRoutingValues(
-						await composeProviderGroundedResponseState(
-							runtime,
-							message,
-							responseContent.providers,
-						),
-						contextRoutingStateValues,
-					),
-					traceActionResults,
-				);
-			} else {
-				accumulatedState = withActionResults(
-					continuation.state,
-					traceActionResults,
-				);
-			}
-			accumulatedState = withTaskCompletion(accumulatedState, taskCompletion);
-
-			if (
-				continuation.responseMessages.length > 0 &&
-				continuation.mode !== "simple"
-			) {
-				for (const responseMemory of continuation.responseMessages) {
-					responseMemory.content = responseContent;
-					await runtime.createMemory(responseMemory, "messages");
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
-					);
-				}
-				responseMessages.push(...continuation.responseMessages);
-			}
-
-			if (continuation.mode === "simple") {
-				await runtime.applyPipelineHooks(
-					"outgoing_before_deliver",
-					outgoingPipelineHookContext(responseContent, {
-						source: "continuation_simple",
-						roomId: message.roomId,
-						message,
-						responseId:
-							responseContent.responseId ??
-							continuation.responseMessages[0]?.id,
-					}),
-				);
-				if (continuation.responseMessages.length > 0) {
-					for (const responseMemory of continuation.responseMessages) {
-						responseMemory.content = responseContent;
-						await runtime.createMemory(responseMemory, "messages");
-						await this.emitMessageSent(
-							runtime,
-							responseMemory,
-							message.content.source ?? "messageHandler",
-						);
-					}
-					responseMessages.push(...continuation.responseMessages);
-				}
-				if (callback) {
-					await callback(responseContent);
-				}
-				break;
-			}
-
-			if (continuation.mode !== "actions") {
-				break;
-			}
-
-			await invokeOnBeforeActionExecution(opts, runtime, message);
-			await runtime.processActions(
-				message,
-				continuation.responseMessages,
-				accumulatedState,
-				async (content) => {
-					runtime.logger.debug(
-						{ src: "service:message", content },
-						"Post-action callback",
-					);
-					if (responseContent) {
-						responseContent.actionCallbacks = content;
-					}
-					if (callback) {
-						return callback(content);
-					}
-					return [];
-				},
-				{ onStreamChunk: opts.onStreamChunk },
-			);
-
-			if (
-				!shouldContinueAfterActions(runtime, responseContent) ||
-				suppressesPostActionContinuation(runtime, responseContent)
-			) {
-				break;
-			}
-
-			const latestActionResults = runtime.getActionResults(message.id);
-			if (actionResultsSuppressPostActionContinuation(latestActionResults)) {
-				break;
-			}
-			if (latestActionResults.length === 0) {
-				runtime.logger.warn(
-					{ src: "service:message", iteration: iterationCount + 1 },
-					"Post-action continuation produced no new action results",
-				);
-				break;
-			}
-			traceActionResults.push(...latestActionResults);
-
-			// Break the post-action continuation loop when any of the just-run
-			// actions returned a "needs human confirmation" signal. The
-			// confirmation has to come from the next user message — there is
-			// nothing the agent can do to supply it on its own. Without this,
-			// REMOTE_DESKTOP / SEND_DRAFT confirm-then-dispatch /
-			// WEBSITE_BLOCK re-fire their plan every iteration until
-			// maxMultiStepIterations is hit.
-			const requiresConfirmation = latestActionResults.some((r) => {
-				const v =
-					r &&
-					"values" in r &&
-					typeof r.values === "object" &&
-					r.values !== null
-						? (r.values as Record<string, unknown>)
-						: null;
-				const d =
-					r && "data" in r && typeof r.data === "object" && r.data !== null
-						? (r.data as Record<string, unknown>)
-						: null;
-				return (
-					v?.requiresConfirmation === true ||
-					d?.requiresConfirmation === true ||
-					isActionConfirmationStatus(v?.error) ||
-					isActionConfirmationStatus(d?.error)
-				);
-			});
-			if (requiresConfirmation) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						iteration: iterationCount + 1,
-					},
-					"Post-action continuation: action returned requiresConfirmation — terminating loop until next user message",
-				);
-				break;
-			}
-		}
-
-		accumulatedState = withTaskCompletion(
-			withActionResults(accumulatedState, traceActionResults),
-			taskCompletion,
-		);
-
-		return {
-			responseContent,
-			responseMessages,
-			state: accumulatedState,
-			mode: responseContent ? "simple" : "none",
-		};
-	}
-
-	private async runReflectionTaskContinuation(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		callback: HandlerCallback | undefined,
-		opts: ResolvedMessageOptions,
-		taskCompletion: TaskCompletionAssessment,
-	): Promise<StrategyResult> {
-		const contextRoutingStateValues = {
-			[AVAILABLE_CONTEXTS_STATE_KEY]:
-				state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-			[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
-		};
-		const initialActionResults = message.id
-			? runtime.getActionResults(message.id)
-			: [];
-		if (actionResultsSuppressPostActionContinuation(initialActionResults)) {
-			return {
-				responseContent: null,
-				responseMessages: [],
-				state,
-				mode: "none",
-			};
-		}
-		let accumulatedState = withTaskCompletion(
-			withActionResults(
-				await composeContinuationDecisionState(
-					runtime,
-					message,
-					contextRoutingStateValues,
-				),
-				initialActionResults,
-			),
-			taskCompletion,
-		);
-		const continuation = await this.runSingleShotCore(
-			runtime,
-			message,
-			accumulatedState,
-			opts,
-			asUUID(v4()),
-			resolvePromptAttachments(message.content.attachments),
-			{
-				prompt:
-					runtime.character.templates?.postActionDecisionTemplate ||
-					postActionDecisionTemplate,
-				precomposedState: accumulatedState,
-				failureStage: "continuing after reflection marked the task incomplete",
-			},
-		);
-
-		if (!continuation.responseContent) {
-			return {
-				responseContent: null,
-				responseMessages: [],
-				state: accumulatedState,
-				mode: "none",
-			};
-		}
-
-		const responseMessages: Memory[] = [];
-		const responseContent = continuation.responseContent;
-		if (message.id) {
-			responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
-		}
-
-		if (responseContent.providers && responseContent.providers.length > 0) {
-			accumulatedState = withTaskCompletion(
-				withActionResults(
-					withContextRoutingValues(
-						await composeProviderGroundedResponseState(
-							runtime,
-							message,
-							responseContent.providers,
-						),
-						contextRoutingStateValues,
-					),
-					initialActionResults,
-				),
-				taskCompletion,
-			);
-		} else {
-			accumulatedState = withTaskCompletion(
-				withActionResults(continuation.state, initialActionResults),
-				taskCompletion,
-			);
-		}
-
-		if (
-			continuation.responseMessages.length > 0 &&
-			continuation.mode !== "simple"
-		) {
-			for (const responseMemory of continuation.responseMessages) {
-				responseMemory.content = responseContent;
-				await runtime.createMemory(responseMemory, "messages");
-				await this.emitMessageSent(
-					runtime,
-					responseMemory,
-					message.content.source ?? "messageHandler",
-				);
-			}
-			responseMessages.push(...continuation.responseMessages);
-		}
-
-		if (continuation.mode === "simple") {
-			await runtime.applyPipelineHooks(
-				"outgoing_before_deliver",
-				outgoingPipelineHookContext(responseContent, {
-					source: "continuation_simple",
-					roomId: message.roomId,
-					message,
-					responseId:
-						responseContent.responseId ?? continuation.responseMessages[0]?.id,
-				}),
-			);
-			if (continuation.responseMessages.length > 0) {
-				for (const responseMemory of continuation.responseMessages) {
-					responseMemory.content = responseContent;
-					await runtime.createMemory(responseMemory, "messages");
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
-					);
-				}
-				responseMessages.push(...continuation.responseMessages);
-			}
-			if (callback) {
-				await callback(responseContent);
-			}
-
-			return {
-				responseContent,
-				responseMessages,
-				state: accumulatedState,
-				mode: "simple",
-			};
-		}
-
-		if (continuation.mode !== "actions") {
-			return {
-				responseContent,
-				responseMessages,
-				state: accumulatedState,
-				mode: continuation.mode,
-			};
-		}
-
-		await invokeOnBeforeActionExecution(opts, runtime, message);
-		await runtime.processActions(
-			message,
-			continuation.responseMessages,
-			accumulatedState,
-			async (content) => {
-				runtime.logger.debug(
-					{ src: "service:message", content },
-					"Reflection continuation callback",
-				);
-				responseContent.actionCallbacks = content;
-				if (callback) {
-					return callback(content);
-				}
-				return [];
-			},
-			{ onStreamChunk: opts.onStreamChunk },
-		);
-
-		const latestActionResults = message.id
-			? runtime.getActionResults(message.id)
-			: [];
-		accumulatedState = withTaskCompletion(
-			withActionResults(
-				accumulatedState,
-				latestActionResults.length > 0
-					? latestActionResults
-					: initialActionResults,
-			),
-			taskCompletion,
-		);
-
-		if (
-			latestActionResults.length > 0 &&
-			shouldContinueAfterActions(runtime, responseContent) &&
-			!suppressesPostActionContinuation(runtime, responseContent) &&
-			!actionResultsSuppressPostActionContinuation(latestActionResults)
-		) {
-			return await this.runPostActionContinuation(
-				runtime,
-				message,
-				accumulatedState,
-				callback,
-				opts,
-				latestActionResults,
-			);
-		}
-
-		return {
-			responseContent,
-			responseMessages,
-			state: accumulatedState,
-			mode: "actions",
-		};
-	}
-
-	/**
-	 * Single-shot strategy: one LLM call to generate response
-	 * Uses dynamicPromptExecFromState for validation-aware structured output
-	 */
-	private async runSingleShotCore(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		opts: ResolvedMessageOptions,
-		responseId: UUID,
-		promptAttachments?: GenerateTextAttachment[],
-		overrides?: {
-			prompt?: string;
-			precomposedState?: State;
-			failureStage?: string;
-			providerFollowup?: boolean;
-		},
-	): Promise<StrategyResult> {
-		state =
-			overrides?.precomposedState ??
-			(await composeStructuredResponseState(runtime, message));
-		state = ensureActionStateValues(runtime, message, state);
-
-		if (!state.values?.actionNames) {
-			runtime.logger.warn(
-				{ src: "service:message" },
-				"actionNames data missing from state",
-			);
-		}
-
-		let responseContent: Content | null = null;
-
-		// Create streaming context for retry state tracking
-		const streamingExtractor = opts.onStreamChunk
-			? new MarkableExtractor()
-			: undefined;
-		const streamingCtx =
-			streamingExtractor && opts.onStreamChunk
-				? createStreamingContext(
-						streamingExtractor,
-						opts.onStreamChunk,
-						responseId,
-					)
-				: undefined;
-
-		// Resolve the template prompt once so it's available for both the primary
-		// call and any follow-up repair prompts (e.g. parameter repair).
-		const optimizedResponseService = runtime.getService<OptimizedPromptService>(
-			OPTIMIZED_PROMPT_SERVICE,
-		);
-		const dynamicPrompt = await runtime.getCache<string>(
-			"core_prompt_messageHandlerTemplate",
-		);
-		const baselineResponseTemplate =
-			dynamicPrompt ||
-			runtime.character.templates?.messageHandlerTemplate ||
-			messageHandlerTemplate;
-		let prompt =
-			overrides?.prompt ||
-			resolveOptimizedPrompt(
-				optimizedResponseService,
-				"response",
-				baselineResponseTemplate,
-			);
-		if (overrides?.providerFollowup) {
-			prompt = buildProviderFollowupPrompt(prompt);
-		}
-
-		// Use dynamicPromptExecFromState for structured output with validation
-		setTrajectoryPurpose("response");
-		const parsedPlanner = await runtime.dynamicPromptExecFromState({
-			state,
-			params: {
-				prompt,
-				...(promptAttachments ? { attachments: promptAttachments } : {}),
-			},
-			schema: [
-				// WHY validateField: false on non-streamed fields?
-				// At validation level 1, each field gets validation codes by default.
-				// If a non-streamed field's code is corrupted, we'd retry unnecessarily.
-				// By opting out, we reduce token overhead AND avoid false failures.
-				{
-					field: "thought",
-					description:
-						"Your internal reasoning about the message and what to do",
-					validateField: false,
-					streamField: false,
-				},
-				{
-					field: "actions",
-					description:
-						"Ordered action entries. Use action names, optionally with params nested under the selected action.",
-					type: "array",
-					items: { description: "One action name or action entry" },
-					required: false,
-					validateField: false,
-					streamField: false,
-				},
-				{
-					field: "providers",
-					description:
-						"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-					type: "array",
-					items: { description: "One provider name" },
-					required: false,
-					validateField: false,
-					streamField: false,
-				},
-				// WHY streamField: true? This is the user-facing output - stream it!
-				// WHY validateField default? At level 1, we want to validate text integrity
-				{
-					field: "text",
-					description: "The text response to send to the user",
-					streamField: true,
-				},
-				{
-					field: "simple",
-					description: "Whether this is a simple response (true/false)",
-					validateField: false,
-					streamField: false,
-				},
-			],
-			options: {
-				modelType: ModelType.ACTION_PLANNER,
-				preferredEncapsulation: "json",
-				maxRetries: opts.maxRetries,
-				// Stream through the filtered context callback for real-time output
-				onStreamChunk: streamingCtx?.onStreamChunk,
-			},
-		});
-
-		runtime.logger.debug(
-			{ src: "service:message", parsedPlanner },
-			"Parsed Response Content",
-		);
-
-		if (parsedPlanner) {
-			// Mark streaming as complete now that we have a valid response
-			streamingExtractor?.markComplete();
-			const rawPlannerActions = extractPlannerActionNames(
-				parsedPlanner as Record<string, unknown>,
-			);
-			let finalActions = normalizePlannerActions(
-				parsedPlanner as Record<string, unknown>,
-				runtime,
-			);
-			let normalizedProviders = normalizePlannerProviders(
-				parsedPlanner as Record<string, unknown>,
-				runtime,
-			);
-
-			if (shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)) {
-				const repairedPlannerOutput = await repairCanonicalPlannerActions({
-					runtime,
-					message,
-					rawPlannerActions,
-					rawPlannerProviders: normalizedProviders,
-					plannerReplyText: String(parsedPlanner.text || ""),
-				});
-				if (repairedPlannerOutput) {
-					const repairedActions = normalizePlannerActions(
-						repairedPlannerOutput,
-						runtime,
-					);
-					const hasRecoveredOperationalAction = repairedActions.some(
-						(actionName) =>
-							!ACTION_REPAIR_PASSIVE_ACTIONS.has(
-								normalizeActionIdentifier(actionName),
-							),
-					);
-					if (hasRecoveredOperationalAction) {
-						finalActions = repairedActions;
-						normalizedProviders = normalizePlannerProviders(
-							repairedPlannerOutput,
-							runtime,
-						);
-						if (repairedPlannerOutput.params) {
-							parsedPlanner.params = repairedPlannerOutput.params;
-						}
-					}
-				}
-			}
-
-			responseContent = {
-				...parsedPlanner,
-				thought: String(parsedPlanner.thought || ""),
-				actions: finalActions,
-				providers: normalizedProviders,
-				text: String(parsedPlanner.text || ""),
-				simple:
-					parsedPlanner.simple === true || parsedPlanner.simple === "true",
-			};
-		} else {
-			// dynamicPromptExecFromState returned null - use streamed text if available
-			const streamedText = streamingCtx?.getStreamedText?.() || "";
-			const isTextComplete = streamingCtx?.isComplete?.() ?? false;
-
-			if (isTextComplete && streamedText) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						streamedTextLength: streamedText.length,
-						streamedTextPreview: streamedText.substring(0, 100),
-					},
-					"Text extraction complete - using streamed text",
-				);
-
-				responseContent = {
-					thought: "Response generated via streaming",
-					actions: ["REPLY"],
-					providers: [],
-					text: streamedText,
-					simple: true,
-				};
-			} else if (streamedText && !isTextComplete) {
-				// Text was cut mid-stream - attempt continuation
-				runtime.logger.debug(
-					{
-						src: "service:message",
-						streamedTextLength: streamedText.length,
-						streamedTextPreview: streamedText.substring(0, 100),
-					},
-					"Text cut mid-stream - attempting continuation",
-				);
-
-				// Reset extractor for fresh streaming of continuation
-				streamingCtx?.reset?.();
-
-				// Build continuation prompt with full context (reuses `prompt` from outer scope)
-				const escapedStreamedText = escapeHandlebars(streamedText);
-				const continuationPrompt = `${prompt}
-
-[CONTINUATION REQUIRED]
-Your previous response was cut off. The user already received this text:
-"${escapedStreamedText}"
-
-Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Return JSON only with the continuation in the text field, starting immediately after the last character above.`;
-
-				const continuationParsed = await runtime.dynamicPromptExecFromState({
-					state,
-					params: {
-						prompt: continuationPrompt,
-						...(promptAttachments ? { attachments: promptAttachments } : {}),
-					},
-					schema: [
-						{
-							field: "text",
-							description: "Continuation of response",
-							required: true,
-							streamField: true,
-						},
-					],
-					options: {
-						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "json",
-						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
-						onStreamChunk: streamingCtx?.onStreamChunk,
-					},
-				});
-
-				const continuationText = String(continuationParsed?.text || "");
-				const fullText = streamedText + continuationText;
-
-				responseContent = {
-					thought: "Response completed via continuation",
-					actions: ["REPLY"],
-					providers: [],
-					text: fullText,
-					simple: true,
-				};
-			} else {
-				runtime.logger.warn(
-					{ src: "service:message" },
-					"dynamicPromptExecFromState returned null",
-				);
-				const groundedFallback = await this.tryGroundedFallbackReply(
-					runtime,
-					message,
-					state,
-					responseId,
-					promptAttachments,
-				);
-				if (groundedFallback) {
-					return groundedFallback;
-				}
-				return await this.buildStructuredFailureReply(
-					runtime,
-					message,
-					state,
-					responseId,
-					overrides?.failureStage ?? "preparing the reply",
-				);
-			}
-		}
-
-		if (!responseContent) {
-			return {
-				responseContent: null,
-				responseMessages: [],
-				state,
-				mode: "none",
-			};
-		}
-
-		if (
-			!overrides?.providerFollowup &&
-			shouldAttemptProviderRescue(responseContent)
-		) {
-			const rescuedProviders = await recoverProvidersForTurn({
-				runtime,
-				message,
-				state,
-				draftReply: String(responseContent.text || ""),
-				attachments: promptAttachments,
-			});
-			if (rescuedProviders.length > 0) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						rescuedProviders,
-						originalActions: responseContent.actions ?? [],
-					},
-					"Selected providers during reply rescue pass",
-				);
-				responseContent.providers = rescuedProviders;
-			}
-		}
-
-		if (
-			!overrides?.providerFollowup &&
-			shouldAttemptActionRescue(runtime, message, state, responseContent)
-		) {
-			const actionRescuePrompt = buildActionRescuePrompt(
-				prompt,
-				String(responseContent.text || ""),
-			);
-			const rescuedActionJson = await runtime.dynamicPromptExecFromState({
-				state,
-				params: {
-					prompt: actionRescuePrompt,
-					...(promptAttachments ? { attachments: promptAttachments } : {}),
-				},
-				schema: [
-					{
-						field: "thought",
-						description:
-							"Short reasoning about whether a grounded action should own the turn",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "actions",
-						description:
-							"Ordered action entries. Use action names, optionally with params nested under the selected action.",
-						type: "array",
-						items: { description: "One action name or action entry" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "providers",
-						description:
-							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-						type: "array",
-						items: { description: "One provider name" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "text",
-						description: "The text response to send to the user",
-						streamField: false,
-					},
-					{
-						field: "simple",
-						description: "Whether this is a simple response (true/false)",
-						validateField: false,
-						streamField: false,
-					},
-				],
-				options: {
-					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "json",
-					maxRetries: 1,
-				},
-			});
-
-			if (rescuedActionJson) {
-				const rescuedContent: Content = {
-					...rescuedActionJson,
-					thought: String(rescuedActionJson.thought || ""),
-					actions: normalizePlannerActions(
-						rescuedActionJson as Record<string, unknown>,
-						runtime,
-					),
-					providers: normalizePlannerProviders(
-						rescuedActionJson as Record<string, unknown>,
-						runtime,
-					),
-					text:
-						typeof rescuedActionJson.text === "string" &&
-						rescuedActionJson.text.trim().length > 0
-							? String(rescuedActionJson.text)
-							: responseContent.text,
-					simple:
-						rescuedActionJson.simple === true ||
-						rescuedActionJson.simple === "true",
-				};
-
-				if (
-					hasNonPassiveAction(rescuedContent) ||
-					(rescuedContent.providers?.length ?? 0) >
-						(responseContent.providers?.length ?? 0)
-				) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							originalActions: responseContent.actions ?? [],
-							rescuedActions: rescuedContent.actions ?? [],
-							rescuedProviders: rescuedContent.providers ?? [],
-						},
-						"Recovered grounded action plan after passive reply draft",
-					);
-					responseContent = rescuedContent;
-				}
-			}
-		}
-
-		if (
-			!overrides?.providerFollowup &&
-			shouldAttemptOwnershipRepair(runtime, message, state, responseContent)
-		) {
-			const selectedActionName =
-				(typeof responseContent.actions?.[0] === "string" &&
-					responseContent.actions[0]) ||
-				"UNKNOWN_ACTION";
-			const ownershipRepairPrompt = buildOwnershipRepairPrompt(
-				prompt,
-				selectedActionName,
-				String(responseContent.text || ""),
-			);
-			const repairedOwnershipJson = await runtime.dynamicPromptExecFromState({
-				state,
-				params: {
-					prompt: ownershipRepairPrompt,
-					...(promptAttachments ? { attachments: promptAttachments } : {}),
-				},
-				schema: [
-					{
-						field: "thought",
-						description:
-							"Short reasoning about whether a more specific owning action should replace the current one",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "actions",
-						description:
-							"Ordered action entries. Use action names, optionally with params nested under the selected action.",
-						type: "array",
-						items: { description: "One action name or action entry" },
-						required: true,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "providers",
-						description:
-							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-						type: "array",
-						items: { description: "One provider name" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "text",
-						description: "The text response to send to the user",
-						streamField: false,
-					},
-					{
-						field: "simple",
-						description: "Whether this is a simple response (true/false)",
-						validateField: false,
-						streamField: false,
-					},
-				],
-				options: {
-					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "json",
-					maxRetries: 1,
-				},
-			});
-
-			if (repairedOwnershipJson) {
-				const repairedOwnershipContent: Content = {
-					...repairedOwnershipJson,
-					thought: String(repairedOwnershipJson.thought || ""),
-					actions: normalizePlannerActions(
-						repairedOwnershipJson as Record<string, unknown>,
-						runtime,
-					),
-					providers: normalizePlannerProviders(
-						repairedOwnershipJson as Record<string, unknown>,
-						runtime,
-					),
-					text:
-						typeof repairedOwnershipJson.text === "string" &&
-						repairedOwnershipJson.text.trim().length > 0
-							? String(repairedOwnershipJson.text)
-							: responseContent.text,
-					simple:
-						repairedOwnershipJson.simple === true ||
-						repairedOwnershipJson.simple === "true",
-				};
-
-				if (
-					hasNonPassiveAction(repairedOwnershipContent) &&
-					JSON.stringify(repairedOwnershipContent.actions ?? []) !==
-						JSON.stringify(responseContent.actions ?? [])
-				) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							originalActions: responseContent.actions ?? [],
-							repairedActions: repairedOwnershipContent.actions ?? [],
-							repairedProviders: repairedOwnershipContent.providers ?? [],
-						},
-						"Replaced broad routing action with a more specific owning action",
-					);
-					responseContent = repairedOwnershipContent;
-				}
-			}
-		}
-
-		if (
-			!overrides?.providerFollowup &&
-			shouldAttemptActionRescue(runtime, message, state, responseContent)
-		) {
-			const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
-				state,
-				params: {
-					prompt: buildActionOnlyRescuePrompt(
-						String(responseContent.text || ""),
-					),
-				},
-				schema: [
-					{
-						field: "thought",
-						description:
-							"Short reasoning about the single best grounded action",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "actions",
-						description: "Exactly one action name.",
-						type: "array",
-						items: { description: "One action name" },
-						required: true,
-						validateField: false,
-						streamField: false,
-					},
-				],
-				options: {
-					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "json",
-					maxRetries: 1,
-				},
-			});
-
-			if (actionOnlyRescue) {
-				const rescuedActions = normalizePlannerActions(
-					actionOnlyRescue as Record<string, unknown>,
-					runtime,
-				);
-				if (
-					rescuedActions.some(
-						(actionName) =>
-							!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-								normalizeActionIdentifier(actionName),
-							),
-					)
-				) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							originalActions: responseContent.actions ?? [],
-							rescuedActions,
-						},
-						"Recovered primary action after passive reply draft",
-					);
-					responseContent.actions = rescuedActions;
-				}
-			}
-		}
-
-		const metadataSuggestion = suggestOwnedActionFromMetadata(runtime, message);
-		if (
-			metadataSuggestion &&
-			(shouldRunMetadataActionRescue(responseContent) ||
-				shouldPromoteExplicitReplyToOwnedAction(
-					responseContent,
-					metadataSuggestion,
-					getUserMessageText(message),
-				))
-		) {
-			runtime.logger.info(
-				{
-					src: "service:message",
-					originalActions: responseContent.actions ?? [],
-					suggestedAction: metadataSuggestion.actionName,
-					score: metadataSuggestion.score,
-					secondBestScore: metadataSuggestion.secondBestScore,
-					reasons: metadataSuggestion.reasons,
-				},
-				"Recovered primary action from action metadata after passive reply draft",
-			);
-			responseContent.actions = [metadataSuggestion.actionName];
-		}
-
-		// Action parameter repair (Python parity):
-		// If the model selected actions with missing or invalid params, do a
-		// second pass asking for ONLY corrected JSON params.
-		const actionByName = new Map<string, Action>();
-		for (const action of runtime.actions) {
-			const normalizedName = action.name.trim().toUpperCase();
-			if (normalizedName) {
-				actionByName.set(normalizedName, action);
-			}
-		}
-
-		if (hasSelectedShellCommandAction(responseContent)) {
-			const existingShellParams = parseActionParams(responseContent.params).get(
-				"SHELL_COMMAND",
-			);
-			if (
-				typeof existingShellParams?.command !== "string" ||
-				existingShellParams.command.trim().length === 0
-			) {
-				const inferredCommand = inferLocalShellCommandFromMessageText(
-					getUserMessageText(message),
-				);
-				if (inferredCommand) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							action: "SHELL_COMMAND",
-							command: inferredCommand,
-						},
-						"Filled SHELL_COMMAND params for explicit local shell check",
-					);
-					responseContent.params = mergeLocalShellCommandParams(
-						responseContent.params,
-						inferredCommand,
-					);
-				}
-			}
-		}
-
-		if (hasSelectedSearchAction(responseContent)) {
-			const existingSearchParams =
-				parseActionParams(responseContent.params).get("SEARCH") ??
-				parseActionParams(responseContent.params).get("WEB_SEARCH");
-			const existingCategory =
-				typeof existingSearchParams?.category === "string"
-					? existingSearchParams.category.trim().toLowerCase()
-					: "";
-			const missingWebQuery =
-				typeof existingSearchParams?.query !== "string" ||
-				existingSearchParams.query.trim().length === 0;
-			if (
-				(existingCategory === "" || existingCategory === "web") &&
-				(missingWebQuery || existingCategory === "")
-			) {
-				const inferredQuery = inferWebSearchQueryFromMessageText(
-					getUserMessageText(message),
-				);
-				if (inferredQuery) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							action: "SEARCH",
-							category: "web",
-							query: inferredQuery,
-						},
-						"Filled SEARCH params for explicit current-info request",
-					);
-					responseContent.params = mergeWebSearchQueryParams(
-						responseContent.params,
-						inferredQuery,
-					);
-				}
-			}
-		}
-
-		const metadataCorrection = findOwnedActionCorrectionFromMetadata(
-			runtime,
-			message,
-			responseContent,
-		);
-		if (metadataCorrection) {
-			runtime.logger.info(
-				{
-					src: "service:message",
-					originalActions: responseContent.actions ?? [],
-					suggestedAction: metadataCorrection.actionName,
-					score: metadataCorrection.score,
-					secondBestScore: metadataCorrection.secondBestScore,
-					reasons: metadataCorrection.reasons,
-				},
-				"Corrected routed action from action metadata",
-			);
-			responseContent.actions = [metadataCorrection.actionName];
-		}
-
-		const collectParameterValidationIssues = (
-			paramsByAction: Map<string, ActionParameters>,
-		): Array<{
-			actionName: string;
-			required: string[];
-			errors: string[];
-		}> => {
-			const issues: Array<{
-				actionName: string;
-				required: string[];
-				errors: string[];
-			}> = [];
-			for (const selectedAction of responseContent.actions ?? []) {
-				const actionName =
-					typeof selectedAction === "string"
-						? selectedAction.trim().toUpperCase()
-						: "";
-				if (!actionName) {
-					continue;
-				}
-				const actionDef = actionByName.get(actionName);
-				if (!actionDef?.parameters?.length) {
-					continue;
-				}
-				const validation = validateActionParams(
-					actionDef,
-					paramsByAction.get(actionName),
-				);
-				if (validation.valid) {
-					continue;
-				}
-				issues.push({
-					actionName,
-					required: actionDef.parameters
-						.filter((parameter) => parameter.required)
-						.map((parameter) => parameter.name),
-					errors: validation.errors,
-				});
-			}
-			return issues;
-		};
-
-		let existingParams = parseActionParams(responseContent.params);
-		let parameterValidationIssues =
-			collectParameterValidationIssues(existingParams);
-
-		if (parameterValidationIssues.length > 0) {
-			const requirementLines = parameterValidationIssues
-				.map(({ actionName, required, errors }) =>
-					[
-						`- ${actionName}`,
-						required.length > 0
-							? `  required: ${required.join(", ")}`
-							: "  required: (none)",
-						...errors.map((error) => `  error: ${error}`),
-					].join("\n"),
-				)
-				.join("\n");
-			const existingParamBlock =
-				typeof responseContent.params === "string" &&
-				responseContent.params.trim().length > 0
-					? responseContent.params.trim()
-					: "(none)";
-			const repairPrompt = [
-				prompt,
-				"",
-				"# Parameter Repair",
-				"You selected actions whose params are missing or invalid.",
-				"Return ONLY JSON with a top-level params object that fixes those actions.",
-				"Do not change the selected actions.",
-				"Example:",
-				JSON.stringify(
-					{
-						params: {
-							SEND_MESSAGE: {
-								target: "room-or-channel-id",
-								text: "message body",
-							},
-						},
-					},
-					null,
-					2,
-				),
-				"",
-				"Current params:",
-				existingParamBlock,
-				"",
-				"Issues by action:",
-				requirementLines,
-				"",
-				"Do not include thought, actions, providers, text, or any other fields.",
-			].join("\n");
-
-			const repairParsed = await runtime.dynamicPromptExecFromState({
-				state,
-				params: {
-					prompt: repairPrompt,
-				},
-				schema: [
-					{
-						field: "params",
-						description:
-							"JSON object keyed by action name containing corrected action params",
-						type: "object",
-						required: true,
-						validateField: false,
-						streamField: false,
-					},
-				],
-				options: {
-					modelType: ModelType.TEXT_LARGE,
-					preferredEncapsulation: "json",
-					contextCheckLevel: 0,
-					maxRetries: 1,
-				},
-			});
-			if (repairParsed?.params) {
-				responseContent.params = repairParsed.params as Content["params"];
-				existingParams = parseActionParams(responseContent.params);
-				parameterValidationIssues =
-					collectParameterValidationIssues(existingParams);
-			}
-		}
-
-		if (parameterValidationIssues.length > 0) {
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					issues: parameterValidationIssues,
-				},
-				"Planner response still has invalid action params after repair pass",
-			);
-		}
-
-		const benchmarkMode = isBenchmarkMode(state);
-
-		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
-		if (benchmarkMode) {
-			if (!responseContent.actions || responseContent.actions.length === 0) {
-				responseContent.actions = ["REPLY"];
-			}
-			if (
-				!responseContent.providers ||
-				responseContent.providers.length === 0
-			) {
-				responseContent.providers = ["CONTEXT_BENCH"];
-			}
-			responseContent.actions = stripReplyWhenActionOwnsTurn(
-				runtime,
-				responseContent.actions,
-			);
-			// Suppress any direct planner answer; the REPLY action should generate final output.
-			if (responseContent.actions.some((a) => isReplyActionIdentifier(a))) {
-				responseContent.text = "";
-			}
-		}
-
-		// LLM terminal-control ambiguity handling
-		if (responseContent.actions && responseContent.actions.length > 1) {
-			responseContent.actions = stripReplyWhenActionOwnsTurn(
-				runtime,
-				responseContent.actions,
-			);
-			const isIgnore = (a: unknown) =>
-				typeof a === "string" && a.toUpperCase() === "IGNORE";
-			const isStop = (a: unknown) =>
-				typeof a === "string" && a.toUpperCase() === "STOP";
-			const hasIgnore = responseContent.actions.some(isIgnore);
-			const hasStop = responseContent.actions.some(isStop);
-
-			if (hasIgnore) {
-				if (!responseContent.text || responseContent.text.trim() === "") {
-					responseContent.actions = ["IGNORE"];
-				} else {
-					const filtered = responseContent.actions.filter((a) => !isIgnore(a));
-					responseContent.actions = filtered.length ? filtered : ["REPLY"];
-				}
-			}
-
-			if (hasStop) {
-				const filtered = responseContent.actions.filter((a) => !isStop(a));
-				responseContent.actions = filtered.length ? filtered : ["STOP"];
-			}
-		}
-
-		const mode = resolveStrategyMode(responseContent);
-		responseContent.simple = mode === "simple";
-		// Include message ID for streaming coordination (so broadcast uses same ID)
-		responseContent.responseId = responseId;
-
-		const responseMessages: Memory[] = [
-			{
-				id: responseId,
-				entityId: runtime.agentId,
-				agentId: runtime.agentId,
-				content: responseContent,
-				roomId: message.roomId,
-				createdAt: Date.now(),
-			},
-		];
-
-		return {
-			responseContent,
-			responseMessages,
-			state,
-			mode,
-		};
-	}
-
-	private async tryGroundedFallbackReply(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		responseId: UUID,
-		promptAttachments?: GenerateTextAttachment[],
-	): Promise<StrategyResult | null> {
-		let groundedState = state;
-		const selectedProviders = await recoverProvidersForTurn({
-			runtime,
-			message,
-			state,
-			attachments: promptAttachments,
-		});
-
-		if (selectedProviders.length > 0) {
-			groundedState = await composeFocusedProviderReplyState(
-				runtime,
-				message,
-				selectedProviders,
-			);
-		}
-
-		const prompt = composePromptFromState({
-			state: groundedState,
-			template: buildGroundedFallbackReplyPrompt(),
-		});
-
-		try {
-			const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt,
-				...(promptAttachments ? { attachments: promptAttachments } : {}),
-			});
-			const text = typeof result === "string" ? result.trim() : "";
-			if (!text) {
-				return null;
-			}
-
-			const responseContent: Content = {
-				thought:
-					selectedProviders.length > 0
-						? "Grounded fallback reply from selected providers"
-						: "Grounded fallback reply",
-				actions: ["REPLY"],
-				providers: selectedProviders,
-				text,
-				simple: true,
-				responseId,
-			};
-			const responseMessages: Memory[] = [
-				{
-					id: responseId,
-					entityId: runtime.agentId,
-					agentId: runtime.agentId,
-					content: responseContent,
-					roomId: message.roomId,
-					createdAt: Date.now(),
-				},
-			];
-
-			return {
-				responseContent,
-				responseMessages,
-				state: groundedState,
-				mode: "simple",
-			};
-		} catch (error) {
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Grounded fallback reply generation failed",
-			);
-			return null;
-		}
-	}
-
 	private async buildStructuredFailureReply(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -7379,571 +5661,6 @@ Return JSON only with the continuation in the text field, starting immediately a
 			responseMessages,
 			state,
 			mode: "simple",
-		};
-	}
-
-	/**
-	 * Multi-step strategy: iterative action execution with final summary
-	 */
-	private async runMultiStepCore(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		callback: HandlerCallback | undefined,
-		opts: ResolvedMessageOptions,
-		responseId: UUID,
-		promptAttachments?: GenerateTextAttachment[],
-		overrides?: {
-			precomposedState?: State;
-		},
-	): Promise<StrategyResult> {
-		const contextRoutingStateValues = {
-			[AVAILABLE_CONTEXTS_STATE_KEY]:
-				overrides?.precomposedState?.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-			[CONTEXT_ROUTING_STATE_KEY]:
-				overrides?.precomposedState?.values?.[CONTEXT_ROUTING_STATE_KEY],
-		};
-
-		const traceActionResult: MultiStepActionResult[] = [];
-		let accumulatedState: MultiStepState = state as MultiStepState;
-		let iterationCount = 0;
-
-		while (iterationCount < opts.maxMultiStepIterations) {
-			iterationCount++;
-			runtime.logger.debug(
-				{
-					src: "service:message",
-					iteration: iterationCount,
-					maxIterations: opts.maxMultiStepIterations,
-				},
-				"Starting multi-step iteration",
-			);
-
-			accumulatedState = withContextRoutingValues(
-				(await runtime.composeState(
-					message,
-					["RECENT_MESSAGES", "ACTION_STATE", "PROVIDERS"],
-					false,
-					false,
-				)) as MultiStepState,
-				contextRoutingStateValues,
-			) as MultiStepState;
-			accumulatedState = withActionResults(
-				accumulatedState,
-				traceActionResult,
-			) as MultiStepState;
-
-			// Use dynamicPromptExecFromState for structured decision output
-			const optimizedPlannerService =
-				runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
-			const baselinePlannerTemplate =
-				runtime.character.templates?.multiStepDecisionTemplate ||
-				multiStepDecisionTemplate;
-			const resolvedPlannerTemplate = resolveOptimizedPrompt(
-				optimizedPlannerService,
-				"action_planner",
-				baselinePlannerTemplate,
-			);
-			const parsedStep = await runtime.dynamicPromptExecFromState({
-				state: accumulatedState,
-				params: {
-					prompt: resolvedPlannerTemplate,
-					...(promptAttachments ? { attachments: promptAttachments } : {}),
-				},
-				schema: [
-					// Multi-step decision loop - internal reasoning, no streaming needed
-					// WHY: This is orchestration logic, not user-facing output
-					{
-						field: "thought",
-						description:
-							"Your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "providers",
-						description:
-							"Comma-separated list of providers to call to gather necessary data",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "action",
-						description:
-							"Name of the action to execute after providers return (can be empty if no action is needed)",
-						validateField: false,
-						streamField: false,
-					},
-					// WHY parameters: Actions need input data. Without this field in the schema,
-					// the LLM won't be instructed to output parameters, breaking action execution.
-					{
-						field: "params",
-						description:
-							"Optional JSON parameters for the selected action. Use a `params` object keyed by action name when the action needs input.",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "isFinish",
-						description:
-							"true if the task is fully resolved and no further steps are needed, false otherwise",
-						validateField: false,
-						streamField: false,
-					},
-				],
-				options: {
-					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "json",
-				},
-			});
-
-			if (!parsedStep) {
-				runtime.logger.warn(
-					{ src: "service:message", iteration: iterationCount },
-					"Failed to parse multi-step result",
-				);
-				traceActionResult.push({
-					data: { actionName: "parse_error" },
-					success: false,
-					error: "Failed to parse step result",
-				});
-				return await this.buildStructuredFailureReply(
-					runtime,
-					message,
-					withActionResults(accumulatedState, traceActionResult),
-					responseId,
-					"planning the next multi-step action",
-				);
-			}
-
-			const thought =
-				typeof parsedStep.thought === "string" ? parsedStep.thought : undefined;
-			// Handle providers as comma-separated string or array
-			let providers: string[] = [];
-			if (Array.isArray(parsedStep.providers)) {
-				providers = parsedStep.providers;
-			} else if (typeof parsedStep.providers === "string") {
-				providers = parsedStep.providers
-					.split(",")
-					.map((p: string) => p.trim())
-					.filter((p: string) => p.length > 0);
-			}
-			const action =
-				typeof parsedStep.action === "string" ? parsedStep.action : undefined;
-			const isFinish = parsedStep.isFinish;
-
-			// Check for completion condition
-			if (isFinish === "true" || isFinish === true) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						iteration: iterationCount,
-					},
-					"Multi-step task completed",
-				);
-				if (callback) {
-					await callback({
-						text: "",
-						thought: typeof thought === "string" ? thought : "",
-					});
-				}
-				break;
-			}
-
-			// Validate that we have something to do
-			const providersArray = Array.isArray(providers) ? providers : [];
-			if ((!providersArray || providersArray.length === 0) && !action) {
-				runtime.logger.warn(
-					{ src: "service:message", iteration: iterationCount },
-					"No providers or action specified, forcing completion",
-				);
-				break;
-			}
-
-			// Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
-			// Since providers run in parallel, this is the max wall-clock time allowed
-			const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-				String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
-				10,
-			);
-
-			// Track which providers have completed (for timeout diagnostics)
-			const completedProviders = new Set<string>();
-
-			const providerByName = new Map(
-				runtime.providers.map((provider) => [provider.name, provider]),
-			);
-			const providerPromises: Array<
-				Promise<{
-					providerName: string;
-					success: boolean;
-					text?: string;
-					error?: string;
-				}>
-			> = [];
-			for (const name of providersArray) {
-				if (typeof name !== "string") continue;
-				providerPromises.push(
-					(async (providerName: string) => {
-						const provider = providerByName.get(providerName);
-						if (!provider) {
-							runtime.logger.warn(
-								{ src: "service:message", providerName },
-								"Provider not found",
-							);
-							completedProviders.add(providerName);
-							return {
-								providerName,
-								success: false,
-								error: `Provider not found: ${providerName}`,
-							};
-						}
-
-						try {
-							const providerResult = await provider.get(
-								runtime,
-								message,
-								state,
-							);
-							completedProviders.add(providerName);
-
-							if (!providerResult) {
-								runtime.logger.warn(
-									{ src: "service:message", providerName },
-									"Provider returned no result",
-								);
-								return {
-									providerName,
-									success: false,
-									error: "Provider returned no result",
-								};
-							}
-
-							const success = !!providerResult.text;
-							return {
-								providerName,
-								success,
-								text: success ? providerResult.text : undefined,
-								error: success ? undefined : "Provider returned no result",
-							};
-						} catch (err) {
-							completedProviders.add(providerName);
-							const errorMsg = err instanceof Error ? err.message : String(err);
-							runtime.logger.error(
-								{ src: "service:message", providerName, error: errorMsg },
-								"Provider execution failed",
-							);
-							return { providerName, success: false, error: errorMsg };
-						}
-					})(name),
-				);
-			}
-
-			// Create timeout promise for provider execution (with cleanup)
-			let timeoutId: ReturnType<typeof setTimeout> | undefined;
-			const timeoutPromise = new Promise<"timeout">((resolve) => {
-				timeoutId = setTimeout(
-					() => resolve("timeout"),
-					PROVIDERS_TOTAL_TIMEOUT_MS,
-				);
-			});
-
-			// Race between all providers completing and timeout
-			const allProvidersPromise = Promise.allSettled(providerPromises);
-			const raceResult = await Promise.race([
-				allProvidersPromise,
-				timeoutPromise,
-			]);
-
-			// Clear timeout if providers completed first
-			if (timeoutId !== undefined) {
-				clearTimeout(timeoutId);
-			}
-
-			// Check if providers took too long - abort pipeline and notify user
-			if (raceResult === "timeout") {
-				// Identify which providers were still pending when timeout hit
-				const allProviderNames = providersArray.filter(
-					(name): name is string => typeof name === "string",
-				);
-				const pendingProviders = allProviderNames.filter(
-					(name) => !completedProviders.has(name),
-				);
-
-				runtime.logger.error(
-					{
-						src: "service:message",
-						timeoutMs: PROVIDERS_TOTAL_TIMEOUT_MS,
-						pendingProviders,
-						completedProviders: Array.from(completedProviders),
-					},
-					`Providers took too long (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms) - slow providers: ${pendingProviders.join(", ")}`,
-				);
-
-				if (callback) {
-					const timeoutContent: Content = {
-						text: "Providers took too long to respond. Please optimize your providers or use caching.",
-						actions: [],
-						thought: "Provider timeout - pipeline aborted",
-					};
-					await runtime.applyPipelineHooks(
-						"outgoing_before_deliver",
-						outgoingPipelineHookContext(timeoutContent, {
-							source: "simple",
-							roomId: message.roomId,
-							message,
-						}),
-					);
-					await callback(timeoutContent);
-				}
-
-				return {
-					responseContent: null,
-					responseMessages: [],
-					state,
-					mode: "none",
-				};
-			}
-
-			// Providers completed in time
-			const providerResults = raceResult;
-
-			// Process results and notify via callback
-			for (const result of providerResults) {
-				if (result.status === "fulfilled") {
-					const { providerName, success, text, error } = result.value;
-					traceActionResult.push(
-						preparePromptActionResult(runtime, message, {
-							data: { actionName: providerName },
-							success,
-							text,
-							error,
-						}),
-					);
-
-					if (callback) {
-						await callback({
-							text: `🔎 Provider executed: ${providerName}`,
-							actions: [providerName],
-							thought: typeof thought === "string" ? thought : "",
-						});
-					}
-				} else {
-					runtime.logger.error(
-						{
-							src: "service:message",
-							error: result.reason || "Unknown provider failure",
-						},
-						"Unexpected provider promise rejection",
-					);
-				}
-			}
-
-			if (action) {
-				const actionContent: Content = {
-					text: `🔎 Executing action: ${action}`,
-					actions: [action],
-					thought: thought || "",
-				};
-				if (parsedStep && typeof parsedStep.params === "string") {
-					actionContent.params = parsedStep.params;
-				}
-
-				await invokeOnBeforeActionExecution(opts, runtime, message);
-				await runtime.processActions(
-					message,
-					[
-						{
-							id: v4() as UUID,
-							entityId: runtime.agentId,
-							roomId: message.roomId,
-							createdAt: Date.now(),
-							content: actionContent,
-						},
-					],
-					state,
-					async () => {
-						return [];
-					},
-				);
-
-				// Get cached action results from runtime
-				const cachedState = runtime.stateCache.get(
-					`${message.id}_action_results`,
-				);
-				const cachedStateValues = cachedState?.values;
-				const rawActionResults = cachedStateValues?.actionResults;
-				const actionResults: ActionResult[] = Array.isArray(rawActionResults)
-					? rawActionResults
-					: [];
-				const result: ActionResult | null =
-					actionResults.length > 0 ? actionResults[0] : null;
-				const success = result?.success ?? false;
-
-				traceActionResult.push({
-					data: { actionName: typeof action === "string" ? action : "unknown" },
-					success,
-					text:
-						result && "text" in result && typeof result.text === "string"
-							? result.text
-							: undefined,
-					values:
-						result &&
-						"values" in result &&
-						typeof result.values === "object" &&
-						result.values !== null
-							? result.values
-							: undefined,
-					error: success
-						? undefined
-						: result && "text" in result && typeof result.text === "string"
-							? result.text
-							: undefined,
-				});
-
-				// Break the multi-step loop when the action returned a terminal
-				// "needs human confirmation" signal. Without this, actions that
-				// return { requiresConfirmation: true } cause the planner to
-				// re-fire the same plan every iteration. Confirmation must come
-				// from the next user message — there is nothing the agent can
-				// do to supply it on its own.
-				const resultValuesForConfirm =
-					result &&
-					"values" in result &&
-					typeof result.values === "object" &&
-					result.values !== null
-						? (result.values as Record<string, unknown>)
-						: null;
-				const resultDataForConfirm =
-					result &&
-					"data" in result &&
-					typeof result.data === "object" &&
-					result.data !== null
-						? (result.data as Record<string, unknown>)
-						: null;
-				// Recognize any confirmation-required signal an action might use:
-				// the canonical `requiresConfirmation: true` flag (in either values
-				// or data) plus the typed `ActionConfirmationStatus` codes that
-				// handlers may set on `error`. The set is owned by
-				// `types/components.ts` so callers cannot drift.
-				const requiresConfirmation =
-					resultValuesForConfirm?.requiresConfirmation === true ||
-					resultDataForConfirm?.requiresConfirmation === true ||
-					isActionConfirmationStatus(resultValuesForConfirm?.error) ||
-					isActionConfirmationStatus(resultDataForConfirm?.error);
-				if (requiresConfirmation) {
-					runtime.logger.info(
-						{
-							src: "service:message",
-							agentId: runtime.agentId,
-							iteration: iterationCount,
-							action,
-						},
-						"Action returned requiresConfirmation — terminating multi-step loop until next user message",
-					);
-					break;
-				}
-			}
-		}
-
-		if (iterationCount >= opts.maxMultiStepIterations) {
-			runtime.logger.warn(
-				{ src: "service:message", maxIterations: opts.maxMultiStepIterations },
-				"Reached maximum iterations, forcing completion",
-			);
-		}
-
-		accumulatedState = withContextRoutingValues(
-			(await runtime.composeState(
-				message,
-				["RECENT_MESSAGES", "ACTION_STATE"],
-				false,
-				false,
-			)) as MultiStepState,
-			contextRoutingStateValues,
-		) as MultiStepState;
-		accumulatedState = withActionResults(
-			accumulatedState,
-			traceActionResult,
-		) as MultiStepState;
-
-		// Use dynamicPromptExecFromState for final summary generation
-		// Stream the final summary for better UX
-		const summary = await runtime.dynamicPromptExecFromState({
-			state: accumulatedState,
-			params: {
-				prompt:
-					runtime.character.templates?.multiStepSummaryTemplate ||
-					multiStepSummaryTemplate,
-				...(promptAttachments ? { attachments: promptAttachments } : {}),
-			},
-			schema: [
-				{
-					field: "thought",
-					description: "Your internal reasoning about the summary",
-					validateField: false,
-					streamField: false,
-				},
-				// WHY streamField: true? This is the final user-facing output
-				{
-					field: "text",
-					description: "The final summary message to send to the user",
-					required: true,
-					streamField: true,
-				},
-			],
-			options: {
-				modelSize: "large",
-				preferredEncapsulation: "json",
-				requiredFields: ["text"],
-				// Stream the final summary to the user
-				onStreamChunk: opts.onStreamChunk,
-			},
-		});
-
-		let responseContent: Content | null = null;
-		const summaryText = summary?.text;
-		if (typeof summaryText === "string" && summaryText) {
-			responseContent = {
-				actions: ["MULTI_STEP_SUMMARY"],
-				text: summaryText,
-				thought:
-					(typeof summary?.thought === "string"
-						? summary.thought
-						: "Final user-facing message after task completion.") ||
-					"Final user-facing message after task completion.",
-				simple: true,
-				responseId,
-			};
-		} else {
-			return await this.buildStructuredFailureReply(
-				runtime,
-				message,
-				withActionResults(accumulatedState, traceActionResult),
-				responseId,
-				"writing the final summary",
-			);
-		}
-
-		const responseMessages: Memory[] = responseContent
-			? [
-					{
-						id: responseId,
-						entityId: runtime.agentId,
-						agentId: runtime.agentId,
-						content: responseContent,
-						roomId: message.roomId,
-						createdAt: Date.now(),
-					},
-				]
-			: [];
-
-		return {
-			responseContent,
-			responseMessages,
-			state: accumulatedState,
-			mode: responseContent ? "simple" : "none",
 		};
 	}
 

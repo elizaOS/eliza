@@ -4,17 +4,14 @@
  * making it safe to import from client components.
  */
 
+import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/billing";
+
 /**
  * API key prefix length for display purposes.
  */
 export const API_KEY_PREFIX_LENGTH = 12;
 
-/**
- * Platform markup multiplier.
- * Applied to all AI inference and service costs.
- * 1.2 = 20% markup on top of provider costs.
- */
-export const PLATFORM_MARKUP_MULTIPLIER = 1.2;
+export { PLATFORM_MARKUP_MULTIPLIER };
 
 /**
  * Service costs in USD (stored as decimal values).

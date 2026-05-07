@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -21,7 +20,7 @@ const formatDuration = (seconds?: number): string => {
 
 export const musicQueueProvider: Provider = {
   name: "musicQueue",
-  description: "Current music queue and now-playing track (TOON-encoded).",
+  description: "Current music queue and now-playing track.",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -42,9 +41,13 @@ export const musicQueueProvider: Provider = {
 
       if (!currentTrack && queue.length === 0) {
         return {
-          text: encodeToonValue({
-            music_queue: { now_playing: null, count: 0, items: [] },
-          }),
+          text: JSON.stringify(
+            {
+              music_queue: { now_playing: null, count: 0, items: [] },
+            },
+            null,
+            2,
+          ),
         };
       }
 
@@ -55,19 +58,23 @@ export const musicQueueProvider: Provider = {
       }));
 
       return {
-        text: encodeToonValue({
-          music_queue: {
-            now_playing: currentTrack
-              ? {
-                  title: currentTrack.title,
-                  duration: formatDuration(currentTrack.duration),
-                }
-              : null,
-            count: queue.length,
-            items,
-            truncated: queue.length > DEFAULT_LIMIT,
+        text: JSON.stringify(
+          {
+            music_queue: {
+              now_playing: currentTrack
+                ? {
+                    title: currentTrack.title,
+                    duration: formatDuration(currentTrack.duration),
+                  }
+                : null,
+              count: queue.length,
+              items,
+              truncated: queue.length > DEFAULT_LIMIT,
+            },
           },
-        }),
+          null,
+          2,
+        ),
       };
     } catch (error) {
       logger.error(

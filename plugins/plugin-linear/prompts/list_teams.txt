@@ -11,7 +11,7 @@ The user might ask for teams in various ways:
 - "Active teams" → teams with recent activity
 - "Frontend and backend teams" → multiple team types
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 nameFilter: Keywords to search in team names
 specificTeam: Specific team name or key if looking for one team
 myTeams: true if the user wants their teams; otherwise omit
@@ -19,6 +19,5 @@ showAll: true if the user explicitly asks for all teams; otherwise omit
 includeDetails: true if the user wants detailed info; otherwise omit
 
 Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.
-
 
 

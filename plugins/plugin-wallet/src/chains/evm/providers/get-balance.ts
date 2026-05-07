@@ -4,7 +4,7 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
@@ -50,7 +50,7 @@ export const tokenBalanceProvider: Provider = {
       maxTokens: 100,
     });
 
-    const parsed = parseToonKeyValue(response);
+    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
 
     if (!parsed || parsed.error || !parsed.token || !parsed.chain) {
       return { text: "", data: {}, values: {} };

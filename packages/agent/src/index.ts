@@ -93,11 +93,11 @@ export * from "./cloud/index.js";
 export { CharacterSchema } from "./config/character-schema.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
-// `contracts/awareness.js` and `contracts/config.js` add the local-only
-// (non-shared) contract surface — the rest of `./contracts` is already
-// re-exported through `@elizaos/shared`.
+// `contracts/awareness.js` adds the local-only (non-shared) contract surface.
+// Config media/custom-action contract types are exported from `./config/index.js`
+// (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
+// `tsc` reports duplicate symbol errors (TS2308).
 export * from "./contracts/awareness.js";
-export * from "./contracts/config.js";
 export * from "./diagnostics/integration-observability.js";
 export * from "./hooks/index.js";
 export * from "./providers/workspace.js";

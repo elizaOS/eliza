@@ -98,7 +98,7 @@ The `scripts/generate-plugin-prompts.js` utility can be used by any plugin to ge
 
 1. **Start with a task description** - Begin prompts with `# Task:` to clearly state the objective
 2. **Include providers placeholder** - Use `{{providers}}` where provider context should be injected
-3. **Use TOON output format** - Standardize on TOON response format for consistent parsing
+3. **Use JSON output format** - Standardize on JSON response format for consistent parsing
 4. **Add clear instructions** - Include explicit instructions for the LLM
 5. **End with output format** - Always specify the expected output format
 
@@ -111,11 +111,11 @@ Example:
 
 # Instructions: Write the next message for {{agentName}}.
 
-Respond using TOON format like this:
+Respond using JSON format like this:
 thought: Your thought here
 text: Your message here
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No XML, no JSON, no markdown fences.
+IMPORTANT: Your response must ONLY contain the JSON object above. No XML or markdown fences.
 ```
 
 ## Security & Privacy Guidance (SOC2-aligned)

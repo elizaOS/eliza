@@ -5,11 +5,11 @@ import {
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  parseToonKeyValue,
-  type State,
+	type IAgentRuntime,
+	type Memory,
+	ModelType,
+	parseJSONObjectFromText,
+	type State,
 } from "@elizaos/core";
 import { isValidGroupId, normalizeE164 } from "../types";
 import {
@@ -46,19 +46,21 @@ Operations:
 - send: send a text message. Provide \`text\` and \`recipient\` (E.164 phone, group id, or "current").
 - react: react to a Signal message. Provide \`emoji\`, \`targetTimestamp\`, \`targetAuthor\`, and \`remove\` (true to remove).
 
-Respond with TOON only:
-op: send
-text:
-recipient: current
-emoji:
-targetTimestamp:
-targetAuthor:
-remove: false`;
+Respond with JSON only, with no prose or fences:
+{
+  "op": "send",
+  "text": "",
+  "recipient": "current",
+  "emoji": "",
+  "targetTimestamp": null,
+  "targetAuthor": "",
+  "remove": false
+}`;
 
 function parseInfo(raw: unknown): SignalOpInfo | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(
+  const parsed = parseJSONObjectFromText(
     typeof raw === "string" ? raw : String(raw)
-  );
+  ) as Record<string, unknown> | null;
   if (!parsed) {
     return null;
   }

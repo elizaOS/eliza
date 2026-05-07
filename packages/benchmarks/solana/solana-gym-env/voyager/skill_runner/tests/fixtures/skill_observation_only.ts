@@ -2,8 +2,12 @@
  * Test fixture: Observation-only skill that doesn't create a transaction
  * Verifies that skills can return null when no blockchain interaction is needed
  */
+interface SkillEnvironment {
+  getWallet(): { balances: number[] };
+}
+
 export async function executeSkill(
-  env: any,
+  env: SkillEnvironment,
 ): Promise<[number, string, string | null]> {
   const wallet = env.getWallet();
 

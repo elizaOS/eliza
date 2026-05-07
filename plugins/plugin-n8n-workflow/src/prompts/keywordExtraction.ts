@@ -16,5 +16,5 @@ Examples:
 - request: When new Stripe payment, create invoice in QuickBooks
   keywords: stripe, webhook, quickbooks, invoice, payment
 
-Respond with structured TOON-style fields:
+Respond with structured JSON-style fields:
 keywords: 1-5 relevant search terms`;

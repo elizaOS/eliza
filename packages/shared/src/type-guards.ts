@@ -6,6 +6,15 @@
 
 export type UnknownRecord = Record<string, unknown>;
 
+export function isPlainObject(value: unknown): value is UnknownRecord {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
 /**
  * Narrow an `unknown` to a plain object record.
  *

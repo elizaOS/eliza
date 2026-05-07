@@ -37,7 +37,6 @@ export const users = pgTable(
 
     // External identities (kept here for auth system compatibility)
     steward_user_id: text("steward_user_id").unique(),
-    privy_user_id: text("privy_user_id").unique(),
     telegram_id: text("telegram_id").unique(),
     telegram_username: text("telegram_username"),
     telegram_first_name: text("telegram_first_name"),
@@ -76,7 +75,6 @@ export const users = pgTable(
     organization_idx: index("users_organization_idx").on(table.organization_id),
     is_active_idx: index("users_is_active_idx").on(table.is_active),
     steward_idx: index("users_steward_idx").on(table.steward_user_id),
-    privy_idx: index("users_privy_idx").on(table.privy_user_id),
     telegram_idx: index("users_telegram_idx").on(table.telegram_id),
     discord_idx: index("users_discord_idx").on(table.discord_id),
     phone_idx: index("users_phone_idx").on(table.phone_number),

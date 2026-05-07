@@ -425,9 +425,9 @@ export function estimateTokens(text: string): number {
 // ============================================================
 
 /**
- * Generate TOON for skill metadata to include in agent prompts.
+ * Generate JSON for skill metadata to include in agent prompts.
  */
-export function generateSkillsToon(
+export function generateSkillsJson(
 	skills: Array<{ name: string; description: string; location?: string }>,
 	options: { includeLocation?: boolean } = {},
 ): string {
@@ -435,19 +435,13 @@ export function generateSkillsToon(
 		return "";
 	}
 
-	const lines: string[] = ["availableSkills:"];
-	for (const skill of skills) {
-		lines.push(`  - name: ${formatToonScalar(skill.name)}`);
-		lines.push(`    description: ${formatToonScalar(skill.description)}`);
-		if (options.includeLocation && skill.location) {
-			lines.push(`    location: ${formatToonScalar(skill.location)}`);
-		}
-	}
-
-	return lines.join("\n");
-}
-
-function formatToonScalar(value: string): string {
-	const s = typeof value === "string" ? value : String(value || "");
-	return s.replace(/\s+/g, " ").trim();
+	return JSON.stringify({
+		availableSkills: skills.map((skill) => ({
+			name: skill.name,
+			description: skill.description,
+			...(options.includeLocation && skill.location
+				? { location: skill.location }
+				: {}),
+		})),
+	});
 }

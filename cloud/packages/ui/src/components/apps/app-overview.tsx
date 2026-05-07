@@ -39,7 +39,7 @@ import {
 import { type JSX, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import type { App } from "@/db/schemas";
+import type { AppDto as App } from "@/types/cloud-api";
 import { cn } from "@/lib/utils";
 
 interface AppOverviewProps {

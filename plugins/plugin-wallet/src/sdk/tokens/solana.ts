@@ -11,6 +11,27 @@
  *   - Raydium: https://docs.raydium.io/raydium/token-pairs-and-liquidity
  */
 
+import type { TransactionInstruction } from "@solana/web3.js";
+
+type SolanaWeb3Module = typeof import("@solana/web3.js");
+type SplTokenModule = typeof import("@solana/spl-token");
+type SolanaConnectionInstance = InstanceType<SolanaWeb3Module["Connection"]>;
+type SolanaKeypairInstance = InstanceType<SolanaWeb3Module["Keypair"]>;
+type SolanaPublicKeyInstance = InstanceType<SolanaWeb3Module["PublicKey"]>;
+
+interface ParsedSplTokenWalletAccountEntry {
+  account: {
+    data: {
+      parsed: {
+        info: {
+          mint: string;
+          tokenAmount: { amount: string; decimals: number };
+        };
+      };
+    };
+  };
+}
+
 // ─── Well-known Solana token mint addresses ───────────────────────────────────
 //
 // All addresses are base-58 encoded Solana public keys.
@@ -102,8 +123,7 @@ function base58Decode(str: string): Uint8Array {
   return new Uint8Array(bytes.reverse());
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadSolanaWeb3(): Promise<any> {
+async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
   try {
     // @ts-expect-error — @solana/web3.js is an optional peer dependency
     const mod = await import("@solana/web3.js");
@@ -115,8 +135,7 @@ async function loadSolanaWeb3(): Promise<any> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadSplToken(): Promise<any> {
+async function loadSplToken(): Promise<SplTokenModule> {
   try {
     // @ts-expect-error — @solana/spl-token is an optional peer dependency
     const mod = await import("@solana/spl-token");
@@ -164,8 +183,8 @@ export class SolanaWallet {
   private readonly config: SolanaWalletConfig;
 
   // Lazily loaded modules and connection
-  private _connection: any = null;
-  private _keypair: any = null;
+  private _connection: SolanaConnectionInstance | null = null;
+  private _keypair: SolanaKeypairInstance | null = null;
 
   constructor(config: SolanaWalletConfig = {}) {
     this.rpcUrl = config.rpcUrl ?? "https://api.mainnet-beta.solana.com";
@@ -219,7 +238,7 @@ export class SolanaWallet {
     const { PublicKey } = await loadSolanaWeb3();
     const connection = await this.getConnection();
 
-    let pubkey: any;
+    let pubkey: SolanaPublicKeyInstance;
     if (address) {
       pubkey = new PublicKey(address);
     } else {
@@ -247,7 +266,7 @@ export class SolanaWallet {
     const splToken = await loadSplToken();
     const connection = await this.getConnection();
 
-    let ownerPubkey: any;
+    let ownerPubkey: SolanaPublicKeyInstance;
     if (owner) {
       ownerPubkey = new PublicKey(owner);
     } else {
@@ -370,7 +389,7 @@ export class SolanaWallet {
     );
 
     // Build instructions
-    const instructions: any[] = [];
+    const instructions: TransactionInstruction[] = [];
 
     // Check if recipient ATA exists
     const toAtaInfo = await connection.getAccountInfo(toAta);
@@ -419,7 +438,7 @@ export class SolanaWallet {
       { programId: splToken.TOKEN_PROGRAM_ID },
     );
 
-    return tokenAccounts.value.map((acc: any) => {
+    return tokenAccounts.value.map((acc: ParsedSplTokenWalletAccountEntry) => {
       const info = acc.account.data.parsed.info;
       return {
         mint: info.mint,

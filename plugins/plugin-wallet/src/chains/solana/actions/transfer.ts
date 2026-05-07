@@ -10,7 +10,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
   withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -66,7 +66,7 @@ async function extractTransferContent(runtime: IAgentRuntime, prompt: string): P
       })
   );
 
-  return parseToonKeyValue(result);
+  return parseJSONObjectFromText(result);
 }
 
 /**

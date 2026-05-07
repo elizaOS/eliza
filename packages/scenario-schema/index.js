@@ -1,4 +1,4 @@
-const FINAL_CHECK_KEYS = new Map(
+export const FINAL_CHECK_KEYS = new Map(
   Object.entries({
     custom: ["type", "name", "predicate"],
     actionCalled: ["type", "name", "actionName", "status", "minCount"],

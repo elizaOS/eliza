@@ -273,7 +273,7 @@ describe("RuntimeGate onboarding choices", () => {
   it.skip("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
     platformState.isAndroid = true;
 
-    const { container } = render(<RuntimeGate />);
+    render(<RuntimeGate />);
 
     expect(runtimeChoiceNames()).toEqual(["cloud", "local", "remote"]);
   });

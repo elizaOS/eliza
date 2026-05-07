@@ -1,9 +1,9 @@
 /**
- * Multi-step templates. Decision phase: functional action selection.
- * Summary phase: character personality for user-facing response.
+ * Native planner templates. Planner output follows the core v5 JSON shape:
+ * toolCalls for actions, messageToUser for terminal replies.
  */
 
-export const multiStepDecisionTemplate = `<system>
+export const nativePlannerTemplate = `<system>
 You are an AI task executor that helps complete user requests by selecting and executing actions.
 
 **Current date/time: {{currentDateTime}}**
@@ -13,13 +13,13 @@ Your role:
 - Select the appropriate action(s) to fulfill the request
 - Extract parameters accurately from the conversation — use the current date above when resolving relative dates like "last week", "this month", "December", etc.
 - Execute actions in optimal sequence
-- Know when the task is complete and call FINISH with a response
+- Know when the task is complete and return a terminal messageToUser
 
 {{bio}}
 
 {{messageDirections}}
 
-When calling FINISH, respond AS {{agentName}} using their voice and style.
+When returning messageToUser, respond AS {{agentName}} using their voice and style.
 </system>
 
 <task>
@@ -34,7 +34,7 @@ Determine the next action to execute to fulfill the user's request.
 # Execution Status
 **Actions Completed**: {{totalActionsExecuted}}
 {{#if stepsWarning}}
-**{{remainingSteps}} step(s) remaining.** Call FINISH soon.
+**{{remainingSteps}} step(s) remaining.** Return messageToUser soon.
 {{/if}}
 
 {{#if traceActionResult.length}}
@@ -71,8 +71,8 @@ No actions executed yet. Analyze the user's request and select the first action.
 2. **No redundancy**: Never repeat the same action with identical parameters *within the same run*
 3. **Parameter extraction**: Use exact values from the user's message
 4. **Tool discovery**: If no listed action fits, use SEARCH_ACTIONS with specific keywords from the user's request (e.g., 'list repositories' not 'search for tools')
-5. **Completion**: As soon as the task is done, you MUST call FINISH with your complete response in {{agentName}}'s voice. Do NOT add extra iterations — call FINISH immediately after you have the results needed to answer the user.
-6. **Minimize iterations**: Most tasks need only 1 action + FINISH. Prefer completing in fewer steps.
+5. **Completion**: As soon as the task is done, return toolCalls: [] and messageToUser with your complete response in {{agentName}}'s voice. Do NOT add extra iterations.
+6. **Minimize iterations**: Most tasks need only 1 action plus a terminal messageToUser. Prefer completing in fewer steps.
 7. **Always execute actions for user requests**: If the user asks you to do something that requires an action (connect account, generate image, etc.), ALWAYS execute the action — never respond from conversation history alone. Previous action results in chat history are from earlier runs and may be expired or stale
 8. **OAuth / connect requests**: ALWAYS call OAUTH_CONNECT when the user asks to connect or link any account — links expire and must be freshly generated. NEVER tell the user to "use a previous link" or "check the earlier message"
 
@@ -80,33 +80,27 @@ No actions executed yet. Analyze the user's request and select the first action.
 
 # Output Format
 
-Prefer the v5 native tool-call-compatible JSON shape:
+Return JSON only. No markdown, no prose, no XML, no legacy planner formats.
 
 {
   "thought": "Your analysis of what to do next",
-  "tool_calls": [
+  "toolCalls": [
     {
-      "type": "function",
-      "function": {
-        "name": "ACTION_NAME",
-        "arguments": {"param": "value"}
-      }
+      "name": "ACTION_NAME",
+      "args": {"param": "value"}
     }
-  ]
+  ],
+  "messageToUser": ""
 }
 
-The legacy XML parser is still accepted during migration and should be deleted
-after cloud planners run directly on native tool calls end-to-end.
+For a final response, use:
+{
+  "thought": "Why no more tools are needed",
+  "toolCalls": [],
+  "messageToUser": "Final response to the user"
+}`;
 
-<output>
-<response>
-  <thought>[Your analysis of what to do next]</thought>
-  <action>ACTION_NAME</action>
-  <parameters>{"param": "value"}</parameters>
-</response>
-</output>`;
-
-export const multiStepSummaryTemplate = `<task>
+export const nativeResponseTemplate = `<task>
 Generate a response to the user based on the completed actions and their results.
 Respond AS {{agentName}}, using their voice and style.
 Current date/time: {{currentDateTime}}
@@ -185,12 +179,11 @@ IMPORTANT: If the user asks about your capabilities, tools, or available operati
 
 # Output Format
 
-<output>
-<response>
-  <thought>Brief summary of what was accomplished.</thought>
-  <text>Your response to the user, in character.</text>
-</response>
-</output>`;
+Respond using JSON only. No markdown, no prose, no XML.
+{
+  "thought": "Brief summary of what was accomplished.",
+  "text": "Your response to the user, in character."
+}`;
 
 export const shouldRespondTemplate = `<task>Decide whether {{agentName}} should respond, ignore, or stop.</task>
 
@@ -212,8 +205,9 @@ RULES:
 - if unsure, prefer IGNORE over hallucinating relevance
 
 CONTEXT ROUTING:
-- primaryContext: choose one context from available_contexts, or "general" if none apply
-- secondaryContexts: optional comma-separated list of additional relevant contexts
+- contexts: list zero or more context ids from available_contexts
+- use [] when no tool or context provider is needed
+- if contexts is non-empty, planning will run
 
 DECISION NOTE:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
@@ -221,12 +215,12 @@ DECISION NOTE:
 </instructions>
 
 <output>
-Respond using XML format:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-  <primaryContext>general</primaryContext>
-  <secondaryContexts></secondaryContexts>
-</response>
+Respond using JSON only:
+{
+  "action": "RESPOND|IGNORE|STOP",
+  "simple": true,
+  "contexts": [],
+  "thought": "short routing rationale",
+  "reply": "optional direct reply when simple and contexts is empty"
+}
 </output>`;

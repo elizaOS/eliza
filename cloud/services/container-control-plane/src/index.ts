@@ -13,6 +13,7 @@ import {
 import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
 import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
+import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
@@ -482,6 +483,25 @@ app.delete("/api/compat/agents/:id", (c) =>
     }
 
     return c.json(envelope(toCompatOpResult(agentId, "delete", true)));
+  }),
+);
+
+app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
+  handle(c, async (auth) => {
+    const agentId = c.req.param("id");
+    const body = (await c.req.json().catch(() => null)) as BridgeRequest | null;
+    if (!body || typeof body !== "object" || body.jsonrpc !== "2.0" || !body.method) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Invalid JSON-RPC request" },
+        },
+        400,
+      );
+    }
+
+    const response = await elizaSandboxService.bridge(agentId, auth.organizationId, body);
+    return c.json(response);
   }),
 );
 

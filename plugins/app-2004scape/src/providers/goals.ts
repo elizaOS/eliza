@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -172,9 +171,9 @@ export const goalsProvider: Provider = {
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {
-        text: encodeToonValue({
+        text: JSON.stringify({
           rs_2004_goals: { status: "not_in_game", goals: [] },
-        }),
+        }, null, 2),
       };
     }
 
@@ -186,14 +185,14 @@ export const goalsProvider: Provider = {
     );
 
     return {
-      text: encodeToonValue({
+      text: JSON.stringify({
         rs_2004_goals: {
           status: "ready",
           instruction:
             "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
           goals,
         },
-      }),
+      }, null, 2),
     };
   },
 };

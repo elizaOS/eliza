@@ -24,7 +24,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@toon-format/toon": "2.1.0",
     "matrix-js-sdk": "^41.4.0",
     "zod": "^4.4.3"
   },

@@ -196,7 +196,7 @@ app.get("/", async (c) => {
       });
       if (walletRecord) {
         walletAddress = walletRecord.address;
-        walletProvider = walletRecord.wallet_provider;
+        walletProvider = "steward";
         walletStatus = "active";
       }
     }

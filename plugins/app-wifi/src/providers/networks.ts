@@ -14,7 +14,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 const WIFI_NETWORKS_LIMIT = 25;
 
@@ -53,7 +52,7 @@ export const wifiNetworksProvider: Provider = {
       }));
 
       return {
-        text: encode({
+        text: JSON.stringify({
           wifi_networks: {
             count: entries.length,
             items: entries,

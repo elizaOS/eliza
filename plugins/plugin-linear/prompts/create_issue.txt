@@ -2,7 +2,7 @@ Given the user's request, extract the information needed to create a Linear issu
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 title: Brief, clear issue title
 description: Detailed description of the issue
 teamKey: Team key if mentioned, such as ENG or PROD
@@ -11,6 +11,5 @@ labels: Comma-separated labels if labels are mentioned
 assignee: Assignee username or email if mentioned
 
 Omit optional fields when they are not provided. Output only the fields, with no prose before or after them.
-
 
 

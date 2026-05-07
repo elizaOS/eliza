@@ -12,7 +12,7 @@ Rules:
 - Return "none" if no workflow matches the request
 - If multiple workflows match equally well, include all in matches array and set lower confidence
 
-Respond with structured TOON-style fields:
+Respond with structured JSON-style fields:
 matchedWorkflowId: best matching workflow ID, or null if no good match
 confidence: high | medium | low | none
 matches:

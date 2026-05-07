@@ -293,7 +293,7 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  * the prompt with a version where only intent-relevant actions keep full
  * parameter detail — the rest are stubs with just name + description.
  *
- * Supports the TOON prompt encoding emitted by the actions provider:
+ * Supports the legacy line-oriented prompt encoding emitted by older actions providers:
  *   actions[N]:
  *   - ACTION: description
  *     aliases[..]: ...
@@ -323,13 +323,13 @@ export function compactActionsForIntent(prompt: string): string {
   // stubs so the LLM knows they exist but doesn't waste context on params.
   const fullParamActions = buildFullParamActionSet(intentCategories);
 
-  return compactToonActionsBlock(prompt, fullParamActions) ?? prompt;
+  return compactStructuredActionsBlock(prompt, fullParamActions) ?? prompt;
 }
 
 /**
- * Locate and compact a TOON-formatted "Available Actions" block.
+ * Locate and compact a structured "Available Actions" block.
  */
-function compactToonActionsBlock(
+function compactStructuredActionsBlock(
   prompt: string,
   fullParamActions: Set<string>,
 ): string | null {
@@ -374,9 +374,9 @@ function compactToonActionsBlock(
   const bodyLines = lines.slice(0, consumed);
   const blockEnd = bodyStart + bodyLines.join("\n").length;
 
-  type ToonAction = { name: string; entryLines: string[] };
-  const entries: ToonAction[] = [];
-  let current: ToonAction | null = null;
+  type JsonAction = { name: string; entryLines: string[] };
+  const entries: JsonAction[] = [];
+  let current: JsonAction | null = null;
   for (const line of bodyLines) {
     if (line.startsWith("- ")) {
       if (current) entries.push(current);

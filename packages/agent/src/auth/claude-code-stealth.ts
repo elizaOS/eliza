@@ -1,3 +1,5 @@
+import { logger } from "@elizaos/core";
+
 const STEALTH_GUARD = Symbol.for("eliza.claudeCodeStealthInstalled");
 const CLAUDE_CODE_VERSION = "2.1.92";
 const CLAUDE_CODE_SYSTEM_PREFIX =
@@ -108,7 +110,7 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
         const updated = addSystemPrefix(parsed) as Record<string, unknown>;
         body = JSON.stringify(updated);
       } catch {
-        console.log(
+        logger.debug(
           "[stealth] Anthropic request body was not JSON; skipping system prefix",
         );
       }
@@ -132,7 +134,7 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
     if (process.env.ELIZA_STEALTH_DEBUG && typeof body === "string") {
       const modelMatch = body.match(/"model":"([^"]+)"/);
       if (modelMatch) {
-        console.log(`[stealth] →anthropic model=${modelMatch[1]}`);
+        logger.debug(`[stealth] anthropic model=${modelMatch[1]}`);
       }
     }
     return originalFetch(url.toString(), nextInit);

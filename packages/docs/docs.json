@@ -544,8 +544,7 @@
               "guides/tutorial-autonomous-agent",
               "guides/tutorial-discord-bot",
               "guides/tutorial-telegram-bot",
-              "guides/contributing",
-              "guides/contribution-guide"
+              "guides/contributing"
             ]
           },
           {
@@ -1171,7 +1170,6 @@
           {
             "group": "Contributing",
             "pages": [
-              "guides/contribution-guide",
               "guides/contributing",
               "guides/registry"
             ]
@@ -1432,8 +1430,7 @@
               "guides/agent-export",
               "guides/cloud-provider-routing",
               "guides/mcp-marketplace",
-              "guides/contributing",
-              "guides/contribution-guide"
+              "guides/contributing"
             ]
           },
           {

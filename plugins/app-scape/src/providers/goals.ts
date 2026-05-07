@@ -16,7 +16,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 import type { ScapeGameService } from "../services/game-service.js";
 
@@ -47,7 +46,7 @@ export const goalsProvider: Provider = {
       .slice(0, RECENT_ARCHIVED);
 
     return {
-      text: encode({
+      text: JSON.stringify({
         scape_goals: {
           active: active
             ? {

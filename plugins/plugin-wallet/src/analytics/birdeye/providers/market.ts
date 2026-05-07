@@ -4,7 +4,7 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 //import type { IToken } from '../types';
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
-import { formatToonScalar, formatToonTable } from "../utils";
+import { formatJsonScalar, formatJsonTable } from "../utils";
 
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
@@ -183,7 +183,7 @@ export const marketProvider: Provider = {
       const text = [
         "birdeye_market_data:",
         "  status: ok",
-        formatToonTable("  tokens", rows, [
+        formatJsonTable("  tokens", rows, [
           "chain",
           "address",
           "symbol",
@@ -208,7 +208,7 @@ export const marketProvider: Provider = {
         text: [
           "birdeye_market_data:",
           "  status: error",
-          `  reason: ${formatToonScalar(err instanceof Error ? err.message : String(err))}`,
+          `  reason: ${formatJsonScalar(err instanceof Error ? err.message : String(err))}`,
         ].join("\n"),
         data: {},
       };

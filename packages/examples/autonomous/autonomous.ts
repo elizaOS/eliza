@@ -10,7 +10,7 @@ import {
   createMessageMemory,
   logger,
   MemoryType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -90,7 +90,7 @@ function readStringField(
 }
 
 function parseDecision(raw: string): AgentDecision | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  const parsed = parseJSONObjectFromText(raw);
   if (!parsed) return null;
 
   const actionRaw = readStringField(parsed, "action")?.toUpperCase();
@@ -165,11 +165,13 @@ SANDBOX:
 RECENT HISTORY (most recent last):
 ${params.recentSteps}
 
-Choose exactly ONE next step and output ONLY this TOON document (no extra text):
-action: RUN|SLEEP|STOP
-command: ...
-sleepMs: ...
-note: short reason
+Choose exactly ONE next step and output ONLY this JSON object (no extra text):
+{
+  "action": "RUN|SLEEP|STOP",
+  "command": "...",
+  "sleepMs": 1000,
+  "note": "short reason"
+}
 
 Rules:
 - If action is RUN, include command and omit sleepMs.

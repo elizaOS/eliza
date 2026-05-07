@@ -28,7 +28,6 @@ export interface CurrentUserDto {
   organization_id: string | null;
   role: string;
   steward_user_id: string | null;
-  privy_user_id: string | null;
   telegram_id: string | null;
   telegram_username: string | null;
   telegram_first_name: string | null;

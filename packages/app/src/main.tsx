@@ -753,7 +753,7 @@ function injectPopoutApiBase(): void {
 }
 
 function injectDetachedShellApiBase(): void {
-  const apiBase = new URLSearchParams(window.location.search).get("apiBase");
+  const apiBase = getWindowUrlSearchParams().get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
 }
 

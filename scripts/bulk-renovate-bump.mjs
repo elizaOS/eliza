@@ -31,7 +31,7 @@ const UPDATES = [
   ["pino-std-serializers", "7.1.0"],
   ["prettier", "3.8.3"],
   ["rollup", "4.60.2"],
-  ["tsdown", "0.21.0"],
+  ["tsdown", "0.21.10"],
   ["typedoc", "0.28.19"],
   ["typedoc-plugin-markdown", "4.11.0"],
   ["typescript", "6.0.0"], // major bump per dashboard

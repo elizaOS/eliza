@@ -6,9 +6,10 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { isLoopbackUrl, toRecord } from "../utils.js";
-import type {
-  ScenarioContext,
-  ScenarioFinalCheck,
+import {
+  FINAL_CHECK_KEYS,
+  type ScenarioContext,
+  type ScenarioFinalCheck,
 } from "@elizaos/scenario-schema";
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
 
@@ -28,20 +29,12 @@ export type FinalCheckHandler = (
 ) => Promise<FinalCheckOutcome> | FinalCheckOutcome;
 
 const HANDLERS = new Map<string, FinalCheckHandler>();
-const STRICT_FINAL_CHECK_KEYS = new Map<string, ReadonlySet<string>>();
 
 export function registerFinalCheckHandler(
   type: string,
   handler: FinalCheckHandler,
 ): void {
   HANDLERS.set(type, handler);
-}
-
-function registerStrictFinalCheckKeys(
-  type: string,
-  keys: readonly string[],
-): void {
-  STRICT_FINAL_CHECK_KEYS.set(type, new Set(["type", "name", ...keys]));
 }
 
 function toArray<T>(value: T | T[] | undefined): T[] {
@@ -1185,72 +1178,6 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   };
 });
 
-registerStrictFinalCheckKeys("custom", ["predicate"]);
-registerStrictFinalCheckKeys("actionCalled", [
-  "actionName",
-  "status",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("selectedAction", ["actionName"]);
-registerStrictFinalCheckKeys("selectedActionArguments", [
-  "actionName",
-  "includesAny",
-  "includesAll",
-]);
-registerStrictFinalCheckKeys("clarificationRequested", ["expected"]);
-registerStrictFinalCheckKeys("interventionRequestExists", ["expected"]);
-registerStrictFinalCheckKeys("pushSent", ["channel"]);
-registerStrictFinalCheckKeys("pushEscalationOrder", ["channelOrder"]);
-registerStrictFinalCheckKeys("pushAcknowledgedSync", ["expected"]);
-registerStrictFinalCheckKeys("approvalRequestExists", [
-  "expected",
-  "actionName",
-  "state",
-]);
-registerStrictFinalCheckKeys("approvalStateTransition", [
-  "from",
-  "to",
-  "actionName",
-]);
-registerStrictFinalCheckKeys("noSideEffectOnReject", ["actionName"]);
-registerStrictFinalCheckKeys("draftExists", ["channel", "expected"]);
-registerStrictFinalCheckKeys("messageDelivered", ["channel", "expected"]);
-registerStrictFinalCheckKeys("browserTaskCompleted", ["expected"]);
-registerStrictFinalCheckKeys("browserTaskNeedsHuman", ["expected"]);
-registerStrictFinalCheckKeys("uploadedAssetExists", ["expected"]);
-registerStrictFinalCheckKeys("connectorDispatchOccurred", [
-  "channel",
-  "actionName",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("memoryWriteOccurred", ["table", "minCount"]);
-registerStrictFinalCheckKeys("judgeRubric", ["rubric", "minimumScore"]);
-registerStrictFinalCheckKeys("gmailActionArguments", [
-  "actionName",
-  "subaction",
-  "operation",
-  "fields",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("gmailMockRequest", [
-  "method",
-  "path",
-  "body",
-  "expected",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("gmailDraftCreated", ["expected"]);
-registerStrictFinalCheckKeys("gmailDraftDeleted", ["expected"]);
-registerStrictFinalCheckKeys("gmailMessageSent", ["expected"]);
-registerStrictFinalCheckKeys("gmailBatchModify", ["expected", "body"]);
-registerStrictFinalCheckKeys("gmailApproval", ["state"]);
-registerStrictFinalCheckKeys("gmailNoRealWrite", []);
-registerStrictFinalCheckKeys("n8nDispatchOccurred", [
-  "workflowId",
-  "expected",
-  "minCount",
-]);
-
 // judgeRubric is handled inline by the executor so it can reuse the live LLM
 // without threading the runtime through the generic handler registry.
 registerFinalCheckHandler("judgeRubric", () => ({
@@ -1277,7 +1204,7 @@ export async function runFinalCheck(
       detail: `no handler registered for finalCheck type "${type}"`,
     };
   }
-  const strictKeys = STRICT_FINAL_CHECK_KEYS.get(type);
+  const strictKeys = FINAL_CHECK_KEYS.get(type);
   if (strictKeys) {
     const unknownKeys = Object.keys(check as Record<string, unknown>).filter(
       (key) => !strictKeys.has(key),

@@ -64,7 +64,6 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "form-data": "4.0.5",
     "whatwg-url": "^16.0.0"
@@ -96,7 +95,7 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
-    "tsdown": "^0.21.0",
+    "tsdown": "^0.21.10",
     "typescript": "^6.0.0",
     "vitest": "^4.0.18"
   },

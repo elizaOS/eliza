@@ -12,14 +12,14 @@ Analyze the agent's recent behavior and interactions. Consider:
 3. Were any mistakes made?
 4. What could be improved?
 
-Respond using TOON like this:
+Respond using JSON like this:
 thought: Your detailed analysis
 quality_score: Score 0-100 for overall quality
 strengths: What went well
 improvements: What could be improved
 learnings: Key takeaways for future interactions
 
-IMPORTANT: Your response must ONLY contain the TOON document above.
+IMPORTANT: Your response must ONLY contain the JSON object above.
 
 
 

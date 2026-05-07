@@ -54,6 +54,35 @@ export type TrajectoryLlmCallDetails = {
 	completionTokens?: number;
 };
 
+export type TrajectoryProviderAccessParams = {
+	stepId: string;
+	providerName: string;
+	data: Record<string, string | number | boolean | null>;
+	purpose: string;
+	query?: Record<string, string | number | boolean | null>;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
+};
+
+export type TrajectoryProviderAccessLogger = {
+	logProviderAccess: (params: TrajectoryProviderAccessParams) => void;
+};
+
+export type TrajectoryRuntimeLlmCallParams = {
+	stepId: string;
+	modelSlot?: string;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
+} & TrajectoryLlmCallDetails;
+
+export type TrajectoryRuntimeLlmCallLogger = {
+	logLlmCall: (params: TrajectoryRuntimeLlmCallParams) => void;
+};
+
 /**
  * Caller-supplied portion of {@link TrajectoryLlmCallDetails} for
  * {@link recordLlmCall}. The helper measures `latencyMs` itself and

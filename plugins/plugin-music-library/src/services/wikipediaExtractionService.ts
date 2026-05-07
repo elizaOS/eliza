@@ -1,8 +1,4 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { parseJsonObjectResponse } from "../utils/json";
 import type { WikipediaClient } from "./wikipediaClient";
@@ -356,7 +352,8 @@ Return JSON with this shape:
     const extracted: ExtractedMusicInfo = {};
 
     try {
-      const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(response);
+      const parsedJson =
+        parseJsonObjectResponse<Record<string, unknown>>(response);
       if (parsedJson) {
         extracted.relatedArtists =
           toStringList(parsedJson.relatedArtists) ||

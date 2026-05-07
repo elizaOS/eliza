@@ -2,14 +2,15 @@ import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from
 import { type ActionWithParams, defineActionParameters } from "../types";
 
 /**
- * FINISH action — the decision LLM calls this as its last step to produce
- * the user-facing response directly, eliminating the separate summary LLM call.
+ * FINISH action - compatibility terminal tool for planners that still emit an
+ * explicit final tool call instead of v5 toolCalls: [] plus messageToUser.
  *
- * NOTE: The handler is never called in normal flow. runMultiStepCore() intercepts
+ * NOTE: The handler is never called in normal flow. runNativePlannerCore() intercepts
  * action === "FINISH" before processActions() runs, extracts the response param,
- * and returns directly. The handler exists for action registry completeness.
+ * and returns directly. The handler exists for registry completeness and
+ * non-multi-step contexts.
  *
- * @see cloud-bootstrap-message-service.ts runMultiStepCore() FINISH intercept
+ * @see cloud-bootstrap-message-service.ts runNativePlannerCore() FINISH intercept
  */
 export const finishAction: ActionWithParams = {
   name: "FINISH",
@@ -27,7 +28,7 @@ export const finishAction: ActionWithParams = {
 
   validate: async () => true,
 
-  // Intercepted by multi-step loop — this handler is a fallback for non-multi-step contexts.
+  // Intercepted by the native planner loop; this is a fallback for non-multi-step contexts.
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,

@@ -19,7 +19,7 @@ import { ChannelType } from "../../../types/index.ts";
 const spec = requireActionSpec("UPDATE_ROLE");
 
 /** Shape of individual assignment in structured responses. */
-interface RoleAssignmentToon {
+interface RoleAssignmentJson {
 	entityId?: string;
 	newRole?: string;
 }
@@ -28,10 +28,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
+function normalizeRoleAssignments(value: unknown): RoleAssignmentJson[] {
 	if (Array.isArray(value)) {
 		return value.filter(
-			(entry): entry is RoleAssignmentToon =>
+			(entry): entry is RoleAssignmentJson =>
 				isRecord(entry) &&
 				(typeof entry.entityId === "string" ||
 					typeof entry.newRole === "string"),
@@ -46,7 +46,7 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
 		isRecord(value) &&
 		(typeof value.entityId === "string" || typeof value.newRole === "string")
 	) {
-		return [value as RoleAssignmentToon];
+		return [value as RoleAssignmentJson];
 	}
 
 	return [];
@@ -55,7 +55,7 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
 function readRoleAssignments(
 	message: Memory,
 	options?: HandlerOptions,
-): RoleAssignmentToon[] {
+): RoleAssignmentJson[] {
 	const params =
 		options?.parameters && typeof options.parameters === "object"
 			? (options.parameters as Record<string, unknown>)
@@ -252,7 +252,7 @@ export const updateRoleAction: Action = {
 		const assignmentArray = readRoleAssignments(message, _options);
 		const assignments: RoleAssignment[] = assignmentArray
 			.filter(
-				(a): a is RoleAssignmentToon & { entityId: string; newRole: string } =>
+				(a): a is RoleAssignmentJson & { entityId: string; newRole: string } =>
 					typeof a.entityId === "string" && typeof a.newRole === "string",
 			)
 			.map((a) => ({

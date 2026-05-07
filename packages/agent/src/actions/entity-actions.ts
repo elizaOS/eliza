@@ -6,7 +6,7 @@ import type {
   SearchCategoryRegistration,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
@@ -593,7 +593,10 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseLinkEntityExtraction(text: string): LinkEntityExtraction {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) return {};
   const normalize = (v: unknown): string | undefined => {
     if (v == null) return undefined;
@@ -621,13 +624,9 @@ function linkEntityPrompt(userText: string, peopleList: string): string {
     "The user wants to tell us that two entities in the rolodex are the",
     "same person (same human across different platforms or handles).",
     "",
-    "Respond using TOON like this:",
-    "entityA: first entity's primaryEntityId (UUID, required)",
-    "entityB: second entity's primaryEntityId (UUID, required)",
-    "confirmation: true if the user is explicitly confirming the merge",
-    '  ("yes merge them", "confirm", "do it", "go ahead"); false or',
-    "  omitted if the user is only proposing / asking about a link",
-    "reason: short free-text reason from the user (optional)",
+    "Respond using JSON like this:",
+    '{"entityA":"first entity primaryEntityId UUID","entityB":"second entity primaryEntityId UUID","confirmation":true,"reason":"short free-text reason from the user"}',
+    'Set confirmation to true only if the user is explicitly confirming the merge ("yes merge them", "confirm", "do it", "go ahead"); otherwise use false or omit it.',
     "",
     "Resolve names to UUIDs using the people list below. If you cannot find",
     "an exact UUID for one or both sides, leave that field blank — do not",
@@ -636,7 +635,7 @@ function linkEntityPrompt(userText: string, peopleList: string): string {
     "The request may be in any language. Understand the intent from",
     "context, not keywords.",
     "",
-    "IMPORTANT: Your response must ONLY contain the TOON document above.",
+    "IMPORTANT: Your response must ONLY contain the JSON object above.",
     "",
     peopleList ? `People:\n${peopleList}\n` : "",
     `Payload: ${JSON.stringify({ request: userText })}`,

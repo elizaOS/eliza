@@ -46,7 +46,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@toon-format/toon": "2.1.0",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },

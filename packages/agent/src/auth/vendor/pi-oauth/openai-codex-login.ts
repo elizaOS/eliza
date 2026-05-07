@@ -17,6 +17,7 @@ if (
   });
 }
 
+import { logger } from "@elizaos/core";
 import { generatePKCE } from "./pkce.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -131,7 +132,9 @@ async function exchangeAuthorizationCode(
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    console.error("[openai-codex] code->token failed:", response.status, text);
+    logger.error(
+      `[openai-codex] code->token failed: ${response.status} ${text}`,
+    );
     return { type: "failed" };
   }
   const json = (await response.json()) as {
@@ -144,7 +147,9 @@ async function exchangeAuthorizationCode(
     !json.refresh_token ||
     typeof json.expires_in !== "number"
   ) {
-    console.error("[openai-codex] token response missing fields:", json);
+    logger.error(
+      `[openai-codex] token response missing fields: ${JSON.stringify(json)}`,
+    );
     return { type: "failed" };
   }
   return {
@@ -170,10 +175,8 @@ async function refreshAccessToken(
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      console.error(
-        "[openai-codex] Token refresh failed:",
-        response.status,
-        text,
+      logger.error(
+        `[openai-codex] Token refresh failed: ${response.status} ${text}`,
       );
       return { type: "failed" };
     }
@@ -187,9 +190,10 @@ async function refreshAccessToken(
       !json.refresh_token ||
       typeof json.expires_in !== "number"
     ) {
-      console.error(
-        "[openai-codex] Token refresh response missing fields:",
-        json,
+      logger.error(
+        `[openai-codex] Token refresh response missing fields: ${JSON.stringify(
+          json,
+        )}`,
       );
       return { type: "failed" };
     }
@@ -200,7 +204,7 @@ async function refreshAccessToken(
       expires: Date.now() + json.expires_in * 1000,
     };
   } catch (error) {
-    console.error("[openai-codex] Token refresh error:", error);
+    logger.error(`[openai-codex] Token refresh error: ${String(error)}`);
     return { type: "failed" };
   }
 }
@@ -290,10 +294,8 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
         });
       })
       .on("error", (err: NodeJS.ErrnoException) => {
-        console.error(
-          "[openai-codex] Failed to bind http://127.0.0.1:1455 (",
-          err.code,
-          ") Falling back to manual paste.",
+        logger.error(
+          `[openai-codex] Failed to bind http://127.0.0.1:1455 (${err.code}) Falling back to manual paste.`,
         );
         resolve({
           close: () => {

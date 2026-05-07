@@ -11,7 +11,7 @@ Group=deploy
 WorkingDirectory=/opt/eliza/cloud
 EnvironmentFile=/opt/eliza/cloud/.env.local
 # ssh2 + dockerode are Node-only, so the daemon runs under tsx (not bun).
-ExecStart=/usr/bin/npx tsx packages/scripts/provisioning-worker.ts
+ExecStart=/usr/bin/npx tsx packages/scripts/daemons/provisioning-worker.ts
 
 Restart=always
 RestartSec=5

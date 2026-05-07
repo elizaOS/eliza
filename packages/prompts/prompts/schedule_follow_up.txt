@@ -17,7 +17,7 @@ instructions[5]:
 - include message only when the user asked for a specific note or reminder text
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
 contactName: Jane Doe

@@ -10,15 +10,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import { Button } from "@/components/ui/button";
+import { buildElizaSmsHref } from "@/lib/contact";
 
-const IMESSAGE_PHONE_NUMBER = "+14245074963";
 const SMS_PREWRITTEN_MESSAGE = "Hello Eliza!";
 
 export function LandingHeader() {
   const [showQR, setShowQR] = useState(false);
 
   // SMS URI that opens native messaging app with pre-written text
-  const smsUri = `sms:${IMESSAGE_PHONE_NUMBER}&body=${encodeURIComponent(SMS_PREWRITTEN_MESSAGE)}`;
+  const smsUri = buildElizaSmsHref(SMS_PREWRITTEN_MESSAGE);
 
   return (
     <motion.header

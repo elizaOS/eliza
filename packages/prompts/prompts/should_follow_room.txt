@@ -12,7 +12,7 @@ instructions[3]:
 - prefer false when uncertain
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
 decision: true

@@ -1061,7 +1061,8 @@ async function main(): Promise<void> {
 
     // Process births - create new runtimes for children
     while (pendingBirths.length > 0) {
-      const childState = pendingBirths.shift()!;
+      const childState = pendingBirths.shift();
+      if (!childState) break;
       const liveAgent = await createAgentRuntime(childState);
       liveAgents.set(childState.id, liveAgent);
     }

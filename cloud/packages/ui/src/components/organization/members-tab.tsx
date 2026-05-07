@@ -21,13 +21,13 @@ import {
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import { InviteMemberDialog } from "./invite-member-dialog";
 import { MembersList } from "./members-list";
 import { PendingInvitesList } from "./pending-invites-list";
 
 interface MembersTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 interface OrganizationMember {

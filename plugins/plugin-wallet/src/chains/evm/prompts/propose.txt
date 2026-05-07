@@ -12,15 +12,16 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
-targets[2]: 0xTargetAddress1,0xTargetAddress2
-values[2]: 0,1000000000000000000
-calldatas[2]: 0xCalldata1,0xCalldata2
-description: proposal description, or null
-governor: governor contract address, or null
-chain: chain to execute on, or null
+Respond using JSON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+{
+  "targets": ["0xTargetAddress1", "0xTargetAddress2"],
+  "values": ["0", "1000000000000000000"],
+  "calldatas": ["0xCalldata1", "0xCalldata2"],
+  "description": "proposal description, or null",
+  "governor": "governor contract address, or null",
+  "chain": "chain to execute on, or null"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.
-
+IMPORTANT: Your response must ONLY contain the JSON object above. No preamble or explanation.
 
 

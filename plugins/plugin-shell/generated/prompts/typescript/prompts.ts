@@ -1,6 +1,6 @@
 /**
  * Auto-generated prompt templates
- * DO NOT EDIT - Generated from ../../../../prompts/*.txt
+ * DO NOT EDIT - Generated from ../../../prompts/*.txt
  *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
@@ -50,7 +50,9 @@ Key rules:
 4. Include all flags and arguments
 5. When user says "run it", "execute it", or similar, they want you to run the command
 
-Respond with TOON only:
-command: <complete shell command to execute>`;
+Respond with JSON only:
+{
+  "command": "<complete shell command to execute>"
+}`;
 
 export const COMMAND_EXTRACTION_TEMPLATE = commandExtractionTemplate;

@@ -20,7 +20,7 @@ export { useSkillAction } from "./actions/use-skill";
 export {
 	estimateTokens,
 	extractBody,
-	generateSkillsToon,
+	generateSkillsJson,
 	parseFrontmatter,
 	validateFrontmatter,
 	validateSkillDirectory,
@@ -82,7 +82,7 @@ export type {
 	OttoInstallOption,
 	// Otto extensions
 	OttoMetadata,
-	PromptToonOptions,
+	PromptJsonOptions,
 	// Core skill types
 	Skill,
 	SkillCatalogEntry,

@@ -13,13 +13,13 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - This ensures the user sees clearly formatted and copyable code when relevant.
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the TOON response format without any preamble or explanation.
+Go directly to the JSON response format without any preamble or explanation.
 
-Respond using TOON like this:
+Respond using JSON like this:
 thought: Your thought here
 text: Your message here
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
 
 
 
