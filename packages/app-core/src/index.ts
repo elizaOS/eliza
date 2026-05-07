@@ -20,7 +20,6 @@ export * from "./api/auth";
 export * from "./api/compat-route-shared";
 export * from "./api/index";
 export * from "./api/response";
-export * from "./api/server-cloud-tts";
 export {
   type AppShellPageRegistration,
   listAppShellPages,

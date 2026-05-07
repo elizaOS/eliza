@@ -1,10 +1,10 @@
+export * from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";
 export * from "./browser-workspace-wallet";
 export * from "./chain-utils";
 export { stewardPlugin } from "./plugin";
-export * from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export {
   __resetStewardAgentEnsured,
   approveStewardTransaction,

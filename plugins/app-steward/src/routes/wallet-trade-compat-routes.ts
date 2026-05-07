@@ -17,6 +17,10 @@ import {
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";
+import {
+  canUseLocalTradeExecution as _canUseLocalTradeExecution,
+  resolveTradePermissionMode as _resolveTradePermissionMode,
+} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
 import { ethers } from "ethers";
 import {
@@ -30,10 +34,6 @@ import {
 import { getWalletAddresses } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
 import { recordWalletTradeLedgerEntry } from "../api/wallet-trading-profile";
-import {
-  canUseLocalTradeExecution as _canUseLocalTradeExecution,
-  resolveTradePermissionMode as _resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 import {
   isStewardConfigured,
   signTransactionWithOptionalSteward,

@@ -3,8 +3,6 @@ import {
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
 import {
-  type CloudApiKeyRuntimeLike,
-  DEFAULT_CLOUD_API_BASE_URL,
   normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,

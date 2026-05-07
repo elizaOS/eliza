@@ -453,7 +453,11 @@ export async function handleTriggerRoutes(
         trigger.eventKind === eventKind
       );
     });
-    const results = [];
+    const results: Array<{
+      taskId: string | undefined;
+      result: Awaited<ReturnType<typeof executeTriggerTask>>;
+      trigger: ReturnType<typeof taskToTriggerSummary> | null;
+    }> = [];
     for (const task of matchingTasks) {
       const result = await executeTriggerTask(runtime, task, {
         source: "event",

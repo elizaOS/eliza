@@ -15,6 +15,10 @@ import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 import {
+  canUseLocalTradeExecution,
+  resolveTradePermissionMode,
+} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+import {
   buildBscTradePreflight,
   buildBscTradeQuote,
   resolvePrimaryBscRpcUrl,
@@ -26,10 +30,6 @@ import {
   loadWalletTradingProfile,
   updateWalletTradeLedgerEntryStatus,
 } from "../api/wallet-trading-profile";
-import {
-  canUseLocalTradeExecution,
-  resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 
 function isAgentAutomationRequest(req: http.IncomingMessage): boolean {
   return req.headers["x-eliza-agent-automation"] === "1";
