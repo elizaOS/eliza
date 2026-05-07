@@ -31,7 +31,6 @@ import imessagePlugin, {
   // Parsing functions
   parseContactsOutput,
   parseMessagesFromAppleScript,
-  sendMessage,
   splitMessageForIMessage,
 } from "../src/index";
 
@@ -50,8 +49,7 @@ describe("iMessage plugin exports", () => {
     expect(Array.isArray(imessagePlugin.services)).toBe(true);
   });
 
-  it("exports actions, providers, and service", () => {
-    expect(sendMessage).toBeDefined();
+  it("exports providers and service", () => {
     expect(chatContextProvider).toBeDefined();
     expect(IMessageService).toBeDefined();
   });
@@ -522,120 +520,11 @@ describe("Error classes", () => {
 // Action validation
 // ============================================================
 
-describe("sendMessage action", () => {
-  it("has correct action metadata", () => {
-    expect(sendMessage.name).toBe("IMESSAGE_SEND_MESSAGE");
-    expect(sendMessage.description).toContain("iMessage");
-    expect(Array.isArray(sendMessage.similes)).toBe(true);
-    expect(sendMessage.similes?.length).toBeGreaterThan(0);
-    expect(Array.isArray(sendMessage.examples)).toBe(true);
-    expect(sendMessage.examples?.length).toBeGreaterThan(0);
-    expect(sendMessage.suppressPostActionContinuation).toBe(true);
-  });
-
-  // Helper: a mock runtime that either exposes a fake IMessageService or not.
-  // The new validate() requires `runtime.getService(IMESSAGE_SERVICE_NAME)` to
-  // return a truthy value before it will authorize the action at all.
-  const makeMockRuntime = (serviceRegistered: boolean) =>
-    ({
-      getService: (_name: string) => (serviceRegistered ? ({} as unknown) : undefined),
-    }) as unknown as Parameters<NonNullable<typeof sendMessage.validate>>[0];
-
-  it("validate returns false when the iMessage service is not registered", async () => {
-    const mockRuntime = makeMockRuntime(false);
-    const mockMessage = {
-      content: { source: "imessage", text: "please send something" },
-    } as Parameters<NonNullable<typeof sendMessage.validate>>[1];
-
-    const result = await sendMessage.validate?.(mockRuntime, mockMessage);
-    expect(result).toBe(false);
-  });
-
-  it("validate returns true for any message from the imessage source", async () => {
-    const mockRuntime = makeMockRuntime(true);
-    const mockMessage = {
-      content: { source: "imessage" },
-    } as Parameters<NonNullable<typeof sendMessage.validate>>[1];
-
-    const result = await sendMessage.validate?.(mockRuntime, mockMessage);
-    expect(result).toBe(true);
-  });
-
-  it("validate returns true for non-imessage sources when the text has send-intent keywords", async () => {
-    const mockRuntime = makeMockRuntime(true);
-    const mockMessage = {
-      content: {
-        source: "client_chat",
-        text: "please send shaw an iMessage right now",
-      },
-    } as Parameters<NonNullable<typeof sendMessage.validate>>[1];
-
-    const result = await sendMessage.validate?.(mockRuntime, mockMessage);
-    expect(result).toBe(true);
-  });
-
-  it("validate returns false for non-imessage sources with no intent text", async () => {
-    const mockRuntime = makeMockRuntime(true);
-    const mockMessage = {
-      content: { source: "discord", text: "what is the weather today" },
-    } as Parameters<NonNullable<typeof sendMessage.validate>>[1];
-
-    const result = await sendMessage.validate?.(mockRuntime, mockMessage);
-    expect(result).toBe(false);
-  });
-
-  it("validate returns true for a structured action invocation on any source", async () => {
-    const mockRuntime = makeMockRuntime(true);
-    const mockMessage = {
-      content: {
-        source: "api",
-        text: "",
-        actions: ["IMESSAGE_SEND_MESSAGE"],
-      },
-    } as Parameters<NonNullable<typeof sendMessage.validate>>[1];
-
-    const result = await sendMessage.validate?.(mockRuntime, mockMessage);
-    expect(result).toBe(true);
-  });
-
-  it("does not callback a generic success message after sending", async () => {
-    const service = {
-      isConnected: vi.fn(() => true),
-      isMacOS: vi.fn(() => true),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
-    };
-    const runtime = {
-      getService: vi.fn(() => service),
-      composeState: vi.fn(),
-      useModel: vi.fn(async () => JSON.stringify({ text: "Hello", to: "current" })),
-    } as unknown as Parameters<typeof sendMessage.handler>[0];
-    const message = {
-      roomId: "room-1",
-      content: { source: "imessage", text: "reply hello" },
-    } as Parameters<typeof sendMessage.handler>[1];
-    const state = {
-      values: {},
-      data: { chatId: "+15551234567" },
-      text: "",
-    } as Parameters<typeof sendMessage.handler>[2];
-    const callback = vi.fn(async () => []);
-
-    const result = await sendMessage.handler(runtime, message, state, undefined, callback);
-
-    expect(callback).not.toHaveBeenCalled();
-    expect(result).toEqual(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          to: "+15551234567",
-          messageId: "msg-1",
-          suppressVisibleCallback: true,
-          suppressActionResultClipboard: true,
-        }),
-      })
-    );
-  });
-});
+// IMESSAGE_SEND_MESSAGE used to be a standalone action; now the iMessage
+// MessageConnector (registered by IMessageService.registerSendHandlers) is
+// the canonical send path through SEND_MESSAGE. The plugin no longer ships a
+// dedicated send action, so the action-shape and validate/handler tests that
+// lived here have been retired with the action.
 
 // ============================================================
 // Chat context provider

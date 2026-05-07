@@ -53,7 +53,7 @@ export const publishNote: Action = {
   name: "NOSTR_PUBLISH_NOTE",
   similes: ["NOSTR_NOTE", "POST_NOSTR_NOTE", "NOSTR_KIND_1", "PUBLISH_NOSTR"],
   description:
-    "Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; use NOSTR_SEND_DM for private messages.",
+    "Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; private messages should be sent via SEND_MESSAGE (which routes through the Nostr DM connector).",
   descriptionCompressed: "Publish Nostr note (kind:1) to relays.",
   contexts: ["social_posting", "connectors"],
   contextGate: { anyOf: ["social_posting", "connectors"] },

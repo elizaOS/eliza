@@ -8,7 +8,10 @@
 import { platform } from "node:os";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { sendMessage } from "./actions/index.js";
+// IMESSAGE_SEND_MESSAGE was a standalone action that duplicated the
+// MessageConnector path. The connector (registered by IMessageService.
+// registerSendHandlers) is now the canonical way to deliver — SEND_MESSAGE
+// routes through it. This plugin no longer registers its own send action.
 import { chatContextProvider, contactsProvider } from "./providers/index.js";
 import {
   chatDbMessageToPublicShape,
@@ -93,7 +96,6 @@ export {
   IMessageService,
   parseChatsFromAppleScript,
   parseMessagesFromAppleScript,
-  sendMessage,
 };
 
 /**
@@ -104,7 +106,7 @@ const imessagePlugin: Plugin = {
   description: "iMessage plugin for Eliza agents (macOS only)",
 
   services: [IMessageService],
-  actions: [sendMessage],
+  actions: [],
   providers: [chatContextProvider, contactsProvider],
   routes: imessageSetupRoutes,
   tests: [],
