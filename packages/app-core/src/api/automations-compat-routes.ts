@@ -25,6 +25,7 @@ import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
+  AutomationLastExecution,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   AutomationRoomBinding,
@@ -89,6 +90,10 @@ const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
   "recent-conversations",
   "relevant-conversations",
 ]);
+
+// 30s cache for last-execution data — avoids hammering n8n on every automations poll.
+const lastExecutionCache = new Map<string, { data: AutomationLastExecution; expiresAt: number }>();
+const LAST_EXECUTION_TTL_MS = 30_000;
 
 interface StaticAutomationNodeSpec {
   id: string;
@@ -727,6 +732,38 @@ async function buildAutomationListResponse(
     }
   }
 
+  // Fetch last execution for each live n8n workflow in parallel.
+  // Promise.allSettled ensures one failure does not block the full list.
+  if (!n8nOffline && workflowItemsById.size > 0) {
+    const workflowIds = [...workflowItemsById.keys()];
+    await Promise.allSettled(
+      workflowIds.map(async (workflowId) => {
+        const cached = lastExecutionCache.get(workflowId);
+        if (cached && cached.expiresAt > Date.now()) {
+          const item = workflowItemsById.get(workflowId);
+          if (item) item.lastExecution = cached.data;
+          return;
+        }
+        const result = await invokeN8nCompatRoute<{ executions?: unknown[] }>(
+          req,
+          res,
+          runtime,
+          `/api/n8n/workflows/${encodeURIComponent(workflowId)}/executions?limit=1`,
+        );
+        if (result.status !== 200 || !Array.isArray(result.payload?.executions)) {
+          return;
+        }
+        const raw = result.payload.executions[0] as Record<string, unknown> | undefined;
+        if (!raw) return;
+        const exec = normalizeLastExecution(raw);
+        if (!exec) return;
+        lastExecutionCache.set(workflowId, { data: exec, expiresAt: Date.now() + LAST_EXECUTION_TTL_MS });
+        const item = workflowItemsById.get(workflowId);
+        if (item) item.lastExecution = exec;
+      }),
+    );
+  }
+
   const coordinatorTriggerItems = triggerItems
     .filter((trigger) => trigger.kind !== "workflow")
     .map((trigger) =>
@@ -761,6 +798,26 @@ async function buildAutomationListResponse(
     n8nStatus,
     workflowFetchError,
   };
+}
+
+function normalizeLastExecution(raw: Record<string, unknown>): AutomationLastExecution | null {
+  const rawStatus = raw.status;
+  if (typeof rawStatus !== "string") return null;
+  const status = (
+    ["success", "error", "running", "waiting"].includes(rawStatus)
+      ? rawStatus
+      : "unknown"
+  ) as AutomationLastExecution["status"];
+  const startedAt = typeof raw.startedAt === "string" ? raw.startedAt : null;
+  if (!startedAt) return null;
+  const stoppedAt = typeof raw.stoppedAt === "string" ? raw.stoppedAt : null;
+  const errorMessage = (() => {
+    const data = raw.data as Record<string, unknown> | undefined;
+    const resultData = data?.resultData as Record<string, unknown> | undefined;
+    const error = resultData?.error as Record<string, unknown> | undefined;
+    return typeof error?.message === "string" ? error.message : undefined;
+  })();
+  return { status, startedAt, stoppedAt, ...(errorMessage ? { errorMessage } : {}) };
 }
 
 function normalizeCapabilityName(value: string): string {
