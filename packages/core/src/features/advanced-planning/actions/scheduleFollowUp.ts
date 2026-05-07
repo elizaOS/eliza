@@ -259,21 +259,13 @@ export const scheduleFollowUpAction: Action = {
 			typeof params.contactName === "string"
 				? `contactName: ${params.contactName}`
 				: "",
-			typeof params.entityId === "string"
-				? `entityId: ${params.entityId}`
-				: "",
+			typeof params.entityId === "string" ? `entityId: ${params.entityId}` : "",
 			typeof params.scheduledAt === "string"
 				? `scheduledAt: ${params.scheduledAt}`
 				: "",
-			typeof params.reason === "string"
-				? `reason: ${params.reason}`
-				: "",
-			typeof params.priority === "string"
-				? `priority: ${params.priority}`
-				: "",
-			typeof params.message === "string"
-				? `message: ${params.message}`
-				: "",
+			typeof params.reason === "string" ? `reason: ${params.reason}` : "",
+			typeof params.priority === "string" ? `priority: ${params.priority}` : "",
+			typeof params.message === "string" ? `message: ${params.message}` : "",
 		]
 			.filter(Boolean)
 			.join("\n");

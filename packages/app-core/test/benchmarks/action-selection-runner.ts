@@ -1133,9 +1133,11 @@ async function writeTrajectoryIndexHtml(
       const planned = r.plannedAction ?? "(none)";
       const completed = r.completedAction ?? "(none)";
       const link = `cases/${r.case.id}.json`;
+      const markdownLink = `cases/${r.case.id}.md`;
       const colour = r.pass ? "#0a7" : "#c33";
       return `<tr>
   <td><a href="${link}">${escapeHtml(r.case.id)}</a></td>
+  <td><a href="${markdownLink}">markdown</a></td>
   <td style="color:${colour};font-weight:600">${status}</td>
   <td>${escapeHtml(expected)}</td>
   <td>${escapeHtml(planned)}</td>
@@ -1156,7 +1158,7 @@ async function writeTrajectoryIndexHtml(
 <h1>Action Benchmark Trajectories</h1>
 <p>${results.filter((r) => r.pass).length} / ${results.length} passed.</p>
 <table>
-<thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Planned</th><th>Completed</th><th>Latency</th><th>Tags</th></tr></thead>
+<thead><tr><th>Case</th><th>Review</th><th>Result</th><th>Expected</th><th>Planned</th><th>Completed</th><th>Latency</th><th>Tags</th></tr></thead>
 <tbody>
 ${rows}
 </tbody></table>

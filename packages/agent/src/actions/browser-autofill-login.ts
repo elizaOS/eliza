@@ -340,7 +340,10 @@ export const browserAutofillLoginAction: Action = {
       rawResult &&
       typeof rawResult === "object" &&
       typeof (rawResult as { reason?: unknown }).reason === "string"
-        ? (rawResult as { reason: string }).reason.slice(0, MAX_FILL_REASON_CHARS)
+        ? (rawResult as { reason: string }).reason.slice(
+            0,
+            MAX_FILL_REASON_CHARS,
+          )
         : null;
 
     logger.info(

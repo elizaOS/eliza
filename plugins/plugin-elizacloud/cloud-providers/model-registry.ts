@@ -35,7 +35,7 @@ export const modelRegistryProvider: Provider = {
       const cached = runtimeCaches.get(runtime);
       if (cached && Date.now() - cached.at < TTL) {
         const cachedValue = Object.fromEntries(
-          Object.entries(cached.value).slice(0, MAX_MODEL_PROVIDERS),
+          Object.entries(cached.value).slice(0, MAX_MODEL_PROVIDERS)
         ) as ModelsByProvider;
         return formatModels(cachedValue);
       }
@@ -48,7 +48,7 @@ export const modelRegistryProvider: Provider = {
 
       runtimeCaches.set(runtime, { value: byProvider, at: Date.now() });
       const capped = Object.fromEntries(
-        Object.entries(byProvider).slice(0, MAX_MODEL_PROVIDERS),
+        Object.entries(byProvider).slice(0, MAX_MODEL_PROVIDERS)
       ) as ModelsByProvider;
       return formatModels(capped);
     } catch {
@@ -61,7 +61,7 @@ function formatModels(byProvider: ModelsByProvider): ProviderResult {
   const providers = Object.keys(byProvider).sort().slice(0, MAX_MODEL_PROVIDERS);
   const total = providers.reduce(
     (n, provider) => n + byProvider[provider].slice(0, MAX_MODELS_PER_PROVIDER).length,
-    0,
+    0
   );
 
   return {

@@ -28,9 +28,13 @@ export const followUpsProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		try {
-			const followUpService = runtime.getService("follow_up") as FollowUpService;
+			const followUpService = runtime.getService(
+				"follow_up",
+			) as FollowUpService;
 			if (!followUpService) {
-				runtime.logger.warn("[FollowUpsProvider] FollowUpService not available");
+				runtime.logger.warn(
+					"[FollowUpsProvider] FollowUpService not available",
+				);
 				return { text: "", values: {}, data: {} };
 			}
 
@@ -39,93 +43,97 @@ export const followUpsProvider: Provider = {
 				await followUpService.getUpcomingFollowUps(7, true)
 			).slice(0, MAX_FOLLOW_UPS);
 
-		if (upcomingFollowUps.length === 0) {
-			return {
-				text: "No upcoming follow-ups scheduled.",
-				values: { followUpCount: 0 },
-				data: {},
-			};
-		}
-
-		const now = Date.now();
-		const contactIds = Array.from(
-			new Set(upcomingFollowUps.map((f) => f.contact.entityId)),
-		);
-		const entities = await Promise.all(
-			contactIds.map((id) => runtime.getEntityById(id)),
-		);
-		const entityNames = new Map<string, string>();
-		for (let i = 0; i < contactIds.length; i += 1) {
-			entityNames.set(contactIds[i], entities[i]?.names[0] || "Unknown");
-		}
-
-		const overdue: typeof upcomingFollowUps = [];
-		const upcoming: typeof upcomingFollowUps = [];
-		const scheduledAtMs = new Map<string, number>();
-		for (const item of upcomingFollowUps) {
-			const scheduledAt = item.task.metadata?.scheduledAt
-				? new Date(item.task.metadata.scheduledAt as string).getTime()
-				: 0;
-			if (item.task.id) {
-				scheduledAtMs.set(item.task.id, scheduledAt);
+			if (upcomingFollowUps.length === 0) {
+				return {
+					text: "No upcoming follow-ups scheduled.",
+					values: { followUpCount: 0 },
+					data: {},
+				};
 			}
-			if (scheduledAt < now) {
-				overdue.push(item);
-			} else {
-				upcoming.push(item);
+
+			const now = Date.now();
+			const contactIds = Array.from(
+				new Set(upcomingFollowUps.map((f) => f.contact.entityId)),
+			);
+			const entities = await Promise.all(
+				contactIds.map((id) => runtime.getEntityById(id)),
+			);
+			const entityNames = new Map<string, string>();
+			for (let i = 0; i < contactIds.length; i += 1) {
+				entityNames.set(contactIds[i], entities[i]?.names[0] || "Unknown");
 			}
-		}
 
-		// Build text summary
-		let textSummary = `You have ${upcomingFollowUps.length} follow-up${upcomingFollowUps.length !== 1 ? "s" : ""} scheduled:\n`;
-
-		if (overdue.length > 0) {
-			textSummary += `\nOverdue (${overdue.length}):\n`;
-			for (const f of overdue) {
-				const name = entityNames.get(f.contact.entityId) || "Unknown";
-				const scheduledAt = f.task.id ? (scheduledAtMs.get(f.task.id) ?? 0) : 0;
-
-				textSummary += `- ${name}`;
-				if (scheduledAt > 0) {
-					const daysOverdue = Math.floor(
-						(now - scheduledAt) / (1000 * 60 * 60 * 24),
-					);
-					textSummary += ` (${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue)`;
+			const overdue: typeof upcomingFollowUps = [];
+			const upcoming: typeof upcomingFollowUps = [];
+			const scheduledAtMs = new Map<string, number>();
+			for (const item of upcomingFollowUps) {
+				const scheduledAt = item.task.metadata?.scheduledAt
+					? new Date(item.task.metadata.scheduledAt as string).getTime()
+					: 0;
+				if (item.task.id) {
+					scheduledAtMs.set(item.task.id, scheduledAt);
 				}
-				if (f.task.metadata?.reason) {
-					textSummary += ` - ${f.task.metadata.reason}`;
+				if (scheduledAt < now) {
+					overdue.push(item);
+				} else {
+					upcoming.push(item);
 				}
-				textSummary += "\n";
 			}
-		}
 
-		if (upcoming.length > 0) {
-			textSummary += `\nUpcoming (${upcoming.length}):\n`;
-			for (const f of upcoming) {
-				const name = entityNames.get(f.contact.entityId) || "Unknown";
-				const scheduledAt = f.task.id ? (scheduledAtMs.get(f.task.id) ?? 0) : 0;
+			// Build text summary
+			let textSummary = `You have ${upcomingFollowUps.length} follow-up${upcomingFollowUps.length !== 1 ? "s" : ""} scheduled:\n`;
 
-				textSummary += `- ${name}`;
-				if (scheduledAt > 0) {
-					const daysUntil = Math.ceil(
-						(scheduledAt - now) / (1000 * 60 * 60 * 24),
-					);
-					if (daysUntil === 0) {
-						textSummary += " (today)";
-					} else if (daysUntil === 1) {
-						textSummary += " (tomorrow)";
-					} else {
-						textSummary += ` (in ${daysUntil} days)`;
+			if (overdue.length > 0) {
+				textSummary += `\nOverdue (${overdue.length}):\n`;
+				for (const f of overdue) {
+					const name = entityNames.get(f.contact.entityId) || "Unknown";
+					const scheduledAt = f.task.id
+						? (scheduledAtMs.get(f.task.id) ?? 0)
+						: 0;
+
+					textSummary += `- ${name}`;
+					if (scheduledAt > 0) {
+						const daysOverdue = Math.floor(
+							(now - scheduledAt) / (1000 * 60 * 60 * 24),
+						);
+						textSummary += ` (${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue)`;
 					}
+					if (f.task.metadata?.reason) {
+						textSummary += ` - ${f.task.metadata.reason}`;
+					}
+					textSummary += "\n";
 				}
-				if (f.task.metadata?.reason) {
-					textSummary += ` - ${f.task.metadata.reason}`;
-				}
-				textSummary += "\n";
 			}
-		}
 
-		// Get follow-up suggestions
+			if (upcoming.length > 0) {
+				textSummary += `\nUpcoming (${upcoming.length}):\n`;
+				for (const f of upcoming) {
+					const name = entityNames.get(f.contact.entityId) || "Unknown";
+					const scheduledAt = f.task.id
+						? (scheduledAtMs.get(f.task.id) ?? 0)
+						: 0;
+
+					textSummary += `- ${name}`;
+					if (scheduledAt > 0) {
+						const daysUntil = Math.ceil(
+							(scheduledAt - now) / (1000 * 60 * 60 * 24),
+						);
+						if (daysUntil === 0) {
+							textSummary += " (today)";
+						} else if (daysUntil === 1) {
+							textSummary += " (tomorrow)";
+						} else {
+							textSummary += ` (in ${daysUntil} days)`;
+						}
+					}
+					if (f.task.metadata?.reason) {
+						textSummary += ` - ${f.task.metadata.reason}`;
+					}
+					textSummary += "\n";
+				}
+			}
+
+			// Get follow-up suggestions
 			const suggestions = (
 				await followUpService.getFollowUpSuggestions()
 			).slice(0, MAX_FOLLOW_UP_SUGGESTIONS);

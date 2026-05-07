@@ -133,7 +133,10 @@ export const deleteIssueAction: Action = {
             prompt: prompt,
           }),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Linear issue extraction timeout")), LINEAR_MODEL_TIMEOUT_MS)
+            setTimeout(
+              () => reject(new Error("Linear issue extraction timeout")),
+              LINEAR_MODEL_TIMEOUT_MS
+            )
           ),
         ]);
 

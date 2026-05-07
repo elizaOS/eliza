@@ -1,5 +1,5 @@
-import { logger } from "../logger";
 import type { BrowserWindow } from "electrobun/bun";
+import { logger } from "../logger";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager } from "./agent";
 import { getBrowserWorkspaceManager } from "./browser-workspace";

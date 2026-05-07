@@ -29,15 +29,17 @@ export const cloudStatusProvider: Provider = {
         };
       }
 
-      const containerSvc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+      const containerSvc = runtime.getService("CLOUD_CONTAINER") as
+        | CloudContainerService
+        | undefined;
       const bridgeSvc = runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
       const containers = containerSvc?.getTrackedContainers() ?? [];
       const connected = bridgeSvc?.getConnectedContainerIds() ?? [];
 
-    const running = containers.filter((c) => c.status === "running").length;
-    const deploying = containers.filter(
-      (c) => c.status === "pending" || c.status === "building" || c.status === "deploying"
-    ).length;
+      const running = containers.filter((c) => c.status === "running").length;
+      const deploying = containers.filter(
+        (c) => c.status === "pending" || c.status === "building" || c.status === "deploying"
+      ).length;
 
       const summaries = containers.slice(0, MAX_CONTAINER_SUMMARIES).map((c) => ({
         id: c.id,
@@ -48,13 +50,13 @@ export const cloudStatusProvider: Provider = {
         bridged: connected.includes(c.id),
       }));
 
-    const lines = [
-      `ElizaCloud: ${containers.length} container(s), ${running} running, ${connected.length} bridged`,
-      ...summaries.map(
-        (c) =>
-          `  - ${c.name} [${c.status}]${c.url ? ` @ ${c.url}` : ""}${c.bridged ? " (bridged)" : ""}`
-      ),
-    ];
+      const lines = [
+        `ElizaCloud: ${containers.length} container(s), ${running} running, ${connected.length} bridged`,
+        ...summaries.map(
+          (c) =>
+            `  - ${c.name} [${c.status}]${c.url ? ` @ ${c.url}` : ""}${c.bridged ? " (bridged)" : ""}`
+        ),
+      ];
 
       return {
         text: lines.join("\n"),

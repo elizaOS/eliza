@@ -78,9 +78,7 @@ function normalizeParams(params: Record<string, unknown>): WhatsAppOpParams | nu
   return {
     op: params.op,
     to: params.to ? String(params.to) : undefined,
-    text: params.text
-      ? String(params.text).slice(0, MAX_WHATSAPP_TEXT_CHARS)
-      : undefined,
+    text: params.text ? String(params.text).slice(0, MAX_WHATSAPP_TEXT_CHARS) : undefined,
     messageId: params.messageId ? String(params.messageId) : undefined,
     emoji: params.emoji ? String(params.emoji) : undefined,
   };

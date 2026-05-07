@@ -71,11 +71,19 @@ describe("planner-loop cerebras recorded response regression", () => {
 			}),
 		};
 
-		const capturedToolCalls: Array<{ name: string; params?: Record<string, unknown> }> = [];
-		const executeToolCall = vi.fn(async (toolCall: { name: string; params?: Record<string, unknown> }) => {
-			capturedToolCalls.push(toolCall);
-			return { success: true, text: "Knowledge base result: elizaOS uses plugins." };
-		});
+		const capturedToolCalls: Array<{
+			name: string;
+			params?: Record<string, unknown>;
+		}> = [];
+		const executeToolCall = vi.fn(
+			async (toolCall: { name: string; params?: Record<string, unknown> }) => {
+				capturedToolCalls.push(toolCall);
+				return {
+					success: true,
+					text: "Knowledge base result: elizaOS uses plugins.",
+				};
+			},
+		);
 
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -95,7 +103,9 @@ describe("planner-loop cerebras recorded response regression", () => {
 		// The tool call must have been extracted correctly
 		expect(capturedToolCalls).toHaveLength(1);
 		expect(capturedToolCalls[0]?.name).toBe("SEARCH_KNOWLEDGE");
-		expect(capturedToolCalls[0]?.params).toEqual({ query: "elizaOS architecture" });
+		expect(capturedToolCalls[0]?.params).toEqual({
+			query: "elizaOS architecture",
+		});
 
 		// The loop must complete successfully
 		expect(result.status).toBe("finished");
@@ -106,7 +116,10 @@ describe("planner-loop cerebras recorded response regression", () => {
 			useModel: vi.fn(async () => RECORDED_CEREBRAS_RESPONSE),
 		};
 
-		const executeToolCall = vi.fn(async () => ({ success: true, text: "result" }));
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "result",
+		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
 			decision: "FINISH" as const,
@@ -127,7 +140,8 @@ describe("planner-loop cerebras recorded response regression", () => {
 
 	it("records the tool call id from the recorded Cerebras response", async () => {
 		let callCount = 0;
-		const capturedSteps: Array<{ toolCall?: { id?: string; name: string } }> = [];
+		const capturedSteps: Array<{ toolCall?: { id?: string; name: string } }> =
+			[];
 		const runtime = {
 			useModel: vi.fn(async () => {
 				callCount++;

@@ -81,34 +81,37 @@ export const attachmentsProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-		const { roomId } = message;
-		const conversationLength = Math.min(
-			runtime.getConversationLength(),
-			MAX_ATTACHMENT_MEMORY_LOOKBACK,
-		);
+			const { roomId } = message;
+			const conversationLength = Math.min(
+				runtime.getConversationLength(),
+				MAX_ATTACHMENT_MEMORY_LOOKBACK,
+			);
 
-		const recentMessagesData = await runtime.getMemories({
-			roomId,
-			limit: conversationLength,
-			unique: false,
-			tableName: "messages",
-		});
+			const recentMessagesData = await runtime.getMemories({
+				roomId,
+				limit: conversationLength,
+				unique: false,
+				tableName: "messages",
+			});
 
-		const allAttachments = mergeConversationAttachments(
-			message,
-			Array.isArray(recentMessagesData) ? recentMessagesData : [],
-		);
-		const visibleAttachments = allAttachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
-		const omittedCount = Math.max(
-			0,
-			allAttachments.length - visibleAttachments.length,
-		);
+			const allAttachments = mergeConversationAttachments(
+				message,
+				Array.isArray(recentMessagesData) ? recentMessagesData : [],
+			);
+			const visibleAttachments = allAttachments.slice(
+				0,
+				MAX_VISIBLE_ATTACHMENTS,
+			);
+			const omittedCount = Math.max(
+				0,
+				allAttachments.length - visibleAttachments.length,
+			);
 
-		// Format attachments for display
-		const formattedAttachments = visibleAttachments
-			.map(
-				(attachment) =>
-					`ID: ${attachment.id}
+			// Format attachments for display
+			const formattedAttachments = visibleAttachments
+				.map(
+					(attachment) =>
+						`ID: ${attachment.id}
     Name: ${attachment.title}
     URL: ${attachment.url}
     Type: ${attachment.source}
@@ -119,30 +122,32 @@ export const attachmentsProvider: Provider = {
 				: "none"
 		}
     `,
-			)
-			.join("\n");
-		const omissionNotice =
-			omittedCount > 0
-				? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
-				: "";
+				)
+				.join("\n");
+			const omissionNotice =
+				omittedCount > 0
+					? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
+					: "";
 
-		// Create formatted text with header
-		const text =
-			formattedAttachments && formattedAttachments.length > 0
-				? addHeader(
-						"# Attachments",
-						[formattedAttachments, omissionNotice].filter(Boolean).join("\n\n"),
-					)
-				: "";
+			// Create formatted text with header
+			const text =
+				formattedAttachments && formattedAttachments.length > 0
+					? addHeader(
+							"# Attachments",
+							[formattedAttachments, omissionNotice]
+								.filter(Boolean)
+								.join("\n\n"),
+						)
+					: "";
 
-		const values = {
-			attachments: text,
-		};
-		const data = {
-			attachments: allAttachments,
-			visibleAttachments,
-			omittedCount,
-		};
+			const values = {
+				attachments: text,
+			};
+			const data = {
+				attachments: allAttachments,
+				visibleAttachments,
+				omittedCount,
+			};
 
 			return {
 				values,

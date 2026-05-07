@@ -1,5 +1,5 @@
-import { logger } from "./logger";
 import { getBrandConfig } from "./brand-config";
+import { logger } from "./logger";
 import type {
 	AllPermissionsState,
 	PermissionState,

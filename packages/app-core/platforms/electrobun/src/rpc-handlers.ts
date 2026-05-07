@@ -9,7 +9,6 @@
  */
 
 import * as fs from "node:fs";
-import { logger } from "./logger";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
 import { resolveDesktopRuntimeMode } from "./api-base";
@@ -19,6 +18,7 @@ import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
+import { logger } from "./logger";
 import { getAgentManager } from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";

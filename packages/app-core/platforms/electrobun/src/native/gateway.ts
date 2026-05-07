@@ -6,8 +6,8 @@
  */
 
 import { EventEmitter } from "node:events";
-import { logger } from "../logger";
 import { getBrandConfig } from "../brand-config";
+import { logger } from "../logger";
 import type {
 	DiscoveryOptions,
 	DiscoveryResult,

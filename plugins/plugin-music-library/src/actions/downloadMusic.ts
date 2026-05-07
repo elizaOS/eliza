@@ -177,7 +177,10 @@ export const downloadMusic: Action = {
           preferredQuality: preferredQuality as "flac" | "mp3_320" | "any",
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("music download timed out")), timeoutMs),
+          setTimeout(
+            () => reject(new Error("music download timed out")),
+            timeoutMs,
+          ),
         ),
       ]);
 
