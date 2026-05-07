@@ -430,19 +430,6 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-coding-agent",
-      packageName: "@elizaos/plugin-agent-orchestrator",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-agent-orchestrator",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-agent-skills",
       packageName: "@elizaos/plugin-agent-skills",
       options: {

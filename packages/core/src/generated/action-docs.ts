@@ -8091,22 +8091,21 @@ export const allActionsSpec = {
 		{
 			name: "SHOPIFY",
 			description:
-				"Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers), search (catalog-wide search). Op is inferred from the message text when not explicitly provided.",
+				"Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided. For read-only catalog browsing use SEARCH_SHOPIFY_STORE.",
 			parameters: [
 				{
 					name: "op",
 					description:
-						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from message text when omitted.",
+						"Operation to perform. One of: products, inventory, orders, customers. Inferred from message text when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from msg text when omitted.",
+						"Operation to perform. One of: products, inventory, orders, customers. Inferred from msg text when omitted.",
 				},
 			],
-			descriptionCompressed:
-				"Shopify: products, inventory, orders, customers, search.",
+			descriptionCompressed: "Shopify: products, inventory, orders, customers.",
 			similes: [
 				"STORE",
 				"SHOPIFY_STORE",

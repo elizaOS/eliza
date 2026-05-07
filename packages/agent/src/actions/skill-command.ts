@@ -96,7 +96,7 @@ export const skillCommandAction: Action = {
     _state?: State,
     _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
+  ): Promise<ActionResult> => {
     const params = _options?.parameters as
       | { slug?: string; args?: string }
       | undefined;
