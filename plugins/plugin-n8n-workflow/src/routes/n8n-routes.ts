@@ -1038,7 +1038,127 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     }
   }
 
+  // --- Workflow executions --------------------------------------------------
+  const executionsMatch = parseWorkflowExecutionsPath(pathname);
+  if (executionsMatch && method === 'GET') {
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleGetWorkflowExecutions(ctx, executionsMatch.id, sidecar, native);
+  }
+
   return false;
+}
+
+/**
+ * Parse `/api/n8n/workflows/{id}/executions` — returns id when matched.
+ */
+function parseWorkflowExecutionsPath(pathname: string): { id: string } | null {
+  const prefix = '/api/n8n/workflows/';
+  const suffix = '/executions';
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) {
+    return null;
+  }
+  const id = pathname.slice(prefix.length, pathname.length - suffix.length);
+  if (!id || id.includes('/')) {
+    return null;
+  }
+  return { id: decodeURIComponent(id) };
+}
+
+async function handleGetWorkflowExecutions(
+  ctx: N8nRouteContext,
+  id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: 'workflow id required' });
+    return true;
+  }
+
+  const rawLimit = new URL(`http://x${ctx.req.url ?? ''}`).searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
+
+  // Executions live at /api/v1/executions?workflowId=... not under /workflows/
+  const resolved = resolveExecutionsProxyTarget(ctx, id, limit, sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? 'n8n not ready',
+      status: resolved.reason?.status ?? 'stopped',
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, { method: 'GET' });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const body = upstream.body as { data?: unknown[] } | null;
+  sendJson(ctx, 200, { executions: Array.isArray(body?.data) ? body.data : [] });
+  return true;
+}
+
+function resolveExecutionsProxyTarget(
+  ctx: N8nRouteContext,
+  workflowId: string,
+  limit: number,
+  sidecar: N8nSidecar | null,
+  native: boolean
+): {
+  target: ProxyTarget | null;
+  reason?: { message: string; status: N8nSidecarStatus };
+} {
+  const { cloudConnected, localEnabled } = resolveN8nMode({
+    config: ctx.config,
+    runtime: ctx.runtime,
+    native,
+  });
+
+  const query = `?workflowId=${encodeURIComponent(workflowId)}&limit=${limit}`;
+
+  if (cloudConnected) {
+    const apiKey = ctx.config.cloud?.apiKey?.trim();
+    if (!apiKey) {
+      return { target: null, reason: { message: 'cloud api key missing', status: 'error' } };
+    }
+    const baseUrl = normalizeBaseUrl(ctx.config.cloud?.baseUrl);
+    const agentId = resolveAgentId(ctx);
+    return {
+      target: {
+        url: `${baseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/n8n/executions${query}`,
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      },
+    };
+  }
+
+  if (!localEnabled) {
+    return { target: null, reason: { message: 'n8n disabled', status: 'stopped' } };
+  }
+
+  const sidecarState = sidecar?.getState();
+  const status: N8nSidecarStatus = sidecarState?.status ?? 'stopped';
+  if (status !== 'ready') {
+    return { target: null, reason: { message: `n8n not ready (${status})`, status } };
+  }
+
+  const host = sidecarState?.host ?? ctx.config.n8n?.host ?? null;
+  if (!host) {
+    return { target: null, reason: { message: 'n8n host unknown', status: 'error' } };
+  }
+
+  const apiKey = sidecar?.getApiKey() ?? ctx.config.n8n?.apiKey ?? null;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (apiKey) {
+    headers['X-N8N-API-KEY'] = apiKey;
+  }
+
+  return {
+    target: {
+      url: `${host.replace(/\/+$/, '')}/api/v1/executions${query}`,
+      headers,
+    },
+  };
 }
 
 async function handleStatus(
