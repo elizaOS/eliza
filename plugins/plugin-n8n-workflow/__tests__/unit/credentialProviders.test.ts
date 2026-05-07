@@ -2,10 +2,19 @@
  * Integration tests for per-connector CredentialProvider implementations.
  * Verifies the resolve() / checkCredentialTypes() contract for every wired connector.
  */
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-
-// We test the provider files directly — they only depend on @elizaos/core's Service class.
-// Use a minimal runtime stub so Service.getSetting() works without a real runtime.
+import { describe, test, expect } from "bun:test";
+import { SlackN8nCredentialProvider } from "../../../plugin-slack/src/n8n-credential-provider";
+import { WhatsAppN8nCredentialProvider } from "../../../plugin-whatsapp/src/n8n-credential-provider";
+import { MatrixN8nCredentialProvider } from "../../../plugin-matrix/src/n8n-credential-provider";
+import { TwitchN8nCredentialProvider } from "../../../plugin-twitch/src/n8n-credential-provider";
+import { GoogleChatN8nCredentialProvider } from "../../../plugin-google-chat/src/n8n-credential-provider";
+import { LineN8nCredentialProvider } from "../../../plugin-line/src/n8n-credential-provider";
+import { FeishuN8nCredentialProvider } from "../../../plugin-feishu/src/n8n-credential-provider";
+import { SignalN8nCredentialProvider } from "../../../plugin-signal/src/n8n-credential-provider";
+import { BlueBubblesN8nCredentialProvider } from "../../../plugin-bluebubbles/src/n8n-credential-provider";
+import { InstagramN8nCredentialProvider } from "../../../plugin-instagram/src/n8n-credential-provider";
+import { FarcasterN8nCredentialProvider } from "../../../plugin-farcaster/n8n-credential-provider";
+import { BlueskyN8nCredentialProvider } from "../../../plugin-bluesky/n8n-credential-provider";
 
 function makeRuntime(settings: Record<string, string>) {
   return {
@@ -20,10 +29,6 @@ function makeRuntime(settings: Record<string, string>) {
 // Slack
 // ---------------------------------------------------------------------------
 describe("SlackN8nCredentialProvider", () => {
-  const { SlackN8nCredentialProvider } = await import(
-    "../../../../plugin-slack/src/n8n-credential-provider"
-  );
-
   test("returns slackApi credential when SLACK_BOT_TOKEN is set", async () => {
     const runtime = makeRuntime({ SLACK_BOT_TOKEN: "xoxb-test-token" });
     const provider = await SlackN8nCredentialProvider.start(runtime as never);
@@ -66,10 +71,6 @@ describe("SlackN8nCredentialProvider", () => {
 // WhatsApp
 // ---------------------------------------------------------------------------
 describe("WhatsAppN8nCredentialProvider", () => {
-  const { WhatsAppN8nCredentialProvider } = await import(
-    "../../../../plugin-whatsapp/src/n8n-credential-provider"
-  );
-
   test("returns whatsAppApi credential when both env vars are set", async () => {
     const runtime = makeRuntime({
       WHATSAPP_ACCESS_TOKEN: "wa-token",
@@ -105,10 +106,6 @@ describe("WhatsAppN8nCredentialProvider", () => {
 // Matrix
 // ---------------------------------------------------------------------------
 describe("MatrixN8nCredentialProvider", () => {
-  const { MatrixN8nCredentialProvider } = await import(
-    "../../../../plugin-matrix/src/n8n-credential-provider"
-  );
-
   test("returns matrixApi credential when both env vars are set", async () => {
     const runtime = makeRuntime({
       MATRIX_ACCESS_TOKEN: "mat-token",
@@ -136,10 +133,6 @@ describe("MatrixN8nCredentialProvider", () => {
 // Twitch
 // ---------------------------------------------------------------------------
 describe("TwitchN8nCredentialProvider", () => {
-  const { TwitchN8nCredentialProvider } = await import(
-    "../../../../plugin-twitch/src/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when TWITCH_ACCESS_TOKEN is set", async () => {
     const runtime = makeRuntime({ TWITCH_ACCESS_TOKEN: "twitch-token" });
     const provider = await TwitchN8nCredentialProvider.start(runtime as never);
@@ -159,10 +152,6 @@ describe("TwitchN8nCredentialProvider", () => {
 // Google Chat
 // ---------------------------------------------------------------------------
 describe("GoogleChatN8nCredentialProvider", () => {
-  const { GoogleChatN8nCredentialProvider } = await import(
-    "../../../../plugin-google-chat/src/n8n-credential-provider"
-  );
-
   test("returns googleChatOAuth2Api credential when GOOGLE_APPLICATION_CREDENTIALS is set", async () => {
     const runtime = makeRuntime({ GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account.json" });
     const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
@@ -181,10 +170,6 @@ describe("GoogleChatN8nCredentialProvider", () => {
 // LINE
 // ---------------------------------------------------------------------------
 describe("LineN8nCredentialProvider", () => {
-  const { LineN8nCredentialProvider } = await import(
-    "../../../../plugin-line/src/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when LINE_CHANNEL_ACCESS_TOKEN is set", async () => {
     const runtime = makeRuntime({ LINE_CHANNEL_ACCESS_TOKEN: "line-token" });
     const provider = await LineN8nCredentialProvider.start(runtime as never);
@@ -204,10 +189,6 @@ describe("LineN8nCredentialProvider", () => {
 // Feishu
 // ---------------------------------------------------------------------------
 describe("FeishuN8nCredentialProvider", () => {
-  const { FeishuN8nCredentialProvider } = await import(
-    "../../../../plugin-feishu/src/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when FEISHU_APP_ID and FEISHU_APP_SECRET are set", async () => {
     const runtime = makeRuntime({ FEISHU_APP_ID: "app-id", FEISHU_APP_SECRET: "app-secret" });
     const provider = await FeishuN8nCredentialProvider.start(runtime as never);
@@ -232,10 +213,6 @@ describe("FeishuN8nCredentialProvider", () => {
 // Signal
 // ---------------------------------------------------------------------------
 describe("SignalN8nCredentialProvider", () => {
-  const { SignalN8nCredentialProvider } = await import(
-    "../../../../plugin-signal/src/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when SIGNAL_HTTP_URL and SIGNAL_ACCOUNT_NUMBER are set", async () => {
     const runtime = makeRuntime({ SIGNAL_HTTP_URL: "http://localhost:8080", SIGNAL_ACCOUNT_NUMBER: "+15551234567" });
     const provider = await SignalN8nCredentialProvider.start(runtime as never);
@@ -254,10 +231,6 @@ describe("SignalN8nCredentialProvider", () => {
 // BlueBubbles
 // ---------------------------------------------------------------------------
 describe("BlueBubblesN8nCredentialProvider", () => {
-  const { BlueBubblesN8nCredentialProvider } = await import(
-    "../../../../plugin-bluebubbles/src/n8n-credential-provider"
-  );
-
   test("returns httpQueryAuth credential when both env vars are set", async () => {
     const runtime = makeRuntime({ BLUEBUBBLES_PASSWORD: "secret", BLUEBUBBLES_SERVER_URL: "http://localhost:1234" });
     const provider = await BlueBubblesN8nCredentialProvider.start(runtime as never);
@@ -282,10 +255,6 @@ describe("BlueBubblesN8nCredentialProvider", () => {
 // Instagram
 // ---------------------------------------------------------------------------
 describe("InstagramN8nCredentialProvider", () => {
-  const { InstagramN8nCredentialProvider } = await import(
-    "../../../../plugin-instagram/src/n8n-credential-provider"
-  );
-
   test("returns facebookGraphApi credential when INSTAGRAM_PAGE_ACCESS_TOKEN is set", async () => {
     const runtime = makeRuntime({ INSTAGRAM_PAGE_ACCESS_TOKEN: "page-access-token" });
     const provider = await InstagramN8nCredentialProvider.start(runtime as never);
@@ -310,10 +279,6 @@ describe("InstagramN8nCredentialProvider", () => {
 // Farcaster
 // ---------------------------------------------------------------------------
 describe("FarcasterN8nCredentialProvider", () => {
-  const { FarcasterN8nCredentialProvider } = await import(
-    "../../../../plugin-farcaster/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when FARCASTER_NEYNAR_API_KEY is set", async () => {
     const runtime = makeRuntime({ FARCASTER_NEYNAR_API_KEY: "neynar-key" });
     const provider = await FarcasterN8nCredentialProvider.start(runtime as never);
@@ -332,10 +297,6 @@ describe("FarcasterN8nCredentialProvider", () => {
 // Bluesky
 // ---------------------------------------------------------------------------
 describe("BlueskyN8nCredentialProvider", () => {
-  const { BlueskyN8nCredentialProvider } = await import(
-    "../../../../plugin-bluesky/n8n-credential-provider"
-  );
-
   test("returns httpHeaderAuth credential when BLUESKY_HANDLE and BLUESKY_PASSWORD are set", async () => {
     const runtime = makeRuntime({ BLUESKY_HANDLE: "user.bsky.social", BLUESKY_PASSWORD: "app-password" });
     const provider = await BlueskyN8nCredentialProvider.start(runtime as never);
