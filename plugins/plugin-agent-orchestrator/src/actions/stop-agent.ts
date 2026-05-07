@@ -155,7 +155,10 @@ export const stopAgentAction: Action = {
 
     // Stop all sessions if requested
     if ((params?.all as boolean) ?? content.all) {
-      const sessions = (await ptyService.listSessions()).slice(0, STOP_AGENT_SESSION_LIMIT);
+      const sessions = (await ptyService.listSessions()).slice(
+        0,
+        STOP_AGENT_SESSION_LIMIT,
+      );
       if (sessions.length === 0) {
         if (callback) {
           await callback({
@@ -170,7 +173,10 @@ export const stopAgentAction: Action = {
           await Promise.race([
             ptyService.stopSession(session.id),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Stop agent timeout")), STOP_AGENT_TIMEOUT_MS),
+              setTimeout(
+                () => reject(new Error("Stop agent timeout")),
+                STOP_AGENT_TIMEOUT_MS,
+              ),
             ),
           ]);
         } catch (err) {
@@ -202,7 +208,10 @@ export const stopAgentAction: Action = {
     }
 
     if (!sessionId) {
-      const sessions = (await ptyService.listSessions()).slice(0, STOP_AGENT_SESSION_LIMIT);
+      const sessions = (await ptyService.listSessions()).slice(
+        0,
+        STOP_AGENT_SESSION_LIMIT,
+      );
       if (sessions.length === 0) {
         if (callback) {
           await callback({
@@ -228,7 +237,10 @@ export const stopAgentAction: Action = {
       await Promise.race([
         ptyService.stopSession(sessionId),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Stop agent timeout")), STOP_AGENT_TIMEOUT_MS),
+          setTimeout(
+            () => reject(new Error("Stop agent timeout")),
+            STOP_AGENT_TIMEOUT_MS,
+          ),
         ),
       ]);
 
