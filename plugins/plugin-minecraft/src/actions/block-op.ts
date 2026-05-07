@@ -17,6 +17,7 @@ import {
   type PlaceFace,
   parseVec3,
   readString,
+  withMinecraftTimeout,
 } from "./helpers.js";
 
 const ACTION_NAME = "MC_BLOCK_OP";
@@ -127,7 +128,10 @@ export const minecraftBlockOpAction: Action = {
 
     try {
       if (op === "dig") {
-        const data = await service.request("dig", { x: vec.x, y: vec.y, z: vec.z });
+        const data = await withMinecraftTimeout(
+          service.request("dig", { x: vec.x, y: vec.y, z: vec.z }),
+          "minecraft dig",
+        );
         const blockName = typeof data.blockName === "string" ? data.blockName : "block";
         return await emit(
           ACTION_NAME,
@@ -148,7 +152,10 @@ export const minecraftBlockOpAction: Action = {
           { success: false }
         );
       }
-      await service.request("place", { x: vec.x, y: vec.y, z: vec.z, face });
+      await withMinecraftTimeout(
+        service.request("place", { x: vec.x, y: vec.y, z: vec.z, face }),
+        "minecraft place",
+      );
       return await emit(
         ACTION_NAME,
         callback,

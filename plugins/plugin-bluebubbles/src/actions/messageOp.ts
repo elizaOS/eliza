@@ -26,9 +26,12 @@ interface MessageOpInfo {
 	emoji?: string;
 	messageId?: string;
 	remove: boolean;
+	timeoutMs?: number;
 }
 
 const VALID_OPS: ReadonlySet<MessageOp> = new Set(["send", "react"]);
+const MAX_BLUEBUBBLES_TEXT_CHARS = 4_000;
+const BLUEBUBBLES_ACTION_TIMEOUT_MS = 30_000;
 
 const messageOpTemplate = `# Task: Extract BlueBubbles (iMessage) message operation parameters
 
@@ -187,6 +190,7 @@ async function handleSend(
 			op: "send",
 			messageGuid: result.guid,
 			chatGuid,
+			timeoutMs: BLUEBUBBLES_ACTION_TIMEOUT_MS,
 			suppressVisibleCallback: true,
 			suppressActionResultClipboard: true,
 		},
@@ -258,6 +262,7 @@ async function handleReact(
 			messageGuid,
 			chatGuid,
 			remove: info.remove,
+			timeoutMs: info.timeoutMs,
 			suppressVisibleCallback: true,
 			suppressActionResultClipboard: true,
 		},
@@ -397,6 +402,11 @@ export const bluebubblesMessageOp: Action = {
 			}
 			return { success: false, error: "Could not extract op parameters" };
 		}
+		info = {
+			...info,
+			text: info.text?.slice(0, MAX_BLUEBUBBLES_TEXT_CHARS),
+			timeoutMs: BLUEBUBBLES_ACTION_TIMEOUT_MS,
+		};
 
 		switch (info.op) {
 			case "send":

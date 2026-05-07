@@ -17,6 +17,7 @@ import { AGENT_EMOTE_BY_ID, AGENT_EMOTE_CATALOG } from "../emotes/catalog.js";
 
 /** API port for posting emote requests (matches dashboard static server default). */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
+const EMOTE_REQUEST_TIMEOUT_MS = 2_500;
 
 export const emoteAction: Action = {
   name: "PLAY_EMOTE",
@@ -63,11 +64,14 @@ export const emoteAction: Action = {
     const emote = AGENT_EMOTE_BY_ID.get(emoteId);
     if (!emote) return { text: "", success: false };
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EMOTE_REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(`http://localhost:${API_PORT}/api/emote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emoteId: emote.id }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -75,6 +79,8 @@ export const emoteAction: Action = {
       }
     } catch {
       return { text: "", success: false };
+    } finally {
+      clearTimeout(timeout);
     }
 
     return {

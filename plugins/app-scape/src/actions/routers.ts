@@ -220,12 +220,18 @@ function createRouterAction(definition: ScapeRouterDefinition): Action {
         return { success: false, text };
       }
 
+      const timeoutMs = 15_000;
       const result =
         definition.name === "INVENTORY_OP"
-          ? await dispatchInventoryOp(service, resolved.subaction, params)
+          ? await Promise.race([
+              dispatchInventoryOp(service, resolved.subaction, params),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("scape router timed out")), timeoutMs),
+              ),
+            ])
           : dispatchJournalOp(service, resolved.subaction, params);
 
-      const text = result.message ?? (result.success ? "ok" : "failed");
+      const text = (result.message ?? (result.success ? "ok" : "failed")).slice(0, 2000);
       callback?.({ text, action: definition.name });
       return { success: result.success, text };
     },

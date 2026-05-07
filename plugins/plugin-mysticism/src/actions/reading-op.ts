@@ -551,9 +551,9 @@ export const readingOpAction: Action = {
       };
     }
 
-    const text = message.content.text ?? "";
+    const text = (message.content.text ?? "").slice(0, 2_000);
     const questionRaw = readParam(options, "question");
-    const question = typeof questionRaw === "string" ? questionRaw : undefined;
+    const question = typeof questionRaw === "string" ? questionRaw.slice(0, 2_000) : undefined;
 
     if (subRaw === "start") {
       return handleStart(service, message, typeRaw, text, question, callback);

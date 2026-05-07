@@ -142,12 +142,17 @@ export function TrajectoriesView({
   }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
 
   const handleExport = async (
-    format: "json" | "csv" | "zip",
+    format: "json" | "jsonl" | "csv" | "zip",
     includePrompts: boolean,
+    jsonShape?: "eliza_native_v1",
   ) => {
     setExporting(true);
     try {
-      const blob = await client.exportTrajectories({ format, includePrompts });
+      const blob = await client.exportTrajectories({
+        format,
+        includePrompts,
+        ...(jsonShape ? { jsonShape } : {}),
+      });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -378,6 +383,13 @@ export function TrajectoriesView({
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => handleExport("json", true)}>
                     {t("trajectoriesview.JSONWithPrompts")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      handleExport("jsonl", true, "eliza_native_v1")
+                    }
+                  >
+                    {t("trajectoriesview.JSONLNativeTraining")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleExport("json", false)}>
                     {t("trajectoriesview.JSONRedacted")}

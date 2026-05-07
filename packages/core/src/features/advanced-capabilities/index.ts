@@ -84,7 +84,6 @@ export const advancedActions = [
 	withCanonicalActionDocs(actions.createTaskAction),
 	withCanonicalActionDocs(actions.followRoomAction),
 	withCanonicalActionDocs(actions.generateImageAction),
-	withCanonicalActionDocs(actions.thinkAction),
 	withCanonicalActionDocs(actions.muteRoomAction),
 	withCanonicalActionDocs(actions.unfollowRoomAction),
 	withCanonicalActionDocs(actions.unmuteRoomAction),

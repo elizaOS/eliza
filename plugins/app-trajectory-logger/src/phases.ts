@@ -1,17 +1,3 @@
-/**
- * Phase classifier. Maps the runtime's `stepType` / `purpose` taxonomy onto
- * the four UI phases the user wants to see: HANDLE → PLAN → ACTION → EVALUATE.
- *
- * The agent runtime emits LLM calls with these `stepType` values (see
- * `inferTrajectoryLlmStepType` in `packages/agent/src/runtime/trajectory-internals.ts`):
- *
- *   should_respond, compose_state, reasoning, response, evaluation,
- *   observation_extraction, turn_complete, coordination, action, ...
- *
- * Plus tool/evaluator events emitted as `toolEvents` / `evaluationEvents`
- * on the trajectory detail.
- */
-
 import type {
   TrajectoryDetail,
   UIEvaluationEvent,
@@ -21,6 +7,7 @@ import type {
 } from "./api-client";
 
 export type PhaseName = "HANDLE" | "PLAN" | "ACTION" | "EVALUATE";
+export type PhaseStatus = "idle" | "active" | "done" | "skipped" | "error";
 
 export const PHASES: readonly PhaseName[] = [
   "HANDLE",
@@ -29,13 +16,9 @@ export const PHASES: readonly PhaseName[] = [
   "EVALUATE",
 ] as const;
 
-/** Visual status for the thin status indicator next to each phase chip. */
-export type PhaseStatus = "idle" | "active" | "done" | "skipped" | "error";
-
 export interface PhaseSummary {
   phase: PhaseName;
   status: PhaseStatus;
-  /** Concise one-liner for the chip (e.g. "respond", "REPLY", "POSTGRES_QUERY ✓"). */
   summary: string | null;
   llmCalls: UILlmCall[];
   providerAccesses: UIProviderAccess[];
@@ -43,193 +26,59 @@ export interface PhaseSummary {
   evaluationEvents: UIEvaluationEvent[];
 }
 
-const HANDLE_STEP_TYPES = new Set(["should_respond", "compose_state"]);
-
-const PLAN_STEP_TYPES = new Set(["reasoning", "response", "action"]);
-
-const EVALUATE_STEP_TYPES = new Set([
+const HANDLE_TYPES = new Set(["should_respond", "compose_state"]);
+const PLAN_TYPES = new Set(["reasoning", "response", "action"]);
+const EVALUATE_TYPES = new Set([
   "evaluation",
   "evaluator",
   "observation_extraction",
   "turn_complete",
 ]);
 
-function classifyLlmCall(call: UILlmCall): PhaseName | null {
-  const stepType = (call.stepType ?? "").toLowerCase();
-  const purpose = (call.purpose ?? "").toLowerCase();
-  if (HANDLE_STEP_TYPES.has(stepType) || HANDLE_STEP_TYPES.has(purpose)) {
-    return "HANDLE";
-  }
-  if (PLAN_STEP_TYPES.has(stepType) || PLAN_STEP_TYPES.has(purpose)) {
-    return "PLAN";
-  }
-  if (EVALUATE_STEP_TYPES.has(stepType) || EVALUATE_STEP_TYPES.has(purpose)) {
-    return "EVALUATE";
-  }
+function phaseOf(call: UILlmCall): PhaseName | null {
+  const t = (call.stepType || call.purpose || "").toLowerCase();
+  if (HANDLE_TYPES.has(t)) return "HANDLE";
+  if (PLAN_TYPES.has(t)) return "PLAN";
+  if (EVALUATE_TYPES.has(t)) return "EVALUATE";
   return null;
 }
 
-/** Pull the JSON shouldRespond decision off a should_respond LLM response, if present. */
+function shouldRespondDecision(call: UILlmCall): string | null {
+  const text = (call.response ?? "").trim();
+  if (!text) return null;
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const obj = JSON.parse(m[0]) as Record<string, unknown>;
+      const a = obj.action ?? obj.decision ?? obj.shouldRespond;
+      if (typeof a === "string" && a.length > 0) return a.toUpperCase();
+    } catch {
+      /* fall through */
+    }
+  }
+  const word = text.match(/\b(RESPOND|REPLY|ANSWER|IGNORE|STOP|SKIP)\b/i);
+  return word ? word[0].toUpperCase() : null;
+}
+
 export function extractShouldRespondDecision(
   call: UILlmCall,
 ): { decision: string; reasoning?: string } | null {
-  const text = (call.response ?? "").trim();
-  if (!text) return null;
-  const directIgnore = /\b(IGNORE|STOP|SKIP)\b/i;
-  const directRespond = /\b(RESPOND|ANSWER|REPLY)\b/i;
-  try {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as Record<string, unknown>;
-      const action = String(
-        parsed.action ?? parsed.decision ?? parsed.shouldRespond ?? "",
-      ).trim();
-      const reasoning =
-        typeof parsed.reasoning === "string"
-          ? parsed.reasoning
-          : typeof parsed.rationale === "string"
-            ? parsed.rationale
-            : undefined;
-      if (action) {
-        return { decision: action.toUpperCase(), reasoning };
-      }
+  const decision = shouldRespondDecision(call);
+  if (!decision) return null;
+  let reasoning: string | undefined;
+  const m = (call.response ?? "").match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const obj = JSON.parse(m[0]) as Record<string, unknown>;
+      const r = obj.reasoning ?? obj.rationale;
+      if (typeof r === "string") reasoning = r;
+    } catch {
+      /* ignore */
     }
-  } catch {
-    // fall through to regex match
   }
-  if (directIgnore.test(text)) {
-    const word = text.match(directIgnore)?.[0];
-    if (word) return { decision: word.toUpperCase() };
-  }
-  if (directRespond.test(text)) {
-    const word = text.match(directRespond)?.[0];
-    if (word) return { decision: word.toUpperCase() };
-  }
-  return null;
+  return reasoning ? { decision, reasoning } : { decision };
 }
 
-function summarizeHandle(
-  llmCalls: UILlmCall[],
-  providerAccesses: UIProviderAccess[],
-): { status: PhaseStatus; summary: string | null } {
-  const respondCall = llmCalls.find(
-    (c) =>
-      (c.stepType ?? "").toLowerCase() === "should_respond" ||
-      (c.purpose ?? "").toLowerCase() === "should_respond",
-  );
-  if (respondCall) {
-    const decision = extractShouldRespondDecision(respondCall);
-    if (decision) {
-      const respond = /RESPOND|ANSWER|REPLY/i.test(decision.decision);
-      const ignored = /IGNORE|STOP|SKIP/i.test(decision.decision);
-      return {
-        status: respond ? "done" : ignored ? "skipped" : "done",
-        summary: decision.decision.toLowerCase(),
-      };
-    }
-    return {
-      status: "done",
-      summary: "decided",
-    };
-  }
-  const composeCall = llmCalls.find(
-    (c) =>
-      (c.stepType ?? "").toLowerCase() === "compose_state" ||
-      (c.purpose ?? "").toLowerCase() === "compose_state",
-  );
-  if (composeCall || providerAccesses.length > 0) {
-    return {
-      status: "done",
-      summary: `${providerAccesses.length} ctx`,
-    };
-  }
-  return { status: "idle", summary: null };
-}
-
-function summarizePlan(llmCalls: UILlmCall[]): {
-  status: PhaseStatus;
-  summary: string | null;
-} {
-  const planCall = llmCalls[llmCalls.length - 1];
-  if (!planCall) return { status: "idle", summary: null };
-  const actionType = (planCall.actionType ?? "").trim();
-  if (actionType) {
-    return { status: "done", summary: actionType };
-  }
-  const text = (planCall.response ?? "").trim();
-  if (!text) return { status: "active", summary: "thinking" };
-  // Try to pull an action name out of common JSON shapes.
-  try {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as Record<string, unknown>;
-      const candidate = parsed.action ?? parsed.actionName ?? parsed.name;
-      if (typeof candidate === "string" && candidate.length > 0) {
-        return { status: "done", summary: candidate };
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return { status: "done", summary: "respond" };
-}
-
-function summarizeAction(toolEvents: UIToolEvent[]): {
-  status: PhaseStatus;
-  summary: string | null;
-} {
-  if (toolEvents.length === 0) return { status: "idle", summary: null };
-  const latest = toolEvents[toolEvents.length - 1];
-  const name = latest.actionName ?? latest.toolName ?? latest.name ?? "action";
-  if (
-    latest.type === "tool_error" ||
-    latest.error ||
-    latest.success === false
-  ) {
-    return { status: "error", summary: `${name} ✗` };
-  }
-  if (
-    latest.type === "tool_result" ||
-    latest.status === "completed" ||
-    latest.success === true
-  ) {
-    return { status: "done", summary: `${name} ✓` };
-  }
-  if (latest.status === "skipped") {
-    return { status: "skipped", summary: `${name} skipped` };
-  }
-  return { status: "active", summary: name };
-}
-
-function summarizeEvaluate(
-  llmCalls: UILlmCall[],
-  evaluationEvents: UIEvaluationEvent[],
-): { status: PhaseStatus; summary: string | null } {
-  if (evaluationEvents.length > 0) {
-    const latest = evaluationEvents[evaluationEvents.length - 1];
-    const name = latest.evaluatorName ?? latest.name ?? "evaluator";
-    if (latest.error || latest.success === false) {
-      return { status: "error", summary: `${name} ✗` };
-    }
-    if (latest.decision) {
-      return { status: "done", summary: `${name}: ${latest.decision}` };
-    }
-    if (latest.success === true || latest.status === "completed") {
-      return { status: "done", summary: `${name} ✓` };
-    }
-    return { status: "active", summary: name };
-  }
-  if (llmCalls.length > 0) {
-    return { status: "done", summary: "evaluated" };
-  }
-  return { status: "idle", summary: null };
-}
-
-/**
- * Compute the four phase summaries from a fully-loaded TrajectoryDetail.
- * For active/in-flight trajectories, missing phases stay `idle` until the
- * runtime fires the corresponding LLM call or tool/evaluation event.
- */
 export function summarizePhases(
   detail: TrajectoryDetail | null,
   options: { trajectoryActive?: boolean } = {},
@@ -239,50 +88,19 @@ export function summarizePhases(
   const toolEvents = detail?.toolEvents ?? [];
   const evaluationEvents = detail?.evaluationEvents ?? [];
 
-  const handleCalls = llmCalls.filter((c) => classifyLlmCall(c) === "HANDLE");
-  const planCalls = llmCalls.filter((c) => classifyLlmCall(c) === "PLAN");
-  const evalCalls = llmCalls.filter((c) => classifyLlmCall(c) === "EVALUATE");
+  const handleCalls = llmCalls.filter((c) => phaseOf(c) === "HANDLE");
+  const planCalls = llmCalls.filter((c) => phaseOf(c) === "PLAN");
+  const evalCalls = llmCalls.filter((c) => phaseOf(c) === "EVALUATE");
 
   const handle = summarizeHandle(handleCalls, providerAccesses);
   const plan = summarizePlan(planCalls);
   const action = summarizeAction(toolEvents);
   const evaluate = summarizeEvaluate(evalCalls, evaluationEvents);
 
-  // For an active trajectory, the *last* phase that has data is the one
-  // that's currently running — promote it to "active" if the next phases
-  // have nothing yet.
-  const summaries: Array<{ status: PhaseStatus; summary: string | null }> = [
-    handle,
-    plan,
-    action,
-    evaluate,
-  ];
-  if (options.trajectoryActive) {
-    let lastWithData = -1;
-    for (let i = 0; i < summaries.length; i++) {
-      if (summaries[i].status !== "idle") lastWithData = i;
-    }
-    // If a later phase is still idle while an earlier phase finished, the
-    // current step is "in flight" — surface that as `active` on the most
-    // recent finished phase.
-    if (
-      lastWithData >= 0 &&
-      summaries[lastWithData].status === "done" &&
-      lastWithData < summaries.length - 1 &&
-      summaries.slice(lastWithData + 1).every((s) => s.status === "idle")
-    ) {
-      summaries[lastWithData] = {
-        ...summaries[lastWithData],
-        status: "active",
-      };
-    }
-  }
-
-  return [
+  const out: PhaseSummary[] = [
     {
       phase: "HANDLE",
-      status: summaries[0].status,
-      summary: summaries[0].summary,
+      ...handle,
       llmCalls: handleCalls,
       providerAccesses,
       toolEvents: [],
@@ -290,8 +108,7 @@ export function summarizePhases(
     },
     {
       phase: "PLAN",
-      status: summaries[1].status,
-      summary: summaries[1].summary,
+      ...plan,
       llmCalls: planCalls,
       providerAccesses: [],
       toolEvents: [],
@@ -299,8 +116,7 @@ export function summarizePhases(
     },
     {
       phase: "ACTION",
-      status: summaries[2].status,
-      summary: summaries[2].summary,
+      ...action,
       llmCalls: [],
       providerAccesses: [],
       toolEvents,
@@ -308,12 +124,99 @@ export function summarizePhases(
     },
     {
       phase: "EVALUATE",
-      status: summaries[3].status,
-      summary: summaries[3].summary,
+      ...evaluate,
       llmCalls: evalCalls,
       providerAccesses: [],
       toolEvents: [],
       evaluationEvents,
     },
   ];
+
+  // For an in-flight trajectory: the latest non-idle phase is the one
+  // currently running. Promote its status to `active` so the dot pulses.
+  if (options.trajectoryActive) {
+    let last = -1;
+    for (let i = 0; i < out.length; i++) {
+      if (out[i].status !== "idle") last = i;
+    }
+    if (
+      last >= 0 &&
+      last < out.length - 1 &&
+      out[last].status === "done" &&
+      out.slice(last + 1).every((p) => p.status === "idle")
+    ) {
+      out[last] = { ...out[last], status: "active" };
+    }
+  }
+  return out;
+}
+
+function summarizeHandle(
+  llmCalls: UILlmCall[],
+  providerAccesses: UIProviderAccess[],
+): { status: PhaseStatus; summary: string | null } {
+  const respond = llmCalls.find(
+    (c) => (c.stepType || c.purpose || "").toLowerCase() === "should_respond",
+  );
+  if (respond) {
+    const d = shouldRespondDecision(respond);
+    if (d) {
+      const skip = /IGNORE|STOP|SKIP/i.test(d);
+      return { status: skip ? "skipped" : "done", summary: d.toLowerCase() };
+    }
+    return { status: "done", summary: "decided" };
+  }
+  if (llmCalls.length > 0 || providerAccesses.length > 0) {
+    return { status: "done", summary: `${providerAccesses.length} ctx` };
+  }
+  return { status: "idle", summary: null };
+}
+
+function summarizePlan(llmCalls: UILlmCall[]): {
+  status: PhaseStatus;
+  summary: string | null;
+} {
+  const last = llmCalls[llmCalls.length - 1];
+  if (!last) return { status: "idle", summary: null };
+  if (last.actionType) return { status: "done", summary: last.actionType };
+  return { status: "done", summary: "respond" };
+}
+
+function summarizeAction(events: UIToolEvent[]): {
+  status: PhaseStatus;
+  summary: string | null;
+} {
+  if (events.length === 0) return { status: "idle", summary: null };
+  const e = events[events.length - 1];
+  const name = e.actionName || e.toolName || e.name || "action";
+  if (e.type === "tool_error" || e.error || e.success === false) {
+    return { status: "error", summary: `${name} ✗` };
+  }
+  if (
+    e.type === "tool_result" ||
+    e.status === "completed" ||
+    e.success === true
+  ) {
+    return { status: "done", summary: `${name} ✓` };
+  }
+  if (e.status === "skipped") return { status: "skipped", summary: name };
+  return { status: "active", summary: name };
+}
+
+function summarizeEvaluate(
+  llmCalls: UILlmCall[],
+  events: UIEvaluationEvent[],
+): { status: PhaseStatus; summary: string | null } {
+  if (events.length > 0) {
+    const e = events[events.length - 1];
+    const name = e.evaluatorName || e.name || "evaluator";
+    if (e.error || e.success === false) {
+      return { status: "error", summary: `${name} ✗` };
+    }
+    if (e.decision)
+      return { status: "done", summary: `${name}: ${e.decision}` };
+    return { status: "done", summary: name };
+  }
+  if (llmCalls.length > 0) return { status: "done", summary: "evaluated" };
+  return { status: "idle", summary: null };
 }

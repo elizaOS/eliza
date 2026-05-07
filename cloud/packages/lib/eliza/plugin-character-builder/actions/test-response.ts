@@ -15,6 +15,7 @@ import type { StreamChunkCallback } from "../../shared/types";
 import { cleanPrompt, isCreatorMode } from "../../shared/utils/helpers";
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const TEST_RESPONSE_OUTPUT_MAX_CHARS = 4_000;
 const TEST_RESPONSE_KEYWORDS = [
   "test",
   "respond",
@@ -94,6 +95,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateTestResponseText(text: string): string {
+  if (text.length <= TEST_RESPONSE_OUTPUT_MAX_CHARS) return text;
+  return `${text.slice(0, TEST_RESPONSE_OUTPUT_MAX_CHARS)}\n\n[truncated test response]`;
 }
 
 /**
@@ -258,27 +264,31 @@ export const testResponseAction = {
     }
 
     logger.debug("[TEST_RESPONSE] Test response generated successfully");
+    const responseText = truncateTestResponseText(parsed.text);
 
     await callback({
-      text: `*[Testing ${runtime.character.name}]*\n\n${parsed.text}`,
+      text: `*[Testing ${runtime.character.name}]*\n\n${responseText}`,
       thought: parsed.thought,
       metadata: {
         action: "TEST_RESPONSE",
         isTest: true,
+        outputTruncated: responseText !== parsed.text,
       },
     });
     return {
       success: true,
-      text: parsed.text,
+      text: responseText,
       values: {
         success: true,
         isTest: true,
         characterName: runtime.character.name,
+        outputTruncated: responseText !== parsed.text,
       },
       data: {
         actionName: "TEST_RESPONSE",
         characterName: runtime.character.name,
         thought: parsed.thought,
+        outputTruncated: responseText !== parsed.text,
       },
     };
   },

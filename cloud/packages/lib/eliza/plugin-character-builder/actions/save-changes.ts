@@ -15,6 +15,8 @@ import { charactersService } from "@/lib/services/characters/characters";
 import { cleanPrompt, isCreatorMode } from "../../shared/utils/helpers";
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const SAVE_CHANGES_TEXT_MAX_CHARS = 4_000;
+const SAVE_CHANGES_FIELD_LIMIT = 20;
 const SAVE_CHANGES_KEYWORDS = [
   "save",
   "apply",
@@ -88,6 +90,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateSaveChangesText(text: string): string {
+  if (text.length <= SAVE_CHANGES_TEXT_MAX_CHARS) return text;
+  return `${text.slice(0, SAVE_CHANGES_TEXT_MAX_CHARS)}\n\n[truncated save confirmation]`;
 }
 
 /**
@@ -540,7 +547,7 @@ export const saveChangesAction = {
     runtime.character = updatedCharacter;
     await runtime.updateAgent(runtime.agentId, updatedCharacter);
 
-    const fieldsUpdated = Object.keys(changesObj);
+    const fieldsUpdated = Object.keys(changesObj).slice(0, SAVE_CHANGES_FIELD_LIMIT);
     logger.info(`[SAVE_CHANGES] Successfully updated: ${fieldsUpdated.join(", ")}`);
 
     // Generate confirmation in character's updated voice
@@ -587,7 +594,8 @@ export const saveChangesAction = {
       thought?: string;
       text?: string;
     } | null;
-    const confirmText = parsed?.text || `Changes saved! Updated ${fieldsUpdated.join(", ")}.`;
+    const rawConfirmText = parsed?.text || `Changes saved! Updated ${fieldsUpdated.join(", ")}.`;
+    const confirmText = truncateSaveChangesText(rawConfirmText);
 
     await callback({
       thought: parsed?.thought || "",
@@ -598,6 +606,7 @@ export const saveChangesAction = {
         fieldsUpdated,
         characterId: runtime.character.id,
         characterName: runtime.character.name,
+        outputTruncated: confirmText !== rawConfirmText,
       },
     });
     return {
@@ -608,12 +617,14 @@ export const saveChangesAction = {
         characterId: runtime.character.id,
         characterName: runtime.character.name,
         fieldsUpdated,
+        outputTruncated: confirmText !== rawConfirmText,
       },
       data: {
         actionName: "SAVE_CHANGES",
         characterId: runtime.character.id,
         characterName: runtime.character.name,
         fieldsUpdated,
+        outputTruncated: confirmText !== rawConfirmText,
       },
     };
   },

@@ -11,13 +11,13 @@ import { looksLikeNonActionableChatter } from "../features/basic-capabilities/pr
 import { logger } from "../logger";
 import { imageDescriptionTemplate } from "../prompts";
 import {
-	v5DirectMessageHandlerSchema,
-	v5MessageHandlerSchema,
+	createV5MessageHandlerTool,
+	V5_MESSAGE_HANDLER_TOOL_NAME,
 	v5MessageHandlerTemplate,
 } from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
 import { filterByContextGate } from "../runtime/context-gates";
-import { hashString } from "../runtime/context-hash";
+import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
 	createContextObject,
@@ -65,6 +65,7 @@ import type {
 	AgentContext,
 	HandlerCallback,
 	MessageHandlerResult,
+	Provider,
 	StreamChunkCallback,
 } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
@@ -81,9 +82,11 @@ import type {
 	ShouldRespondModelType,
 } from "../types/message-service";
 import type {
+	ChatMessage,
 	GenerateTextAttachment,
 	GenerateTextParams,
 	GenerateTextResult,
+	PromptSegment,
 	TextToSpeechParams,
 	ToolDefinition,
 } from "../types/model";
@@ -614,11 +617,21 @@ export function extractPlannerProviderNames(
 }
 
 const CORE_RESPONSE_STATE_PROVIDERS = [
+	"UI_CONTEXT",
 	"ENTITIES",
-	"CHARACTER",
 	"RECENT_MESSAGES",
-	"PROVIDERS",
+	"ATTACHMENTS",
+	"PLATFORM_CHAT_CONTEXT",
+	"PLATFORM_USER_CONTEXT",
 ];
+
+const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = new Set([
+	"ACTIONS",
+	"ACTION_STATE",
+	"CHARACTER",
+	"EVALUATORS",
+	"PROVIDERS",
+]);
 
 const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
 const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
@@ -667,6 +680,38 @@ function composeProviderGroundedResponseState(
 		false,
 		skipCache,
 	);
+}
+
+function selectV5PlannerStateProviderNames(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	selectedContexts: readonly AgentContext[];
+	userRoles: readonly RoleGateRole[];
+}): string[] {
+	const providerNames = new Set<string>(CORE_RESPONSE_STATE_PROVIDERS);
+	if (hasInboundBenchmarkContext(args.message)) {
+		providerNames.add("CONTEXT_BENCH");
+	}
+
+	const providers = Array.isArray(args.runtime.providers)
+		? (args.runtime.providers as Provider[])
+		: [];
+	for (const provider of filterByContextGate(
+		providers,
+		args.selectedContexts,
+		args.userRoles,
+	)) {
+		const name = provider.name?.trim();
+		if (!name || provider.private) {
+			continue;
+		}
+		if (V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS.has(name.toUpperCase())) {
+			continue;
+		}
+		providerNames.add(name);
+	}
+
+	return [...providerNames];
 }
 
 function _composeFocusedProviderReplyState(
@@ -988,8 +1033,6 @@ function createV5ReplyStrategyResult(args: {
 function asProviderRecord(value: unknown):
 	| {
 			text?: unknown;
-			values?: unknown;
-			data?: unknown;
 			providerName?: unknown;
 	  }
 	| undefined {
@@ -998,23 +1041,19 @@ function asProviderRecord(value: unknown):
 	}
 	return value as {
 		text?: unknown;
-		values?: unknown;
-		data?: unknown;
 		providerName?: unknown;
 	};
 }
 
-function toJsonRecord(
-	value: unknown,
-): Record<string, JsonValue | undefined> | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return undefined;
-	}
-	return value as Record<string, JsonValue | undefined>;
-}
-
-function appendStateProviderEvents(events: ContextEvent[], state: State): void {
+function appendStateProviderEvents(
+	events: ContextEvent[],
+	state: State,
+	allowedProviderNames?: readonly string[],
+): void {
 	const providers = state.data?.providers;
+	const allowed = allowedProviderNames
+		? new Set(allowedProviderNames.map((name) => name.toUpperCase()))
+		: null;
 	if (!providers || typeof providers !== "object") {
 		const fallbackText =
 			typeof state.text === "string" ? state.text.trim() : "";
@@ -1039,6 +1078,9 @@ function appendStateProviderEvents(events: ContextEvent[], state: State): void {
 			continue;
 		}
 		seen.add(providerName);
+		if (allowed && !allowed.has(providerName.toUpperCase())) {
+			continue;
+		}
 		const provider = asProviderRecord(
 			(providers as Record<string, unknown>)[providerName],
 		);
@@ -1046,12 +1088,7 @@ function appendStateProviderEvents(events: ContextEvent[], state: State): void {
 			continue;
 		}
 		const text = typeof provider.text === "string" ? provider.text.trim() : "";
-		const values = toJsonRecord(provider.values);
-		const data =
-			provider.data && typeof provider.data === "object"
-				? (provider.data as Record<string, unknown>)
-				: undefined;
-		if (!text && !values && !data) {
+		if (!text) {
 			continue;
 		}
 		events.push({
@@ -1063,10 +1100,21 @@ function appendStateProviderEvents(events: ContextEvent[], state: State): void {
 					? provider.providerName
 					: providerName,
 			text,
-			values,
-			data,
 		});
 	}
+}
+
+function renderCharacterBio(value: unknown): string {
+	if (typeof value === "string") {
+		return value.trim();
+	}
+	if (Array.isArray(value)) {
+		return value
+			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+			.filter(Boolean)
+			.join(" ");
+	}
+	return "";
 }
 
 function createV5MessageContextObject(args: {
@@ -1106,7 +1154,13 @@ function createV5MessageContextObject(args: {
 		}`,
 		true,
 	);
-	appendStateProviderEvents(events, args.state);
+	appendStateProviderEvents(
+		events,
+		args.state,
+		hasInboundBenchmarkContext(args.message)
+			? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
+			: CORE_RESPONSE_STATE_PROVIDERS,
+	);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -1156,6 +1210,11 @@ function createV5MessageContextObject(args: {
 	const characterContent = [
 		args.runtime.character.name
 			? `agent_name: ${args.runtime.character.name}`
+			: "",
+		renderCharacterBio(args.runtime.character.bio)
+			? `# About ${args.runtime.character.name ?? "the agent"}\n${renderCharacterBio(
+					args.runtime.character.bio,
+				)}`
 			: "",
 		typeof args.runtime.character.system === "string"
 			? args.runtime.character.system
@@ -1276,8 +1335,17 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
-			return description
-				? `- ${definition.id}: ${description}`
+			const selectionGuidance = definition.selectionGuidance?.trim();
+			const covers = definition.covers?.length
+				? definition.covers.join(", ")
+				: "";
+			const parts = [
+				description,
+				selectionGuidance ? `select_when: ${selectionGuidance}` : "",
+				covers ? `covers: ${covers}` : "",
+			].filter(Boolean);
+			return parts.length > 0
+				? `- ${definition.id}: ${parts.join(" ")}`
 				: `- ${definition.id}`;
 		})
 		.join("\n");
@@ -1290,35 +1358,22 @@ function renderContextSegmentBlock(segment: {
 	stable?: boolean;
 }): string {
 	const label = segment.label ?? segment.id ?? "context";
-	const cacheScope = segment.stable ? "stable" : "dynamic";
-	return `[${cacheScope}] ${label}\n${segment.content.trim()}`;
+	return `${label}:\n${segment.content.trim()}`;
 }
 
-function renderMessageHandlerContext(context: ContextObject): string {
-	const rendered = renderContextObject(context);
-	const summary = {
-		id: context.id,
-		version: context.version,
-		metadata: context.metadata,
-		selectedContexts: context.trajectoryPrefix?.selectedContexts ?? [],
-		contextRegistryDigest: context.staticPrefix?.contextRegistryDigest,
-		plannedQueue: context.plannedQueue ?? [],
-	};
-	const segments = rendered.promptSegments
-		.map(renderContextSegmentBlock)
-		.filter(Boolean)
-		.join("\n\n");
-	return [
-		JSON.stringify(summary, null, 2),
-		segments ? `context_segments:\n${segments}` : "",
-	]
-		.filter(Boolean)
-		.join("\n\n");
+function normalizeMessageHandlerPromptSegments(
+	segments: PromptSegment[],
+): PromptSegment[] {
+	return segments
+		.filter((segment) => segment.content.trim().length > 0)
+		.map((segment, index) => ({
+			...segment,
+			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
+		}));
 }
 
-function renderV5MessageHandlerPrompt(
-	context: ContextObject,
-	availableContexts: readonly ContextDefinition[] = [],
+function renderV5MessageHandlerInstructions(
+	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
 ): string {
 	const template = options?.directMessage
@@ -1333,11 +1388,112 @@ function renderV5MessageHandlerPrompt(
 				)
 		: v5MessageHandlerTemplate;
 	return template
-		.replace("{{contextObject}}", renderMessageHandlerContext(context))
+		.replace("context:\n{{contextObject}}\n\n", "")
 		.replace(
 			"{{availableContexts}}",
 			formatAvailableContextsForPrompt(availableContexts),
+		)
+		.trim();
+}
+
+function renderV5MessageHandlerModelInput(
+	context: ContextObject,
+	availableContexts: readonly ContextDefinition[] = [],
+	options?: { directMessage?: boolean },
+): {
+	prompt: string;
+	messages: ChatMessage[];
+	promptSegments: PromptSegment[];
+} {
+	const rendered = renderContextObject(context);
+	const instructions = renderV5MessageHandlerInstructions(
+		availableContexts,
+		options,
+	);
+	const stableSegments = rendered.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicSegments = rendered.promptSegments.filter(
+		(segment) => !segment.stable,
+	);
+	const promptSegments = normalizeMessageHandlerPromptSegments([
+		...stableSegments,
+		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+		...dynamicSegments,
+	]);
+	const prompt = promptSegments.map((segment) => segment.content).join("");
+	const systemContent = normalizeMessageHandlerPromptSegments([
+		...stableSegments,
+		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+	])
+		.map((segment) => renderContextSegmentBlock(segment))
+		.join("\n\n");
+	const userContent = normalizeMessageHandlerPromptSegments(dynamicSegments)
+		.map((segment) => renderContextSegmentBlock(segment))
+		.join("\n\n");
+	return {
+		prompt,
+		messages: [
+			{ role: "system", content: systemContent },
+			{ role: "user", content: userContent },
+		],
+		promptSegments,
+	};
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		if (typeof value !== "string") {
+			return null;
+		}
+		try {
+			const parsed: unknown = JSON.parse(value);
+			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: null;
+		} catch {
+			return null;
+		}
+	}
+	return value as Record<string, unknown>;
+}
+
+function parseMessageHandlerNativeToolCall(
+	raw: GenerateTextResult,
+): MessageHandlerResult | null {
+	const toolCalls = Array.isArray(raw.toolCalls) ? raw.toolCalls : [];
+	for (const entry of toolCalls) {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+			continue;
+		}
+		const record = entry as unknown as Record<string, unknown>;
+		const name = String(
+			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+		).trim();
+		if (name !== V5_MESSAGE_HANDLER_TOOL_NAME) {
+			continue;
+		}
+		const args = parseToolArguments(
+			record.arguments ?? record.args ?? record.input ?? record.params,
 		);
+		if (!args) {
+			return null;
+		}
+		return parseMessageHandlerOutput(JSON.stringify(args));
+	}
+	return null;
+}
+
+function parseMessageHandlerModelOutput(
+	raw: string | GenerateTextResult,
+): MessageHandlerResult | null {
+	if (typeof raw !== "string") {
+		return (
+			parseMessageHandlerNativeToolCall(raw) ??
+			parseMessageHandlerOutput(getV5ModelText(raw))
+		);
+	}
+	return parseMessageHandlerOutput(raw);
 }
 
 /**
@@ -1550,27 +1706,46 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
-		const messageHandlerPrompt = renderV5MessageHandlerPrompt(
+		const messageHandlerInput = renderV5MessageHandlerModelInput(
 			context,
 			availableContexts,
 			{ directMessage: directMessageChannel },
 		);
-		const stage1PrefixHash = hashString(`stage1:${messageHandlerPrompt}`);
+		const messageHandlerPrompt = messageHandlerInput.prompt;
+		const stage1PrefixHashes = computePrefixHashes(
+			messageHandlerInput.promptSegments,
+		);
+		const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+			(segment) => segment.stable,
+		);
+		const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+		const stage1SystemContent =
+			typeof messageHandlerInput.messages[0]?.content === "string"
+				? messageHandlerInput.messages[0].content
+				: "";
+		const stage1PrefixHash =
+			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+			hashString(`stage1:${stage1SystemContent}`);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
 				prompt: messageHandlerPrompt,
-				responseFormat: { type: "json_object" },
-				responseSchema: directMessageChannel
-					? v5DirectMessageHandlerSchema
-					: v5MessageHandlerSchema,
-				providerOptions: cacheProviderOptions({ prefixHash: stage1PrefixHash }),
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: [
+					createV5MessageHandlerTool({
+						directMessage: directMessageChannel,
+					}),
+				],
+				toolChoice: "required",
+				providerOptions: cacheProviderOptions({
+					prefixHash: stage1PrefixHash,
+					segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+				}),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
-		const messageHandler = parseMessageHandlerOutput(
-			getV5ModelText(rawMessageHandler),
-		);
+		const messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 
 		if (!messageHandler) {
 			throw new Error(
@@ -1627,8 +1802,27 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		const plannerProviderNames = selectV5PlannerStateProviderNames({
+			runtime: args.runtime,
+			message: args.message,
+			selectedContexts,
+			userRoles: [senderRole],
+		});
+		const recomposedPlannerState =
+			typeof args.runtime.composeState === "function"
+				? await args.runtime.composeState(
+						args.message,
+						plannerProviderNames,
+						true,
+					)
+				: args.state;
+		const plannerState = attachAvailableContexts(
+			recomposedPlannerState,
+			args.runtime,
+		);
 		const plannerContext = createV5MessageContextObject({
 			...args,
+			state: plannerState,
 			selectedContexts,
 			includeTools: true,
 			userRoles: [senderRole],
@@ -1678,7 +1872,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					plannerContext: plannerContextWithDecision,
 					executorCtx: {
 						message: args.message,
-						state: args.state,
+						state: plannerState,
 						activeContexts: selectedContexts,
 						userRoles: [senderRole],
 						previousResults: collectPreviousActionResults(ctx.trajectory),
@@ -1706,6 +1900,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			result: plannedText
 				? createV5ReplyStrategyResult({
 						...args,
+						state: plannerState,
 						text: plannedText,
 						thought:
 							plannerResult.evaluator?.thought ??
@@ -1715,7 +1910,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				: {
 						responseContent: null,
 						responseMessages: [],
-						state: args.state,
+						state: plannerState,
 						mode: "none",
 					},
 		};

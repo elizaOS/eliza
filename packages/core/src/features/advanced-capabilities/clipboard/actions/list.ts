@@ -12,6 +12,13 @@ import { createClipboardService } from "../services/clipboardService.ts";
 import { requireActionSpec } from "../specs.ts";
 
 const spec = requireActionSpec("CLIPBOARD_LIST");
+const MAX_LIST_ENTRIES = 20;
+const MAX_TITLE_CHARS = 120;
+const MAX_TAGS = 8;
+
+function truncateText(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
 
 export const clipboardListAction: Action = {
 	name: spec.name,
@@ -56,14 +63,24 @@ export const clipboardListAction: Action = {
 				return { success: true, text: "No entries", entries: [] };
 			}
 
+			const visibleEntries = entries.slice(0, MAX_LIST_ENTRIES);
+			const omittedCount = Math.max(0, entries.length - visibleEntries.length);
 			const listText = entries
+				.slice(0, MAX_LIST_ENTRIES)
 				.map((e, i) => {
-					const tagsStr = e.tags?.length ? ` [${e.tags.join(", ")}]` : "";
-					return `${i + 1}. **${e.title}** (${e.id})${tagsStr}\n   _Modified: ${e.modifiedAt.toLocaleDateString()}_`;
+					const tags = (e.tags ?? [])
+						.slice(0, MAX_TAGS)
+						.map((tag) => truncateText(tag, 32));
+					const tagsStr = tags.length ? ` [${tags.join(", ")}]` : "";
+					return `${i + 1}. **${truncateText(e.title, MAX_TITLE_CHARS)}** (${e.id})${tagsStr}\n   _Modified: ${e.modifiedAt.toLocaleDateString()}_`;
 				})
 				.join("\n");
 
-			const successMessage = `**Your Clipboard Entries** (${entries.length} total):\n\n${listText}`;
+			const omittedText =
+				omittedCount > 0
+					? `\n\n_${omittedCount} more entr${omittedCount === 1 ? "y" : "ies"} omitted._`
+					: "";
+			const successMessage = `**Your Clipboard Entries** (${entries.length} total):\n\n${listText}${omittedText}`;
 
 			if (callback) {
 				await callback({
@@ -73,7 +90,20 @@ export const clipboardListAction: Action = {
 				});
 			}
 
-			return { success: true, text: successMessage, entries };
+			return {
+				success: true,
+				text: successMessage,
+				data: {
+					count: entries.length,
+					omittedCount,
+					entries: visibleEntries.map((entry) => ({
+						id: entry.id,
+						title: truncateText(entry.title, MAX_TITLE_CHARS),
+						tags: (entry.tags ?? []).slice(0, MAX_TAGS),
+						modifiedAt: entry.modifiedAt,
+					})),
+				},
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error("[ClipboardList] Error:", errorMsg);

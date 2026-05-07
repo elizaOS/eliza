@@ -27,6 +27,9 @@ type MusicGenerationParams = {
     audio_id?: string;
 };
 
+const SUNO_ACTION_TIMEOUT_MS = 30_000;
+const MAX_SUNO_RESPONSE_BYTES = 4000;
+
 function paramsFromMessageAndOptions(
     message: Memory,
     options?: Record<string, unknown>
@@ -182,17 +185,24 @@ export const musicGeneration: Action = {
                 }
             }
 
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), SUNO_ACTION_TIMEOUT_MS);
             const response = await provider.request(runtime, endpoint, {
                 method: 'POST',
                 body: JSON.stringify(body),
-            });
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeout));
+            const cappedResponse =
+                JSON.stringify(response).length > MAX_SUNO_RESPONSE_BYTES
+                    ? { truncated: true, preview: JSON.stringify(response).slice(0, MAX_SUNO_RESPONSE_BYTES) }
+                    : response;
 
             await callback?.({
                 text:
                     subaction === 'extend'
                         ? `Successfully extended audio ${params.audio_id}`
                         : `Successfully submitted ${subaction} music generation`,
-                content: response,
+                content: cappedResponse,
             });
 
             return {
@@ -201,7 +211,7 @@ export const musicGeneration: Action = {
                     subaction === 'extend'
                         ? `Successfully extended audio ${params.audio_id}`
                         : `Successfully submitted ${subaction} music generation`,
-                data: { subaction, response },
+                data: { subaction, response: cappedResponse },
             };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);

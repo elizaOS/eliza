@@ -3,6 +3,9 @@ name: Deploy Eliza Provisioning Worker
 # SSHes to the Hetzner provisioning host, fetches the latest develop/main commit,
 # installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
+#
+# First-time setup:
+#   HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment staging
 
 on:
   push:
@@ -74,14 +77,33 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
     steps:
-      - name: Verify deploy secrets
+      - name: Check deploy configuration
+        id: deploy_config
         run: |
           if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "::error::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY for environment ${{ needs.determine-env.outputs.environment }}."
-            exit 1
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY for environment ${{ needs.determine-env.outputs.environment }}; skipping provisioning-worker deploy."
+            {
+              echo "### Provisioning worker deploy skipped"
+              echo ""
+              echo "Missing \`ELIZA_PROVISIONING_HOST\` or \`ELIZA_PROVISIONING_SSH_KEY\` for GitHub environment \`${{ needs.determine-env.outputs.environment }}\`."
+              echo ""
+              echo "Bootstrap the Hetzner host and secrets with:"
+              echo ""
+              echo "\`\`\`bash"
+              echo "HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment ${{ needs.determine-env.outputs.environment }}"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Manual deployment requires ELIZA_PROVISIONING_HOST and ELIZA_PROVISIONING_SSH_KEY."
+              exit 1
+            fi
+            exit 0
           fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy and restart worker
+        if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -136,6 +158,7 @@ jobs:
             echo "=== Restart issued; waiting for first poll cycle ==="
 
       - name: Health check
+        if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -174,7 +197,7 @@ jobs:
             exit 1
 
       - name: Notify Discord (Success)
-        if: success()
+        if: success() && steps.deploy_config.outputs.configured == 'true'
         uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
@@ -188,7 +211,7 @@ jobs:
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
-        if: failure()
+        if: failure() && steps.deploy_config.outputs.configured == 'true'
         uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}

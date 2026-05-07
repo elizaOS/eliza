@@ -289,7 +289,8 @@ export const useComputerAction: Action = {
         return { success: false, error: "ComputerUseService not available" };
       }
       const mockResult = buildMockDesktopResult(params);
-      const text = formatDesktopResultText(params, mockResult);
+      const maxActionResultBytes = 4000;
+      const text = formatDesktopResultText(params, mockResult).slice(0, maxActionResultBytes);
       await deliverResult(params, mockResult, text, callback);
       return toComputerUseActionResult({
         action: params.action,
@@ -300,7 +301,8 @@ export const useComputerAction: Action = {
     }
 
     const result = await service.executeDesktopAction(params);
-    const text = formatDesktopResultText(params, result);
+    const maxActionResultBytes = 4000;
+    const text = formatDesktopResultText(params, result).slice(0, maxActionResultBytes);
     await deliverResult(params, result, text, callback);
     return toComputerUseActionResult({
       action: params.action,

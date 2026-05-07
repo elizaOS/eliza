@@ -15,6 +15,8 @@ import type {
 import type { AgentSkillsService } from "../services/skills";
 import { createAgentSkillsActionValidator } from "./validators";
 
+const SYNC_CATALOG_TIMEOUT_MS = 30_000;
+
 export const syncCatalogAction: Action = {
 	name: "SYNC_SKILL_CATALOG",
 	contexts: ["automation", "settings", "connectors"],
@@ -47,7 +49,10 @@ export const syncCatalogAction: Action = {
 			}
 
 			runtime.logger.info("AgentSkills: Manual catalog sync triggered");
-			const result = await service.syncCatalog();
+			const timeout = new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Skill catalog sync timeout")), SYNC_CATALOG_TIMEOUT_MS),
+			);
+			const result = await Promise.race([service.syncCatalog(), timeout]);
 
 			const text = `Skill catalog synced successfully.
 - Total skills: ${result.updated}

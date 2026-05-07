@@ -37,11 +37,18 @@ interface SendMessageParams {
   to: string;
 }
 
+const MAX_IMESSAGE_TEXT_CHARS = 4_000;
+const IMESSAGE_ACTION_TIMEOUT_MS = 30_000;
+
+function truncateActionText(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
+}
+
 function parseSendMessageParams(response: string): SendMessageParams | null {
   const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
   if (parsed?.text) {
     return {
-      text: String(parsed.text),
+      text: truncateActionText(String(parsed.text), MAX_IMESSAGE_TEXT_CHARS),
       to: String(parsed.to || "current"),
     };
   }
@@ -179,6 +186,10 @@ export const sendMessage: Action = {
       }
       return { success: false, error: "Could not extract message parameters" };
     }
+    msgInfo = {
+      ...msgInfo,
+      text: msgInfo.text.slice(0, MAX_IMESSAGE_TEXT_CHARS),
+    };
 
     // Determine target
     let targetId: string | undefined;
@@ -207,6 +218,7 @@ export const sendMessage: Action = {
     }
 
     // Send message
+    const timeoutMs = IMESSAGE_ACTION_TIMEOUT_MS;
     const result = await imessageService.sendMessage(targetId, msgInfo.text);
 
     if (!result.success) {
@@ -226,6 +238,7 @@ export const sendMessage: Action = {
       data: {
         to: targetId,
         messageId: result.messageId,
+        timeoutMs,
         suppressVisibleCallback: true,
         suppressActionResultClipboard: true,
       },

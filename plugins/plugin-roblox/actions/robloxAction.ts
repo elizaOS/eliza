@@ -22,6 +22,9 @@ type RobloxSubaction = "message" | "execute" | "get_player";
 type RobloxActionParameters = Record<string, string | number | boolean | null>;
 
 const actionName = "ROBLOX_ACTION";
+const ROBLOX_ACTION_TIMEOUT_MS = 15_000;
+const MAX_ROBLOX_TARGET_IDS = 25;
+const MAX_ROBLOX_MESSAGE_LENGTH = 1000;
 
 interface GameActionConfig {
   name: string;
@@ -171,14 +174,25 @@ function readTargetPlayerIds(params: Record<string, unknown>, text: string): num
         typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
       )
       .filter((value) => Number.isInteger(value) && value > 0);
-    if (ids.length) return ids;
+    if (ids.length) return ids.slice(0, MAX_ROBLOX_TARGET_IDS);
   }
 
   const single = readNumber(params, "targetPlayerId", "playerId", "userId");
   if (single !== null && Number.isInteger(single) && single > 0) return [single];
 
   const matches = [...text.matchAll(/\bplayer\s*(\d+)\b/gi)];
-  return matches.length ? matches.map((match) => Number.parseInt(match[1], 10)) : undefined;
+  return matches.length
+    ? matches.map((match) => Number.parseInt(match[1], 10)).slice(0, MAX_ROBLOX_TARGET_IDS)
+    : undefined;
+}
+
+function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS),
+    ),
+  ]);
 }
 
 function parseGameAction(text: string, params: Record<string, unknown>): RobloxGameAction | null {
@@ -276,7 +290,11 @@ async function handleMessage(
   }
 
   const targetPlayerIds = readTargetPlayerIds(params, content);
-  await service.sendMessage(runtime.agentId, content, targetPlayerIds);
+  const cappedContent = content.slice(0, MAX_ROBLOX_MESSAGE_LENGTH);
+  await withRobloxTimeout(
+    service.sendMessage(runtime.agentId, cappedContent, targetPlayerIds),
+    "roblox message",
+  );
 
   const targetText =
     targetPlayerIds && targetPlayerIds.length > 0
@@ -286,7 +304,7 @@ async function handleMessage(
   return {
     success: true,
     text: `Sent Roblox message ${targetText}`,
-    data: { subaction: "message", targetPlayerIds, messageLength: content.length },
+    data: { subaction: "message", targetPlayerIds, messageLength: cappedContent.length },
   };
 }
 
@@ -303,11 +321,14 @@ async function handleExecute(
     return { success: false, error: "Could not parse Roblox game action" };
   }
 
-  await service.executeAction(
-    runtime.agentId,
-    parsedAction.name,
-    parsedAction.parameters,
-    parsedAction.targetPlayerIds
+  await withRobloxTimeout(
+    service.executeAction(
+      runtime.agentId,
+      parsedAction.name,
+      parsedAction.parameters,
+      parsedAction.targetPlayerIds
+    ),
+    "roblox execute",
   );
 
   await callback?.({ text: `Triggered Roblox action "${parsedAction.name}".`, action: actionName });
@@ -347,9 +368,12 @@ async function handleGetPlayer(
 
   let user: RobloxUser | null;
   if (identifier.type === "id") {
-    user = await client.getUserById(identifier.value);
+    user = await withRobloxTimeout(client.getUserById(identifier.value), "roblox get user");
   } else {
-    user = await client.getUserByUsername(identifier.value);
+    user = await withRobloxTimeout(
+      client.getUserByUsername(identifier.value),
+      "roblox get user",
+    );
   }
 
   if (!user) {
@@ -364,7 +388,7 @@ async function handleGetPlayer(
     };
   }
 
-  const avatarUrl = await client.getAvatarUrl(user.id);
+  const avatarUrl = await withRobloxTimeout(client.getAvatarUrl(user.id), "roblox avatar");
   user.avatarUrl = avatarUrl;
 
   await callback?.({
@@ -473,6 +497,10 @@ export const robloxAction: Action = {
     }
 
     const params = mergedInput(message, options);
+    const maxRobloxTargetIds = MAX_ROBLOX_TARGET_IDS;
+    if (Array.isArray(params.targetPlayerIds)) {
+      params.targetPlayerIds = params.targetPlayerIds.slice(0, maxRobloxTargetIds);
+    }
     const subaction = inferSubaction(message.content.text ?? "", params);
 
     try {

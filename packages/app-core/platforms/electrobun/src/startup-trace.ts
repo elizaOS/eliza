@@ -170,11 +170,9 @@ export function resolveStartupTraceBootstrapFile(
 	return path.join(bundlePath, STARTUP_TRACE_BOOTSTRAP_FILENAME);
 }
 
-function readStartupTraceBootstrap(
-	execPath: string = process.execPath,
-	platform: NodeJS.Platform = process.platform,
+function readStartupTraceBootstrapFile(
+	bootstrapFile: string | null,
 ): StartupTraceBootstrap | null {
-	const bootstrapFile = resolveStartupTraceBootstrapFile(execPath, platform);
 	if (!bootstrapFile || !fs.existsSync(bootstrapFile)) {
 		return null;
 	}
@@ -196,12 +194,37 @@ function readStartupTraceBootstrap(
 	}
 }
 
+function resolveStartupTraceControlBootstrapFile(
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	return path.join(
+		resolveStartupTraceControlDir(env, platform),
+		STARTUP_TRACE_BOOTSTRAP_FILENAME,
+	);
+}
+
+function readStartupTraceBootstrap(
+	env: NodeJS.ProcessEnv = process.env,
+	execPath: string = process.execPath,
+	platform: NodeJS.Platform = process.platform,
+): StartupTraceBootstrap | null {
+	return (
+		readStartupTraceBootstrapFile(
+			resolveStartupTraceBootstrapFile(execPath, platform),
+		) ??
+		readStartupTraceBootstrapFile(
+			resolveStartupTraceControlBootstrapFile(env, platform),
+		)
+	);
+}
+
 export function getStartupTraceConfig(
 	env: NodeJS.ProcessEnv = process.env,
 	execPath: string = process.execPath,
 	platform: NodeJS.Platform = process.platform,
 ): StartupTraceConfig {
-	const bootstrap = readStartupTraceBootstrap(execPath, platform);
+	const bootstrap = readStartupTraceBootstrap(env, execPath, platform);
 	const sessionId =
 		trimEnv(env.ELIZA_STARTUP_SESSION_ID) ??
 		trimEnv(env.MILADY_STARTUP_SESSION_ID) ??
@@ -236,12 +259,17 @@ export function recordStartupPhase(
 	if (!config.enabled || !config.sessionId) {
 		if (!disabledTraceLogged) {
 			const bootstrapFile = resolveStartupTraceBootstrapFile(execPath);
+			const controlBootstrapFile = resolveStartupTraceControlBootstrapFile(
+				env,
+				platform,
+			);
 			disabledTraceLogged = true;
 			writeStartupTraceDebugLine(
 				`disabled session=${config.sessionId ?? "<none>"} ` +
 					`state=${config.stateFile ?? "<none>"} ` +
 					`events=${config.eventsFile ?? "<none>"} ` +
 					`bootstrap=${bootstrapFile ?? "<none>"} exists=${bootstrapFile ? fs.existsSync(bootstrapFile) : false} ` +
+					`controlBootstrap=${controlBootstrapFile} exists=${fs.existsSync(controlBootstrapFile)} ` +
 					`execPath=${process.execPath}`,
 				env,
 			);

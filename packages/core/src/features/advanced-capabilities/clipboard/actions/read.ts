@@ -60,6 +60,13 @@ function extractReadInfo(
 }
 
 const spec = requireActionSpec("CLIPBOARD_READ");
+const DEFAULT_READ_LINES = 80;
+const MAX_READ_LINES = 200;
+const MAX_READ_CHARS = 12000;
+
+function truncateText(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated]`;
+}
 
 export const clipboardReadAction: Action = {
 	name: spec.name,
@@ -127,7 +134,10 @@ export const clipboardReadAction: Action = {
 		try {
 			const entry = await service.read(readInfo.id, {
 				from: readInfo.from,
-				lines: readInfo.lines,
+				lines:
+					readInfo.lines === undefined
+						? DEFAULT_READ_LINES
+						: Math.min(Math.max(1, Math.floor(readInfo.lines)), MAX_READ_LINES),
 			});
 
 			const lineInfo =
@@ -135,7 +145,8 @@ export const clipboardReadAction: Action = {
 					? ` (lines ${readInfo.from}-${(readInfo.from ?? 1) + (readInfo.lines ?? 10)})`
 					: "";
 
-			const successMessage = `**${entry.title}**${lineInfo}\n\n${entry.content}`;
+			const boundedContent = truncateText(entry.content, MAX_READ_CHARS);
+			const successMessage = `**${entry.title}**${lineInfo}\n\n${boundedContent}`;
 
 			if (callback) {
 				await callback({
@@ -145,7 +156,16 @@ export const clipboardReadAction: Action = {
 				});
 			}
 
-			return { success: true, text: successMessage, entry };
+			return {
+				success: true,
+				text: successMessage,
+				data: {
+					id: entry.id,
+					title: entry.title,
+					content: boundedContent,
+					truncated: boundedContent.length < entry.content.length,
+				},
+			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			logger.error("[ClipboardRead] Error:", errorMsg);

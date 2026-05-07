@@ -6,24 +6,10 @@ import {
 import { Helmet } from "react-helmet-async";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { isValidUUID } from "@/lib/utils";
-import type { AppDto } from "@/types/cloud-api";
 import { useRequireAuth } from "../../../lib/auth-hooks";
-import { type App, useApp } from "../../../lib/data/apps";
+import { useApp } from "../../../lib/data/apps";
 import { AppDetailsTabs } from "../_components/app-details-tabs";
 import { AppPageWrapper } from "../_components/single-app-page-wrapper";
-
-function toAppDto(app: App): AppDto {
-  return {
-    ...app,
-    total_credits_used: app.total_credits_used ?? "0",
-    user_database_status: "none",
-    user_database_uri: null,
-    user_database_project_id: null,
-    user_database_branch_id: null,
-    user_database_region: null,
-    user_database_error: null,
-  };
-}
 
 /** /dashboard/apps/:id */
 export default function AppDetailsPage() {
@@ -61,7 +47,7 @@ export default function AppDetailsPage() {
       ) : (
         <AppPageWrapper appName={app.name}>
           <DashboardPageContainer className="space-y-3 sm:space-y-6">
-            <AppDetailsTabs app={toAppDto(app)} showApiKey={showApiKey} />
+            <AppDetailsTabs app={app} showApiKey={showApiKey} />
           </DashboardPageContainer>
         </AppPageWrapper>
       )}

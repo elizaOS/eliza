@@ -22,6 +22,8 @@ import {
   lookupUser,
 } from "../utils";
 
+const OAUTH_CONNECTION_LIMIT = 10;
+
 export const oauthConnectAction: ActionWithParams = {
   name: "OAUTH_CONNECT",
   contexts: ["connectors", "settings", "secrets"],
@@ -128,11 +130,13 @@ export const oauthConnectAction: ActionWithParams = {
         userId: user.id,
         platform,
       });
-      const email = connections.find((c) => c.status === "active")?.email || "";
+      const email =
+        connections.slice(0, OAUTH_CONNECTION_LIMIT).find((c) => c.status === "active")?.email ||
+        "";
       return {
         text: `Your ${platformName} account is already connected${email ? ` (${email})` : ""}.`,
         success: true,
-        data: { actionName, alreadyConnected: true },
+        data: { actionName, alreadyConnected: true, connectionLimit: OAUTH_CONNECTION_LIMIT },
       };
     }
 

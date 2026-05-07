@@ -164,7 +164,8 @@ export const fileAction: Action = {
     }
 
     const result = await service.executeFileAction(params);
-    const text = formatFileResultText(result);
+    const maxActionResultBytes = 4000;
+    const text = formatFileResultText(result).slice(0, maxActionResultBytes);
 
     if (callback) {
       await callback({ text });

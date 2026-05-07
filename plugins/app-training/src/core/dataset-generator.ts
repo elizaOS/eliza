@@ -6,7 +6,7 @@
  * 1. Takes scenario blueprints and expands each into N variants
  * 2. Uses a teacher model (Claude/GPT-5) to generate realistic conversations
  * 3. Randomizes agent name per sample to prevent statistical pollution
- * 4. Exports in Gemini supervised tuning JSONL format
+ * 4. Exports in eliza_native_v1 model-boundary JSONL format
  *
  * Teacher model selection:
  * - ANTHROPIC_API_KEY → Claude Sonnet 4
@@ -21,7 +21,9 @@ import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type { IAgentRuntime, RecordLlmCallDetails } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import {
-  buildTrajectoryTrainingMessages,
+  buildElizaNativeTrajectoryRows,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  type ElizaNativeTrajectoryRow,
   iterateTrajectoryLlmCalls,
 } from "@elizaos/core";
 import {
@@ -127,16 +129,7 @@ export interface SampleMetadata {
   totalVariants: number;
 }
 
-/**
- * Gemini supervised tuning format.
- * See: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-use-supervised-tuning
- */
-export interface GeminiTuningExample {
-  messages: Array<{
-    role: "system" | "user" | "model";
-    content: string;
-  }>;
-}
+export type ElizaNativeTrainingExample = ElizaNativeTrajectoryRow;
 
 // ==================== Name pools ====================
 
@@ -818,31 +811,83 @@ export async function generateDataset(
 // ==================== Export formats ====================
 
 /**
- * Convert a training sample to Gemini supervised tuning format.
+ * Convert a training sample to the canonical Eliza native model-boundary format.
  * The system message contains the shouldRespond prompt template,
- * the user message contains the conversation, and the model message
- * contains the expected native JSON output.
+ * the user message contains the conversation, and response.text contains the
+ * expected native JSON output.
  */
-export function toGeminiFormat(
+export function toElizaNativeFormat(
   sample: TrainingSample,
   includeContextRouting: boolean = true,
-): GeminiTuningExample {
+): ElizaNativeTrainingExample {
   const systemContent = buildShouldRespondSystemPrompt(
     sample,
     includeContextRouting,
   );
   const userContent = buildShouldRespondUserPrompt(sample);
-  const modelContent = buildMessageHandlerJsonResponse(
+  const responseText = buildMessageHandlerJsonResponse(
     sample,
     includeContextRouting,
   );
 
   return {
-    messages: [
-      { role: "system", content: systemContent },
-      { role: "user", content: userContent },
-      { role: "model", content: modelContent },
-    ],
+    format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+    schemaVersion: 1,
+    boundary: "vercel_ai_sdk.generateText",
+    trajectoryId: sample.id,
+    agentId: sample.agentName,
+    source: "app-training",
+    status: "completed",
+    stepId: `${sample.id}:message-handler`,
+    callId: `${sample.id}:message-handler:call-1`,
+    stepIndex: 0,
+    callIndex: 0,
+    timestamp: Date.parse(sample.metadata.generatedAt) || Date.now(),
+    purpose: "should_respond",
+    actionType: "app-training.synthetic.message_handler",
+    stepType: includeContextRouting ? "context_routing" : "should_respond",
+    tags: ["synthetic", "message_handler"],
+    model: "teacher",
+    request: {
+      messages: [
+        { role: "system", content: systemContent },
+        { role: "user", content: userContent },
+      ],
+    },
+    response: {
+      text: responseText,
+    },
+    metadata: {
+      task_type: includeContextRouting ? "context_routing" : "should_respond",
+      source_dataset: "app_training_synthetic",
+      trajectory_id: sample.id,
+      step_id: `${sample.id}:message-handler`,
+      call_id: `${sample.id}:message-handler:call-1`,
+      agent_id: sample.agentName,
+      blueprint_id: sample.blueprintId,
+      platform: sample.metadata.platform,
+      pattern: sample.metadata.pattern,
+    },
+    trajectoryTotals: {
+      stepCount: 1,
+      llmCallCount: 1,
+      providerAccessCount: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    },
+    cacheStats: {
+      totalInputTokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cachedCallCount: 0,
+      cacheReadCallCount: 0,
+      cacheWriteCallCount: 0,
+      tokenUsageEstimatedCallCount: 0,
+    },
   };
 }
 
@@ -1047,10 +1092,10 @@ function normalizeMessageHandlerJson(response: string): string | null {
 }
 
 /**
- * Export the full dataset to JSONL files for Gemini supervised tuning.
+ * Export the full dataset to JSONL files for Eliza native model-boundary tuning.
  * Creates separate files for should_respond and context_routing.
  */
-export async function exportToGeminiJSONL(
+export async function exportToElizaNativeJSONL(
   samples: TrainingSample[],
   outputDir: string,
 ): Promise<{
@@ -1061,24 +1106,30 @@ export async function exportToGeminiJSONL(
   await mkdir(outputDir, { recursive: true });
 
   // Combined (shouldRespond + context routing)
-  const combinedPath = join(outputDir, "combined_training.jsonl");
+  const combinedPath = join(outputDir, "combined_training.eliza-native.jsonl");
   const combinedLines = samples
-    .map((s) => JSON.stringify(toGeminiFormat(s, true)))
+    .map((s) => JSON.stringify(toElizaNativeFormat(s, true)))
     .join("\n");
   await writeFile(combinedPath, `${combinedLines}\n`);
 
   // shouldRespond only (no context routing — for Flash Lite)
-  const shouldRespondPath = join(outputDir, "should_respond_training.jsonl");
+  const shouldRespondPath = join(
+    outputDir,
+    "should_respond_training.eliza-native.jsonl",
+  );
   const srLines = samples
-    .map((s) => JSON.stringify(toGeminiFormat(s, false)))
+    .map((s) => JSON.stringify(toElizaNativeFormat(s, false)))
     .join("\n");
   await writeFile(shouldRespondPath, `${srLines}\n`);
 
   // Context routing only (for samples where decision is RESPOND)
-  const contextRoutingPath = join(outputDir, "context_routing_training.jsonl");
+  const contextRoutingPath = join(
+    outputDir,
+    "context_routing_training.eliza-native.jsonl",
+  );
   const crLines = samples
     .filter((s) => s.expectedOutput.decision === "RESPOND")
-    .map((s) => JSON.stringify(toGeminiFormat(s, true)))
+    .map((s) => JSON.stringify(toElizaNativeFormat(s, true)))
     .join("\n");
   await writeFile(contextRoutingPath, `${crLines}\n`);
 
@@ -1131,8 +1182,8 @@ export async function exportTrajectoriesAsTraining(
   agentName: string,
   outputPath: string,
 ): Promise<number> {
-  const examples: GeminiTuningExample[] = [];
-  let skippedLegacyRows = 0;
+  const examples: ElizaNativeTrainingExample[] = [];
+  let skippedNonNativeRows = 0;
   void agentName;
 
   for (const trajectory of trajectories) {
@@ -1140,23 +1191,27 @@ export async function exportTrajectoriesAsTraining(
       if (call.purpose === "should_respond") {
         const response = normalizeMessageHandlerJson(call.response ?? "");
         if (!response) {
-          skippedLegacyRows += 1;
+          skippedNonNativeRows += 1;
           console.warn(
-            `[dataset-generator] skipped legacy should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+            `[dataset-generator] skipped non-native should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
           );
           continue;
         }
 
-        const messages = buildTrajectoryTrainingMessages({
-          systemPrompt: call.systemPrompt,
-          userPrompt: call.userPrompt,
-          response,
-        });
-        if (!messages) {
-          continue;
+        const row = buildElizaNativeTrajectoryRows([trajectory]).find(
+          (candidate) => candidate.callId === call.callId,
+        );
+        if (row) {
+          examples.push({
+            ...row,
+            response: { ...row.response, text: response },
+            metadata: {
+              ...row.metadata,
+              task_type: "should_respond",
+              source_dataset: "runtime_trajectory_boundary",
+            },
+          });
         }
-
-        examples.push({ messages });
       }
     }
   }
@@ -1164,9 +1219,9 @@ export async function exportTrajectoriesAsTraining(
   const content = examples.map((e) => JSON.stringify(e)).join("\n");
   await writeFile(outputPath, `${content}\n`);
 
-  if (skippedLegacyRows > 0) {
+  if (skippedNonNativeRows > 0) {
     console.warn(
-      `[dataset-generator] skipped ${skippedLegacyRows} legacy should_respond rows while exporting ${outputPath}`,
+      `[dataset-generator] skipped ${skippedNonNativeRows} non-native should_respond rows while exporting ${outputPath}`,
     );
   }
 

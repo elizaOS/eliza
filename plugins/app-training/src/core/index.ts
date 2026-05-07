@@ -45,4 +45,3 @@ export {
   type TrajectoryTaskDatasetTaskSummary,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
-export * from "./vertex-tuning.js";

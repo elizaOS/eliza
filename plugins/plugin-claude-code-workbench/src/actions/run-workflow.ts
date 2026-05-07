@@ -233,13 +233,19 @@ export const claudeCodeWorkbenchRunAction: Action = {
           const trajectoryChildStepId = trajectory.parentStepId
             ? buildWorkbenchChildStepId(runInput.workflow)
             : undefined;
-          const workbenchResult = await service.run({
-            ...runInput,
-            ...(trajectory.parentStepId
-              ? { trajectoryParentStepId: trajectory.parentStepId }
-              : {}),
-            ...(trajectoryChildStepId ? { trajectoryChildStepId } : {}),
-          });
+          const timeoutMs = 120_000;
+          const workbenchResult = await Promise.race([
+            service.run({
+              ...runInput,
+              ...(trajectory.parentStepId
+                ? { trajectoryParentStepId: trajectory.parentStepId }
+                : {}),
+              ...(trajectoryChildStepId ? { trajectoryChildStepId } : {}),
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("workbench workflow timed out")), timeoutMs),
+            ),
+          ]);
           if (trajectoryChildStepId) {
             await trajectory.linkChild(trajectoryChildStepId);
           }
@@ -255,7 +261,11 @@ export const claudeCodeWorkbenchRunAction: Action = {
       return {
         success: result.ok,
         text,
-        data: { ...result },
+        data: {
+          ...result,
+          stdout: result.stdout.slice(0, 4000),
+          stderr: result.stderr.slice(0, 4000),
+        },
         ...(result.ok
           ? {}
           : {

@@ -11,8 +11,8 @@ import {
   Users,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type { AppDto as App } from "@/types/cloud-api";
 import { cn } from "@/lib/utils";
+import type { App } from "../../../lib/data/apps";
 import { AppAnalytics } from "./app-analytics";
 import { AppDomains } from "./app-domains";
 import { AppEarningsDashboard } from "./app-earnings-dashboard";

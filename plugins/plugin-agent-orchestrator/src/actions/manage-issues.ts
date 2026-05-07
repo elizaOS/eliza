@@ -22,6 +22,9 @@ import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { AuthPromptCallback } from "../services/workspace-github.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
+const ISSUE_RESULT_LIMIT = 25;
+const ISSUE_BODY_MAX_CHARS = 4_000;
+
 function formatGitHubAuthPrompt(
   prompt: Parameters<AuthPromptCallback>[0],
 ): string {
@@ -156,7 +159,7 @@ export const manageIssuesAction: Action = {
 
     const params = options?.parameters;
     const content = message.content as Record<string, unknown>;
-    const text = (content.text as string) ?? "";
+    const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
     const operation =
       (params?.operation as string) ??
@@ -270,7 +273,7 @@ async function handleOperation(
           if (items.length > 0) {
             const labels = parseLabels(params.labels);
             const created = [];
-            for (const item of items) {
+            for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
               const issue = await service.createIssue(repo, {
                 title: item.title,
                 body: item.body ?? "",
@@ -311,10 +314,12 @@ async function handleOperation(
       case "list": {
         const stateFilter = (params.state as string) ?? "open";
         const labels = parseLabels(params.labels);
-        const issues = await service.listIssues(repo, {
+        const issues = (
+          await service.listIssues(repo, {
           state: stateFilter as "open" | "closed" | "all",
           labels: labels.length > 0 ? labels : undefined,
-        });
+          })
+        ).slice(0, ISSUE_RESULT_LIMIT);
         if (callback) {
           if (issues.length === 0) {
             await callback({
@@ -342,7 +347,7 @@ async function handleOperation(
         const issue = await service.getIssue(repo, issueNumber);
         if (callback) {
           await callback({
-            text: `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`,
+            text: `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`,
           });
         }
         return { success: true, data: { issue } };

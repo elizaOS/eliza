@@ -10,7 +10,7 @@ import type {
 } from "@elizaos/core";
 import type { JsonValue } from "../protocol.js";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
-import { emit, mergedInput, readNumber } from "./helpers.js";
+import { emit, mergedInput, readNumber, withMinecraftTimeout } from "./helpers.js";
 
 const ACTION_NAME = "MC_ATTACK";
 
@@ -63,7 +63,7 @@ export const minecraftAttackAction: Action = {
     }
 
     try {
-      await service.request("attack", { entityId });
+      await withMinecraftTimeout(service.request("attack", { entityId }), "minecraft attack");
       return await emit(
         ACTION_NAME,
         callback,

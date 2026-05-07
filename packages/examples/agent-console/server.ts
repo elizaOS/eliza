@@ -200,12 +200,20 @@ let modelCallCounter = 0;
     );
     return result;
   } catch (err: any) {
+    const errorDetail = {
+      message: err?.message,
+      cause: err?.cause?.message ?? err?.cause,
+      responseBody: err?.responseBody,
+      url: err?.url,
+      statusCode: err?.statusCode,
+    };
     broadcast(
       tag({
         type: "model_call_end",
         callId,
         modelType: String(modelType),
         error: err?.message ?? String(err),
+        errorDetail,
         durationMs: Date.now() - start,
       })
     );

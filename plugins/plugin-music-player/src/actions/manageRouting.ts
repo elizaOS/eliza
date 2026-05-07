@@ -212,6 +212,8 @@ export const manageRouting = {
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    const timeoutMs = 10_000;
+    const maxCommandBytes = 2000;
     const source = message.content.source || "unknown";
     const effectiveCallback: HandlerCallback = callback ?? (async () => []);
     try {
@@ -241,9 +243,9 @@ export const manageRouting = {
       }
 
       const text =
-        routingTextFromOptions(_options)?.toLowerCase() ||
-        message.content.text?.toLowerCase() ||
-        "";
+        (routingTextFromOptions(_options)?.toLowerCase() ||
+          message.content.text?.toLowerCase() ||
+          "").slice(0, maxCommandBytes);
 
       // Parse command
       if (text.includes("set mode") || text.includes("switch mode")) {
@@ -252,19 +254,19 @@ export const manageRouting = {
         /\bsimulcast\s+.+\s+to\b/.test(text) ||
         /\broute\s+.+\s+to\b/.test(text)
       ) {
-        return handleStartRouting(
-          routingService,
-          text,
-          effectiveCallback,
-          source,
-        );
+        return Promise.race([
+          handleStartRouting(routingService, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("routing operation timed out")), timeoutMs),
+          ),
+        ]);
       } else if (text.includes("stop routing")) {
-        return handleStopRouting(
-          routingService,
-          text,
-          effectiveCallback,
-          source,
-        );
+        return Promise.race([
+          handleStopRouting(routingService, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("routing stop timed out")), timeoutMs),
+          ),
+        ]);
       } else if (
         text.includes("show routing") ||
         text.includes("routing status")

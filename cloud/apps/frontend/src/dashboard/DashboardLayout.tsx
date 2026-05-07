@@ -1,4 +1,4 @@
-import { DashboardShell } from "@elizaos/cloud-ui";
+import { DashboardShell } from "../components/layout/dashboard-shell";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";

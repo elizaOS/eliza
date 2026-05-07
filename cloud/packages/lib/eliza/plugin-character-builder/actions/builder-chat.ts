@@ -96,6 +96,7 @@ Note: This is the LIVE state from the user's editor. If marked "(UNSAVED)", chan
 {{receivedMessageHeader}}`;
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const BUILDER_CHAT_OUTPUT_MAX_CHARS = 4_000;
 const BUILDER_CHAT_KEYWORDS = [
   "help",
   "question",
@@ -184,6 +185,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateBuilderChatText(text: string): string {
+  if (text.length <= BUILDER_CHAT_OUTPUT_MAX_CHARS) return text;
+  return `${text.slice(0, BUILDER_CHAT_OUTPUT_MAX_CHARS)}\n\n[truncated builder chat response]`;
 }
 
 export const builderChatAction = {
@@ -290,25 +296,30 @@ This is your main tool for understanding what the user wants before taking actio
       };
     }
 
+    const responseText = truncateBuilderChatText(parsed.text);
+
     await callback({
-      text: parsed.text,
+      text: responseText,
       thought: parsed.thought,
       metadata: {
         action: "BUILDER_CHAT",
         mode: modeLabel,
+        outputTruncated: responseText !== parsed.text,
       },
     });
     return {
       success: true,
-      text: parsed.text,
+      text: responseText,
       values: {
         success: true,
         mode: modeLabel,
+        outputTruncated: responseText !== parsed.text,
       },
       data: {
         actionName: "BUILDER_CHAT",
         mode: modeLabel,
         thought: parsed.thought,
+        outputTruncated: responseText !== parsed.text,
       },
     };
   },

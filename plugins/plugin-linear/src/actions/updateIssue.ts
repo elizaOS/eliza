@@ -21,6 +21,9 @@ import {
 } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
+const LINEAR_MODEL_TIMEOUT_MS = 15_000;
+const LINEAR_LOOKUP_LIMIT = 100;
+
 export const updateIssueAction: Action = {
   name: "UPDATE_LINEAR_ISSUE",
   contexts: ["tasks", "connectors", "automation"],
@@ -161,9 +164,14 @@ export const updateIssueAction: Action = {
 
       const prompt = updateIssueTemplate.replace("{{userMessage}}", content);
 
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: prompt,
-      });
+      const response = await Promise.race([
+        runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: prompt,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Linear update extraction timeout")), LINEAR_MODEL_TIMEOUT_MS)
+        ),
+      ]);
 
       if (!response) {
         throw new Error("Failed to extract update information");
@@ -202,7 +210,9 @@ export const updateIssueAction: Action = {
         const teamKey = getStringValue(parsedUpdates.teamKey);
         if (teamKey) {
           const teams = await linearService.getTeams();
-          const team = teams.find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
+          const team = teams
+            .slice(0, LINEAR_LOOKUP_LIMIT)
+            .find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
           if (team) {
             updates.teamId = team.id;
             logger.info(`Moving issue to team: ${team.name} (${team.key})`);
@@ -215,7 +225,7 @@ export const updateIssueAction: Action = {
         if (assignee) {
           const cleanAssignee = assignee.replace(/^@/, "");
           const users = await linearService.getUsers();
-          const user = users.find(
+          const user = users.slice(0, LINEAR_LOOKUP_LIMIT).find(
             (u) =>
               u.email === cleanAssignee ||
               u.name.toLowerCase().includes(cleanAssignee.toLowerCase())
@@ -237,7 +247,7 @@ export const updateIssueAction: Action = {
           } else {
             const states = await linearService.getWorkflowStates(teamId);
 
-            const state = states.find(
+            const state = states.slice(0, LINEAR_LOOKUP_LIMIT).find(
               (s) =>
                 s.name.toLowerCase() === status.toLowerCase() ||
                 s.type.toLowerCase() === status.toLowerCase()
@@ -258,8 +268,10 @@ export const updateIssueAction: Action = {
           const labels = await linearService.getLabels(teamId);
           const labelIds: string[] = [];
 
-          for (const labelName of parsedLabels) {
-            const label = labels.find((l) => l.name.toLowerCase() === labelName.toLowerCase());
+          for (const labelName of parsedLabels.slice(0, LINEAR_LOOKUP_LIMIT)) {
+            const label = labels
+              .slice(0, LINEAR_LOOKUP_LIMIT)
+              .find((l) => l.name.toLowerCase() === labelName.toLowerCase());
             if (label) {
               labelIds.push(label.id);
             }

@@ -1,4 +1,6 @@
-import type { JSONSchema } from "../types/model";
+import type { JSONSchema, ToolDefinition } from "../types/model";
+
+export const V5_MESSAGE_HANDLER_TOOL_NAME = "MESSAGE_HANDLER_PLAN";
 
 export const v5MessageHandlerTemplate = `task: Decide processMessage and the plan for this message.
 
@@ -18,9 +20,11 @@ rules:
 - otherwise list every relevant context id; planning will run and tools will be selected from those contexts
 - include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
 - thought is internal routing rationale and is not shown to the user
+- call ${V5_MESSAGE_HANDLER_TOOL_NAME} exactly once with the plan
+- do not answer in plain text
 
 return:
-JSON object only. No markdown, no prose, no XML, no legacy formats.`;
+Use the ${V5_MESSAGE_HANDLER_TOOL_NAME} tool. Do not return JSON as message text.`;
 
 export const V5_MESSAGE_HANDLER_TEMPLATE = v5MessageHandlerTemplate;
 
@@ -62,3 +66,18 @@ export const v5DirectMessageHandlerSchema: JSONSchema = {
 };
 
 export const V5_DIRECT_MESSAGE_HANDLER_SCHEMA = v5DirectMessageHandlerSchema;
+
+export function createV5MessageHandlerTool(options?: {
+	directMessage?: boolean;
+}): ToolDefinition {
+	return {
+		name: V5_MESSAGE_HANDLER_TOOL_NAME,
+		description:
+			"Return the Stage 1 routing plan for the current message. This tool is internal; do not use plain text for this stage.",
+		type: "function",
+		strict: true,
+		parameters: options?.directMessage
+			? v5DirectMessageHandlerSchema
+			: v5MessageHandlerSchema,
+	};
+}

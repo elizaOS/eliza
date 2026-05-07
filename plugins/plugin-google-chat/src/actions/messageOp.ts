@@ -38,7 +38,12 @@ interface GoogleChatOpInfo {
   emoji?: string;
   messageName?: string;
   remove: boolean;
+  timeoutMs?: number;
 }
+
+const MAX_GOOGLE_CHAT_TEXT_CHARS = 4_000;
+const MAX_GOOGLE_CHAT_REACTIONS = 50;
+const GOOGLE_CHAT_ACTION_TIMEOUT_MS = 30_000;
 
 const messageOpTemplate = `# Task: Extract Google Chat message operation parameters.
 
@@ -156,6 +161,7 @@ async function handleSend(
       space: targetSpace,
       messageName: lastResult?.messageName,
       chunksCount: chunks.length,
+      timeoutMs: info.timeoutMs,
     },
   };
 }
@@ -191,7 +197,7 @@ async function handleReact(
   if (info.remove) {
     const reactions = await service.listReactions(targetMessage);
     const botUser = service.getBotUser();
-    const toRemove = reactions.filter((r) => {
+    const toRemove = reactions.slice(0, MAX_GOOGLE_CHAT_REACTIONS).filter((r) => {
       const userName = r.user?.name;
       if (botUser && userName !== botUser && userName !== "users/app") {
         return false;
@@ -215,6 +221,7 @@ async function handleReact(
       data: {
         op: "react",
         removed: toRemove.length,
+        timeoutMs: info.timeoutMs,
       },
     };
   }
@@ -237,6 +244,7 @@ async function handleReact(
       op: "react",
       reactionName: result.name,
       emoji: info.emoji,
+      timeoutMs: info.timeoutMs,
     },
   };
 }
@@ -333,6 +341,11 @@ export const messageOp: Action = {
       });
       return { success: false, error: "Could not extract op parameters" };
     }
+    info = {
+      ...info,
+      text: info.text?.slice(0, MAX_GOOGLE_CHAT_TEXT_CHARS),
+      timeoutMs: GOOGLE_CHAT_ACTION_TIMEOUT_MS,
+    };
 
     if (info.op === "react") {
       return handleReact(service, currentState, message, info, callback);

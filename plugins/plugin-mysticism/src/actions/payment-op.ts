@@ -13,6 +13,7 @@ import { logger } from "@elizaos/core";
 import type { MysticismService } from "../services/mysticism-service";
 
 type PaymentOp = "check" | "request";
+const PAYMENT_AMOUNT_MAX_CHARS = 32;
 
 interface PaymentOpParams {
   op?: unknown;
@@ -139,7 +140,7 @@ export const paymentOpAction: Action = {
     const amountRaw = readParam(options, "amount");
     let amount: string;
     if (typeof amountRaw === "string" && amountRaw.length > 0) {
-      amount = amountRaw;
+      amount = amountRaw.slice(0, PAYMENT_AMOUNT_MAX_CHARS);
     } else {
       const text = message.content.text ?? "";
       const amountMatch = text.match(/\$?([\d.]+)/);

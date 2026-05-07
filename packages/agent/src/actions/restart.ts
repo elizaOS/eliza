@@ -34,6 +34,7 @@ import { hasOwnerAccess } from "../security/access.js";
 
 /** Small delay (ms) before restarting so the response has time to flush. */
 const SHUTDOWN_DELAY_MS = 1_500;
+const MAX_RESTART_REASON_CHARS = 240;
 
 /**
  * Origin of a restart request. The dev-mode self-edit flow tags its restart
@@ -129,7 +130,10 @@ export const restartAction: Action = {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | { reason?: string; source?: string }
       | undefined;
-    const reason = params?.reason;
+    const reason =
+      typeof params?.reason === "string"
+        ? params.reason.slice(0, MAX_RESTART_REASON_CHARS)
+        : undefined;
     const source = parseRestartSource(params?.source);
 
     // Self-edit-driven restarts must only execute when the dev-mode gate is

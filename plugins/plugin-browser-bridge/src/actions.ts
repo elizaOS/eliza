@@ -39,6 +39,8 @@ const INSTALL_NAME = "BROWSER_BRIDGE_INSTALL";
 const REVEAL_FOLDER_NAME = "BROWSER_BRIDGE_REVEAL_FOLDER";
 const OPEN_MANAGER_NAME = "BROWSER_BRIDGE_OPEN_MANAGER";
 const REFRESH_NAME = "BROWSER_BRIDGE_REFRESH";
+const MAX_BROWSER_BRIDGE_TEXT_LENGTH = 3000;
+const BROWSER_BRIDGE_TIMEOUT_MS = 30_000;
 const BROWSER_BRIDGE_KEYWORDS = [
   "browser bridge",
   "agent browser bridge",
@@ -79,6 +81,15 @@ const BROWSER_BRIDGE_KEYWORDS = [
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function withBrowserBridgeTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), BROWSER_BRIDGE_TIMEOUT_MS),
+    ),
+  ]);
 }
 
 function hasSelectedContext(
@@ -177,17 +188,23 @@ export const browserBridgeInstallAction: Action = {
       let status: BrowserBridgeCompanionPackageStatus =
         getBrowserBridgeCompanionPackageStatus();
       if (!status.chromeBuildPath) {
-        status = await buildBrowserBridgeCompanionPackage("chrome");
+        status = await withBrowserBridgeTimeout(
+          buildBrowserBridgeCompanionPackage("chrome"),
+          "browser bridge package build",
+        );
       }
 
-      const reveal = await openBrowserBridgeCompanionPackagePath(
-        "chrome_build",
-        { revealOnly: true },
+      const reveal = await withBrowserBridgeTimeout(
+        openBrowserBridgeCompanionPackagePath("chrome_build", { revealOnly: true }),
+        "browser bridge reveal",
       );
 
       let openedManager = true;
       try {
-        await openBrowserBridgeCompanionManager("chrome");
+        await withBrowserBridgeTimeout(
+          openBrowserBridgeCompanionManager("chrome"),
+          "browser bridge manager open",
+        );
       } catch (err) {
         openedManager = false;
         logger.warn(
@@ -195,9 +212,9 @@ export const browserBridgeInstallAction: Action = {
         );
       }
 
-      const text = openedManager
+      const text = (openedManager
         ? `Chrome is ready. Click Load unpacked and choose ${reveal.path}.`
-        : `The Agent Browser Bridge folder is ready at ${reveal.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`;
+        : `The Agent Browser Bridge folder is ready at ${reveal.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`).slice(0, MAX_BROWSER_BRIDGE_TEXT_LENGTH);
 
       return {
         text,
@@ -256,11 +273,14 @@ export const browserBridgeRevealFolderAction: Action = {
     _options,
   ): Promise<ActionResult> => {
     try {
-      const reveal = await openBrowserBridgeCompanionPackagePath(
-        "chrome_build",
-        { revealOnly: true },
+      const reveal = await withBrowserBridgeTimeout(
+        openBrowserBridgeCompanionPackagePath("chrome_build", { revealOnly: true }),
+        "browser bridge reveal",
       );
-      const text = `Revealed the Agent Browser Bridge folder at ${reveal.path}.`;
+      const text = `Revealed the Agent Browser Bridge folder at ${reveal.path}.`.slice(
+        0,
+        MAX_BROWSER_BRIDGE_TEXT_LENGTH,
+      );
       return {
         text,
         success: true,
@@ -314,9 +334,15 @@ export const browserBridgeOpenManagerAction: Action = {
     _options,
   ): Promise<ActionResult> => {
     try {
-      await openBrowserBridgeCompanionManager("chrome");
+      await withBrowserBridgeTimeout(
+        openBrowserBridgeCompanionManager("chrome"),
+        "browser bridge manager open",
+      );
       const text =
-        "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.";
+        "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.".slice(
+          0,
+          MAX_BROWSER_BRIDGE_TEXT_LENGTH,
+        );
       return {
         text,
         success: true,

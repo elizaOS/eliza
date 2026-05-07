@@ -16,6 +16,8 @@ import { cleanPrompt } from "../../shared/utils/helpers";
 import { MESSAGE_EXAMPLES_FORMAT_INSTRUCTIONS } from "../providers/character-guide";
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const SUGGEST_CHANGES_TEXT_MAX_CHARS = 4_000;
+const SUGGEST_CHANGES_FIELD_LIMIT = 12;
 const SUGGEST_CHANGES_KEYWORDS = [
   "change",
   "update",
@@ -110,6 +112,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateSuggestionText(text: string): string {
+  if (text.length <= SUGGEST_CHANGES_TEXT_MAX_CHARS) return text;
+  return `${text.slice(0, SUGGEST_CHANGES_TEXT_MAX_CHARS)}\n\n[truncated suggestion response]`;
 }
 
 /**
@@ -417,6 +424,7 @@ export const suggestChangesAction = {
         ?.split(",")
         .map((f) => f.trim())
         .filter(Boolean) || [];
+    const boundedFieldsToChange = fieldsToChange.slice(0, SUGGEST_CHANGES_FIELD_LIMIT);
 
     // Parse changes JSON and expand dot notation to nested objects
     let changes: Record<string, unknown> | null = null;
@@ -439,7 +447,7 @@ export const suggestChangesAction = {
     // Build response metadata
     const metadata: Record<string, unknown> = {
       action: "SUGGEST_CHANGES",
-      fieldsToChange,
+      fieldsToChange: boundedFieldsToChange,
       hasChanges: !!changes,
     };
 
@@ -449,26 +457,29 @@ export const suggestChangesAction = {
 
     logger.debug("[SUGGEST_CHANGES] Response generated successfully");
     const responseMetadata = JSON.parse(JSON.stringify(metadata));
+    const responseText = truncateSuggestionText(parsedResponse.text);
 
     await callback({
-      text: parsedResponse.text,
+      text: responseText,
       thought: parsedResponse.thought,
       metadata: responseMetadata,
     });
     return {
       success: true,
-      text: parsedResponse.text,
+      text: responseText,
       values: {
         success: true,
         hasChanges: !!changes,
-        fieldsToChange,
+        fieldsToChange: boundedFieldsToChange,
+        outputTruncated: responseText !== parsedResponse.text,
       },
       data: {
         actionName: "SUGGEST_CHANGES",
-        fieldsToChange,
+        fieldsToChange: boundedFieldsToChange,
         hasChanges: !!changes,
         changes: changes ?? undefined,
         thought: parsedResponse.thought,
+        outputTruncated: responseText !== parsedResponse.text,
       },
     };
   },

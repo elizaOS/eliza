@@ -1340,6 +1340,8 @@ export const manageElizaBrowserWorkspaceAction: Action = {
     options,
     callback,
   ) => {
+    const maxBrowserBatchSteps = 25;
+    const maxActionResultBytes = 6000;
     const request = parseBrowserWorkspaceActionRequest(message, options);
     if (!request) {
       const text =
@@ -1373,10 +1375,10 @@ export const manageElizaBrowserWorkspaceAction: Action = {
         const result: BrowserWorkspaceCommandResult = {
           mode: getBrowserWorkspaceMode(),
           subaction: "batch",
-          steps: stepResults,
+          steps: stepResults.slice(0, maxBrowserBatchSteps),
           value: stepResults.at(-1)?.value,
         };
-        const text = formatBrowserWorkspaceCommandResult(result);
+        const text = formatBrowserWorkspaceCommandResult(result).slice(0, maxActionResultBytes);
         await callback?.({ text });
         return { success: true, text, data: result };
       } catch (error) {
@@ -1388,7 +1390,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
 
     try {
       const result = await executeBrowserWorkspaceCommand(request);
-      const text = formatBrowserWorkspaceCommandResult(result);
+      const text = formatBrowserWorkspaceCommandResult(result).slice(0, maxActionResultBytes);
       await callback?.({ text });
       return { success: true, text, data: result };
     } catch (error) {

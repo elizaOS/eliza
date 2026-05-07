@@ -89,7 +89,8 @@ export function registerKnowledgeSearchCategory(runtime: IAgentRuntime): void {
 
 export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
-	contexts: ["knowledge", "memory", "files"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
 	roleGate: { minRole: "USER" },
 	description:
 		"Process and store knowledge from a file path or text content into the knowledge base",
@@ -187,7 +188,7 @@ export const processKnowledgeAction: Action = {
 			return (
 				hasLegacySignal ||
 				hasActionContextOrKeyword(message, state, {
-					contexts: ["knowledge", "memory", "files"],
+					contexts: ["knowledge"],
 					keywordKeys: ["action.processKnowledge.request"],
 					keywords: ["document", "file", "pdf", "remember this"],
 				})
@@ -357,7 +358,8 @@ export const processKnowledgeAction: Action = {
 
 export const searchKnowledgeAction: Action = {
 	name: "SEARCH_KNOWLEDGE",
-	contexts: ["knowledge", "memory", "web"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
 	roleGate: { minRole: "USER" },
 	description: "Search the knowledge base for specific information",
 	suppressPostActionContinuation: true,
@@ -568,7 +570,8 @@ function isUuid(value: string): value is UUID {
 
 export const ingestKnowledgeFromUrlAction: Action = {
 	name: "INGEST_KNOWLEDGE_FROM_URL",
-	contexts: ["knowledge", "web", "browser", "files"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"FETCH_KNOWLEDGE_FROM_URL",
@@ -755,7 +758,8 @@ export const ingestKnowledgeFromUrlAction: Action = {
 
 export const updateKnowledgeDocumentAction: Action = {
 	name: "UPDATE_KNOWLEDGE_DOCUMENT",
-	contexts: ["knowledge", "memory", "files"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"EDIT_KNOWLEDGE_DOCUMENT",
@@ -912,7 +916,8 @@ export const updateKnowledgeDocumentAction: Action = {
 
 export const deleteKnowledgeDocumentAction: Action = {
 	name: "DELETE_KNOWLEDGE_DOCUMENT",
-	contexts: ["knowledge", "memory", "files"],
+	contexts: ["knowledge"],
+	contextGate: { anyOf: ["knowledge"] },
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"REMOVE_KNOWLEDGE_DOCUMENT",

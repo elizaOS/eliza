@@ -91,8 +91,10 @@ export const exitWorktreeAction: Action = {
     let cleaned = false;
     if (cleanup) {
       try {
+        const timeoutMs = 30_000;
         await execFileAsync("git", ["worktree", "remove", "--force", popped.entered], {
           cwd: popped.previousCwd,
+          timeout: timeoutMs,
         });
         cleaned = true;
       } catch (err) {
@@ -117,9 +119,13 @@ export const exitWorktreeAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} EXIT_WORKTREE from ${popped.entered} -> ${popped.previousCwd} cleaned=${cleaned}`,
     );
 
-    const text = cleaned
+    const maxActionResultBytes = 2000;
+    const text = (cleaned
       ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
-      : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`;
+      : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`).slice(
+      0,
+      maxActionResultBytes,
+    );
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {

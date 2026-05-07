@@ -1,13 +1,13 @@
 # Action and Provider Inventory
 
-Generated: 2026-05-07T10:33:44.467Z
+Generated: 2026-05-07T11:47:21.147Z
 
 Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `cloud/`. Excludes tests, templates, generated output, build/dist folders, declarations, and dependency folders. This is static analysis, so runtime-generated MCP tools and dynamic registrations are called out only when their factory objects are visible in source.
 
 ## Summary
 
-- Files scanned: 6221
-- Actions detected: 390
+- Files scanned: 6217
+- Actions detected: 389
 - Providers detected: 202
 - Sources with actions/providers: agent, cloud:advanced-memory, cloud:plugin-affiliate, cloud:plugin-character-builder, cloud:plugin-cloud-bootstrap, cloud:plugin-mcp, cloud:plugin-oauth, cloud:plugin-web-search, cloud:providers, cloud:shared, core, native-plugin:macosalarm, plugin:app-2004scape, plugin:app-browser, plugin:app-companion, plugin:app-contacts, plugin:app-lifeops, plugin:app-phone, plugin:app-polymarket, plugin:app-scape, plugin:app-steward, plugin:app-wifi, plugin:plugin-agent-orchestrator, plugin:plugin-agent-skills, plugin:plugin-app-control, plugin:plugin-bluebubbles, plugin:plugin-bluesky, plugin:plugin-browser-bridge, plugin:plugin-calendly, plugin:plugin-claude-code-workbench, plugin:plugin-coding-tools, plugin:plugin-commands, plugin:plugin-computeruse, plugin:plugin-discord, plugin:plugin-elizacloud, plugin:plugin-executecode, plugin:plugin-farcaster, plugin:plugin-feishu, plugin:plugin-form, plugin:plugin-github, plugin:plugin-google-chat, plugin:plugin-imessage, plugin:plugin-instagram, plugin:plugin-line, plugin:plugin-linear, plugin:plugin-matrix, plugin:plugin-mcp, plugin:plugin-minecraft, plugin:plugin-music-library, plugin:plugin-music-player, plugin:plugin-mysticism, plugin:plugin-n8n-workflow, plugin:plugin-nostr, plugin:plugin-roblox, plugin:plugin-shell, plugin:plugin-shopify, plugin:plugin-signal, plugin:plugin-slack, plugin:plugin-social-alpha, plugin:plugin-streaming, plugin:plugin-suno, plugin:plugin-tailscale, plugin:plugin-tee, plugin:plugin-twitch, plugin:plugin-vision, plugin:plugin-wallet, plugin:plugin-whatsapp, plugin:plugin-x
 
@@ -19,6 +19,7 @@ Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `clou
 - externalNoFailure: 0
 - noStructuredResult: 0
 - subActionParents: 1
+- advisoryCapReview: 0
 
 ### Provider cleanup counters
 
@@ -26,6 +27,8 @@ Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `clou
 - noCachePolicy: 0
 - externalNoCaps: 0
 - externalNoFallback: 0
+
+Hard blocker status: clear (0 action, 0 provider).
 
 ### Counts by source
 
@@ -41,7 +44,7 @@ Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `clou
 | cloud:plugin-web-search | 1 | 0 |
 | cloud:providers | 0 | 1 |
 | cloud:shared | 0 | 3 |
-| core | 70 | 51 |
+| core | 69 | 51 |
 | native-plugin:macosalarm | 3 | 0 |
 | plugin:app-2004scape | 2 | 4 |
 | plugin:app-browser | 1 | 1 |
@@ -114,7 +117,7 @@ Scope: production TypeScript/TSX source under `packages/`, `plugins/`, and `clou
 | cloud:plugin-web-search | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | cloud:providers | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
 | cloud:shared | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
-| core | 70 | 0 | 0 | 0 | 0 | 0 | 51 | 0 | 0 | 0 | 0 |
+| core | 69 | 0 | 0 | 0 | 0 | 0 | 51 | 0 | 0 | 0 | 0 |
 | native-plugin:macosalarm | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | plugin:app-2004scape | 2 | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 | 0 |
 | plugin:app-browser | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
@@ -182,6 +185,12 @@ Priority 1: every provider selected by a context should declare `cacheStable` an
 Priority 2: every action and provider should have `contexts` or `contextGate`, and sensitive contexts need `roleGate`/validation gates. Rows marked `add context metadata` or `review permissive validation/role gate` are the main surface for context explosion and unauthorized tool exposure.
 
 Priority 3: external API providers/actions should show caps, pagination, truncation, retries, and error fallbacks. Rows marked `cap external results/timeouts` or `cap external/provider data` are likely to pollute the append-only context with unbounded payloads or fail without useful model-visible diagnostics.
+Priority 3 action cap rows are advisory when the action already returns structured success/failure and the cap lives behind a shared helper/service. Use them as review targets for append-only context size, not as hard blockers.
+
+### Priority 3 action cap review by source
+
+| Source | Rows |
+| --- | ---: |
 
 ## Runtime Integration Gaps From Manual Audit
 
@@ -207,116 +216,116 @@ These are not per-action/provider defects, but they determine whether the rows b
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | AGENT_INBOX | agent | [packages/agent/src/actions/agent-inbox.ts:58](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/agent-inbox.ts:58) | messaging, email, connectors, agent_internal | conditional: owner gate, message/content gate | 6 declared | - | - | delegated-return | - | not statically obvious | looks aligned; verify runtime trajectory event |
 | ANALYZE_IMAGE | agent | [packages/agent/src/actions/media.ts:666](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/media.ts:666) | general, media, files | conditional: message/content gate | 4 declared | - | - | success, text, data | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| ANNOTATE_TRAJECTORY | agent | [packages/agent/src/actions/trajectories.ts:340](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:340) | agent_internal, admin, knowledge | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| ARCHIVE_CODING_TASK | agent | [packages/agent/src/actions/tasks-coding.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:34) | code, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| BROWSER_AUTOFILL_LOGIN | agent | [packages/agent/src/actions/browser-autofill-login.ts:148](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-autofill-login.ts:148) | browser, web, secrets | conditional: owner gate, message/content gate | 3 declared | - | browser/device | success, text, values, data, error | - | success branch, failure branch | cap external results/timeouts |
-| BROWSER_SESSION | agent | [packages/agent/src/actions/browser-session.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-session.ts:157) | browser, web, automation | conditional: owner gate, message/content gate | 16 declared | - | sdk/client, browser/device | success, text, values, data, error | pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| CLEAR_LOGS | agent | [packages/agent/src/actions/logs.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:332) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| ANNOTATE_TRAJECTORY | agent | [packages/agent/src/actions/trajectories.ts:340](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:340) | agent_internal, admin, knowledge | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, values, data, error | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| ARCHIVE_CODING_TASK | agent | [packages/agent/src/actions/tasks-coding.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:34) | code, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| BROWSER_AUTOFILL_LOGIN | agent | [packages/agent/src/actions/browser-autofill-login.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-autofill-login.ts:150) | browser, web, secrets | conditional: owner gate, message/content gate | 3 declared | - | browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| BROWSER_SESSION | agent | [packages/agent/src/actions/browser-session.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-session.ts:157) | browser, web, automation | conditional: owner gate, message/content gate | 16 declared | - | sdk/client, browser/device | success, text, values, data, error | limit, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| CLEAR_LOGS | agent | [packages/agent/src/actions/logs.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:332) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | config.name | agent | [packages/agent/src/actions/page-action-groups.ts:123](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/page-action-groups.ts:123) | general, ...config.contexts | conditional: owner gate, message/content gate | 1 declared | - | - | success, text | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | CONFIGURE_PLUGIN | agent | [packages/agent/src/actions/configure-plugin.ts:44](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/configure-plugin.ts:44) | admin, settings, connectors, secrets | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | CREATE_TRIGGER_TASK | agent | [packages/agent/src/triggers/action.ts:156](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/triggers/action.ts:156) | ...CREATE_TRIGGER_TASK_CONTEXTS | conditional: owner gate, message/content gate, try/catch | 7 declared | - | runtime-service, llm | success, text, values, data, error, callback, boolean-return | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | CREATE_WORKFLOW | agent | [packages/agent/src/actions/workflow/create-workflow.ts:35](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/workflow/create-workflow.ts:35) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| def.name | agent | [packages/agent/src/runtime/custom-actions.ts:613](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/custom-actions.ts:613) | ...CUSTOM_ACTION_CONTEXTS | conditional: message/content gate | 1 declared | - | - | success, text, data | - | failure branch, catch | looks aligned; verify runtime trajectory event |
+| def.name | agent | [packages/agent/src/runtime/custom-actions.ts:613](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/custom-actions.ts:613) | ...CUSTOM_ACTION_CONTEXTS | conditional: message/content gate | 1 declared | - | - | success, text, data | slice, truncate, timeout/retry | failure branch, catch | looks aligned; verify runtime trajectory event |
 | DELETE_TRIGGER_TASK | agent | [packages/agent/src/triggers/delete-trigger.ts:63](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/triggers/delete-trigger.ts:63) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | DELETE_WORKFLOW | agent | [packages/agent/src/actions/workflow/delete-workflow.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/workflow/delete-workflow.ts:34) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, data, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| DESCRIBE_REGISTERED_ACTIONS | agent | [packages/agent/src/actions/runtime.ts:136](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:136) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| DESCRIBE_REGISTERED_ACTIONS | agent | [packages/agent/src/actions/runtime.ts:136](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:136) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data | truncate, timeout/retry | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | DISCONNECT_CONNECTOR | agent | [packages/agent/src/actions/connector-control.ts:385](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:385) | connectors, settings, secrets, admin | conditional: owner gate, message/content gate | 1 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| EDIT_MEMORY | agent | [packages/agent/src/actions/memories.ts:290](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:290) | memory, knowledge, agent_internal | conditional: owner gate, message/content gate | 3 declared | - | fetch/http | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| EDIT_MEMORY | agent | [packages/agent/src/actions/memories.ts:290](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:290) | memory, knowledge, agent_internal | conditional: owner gate, message/content gate | 3 declared | - | fetch/http | success, text, values, data, error | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | EJECT_PLUGIN | agent | [packages/agent/src/actions/eject-plugin.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/eject-plugin.ts:19) | admin, settings, code, files | conditional: message/content gate | 1 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| EXECUTE_DATABASE_QUERY | agent | [packages/agent/src/actions/database.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:354) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 2 declared | - | fetch/http, database/memory | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| EXPORT_LOGS | agent | [packages/agent/src/actions/logs.ts:219](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:219) | admin, agent_internal, settings, files | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, values, data | limit, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| EXPORT_TRAJECTORY_DATASET | agent | [packages/agent/src/actions/trajectories.ts:197](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:197) | agent_internal, admin, knowledge, files | conditional: owner gate, message/content gate | 3 declared | - | fetch/http | success, text, values, data | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| EXTRACT_PAGE | agent | [packages/agent/src/actions/extract-page.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/extract-page.ts:48) | web, browser, knowledge | conditional: owner gate, setting/env gate, message/content gate | 5 declared | - | - | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| FORGET_MEMORY | agent | [packages/agent/src/actions/memories.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:189) | memory, knowledge, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| EXECUTE_DATABASE_QUERY | agent | [packages/agent/src/actions/database.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:354) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 2 declared | - | fetch/http, database/memory | success, text, values, data, error | limit, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| EXPORT_LOGS | agent | [packages/agent/src/actions/logs.ts:219](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:219) | admin, agent_internal, settings, files | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| EXPORT_TRAJECTORY_DATASET | agent | [packages/agent/src/actions/trajectories.ts:197](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:197) | agent_internal, admin, knowledge, files | conditional: owner gate, message/content gate | 3 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| EXTRACT_PAGE | agent | [packages/agent/src/actions/extract-page.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/extract-page.ts:48) | web, browser, knowledge | conditional: owner gate, setting/env gate, message/content gate | 5 declared | - | - | success, text, values, data, error | slice, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| FORGET_MEMORY | agent | [packages/agent/src/actions/memories.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:189) | memory, knowledge, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, values, data, error | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | GENERATE_AUDIO | agent | [packages/agent/src/actions/media.ts:516](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/media.ts:516) | general, media, files | conditional: message/content gate | 4 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | GENERATE_IMAGE | agent | [packages/agent/src/actions/media.ts:213](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/media.ts:213) | general, media, files | conditional: message/content gate | 5 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | GENERATE_VIDEO | agent | [packages/agent/src/actions/media.ts:372](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/media.ts:372) | general, media, files | conditional: message/content gate | 4 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | GET_RELATIONSHIP_ACTIVITY | agent | [packages/agent/src/actions/entity-actions.ts:1089](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:1089) | contacts, messaging, knowledge | conditional: admin gate, message/content gate | 2 declared | - | database/memory | success, text, values, data, error | slice, limit, truncate, pagination | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | GET_RUNTIME_STATUS | agent | [packages/agent/src/actions/runtime.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:40) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 1 declared | - | fetch/http | success, text, values, data | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| GET_SELF_STATUS | agent | [packages/agent/src/actions/get-self-status.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/get-self-status.ts:82) | ...GET_SELF_STATUS_CONTEXTS | conditional: message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, delegated-return | - | success branch, failure branch | cap external results/timeouts |
+| GET_SELF_STATUS | agent | [packages/agent/src/actions/get-self-status.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/get-self-status.ts:84) | ...GET_SELF_STATUS_CONTEXTS | conditional: message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, delegated-return | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | GET_TABLE_DATA | agent | [packages/agent/src/actions/database.ts:166](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:166) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 5 declared | - | fetch/http, database/memory | success, text, values, data, error | limit, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| GO_LIVE | agent | [packages/agent/src/actions/stream-control.ts:39](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:39) | general, media, automation, settings | conditional: owner gate, message/content gate | 0 declared | - | - | success, text | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| GO_OFFLINE | agent | [packages/agent/src/actions/stream-control.ts:125](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:125) | general, media, automation, settings | conditional: owner gate, message/content gate | 0 declared | - | - | success, text | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| GO_LIVE | agent | [packages/agent/src/actions/stream-control.ts:39](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:39) | general, media, automation, settings | conditional: owner gate, message/content gate | 0 declared | - | - | success, text | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| GO_OFFLINE | agent | [packages/agent/src/actions/stream-control.ts:125](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:125) | general, media, automation, settings | conditional: owner gate, message/content gate | 0 declared | - | - | success, text | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | INSTALL_PLUGIN | agent | [packages/agent/src/actions/install-plugin.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/install-plugin.ts:18) | admin, settings, connectors | conditional: message/content gate | 1 declared | - | - | success, text, data | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | LAUNCHPAD_LAUNCH | agent | [packages/agent/src/actions/launchpad-launch.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/launchpad-launch.ts:95) | finance, payments, wallet, crypto, browser | conditional: message/content gate | 5 declared | - | database/memory, browser/device | success, text, values, data, error | pagination | failure branch, catch | looks aligned; verify runtime trajectory event |
 | LINK_ENTITY | agent | [packages/agent/src/actions/entity-actions.ts:653](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:653) | contacts, messaging, knowledge | conditional: admin gate, message/content gate | 4 declared | - | llm | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| LIST_CONNECTORS | agent | [packages/agent/src/actions/connector-control.ts:531](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:531) | connectors, settings, admin | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, boolean-return, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| LIST_DATABASE_TABLES | agent | [packages/agent/src/actions/database.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:59) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 2 declared | - | fetch/http, database/memory | success, text, values, data, boolean-return | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| LIST_CONNECTORS | agent | [packages/agent/src/actions/connector-control.ts:531](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:531) | connectors, settings, admin | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, boolean-return, delegated-return | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| LIST_DATABASE_TABLES | agent | [packages/agent/src/actions/database.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:59) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 2 declared | - | fetch/http, database/memory | success, text, values, data, boolean-return | limit, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | LOG_LEVEL | agent | [packages/agent/src/actions/log-level.ts:69](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/log-level.ts:69) | admin, settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| MANAGE_TASKS | agent | [packages/agent/src/actions/manage-tasks.ts:89](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/manage-tasks.ts:89) | ...MANAGE_TASKS_CONTEXTS | conditional: owner gate, message/content gate, try/catch | 4 declared | - | llm | success, text, values, data, error, callback, boolean-return, delegated-return | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| MANAGE_TASKS | agent | [packages/agent/src/actions/manage-tasks.ts:89](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/manage-tasks.ts:89) | ...MANAGE_TASKS_CONTEXTS | conditional: owner gate, message/content gate, try/catch | 4 declared | - | llm | success, text, values, data, error, callback, boolean-return, delegated-return | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | PROMOTE_TASK_TO_WORKFLOW | agent | [packages/agent/src/actions/workflow/promote-task-to-workflow.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/workflow/promote-task-to-workflow.ts:88) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | QUERY_LOGS | agent | [packages/agent/src/actions/logs.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:71) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 5 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | QUERY_TRAJECTORIES | agent | [packages/agent/src/actions/trajectories.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:37) | agent_internal, admin, knowledge | conditional: owner gate, message/content gate | 6 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | READ_CHANNEL | agent | [packages/agent/src/actions/read-channel.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/read-channel.ts:96) | messaging, social, connectors, knowledge | conditional: admin gate, message/content gate | 6 declared | - | database/memory, browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| READ_ENTITY | agent | [packages/agent/src/actions/entity-actions.ts:379](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:379) | contacts, messaging, knowledge | conditional: admin gate, message/content gate | 2 declared | - | browser/device | success, text, values, data, error | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| READ_ENTITY | agent | [packages/agent/src/actions/entity-actions.ts:379](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:379) | contacts, messaging, knowledge | conditional: admin gate, message/content gate | 2 declared | - | browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | READ_MESSAGES | agent | [packages/agent/src/actions/read-messages.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/read-messages.ts:42) | messaging, social, connectors, knowledge | conditional: admin gate, message/content gate | 4 declared | - | browser/device | success, text, values, data, error | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | RECALL_MEMORY_FILTERED | agent | [packages/agent/src/actions/memories.ts:45](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:45) | memory, knowledge, agent_internal | conditional: owner gate, message/content gate | 5 declared | - | fetch/http | success, text, values, data | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | REINJECT_PLUGIN | agent | [packages/agent/src/actions/reinject-plugin.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/reinject-plugin.ts:19) | admin, settings, code, files | conditional: message/content gate | 1 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| RELOAD_RUNTIME_CONFIG | agent | [packages/agent/src/actions/runtime.ts:223](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:223) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| REOPEN_CODING_TASK | agent | [packages/agent/src/actions/tasks-coding.ts:118](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:118) | code, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| RESOLVE_MERGE_CANDIDATE | agent | [packages/agent/src/actions/entity-actions.ts:904](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:904) | contacts, messaging, knowledge, admin | conditional: admin gate, message/content gate | 2 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| RESTART_AGENT | agent | [packages/agent/src/actions/restart.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/restart.ts:82) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 2 declared | - | database/memory | success, text, values, data | - | success branch, failure branch | cap external results/timeouts |
-| RESTART_RUNTIME | agent | [packages/agent/src/actions/runtime.ts:313](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:313) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| RELOAD_RUNTIME_CONFIG | agent | [packages/agent/src/actions/runtime.ts:223](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:223) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data, error | truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| REOPEN_CODING_TASK | agent | [packages/agent/src/actions/tasks-coding.ts:118](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:118) | code, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| RESOLVE_MERGE_CANDIDATE | agent | [packages/agent/src/actions/entity-actions.ts:904](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:904) | contacts, messaging, knowledge, admin | conditional: admin gate, message/content gate | 2 declared | - | - | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| RESTART_AGENT | agent | [packages/agent/src/actions/restart.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/restart.ts:83) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 2 declared | - | database/memory | success, text, values, data | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| RESTART_RUNTIME | agent | [packages/agent/src/actions/runtime.ts:313](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:313) | admin, agent_internal, settings | conditional: owner gate, message/content gate | 0 declared | - | fetch/http | success, text, values, data | truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | RUN_TRIGGER_NOW | agent | [packages/agent/src/triggers/run-trigger.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/triggers/run-trigger.ts:54) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, data, error, callback | - | failure branch, callback output | looks aligned; verify runtime trajectory event |
 | SAVE_CONNECTOR_CONFIG | agent | [packages/agent/src/actions/connector-control.ts:214](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:214) | connectors, settings, secrets, admin | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SCRATCHPAD_ADD | agent | [packages/agent/src/actions/scratchpad.ts:142](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:142) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SCRATCHPAD_DELETE | agent | [packages/agent/src/actions/scratchpad.ts:441](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:441) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SCRATCHPAD_READ | agent | [packages/agent/src/actions/scratchpad.ts:220](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:220) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SCRATCHPAD_REPLACE | agent | [packages/agent/src/actions/scratchpad.ts:360](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:360) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 4 declared | - | - | success, text, values, data, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SCRATCHPAD_SEARCH | agent | [packages/agent/src/actions/scratchpad.ts:284](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:284) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SEARCH | agent | [packages/agent/src/actions/web-search.ts:665](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/web-search.ts:665) | general, knowledge, browser, system, social | conditional: message/content gate | 5 declared | - | - | success, text, values, data, error, throws, delegated-return | limit | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| SCRATCHPAD_ADD | agent | [packages/agent/src/actions/scratchpad.ts:142](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:142) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | limit, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SCRATCHPAD_DELETE | agent | [packages/agent/src/actions/scratchpad.ts:441](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:441) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SCRATCHPAD_READ | agent | [packages/agent/src/actions/scratchpad.ts:220](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:220) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, delegated-return | limit, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SCRATCHPAD_REPLACE | agent | [packages/agent/src/actions/scratchpad.ts:360](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:360) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 4 declared | - | - | success, text, values, data, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SCRATCHPAD_SEARCH | agent | [packages/agent/src/actions/scratchpad.ts:284](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:284) | agent_internal, memory, knowledge | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SEARCH | agent | [packages/agent/src/actions/web-search.ts:665](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/web-search.ts:665) | general, knowledge, browser, system, social | conditional: message/content gate | 5 declared | - | - | success, text, values, data, error, throws, delegated-return | slice, limit, truncate | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | SEARCH_CONVERSATIONS | agent | [packages/agent/src/actions/search-conversations.ts:99](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/search-conversations.ts:99) | messaging, social, knowledge | conditional: admin gate, message/content gate | 4 declared | - | llm, browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SEARCH_ENTITY | agent | [packages/agent/src/actions/entity-actions.ts:185](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:185) | contacts, messaging, knowledge | conditional: admin gate, message/content gate | 3 declared | - | browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SEARCH_VECTORS | agent | [packages/agent/src/actions/database.ts:540](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:540) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 4 declared | - | fetch/http, database/memory | success, text, values, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SEARCH_VECTORS | agent | [packages/agent/src/actions/database.ts:540](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:540) | admin, agent_internal, knowledge, memory | conditional: owner gate, message/content gate | 4 declared | - | fetch/http, database/memory | success, text, values, data, error | slice, limit, truncate, pagination, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SEND_ADMIN_MESSAGE | agent | [packages/agent/src/actions/send-admin-message.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/send-admin-message.ts:46) | admin, messaging, agent_internal | conditional: admin gate, message/content gate | 2 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SET_USER_NAME | agent | [packages/agent/src/actions/set-user-name.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/set-user-name.ts:54) | ...SET_USER_NAME_CONTEXTS | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SHELL_COMMAND | agent | [packages/agent/src/actions/terminal.ts:255](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/terminal.ts:255) | terminal, code, files, admin | conditional: owner gate, message/content gate | 1 declared | - | fetch/http | success, text, data | - | success branch, failure branch, catch | cap external results/timeouts |
+| SHELL_COMMAND | agent | [packages/agent/src/actions/terminal.ts:260](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/terminal.ts:260) | terminal, code, files, admin | conditional: owner gate, message/content gate | 1 declared | - | fetch/http | success, text, data | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SKILL_COMMAND | agent | [packages/agent/src/actions/skill-command.ts:62](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/skill-command.ts:62) | admin, agent_internal, automation | conditional: admin gate, message/content gate | 2 declared | - | runtime-service | success, text | limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
 | SYNC_PLUGIN | agent | [packages/agent/src/actions/sync-plugin.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/sync-plugin.ts:18) | admin, settings, code, files | conditional: message/content gate | 1 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| TOGGLE_AUTO_TRAINING | agent | [packages/agent/src/actions/settings-actions.ts:612](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:612) | settings, admin, agent_internal, automation | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| TOGGLE_CAPABILITY | agent | [packages/agent/src/actions/settings-actions.ts:462](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:462) | settings, admin, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data, error, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| TOGGLE_AUTO_TRAINING | agent | [packages/agent/src/actions/settings-actions.ts:612](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:612) | settings, admin, agent_internal, automation | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| TOGGLE_CAPABILITY | agent | [packages/agent/src/actions/settings-actions.ts:462](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:462) | settings, admin, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | TOGGLE_CONNECTOR | agent | [packages/agent/src/actions/connector-control.ts:90](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:90) | connectors, settings, admin | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | TOGGLE_PLUGIN | agent | [packages/agent/src/actions/toggle-plugin.ts:28](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/toggle-plugin.ts:28) | admin, settings, connectors | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | TOGGLE_WORKFLOW_ACTIVE | agent | [packages/agent/src/actions/workflow/toggle-workflow-active.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/workflow/toggle-workflow-active.ts:49) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | UNINSTALL_PLUGIN | agent | [packages/agent/src/actions/uninstall-plugin.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/uninstall-plugin.ts:29) | admin, settings, connectors | conditional: owner gate, message/content gate | 1 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| UPDATE_AI_PROVIDER | agent | [packages/agent/src/actions/settings-actions.ts:263](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:263) | settings, secrets, admin | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, delegated-return | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| UPDATE_CORE_PROMPT | agent | [packages/agent/src/actions/update-prompt.ts:10](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-prompt.ts:10) | admin, settings, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | cache | success, text, values | - | success branch, failure branch, catch | cap external results/timeouts |
-| UPDATE_IDENTITY | agent | [packages/agent/src/actions/settings-actions.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:120) | settings, admin, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data, error, delegated-return | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| UPDATE_AI_PROVIDER | agent | [packages/agent/src/actions/settings-actions.ts:263](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:263) | settings, secrets, admin | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| UPDATE_CORE_PROMPT | agent | [packages/agent/src/actions/update-prompt.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-prompt.ts:12) | admin, settings, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | cache | success, text, values | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| UPDATE_IDENTITY | agent | [packages/agent/src/actions/settings-actions.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:120) | settings, admin, agent_internal | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | UPDATE_OWNER_NAME | agent | [packages/agent/src/actions/update-owner-name.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-owner-name.ts:23) | settings, contacts, admin | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, values, data, error | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | UPDATE_PLUGIN | agent | [packages/agent/src/actions/update-plugin.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-plugin.ts:34) | admin, settings, connectors | conditional: owner gate, message/content gate | 2 declared | - | fetch/http | success, text, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| UPDATE_ROLE | agent | [packages/agent/src/runtime/roles/src/action.ts:638](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/roles/src/action.ts:638) | admin, settings | conditional: message/content gate | 4 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| UPDATE_ROLE | agent | [packages/agent/src/runtime/roles/src/action.ts:638](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/roles/src/action.ts:638) | admin, settings | conditional: message/content gate | 4 declared | - | - | success, text, data | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | UPDATE_TRIGGER_TASK | agent | [packages/agent/src/triggers/update-trigger.ts:116](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/triggers/update-trigger.ts:116) | automation, tasks, agent_internal | conditional: owner gate, message/content gate | 10 declared | - | - | success, text, values, data, callback | limit | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| GENERATE_IMAGE | cloud:plugin-affiliate | [cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707) | general, media | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| BUILDER_CHAT | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:189) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CREATE_CHARACTER | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:132) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | database/memory | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| GENERATE_IMAGE | cloud:plugin-affiliate | [cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707) | general, media | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| BUILDER_CHAT | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:195](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:195) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CREATE_CHARACTER | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:138](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:138) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | database/memory | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | GENERATE_AVATAR | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/avatar-generation.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/avatar-generation.ts:160) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 2 declared | - | llm | success, text, values, data, error, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| GUIDE_ONBOARDING | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:132) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| SAVE_CHANGES | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:311](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:311) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm, database/memory | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| SUGGEST_CHANGES | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:304](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:304) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 2 declared | - | llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| TEST_RESPONSE | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:149](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:149) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| GUIDE_ONBOARDING | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:138](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:138) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SAVE_CHANGES | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:318](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:318) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm, database/memory | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SUGGEST_CHANGES | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:311](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:311) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 2 declared | - | llm | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| TEST_RESPONSE | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:155](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:155) | CHARACTER_BUILDER_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | FINISH | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/actions/finish.ts:79](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/actions/finish.ts:79) | FINISH_CONTEXTS | conditional: message/content gate | 1 declared | - | - | success, text | - | success branch | looks aligned; verify runtime trajectory event |
 | GENERATE_IMAGE | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/actions/image-generation.ts:125](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/actions/image-generation.ts:125) | IMAGE_CONTEXTS | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| actionName | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:85](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:85) | MCP_ACTION_CONTEXTS | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| LIST_CONNECTIONS | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298) | connectors, settings | conditional: setting/env gate, message/content gate | 1 declared | - | - | success, data, error, callback | - | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| actionName | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:91](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:91) | MCP_ACTION_CONTEXTS | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| LIST_CONNECTIONS | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298) | connectors, settings | conditional: setting/env gate, message/content gate | 1 declared | - | - | success, data, error, callback | limit, pagination | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | READ_MCP_RESOURCE | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/readResourceAction.ts:141](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/readResourceAction.ts:141) | MCP_RESOURCE_CONTEXTS | conditional: service gate, message/content gate | 3 declared | - | runtime-service, llm | success, text, values, data, error, callback, delegated-return | timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | SEARCH_ACTIONS | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:89](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:89) | MCP_CONTEXTS | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, error | limit, pagination | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| OAUTH_CONNECT | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:25) | connectors, settings, secrets | conditional: message/content gate | 1 declared | - | filesystem | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| OAUTH_CONNECT | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:27) | connectors, settings, secrets | conditional: message/content gate | 1 declared | - | filesystem | success, text, data, error, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | OAUTH_GET | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-get.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-get.ts:40) | connectors, settings | conditional: message/content gate | 1 declared | - | filesystem | success, data, callback, delegated-return | slice, truncate | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | OAUTH_LIST | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-list.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-list.ts:18) | connectors, settings | conditional: message/content gate | 1 declared | - | - | success, data, callback | - | success branch, callback output | looks aligned; verify runtime trajectory event |
-| OAUTH_REVOKE | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:27) | connectors, settings, secrets | conditional: message/content gate | 1 declared | - | filesystem | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| WEB_SEARCH | cloud:plugin-web-search | [cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179) | web, knowledge, finance, crypto | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service | success, text, data, error, callback, throws | limit | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| OAUTH_REVOKE | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:29) | connectors, settings, secrets | conditional: message/content gate | 1 declared | - | filesystem | success, text, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| WEB_SEARCH | cloud:plugin-web-search | [cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179) | web, knowledge, finance, crypto | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service | success, text, data, error, callback, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
 | ADD_CONTACT | core | [packages/core/src/features/advanced-capabilities/actions/addContact.ts:121](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/addContact.ts:121) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 7 declared | - | runtime-service | success, text, values, data, error, callback, delegated-return | slice, limit, truncate | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | ANALYZE_INPUT | core | [packages/core/src/features/advanced-planning/actions/chain-example.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts:52) | PLANNING_CONTEXTS | conditional: message/content gate | 1 declared | - | - | success, text, data, delegated-return | - | success branch | looks aligned; verify runtime trajectory event |
 | CHOOSE_OPTION | core | [packages/core/src/features/basic-capabilities/actions/choice.ts:38](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/choice.ts:38) | general, tasks, admin | conditional: owner gate, admin gate, message/content gate | 2 declared | - | - | success, text, values, data, error, callback, boolean-return, throws | truncate | success branch, failure branch, throws, callback output | looks aligned; verify runtime trajectory event |
-| CLIPBOARD_APPEND | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:57) | files, knowledge, agent_internal | conditional: message/content gate | 2 declared | - | browser/device | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CLIPBOARD_DELETE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:49) | files, knowledge, agent_internal | conditional: message/content gate | 1 declared | - | browser/device | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CLIPBOARD_LIST | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:16) | files, knowledge, agent_internal | conditional: message/content gate | 0 declared | - | browser/device | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CLIPBOARD_READ | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:64) | files, knowledge, agent_internal | conditional: message/content gate | 3 declared | - | browser/device | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| CLIPBOARD_APPEND | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:64) | files, knowledge, agent_internal | conditional: message/content gate | 2 declared | - | browser/device | success, text, data, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CLIPBOARD_DELETE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:55) | files, knowledge, agent_internal | conditional: message/content gate | 1 declared | - | browser/device | success, text, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CLIPBOARD_LIST | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:23) | files, knowledge, agent_internal | conditional: message/content gate | 0 declared | - | browser/device | success, text, data, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CLIPBOARD_READ | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:71) | files, knowledge, agent_internal | conditional: message/content gate | 3 declared | - | browser/device | success, text, data, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | CLIPBOARD_SEARCH | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/search.ts:61](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/search.ts:61) | files, knowledge, agent_internal | conditional: message/content gate | 2 declared | - | browser/device | success, text, callback | limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| CLIPBOARD_WRITE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:77](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:77) | files, knowledge, agent_internal | conditional: message/content gate | 3 declared | - | browser/device | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CREATE_PLAN | core | [packages/core/src/features/advanced-planning/actions/chain-example.ts:276](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts:276) | tasks, automation, code, agent_internal | conditional: message/content gate | 2 declared | - | database/memory | success, text, data, callback, delegated-return | - | success branch, catch, callback output | cap external results/timeouts |
+| CLIPBOARD_WRITE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:84) | files, knowledge, agent_internal | conditional: message/content gate | 3 declared | - | browser/device | success, text, data, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CREATE_PLAN | core | [packages/core/src/features/advanced-planning/actions/chain-example.ts:276](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts:276) | tasks, automation, code, agent_internal | conditional: message/content gate | 2 declared | - | database/memory | success, text, data, callback, delegated-return | - | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | CREATE_TASK | core | [packages/core/src/features/advanced-capabilities/actions/createTask.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/createTask.ts:132) | tasks, automation, calendar, agent_internal | conditional: message/content gate | 8 declared | - | runtime-service | success, text, values, data, error, callback, boolean-return, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
-| DELETE_KNOWLEDGE_DOCUMENT | core | [packages/core/src/features/knowledge/actions.ts:913](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:913) | knowledge, memory, files | conditional: service gate, message/content gate | 1 declared | - | runtime-service, database/memory | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| DELETE_KNOWLEDGE_DOCUMENT | core | [packages/core/src/features/knowledge/actions.ts:917](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:917) | knowledge | conditional: service gate, message/content gate | 1 declared | - | runtime-service, database/memory | success, text, values, data, error, throws | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | DRAFT_FOLLOWUP | core | [packages/core/src/features/messaging/triage/actions/draftFollowup.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/draftFollowup.ts:19) | messaging, email, contacts, tasks | conditional: message/content gate | 5 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | DRAFT_REPLY | core | [packages/core/src/features/messaging/triage/actions/draftReply.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/draftReply.ts:20) | messaging, email, contacts | conditional: message/content gate | 2 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | EVALUATE_TRUST | core | [packages/core/src/features/trust/actions/evaluateTrust.ts:15](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/evaluateTrust.ts:15) | admin, settings, agent_internal | conditional: admin gate, message/content gate, try/catch | 3 declared | - | runtime-service | success, text, data, error, throws | slice, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
@@ -324,7 +333,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 | FOLLOW_ROOM | core | [packages/core/src/features/advanced-capabilities/actions/followRoom.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/followRoom.ts:30) | messaging, contacts, settings | conditional: message/content gate | 0 declared | - | llm, database/memory | success, text, values, data, error, boolean-return | truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | GENERATE_IMAGE | core | [packages/core/src/features/advanced-capabilities/actions/imageGeneration.ts:61](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/imageGeneration.ts:61) | media, files | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | IGNORE | core | [packages/core/src/features/basic-capabilities/actions/ignore.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/ignore.ts:16) | general | conditional: message/content gate | 0 declared | - | - | success, text, values, data, callback | - | success branch, callback output | looks aligned; verify runtime trajectory event |
-| INGEST_KNOWLEDGE_FROM_URL | core | [packages/core/src/features/knowledge/actions.ts:569](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:569) | knowledge, web, browser, files | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, values, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| INGEST_KNOWLEDGE_FROM_URL | core | [packages/core/src/features/knowledge/actions.ts:571](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:571) | knowledge | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, values, data, error, throws | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | LIST_INBOX | core | [packages/core/src/features/messaging/triage/actions/listInbox.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/listInbox.ts:17) | messaging, email, connectors | conditional: message/content gate | 3 declared | - | cache, filesystem | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | MANAGE_MESSAGE | core | [packages/core/src/features/messaging/triage/actions/manageMessage.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/manageMessage.ts:19) | messaging, email, contacts | conditional: message/content gate | 5 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | MANAGE_MESSAGE_EXAMPLES | core | [packages/core/src/features/advanced-capabilities/personality/actions/manage-message-examples.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/manage-message-examples.ts:71) | settings, messaging, agent_internal | conditional: message/content gate | 4 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
@@ -332,265 +341,264 @@ These are not per-action/provider defects, but they determine whether the rows b
 | MANAGE_POST_EXAMPLES | core | [packages/core/src/features/advanced-capabilities/personality/actions/manage-post-examples.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/manage-post-examples.ts:43) | settings, social_posting, agent_internal | conditional: message/content gate | 3 declared | - | - | success, text, values, data, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | MANAGE_SECRET | core | [packages/core/src/features/secrets/actions/manage-secret.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/actions/manage-secret.ts:43) | secrets, settings, connectors | conditional: service gate, message/content gate | 6 declared | - | runtime-service, llm | success, text, data, callback | limit | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | MANAGE_STYLE_RULES | core | [packages/core/src/features/advanced-capabilities/personality/actions/manage-style-rules.ts:56](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/manage-style-rules.ts:56) | settings, agent_internal | conditional: message/content gate | 4 declared | - | - | success, text, values, data, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| MODIFY_CHARACTER | core | [packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95) | settings, agent_internal, media | conditional: service gate, message/content gate | 2 declared | - | runtime-service, database/memory | success, text, values, data, error, throws, delegated-return | truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| MODIFY_CHARACTER | core | [packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95) | settings, agent_internal, media | conditional: service gate, message/content gate | 2 declared | - | runtime-service, database/memory | success, text, values, data, error, throws, delegated-return | limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | MUTE_ROOM | core | [packages/core/src/features/advanced-capabilities/actions/muteRoom.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/muteRoom.ts:30) | messaging, settings | conditional: message/content gate | 0 declared | - | llm, database/memory | success, text, values, data, error, boolean-return | truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | NONE | core | [packages/core/src/features/basic-capabilities/actions/none.ts:15](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/none.ts:15) | general | conditional: message/content gate | 0 declared | - | - | success, text, values, data | - | success branch | looks aligned; verify runtime trajectory event |
-| PERSIST_CHARACTER | core | [packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59) | settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| PERSIST_CHARACTER | core | [packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59) | settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | PROCESS_ANALYSIS | core | [packages/core/src/features/advanced-planning/actions/chain-example.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts:120) | PLANNING_CONTEXTS | conditional: message/content gate | 0 declared | - | - | success, text, data, continueChain, delegated-return | - | success branch | looks aligned; verify runtime trajectory event |
-| PROCESS_KNOWLEDGE | core | [packages/core/src/features/knowledge/actions.ts:90](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:90) | knowledge, memory, files | conditional: service gate, message/content gate, try/catch | 3 declared | - | runtime-service, filesystem | success, text, data, error, callback, throws | - | success branch, failure branch, throws, catch, callback output | cap external results/timeouts |
-| READ_ATTACHMENT | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189) | files, media, messaging, knowledge | conditional: message/content gate | 2 declared | - | browser/device | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| READ_FILE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225) | files, code, knowledge | conditional: message/content gate | 4 declared | - | filesystem, browser/device | success, text, data, error, callback | limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| RECORD_EXPERIENCE | core | [packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24) | memory, knowledge, agent_internal | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data | - | success branch, failure branch | cap external results/timeouts |
-| RECORD_TRUST_INTERACTION | core | [packages/core/src/features/trust/actions/recordTrustInteraction.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/recordTrustInteraction.ts:14) | admin, settings, agent_internal | conditional: admin gate, message/content gate, try/catch | 4 declared | - | runtime-service | success, text, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
-| REMOVE_CONTACT | core | [packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
-| REMOVE_FROM_CLIPBOARD | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54) | files, knowledge, agent_internal | conditional: message/content gate | 1 declared | - | browser/device | success, text, data, error, callback, throws | limit | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
-| REPLY | core | [packages/core/src/features/basic-capabilities/actions/reply.ts:35](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/reply.ts:35) | general, messaging | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback, throws | - | success branch, throws, catch, callback output | cap external results/timeouts |
+| PROCESS_KNOWLEDGE | core | [packages/core/src/features/knowledge/actions.ts:90](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:90) | knowledge | conditional: service gate, message/content gate, try/catch | 3 declared | - | runtime-service, filesystem | success, text, data, error, callback, throws | - | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| READ_ATTACHMENT | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189) | files, media, messaging, knowledge | conditional: message/content gate | 2 declared | - | browser/device | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| READ_FILE | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225) | files, code, knowledge | conditional: message/content gate | 4 declared | - | filesystem, browser/device | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| RECORD_EXPERIENCE | core | [packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24) | memory, knowledge, agent_internal | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| RECORD_TRUST_INTERACTION | core | [packages/core/src/features/trust/actions/recordTrustInteraction.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/recordTrustInteraction.ts:14) | admin, settings, agent_internal | conditional: admin gate, message/content gate, try/catch | 4 declared | - | runtime-service | success, text, data, error, throws | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| REMOVE_CONTACT | core | [packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| REMOVE_FROM_CLIPBOARD | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54) | files, knowledge, agent_internal | conditional: message/content gate | 1 declared | - | browser/device | success, text, data, error, callback, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| REPLY | core | [packages/core/src/features/basic-capabilities/actions/reply.ts:35](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/reply.ts:35) | general, messaging | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback, throws | - | success branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
 | REQUEST_ELEVATION | core | [packages/core/src/features/trust/actions/requestElevation.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/requestElevation.ts:12) | admin, settings, agent_internal | conditional: admin gate, service gate, message/content gate, try/catch | 4 declared | - | runtime-service, cache | success, text, data, error, throws | slice, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | REQUEST_SECRET | core | [packages/core/src/features/secrets/actions/request-secret.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/actions/request-secret.ts:19) | secrets, settings, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | limit | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | RESET_SESSION | core | [packages/core/src/features/advanced-memory/actions/resetSession.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-memory/actions/resetSession.ts:24) | memory, agent_internal, settings | conditional: owner gate, admin gate, message/content gate | 0 declared | - | - | success, text, values, data, error, callback | slice | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | RESPOND_TO_MESSAGE | core | [packages/core/src/features/messaging/triage/actions/respondToMessage.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/respondToMessage.ts:27) | messaging, email, contacts | conditional: message/content gate | 2 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | SAVE_ATTACHMENT_TO_CLIPBOARD | core | [packages/core/src/features/advanced-capabilities/clipboard/actions/save-attachment-to-clipboard.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/save-attachment-to-clipboard.ts:55) | files, media, messaging, knowledge | conditional: message/content gate | 2 declared | - | browser/device | success, text, data, error | slice, truncate | failure branch, catch | looks aligned; verify runtime trajectory event |
 | SCHEDULE_DRAFT_SEND | core | [packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts:19) | messaging, email, calendar, automation | conditional: message/content gate | 2 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| SCHEDULE_FOLLOW_UP | core | [packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96) | tasks, contacts, calendar, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, text, values, data, error, callback, delegated-return | - | success branch, catch, callback output | cap external results/timeouts |
-| SCHEDULE_FOLLOW_UP | core | [packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97) | tasks, contacts, calendar, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service, llm | success, text, values, data, error, callback, delegated-return | - | success branch, catch, callback output | cap external results/timeouts |
+| SCHEDULE_FOLLOW_UP | core | [packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96) | tasks, contacts, calendar, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, text, values, data, error, callback, delegated-return | slice, limit, truncate | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SCHEDULE_FOLLOW_UP | core | [packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97) | tasks, contacts, calendar, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service, llm | success, text, values, data, error, callback, delegated-return | - | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | SEARCH_CONTACTS | core | [packages/core/src/features/advanced-capabilities/actions/searchContacts.ts:118](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/searchContacts.ts:118) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, values, data, error, callback, delegated-return | slice, limit, truncate | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | SEARCH_EXPERIENCES | core | [packages/core/src/features/advanced-capabilities/experience/actions/search-experiences.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/experience/actions/search-experiences.ts:54) | memory, knowledge, agent_internal | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, values, data, continueChain, callback | limit | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| SEARCH_KNOWLEDGE | core | [packages/core/src/features/knowledge/actions.ts:358](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:358) | knowledge, memory, web | conditional: service gate, message/content gate, try/catch | 2 declared | - | runtime-service | success, text, data, error, callback, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
-| SEARCH_MESSAGES | core | [packages/core/src/features/messaging/triage/actions/searchMessages.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/searchMessages.ts:16) | messaging, email, knowledge | conditional: message/content gate | 6 declared | - | - | success, data, callback | - | success branch, callback output | looks aligned; verify runtime trajectory event |
+| SEARCH_KNOWLEDGE | core | [packages/core/src/features/knowledge/actions.ts:359](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:359) | knowledge | conditional: service gate, message/content gate, try/catch | 2 declared | - | runtime-service | success, text, data, error, callback, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| SEARCH_MESSAGES | core | [packages/core/src/features/messaging/triage/actions/searchMessages.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/searchMessages.ts:16) | messaging, email, knowledge | conditional: message/content gate | 6 declared | - | - | success, data, callback | limit | success branch, callback output | looks aligned; verify runtime trajectory event |
 | SEND_DRAFT | core | [packages/core/src/features/messaging/triage/actions/sendDraft.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/sendDraft.ts:26) | messaging, email, contacts | conditional: message/content gate | 2 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| SEND_MESSAGE | core | [packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333) | messaging, email, contacts, connectors, social_posting | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| SEND_MESSAGE | core | [packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333) | messaging, email, contacts, connectors, social_posting | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error, delegated-return | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SEND_TO_ADMIN | core | [packages/core/src/features/autonomy/action.ts:35](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/autonomy/action.ts:35) | admin, messaging, agent_internal | conditional: admin gate, setting/env gate, service gate, message/content gate | 1 declared | - | runtime-service, database/memory | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| sensitive-action | core | [packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248) | admin, secrets, settings | conditional: admin gate, message/content gate | 0 declared | - | runtime-service | success, text, error | - | success branch, failure branch | cap external results/timeouts |
+| sensitive-action | core | [packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248) | admin, secrets, settings | conditional: admin gate, message/content gate | 0 declared | - | runtime-service | success, text, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | SET_SECRET | core | [packages/core/src/features/secrets/actions/set-secret.ts:47](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/actions/set-secret.ts:47) | secrets, settings, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | limit | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | SET_VOICE_CONFIG | core | [packages/core/src/features/advanced-capabilities/personality/actions/set-voice-config.ts:44](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/set-voice-config.ts:44) | settings, media, agent_internal | conditional: message/content gate | 3 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| THINK | core | [packages/core/src/features/advanced-capabilities/actions/think.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/think.ts:24) | general, knowledge, agent_internal | conditional: message/content gate | 1 declared | - | llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
 | TRIAGE_MESSAGES | core | [packages/core/src/features/messaging/triage/actions/triageMessages.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/triageMessages.ts:21) | messaging, email, knowledge | conditional: message/content gate | 3 declared | - | - | success, text, data, callback | limit | success branch, callback output | looks aligned; verify runtime trajectory event |
 | UNFOLLOW_ROOM | core | [packages/core/src/features/advanced-capabilities/actions/unfollowRoom.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/unfollowRoom.ts:22) | messaging, contacts, settings | conditional: message/content gate | 0 declared | - | llm, database/memory | success, text, values, data, error | truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | UNMUTE_ROOM | core | [packages/core/src/features/advanced-capabilities/actions/unmuteRoom.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/unmuteRoom.ts:30) | messaging, settings | conditional: message/content gate | 0 declared | - | llm, database/memory | success, text, values, data, error, boolean-return | truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| UPDATE_CONTACT | core | [packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 7 declared | - | runtime-service | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| UPDATE_CONTACT | core | [packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119) | contacts, messaging, knowledge | conditional: service gate, message/content gate | 7 declared | - | runtime-service | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | UPDATE_ENTITY | core | [packages/core/src/features/advanced-capabilities/actions/updateEntity.ts:102](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/updateEntity.ts:102) | contacts, memory, knowledge | conditional: message/content gate | 2 declared | - | - | success, text, values, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| UPDATE_KNOWLEDGE_DOCUMENT | core | [packages/core/src/features/knowledge/actions.ts:756](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:756) | knowledge, memory, files | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| UPDATE_KNOWLEDGE_DOCUMENT | core | [packages/core/src/features/knowledge/actions.ts:759](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:759) | knowledge | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, values, data, error, throws | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | UPDATE_ROLE | core | [packages/core/src/features/advanced-capabilities/actions/roles.ts:133](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/roles.ts:133) | admin, settings | conditional: message/content gate | 1 declared | - | - | success, text, values, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | UPDATE_ROLE | core | [packages/core/src/features/trust/actions/roles.ts:118](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/roles.ts:118) | admin, settings | conditional: admin gate, message/content gate | 1 declared | - | llm | success, text, data, error, throws | limit | failure branch, throws | looks aligned; verify runtime trajectory event |
-| UPDATE_SETTINGS | core | [packages/core/src/features/advanced-capabilities/actions/settings.ts:812](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/settings.ts:812) | settings, admin | conditional: owner gate, message/content gate | 2 declared | - | sdk/client | success, text, values, data, error | - | success branch, failure branch | cap external results/timeouts |
-| UPDATE_SETTINGS | core | [packages/core/src/features/secrets/onboarding/action.ts:317](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/onboarding/action.ts:317) | settings, secrets, connectors | conditional: message/content gate | 2 declared | - | sdk/client, runtime-service | success, text, values, data, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| UPDATE_SETTINGS | core | [packages/core/src/features/trust/actions/settings.ts:623](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/settings.ts:623) | settings, admin | conditional: owner gate, message/content gate, try/catch | 2 declared | - | sdk/client | success, text, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| UPDATE_SETTINGS | core | [packages/core/src/features/advanced-capabilities/actions/settings.ts:812](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/settings.ts:812) | settings, admin | conditional: owner gate, message/content gate | 2 declared | - | sdk/client | success, text, values, data, error | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| UPDATE_SETTINGS | core | [packages/core/src/features/secrets/onboarding/action.ts:317](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/onboarding/action.ts:317) | settings, secrets, connectors | conditional: message/content gate | 2 declared | - | sdk/client, runtime-service | success, text, values, data, callback | limit | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| UPDATE_SETTINGS | core | [packages/core/src/features/trust/actions/settings.ts:623](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/settings.ts:623) | settings, admin | conditional: owner gate, message/content gate, try/catch | 2 declared | - | sdk/client | success, text, data, error, throws | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CANCEL_ALARM_MACOS | native-plugin:macosalarm | [packages/native-plugins/macosalarm/src/actions.ts:270](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/macosalarm/src/actions.ts:270) | ...ALARM_CONTEXTS | custom: async (): Promise<boolean> => isDarwin() | 1 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | LIST_ALARMS_MACOS | native-plugin:macosalarm | [packages/native-plugins/macosalarm/src/actions.ts:341](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/macosalarm/src/actions.ts:341) | ...ALARM_CONTEXTS | conditional: message/content gate | 0 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | SET_ALARM_MACOS | native-plugin:macosalarm | [packages/native-plugins/macosalarm/src/actions.ts:129](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/macosalarm/src/actions.ts:129) | ...ALARM_CONTEXTS | conditional: message/content gate | 3 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | definition.name | plugin:app-2004scape | [plugins/app-2004scape/src/actions/routers.ts:181](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/actions/routers.ts:181) | game, automation, world, state | conditional: service gate | 2 declared | - | - | success, text, error, delegated-return | - | failure branch, catch | looks aligned; verify runtime trajectory event |
 | WALK_TO | plugin:app-2004scape | [plugins/app-2004scape/src/actions/routers.ts:262](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/actions/routers.ts:262) | game, automation, world, state | conditional: service gate | 4 declared | - | - | success, text, error, delegated-return | - | failure branch, catch | looks aligned; verify runtime trajectory event |
-| MANAGE_ELIZA_BROWSER_WORKSPACE | plugin:app-browser | [plugins/app-browser/src/action.ts:915](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/action.ts:915) | browser, web, files, code, automation | conditional: message/content gate | 42 declared | - | browser/device | success, data | - | success branch, failure branch, catch | cap external results/timeouts |
-| PLAY_EMOTE | plugin:app-companion | [plugins/app-companion/src/actions/emote.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-companion/src/actions/emote.ts:21) | media, general | conditional: message/content gate | 1 declared | - | fetch/http | success, text, data | - | success branch, failure branch, catch | cap external results/timeouts |
-| APP_BLOCK | plugin:app-lifeops | [plugins/app-lifeops/src/actions/app-block.ts:409](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/app-block.ts:409) | screen_time, automation, settings, tasks | conditional: message/content gate | 5 declared | - | - | success, text, data, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| AUTOFILL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/autofill.ts:407](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/autofill.ts:407) | browser, secrets, settings, automation | conditional: owner gate, message/content gate | 5 declared | - | - | success, text, data, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
+| MANAGE_ELIZA_BROWSER_WORKSPACE | plugin:app-browser | [plugins/app-browser/src/action.ts:915](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/action.ts:915) | browser, web, files, code, automation | conditional: message/content gate | 42 declared | - | browser/device | success, data | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| PLAY_EMOTE | plugin:app-companion | [plugins/app-companion/src/actions/emote.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-companion/src/actions/emote.ts:22) | media, general | conditional: message/content gate | 1 declared | - | fetch/http | success, text, data | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| APP_BLOCK | plugin:app-lifeops | [plugins/app-lifeops/src/actions/app-block.ts:409](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/app-block.ts:409) | screen_time, automation, settings, tasks | conditional: message/content gate | 5 declared | - | - | success, text, data, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| AUTOFILL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/autofill.ts:407](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/autofill.ts:407) | browser, secrets, settings, automation | conditional: owner gate, message/content gate | 5 declared | - | - | success, text, data, delegated-return | slice, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
 | BLOCK_UNTIL_TASK_COMPLETE | plugin:app-lifeops | [plugins/app-lifeops/src/website-blocker/chat-integration/actions/blockUntilTaskComplete.ts:149](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/website-blocker/chat-integration/actions/blockUntilTaskComplete.ts:149) | screen_time, browser, tasks, automation | conditional: message/content gate | 5 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| BOOK_TRAVEL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/book-travel.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/book-travel.ts:332) | calendar, contacts, tasks, payments, finance, browser | conditional: owner gate, message/content gate | 7 declared | - | cache | success, text, values, data, error, callback, throws | - | success branch, failure branch, throws, catch, callback output | cap external results/timeouts |
-| CALENDAR | plugin:app-lifeops | [plugins/app-lifeops/src/actions/calendar.ts:660](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/calendar.ts:660) | calendar, contacts, tasks | conditional: message/content gate | 31 declared | calendarAction, proposeMeetingTimesAction, checkAvailabilityAction, updateMeetingPreferencesAction, calendlyAction, schedulingAction | - | success, data, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
+| BOOK_TRAVEL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/book-travel.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/book-travel.ts:332) | calendar, contacts, tasks, payments, finance, browser | conditional: owner gate, message/content gate | 7 declared | - | cache | success, text, values, data, error, callback, throws | limit | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| CALENDAR | plugin:app-lifeops | [plugins/app-lifeops/src/actions/calendar.ts:660](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/calendar.ts:660) | calendar, contacts, tasks | conditional: message/content gate | 31 declared | calendarAction, proposeMeetingTimesAction, checkAvailabilityAction, updateMeetingPreferencesAction, calendlyAction, schedulingAction | - | success, data, error, delegated-return | slice, truncate | failure branch | looks aligned; verify runtime trajectory event |
 | CALENDAR_ACTION | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/calendar-handler.ts:2984](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/calendar-handler.ts:2984) | calendar, contacts, tasks | conditional: message/content gate | 6 declared | - | - | success, text, data, error, throws, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CALENDLY | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/calendly-handler.ts:142](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/calendly-handler.ts:142) | calendar, contacts, tasks | conditional: owner gate, message/content gate | 6 declared | - | cache | error, throws, delegated-return | limit | throws, catch | looks aligned; verify runtime trajectory event |
-| CHAT_THREAD | plugin:app-lifeops | [plugins/app-lifeops/src/actions/chat-thread.ts:217](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/chat-thread.ts:217) | messaging, contacts, automation, tasks | conditional: owner gate, message/content gate | 5 declared | - | filesystem | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
-| CHECK_AVAILABILITY | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671) | calendar, contacts, tasks | conditional: message/content gate | 2 declared | - | - | success, data, error, throws, delegated-return | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| CHAT_THREAD | plugin:app-lifeops | [plugins/app-lifeops/src/actions/chat-thread.ts:217](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/chat-thread.ts:217) | messaging, contacts, automation, tasks | conditional: owner gate, message/content gate | 5 declared | - | filesystem | success, text, data, error | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| CHECK_AVAILABILITY | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671) | calendar, contacts, tasks | conditional: message/content gate | 2 declared | - | - | success, data, error, throws, delegated-return | slice, limit, truncate, pagination | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CHECKIN | plugin:app-lifeops | [plugins/app-lifeops/src/actions/checkin.ts:100](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/checkin.ts:100) | tasks, calendar, contacts, messaging, health | conditional: owner gate, message/content gate | 1 declared | - | - | success, text, data, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | COMPUTE_TRAVEL_BUFFER | plugin:app-lifeops | [plugins/app-lifeops/src/travel-time/action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/travel-time/action.ts:27) | calendar, tasks, contacts | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, values, data, error, throws | - | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| COMPUTER_USE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/computer-use.ts:300](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:300) | ...COMPUTER_USE_CONTEXTS | conditional: owner gate, message/content gate | 10 declared | - | browser/device | success, text, values, data, error | - | failure branch | cap external results/timeouts |
-| CONNECTOR | plugin:app-lifeops | [plugins/app-lifeops/src/actions/connector.ts:1325](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/connector.ts:1325) | connectors, settings, calendar, email, messaging, contacts, health, browser | conditional: owner gate, message/content gate | 15 declared | - | - | success, text, data, error, throws, delegated-return | - | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| COMPUTER_USE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/computer-use.ts:307](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:307) | ...COMPUTER_USE_CONTEXTS | conditional: owner gate, message/content gate | 10 declared | - | browser/device | success, text, values, data, error | - | failure branch | looks aligned; verify runtime trajectory event |
+| CONNECTOR | plugin:app-lifeops | [plugins/app-lifeops/src/actions/connector.ts:1325](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/connector.ts:1325) | connectors, settings, calendar, email, messaging, contacts, health, browser | conditional: owner gate, message/content gate | 15 declared | - | - | success, text, data, error, throws, delegated-return | limit | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | DEVICE_INTENT | plugin:app-lifeops | [plugins/app-lifeops/src/actions/device-intent.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/device-intent.ts:88) | automation, tasks, screen_time, settings | conditional: owner gate, message/content gate | 8 declared | - | - | success, text, values, data, delegated-return | - | success branch | looks aligned; verify runtime trajectory event |
-| HEALTH | plugin:app-lifeops | [plugins/app-lifeops/src/actions/health.ts:279](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/health.ts:279) | health, tasks, calendar | conditional: owner gate, message/content gate | 5 declared | - | - | success, values, data, error, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| LIFE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/life.ts:1954](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/life.ts:1954) | tasks, calendar, health | conditional: owner gate, message/content gate | 7 declared | - | - | success, text, values, data, error, throws, delegated-return | slice, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| HEALTH | plugin:app-lifeops | [plugins/app-lifeops/src/actions/health.ts:279](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/health.ts:279) | health, tasks, calendar | conditional: owner gate, message/content gate | 5 declared | - | - | success, values, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| LIFE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/life.ts:1954](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/life.ts:1954) | tasks, calendar, health | conditional: owner gate, message/content gate | 7 declared | - | - | success, text, values, data, error, throws, delegated-return | slice, limit, truncate, pagination | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | LIST_ACTIVE_BLOCKS | plugin:app-lifeops | [plugins/app-lifeops/src/website-blocker/chat-integration/actions/listActiveBlocks.ts:62](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/website-blocker/chat-integration/actions/listActiveBlocks.ts:62) | screen_time, browser, tasks, automation | conditional: message/content gate | 2 declared | - | - | success, text, data | - | success branch | looks aligned; verify runtime trajectory event |
 | LIST_OVERDUE_FOLLOWUPS | plugin:app-lifeops | [plugins/app-lifeops/src/followup/actions/listOverdueFollowups.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/followup/actions/listOverdueFollowups.ts:24) | contacts, tasks, calendar, messaging | conditional: owner gate, message/content gate | 2 declared | - | - | success, text, data | slice, limit, truncate | success branch | looks aligned; verify runtime trajectory event |
-| MANAGE_LIFEOPS_BROWSER | plugin:app-lifeops | [plugins/app-lifeops/src/action.ts:375](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/action.ts:375) | browser, automation, settings | conditional: owner gate, message/content gate | 6 declared | - | browser/device | success, text, data, error, throws, delegated-return | - | failure branch, throws, catch | cap external results/timeouts |
+| MANAGE_LIFEOPS_BROWSER | plugin:app-lifeops | [plugins/app-lifeops/src/action.ts:375](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/action.ts:375) | browser, automation, settings | conditional: owner gate, message/content gate | 6 declared | - | browser/device | success, text, data, error, throws, delegated-return | slice, truncate | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | MARK_FOLLOWUP_DONE | plugin:app-lifeops | [plugins/app-lifeops/src/followup/actions/markFollowupDone.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/followup/actions/markFollowupDone.ts:57) | contacts, tasks, calendar, messaging | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | PASSWORD_MANAGER | plugin:app-lifeops | [plugins/app-lifeops/src/actions/password-manager.ts:131](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/password-manager.ts:131) | secrets, browser, automation | conditional: owner gate, message/content gate | 7 declared | - | browser/device | success, text, values, data, error, delegated-return | limit | success branch, catch | looks aligned; verify runtime trajectory event |
-| PAYMENTS | plugin:app-lifeops | [plugins/app-lifeops/src/actions/payments.ts:271](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/payments.ts:271) | payments, finance, wallet, crypto, subscriptions | conditional: owner gate, message/content gate | 17 declared | - | - | success, text, data, throws, delegated-return | - | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| PROFILE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/profile.ts:342](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/profile.ts:342) | memory, contacts, tasks, settings, calendar | conditional: owner gate, message/content gate | 18 declared | - | - | success, text, data, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| PROPOSE_MEETING_TIMES | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447) | calendar, contacts, tasks | conditional: message/content gate | 6 declared | - | - | success, text, data, error, throws, delegated-return | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| PAYMENTS | plugin:app-lifeops | [plugins/app-lifeops/src/actions/payments.ts:271](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/payments.ts:271) | payments, finance, wallet, crypto, subscriptions | conditional: owner gate, message/content gate | 17 declared | - | - | success, text, data, throws, delegated-return | limit | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| PROFILE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/profile.ts:342](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/profile.ts:342) | memory, contacts, tasks, settings, calendar | conditional: owner gate, message/content gate | 18 declared | - | - | success, text, data, error, delegated-return | pagination, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| PROPOSE_MEETING_TIMES | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447) | calendar, contacts, tasks | conditional: message/content gate | 6 declared | - | - | success, text, data, error, throws, delegated-return | slice, limit, truncate, pagination | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | RELATIONSHIP | plugin:app-lifeops | [plugins/app-lifeops/src/actions/relationship.ts:565](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/relationship.ts:565) | contacts, tasks, calendar, messaging | conditional: owner gate, message/content gate | 14 declared | - | - | success, values, data, error, delegated-return | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | RELEASE_BLOCK | plugin:app-lifeops | [plugins/app-lifeops/src/website-blocker/chat-integration/actions/releaseBlock.ts:89](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/website-blocker/chat-integration/actions/releaseBlock.ts:89) | ...RELEASE_BLOCK_CONTEXTS | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| REMOTE_DESKTOP | plugin:app-lifeops | [plugins/app-lifeops/src/actions/remote-desktop.ts:305](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/remote-desktop.ts:305) | browser, automation, settings, admin | conditional: owner gate, message/content gate | 6 declared | - | browser/device | success, text, values, data, error, delegated-return | - | failure branch | cap external results/timeouts |
-| RESOLVE_REQUEST | plugin:app-lifeops | [plugins/app-lifeops/src/actions/resolve-request.ts:377](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/resolve-request.ts:377) | email, messaging, calendar, tasks, contacts, payments | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| SCHEDULE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/schedule.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/schedule.ts:132) | calendar, tasks, health, screen_time | conditional: message/content gate | 2 declared | - | - | success, data, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| SCHEDULING | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170) | calendar, contacts, tasks, messaging | conditional: owner gate, message/content gate | 10 declared | - | - | success, text, values, data, error, throws, delegated-return | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| REMOTE_DESKTOP | plugin:app-lifeops | [plugins/app-lifeops/src/actions/remote-desktop.ts:305](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/remote-desktop.ts:305) | browser, automation, settings, admin | conditional: owner gate, message/content gate | 6 declared | - | browser/device | success, text, values, data, error, delegated-return | timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| RESOLVE_REQUEST | plugin:app-lifeops | [plugins/app-lifeops/src/actions/resolve-request.ts:377](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/resolve-request.ts:377) | email, messaging, calendar, tasks, contacts, payments | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data, delegated-return | limit | failure branch | looks aligned; verify runtime trajectory event |
+| SCHEDULE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/schedule.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/schedule.ts:132) | calendar, tasks, health, screen_time | conditional: message/content gate | 2 declared | - | - | success, data, error | slice | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| SCHEDULING | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170) | calendar, contacts, tasks, messaging | conditional: owner gate, message/content gate | 10 declared | - | - | success, text, values, data, error, throws, delegated-return | slice, limit, truncate, pagination | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | SCREEN_TIME | plugin:app-lifeops | [plugins/app-lifeops/src/actions/screen-time.ts:238](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/screen-time.ts:238) | screen_time, browser, health, tasks | conditional: message/content gate | 11 declared | - | filesystem, browser/device | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | SET_FOLLOWUP_THRESHOLD | plugin:app-lifeops | [plugins/app-lifeops/src/followup/actions/setFollowupThreshold.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/followup/actions/setFollowupThreshold.ts:33) | contacts, tasks, calendar, settings | conditional: owner gate, message/content gate | 3 declared | - | - | success, text, data | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SUBSCRIPTIONS | plugin:app-lifeops | [plugins/app-lifeops/src/actions/subscriptions.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/subscriptions.ts:486) | subscriptions, payments, finance, browser, automation | conditional: owner gate, message/content gate | 8 declared | - | - | success, text, data, throws, delegated-return | - | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| TOGGLE_FEATURE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/toggle-feature.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/toggle-feature.ts:153) | settings, automation, connectors | conditional: owner gate, message/content gate | 3 declared | - | - | success, values, data, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| UPDATE_MEETING_PREFERENCES | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830) | calendar, contacts, tasks, settings | conditional: message/content gate | 6 declared | - | - | success, data, error, delegated-return | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| VOICE_CALL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/voice-call.ts:776](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/voice-call.ts:776) | contacts, messaging, tasks, automation | conditional: owner gate, message/content gate | 6 declared | - | - | success, text, values, data, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| WEBSITE_BLOCK | plugin:app-lifeops | [plugins/app-lifeops/src/actions/website-block.ts:787](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/website-block.ts:787) | screen_time, browser, automation, tasks | conditional: message/content gate | 5 declared | - | - | success, text, data, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| X | plugin:app-lifeops | [plugins/app-lifeops/src/actions/x.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/x.ts:486) | ...X_READ_CONTEXTS | conditional: owner gate, setting/env gate, message/content gate, try/catch | 5 declared | - | - | success, text, values, data, error, throws, delegated-return | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| SUBSCRIPTIONS | plugin:app-lifeops | [plugins/app-lifeops/src/actions/subscriptions.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/subscriptions.ts:486) | subscriptions, payments, finance, browser, automation | conditional: owner gate, message/content gate | 8 declared | - | - | success, text, data, throws, delegated-return | limit | failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| TOGGLE_FEATURE | plugin:app-lifeops | [plugins/app-lifeops/src/actions/toggle-feature.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/toggle-feature.ts:153) | settings, automation, connectors | conditional: owner gate, message/content gate | 3 declared | - | - | success, values, data, error | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| UPDATE_MEETING_PREFERENCES | plugin:app-lifeops | [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830) | calendar, contacts, tasks, settings | conditional: message/content gate | 6 declared | - | - | success, data, error, delegated-return | slice, limit, truncate, pagination | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| VOICE_CALL | plugin:app-lifeops | [plugins/app-lifeops/src/actions/voice-call.ts:776](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/voice-call.ts:776) | contacts, messaging, tasks, automation | conditional: owner gate, message/content gate | 6 declared | - | - | success, text, values, data, error, delegated-return | limit, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| WEBSITE_BLOCK | plugin:app-lifeops | [plugins/app-lifeops/src/actions/website-block.ts:787](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/website-block.ts:787) | screen_time, browser, automation, tasks | conditional: message/content gate | 5 declared | - | - | success, text, data, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| X | plugin:app-lifeops | [plugins/app-lifeops/src/actions/x.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/x.ts:486) | ...X_READ_CONTEXTS | conditional: owner gate, setting/env gate, message/content gate, try/catch | 5 declared | - | - | success, text, values, data, error, throws, delegated-return | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | PLACE_CALL | plugin:app-phone | [plugins/app-phone/src/actions/place-call.ts:104](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-phone/src/actions/place-call.ts:104) | ...PLACE_CALL_CONTEXTS | conditional: message/content gate | 1 declared | - | - | success, text, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| POLYMARKET_PLACE_ORDER | plugin:app-polymarket | [plugins/app-polymarket/src/actions.ts:475](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:475) | ...POLYMARKET_CONTEXTS, payments | conditional: message/content gate | 3 declared | - | - | success, error | - | failure branch, catch | looks aligned; verify runtime trajectory event |
-| POLYMARKET_READ | plugin:app-polymarket | [plugins/app-polymarket/src/actions.ts:372](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:372) | ...POLYMARKET_CONTEXTS | conditional: message/content gate | 7 declared | - | - | success, error, callback, delegated-return | - | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| ATTACK_NPC | plugin:app-scape | [plugins/app-scape/src/actions/attack-npc.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/attack-npc.ts:26) | game, automation, world, state | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, error | - | failure branch, catch | cap external results/timeouts |
+| POLYMARKET_PLACE_ORDER | plugin:app-polymarket | [plugins/app-polymarket/src/actions.ts:475](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:475) | ...POLYMARKET_CONTEXTS, payments | conditional: message/content gate | 3 declared | - | - | success, error | slice, limit, truncate, pagination, timeout/retry, bounded-helper | failure branch, catch | looks aligned; verify runtime trajectory event |
+| POLYMARKET_READ | plugin:app-polymarket | [plugins/app-polymarket/src/actions.ts:372](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:372) | ...POLYMARKET_CONTEXTS | conditional: message/content gate | 7 declared | - | - | success, error, callback, delegated-return | slice, limit, truncate, pagination, timeout/retry, bounded-helper | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| ATTACK_NPC | plugin:app-scape | [plugins/app-scape/src/actions/attack-npc.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/attack-npc.ts:26) | game, automation, world, state | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, error | slice, truncate, timeout/retry | failure branch, catch | looks aligned; verify runtime trajectory event |
 | CHAT_PUBLIC | plugin:app-scape | [plugins/app-scape/src/actions/chat-public.ts:28](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/chat-public.ts:28) | game, automation, world, state, messaging | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, error | slice, limit, truncate | failure branch, catch | looks aligned; verify runtime trajectory event |
-| definition.name | plugin:app-scape | [plugins/app-scape/src/actions/routers.ts:162](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/routers.ts:162) | game, automation, world, state | conditional: service gate | 2 declared | - | runtime-service | success | - | failure branch | cap external results/timeouts |
-| WALK_TO | plugin:app-scape | [plugins/app-scape/src/actions/walk-to.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/walk-to.ts:27) | game, automation, world, state | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error | - | failure branch, catch | cap external results/timeouts |
+| definition.name | plugin:app-scape | [plugins/app-scape/src/actions/routers.ts:162](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/routers.ts:162) | game, automation, world, state | conditional: service gate | 2 declared | - | runtime-service | success | slice, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| WALK_TO | plugin:app-scape | [plugins/app-scape/src/actions/walk-to.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/walk-to.ts:27) | game, automation, world, state | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error | slice, truncate, timeout/retry | failure branch, catch | looks aligned; verify runtime trajectory event |
 | EXECUTE_TRADE | plugin:app-steward | [plugins/app-steward/src/actions/execute-trade.ts:103](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/actions/execute-trade.ts:103) | finance, crypto, wallet, payments | conditional: owner gate, admin gate, setting/env gate, message/content gate | 5 declared | - | fetch/http | success, data, error | timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| WALLET_PREPARE | plugin:app-steward | [plugins/app-steward/src/actions/wallet-prepare.ts:604](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/actions/wallet-prepare.ts:604) | ...WALLET_PREPARE_CONTEXTS | conditional: message/content gate | 8 declared | - | - | success, delegated-return | - | failure branch, catch | looks aligned; verify runtime trajectory event |
+| WALLET_PREPARE | plugin:app-steward | [plugins/app-steward/src/actions/wallet-prepare.ts:604](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/actions/wallet-prepare.ts:604) | ...WALLET_PREPARE_CONTEXTS | conditional: message/content gate | 8 declared | - | - | success, delegated-return | timeout/retry | failure branch, catch | looks aligned; verify runtime trajectory event |
 | FINALIZE_WORKSPACE | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/finalize-workspace.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/finalize-workspace.ts:22) | code, tasks, automation, agent_internal | conditional: service gate, message/content gate | 7 declared | - | runtime-service | success, text, data, error, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | LIST_AGENTS | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/list-agents.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/list-agents.ts:52) | tasks, automation, agent_internal | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| MANAGE_ISSUES | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:37) | code, tasks, connectors, automation | conditional: service gate, message/content gate | 7 declared | - | runtime-service, database/memory | success, text, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| PROVISION_WORKSPACE | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:25) | code, files, tasks, automation | conditional: service gate, message/content gate | 4 declared | - | runtime-service, database/memory | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| SEND_TO_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24) | tasks, automation, agent_internal | conditional: service gate, message/content gate, try/catch | 5 declared | - | runtime-service | success, text, data, error, callback | slice | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| SPAWN_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117) | tasks, automation, agent_internal | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, text, data, error, callback, delegated-return | slice, limit, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| MANAGE_ISSUES | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:40) | code, tasks, connectors, automation | conditional: service gate, message/content gate | 7 declared | - | runtime-service, database/memory | success, text, error, callback, delegated-return | slice, limit, truncate | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| PROVISION_WORKSPACE | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:28](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:28) | code, files, tasks, automation | conditional: service gate, message/content gate | 4 declared | - | runtime-service, database/memory | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SEND_TO_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24) | tasks, automation, agent_internal | conditional: service gate, message/content gate, try/catch | 5 declared | - | runtime-service | success, text, data, error, callback | slice, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SPAWN_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117) | tasks, automation, agent_internal | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, text, data, error, callback, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | START_CODING_TASK | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/start-coding-task.ts:282](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/start-coding-task.ts:282) | code, files, tasks, automation | conditional: service gate, message/content gate | 11 declared | - | runtime-service | success, text, error, callback, delegated-return | limit, timeout/retry | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| STOP_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:23) | tasks, automation, agent_internal | conditional: service gate, message/content gate, try/catch | 2 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| STOP_AGENT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:26) | tasks, automation, agent_internal | conditional: service gate, message/content gate, try/catch | 2 declared | - | runtime-service | success, text, data, error, callback | slice, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | TASK_CONTROL | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/task-control.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/task-control.ts:54) | tasks, automation, agent_internal | custom: async (runtime: IAgentRuntime): Promise<boolean> => { return Boolean(getCoordinator(runtime)); } | 7 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | TASK_HISTORY | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/task-history.ts:186](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/task-history.ts:186) | tasks, automation, agent_internal | custom: async (runtime: IAgentRuntime): Promise<boolean> => { return Boolean(getCoordinator(runtime)); } | 6 declared | - | - | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | TASK_SHARE | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/actions/task-share.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/task-share.ts:21) | tasks, automation, agent_internal | custom: async (runtime: IAgentRuntime): Promise<boolean> => { return Boolean(getCoordinator(runtime)); } | 3 declared | - | - | success, text, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| GET_SKILL_DETAILS | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/get-skill-details.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/get-skill-details.ts:25) | knowledge, automation, settings | custom: createAgentSkillsActionValidator({ keywords: ["get", "skill", "details", "info", "tell", "more"], regex: /\b(?:skill\|details\|info\|tell\s+me\s+about)\b/i, }) | 1 declared | - | runtime-service | success, text, data, error, callback, throws | - | success branch, failure branch, throws, catch, callback output | cap external results/timeouts |
-| INSTALL_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/install-skill.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/install-skill.ts:21) | automation, settings, connectors | custom: createAgentSkillsActionValidator({ keywords: ["install", "download", "add", "get", "skill"], regex: /\b(?:install\|download\|add\|get)\b.*\bskill\b\|\bskill\b.*\b(?:install\|download... | 1 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
+| GET_SKILL_DETAILS | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/get-skill-details.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/get-skill-details.ts:33) | knowledge, automation, settings | custom: createAgentSkillsActionValidator({ keywords: ["get", "skill", "details", "info", "tell", "more"], regex: /\b(?:skill\|details\|info\|tell\s+me\s+about)\b/i, }) | 1 declared | - | runtime-service | success, text, data, error, callback, throws | slice, limit, truncate | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| INSTALL_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/install-skill.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/install-skill.ts:30) | automation, settings, connectors | custom: createAgentSkillsActionValidator({ keywords: ["install", "download", "add", "get", "skill"], regex: /\b(?:install\|download\|add\|get)\b.*\bskill\b\|\bskill\b.*\b(?:install\|download... | 1 declared | - | runtime-service | success, text, data, error, callback | slice, limit, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | SEARCH_SKILLS | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/search-skills.ts:182](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/search-skills.ts:182) | knowledge, automation, settings | custom: createAgentSkillsActionValidator({ keywords: ["search", "find", "browse", "list", "skill"], regex: /\b(?:search\|find\|browse\|list)\b.*\bskills?\b\|\bskills?\b.*\b(?:search\|find\|br... | 2 declared | - | runtime-service | success, text, error, callback | limit | failure branch, callback output | looks aligned; verify runtime trajectory event |
-| SYNC_SKILL_CATALOG | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/sync-catalog.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/sync-catalog.ts:18) | automation, settings, connectors | custom: createAgentSkillsActionValidator({ keywords: ["sync", "refresh", "update", "catalog", "skill"], regex: /\b(?:sync\|refresh\|update)\b.*\b(?:catalog\|skills?)\b\|\b(?:catalog\|skills?... | 0 declared | - | runtime-service | success, text, data, error, callback, throws | - | success branch, failure branch, throws, catch, callback output | cap external results/timeouts |
+| SYNC_SKILL_CATALOG | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/sync-catalog.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/sync-catalog.ts:20) | automation, settings, connectors | custom: createAgentSkillsActionValidator({ keywords: ["sync", "refresh", "update", "catalog", "skill"], regex: /\b(?:sync\|refresh\|update)\b.*\b(?:catalog\|skills?)\b\|\b(?:catalog\|skills?... | 0 declared | - | runtime-service | success, text, data, error, callback, throws | timeout/retry | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
 | TOGGLE_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/toggle-skill.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/toggle-skill.ts:21) | automation, settings | custom: createAgentSkillsActionValidator({ keywords: [ "enable", "disable", "toggle", "skill", "activate", "deactivate", ], regex: /\b(?:enable\|disable\|toggle\|activate\|deactivate\|turn\s... | 2 declared | - | runtime-service | success, text, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| UNINSTALL_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:20) | automation, settings | custom: createAgentSkillsActionValidator({ keywords: ["uninstall", "remove", "delete", "skill"], regex: /\b(?:uninstall\|remove\|delete)\b.*\bskill\b\|\bskill\b.*\b(?:uninstall\|remove\|dele... | 1 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| USE_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/use-skill.ts:165](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/use-skill.ts:165) | automation, knowledge, connectors | conditional: service gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| UNINSTALL_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:22) | automation, settings | custom: createAgentSkillsActionValidator({ keywords: ["uninstall", "remove", "delete", "skill"], regex: /\b(?:uninstall\|remove\|delete)\b.*\bskill\b\|\bskill\b.*\b(?:uninstall\|remove\|dele... | 1 declared | - | runtime-service | success, text, data, error, callback | slice, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| USE_SKILL | plugin:plugin-agent-skills | [plugins/plugin-agent-skills/src/actions/use-skill.ts:165](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/use-skill.ts:165) | automation, knowledge, connectors | conditional: service gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | APP | plugin:plugin-app-control | [plugins/plugin-app-control/src/actions/app.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-app-control/src/actions/app.ts:150) | automation, settings, code | conditional: message/content gate | 10 declared | - | - | success, text, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| BLUEBUBBLES_MESSAGE_OP | plugin:plugin-bluebubbles | [plugins/plugin-bluebubbles/src/actions/messageOp.ts:267](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluebubbles/src/actions/messageOp.ts:267) | phone, messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| POST_BLUESKY | plugin:plugin-bluesky | [plugins/plugin-bluesky/actions/post.ts:115](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluesky/actions/post.ts:115) | ...BLUESKY_CONTEXTS | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| BROWSER_BRIDGE_INSTALL | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:150) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | browser/device | success, values, data, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| BROWSER_BRIDGE_OPEN_MANAGER | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:295](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:295) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | browser/device | success, values, data, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| BROWSER_BRIDGE_REFRESH | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:352](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:352) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | runtime-service, browser/device | success, text, values, data, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| BROWSER_BRIDGE_REVEAL_FOLDER | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:232](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:232) | browser, files, connectors, settings | custom: validateBrowserBridgeAction([ "browser", "files", "connectors", "settings", ]) | 0 declared | - | browser/device | success, values, data, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| CalendlyActions.CALENDLY_OP | plugin:plugin-calendly | [plugins/plugin-calendly/src/actions/calendly-op.ts:300](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-calendly/src/actions/calendly-op.ts:300) | ...CALENDLY_CONTEXTS | conditional: service gate, message/content gate | 6 declared | - | - | success, text, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| CLAUDE_CODE_WORKBENCH_LIST | plugin:plugin-claude-code-workbench | [plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34) | code, automation, agent_internal | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| CLAUDE_CODE_WORKBENCH_RUN | plugin:plugin-claude-code-workbench | [plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150) | code, automation, agent_internal | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | - | failure branch, catch, callback output | cap external results/timeouts |
-| ASK_USER_QUESTION | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | - | callback, delegated-return | limit | callback output | looks aligned; verify runtime trajectory event |
-| BASH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/bash.ts:72](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/bash.ts:72) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 5 declared | - | runtime-service, filesystem | callback, delegated-return | timeout/retry | catch, callback output | looks aligned; verify runtime trajectory event |
-| EDIT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/edit.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/edit.ts:49) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 4 declared | - | runtime-service, filesystem | callback, delegated-return | slice, truncate | catch, callback output | looks aligned; verify runtime trajectory event |
-| ENTER_WORKTREE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 3 declared | - | runtime-service, process/shell | callback, delegated-return | - | catch, callback output | cap external results/timeouts |
-| EXIT_WORKTREE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 1 declared | - | runtime-service, process/shell | callback, delegated-return | - | catch, callback output | cap external results/timeouts |
-| GLOB | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/glob.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/glob.ts:132) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service, filesystem | callback, delegated-return | slice, truncate | catch, callback output | looks aligned; verify runtime trajectory event |
-| GREP | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/grep.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/grep.ts:40) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 12 declared | - | runtime-service | callback, delegated-return | slice, truncate | catch, callback output | looks aligned; verify runtime trajectory event |
-| LS | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/ls.ts:75](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ls.ts:75) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service, filesystem | callback, delegated-return | slice, truncate | catch, callback output | looks aligned; verify runtime trajectory event |
-| NOTEBOOK_EDIT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 5 declared | - | runtime-service, filesystem | callback, throws, delegated-return | - | throws, catch, callback output | cap external results/timeouts |
-| READ | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/read.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/read.ts:33) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 3 declared | - | runtime-service, filesystem | text, callback, delegated-return | slice, limit, truncate, pagination | catch, callback output | looks aligned; verify runtime trajectory event |
-| TASK_OUTPUT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/task-output.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-output.ts:34) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | runtime-service | callback, delegated-return | slice, truncate, timeout/retry | catch, callback output | looks aligned; verify runtime trajectory event |
-| TASK_STOP | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/task-stop.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-stop.ts:25) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | runtime-service | callback, delegated-return | slice, truncate | catch, callback output | looks aligned; verify runtime trajectory event |
-| TODO_WRITE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/todo-write.ts:93](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/todo-write.ts:93) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | - | callback, delegated-return | - | callback output | looks aligned; verify runtime trajectory event |
-| WEB_FETCH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/web-fetch.ts:45](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-fetch.ts:45) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | fetch/http | callback, delegated-return | slice, limit, truncate, timeout/retry | catch, callback output | looks aligned; verify runtime trajectory event |
-| WEB_SEARCH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/web-search.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-search.ts:27) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | - | data, callback, delegated-return | - | callback output | looks aligned; verify runtime trajectory event |
-| WRITE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/write.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/write.ts:29) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 2 declared | - | runtime-service, filesystem | callback, delegated-return | - | catch, callback output | cap external results/timeouts |
-| COMMAND | plugin:plugin-commands | [plugins/plugin-commands/src/actions/command.ts:273](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-commands/src/actions/command.ts:273) | general, settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, data | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| BROWSER_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/browser-action.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/browser-action.ts:83) | browser, automation | conditional: service gate, message/content gate | 10 declared | - | runtime-service, browser/device | success, text, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| FILE_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/file-action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/file-action.ts:27) | files, automation | conditional: service gate, message/content gate | 12 declared | - | runtime-service | success, text, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| MANAGE_WINDOW | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/manage-window.ts:41](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/manage-window.ts:41) | browser, screen_time, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| TERMINAL_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/terminal-action.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/terminal-action.ts:20) | terminal, code, automation | conditional: service gate, message/content gate | 8 declared | - | runtime-service | success, text, error, callback, delegated-return | - | failure branch, callback output | cap external results/timeouts |
-| USE_COMPUTER | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160) | browser, files, terminal, screen_time, automation | conditional: message/content gate | 10 declared | - | browser/device | success, error, delegated-return | - | failure branch | cap external results/timeouts |
-| DISCORD_CHANNEL_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/channelOp.ts:1062](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/channelOp.ts:1062) | messaging, connectors | conditional: message/content gate | 4 declared | - | - | success, text, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
+| BLUEBUBBLES_MESSAGE_OP | plugin:plugin-bluebubbles | [plugins/plugin-bluebubbles/src/actions/messageOp.ts:272](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluebubbles/src/actions/messageOp.ts:272) | phone, messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| POST_BLUESKY | plugin:plugin-bluesky | [plugins/plugin-bluesky/actions/post.ts:121](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluesky/actions/post.ts:121) | ...BLUESKY_CONTEXTS | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| BROWSER_BRIDGE_INSTALL | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:161](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:161) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | browser/device | success, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| BROWSER_BRIDGE_OPEN_MANAGER | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:315](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:315) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | browser/device | success, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| BROWSER_BRIDGE_REFRESH | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:378](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:378) | browser, connectors, settings | custom: validateBrowserBridgeAction(["browser", "connectors", "settings"]) | 0 declared | - | runtime-service, browser/device | success, text, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| BROWSER_BRIDGE_REVEAL_FOLDER | plugin:plugin-browser-bridge | [plugins/plugin-browser-bridge/src/actions.ts:249](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:249) | browser, files, connectors, settings | custom: validateBrowserBridgeAction([ "browser", "files", "connectors", "settings", ]) | 0 declared | - | browser/device | success, values, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| CalendlyActions.CALENDLY_OP | plugin:plugin-calendly | [plugins/plugin-calendly/src/actions/calendly-op.ts:300](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-calendly/src/actions/calendly-op.ts:300) | ...CALENDLY_CONTEXTS | conditional: service gate, message/content gate | 6 declared | - | - | success, text, delegated-return | slice, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| CLAUDE_CODE_WORKBENCH_LIST | plugin:plugin-claude-code-workbench | [plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34) | code, automation, agent_internal | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, data, callback | slice, limit, truncate | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| CLAUDE_CODE_WORKBENCH_RUN | plugin:plugin-claude-code-workbench | [plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150) | code, automation, agent_internal | conditional: service gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | slice, truncate, timeout/retry | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| ASK_USER_QUESTION | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | - | success, text, error, callback, delegated-return | limit, bounded-helper | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| BASH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/bash.ts:72](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/bash.ts:72) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 5 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | limit, truncate, timeout/retry, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| EDIT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/edit.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/edit.ts:49) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 4 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| ENTER_WORKTREE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 3 declared | - | runtime-service, process/shell | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| EXIT_WORKTREE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 1 declared | - | runtime-service, process/shell | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| GLOB | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/glob.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/glob.ts:132) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| GREP | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/grep.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/grep.ts:40) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 12 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| LS | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/ls.ts:75](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ls.ts:75) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| NOTEBOOK_EDIT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 5 declared | - | runtime-service, filesystem | success, text, error, callback, throws, delegated-return | slice, limit, truncate, bounded-helper | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| READ | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/read.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/read.ts:33) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 3 declared | - | runtime-service, filesystem | text, success, error, callback, delegated-return | slice, limit, truncate, pagination, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| TASK_OUTPUT | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/task-output.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-output.ts:34) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| TASK_STOP | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/task-stop.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-stop.ts:25) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| TODO_WRITE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/todo-write.ts:93](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/todo-write.ts:93) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 1 declared | - | - | success, text, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| WEB_FETCH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/web-fetch.ts:45](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-fetch.ts:45) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 2 declared | - | fetch/http | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| WEB_SEARCH | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/web-search.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-search.ts:27) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | - | data, success, text, error, callback, delegated-return | bounded-helper | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| WRITE | plugin:plugin-coding-tools | [plugins/plugin-coding-tools/src/actions/write.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/write.ts:29) | ...CODING_TOOLS_CONTEXTS | conditional: setting/env gate | 2 declared | - | runtime-service, filesystem | success, text, error, callback, delegated-return | slice, limit, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| COMMAND | plugin:plugin-commands | [plugins/plugin-commands/src/actions/command.ts:273](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-commands/src/actions/command.ts:273) | general, settings, agent_internal | conditional: message/content gate | 1 declared | - | - | success, data | slice, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| BROWSER_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/browser-action.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/browser-action.ts:83) | browser, automation | conditional: service gate, message/content gate | 10 declared | - | runtime-service, browser/device | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| FILE_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/file-action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/file-action.ts:27) | files, automation | conditional: service gate, message/content gate | 12 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| MANAGE_WINDOW | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/manage-window.ts:41](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/manage-window.ts:41) | browser, screen_time, automation | conditional: service gate, message/content gate | 6 declared | - | runtime-service | success, error, callback, delegated-return | slice, limit, truncate | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| TERMINAL_ACTION | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/terminal-action.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/terminal-action.ts:20) | terminal, code, automation | conditional: service gate, message/content gate | 8 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, callback output | looks aligned; verify runtime trajectory event |
+| USE_COMPUTER | plugin:plugin-computeruse | [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160) | browser, files, terminal, screen_time, automation | conditional: message/content gate | 10 declared | - | browser/device | success, error, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| DISCORD_CHANNEL_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/channelOp.ts:1062](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/channelOp.ts:1062) | messaging, connectors | conditional: message/content gate | 4 declared | - | - | success, text, error, delegated-return | slice, limit, truncate | failure branch | looks aligned; verify runtime trajectory event |
 | DISCORD_CREATE_POLL | plugin:plugin-discord | [plugins/plugin-discord/actions/createPoll.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/createPoll.ts:82) | messaging, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| DISCORD_GET_USER_INFO | plugin:plugin-discord | [plugins/plugin-discord/actions/getUserInfo.ts:108](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/getUserInfo.ts:108) | messaging, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 1 declared | - | fetch/http, runtime-service | success, text, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| DISCORD_MEDIA_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/mediaOp.ts:413](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/mediaOp.ts:413) | messaging, media, connectors | conditional: message/content gate | 3 declared | - | - | success, text, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| DISCORD_MESSAGE_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/messageOp.ts:1301](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/messageOp.ts:1301) | messaging, connectors | conditional: message/content gate | 6 declared | - | - | success, text, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| DISCORD_SETUP_CREDENTIALS | plugin:plugin-discord | [plugins/plugin-discord/actions/setup-credentials.ts:494](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/setup-credentials.ts:494) | messaging, connectors, settings | conditional: message/content gate | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| DISCORD_SUMMARIZE_CONVERSATION | plugin:plugin-discord | [plugins/plugin-discord/actions/summarizeConversation.ts:227](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/summarizeConversation.ts:227) | messaging, knowledge, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 2 declared | - | llm, database/memory, cache, filesystem | success, text, error | - | success branch, failure branch | cap external results/timeouts |
+| DISCORD_GET_USER_INFO | plugin:plugin-discord | [plugins/plugin-discord/actions/getUserInfo.ts:114](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/getUserInfo.ts:114) | messaging, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 1 declared | - | fetch/http, runtime-service | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| DISCORD_MEDIA_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/mediaOp.ts:413](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/mediaOp.ts:413) | messaging, media, connectors | conditional: message/content gate | 3 declared | - | - | success, text, error, delegated-return | limit | failure branch | looks aligned; verify runtime trajectory event |
+| DISCORD_MESSAGE_OP | plugin:plugin-discord | [plugins/plugin-discord/actions/messageOp.ts:1301](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/messageOp.ts:1301) | messaging, connectors | conditional: message/content gate | 6 declared | - | - | success, text, error, delegated-return | limit | failure branch | looks aligned; verify runtime trajectory event |
+| DISCORD_SETUP_CREDENTIALS | plugin:plugin-discord | [plugins/plugin-discord/actions/setup-credentials.ts:500](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/setup-credentials.ts:500) | messaging, connectors, settings | conditional: message/content gate | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| DISCORD_SUMMARIZE_CONVERSATION | plugin:plugin-discord | [plugins/plugin-discord/actions/summarizeConversation.ts:231](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/summarizeConversation.ts:231) | messaging, knowledge, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 2 declared | - | llm, database/memory, cache, filesystem | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | spec.name | plugin:plugin-discord | [plugins/plugin-discord/actions/chatWithAttachments.ts:85](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/chatWithAttachments.ts:85) | messaging, media, knowledge, connectors | conditional: setting/env gate, service gate, message/content gate, try/catch | 2 declared | - | llm, database/memory, cache, filesystem | success, text, error | slice, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| CLOUD_AGENT | plugin:plugin-elizacloud | [plugins/plugin-elizacloud/actions/cloud-agent.ts:419](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/actions/cloud-agent.ts:419) | cloud, automation, admin | conditional: service gate, message/content gate | 10 declared | - | - | success, error, delegated-return | - | failure branch | looks aligned; verify runtime trajectory event |
-| EXECUTE_CODE | plugin:plugin-executecode | [plugins/plugin-executecode/src/action.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-executecode/src/action.ts:184) | ...EXECUTE_CODE_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | - | success, text, data, error, callback | timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| FARCASTER_CAST | plugin:plugin-farcaster | [plugins/plugin-farcaster/actions/castRouter.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/actions/castRouter.ts:55) | social_posting, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, data, error | truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| SEND_FEISHU_MESSAGE | plugin:plugin-feishu | [plugins/plugin-feishu/src/actions/sendMessage.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-feishu/src/actions/sendMessage.ts:16) | messaging, connectors | conditional: message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| FORM_RESTORE | plugin:plugin-form | [plugins/plugin-form/src/actions/restore.ts:74](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-form/src/actions/restore.ts:74) | tasks, automation, memory | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service, filesystem | success, text, data, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| GitHubActions.GITHUB_ISSUE_OP | plugin:plugin-github | [plugins/plugin-github/src/actions/issue-op.ts:291](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/issue-op.ts:291) | code, tasks, connectors, automation | conditional: message/content gate | 9 declared | - | - | success, text, error, delegated-return | - | failure branch, catch | looks aligned; verify runtime trajectory event |
-| GitHubActions.GITHUB_NOTIFICATION_TRIAGE | plugin:plugin-github | [plugins/plugin-github/src/actions/notification-triage.ts:81](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/notification-triage.ts:81) | code, tasks, connectors, automation | conditional: message/content gate | 1 declared | - | database/memory | success, text, data, error | - | success branch, failure branch, catch | cap external results/timeouts |
-| GitHubActions.GITHUB_PR_OP | plugin:plugin-github | [plugins/plugin-github/src/actions/pr-op.ts:207](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/pr-op.ts:207) | code, tasks, connectors, automation | conditional: message/content gate | 9 declared | - | - | success, text, error | - | failure branch, catch | looks aligned; verify runtime trajectory event |
-| GOOGLE_CHAT_MESSAGE_OP | plugin:plugin-google-chat | [plugins/plugin-google-chat/src/actions/messageOp.ts:244](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-google-chat/src/actions/messageOp.ts:244) | messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, error, delegated-return | - | failure branch | cap external results/timeouts |
-| IMESSAGE_SEND_MESSAGE | plugin:plugin-imessage | [plugins/plugin-imessage/src/actions/sendMessage.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-imessage/src/actions/sendMessage.ts:52) | phone, messaging, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| INSTAGRAM_REPLY | plugin:plugin-instagram | [plugins/plugin-instagram/src/actions/reply.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-instagram/src/actions/reply.ts:52) | social_posting, messaging, connectors | conditional: message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| LINE_MESSAGE_OP | plugin:plugin-line | [plugins/plugin-line/src/actions/messageOp.ts:259](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-line/src/actions/messageOp.ts:259) | messaging, connectors | conditional: message/content gate | 4 declared | - | runtime-service, llm | success, text, error, delegated-return | - | failure branch | cap external results/timeouts |
-| CLEAR_LINEAR_ACTIVITY | plugin:plugin-linear | [plugins/plugin-linear/src/actions/clearActivity.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/clearActivity.ts:14) | tasks, connectors, automation | conditional: message/content gate | 0 declared | - | runtime-service | success, text, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| CLOUD_AGENT | plugin:plugin-elizacloud | [plugins/plugin-elizacloud/actions/cloud-agent.ts:419](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/actions/cloud-agent.ts:419) | cloud, automation, admin | conditional: service gate, message/content gate | 10 declared | - | - | success, error, delegated-return | slice, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| EXECUTE_CODE | plugin:plugin-executecode | [plugins/plugin-executecode/src/action.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-executecode/src/action.ts:184) | ...EXECUTE_CODE_CONTEXTS | conditional: setting/env gate, message/content gate | 3 declared | - | - | success, text, data, error, callback | slice, limit, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| FARCASTER_CAST | plugin:plugin-farcaster | [plugins/plugin-farcaster/actions/castRouter.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/actions/castRouter.ts:55) | social_posting, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service | success, text, data, error | limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| SEND_FEISHU_MESSAGE | plugin:plugin-feishu | [plugins/plugin-feishu/src/actions/sendMessage.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-feishu/src/actions/sendMessage.ts:23) | messaging, connectors | conditional: message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| FORM_RESTORE | plugin:plugin-form | [plugins/plugin-form/src/actions/restore.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-form/src/actions/restore.ts:83) | tasks, automation, memory | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service, filesystem | success, text, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| GitHubActions.GITHUB_ISSUE_OP | plugin:plugin-github | [plugins/plugin-github/src/actions/issue-op.ts:291](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/issue-op.ts:291) | code, tasks, connectors, automation | conditional: message/content gate | 9 declared | - | - | success, text, error, delegated-return | slice, limit, truncate | failure branch, catch | looks aligned; verify runtime trajectory event |
+| GitHubActions.GITHUB_NOTIFICATION_TRIAGE | plugin:plugin-github | [plugins/plugin-github/src/actions/notification-triage.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/notification-triage.ts:83) | code, tasks, connectors, automation | conditional: message/content gate | 1 declared | - | database/memory | success, text, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| GitHubActions.GITHUB_PR_OP | plugin:plugin-github | [plugins/plugin-github/src/actions/pr-op.ts:207](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/pr-op.ts:207) | code, tasks, connectors, automation | conditional: message/content gate | 9 declared | - | - | success, text, error | slice, limit, truncate | failure branch, catch | looks aligned; verify runtime trajectory event |
+| GOOGLE_CHAT_MESSAGE_OP | plugin:plugin-google-chat | [plugins/plugin-google-chat/src/actions/messageOp.ts:252](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-google-chat/src/actions/messageOp.ts:252) | messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, error, delegated-return | slice, limit, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| IMESSAGE_SEND_MESSAGE | plugin:plugin-imessage | [plugins/plugin-imessage/src/actions/sendMessage.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-imessage/src/actions/sendMessage.ts:59) | phone, messaging, connectors | conditional: service gate, message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| INSTAGRAM_REPLY | plugin:plugin-instagram | [plugins/plugin-instagram/src/actions/reply.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-instagram/src/actions/reply.ts:59) | social_posting, messaging, connectors | conditional: message/content gate | 3 declared | - | runtime-service | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| LINE_MESSAGE_OP | plugin:plugin-line | [plugins/plugin-line/src/actions/messageOp.ts:272](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-line/src/actions/messageOp.ts:272) | messaging, connectors | conditional: message/content gate | 4 declared | - | runtime-service, llm | success, text, error, delegated-return | slice, limit, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| CLEAR_LINEAR_ACTIVITY | plugin:plugin-linear | [plugins/plugin-linear/src/actions/clearActivity.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/clearActivity.ts:16) | tasks, connectors, automation | conditional: message/content gate | 0 declared | - | runtime-service | success, text, throws | timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CREATE_LINEAR_COMMENT | plugin:plugin-linear | [plugins/plugin-linear/src/actions/createComment.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/createComment.ts:18) | tasks, connectors, automation | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, throws | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | CREATE_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/createIssue.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/createIssue.ts:23) | tasks, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, data, throws | truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| DELETE_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/deleteIssue.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/deleteIssue.ts:18) | tasks, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, data, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| DELETE_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/deleteIssue.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/deleteIssue.ts:21) | tasks, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, data, throws | slice, limit, truncate, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | GET_LINEAR_ACTIVITY | plugin:plugin-linear | [plugins/plugin-linear/src/actions/getActivity.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/getActivity.ts:43) | tasks, connectors, automation | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, throws | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | GET_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/getIssue.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/getIssue.ts:23) | tasks, connectors, knowledge | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, throws, delegated-return | slice, limit, truncate | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | LINEAR_COMMENT | plugin:plugin-linear | [plugins/plugin-linear/src/actions/routers.ts:224](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/routers.ts:224) | general, automation, LINEAR_COMMENT_CONTEXT | conditional: message/content gate | 1 declared | - | - | unknown/delegated | - | not statically obvious | looks aligned; verify runtime trajectory event |
 | LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/routers.ts:188](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/routers.ts:188) | general, automation, knowledge, LINEAR_ISSUE_CONTEXT | conditional: message/content gate | 1 declared | - | - | unknown/delegated | - | not statically obvious | looks aligned; verify runtime trajectory event |
 | LINEAR_WORKFLOW | plugin:plugin-linear | [plugins/plugin-linear/src/actions/routers.ts:260](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/routers.ts:260) | general, automation, knowledge, LINEAR_WORKFLOW_CONTEXT | conditional: message/content gate | 1 declared | - | - | unknown/delegated | - | not statically obvious | looks aligned; verify runtime trajectory event |
 | SEARCH_LINEAR_ISSUES | plugin:plugin-linear | [plugins/plugin-linear/src/actions/searchIssues.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/searchIssues.ts:26) | tasks, connectors, knowledge | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, throws | limit | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
-| UPDATE_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/updateIssue.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/updateIssue.ts:24) | tasks, connectors, automation | conditional: message/content gate | 7 declared | - | runtime-service, llm | success, text, data, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
-| MATRIX_JOIN_ROOM | plugin:plugin-matrix | [plugins/plugin-matrix/src/actions/joinRoom.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/joinRoom.ts:37) | messaging, connectors | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| MATRIX_MESSAGE_OP | plugin:plugin-matrix | [plugins/plugin-matrix/src/actions/messageOp.ts:180](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/messageOp.ts:180) | messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, values, data, error, delegated-return | - | failure branch | cap external results/timeouts |
-| CALL_MCP_TOOL | plugin:plugin-mcp | [plugins/plugin-mcp/src/actions/callToolAction.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mcp/src/actions/callToolAction.ts:16) | connectors, automation, knowledge | conditional: service gate, message/content gate, try/catch | 4 declared | - | runtime-service | success, text, values, data, throws, delegated-return | - | success branch, throws, catch | cap external results/timeouts |
+| UPDATE_LINEAR_ISSUE | plugin:plugin-linear | [plugins/plugin-linear/src/actions/updateIssue.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/updateIssue.ts:27) | tasks, connectors, automation | conditional: message/content gate | 7 declared | - | runtime-service, llm | success, text, data, throws | slice, truncate, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
+| MATRIX_JOIN_ROOM | plugin:plugin-matrix | [plugins/plugin-matrix/src/actions/joinRoom.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/joinRoom.ts:40) | messaging, connectors | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| MATRIX_MESSAGE_OP | plugin:plugin-matrix | [plugins/plugin-matrix/src/actions/messageOp.ts:186](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/messageOp.ts:186) | messaging, connectors | conditional: message/content gate | 5 declared | - | runtime-service, llm | success, text, values, data, error, delegated-return | slice, limit, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
+| CALL_MCP_TOOL | plugin:plugin-mcp | [plugins/plugin-mcp/src/actions/callToolAction.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mcp/src/actions/callToolAction.ts:16) | connectors, automation, knowledge | conditional: service gate, message/content gate, try/catch | 4 declared | - | runtime-service | success, text, values, data, throws, delegated-return | - | success branch, throws, catch | looks aligned; verify runtime trajectory event |
 | MCP_ACTION | plugin:plugin-mcp | [plugins/plugin-mcp/src/actions/mcpRouterAction.ts:90](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mcp/src/actions/mcpRouterAction.ts:90) | general, automation, knowledge, connectors, MCP_ACTION_CONTEXT | conditional: message/content gate | 1 declared | - | - | success, values, data, error | - | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | READ_MCP_RESOURCE | plugin:plugin-mcp | [plugins/plugin-mcp/src/actions/readResourceAction.ts:87](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mcp/src/actions/readResourceAction.ts:87) | connectors, knowledge, files | conditional: service gate, message/content gate, try/catch | 2 declared | - | runtime-service, llm | success, text, values, data, callback, throws, delegated-return | timeout/retry | success branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
-| MC_ATTACK | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/attack.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/attack.ts:26) | automation, media | conditional: service gate, message/content gate | 1 declared | - | fetch/http, runtime-service | success, text, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_BLOCK_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/block-op.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/block-op.ts:46) | automation, media | conditional: service gate, message/content gate | 5 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_CHAT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/chat.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/chat.ts:17) | messaging, automation, media | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_CONNECT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/connect.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/connect.ts:33) | connectors, automation, media | conditional: service gate, message/content gate | 5 declared | - | runtime-service | success, text, values, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_DISCONNECT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/disconnect.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/disconnect.ts:17) | connectors, automation, media | conditional: service gate, message/content gate | 0 declared | - | runtime-service | success, text, values, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_LOCOMOTE_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/locomote-op.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/locomote-op.ts:95) | automation, media | conditional: service gate, message/content gate | 10 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| MC_WAYPOINT_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/waypoint-op.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/waypoint-op.ts:48) | automation, memory, media | conditional: service gate, message/content gate | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, values, data, error, delegated-return | - | success branch, failure branch, catch | cap external results/timeouts |
-| DOWNLOAD_MUSIC | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/downloadMusic.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/downloadMusic.ts:88) | ...DOWNLOAD_MUSIC_CONTEXTS | conditional: message/content gate | 1 declared | - | database/memory | success, text, error, callback, delegated-return | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| PLAY_MUSIC_QUERY | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/playMusicQuery.ts:504](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/playMusicQuery.ts:504) | media, knowledge | conditional: message/content gate | 1 declared | - | runtime-service | success, text, error, callback, delegated-return | limit | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| MC_ATTACK | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/attack.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/attack.ts:26) | automation, media | conditional: service gate, message/content gate | 1 declared | - | fetch/http, runtime-service | success, text, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_BLOCK_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/block-op.ts:47](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/block-op.ts:47) | automation, media | conditional: service gate, message/content gate | 5 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_CHAT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/chat.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/chat.ts:17) | messaging, automation, media | conditional: service gate, message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, delegated-return | slice, limit, truncate, bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_CONNECT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/connect.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/connect.ts:33) | connectors, automation, media | conditional: service gate, message/content gate | 5 declared | - | runtime-service | success, text, values, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_DISCONNECT | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/disconnect.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/disconnect.ts:17) | connectors, automation, media | conditional: service gate, message/content gate | 0 declared | - | runtime-service | success, text, values, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_LOCOMOTE_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/locomote-op.ts:103](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/locomote-op.ts:103) | automation, media | conditional: service gate, message/content gate | 10 declared | - | fetch/http, sdk/client, runtime-service | success, text, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| MC_WAYPOINT_OP | plugin:plugin-minecraft | [plugins/plugin-minecraft/src/actions/waypoint-op.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/waypoint-op.ts:48) | automation, memory, media | conditional: service gate, message/content gate | 2 declared | - | fetch/http, sdk/client, runtime-service | success, text, values, data, error, delegated-return | bounded-helper | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| DOWNLOAD_MUSIC | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/downloadMusic.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/downloadMusic.ts:88) | ...DOWNLOAD_MUSIC_CONTEXTS | conditional: message/content gate | 1 declared | - | database/memory | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| PLAY_MUSIC_QUERY | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/playMusicQuery.ts:504](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/playMusicQuery.ts:504) | media, knowledge | conditional: message/content gate | 1 declared | - | runtime-service | success, text, error, callback, delegated-return | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | PLAYLIST_OP | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/playlistOp.ts:506](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/playlistOp.ts:506) | media, automation | conditional: message/content gate | 4 declared | - | - | success, error, callback, delegated-return | - | failure branch, callback output | looks aligned; verify runtime trajectory event |
 | SEARCH_YOUTUBE | plugin:plugin-music-library | [plugins/plugin-music-library/src/actions/searchYouTube.ts:76](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/searchYouTube.ts:76) | media, web, knowledge | conditional: message/content gate | 2 declared | - | runtime-service, database/memory | success, text, data, error, callback, throws | limit | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
-| MANAGE_ROUTING | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/manageRouting.ts:175](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageRouting.ts:175) | media, automation, settings | conditional: message/content gate | 4 declared | - | runtime-service | error, delegated-return | - | catch | cap external results/timeouts |
-| MANAGE_ZONES | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/manageZones.ts:171](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageZones.ts:171) | media, automation, settings | conditional: message/content gate | 3 declared | - | runtime-service | error, delegated-return | - | catch | cap external results/timeouts |
-| PLAY_AUDIO | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/playAudio.ts:538](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/playAudio.ts:538) | media, automation | conditional: message/content gate | 3 declared | - | fetch/http, runtime-service, database/memory, cache | success, text, data, error, callback, delegated-return | limit | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| MANAGE_ROUTING | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/manageRouting.ts:175](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageRouting.ts:175) | media, automation, settings | conditional: message/content gate | 4 declared | - | runtime-service | error, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | catch | looks aligned; verify runtime trajectory event |
+| MANAGE_ZONES | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/manageZones.ts:171](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageZones.ts:171) | media, automation, settings | conditional: message/content gate | 3 declared | - | runtime-service | error, delegated-return | slice, limit, truncate, timeout/retry, bounded-helper | catch | looks aligned; verify runtime trajectory event |
+| PLAY_AUDIO | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/playAudio.ts:538](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/playAudio.ts:538) | media, automation | conditional: message/content gate | 3 declared | - | fetch/http, runtime-service, database/memory, cache | success, text, data, error, callback, delegated-return | slice, limit, truncate, bounded-helper | success branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | PLAYBACK_OP | plugin:plugin-music-player | [plugins/plugin-music-player/src/actions/playbackOp.ts:480](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/playbackOp.ts:480) | media, automation | conditional: service gate, message/content gate | 3 declared | - | - | callback, delegated-return | - | callback output | looks aligned; verify runtime trajectory event |
-| PAYMENT_OP | plugin:plugin-mysticism | [plugins/plugin-mysticism/src/actions/payment-op.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/payment-op.ts:43) | finance, payments | conditional: service gate, message/content gate | 4 declared | - | runtime-service | success, text, data | - | success branch, failure branch | cap external results/timeouts |
-| READING_OP | plugin:plugin-mysticism | [plugins/plugin-mysticism/src/actions/reading-op.ts:456](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/reading-op.ts:456) | knowledge, general | conditional: service gate, message/content gate | 4 declared | - | runtime-service | success, text, delegated-return | - | failure branch | cap external results/timeouts |
-| ACTIVATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:71) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service, cache | success, text, data, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| CREATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283) | automation, connectors, tasks | conditional: service gate, message/content gate | 2 declared | - | runtime-service, cache | success, data, error, callback, delegated-return | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| DEACTIVATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:67](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:67) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service | success, text, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| DELETE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:75](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:75) | automation, connectors, tasks | conditional: message/content gate | 4 declared | - | runtime-service, cache | success, text, data, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| PAYMENT_OP | plugin:plugin-mysticism | [plugins/plugin-mysticism/src/actions/payment-op.ts:44](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/payment-op.ts:44) | finance, payments | conditional: service gate, message/content gate | 4 declared | - | runtime-service | success, text, data | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| READING_OP | plugin:plugin-mysticism | [plugins/plugin-mysticism/src/actions/reading-op.ts:456](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/reading-op.ts:456) | knowledge, general | conditional: service gate, message/content gate | 4 declared | - | runtime-service | success, text, delegated-return | slice, truncate | failure branch | looks aligned; verify runtime trajectory event |
+| ACTIVATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:72](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:72) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service, cache | success, text, data, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| CREATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283) | automation, connectors, tasks | conditional: service gate, message/content gate | 2 declared | - | runtime-service, cache | success, data, error, callback, delegated-return | slice, truncate, bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| DEACTIVATE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:69](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:69) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service | success, text, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| DELETE_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:76](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:76) | automation, connectors, tasks | conditional: message/content gate | 4 declared | - | runtime-service, cache | success, text, data, callback | slice, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | GET_N8N_EXECUTIONS | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/getExecutions.ts:56](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/getExecutions.ts:56) | automation, connectors, tasks | conditional: service gate | 3 declared | - | runtime-service | success, text, data, callback | limit | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| MODIFY_EXISTING_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service, cache | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| WORKFLOW_LIFECYCLE_OP | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:396](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:396) | automation, connectors, tasks | conditional: service gate | 2 declared | - | runtime-service | success, text, callback, delegated-return | - | failure branch, catch, callback output | cap external results/timeouts |
-| NOSTR_PUBLISH_NOTE | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/publishNote.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishNote.ts:46) | social_posting, connectors | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| NOSTR_PUBLISH_PROFILE | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/publishProfile.ts:36](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishProfile.ts:36) | social_posting, connectors | conditional: message/content gate | 3 declared | - | runtime-service, llm | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| NOSTR_SEND_DM | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/sendDm.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/sendDm.ts:43) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| EXECUTE_ROBLOX_ACTION | plugin:plugin-roblox | [plugins/plugin-roblox/actions/executeRobloxAction.ts:192](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/executeRobloxAction.ts:192) | media, automation | conditional: setting/env gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
-| ROBLOX_ACTION | plugin:plugin-roblox | [plugins/plugin-roblox/actions/robloxAction.ts:390](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/robloxAction.ts:390) | media, automation | conditional: setting/env gate, message/content gate | 7 declared | - | runtime-service | success, text, error, delegated-return | - | failure branch, catch | cap external results/timeouts |
-| SEND_ROBLOX_MESSAGE | plugin:plugin-roblox | [plugins/plugin-roblox/actions/sendRobloxMessage.ts:87](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/sendRobloxMessage.ts:87) | media, messaging | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
-| CLEAR_SHELL_HISTORY | plugin:plugin-shell | [plugins/plugin-shell/actions/clearHistory.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shell/actions/clearHistory.ts:17) | terminal, settings | conditional: service gate, message/content gate | 0 declared | - | runtime-service | success, text, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
+| MODIFY_EXISTING_N8N_WORKFLOW | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84) | automation, connectors, tasks | conditional: message/content gate | 3 declared | - | runtime-service, cache | success, text, data, error, callback | bounded-helper | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| WORKFLOW_LIFECYCLE_OP | plugin:plugin-n8n-workflow | [plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:398](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:398) | automation, connectors, tasks | conditional: service gate | 2 declared | - | runtime-service | success, text, callback, delegated-return | slice, truncate, timeout/retry | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| NOSTR_PUBLISH_NOTE | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/publishNote.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishNote.ts:52) | social_posting, connectors | conditional: message/content gate | 1 declared | - | runtime-service, llm | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| NOSTR_PUBLISH_PROFILE | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/publishProfile.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishProfile.ts:46) | social_posting, connectors | conditional: message/content gate | 3 declared | - | runtime-service, llm | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| NOSTR_SEND_DM | plugin:plugin-nostr | [plugins/plugin-nostr/src/actions/sendDm.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/sendDm.ts:48) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| EXECUTE_ROBLOX_ACTION | plugin:plugin-roblox | [plugins/plugin-roblox/actions/executeRobloxAction.ts:205](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/executeRobloxAction.ts:205) | media, automation | conditional: setting/env gate, message/content gate | 3 declared | - | runtime-service | success, text, data, error | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| ROBLOX_ACTION | plugin:plugin-roblox | [plugins/plugin-roblox/actions/robloxAction.ts:414](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/robloxAction.ts:414) | media, automation | conditional: setting/env gate, message/content gate | 7 declared | - | runtime-service | success, text, error, delegated-return | slice, limit, truncate | failure branch, catch | looks aligned; verify runtime trajectory event |
+| SEND_ROBLOX_MESSAGE | plugin:plugin-roblox | [plugins/plugin-roblox/actions/sendRobloxMessage.ts:101](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/sendRobloxMessage.ts:101) | media, messaging | conditional: setting/env gate, message/content gate | 2 declared | - | runtime-service | success, text, data, error | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| CLEAR_SHELL_HISTORY | plugin:plugin-shell | [plugins/plugin-shell/actions/clearHistory.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shell/actions/clearHistory.ts:17) | terminal, settings | conditional: service gate, message/content gate | 0 declared | - | runtime-service | success, text, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | MANAGE_SHOPIFY_CUSTOMERS | plugin:plugin-shopify | [plugins/plugin-shopify/src/actions/manage-customers.ts:124](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shopify/src/actions/manage-customers.ts:124) | payments, connectors, automation | conditional: message/content gate | 2 declared | - | runtime-service | success, text, data, error | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | MANAGE_SHOPIFY_INVENTORY | plugin:plugin-shopify | [plugins/plugin-shopify/src/actions/manage-inventory.ts:155](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shopify/src/actions/manage-inventory.ts:155) | payments, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, data, error, delegated-return | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | MANAGE_SHOPIFY_ORDERS | plugin:plugin-shopify | [plugins/plugin-shopify/src/actions/manage-orders.ts:146](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shopify/src/actions/manage-orders.ts:146) | payments, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, data, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | MANAGE_SHOPIFY_PRODUCTS | plugin:plugin-shopify | [plugins/plugin-shopify/src/actions/manage-products.ts:168](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shopify/src/actions/manage-products.ts:168) | payments, connectors, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, data, error, delegated-return | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | SEARCH_SHOPIFY_STORE | plugin:plugin-shopify | [plugins/plugin-shopify/src/actions/search-store.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shopify/src/actions/search-store.ts:150) | payments, connectors, automation, knowledge | conditional: message/content gate | 3 declared | - | runtime-service | success, text, data, error | limit | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| SIGNAL_MESSAGE_OP | plugin:plugin-signal | [plugins/plugin-signal/src/actions/messageOp.ts:214](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-signal/src/actions/messageOp.ts:214) | phone, messaging, connectors | conditional: message/content gate | 6 declared | - | llm | success, text, values, data, error, delegated-return | - | failure branch | cap external results/timeouts |
+| SIGNAL_MESSAGE_OP | plugin:plugin-signal | [plugins/plugin-signal/src/actions/messageOp.ts:220](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-signal/src/actions/messageOp.ts:220) | phone, messaging, connectors | conditional: message/content gate | 6 declared | - | llm | success, text, values, data, error, delegated-return | slice, limit, truncate, timeout/retry | failure branch | looks aligned; verify runtime trajectory event |
 | SIGNAL_READ_RECENT_MESSAGES | plugin:plugin-signal | [plugins/plugin-signal/src/actions/readRecentMessages.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-signal/src/actions/readRecentMessages.ts:22) | phone, messaging, connectors | conditional: message/content gate | 1 declared | - | - | success, text, data, error | slice, limit, truncate | success branch, failure branch | looks aligned; verify runtime trajectory event |
-| SLACK_GET_USER_INFO | plugin:plugin-slack | [plugins/plugin-slack/src/actions/getUserInfo.ts:73](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/getUserInfo.ts:73) | messaging, connectors | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service, llm | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
-| SLACK_MESSAGE_OP | plugin:plugin-slack | [plugins/plugin-slack/src/actions/messageOp.ts:144](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/messageOp.ts:144) | messaging, connectors | conditional: service gate, message/content gate | 5 declared | - | runtime-service, llm | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
+| SLACK_GET_USER_INFO | plugin:plugin-slack | [plugins/plugin-slack/src/actions/getUserInfo.ts:80](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/getUserInfo.ts:80) | messaging, connectors | conditional: service gate, message/content gate, try/catch | 1 declared | - | runtime-service, llm | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| SLACK_MESSAGE_OP | plugin:plugin-slack | [plugins/plugin-slack/src/actions/messageOp.ts:146](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/messageOp.ts:146) | messaging, connectors | conditional: service gate, message/content gate | 5 declared | - | runtime-service, llm | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | SLACK_READ_CHANNEL | plugin:plugin-slack | [plugins/plugin-slack/src/actions/readChannel.ts:102](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/readChannel.ts:102) | messaging, connectors | conditional: service gate, message/content gate, try/catch | 3 declared | - | runtime-service, llm | success, text, data, error | limit | success branch, failure branch | looks aligned; verify runtime trajectory event |
 | STREAM_OP | plugin:plugin-streaming | [plugins/plugin-streaming/src/core.ts:551](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-streaming/src/core.ts:551) | media, automation, connectors | custom: validate | 2 declared | - | fetch/http, filesystem | success, data, error, callback | timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| MUSIC_GENERATION | plugin:plugin-suno | [plugins/plugin-suno/src/actions/musicGeneration.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/actions/musicGeneration.ts:96) | media | conditional: setting/env gate, message/content gate | 4 declared | - | fetch/http | success, text, data, error, throws | - | success branch, failure branch, throws, catch | cap external results/timeouts |
+| MUSIC_GENERATION | plugin:plugin-suno | [plugins/plugin-suno/src/actions/musicGeneration.ts:99](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/actions/musicGeneration.ts:99) | media | conditional: setting/env gate, message/content gate | 4 declared | - | fetch/http | success, text, data, error, throws | slice, limit, truncate, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | GET_TAILSCALE_STATUS | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/actions/get-tailscale-status.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/get-tailscale-status.ts:30) | connectors, settings, admin | custom: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)) | 1 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
-| START_TAILSCALE | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/actions/start-tailscale.ts:62](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/start-tailscale.ts:62) | connectors, settings, admin | custom: async (runtime: IAgentRuntime) => { const tunnelService = getTunnelService(runtime); if (!tunnelService) return false; return !tunnelService.isActive(); } | 1 declared | - | llm | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
+| START_TAILSCALE | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/actions/start-tailscale.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/start-tailscale.ts:64) | connectors, settings, admin | custom: async (runtime: IAgentRuntime) => { const tunnelService = getTunnelService(runtime); if (!tunnelService) return false; return !tunnelService.isActive(); } | 1 declared | - | llm | success, text, data, error, callback | timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | STOP_TAILSCALE | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/actions/stop-tailscale.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/stop-tailscale.ts:71) | ...STOP_TAILSCALE_CONTEXTS | conditional: message/content gate | 0 declared | - | - | success, text, data, error, callback | - | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
 | TAILSCALE | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/actions/tailscale.ts:198](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/tailscale.ts:198) | connectors, settings, admin | custom: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)) | 2 declared | - | - | success, error, callback, delegated-return | - | failure branch, callback output | looks aligned; verify runtime trajectory event |
 | REMOTE_ATTESTATION | plugin:plugin-tee | [plugins/plugin-tee/src/actions/remoteAttestation.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tee/src/actions/remoteAttestation.ts:14) | admin, secrets, agent_internal | conditional: setting/env gate, service gate, message/content gate, try/catch | 0 declared | - | - | success, text, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| TWITCH_CHANNEL_OP | plugin:plugin-twitch | [plugins/plugin-twitch/src/actions/channelRouter.ts:87](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/channelRouter.ts:87) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service | success, text, data, error | - | success branch, failure branch | cap external results/timeouts |
-| TWITCH_SEND_MESSAGE | plugin:plugin-twitch | [plugins/plugin-twitch/src/actions/sendMessage.ts:39](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/sendMessage.ts:39) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | - | success branch, failure branch, callback output | cap external results/timeouts |
-| CAPTURE_IMAGE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:434](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:434) | media, screen_time, automation | conditional: message/content gate | 0 declared | - | runtime-service | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| DESCRIBE_SCENE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:120) | media, screen_time, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| IDENTIFY_PERSON | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:1211](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1211) | media, memory | conditional: message/content gate | 2 declared | - | runtime-service | success, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| NAME_ENTITY | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:930](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:930) | media, memory | conditional: message/content gate | 2 declared | - | runtime-service | success, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| SET_VISION_MODE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:695](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:695) | media, screen_time, settings | conditional: service gate, message/content gate | 1 declared | - | runtime-service, browser/device | success, values, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
-| TRACK_ENTITY | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:1468](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1468) | media, screen_time, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | - | success branch, failure branch, catch, callback output | cap external results/timeouts |
+| TWITCH_CHANNEL_OP | plugin:plugin-twitch | [plugins/plugin-twitch/src/actions/channelRouter.ts:94](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/channelRouter.ts:94) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service | success, text, data, error | slice, limit, truncate, timeout/retry | success branch, failure branch | looks aligned; verify runtime trajectory event |
+| TWITCH_SEND_MESSAGE | plugin:plugin-twitch | [plugins/plugin-twitch/src/actions/sendMessage.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/sendMessage.ts:46) | messaging, connectors | conditional: message/content gate | 2 declared | - | runtime-service, llm | success, text, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, callback output | looks aligned; verify runtime trajectory event |
+| CAPTURE_IMAGE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:453](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:453) | media, screen_time, automation | conditional: message/content gate | 0 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| DESCRIBE_SCENE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:133](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:133) | media, screen_time, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| IDENTIFY_PERSON | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:1246](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1246) | media, memory | conditional: message/content gate | 2 declared | - | runtime-service | success, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| NAME_ENTITY | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:961](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:961) | media, memory | conditional: message/content gate | 2 declared | - | runtime-service | success, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| SET_VISION_MODE | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:720](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:720) | media, screen_time, settings | conditional: service gate, message/content gate | 1 declared | - | runtime-service, browser/device | success, values, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
+| TRACK_ENTITY | plugin:plugin-vision | [plugins/plugin-vision/src/action.ts:1507](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1507) | media, screen_time, automation | conditional: message/content gate | 1 declared | - | runtime-service | success, text, values, data, error, callback | slice, limit, truncate, timeout/retry | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | BIRDEYE_LOOKUP | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/birdeye/actions/wallet-search-address.ts:109](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/actions/wallet-search-address.ts:109) | finance, crypto, wallet | conditional: message/content gate | 2 declared | - | - | success, text, data, error | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
-| CROSS_CHAIN_TRANSFER | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527) | finance, crypto, wallet, payments | custom: createEvmActionValidator({ keywords: ["bridge", "cross-chain", "cross chain", "from", "to"], regex: /\b(?:bridge\|cross[-\s]?chain\|transfer)\b/i, }) | 7 declared | - | - | success, text, values, data, callback, delegated-return | - | success branch, callback output | looks aligned; verify runtime trajectory event |
-| DEXSCREENER_BOOSTED_TOKENS | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | - | text, data, delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
+| CROSS_CHAIN_TRANSFER | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527) | finance, crypto, wallet, payments | custom: createEvmActionValidator({ keywords: ["bridge", "cross-chain", "cross chain", "from", "to"], regex: /\b(?:bridge\|cross[-\s]?chain\|transfer)\b/i, }) | 7 declared | - | - | success, text, values, data, callback, delegated-return | limit, truncate, timeout/retry | success branch, callback output | looks aligned; verify runtime trajectory event |
+| DEXSCREENER_BOOSTED_TOKENS | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | - | text, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify runtime trajectory event |
 | DEXSCREENER_CHAIN_PAIRS | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:837](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:837) | finance, crypto, wallet | conditional: message/content gate | 3 declared | - | - | text, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify runtime trajectory event |
-| DEXSCREENER_NEW_PAIRS | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690) | finance, crypto, wallet | conditional: message/content gate | 2 declared | - | - | text, data, delegated-return | limit | catch | looks aligned; verify runtime trajectory event |
+| DEXSCREENER_NEW_PAIRS | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690) | finance, crypto, wallet | conditional: message/content gate | 2 declared | - | - | text, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify runtime trajectory event |
 | DEXSCREENER_SEARCH | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:193](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:193) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | browser/device | text, data, delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
 | DEXSCREENER_TOKEN_INFO | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:369](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:369) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | - | text, data, delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
-| DEXSCREENER_TOKEN_PROFILES | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | - | text, data, delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
-| DEXSCREENER_TRENDING | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539) | finance, crypto, wallet | conditional: message/content gate | 2 declared | - | - | text, data, delegated-return | limit | catch | looks aligned; verify runtime trajectory event |
+| DEXSCREENER_TOKEN_PROFILES | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188) | finance, crypto, wallet | conditional: message/content gate | 1 declared | - | - | text, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify runtime trajectory event |
+| DEXSCREENER_TRENDING | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539) | finance, crypto, wallet | conditional: message/content gate | 2 declared | - | - | text, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify runtime trajectory event |
 | EVM_TRANSFER | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/transfer.ts:130](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/transfer.ts:130) | finance, crypto, wallet, payments | custom: createEvmActionValidator({ keywords: ["transfer"], regex: /\b(?:transfer)\b/i, }) | 5 declared | - | - | success, text, values, data, callback, delegated-return | - | success branch, callback output | looks aligned; verify runtime trajectory event |
-| lp_management | plugin:plugin-wallet | [plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584) | finance, crypto, wallet, automation | conditional: message/content gate | 11 declared | - | - | success, text, error, delegated-return | - | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
+| lp_management | plugin:plugin-wallet | [plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584) | finance, crypto, wallet, automation | conditional: message/content gate | 11 declared | - | - | success, text, error, delegated-return | slice, limit, truncate | success branch, failure branch, catch | looks aligned; verify runtime trajectory event |
 | MANAGE_LP_POSITIONS | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/manage-lp-positions.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/manage-lp-positions.ts:111) | finance, crypto, wallet, automation | conditional: message/content gate | 4 declared | - | - | delegated-return | - | not statically obvious | looks aligned; verify runtime trajectory event |
 | manage_positions | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/orca/actions/managePositions.ts:126](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/orca/actions/managePositions.ts:126) | finance, crypto, wallet | conditional: message/content gate, try/catch | 3 declared | - | - | delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
 | manage_raydium_positions | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/raydium/actions/managePositions.ts:133](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/raydium/actions/managePositions.ts:133) | finance, crypto, wallet | conditional: service gate, message/content gate, try/catch | 3 declared | - | - | delegated-return | slice, truncate | catch | looks aligned; verify runtime trajectory event |
-| SOLANA_TRANSFER | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:111) | finance, crypto, wallet, payments | conditional: setting/env gate, service gate, message/content gate | 4 declared | - | runtime-service | success, text, values, data, error, callback, throws, delegated-return | - | success branch, failure branch, throws, catch, callback output | cap external results/timeouts |
-| SWAP | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674) | finance, crypto, wallet | custom: createEvmActionValidator({ keywords: ["swap", "exchange", "trade", "token"], regex: /\b(?:swap\|exchange\|trade\|token)\b/i, }) | 5 declared | - | - | success, text, values, data, callback, delegated-return | - | success branch, callback output | looks aligned; verify runtime trajectory event |
-| SWAP | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/actions/swap.ts:100](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/swap.ts:100) | finance, crypto, wallet | conditional: service gate, message/content gate | 5 declared | - | runtime-service | success, text, error, throws, delegated-return | - | success branch, throws, catch | cap external results/timeouts |
+| SOLANA_TRANSFER | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:114](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:114) | finance, crypto, wallet, payments | conditional: setting/env gate, service gate, message/content gate | 4 declared | - | runtime-service | success, text, values, data, error, callback, throws, delegated-return | slice, limit, truncate, timeout/retry | success branch, failure branch, throws, catch, callback output | looks aligned; verify runtime trajectory event |
+| SWAP | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674) | finance, crypto, wallet | custom: createEvmActionValidator({ keywords: ["swap", "exchange", "trade", "token"], regex: /\b(?:swap\|exchange\|trade\|token)\b/i, }) | 5 declared | - | - | success, text, values, data, callback, delegated-return | timeout/retry | success branch, callback output | looks aligned; verify runtime trajectory event |
+| SWAP | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/actions/swap.ts:103](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/swap.ts:103) | finance, crypto, wallet | conditional: service gate, message/content gate | 5 declared | - | runtime-service | success, text, error, throws, delegated-return | slice, truncate, timeout/retry | success branch, throws, catch | looks aligned; verify runtime trajectory event |
 | WALLET_ACTION | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/wallet-action.ts:234](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/wallet-action.ts:234) | finance, crypto, wallet | conditional: message/content gate | 9 declared | - | - | success, values, data, error | - | failure branch, catch | looks aligned; verify runtime trajectory event |
 | WALLET_GOV_OP | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/actions/gov-op.ts:193](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/gov-op.ts:193) | finance, crypto, wallet, admin | custom: createEvmActionValidator({ keywords: [ "propose", "proposal", "governance", "dao", "vote", "queue", "execute", "governor", "timelock", ], regex: /\b(?:propose\|proposal\|governanc... | 10 declared | - | - | success, text, data, error, callback, delegated-return | - | success branch, failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
-| WHATSAPP_MESSAGE_OP | plugin:plugin-whatsapp | [plugins/plugin-whatsapp/src/actions/messageOp.ts:225](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-whatsapp/src/actions/messageOp.ts:225) | phone, messaging, connectors | conditional: message/content gate | 5 declared | - | llm | success, text, error, callback, delegated-return | - | failure branch, catch, callback output | cap external results/timeouts |
+| WHATSAPP_MESSAGE_OP | plugin:plugin-whatsapp | [plugins/plugin-whatsapp/src/actions/messageOp.ts:239](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-whatsapp/src/actions/messageOp.ts:239) | phone, messaging, connectors | conditional: message/content gate | 5 declared | - | llm | success, text, error, callback, delegated-return | slice, limit, truncate, timeout/retry | failure branch, catch, callback output | looks aligned; verify runtime trajectory event |
 | REPLY_X_DM | plugin:plugin-x | [plugins/plugin-x/src/actions/replyXDm.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-x/src/actions/replyXDm.ts:18) | messaging, connectors | conditional: message/content gate | 3 declared | - | - | success, text, data, throws | timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | SEARCH_X | plugin:plugin-x | [plugins/plugin-x/src/actions/searchX.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-x/src/actions/searchX.ts:19) | knowledge, web, social_posting, connectors | conditional: message/content gate | 2 declared | - | - | success, text, data, throws | limit, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
 | SEND_X_POST | plugin:plugin-x | [plugins/plugin-x/src/actions/sendXPost.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-x/src/actions/sendXPost.ts:30) | social_posting, connectors | conditional: message/content gate | 3 declared | - | - | success, text, data, throws | limit, timeout/retry | success branch, failure branch, throws, catch | looks aligned; verify runtime trajectory event |
@@ -600,26 +608,26 @@ These are not per-action/provider defects, but they determine whether the rows b
 
 | Provider | Source | Location | Contexts / gates | Cache policy | External APIs | Stack output | Limits | Error/success | Cleanup |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| adminPanel | agent | [packages/agent/src/providers/admin-panel.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/admin-panel.ts:83) | admin, settings | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
+| adminPanel | agent | [packages/agent/src/providers/admin-panel.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/admin-panel.ts:83) | admin, settings | cacheStable=false, cacheScope=turn | - | text, values, data | slice, limit, truncate | not statically obvious | looks aligned; verify segment hashing |
 | agentSelfStatus | agent | [packages/agent/src/providers/self-status.ts:13](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/self-status.ts:13) | general | cacheStable=false, cacheScope=turn | - | values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | automation-terminal-bridge | agent | [packages/agent/src/providers/automation-terminal-bridge.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/automation-terminal-bridge.ts:21) | automation, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | elizaAdminTrust | agent | [packages/agent/src/providers/admin-trust.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/admin-trust.ts:17) | admin, settings | cacheStable=false, cacheScope=turn | - | values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | elizaChannelProfile | agent | [packages/agent/src/providers/simple-mode.ts:44](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/simple-mode.ts:44) | general | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | elizaDynamicSkills | agent | [packages/agent/src/providers/skill-provider.ts:317](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/skill-provider.ts:317) | general, agent_internal | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | elizaSessionBridge | agent | [packages/agent/src/providers/session-bridge.ts:94](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/session-bridge.ts:94) | general, messaging | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
-| escalationTrigger | agent | [packages/agent/src/providers/escalation-trigger.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/escalation-trigger.ts:184) | general | cacheStable=false, cacheScope=turn | - | values, data | - | not statically obvious | looks aligned; verify segment hashing |
+| escalationTrigger | agent | [packages/agent/src/providers/escalation-trigger.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/escalation-trigger.ts:184) | general | cacheStable=false, cacheScope=turn | - | values, data | slice, limit, truncate | not statically obvious | looks aligned; verify segment hashing |
 | ongoingTasks | agent | [packages/agent/src/providers/tasks.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/tasks.ts:55) | tasks, automation | cacheStable=false, cacheScope=turn | - | text, values | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| page-scoped-context | agent | [packages/agent/src/providers/page-scoped-context.ts:691](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/page-scoped-context.ts:691) | browser, finance, payments, wallet, crypto, media, automation, connectors, settings, messaging, agent_internal | cacheStable=false, cacheScope=turn | - | text, values, data | - | catch | looks aligned; verify segment hashing |
+| page-scoped-context | agent | [packages/agent/src/providers/page-scoped-context.ts:691](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/page-scoped-context.ts:691) | browser, finance, payments, wallet, crypto, media, automation, connectors, settings, messaging, agent_internal | cacheStable=false, cacheScope=turn | - | text, values, data | slice, limit, truncate, timeout/retry | catch | looks aligned; verify segment hashing |
 | recent-conversations | agent | [packages/agent/src/providers/recent-conversations.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/recent-conversations.ts:27) | memory, messaging | cacheStable=false, cacheScope=turn | - | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | relevant-conversations | agent | [packages/agent/src/providers/relevant-conversations.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/relevant-conversations.ts:25) | memory, messaging | cacheStable=false, cacheScope=turn | llm | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | roleBackfill | agent | [packages/agent/src/providers/role-backfill.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/role-backfill.ts:37) | admin, settings | cacheStable=false, cacheScope=turn | - | text, values, data | - | catch | looks aligned; verify segment hashing |
 | roles | agent | [packages/agent/src/runtime/roles/src/provider.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/roles/src/provider.ts:26) | admin, settings | cacheStable=false, cacheScope=turn | - | values, data, delegated-return | slice, truncate | catch | looks aligned; verify segment hashing |
-| rolodex | agent | [packages/agent/src/providers/rolodex.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/rolodex.ts:42) | contacts, memory | cacheStable=false, cacheScope=turn | - | text, values, data | limit | catch | looks aligned; verify segment hashing |
+| rolodex | agent | [packages/agent/src/providers/rolodex.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/rolodex.ts:42) | contacts, memory | cacheStable=false, cacheScope=turn | - | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | uiCatalog | agent | [packages/agent/src/providers/ui-catalog.ts:31](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/ui-catalog.ts:31) | general | cacheStable=true, cacheScope=agent | - | text | - | not statically obvious | looks aligned; verify segment hashing |
 | userName | agent | [packages/agent/src/providers/user-name.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/user-name.ts:21) | general | cacheStable=false, cacheScope=turn | - | text, values | - | not statically obvious | looks aligned; verify segment hashing |
-| workspaceContext | agent | [packages/agent/src/providers/workspace-provider.ts:167](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/workspace-provider.ts:167) | general | cacheStable=false, cacheScope=turn | - | text, data | limit | catch | looks aligned; verify segment hashing |
-| LONG_TERM_MEMORY | cloud:advanced-memory | [cloud/packages/lib/eliza/advanced-memory/providers.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:86) | general | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | truncate | catch | looks aligned; verify segment hashing |
-| SUMMARIZED_CONTEXT | cloud:advanced-memory | [cloud/packages/lib/eliza/advanced-memory/providers.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:21) | general | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
+| workspaceContext | agent | [packages/agent/src/providers/workspace-provider.ts:167](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/workspace-provider.ts:167) | general | cacheStable=false, cacheScope=turn | - | text, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
+| LONG_TERM_MEMORY | cloud:advanced-memory | [cloud/packages/lib/eliza/advanced-memory/providers.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:86) | general | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
+| SUMMARIZED_CONTEXT | cloud:advanced-memory | [cloud/packages/lib/eliza/advanced-memory/providers.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:21) | general | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | ACTIONS | cloud:plugin-affiliate | [cloud/packages/lib/eliza/plugin-affiliate/providers/actions.ts:7](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/providers/actions.ts:7) | general, media | cacheStable=true, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | affiliateContext | cloud:plugin-affiliate | [cloud/packages/lib/eliza/plugin-affiliate/providers/affiliate-context.ts:145](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/providers/affiliate-context.ts:145) | general, media | cacheStable=false, cacheScope=turn | sdk/client | text, values, data, delegated-return | slice, truncate | catch | looks aligned; verify segment hashing |
 | CURRENT_RUN_CONTEXT | cloud:plugin-affiliate | [cloud/packages/lib/eliza/plugin-affiliate/providers/current-run-context.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/providers/current-run-context.ts:16) | general, media | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | not statically obvious | looks aligned; verify segment hashing |
@@ -627,11 +635,11 @@ These are not per-action/provider defects, but they determine whether the rows b
 | ACTIONS | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/actions.ts:8](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/actions.ts:8) | general, agent_internal | cacheStable=true, cacheScope=turn | - | values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | ASSISTANT_GUIDE | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/assistant-guide.ts:124](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/assistant-guide.ts:124) | general, agent_internal | cacheStable=true, cacheScope=agent | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | CHARACTER_GUIDE | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/character-guide.ts:143](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/character-guide.ts:143) | general, agent_internal | cacheStable=true, cacheScope=agent | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
-| CURRENT_CHARACTER | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65) | general, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | truncate | catch | looks aligned; verify segment hashing |
+| CURRENT_CHARACTER | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65) | general, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | MODE_CONTEXT | cloud:plugin-character-builder | [cloud/packages/lib/eliza/plugin-character-builder/providers/mode-context.ts:53](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/mode-context.ts:53) | general, agent_internal | cacheStable=true, cacheScope=agent | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
-| ACTION_STATE | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101) | general, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
+| ACTION_STATE | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101) | general, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate, bounded-helper | catch | looks aligned; verify segment hashing |
 | ACTIONS | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/actions.ts:105](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/actions.ts:105) | general, agent_internal | cacheStable=true, cacheScope=turn; custom cache logic detected | runtime-service, cache | text, values, data, delegated-return | timeout/retry | catch | looks aligned; verify segment hashing |
-| CHARACTER | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43) | general, agent_internal | cacheStable=false, cacheScope=turn | sdk/client | text, values, data, delegated-return | slice, truncate | catch | looks aligned; verify segment hashing |
+| CHARACTER | cloud:plugin-cloud-bootstrap | [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43) | general, agent_internal | cacheStable=false, cacheScope=turn | sdk/client | text, values, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | MCP | cloud:plugin-mcp | [cloud/packages/lib/eliza/plugin-mcp/provider.ts:13](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/provider.ts:13) | connectors, settings | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | USER_AUTH_STATUS | cloud:plugin-oauth | [cloud/packages/lib/eliza/plugin-oauth/providers/user-auth-status.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/providers/user-auth-status.ts:17) | connectors, settings | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | AGENT_CREDITS | cloud:providers | [cloud/packages/lib/eliza/providers/agent-credits-provider.ts:63](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/providers/agent-credits-provider.ts:63) | finance, payments, wallet, crypto | cacheStable=false, cacheScope=turn | - | values, data | limit | catch | looks aligned; verify segment hashing |
@@ -639,11 +647,11 @@ These are not per-action/provider defects, but they determine whether the rows b
 | CHARACTER | cloud:shared | [cloud/packages/lib/eliza/shared/providers/character.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/shared/providers/character.ts:22) | general, agent_internal | cacheStable=false, cacheScope=turn | - | text, delegated-return | slice, truncate | not statically obvious | looks aligned; verify segment hashing |
 | RECENT_MESSAGES | cloud:shared | [cloud/packages/lib/eliza/shared/providers/recent-messages.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/shared/providers/recent-messages.ts:82) | memory, messaging | cacheStable=false, cacheScope=turn | runtime-service, database/memory | text, values, data | pagination | catch | looks aligned; verify segment hashing |
 | ACTION_STATE | core | [packages/core/src/features/basic-capabilities/providers/actionState.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/actionState.ts:42) | general | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| ACTIONS | core | [packages/core/src/features/basic-capabilities/providers/actions.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/actions.ts:354) | general | cacheStable=true, cacheScope=turn | - | data, boolean-return | - | not statically obvious | looks aligned; verify segment hashing |
+| ACTIONS | core | [packages/core/src/features/basic-capabilities/providers/actions.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/actions.ts:354) | general | cacheStable=true, cacheScope=turn | - | data, boolean-return | slice, limit, truncate | not statically obvious | looks aligned; verify segment hashing |
 | ADMIN_CHAT_HISTORY | core | [packages/core/src/features/autonomy/providers.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/autonomy/providers.ts:27) | admin, settings | cacheStable=false, cacheScope=turn | runtime-service, database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | adminTrust | core | [packages/core/src/features/trust/providers/adminTrust.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/providers/adminTrust.ts:18) | admin, settings | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | ATTACHMENTS | core | [packages/core/src/features/basic-capabilities/providers/attachments.ts:69](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/attachments.ts:69) | media, messaging | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| AUTONOMY_STATUS | core | [packages/core/src/features/autonomy/providers.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/autonomy/providers.ts:179) | automation, agent_internal | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | limit | catch | looks aligned; verify segment hashing |
+| AUTONOMY_STATUS | core | [packages/core/src/features/autonomy/providers.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/autonomy/providers.ts:179) | automation, agent_internal | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | AVAILABLE_DOCUMENTS | core | [packages/core/src/features/knowledge/documents-provider.ts:10](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/documents-provider.ts:10) | knowledge | cacheStable=false, cacheScope=turn | runtime-service, database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | CHARACTER | core | [packages/core/src/features/basic-capabilities/providers/character.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/character.ts:65) | general, agent_internal | cacheStable=false, cacheScope=turn | - | data | - | not statically obvious | looks aligned; verify segment hashing |
 | CHOICE | core | [packages/core/src/features/basic-capabilities/providers/choice.ts:38](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/choice.ts:38) | general | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
@@ -674,7 +682,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 | PROVIDERS | core | [packages/core/src/features/basic-capabilities/providers/providers.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/providers.ts:37) | general | cacheStable=true, cacheScope=turn | - | text | - | not statically obvious | looks aligned; verify segment hashing |
 | RECENT_MESSAGES | core | [packages/core/src/features/basic-capabilities/providers/recentMessages.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/recentMessages.ts:150) | memory, messaging | cacheStable=false, cacheScope=turn | database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | registryPlugins | core | [packages/core/src/features/plugin-manager/providers/registryPluginsProvider.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/plugin-manager/providers/registryPluginsProvider.ts:42) | connectors, settings | cacheStable=true, cacheScope=agent | runtime-service, database/memory | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| RELATIONSHIPS | core | [packages/core/src/features/advanced-capabilities/providers/relationships.ts:129](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/providers/relationships.ts:129) | contacts, memory | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
+| RELATIONSHIPS | core | [packages/core/src/features/advanced-capabilities/providers/relationships.ts:129](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/providers/relationships.ts:129) | contacts, memory | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | not statically obvious | looks aligned; verify segment hashing |
 | ROLES | core | [packages/core/src/features/advanced-capabilities/providers/roles.ts:97](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/providers/roles.ts:97) | admin, settings | cacheStable=false, cacheScope=turn | - | text, values, data, throws | - | throws | looks aligned; verify segment hashing |
 | ROLES | core | [packages/core/src/features/trust/providers/roles.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/providers/roles.ts:16) | admin, settings | cacheStable=false, cacheScope=turn | sdk/client | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | SECRETS_INFO | core | [packages/core/src/features/secrets/providers/secrets-status.ts:168](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/providers/secrets-status.ts:168) | secrets, settings | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
@@ -690,10 +698,10 @@ These are not per-action/provider defects, but they determine whether the rows b
 | userPersonalityPreferences | core | [packages/core/src/features/advanced-capabilities/personality/providers/user-personality.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/providers/user-personality.ts:16) | general, agent_internal | cacheStable=false, cacheScope=turn | database/memory | text, values, data | limit | catch | looks aligned; verify segment hashing |
 | WORLD | core | [packages/core/src/features/basic-capabilities/providers/world.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/world.ts:20) | general | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
 | RS_SDK_BOT_STATE | plugin:app-2004scape | [plugins/app-2004scape/src/providers/bot-state.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/bot-state.ts:14) | game, automation, world, state | cacheStable=false, cacheScope=turn | runtime-service | text | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| RS_SDK_GOALS | plugin:app-2004scape | [plugins/app-2004scape/src/providers/goals.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/goals.ts:157) | game, automation, world, state, tasks | cacheStable=false, cacheScope=turn | runtime-service | text | slice, truncate | catch | looks aligned; verify segment hashing |
+| RS_SDK_GOALS | plugin:app-2004scape | [plugins/app-2004scape/src/providers/goals.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/goals.ts:157) | game, automation, world, state, tasks | cacheStable=false, cacheScope=turn | runtime-service | text | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | RS_SDK_MAP_AREA | plugin:app-2004scape | [plugins/app-2004scape/src/providers/map-area.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/map-area.ts:95) | game, automation, world, state | cacheStable=false, cacheScope=turn | sdk/client, runtime-service | text | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | RS_SDK_WORLD_KNOWLEDGE | plugin:app-2004scape | [plugins/app-2004scape/src/providers/world-knowledge.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/world-knowledge.ts:83) | game, automation, world, state, knowledge | cacheStable=true, cacheScope=agent | runtime-service | text | slice, truncate | catch | looks aligned; verify segment hashing |
-| app_browser_workspace | plugin:app-browser | [plugins/app-browser/src/provider.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/provider.ts:57) | browser, web | cacheStable=false, cacheScope=turn | - | text, data | - | catch | looks aligned; verify segment hashing |
+| app_browser_workspace | plugin:app-browser | [plugins/app-browser/src/provider.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/provider.ts:57) | browser, web | cacheStable=false, cacheScope=turn | - | text, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | androidContacts | plugin:app-contacts | [plugins/app-contacts/src/providers/contacts.ts:41](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-contacts/src/providers/contacts.ts:41) | contacts, messaging | cacheStable=false, cacheScope=turn | - | text, values, data | limit | catch | looks aligned; verify segment hashing |
 | activity-profile | plugin:app-lifeops | [plugins/app-lifeops/src/providers/activity-profile.ts:32](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/providers/activity-profile.ts:32) | screen_time, tasks, health | cacheScope=turn | browser/device | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | appBlocker | plugin:app-lifeops | [plugins/app-lifeops/src/providers/app-blocker.ts:11](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/providers/app-blocker.ts:11) | screen_time, settings | cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
@@ -710,7 +718,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 | SCAPE_INVENTORY | plugin:app-scape | [plugins/app-scape/src/providers/inventory.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/providers/inventory.ts:21) | game, automation, world, state | cacheStable=false, cacheScope=turn | runtime-service | text | slice, truncate | catch | looks aligned; verify segment hashing |
 | SCAPE_JOURNAL | plugin:app-scape | [plugins/app-scape/src/providers/journal.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/providers/journal.ts:23) | game, automation, world, state, memory, tasks | cacheStable=false, cacheScope=turn | runtime-service, database/memory | text | slice, truncate | catch | looks aligned; verify segment hashing |
 | SCAPE_NEARBY | plugin:app-scape | [plugins/app-scape/src/providers/nearby.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/providers/nearby.ts:27) | game, automation, world, state | cacheStable=false, cacheScope=turn | sdk/client, runtime-service | text | slice, truncate | catch | looks aligned; verify segment hashing |
-| stewardBalance | plugin:app-steward | [plugins/app-steward/src/providers/steward-balance.ts:112](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/providers/steward-balance.ts:112) | finance, wallet, crypto | cacheStable=false, cacheScope=turn | fetch/http | text, data | timeout/retry | catch | looks aligned; verify segment hashing |
+| stewardBalance | plugin:app-steward | [plugins/app-steward/src/providers/steward-balance.ts:112](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/providers/steward-balance.ts:112) | finance, wallet, crypto | cacheStable=false, cacheScope=turn | fetch/http | text, data | slice, limit, truncate, timeout/retry | catch | looks aligned; verify segment hashing |
 | stewardReceiveAddress | plugin:app-steward | [plugins/app-steward/src/providers/steward-receive-address.ts:32](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/providers/steward-receive-address.ts:32) | finance, wallet, crypto | cacheStable=false, cacheScope=turn | fetch/http | text, data | timeout/retry | catch | looks aligned; verify segment hashing |
 | wifiNetworks | plugin:app-wifi | [plugins/app-wifi/src/providers/networks.ts:28](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-wifi/src/providers/networks.ts:28) | system | cacheStable=false, cacheScope=turn | - | text, values, data | limit | catch | looks aligned; verify segment hashing |
 | ACTIVE_WORKSPACE_CONTEXT | plugin:plugin-agent-orchestrator | [plugins/plugin-agent-orchestrator/src/providers/active-workspace-context.ts:60](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/providers/active-workspace-context.ts:60) | code, tasks, agent_internal | cacheStable=false, cacheScope=turn | runtime-service | values, data | slice, truncate | catch | looks aligned; verify segment hashing |
@@ -734,7 +742,7 @@ These are not per-action/provider defects, but they determine whether the rows b
 | elizacloud_health | plugin:plugin-elizacloud | [plugins/plugin-elizacloud/cloud-providers/container-health.ts:11](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/cloud-providers/container-health.ts:11) | settings, finance | cacheStable=false, cacheScope=turn; custom cache logic detected | runtime-service, cache | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | elizacloud_models | plugin:plugin-elizacloud | [plugins/plugin-elizacloud/cloud-providers/model-registry.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/cloud-providers/model-registry.ts:17) | settings, finance | cacheStable=false, cacheScope=turn; custom cache logic detected | runtime-service, cache | text, values, data, delegated-return | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | elizacloud_status | plugin:plugin-elizacloud | [plugins/plugin-elizacloud/cloud-providers/cloud-status.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/cloud-providers/cloud-status.ts:12) | settings, finance | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| farcasterProfile | plugin:plugin-farcaster | [plugins/plugin-farcaster/providers/profileProvider.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/providers/profileProvider.ts:14) | social_posting, messaging, connectors | cacheStable=false, cacheScope=turn | sdk/client, runtime-service | text, values, data | truncate | catch | looks aligned; verify segment hashing |
+| farcasterProfile | plugin:plugin-farcaster | [plugins/plugin-farcaster/providers/profileProvider.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/providers/profileProvider.ts:14) | social_posting, messaging, connectors | cacheStable=false, cacheScope=turn | sdk/client, runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | farcasterThread | plugin:plugin-farcaster | [plugins/plugin-farcaster/providers/threadProvider.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/providers/threadProvider.ts:23) | social_posting, messaging, connectors | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | farcasterTimeline | plugin:plugin-farcaster | [plugins/plugin-farcaster/providers/timelineProvider.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/providers/timelineProvider.ts:17) | social_posting, messaging, connectors | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | limit | catch | looks aligned; verify segment hashing |
 | FEISHU_CHAT_STATE | plugin:plugin-feishu | [plugins/plugin-feishu/src/providers/chatState.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-feishu/src/providers/chatState.ts:14) | messaging, connectors | cacheStable=false, cacheScope=turn | - | text | - | not statically obvious | looks aligned; verify segment hashing |
@@ -777,13 +785,13 @@ These are not per-action/provider defects, but they determine whether the rows b
 | slackPins | plugin:plugin-slack | [plugins/plugin-slack/src/providers/slackPins.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/providers/slackPins.ts:25) | messaging, connectors | cacheScope=conversation | runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | slackWorkspaceInfo | plugin:plugin-slack | [plugins/plugin-slack/src/providers/workspaceInfo.ts:9](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/providers/workspaceInfo.ts:9) | messaging, connectors | cacheScope=agent | sdk/client, runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | socialAlpha | plugin:plugin-social-alpha | [plugins/plugin-social-alpha/src/providers/socialAlphaProvider.ts:140](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-social-alpha/src/providers/socialAlphaProvider.ts:140) | finance, crypto, social_posting | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
-| streamStatus | plugin:plugin-streaming | [plugins/plugin-streaming/src/core.ts:696](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-streaming/src/core.ts:696) | media, automation | cacheStable=false, cacheScope=turn | - | text, data | - | catch | looks aligned; verify segment hashing |
-| SUNO_STATUS | plugin:plugin-suno | [plugins/plugin-suno/src/providers/suno.ts:91](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/providers/suno.ts:91) | media | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
+| streamStatus | plugin:plugin-streaming | [plugins/plugin-streaming/src/core.ts:696](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-streaming/src/core.ts:696) | media, automation | cacheStable=false, cacheScope=turn | - | text, data | timeout/retry | catch | looks aligned; verify segment hashing |
+| SUNO_STATUS | plugin:plugin-suno | [plugins/plugin-suno/src/providers/suno.ts:91](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/providers/suno.ts:91) | media | cacheStable=false, cacheScope=turn | - | text, values, data | limit | not statically obvious | looks aligned; verify segment hashing |
 | tailscaleStatus | plugin:plugin-tailscale | [plugins/plugin-tailscale/src/providers/tailscale-status.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/providers/tailscale-status.ts:23) | settings, connectors | cacheStable=false, cacheScope=turn | - | text, values, data | - | not statically obvious | looks aligned; verify segment hashing |
-| phala-derive-key | plugin:plugin-tee | [plugins/plugin-tee/src/providers/deriveKey.ts:154](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tee/src/providers/deriveKey.ts:154) | secrets, agent_internal | cacheStable=false, cacheScope=turn | - | text, values, data | - | catch | looks aligned; verify segment hashing |
+| phala-derive-key | plugin:plugin-tee | [plugins/plugin-tee/src/providers/deriveKey.ts:154](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tee/src/providers/deriveKey.ts:154) | secrets, agent_internal | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | phala-remote-attestation | plugin:plugin-tee | [plugins/plugin-tee/src/providers/remoteAttestation.ts:58](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tee/src/providers/remoteAttestation.ts:58) | secrets, agent_internal | cacheStable=false, cacheScope=turn | - | text, values, data, throws | truncate | throws, catch | looks aligned; verify segment hashing |
 | twitchChannels | plugin:plugin-twitch | [plugins/plugin-twitch/src/providers/twitchChannels.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/providers/twitchChannels.ts:23) | social, connectors | cacheStable=false, cacheScope=turn | runtime-service | text, data | slice, truncate | catch | looks aligned; verify segment hashing |
-| twitchUserContext | plugin:plugin-twitch | [plugins/plugin-twitch/src/providers/userContext.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/providers/userContext.ts:27) | social, connectors | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | truncate | catch | looks aligned; verify segment hashing |
+| twitchUserContext | plugin:plugin-twitch | [plugins/plugin-twitch/src/providers/userContext.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/providers/userContext.ts:27) | social, connectors | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | VISION_PERCEPTION | plugin:plugin-vision | [plugins/plugin-vision/src/provider.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/provider.ts:19) | media, browser | cacheStable=false, cacheScope=turn | runtime-service, browser/device | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | BIRDEYE_CRYPTOCURRENCY_MARKET_DATA | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/birdeye/providers/market.ts:50](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/providers/market.ts:50) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | BIRDEYE_TRENDING_CRYPTOCURRENCY | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/birdeye/providers/trending.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/providers/trending.ts:55) | finance, crypto, wallet | cacheStable=false, cacheScope=turn; custom cache logic detected | runtime-service, cache | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
@@ -791,9 +799,9 @@ These are not per-action/provider defects, but they determine whether the rows b
 | degen-lp-meteora-position-provider | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/meteora/providers/positionProvider.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/meteora/providers/positionProvider.ts:23) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | get-balance | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts:19](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts:19) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | llm | text, values, data, throws | limit | throws, catch | looks aligned; verify segment hashing |
 | KAMINO_LENDING | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoProvider.ts:93](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoProvider.ts:93) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | runtime-service | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
-| KAMINO_LIQUIDITY | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | runtime-service | values | slice, truncate | catch | looks aligned; verify segment hashing |
+| KAMINO_LIQUIDITY | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | runtime-service | values | slice, limit, truncate | catch | looks aligned; verify segment hashing |
 | KAMINO_POOL | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoPoolProvider.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoPoolProvider.ts:12) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | runtime-service | values | slice, truncate | catch | looks aligned; verify segment hashing |
-| options.name | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | - | text, values, data | - | catch | looks aligned; verify segment hashing |
+| options.name | plugin:plugin-wallet | [plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | orca-lp-position-provider | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/orca/providers/positionProvider.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/orca/providers/positionProvider.ts:26) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | raydium-lp-position-provider | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/dex/raydium/providers/positionProvider.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/dex/raydium/providers/positionProvider.ts:24) | finance, crypto, wallet | cacheStable=false, cacheScope=turn | - | text, values, data | slice, truncate | catch | looks aligned; verify segment hashing |
 | solana-wallet | plugin:plugin-wallet | [plugins/plugin-wallet/src/chains/solana/providers/wallet.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/providers/wallet.ts:12) | finance, crypto, wallet | cacheStable=false, cacheScope=turn; custom cache logic detected | cache | text, values, data | slice, limit, truncate | catch | looks aligned; verify segment hashing |
@@ -820,9 +828,8 @@ These are not per-action/provider defects, but they determine whether the rows b
 
 | Cleanup assessment | Count |
 | --- | ---: |
-| looks aligned; verify runtime trajectory event | 264 |
+| looks aligned; verify runtime trajectory event | 389 |
 | looks aligned; verify segment hashing | 202 |
-| cap external results/timeouts | 126 |
 
 ## Action Output Details
 
@@ -905,7 +912,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/trajectories.ts:340](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:340)
@@ -971,7 +978,7 @@ logger.warn(`[annotate-trajectory] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/tasks-coding.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:34)
@@ -1020,7 +1027,7 @@ logger.warn(`[archive-coding-task] failed: ${msg}`);
 
 </details>
 
-<details><summary>BROWSER_AUTOFILL_LOGIN - agent - packages/agent/src/actions/browser-autofill-login.ts:148</summary>
+<details><summary>BROWSER_AUTOFILL_LOGIN - agent - packages/agent/src/actions/browser-autofill-login.ts:150</summary>
 
 - Description: "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow =...
 - Contexts: browser, web, secrets
@@ -1030,10 +1037,10 @@ logger.warn(`[archive-coding-task] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/agent/src/actions/browser-autofill-login.ts:148](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-autofill-login.ts:148)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/agent/src/actions/browser-autofill-login.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-autofill-login.ts:150)
 
 Output / return cases observed:
 
@@ -1128,7 +1135,7 @@ return {
 - Sub-actions: -
 - External APIs: sdk/client, browser/device
 - Stack output: success, text, values, data, error
-- Limits/caps: pagination, timeout/retry
+- Limits/caps: limit, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/browser-session.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/browser-session.ts:157)
@@ -1170,7 +1177,7 @@ logger.warn(`[browser-session] Failed: ${messageText}`);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/logs.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:332)
@@ -1524,7 +1531,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/runtime/custom-actions.ts:613](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/custom-actions.ts:613)
@@ -1697,7 +1704,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data
-- Limits/caps: -
+- Limits/caps: truncate, timeout/retry
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/runtime.ts:136](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:136)
@@ -1820,7 +1827,7 @@ logger.error(`[connector-control] disconnect fallback error: ${msg}`);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data, error
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/memories.ts:290](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:290)
@@ -1951,7 +1958,7 @@ return {
 - Sub-actions: -
 - External APIs: fetch/http, database/memory
 - Stack output: success, text, values, data, error
-- Limits/caps: timeout/retry
+- Limits/caps: limit, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/database.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:354)
@@ -2017,7 +2024,7 @@ logger.warn(`[execute-database-query] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data
-- Limits/caps: limit, timeout/retry
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/logs.ts:219](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/logs.ts:219)
@@ -2066,7 +2073,7 @@ logger.warn(`[export-logs] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/trajectories.ts:197](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/trajectories.ts:197)
@@ -2116,7 +2123,7 @@ logger.warn(`[export-trajectory-dataset] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: timeout/retry
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/extract-page.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/extract-page.ts:48)
@@ -2174,7 +2181,7 @@ logger.warn(`[extract-page] Hosted extract failed: ${messageText}`);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data, error
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/memories.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/memories.ts:189)
@@ -2479,7 +2486,7 @@ logger.warn(`[get-runtime-status] failed: ${msg}`);
 
 </details>
 
-<details><summary>GET_SELF_STATUS - agent - packages/agent/src/actions/get-self-status.ts:82</summary>
+<details><summary>GET_SELF_STATUS - agent - packages/agent/src/actions/get-self-status.ts:84</summary>
 
 - Description: "Get detailed self-status about a specific module (wallet, permissions, plugins, etc.) or all modules. " + "Use this when you need more detail than the always-on summary provides."
 - Contexts: ...GET_SELF_STATUS_CONTEXTS
@@ -2489,10 +2496,10 @@ logger.warn(`[get-runtime-status] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/agent/src/actions/get-self-status.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/get-self-status.ts:82)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/agent/src/actions/get-self-status.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/get-self-status.ts:84)
 
 Output / return cases observed:
 
@@ -2513,11 +2520,11 @@ if (!registry) {
 ```
 
 ```ts
-const text = await registry.getDetail(runtime, module, detailLevel);
+: `${rawText.slice(0, maxChars)}\n…[self-status truncated]`;
     return {
       text,
       values: { module, detailLevel },
-      data: { actionName: "GET_SELF_STATUS", module, detailLevel },
+      data: {
 ```
 
 </details>
@@ -2591,7 +2598,7 @@ logger.warn(`[get-table-data] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/stream-control.ts:39](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:39)
@@ -2642,7 +2649,7 @@ const data = result.data as Record<string, unknown>;
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/stream-control.ts:125](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/stream-control.ts:125)
@@ -2882,7 +2889,7 @@ logger.error("[LINK_ENTITY] Error:", errMsg);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, boolean-return, delegated-return
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/connector-control.ts:531](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/connector-control.ts:531)
@@ -2993,7 +3000,7 @@ logger.error(`[connector-control] list error: ${msg}`);
 - Sub-actions: -
 - External APIs: fetch/http, database/memory
 - Stack output: success, text, values, data, boolean-return
-- Limits/caps: timeout/retry
+- Limits/caps: limit, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/database.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:59)
@@ -3142,7 +3149,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback, boolean-return, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/manage-tasks.ts:89](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/manage-tasks.ts:89)
@@ -3480,7 +3487,7 @@ logger.error("[READ_CHANNEL] Error:", errMsg);
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, values, data, error
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/entity-actions.ts:379](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:379)
@@ -3750,7 +3757,7 @@ return {
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data, error
-- Limits/caps: timeout/retry
+- Limits/caps: truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/runtime.ts:223](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:223)
@@ -3801,7 +3808,7 @@ logger.warn(`[reload-runtime-config] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/tasks-coding.ts:118](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/tasks-coding.ts:118)
@@ -3860,7 +3867,7 @@ logger.warn(`[reopen-coding-task] failed: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/entity-actions.ts:904](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/entity-actions.ts:904)
@@ -3917,7 +3924,7 @@ logger.error("[RESOLVE_MERGE_CANDIDATE] Error:", errMsg);
 
 </details>
 
-<details><summary>RESTART_AGENT - agent - packages/agent/src/actions/restart.ts:82</summary>
+<details><summary>RESTART_AGENT - agent - packages/agent/src/actions/restart.ts:83</summary>
 
 - Description: "Restart the agent process. This stops the runtime, rebuilds if source " + "files changed, and relaunches — picking up new code, config, or plugins."
 - Contexts: admin, agent_internal, settings
@@ -3927,10 +3934,10 @@ logger.error("[RESOLVE_MERGE_CANDIDATE] Error:", errMsg);
 - Sub-actions: -
 - External APIs: database/memory
 - Stack output: success, text, values, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/agent/src/actions/restart.ts:82](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/restart.ts:82)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/agent/src/actions/restart.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/restart.ts:83)
 
 Output / return cases observed:
 
@@ -3976,7 +3983,7 @@ return {
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, values, data
-- Limits/caps: timeout/retry
+- Limits/caps: truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/runtime.ts:313](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/runtime.ts:313)
@@ -4157,7 +4164,7 @@ logger.error(`[connector-control] save error: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, delegated-return
-- Limits/caps: -
+- Limits/caps: limit, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/scratchpad.ts:142](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:142)
@@ -4213,7 +4220,7 @@ if (!title) return missingParam("title");
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/scratchpad.ts:441](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:441)
@@ -4270,7 +4277,7 @@ if (readBooleanParam(params, "confirm") !== true) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, delegated-return
-- Limits/caps: -
+- Limits/caps: limit, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/scratchpad.ts:220](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:220)
@@ -4319,7 +4326,7 @@ const topicId = readStringParam(params, "topicId");
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/scratchpad.ts:360](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:360)
@@ -4392,7 +4399,7 @@ if (readBooleanParam(params, "confirm") !== true) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, delegated-return
-- Limits/caps: slice, limit, truncate
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/scratchpad.ts:284](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/scratchpad.ts:284)
@@ -4448,7 +4455,7 @@ const query = readStringParam(params, "query");
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, throws, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/web-search.ts:665](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/web-search.ts:665)
@@ -4661,7 +4668,7 @@ logger.error("[SEARCH_ENTITY] Error:", errMsg);
 - Sub-actions: -
 - External APIs: fetch/http, database/memory
 - Stack output: success, text, values, data, error
-- Limits/caps: slice, limit, truncate, timeout/retry
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/database.ts:540](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/database.ts:540)
@@ -4823,7 +4830,7 @@ return {
 
 </details>
 
-<details><summary>SHELL_COMMAND - agent - packages/agent/src/actions/terminal.ts:255</summary>
+<details><summary>SHELL_COMMAND - agent - packages/agent/src/actions/terminal.ts:260</summary>
 
 - Description: "Run a single explicit shell command that the user provided directly. " + "Only use when the user gives a specific command like 'run ls -la' or 'execute npm install'. " + "Do NOT use for building projects, creating we...
 - Contexts: terminal, code, files, admin
@@ -4833,10 +4840,10 @@ return {
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/agent/src/actions/terminal.ts:255](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/terminal.ts:255)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/agent/src/actions/terminal.ts:260](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/terminal.ts:260)
 
 Output / return cases observed:
 
@@ -4984,7 +4991,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/settings-actions.ts:612](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:612)
@@ -5049,7 +5056,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/settings-actions.ts:462](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:462)
@@ -5370,7 +5377,7 @@ logger.error(`[uninstall-plugin] error: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/settings-actions.ts:263](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:263)
@@ -5426,7 +5433,7 @@ const providerOption = getOnboardingProviderOption(normalizedProvider);
 
 </details>
 
-<details><summary>UPDATE_CORE_PROMPT - agent - packages/agent/src/actions/update-prompt.ts:10</summary>
+<details><summary>UPDATE_CORE_PROMPT - agent - packages/agent/src/actions/update-prompt.ts:12</summary>
 
 - Description: "Overrides a core system prompt in the database cache. Use this to permanently change how the agent thinks or formats its output."
 - Contexts: admin, settings, agent_internal
@@ -5436,10 +5443,10 @@ const providerOption = getOnboardingProviderOption(normalizedProvider);
 - Sub-actions: -
 - External APIs: cache
 - Stack output: success, text, values
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/agent/src/actions/update-prompt.ts:10](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-prompt.ts:10)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/agent/src/actions/update-prompt.ts:12](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/update-prompt.ts:12)
 
 Output / return cases observed:
 
@@ -5478,7 +5485,7 @@ logger.error(`[UPDATE_CORE_PROMPT] Error updating prompt: ${error}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/actions/settings-actions.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/actions/settings-actions.ts:120)
@@ -5642,7 +5649,7 @@ logger.error(`[update-plugin] error: ${msg}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/agent/src/runtime/roles/src/action.ts:638](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/runtime/roles/src/action.ts:638)
@@ -5821,7 +5828,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-affiliate/actions/image-generation.ts:707)
@@ -5904,7 +5911,7 @@ return {
 
 </details>
 
-<details><summary>BUILDER_CHAT - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:189</summary>
+<details><summary>BUILDER_CHAT - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:195</summary>
 
 - Description: `Conversation to understand user intent and explain building concepts. USE when: - User asks questions: "what's a companion?", "how do style directives work?" - User needs clarification before you can build - Early in...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -5914,10 +5921,10 @@ return {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:189)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:195](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/builder-chat.ts:195)
 
 Output / return cases observed:
 
@@ -5955,7 +5962,7 @@ logger.warn("[BUILDER_CHAT] Failed to parse response");
 
 ```ts
 await callback({
-      text: parsed.text,
+      text: responseText,
       thought: parsed.thought,
       metadata: {
 ```
@@ -5964,13 +5971,13 @@ await callback({
 });
     return {
       success: true,
-      text: parsed.text,
+      text: responseText,
       values: {
 ```
 
 </details>
 
-<details><summary>CREATE_CHARACTER - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:132</summary>
+<details><summary>CREATE_CHARACTER - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:138</summary>
 
 - Description: "User has confirmed they want to save the character. ONLY use when: (1) a character definition exists in the UI with at least a name populated from previous SUGGEST_CHANGES, AND (2) user explicitly confirms with phras...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -5980,10 +5987,10 @@ await callback({
 - Sub-actions: -
 - External APIs: database/memory
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:132)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:138](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/create-character.ts:138)
 
 Output / return cases observed:
 
@@ -6068,9 +6075,9 @@ logger.error("[CREATE_CHARACTER] Failed to save character to database");
 ```
 
 ```ts
-// Callback with success and character ID for frontend redirect
+);
     await callback({
-      text: `Done! I've saved ${savedCharacter.name}. You can now enter **Edit Mode** to chat with your character while refining them, or go to **Chat** for a full conversation. In Edit Mode, you can also use **Test Response** to preview how they'd answer specific prompts.`,
+      text: callbackText,
       metadata: {
         action: "CREATE_CHARACTER",
 ```
@@ -6163,7 +6170,7 @@ return {
 
 </details>
 
-<details><summary>GUIDE_ONBOARDING - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:132</summary>
+<details><summary>GUIDE_ONBOARDING - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:138</summary>
 
 - Description: `First-time welcome for new users. Gives a brief intro to what's possible (companions, assistants, hybrids). This action is ONLY available for users who haven't been onboarded yet. After running once, it's disabled - ...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -6173,10 +6180,10 @@ return {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:132)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:138](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/guide-onboarding.ts:138)
 
 Output / return cases observed:
 
@@ -6214,7 +6221,7 @@ await markOnboarded(runtime, entityId);
 
 ```ts
 await callback({
-      text: parsed.text,
+      text: responseText,
       thought: parsed.thought,
       metadata: {
 ```
@@ -6223,13 +6230,13 @@ await callback({
 });
     return {
       success: true,
-      text: parsed.text,
-      values: { success: true, onboarded: true },
+      text: responseText,
+      values: {
 ```
 
 </details>
 
-<details><summary>SAVE_CHANGES - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:311</summary>
+<details><summary>SAVE_CHANGES - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:318</summary>
 
 - Description: "User has confirmed they want to save changes to their existing character. Use when user says: 'yes', 'save it', 'apply changes', 'looks good', 'do it', 'update it'. Only available in build mode when editing an EXISTI...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -6239,10 +6246,10 @@ await callback({
 - Sub-actions: -
 - External APIs: llm, database/memory
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:311](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:311)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:318](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/save-changes.ts:318)
 
 Output / return cases observed:
 
@@ -6344,7 +6351,7 @@ logger.error({ error: errorMessage }, "[SAVE_CHANGES] Failed to parse changes JS
 
 </details>
 
-<details><summary>SUGGEST_CHANGES - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:304</summary>
+<details><summary>SUGGEST_CHANGES - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:311</summary>
 
 - Description: "User is asking about character design, requesting modifications, or needs guidance on best practices. Use for: 'make it funnier', 'improve the bio', 'how should I structure the system prompt?', 'add personality trait...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -6354,10 +6361,10 @@ logger.error({ error: errorMessage }, "[SAVE_CHANGES] Failed to parse changes JS
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:304](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:304)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:311](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/suggest-changes.ts:311)
 
 Output / return cases observed:
 
@@ -6395,7 +6402,7 @@ logger.warn("[SUGGEST_CHANGES] Failed to parse response - missing text");
 
 ```ts
 await callback({
-      text: parsedResponse.text,
+      text: responseText,
       thought: parsedResponse.thought,
       metadata: responseMetadata,
 ```
@@ -6404,13 +6411,13 @@ await callback({
 });
     return {
       success: true,
-      text: parsedResponse.text,
+      text: responseText,
       values: {
 ```
 
 </details>
 
-<details><summary>TEST_RESPONSE - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:149</summary>
+<details><summary>TEST_RESPONSE - cloud:plugin-character-builder - cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:155</summary>
 
 - Description: "User wants to test how the character would respond. Use when: 'how would you respond to...', 'test the character', 'let me see how they talk', 'show me how you'd answer', 'roleplay as the character'. Only available i...
 - Contexts: CHARACTER_BUILDER_CONTEXTS
@@ -6420,10 +6427,10 @@ await callback({
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:149](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:149)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:155](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/actions/test-response.ts:155)
 
 Output / return cases observed:
 
@@ -6477,7 +6484,7 @@ logger.warn("[TEST_RESPONSE] Failed to parse response");
 
 ```ts
 await callback({
-      text: `*[Testing ${runtime.character.name}]*\n\n${parsed.text}`,
+      text: `*[Testing ${runtime.character.name}]*\n\n${responseText}`,
       thought: parsed.thought,
       metadata: {
 ```
@@ -6486,7 +6493,7 @@ await callback({
 });
     return {
       success: true,
-      text: parsed.text,
+      text: responseText,
       values: {
 ```
 
@@ -6574,7 +6581,7 @@ return {
 
 </details>
 
-<details><summary>actionName - cloud:plugin-mcp - cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:85</summary>
+<details><summary>actionName - cloud:plugin-mcp - cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:91</summary>
 
 - Description: description
 - Contexts: MCP_ACTION_CONTEXTS
@@ -6584,10 +6591,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:85](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:85)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:91](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts:91)
 
 Output / return cases observed:
 
@@ -6616,11 +6623,11 @@ logger.error({ missing, params }, `[MCP] Missing required params for ${actionNam
 ```
 
 ```ts
-logger.error({ serverName, toolName: tool.name, output: toolOutput }, "[MCP] Tool error");
+logger.error({ serverName, toolName: tool.name, output: boundedToolOutput }, "[MCP] Tool error");
         return {
           success: false,
-          error: toolOutput || "Tool execution failed",
-          text: toolOutput,
+          error: boundedToolOutput || "Tool execution failed",
+          text: boundedToolOutput,
 ```
 
 ```ts
@@ -6634,7 +6641,7 @@ if (callback && hasAttachments && attachments.length > 0) {
 ```ts
 return {
         success: true,
-        text: toolOutput,
+        text: boundedToolOutput,
         values: {
 ```
 
@@ -6650,7 +6657,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data, error, callback
-- Limits/caps: -
+- Limits/caps: limit, pagination
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-mcp/actions/search-actions.ts:298)
@@ -6822,7 +6829,7 @@ return {
 
 </details>
 
-<details><summary>OAUTH_CONNECT - cloud:plugin-oauth - cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:25</summary>
+<details><summary>OAUTH_CONNECT - cloud:plugin-oauth - cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:27</summary>
 
 - Description: "Connect an OAuth platform for the user. ALWAYS execute this action when the user asks to connect — generate a fresh authorization URL every time, even if one was sent before (previous links expire). Never tell the us...
 - Contexts: connectors, settings, secrets
@@ -6832,10 +6839,10 @@ return {
 - Sub-actions: -
 - External APIs: filesystem
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:25)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-connect.ts:27)
 
 Output / return cases observed:
 
@@ -6863,11 +6870,11 @@ const userResult = await lookupUser(message.entityId as string, actionName);
 ```
 
 ```ts
-const email = connections.find((c) => c.status === "active")?.email || "";
+"";
       return {
         text: `Your ${platformName} account is already connected${email ? ` (${email})` : ""}.`,
         success: true,
-        data: { actionName, alreadyConnected: true },
+        data: { actionName, alreadyConnected: true, connectionLimit: OAUTH_CONNECTION_LIMIT },
 ```
 
 ```ts
@@ -7062,7 +7069,7 @@ if (callback) await callback({ text, actions: [actionName] });
 
 </details>
 
-<details><summary>OAUTH_REVOKE - cloud:plugin-oauth - cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:27</summary>
+<details><summary>OAUTH_REVOKE - cloud:plugin-oauth - cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:29</summary>
 
 - Description: "Disconnect an OAuth platform. Removes stored tokens and revokes access. Use when user wants to unlink or remove a connected account. Available platforms: google, hubspot, linear, slack, github, notion, twitter, asana...
 - Contexts: connectors, settings, secrets
@@ -7072,10 +7079,10 @@ if (callback) await callback({ text, actions: [actionName] });
 - Sub-actions: -
 - External APIs: filesystem
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:27)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-oauth/actions/oauth-revoke.ts:29)
 
 Output / return cases observed:
 
@@ -7143,7 +7150,7 @@ if (callback) await callback({ text, actions: [actionName] });
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback, throws
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-web-search/src/actions/webSearch.ts:179)
@@ -7439,7 +7446,7 @@ if (callback) {
 
 </details>
 
-<details><summary>CLIPBOARD_APPEND - core - packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:57</summary>
+<details><summary>CLIPBOARD_APPEND - core - packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:64</summary>
 
 - Description: spec.description
 - Contexts: files, knowledge, agent_internal
@@ -7448,11 +7455,11 @@ if (callback) {
 - Parameters: {id}, {content}
 - Sub-actions: -
 - External APIs: browser/device
-- Stack output: success, text, callback
-- Limits/caps: -
+- Stack output: success, text, data, callback
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:57)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts:64)
 
 Output / return cases observed:
 
@@ -7474,7 +7481,7 @@ if (callback) {
 ```ts
 if (callback) {
 				await callback({
-					text: `I couldn't determine which note to update or what to add. Available entries:\n${entriesContext}`,
+					text: `I couldn't determine which note to update or what to add. Available entries:\n${entriesContext}${omittedContext}`,
 					actions: ["CLIPBOARD_APPEND_FAILED"],
 					source: message.content.source,
 ```
@@ -7489,7 +7496,7 @@ if (callback) {
 ```ts
 if (callback) {
 					await callback({
-						text: `Clipboard entry "${appendInfo.id}" not found. Available entries:\n${entriesContext}`,
+						text: `Clipboard entry "${appendInfo.id}" not found. Available entries:\n${entriesContext}${omittedContext}`,
 						actions: ["CLIPBOARD_APPEND_NOT_FOUND"],
 						source: message.content.source,
 ```
@@ -7510,10 +7517,10 @@ if (callback) {
 ```
 
 ```ts
-return { success: true, text: successMessage, entry };
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error("[ClipboardAppend] Error:", errorMsg);
+return {
+				success: true,
+				text: successMessage,
+				data: {
 ```
 
 ```ts
@@ -7533,7 +7540,7 @@ if (callback) {
 
 </details>
 
-<details><summary>CLIPBOARD_DELETE - core - packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:49</summary>
+<details><summary>CLIPBOARD_DELETE - core - packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:55</summary>
 
 - Description: spec.description
 - Contexts: files, knowledge, agent_internal
@@ -7543,10 +7550,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:49)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts:55)
 
 Output / return cases observed:
 
@@ -7568,7 +7575,7 @@ if (callback) {
 ```ts
 if (callback) {
 				await callback({
-					text: `I couldn't determine which note to delete. Available entries:\n${entriesContext}`,
+					text: `I couldn't determine which note to delete. Available entries:\n${entriesContext}${omittedContext}`,
 					actions: ["CLIPBOARD_DELETE_FAILED"],
 					source: message.content.source,
 ```
@@ -7627,7 +7634,7 @@ if (callback) {
 
 </details>
 
-<details><summary>CLIPBOARD_LIST - core - packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:16</summary>
+<details><summary>CLIPBOARD_LIST - core - packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:23</summary>
 
 - Description: spec.description
 - Contexts: files, knowledge, agent_internal
@@ -7636,11 +7643,11 @@ if (callback) {
 - Parameters: -
 - Sub-actions: -
 - External APIs: browser/device
-- Stack output: success, text, callback
-- Limits/caps: -
+- Stack output: success, text, data, callback
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:16)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts:23)
 
 Output / return cases observed:
 
@@ -7656,12 +7663,12 @@ if (callback) {
 }
 				return { success: true, text: "No entries", entries: [] };
 			}
-			const listText = entries
+			const visibleEntries = entries.slice(0, MAX_LIST_ENTRIES);
 ```
 
 ```ts
-const tagsStr = e.tags?.length ? ` [${e.tags.join(", ")}]` : "";
-					return `${i + 1}. **${e.title}** (${e.id})${tagsStr}\n   _Modified: ${e.modifiedAt.toLocaleDateString()}_`;
+const tagsStr = tags.length ? ` [${tags.join(", ")}]` : "";
+					return `${i + 1}. **${truncateText(e.title, MAX_TITLE_CHARS)}** (${e.id})${tagsStr}\n   _Modified: ${e.modifiedAt.toLocaleDateString()}_`;
 				})
 				.join("\n");
 ```
@@ -7675,10 +7682,10 @@ if (callback) {
 ```
 
 ```ts
-return { success: true, text: successMessage, entries };
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error("[ClipboardList] Error:", errorMsg);
+return {
+				success: true,
+				text: successMessage,
+				data: {
 ```
 
 ```ts
@@ -7698,7 +7705,7 @@ if (callback) {
 
 </details>
 
-<details><summary>CLIPBOARD_READ - core - packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:64</summary>
+<details><summary>CLIPBOARD_READ - core - packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:71</summary>
 
 - Description: spec.description
 - Contexts: files, knowledge, agent_internal
@@ -7707,11 +7714,11 @@ if (callback) {
 - Parameters: {id}, {from}, {lines}
 - Sub-actions: -
 - External APIs: browser/device
-- Stack output: success, text, callback
-- Limits/caps: -
+- Stack output: success, text, data, callback
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:64)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts:71)
 
 Output / return cases observed:
 
@@ -7754,10 +7761,10 @@ if (callback) {
 ```
 
 ```ts
-return { success: true, text: successMessage, entry };
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error("[ClipboardRead] Error:", errorMsg);
+return {
+				success: true,
+				text: successMessage,
+				data: {
 ```
 
 ```ts
@@ -7863,7 +7870,7 @@ if (callback) {
 
 </details>
 
-<details><summary>CLIPBOARD_WRITE - core - packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:77</summary>
+<details><summary>CLIPBOARD_WRITE - core - packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:84</summary>
 
 - Description: spec.description
 - Contexts: files, knowledge, agent_internal
@@ -7872,11 +7879,11 @@ if (callback) {
 - Parameters: {title}, {content}, {tags}
 - Sub-actions: -
 - External APIs: browser/device
-- Stack output: success, text, callback
-- Limits/caps: -
+- Stack output: success, text, data, callback
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:77](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:77)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts:84)
 
 Output / return cases observed:
 
@@ -7904,10 +7911,10 @@ if (callback) {
 ```
 
 ```ts
-return { success: true, text: successMessage, entryId: entry.id };
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error("[ClipboardWrite] Error:", errorMsg);
+return {
+				success: true,
+				text: successMessage,
+				data: { entryId: entry.id, title: entry.title },
 ```
 
 ```ts
@@ -7939,7 +7946,7 @@ if (callback) {
 - Stack output: success, text, data, callback, delegated-return
 - Limits/caps: -
 - Error/success handling: success branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-planning/actions/chain-example.ts:276](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts:276)
 
 Output / return cases observed:
@@ -8090,20 +8097,21 @@ if (callback)
 
 </details>
 
-<details><summary>DELETE_KNOWLEDGE_DOCUMENT - core - packages/core/src/features/knowledge/actions.ts:913</summary>
+<details><summary>DELETE_KNOWLEDGE_DOCUMENT - core - packages/core/src/features/knowledge/actions.ts:917</summary>
 
 - Description: "Deletes a knowledge document and all its fragments by document id. Use this when the user wants to remove a previously-stored document from the knowledge base."
-- Contexts: knowledge, memory, files
+- Contexts: knowledge
+- Context gate: `{ anyOf: ["knowledge"] }`
 - Role gate: `{ minRole: "ADMIN" }`
 - Validation: conditional - service gate, message/content gate
 - Parameters: {documentId}
 - Sub-actions: -
 - External APIs: runtime-service, database/memory
 - Stack output: success, text, values, data, error, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/knowledge/actions.ts:913](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:913)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/knowledge/actions.ts:917](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:917)
 
 Output / return cases observed:
 
@@ -8497,20 +8505,21 @@ if (callback && responses?.[0]?.content) {
 
 </details>
 
-<details><summary>INGEST_KNOWLEDGE_FROM_URL - core - packages/core/src/features/knowledge/actions.ts:569</summary>
+<details><summary>INGEST_KNOWLEDGE_FROM_URL - core - packages/core/src/features/knowledge/actions.ts:571</summary>
 
 - Description: "Fetches the content of a URL and stores it in the agent's knowledge base. Use this when the user wants to add a webpage, article, or downloadable document to knowledge by providing a link."
-- Contexts: knowledge, web, browser, files
+- Contexts: knowledge
+- Context gate: `{ anyOf: ["knowledge"] }`
 - Role gate: `{ minRole: "ADMIN" }`
 - Validation: conditional - service gate, message/content gate
 - Parameters: {url}, {includeImageDescriptions}
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, values, data, error, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/knowledge/actions.ts:569](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:569)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/knowledge/actions.ts:571](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:571)
 
 Output / return cases observed:
 
@@ -9111,7 +9120,7 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, database/memory
 - Stack output: success, text, values, data, error, throws, delegated-return
-- Limits/caps: truncate
+- Limits/caps: limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts:95)
@@ -9289,7 +9298,7 @@ Output / return cases observed:
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/personality/actions/persist-character.ts:59)
@@ -9374,7 +9383,8 @@ return {
 <details><summary>PROCESS_KNOWLEDGE - core - packages/core/src/features/knowledge/actions.ts:90</summary>
 
 - Description: "Process and store knowledge from a file path or text content into the knowledge base"
-- Contexts: knowledge, memory, files
+- Contexts: knowledge
+- Context gate: `{ anyOf: ["knowledge"] }`
 - Role gate: `{ minRole: "USER" }`
 - Validation: conditional - service gate, message/content gate, try/catch
 - Parameters: {filePath}, {content}, {title}
@@ -9383,7 +9393,7 @@ return {
 - Stack output: success, text, data, error, callback, throws
 - Limits/caps: -
 - Error/success handling: success branch, failure branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/knowledge/actions.ts:90](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:90)
 
 Output / return cases observed:
@@ -9455,9 +9465,9 @@ if (callback) {
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts:189)
 
 Output / return cases observed:
@@ -9521,7 +9531,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: filesystem, browser/device
 - Stack output: success, text, data, error, callback
-- Limits/caps: limit, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts:225)
@@ -9573,7 +9583,7 @@ if (callback) {
 - Stack output: success, text, data
 - Limits/caps: -
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts:24)
 
 Output / return cases observed:
@@ -9615,7 +9625,7 @@ return {
 - Stack output: success, text, data, error, throws
 - Limits/caps: -
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/trust/actions/recordTrustInteraction.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/recordTrustInteraction.ts:14)
 
 Output / return cases observed:
@@ -9672,7 +9682,7 @@ return {
 - Stack output: success, text, values, data, error, throws
 - Limits/caps: -
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/removeContact.ts:65)
 
 Output / return cases observed:
@@ -9743,7 +9753,7 @@ return {
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, data, error, callback, throws
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts:54)
@@ -9812,7 +9822,7 @@ if (callback) {
 - Stack output: success, text, values, data, error, callback, throws
 - Limits/caps: -
 - Error/success handling: success branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/basic-capabilities/actions/reply.ts:35](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/actions/reply.ts:35)
 
 Output / return cases observed:
@@ -10187,9 +10197,9 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/scheduleFollowUp.ts:96)
 
 Output / return cases observed:
@@ -10278,7 +10288,7 @@ return {
 - Stack output: success, text, values, data, error, callback, delegated-return
 - Limits/caps: -
 - Error/success handling: success branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts:97)
 
 Output / return cases observed:
@@ -10463,10 +10473,11 @@ return {
 
 </details>
 
-<details><summary>SEARCH_KNOWLEDGE - core - packages/core/src/features/knowledge/actions.ts:358</summary>
+<details><summary>SEARCH_KNOWLEDGE - core - packages/core/src/features/knowledge/actions.ts:359</summary>
 
 - Description: "Search the knowledge base for specific information"
-- Contexts: knowledge, memory, web
+- Contexts: knowledge
+- Context gate: `{ anyOf: ["knowledge"] }`
 - Role gate: `{ minRole: "USER" }`
 - Validation: conditional - service gate, message/content gate, try/catch
 - Parameters: {query}, {limit}
@@ -10476,7 +10487,7 @@ return {
 - Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
-- Source: [packages/core/src/features/knowledge/actions.ts:358](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:358)
+- Source: [packages/core/src/features/knowledge/actions.ts:359](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:359)
 
 Output / return cases observed:
 
@@ -10547,7 +10558,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data, callback
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/messaging/triage/actions/searchMessages.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/messaging/triage/actions/searchMessages.ts:16)
@@ -10660,7 +10671,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/sendMessage.ts:1333)
@@ -10778,7 +10789,7 @@ return {
 - Stack output: success, text, error
 - Limits/caps: -
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/framework/TrustAwarePlugin.ts:248)
 
 Output / return cases observed:
@@ -10961,49 +10972,6 @@ return {
 				text,
 				success: false,
 				values: { error: (error as Error).message },
-```
-
-</details>
-
-<details><summary>THINK - core - packages/core/src/features/advanced-capabilities/actions/think.ts:24</summary>
-
-- Description: spec.description
-- Contexts: general, knowledge, agent_internal
-- Role gate: `{ minRole: "USER" }`
-- Validation: conditional - message/content gate
-- Parameters: {topic}
-- Sub-actions: -
-- External APIs: llm
-- Stack output: success, text, values, data, error, callback
-- Limits/caps: -
-- Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/advanced-capabilities/actions/think.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/think.ts:24)
-
-Output / return cases observed:
-
-```ts
-if (callback) {
-				await callback({
-					thought,
-					text,
-					actions: ["THINK"] as string[],
-```
-
-```ts
-const now = Date.now();
-			return {
-				text,
-				values: {
-					success: true,
-```
-
-```ts
-logger.warn(`[Think] failed: ${messageText}`);
-			return {
-				text: `Thinking failed: ${messageText}`,
-				values: { success: false, error: "THINK_FAILED" },
-				data: { actionName: "THINK" },
 ```
 
 </details>
@@ -11208,7 +11176,7 @@ return {
 - Stack output: success, text, values, data, error, throws
 - Limits/caps: -
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/updateContact.ts:119)
 
 Output / return cases observed:
@@ -11374,20 +11342,21 @@ await callback({
 
 </details>
 
-<details><summary>UPDATE_KNOWLEDGE_DOCUMENT - core - packages/core/src/features/knowledge/actions.ts:756</summary>
+<details><summary>UPDATE_KNOWLEDGE_DOCUMENT - core - packages/core/src/features/knowledge/actions.ts:759</summary>
 
 - Description: "Replaces the text content of an existing knowledge document and re-fragments it. Use this when the user wants to revise the body of a previously-stored document by id."
-- Contexts: knowledge, memory, files
+- Contexts: knowledge
+- Context gate: `{ anyOf: ["knowledge"] }`
 - Role gate: `{ minRole: "ADMIN" }`
 - Validation: conditional - service gate, message/content gate
 - Parameters: {documentId}, {text}
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [packages/core/src/features/knowledge/actions.ts:756](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:756)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [packages/core/src/features/knowledge/actions.ts:759](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/knowledge/actions.ts:759)
 
 Output / return cases observed:
 
@@ -11547,9 +11516,9 @@ return {
 - Sub-actions: -
 - External APIs: sdk/client
 - Stack output: success, text, values, data, error
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/advanced-capabilities/actions/settings.ts:812](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/actions/settings.ts:812)
 
 Output / return cases observed:
@@ -11636,9 +11605,9 @@ return {
 - Sub-actions: -
 - External APIs: sdk/client, runtime-service
 - Stack output: success, text, values, data, callback
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/secrets/onboarding/action.ts:317](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/secrets/onboarding/action.ts:317)
 
 Output / return cases observed:
@@ -11738,9 +11707,9 @@ return {
 - Sub-actions: -
 - External APIs: sdk/client
 - Stack output: success, text, data, error, throws
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [packages/core/src/features/trust/actions/settings.ts:623](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/trust/actions/settings.ts:623)
 
 Output / return cases observed:
@@ -12166,9 +12135,9 @@ callback?.({ text, action: "WALK_TO" });
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-browser/src/action.ts:915](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/action.ts:915)
 
 Output / return cases observed:
@@ -12219,7 +12188,7 @@ await callback?.({ text });
 
 </details>
 
-<details><summary>PLAY_EMOTE - plugin:app-companion - plugins/app-companion/src/actions/emote.ts:21</summary>
+<details><summary>PLAY_EMOTE - plugin:app-companion - plugins/app-companion/src/actions/emote.ts:22</summary>
 
 - Description: "Play a one-shot emote animation on your 3D VRM avatar, then return to idle. " + "Use whenever a visible gesture, reaction, or trick helps convey emotion. " + "This is a silent non-blocking visual side action that doe...
 - Contexts: media, general
@@ -12229,10 +12198,10 @@ await callback?.({ text });
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, data
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/app-companion/src/actions/emote.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-companion/src/actions/emote.ts:21)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/app-companion/src/actions/emote.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-companion/src/actions/emote.ts:22)
 
 Output / return cases observed:
 
@@ -12245,8 +12214,8 @@ if (!emoteId) return { text: "", success: false };
 ```ts
 const emote = AGENT_EMOTE_BY_ID.get(emoteId);
     if (!emote) return { text: "", success: false };
-    try {
-      const response = await fetch(`http://localhost:${API_PORT}/api/emote`, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EMOTE_REQUEST_TIMEOUT_MS);
 ```
 
 ```ts
@@ -12260,8 +12229,9 @@ if (!response.ok) {
 ```ts
 } catch {
       return { text: "", success: false };
+    } finally {
+      clearTimeout(timeout);
     }
-    return {
 ```
 
 ```ts
@@ -12283,7 +12253,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/app-block.ts:409](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/app-block.ts:409)
@@ -12341,7 +12311,7 @@ case "status":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/autofill.ts:407](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/autofill.ts:407)
@@ -12440,9 +12410,9 @@ return {
 - Sub-actions: -
 - External APIs: cache
 - Stack output: success, text, values, data, error, callback, throws
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/book-travel.ts:332](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/book-travel.ts:332)
 
 Output / return cases observed:
@@ -12552,7 +12522,7 @@ return {
 - Sub-actions: calendarAction, proposeMeetingTimesAction, checkAvailabilityAction, updateMeetingPreferencesAction, calendlyAction, schedulingAction
 - External APIs: -
 - Stack output: success, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/calendar.ts:660](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/calendar.ts:660)
@@ -12831,9 +12801,9 @@ void _exhaustive;
 - Sub-actions: -
 - External APIs: filesystem
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/chat-thread.ts:217](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/chat-thread.ts:217)
 
 Output / return cases observed:
@@ -12881,7 +12851,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data, error, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, pagination
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:671)
@@ -13029,7 +12999,7 @@ const text = `Travel buffer ${result.bufferMinutes} min (Maps API) — ${result.
 
 </details>
 
-<details><summary>COMPUTER_USE - plugin:app-lifeops - plugins/app-lifeops/src/actions/computer-use.ts:300</summary>
+<details><summary>COMPUTER_USE - plugin:app-lifeops - plugins/app-lifeops/src/actions/computer-use.ts:307</summary>
 
 - Description: "Control the owner's full desktop / OS at the machine level via " + "@elizaos/plugin-computeruse. This is the ONLY action for OS-level desktop " + "operations: take a screenshot of the desktop / screen, click at " + "...
 - Contexts: ...COMPUTER_USE_CONTEXTS
@@ -13042,8 +13012,8 @@ const text = `Travel buffer ${result.bufferMinutes} min (Maps API) — ${result.
 - Stack output: success, text, values, data, error
 - Limits/caps: -
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/app-lifeops/src/actions/computer-use.ts:300](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:300)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/app-lifeops/src/actions/computer-use.ts:307](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/computer-use.ts:307)
 
 Output / return cases observed:
 
@@ -13115,7 +13085,7 @@ if (typeof base.handler !== "function") {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/connector.ts:1325](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/connector.ts:1325)
@@ -13283,7 +13253,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/health.ts:279](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/health.ts:279)
@@ -13398,7 +13368,7 @@ const fallback = `No ${metric} data recorded in the last ${days} day${days === 1
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, throws, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate, pagination
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/life.ts:1954](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/life.ts:1954)
@@ -13597,9 +13567,9 @@ if (overdue.length === 0) {
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, data, error, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/action.ts:375](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/action.ts:375)
 
 Output / return cases observed:
@@ -13817,7 +13787,7 @@ logger.warn({ error }, "[PASSWORD_MANAGER] Action failed");
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/payments.ts:271](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/payments.ts:271)
@@ -13859,7 +13829,7 @@ if (error instanceof LifeOpsServiceError) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: pagination, timeout/retry
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/profile.ts:342](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/profile.ts:342)
@@ -13925,7 +13895,7 @@ case "configure_escalation":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, throws, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate, pagination
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:447)
@@ -14142,9 +14112,9 @@ const message = error instanceof Error ? error.message : String(error);
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/remote-desktop.ts:305](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/remote-desktop.ts:305)
 
 Output / return cases observed:
@@ -14216,7 +14186,7 @@ case "revoke":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/resolve-request.ts:377](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/resolve-request.ts:377)
@@ -14259,7 +14229,7 @@ if (!resolved.ok) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data, error
-- Limits/caps: -
+- Limits/caps: slice
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/schedule.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/schedule.ts:132)
@@ -14293,7 +14263,7 @@ await callback?.({ text });
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, throws, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate, pagination
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:1170)
@@ -14612,7 +14582,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/subscriptions.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/subscriptions.ts:486)
@@ -14654,7 +14624,7 @@ if (error instanceof LifeOpsServiceError) {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, values, data, error
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/toggle-feature.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/toggle-feature.ts:153)
@@ -14696,7 +14666,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, pagination
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/lib/scheduling-handler.ts:830)
@@ -14747,7 +14717,7 @@ const fallback = `Updated meeting preferences (${updated.preferredStartLocal}–
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: limit, timeout/retry
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/voice-call.ts:776](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/voice-call.ts:776)
@@ -14805,7 +14775,7 @@ case "call_external":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/website-block.ts:787](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/website-block.ts:787)
@@ -14872,7 +14842,7 @@ case "request_permission":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, error, throws, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-lifeops/src/actions/x.ts:486](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-lifeops/src/actions/x.ts:486)
@@ -15012,7 +14982,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry, bounded-helper
 - Error/success handling: failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-polymarket/src/actions.ts:475](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:475)
@@ -15040,7 +15010,7 @@ Output / return cases observed:
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, pagination, timeout/retry, bounded-helper
 - Error/success handling: failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-polymarket/src/actions.ts:372](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-polymarket/src/actions.ts:372)
@@ -15130,9 +15100,9 @@ if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-scape/src/actions/attack-npc.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/attack-npc.ts:26)
 
 Output / return cases observed:
@@ -15228,9 +15198,9 @@ callback?.({ text: displayText, action: "CHAT_PUBLIC" });
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-scape/src/actions/routers.ts:162](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/routers.ts:162)
 
 Output / return cases observed:
@@ -15246,7 +15216,7 @@ callback?.({ text, action: definition.name });
 callback?.({ text, action: definition.name });
         return { success: false, text };
       }
-      const result =
+      const timeoutMs = 15_000;
 ```
 
 ```ts
@@ -15267,9 +15237,9 @@ callback?.({ text, action: definition.name });
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-scape/src/actions/walk-to.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-scape/src/actions/walk-to.ts:27)
 
 Output / return cases observed:
@@ -15401,7 +15371,7 @@ callback?.({ text, action: "EXECUTE_TRADE_FAILED" });
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, delegated-return
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/app-steward/src/actions/wallet-prepare.ts:604](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/actions/wallet-prepare.ts:604)
@@ -15640,7 +15610,7 @@ return {
 
 </details>
 
-<details><summary>MANAGE_ISSUES - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:37</summary>
+<details><summary>MANAGE_ISSUES - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:40</summary>
 
 - Description: "Manage GitHub issues for a repository. " + "Supports creating issues, listing issues, getting issue details, " + "adding comments, updating, closing, and reopening issues."
 - Contexts: code, tasks, connectors, automation
@@ -15651,10 +15621,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, database/memory
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:37)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts:40)
 
 Output / return cases observed:
 
@@ -15728,7 +15698,7 @@ return handleOperation(
 
 </details>
 
-<details><summary>PROVISION_WORKSPACE - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:25</summary>
+<details><summary>PROVISION_WORKSPACE - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:28</summary>
 
 - Description: "Create a git workspace for coding tasks. " + "Can clone a repository or create a git worktree for isolated development."
 - Contexts: code, files, tasks, automation
@@ -15739,10 +15709,10 @@ return handleOperation(
 - Sub-actions: -
 - External APIs: runtime-service, database/memory
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:25)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:28](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts:28)
 
 Output / return cases observed:
 
@@ -15825,7 +15795,7 @@ if (callback) {
 if (callback) {
         await callback({
           text:
-            `Created workspace at ${workspace.path}\n` +
+            `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
             `Branch: ${workspace.branch}\n` +
 ```
 
@@ -15849,7 +15819,7 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: slice
+- Limits/caps: slice, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts:24)
@@ -15962,7 +15932,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback, delegated-return
-- Limits/caps: slice, limit, timeout/retry
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:117)
@@ -16151,7 +16121,7 @@ if (agentsParam) {
 
 </details>
 
-<details><summary>STOP_AGENT - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:23</summary>
+<details><summary>STOP_AGENT - plugin:plugin-agent-orchestrator - plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:26</summary>
 
 - Description: "Stop a running task-agent session. " + "Terminates the PTY session and cleans up resources."
 - Contexts: tasks, automation, agent_internal
@@ -16162,10 +16132,10 @@ if (agentsParam) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:23)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts:26)
 
 Output / return cases observed:
 
@@ -16522,7 +16492,7 @@ if (callback) {
 
 </details>
 
-<details><summary>GET_SKILL_DETAILS - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/get-skill-details.ts:25</summary>
+<details><summary>GET_SKILL_DETAILS - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/get-skill-details.ts:33</summary>
 
 - Description: "Get detailed information about a specific skill including version, owner, and stats."
 - Contexts: knowledge, automation, settings
@@ -16533,10 +16503,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-skills/src/actions/get-skill-details.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/get-skill-details.ts:25)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-skills/src/actions/get-skill-details.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/get-skill-details.ts:33)
 
 Output / return cases observed:
 
@@ -16570,7 +16540,7 @@ if (callback) await callback({ text });
 ```
 
 ```ts
-if (callback) await callback({ text });
+if (callback) await callback({ text: boundedText });
 			return {
 				success: true,
 ```
@@ -16578,8 +16548,8 @@ if (callback) await callback({ text });
 ```ts
 return {
 				success: true,
-				text,
-				data: { details, isInstalled },
+				text: boundedText,
+				data: {
 ```
 
 ```ts
@@ -16600,7 +16570,7 @@ if (callback) {
 
 </details>
 
-<details><summary>INSTALL_SKILL - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/install-skill.ts:21</summary>
+<details><summary>INSTALL_SKILL - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/install-skill.ts:30</summary>
 
 - Description: "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " + 'Provide a skill slug or search term, e.g. "install weather" or "add github".'
 - Contexts: automation, settings, connectors
@@ -16611,10 +16581,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-skills/src/actions/install-skill.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/install-skill.ts:21)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-skills/src/actions/install-skill.ts:30](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/install-skill.ts:30)
 
 Output / return cases observed:
 
@@ -16754,7 +16724,7 @@ return result;
 
 </details>
 
-<details><summary>SYNC_SKILL_CATALOG - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/sync-catalog.ts:18</summary>
+<details><summary>SYNC_SKILL_CATALOG - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/sync-catalog.ts:20</summary>
 
 - Description: "Sync the skill catalog from the registry to discover new skills."
 - Contexts: automation, settings, connectors
@@ -16765,10 +16735,10 @@ return result;
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback, throws
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-skills/src/actions/sync-catalog.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/sync-catalog.ts:18)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-skills/src/actions/sync-catalog.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/sync-catalog.ts:20)
 
 Output / return cases observed:
 
@@ -16914,7 +16884,7 @@ if (callback) await callback({ text: errorText });
 
 </details>
 
-<details><summary>UNINSTALL_SKILL - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:20</summary>
+<details><summary>UNINSTALL_SKILL - plugin:plugin-agent-skills - plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:22</summary>
 
 - Description: "Uninstall a non-bundled skill. Bundled skills cannot be removed. " + 'Provide the skill slug, e.g. "uninstall weather".'
 - Contexts: automation, settings
@@ -16925,10 +16895,10 @@ if (callback) await callback({ text: errorText });
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:20)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:22](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/uninstall-skill.ts:22)
 
 Output / return cases observed:
 
@@ -17029,7 +16999,7 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: slice, limit, truncate
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-agent-skills/src/actions/use-skill.ts:165](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-agent-skills/src/actions/use-skill.ts:165)
@@ -17205,7 +17175,7 @@ case "create":
 
 </details>
 
-<details><summary>BLUEBUBBLES_MESSAGE_OP - plugin:plugin-bluebubbles - plugins/plugin-bluebubbles/src/actions/messageOp.ts:267</summary>
+<details><summary>BLUEBUBBLES_MESSAGE_OP - plugin:plugin-bluebubbles - plugins/plugin-bluebubbles/src/actions/messageOp.ts:272</summary>
 
 - Description: "BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react)."
 - Contexts: phone, messaging, connectors
@@ -17216,10 +17186,10 @@ case "create":
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-bluebubbles/src/actions/messageOp.ts:267](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluebubbles/src/actions/messageOp.ts:267)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-bluebubbles/src/actions/messageOp.ts:272](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluebubbles/src/actions/messageOp.ts:272)
 
 Output / return cases observed:
 
@@ -17265,7 +17235,8 @@ if (callback) {
 }
 			return { success: false, error: "Could not extract op parameters" };
 		}
-		switch (info.op) {
+		info = {
+			...info,
 ```
 
 ```ts
@@ -17285,7 +17256,7 @@ case "react":
 
 </details>
 
-<details><summary>POST_BLUESKY - plugin:plugin-bluesky - plugins/plugin-bluesky/actions/post.ts:115</summary>
+<details><summary>POST_BLUESKY - plugin:plugin-bluesky - plugins/plugin-bluesky/actions/post.ts:121</summary>
 
 - Description: "Post a top-level Bluesky post or a reply. kind=post supports replyTo={uri,cid}. text optional; if empty the runtime model generates content."
 - Contexts: ...BLUESKY_CONTEXTS
@@ -17296,10 +17267,10 @@ case "react":
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-bluesky/actions/post.ts:115](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluesky/actions/post.ts:115)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-bluesky/actions/post.ts:121](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-bluesky/actions/post.ts:121)
 
 Output / return cases observed:
 
@@ -17344,7 +17315,7 @@ if (callback) {
 }
 			return { success: false, error: "post_service_unavailable" };
 		}
-		const text = readStringParam(options, "text");
+		const text = truncateActionText(
 ```
 
 ```ts
@@ -17352,14 +17323,14 @@ if (callback) {
 				await callback({
 					text: summary,
 					actions: ["POST_BLUESKY"],
-					data: { uri: post.uri, cid: post.cid },
+					data: { uri: post.uri, cid: post.cid, timeoutMs },
 ```
 
 ```ts
 return {
 				success: true,
 				text: summary,
-				data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null },
+				data: { uri: post.uri, cid: post.cid, replyTo: replyTo ?? null, timeoutMs },
 ```
 
 ```ts
@@ -17379,7 +17350,7 @@ if (callback) {
 
 </details>
 
-<details><summary>BROWSER_BRIDGE_INSTALL - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:150</summary>
+<details><summary>BROWSER_BRIDGE_INSTALL - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:161</summary>
 
 - Description: JSON.stringify({ browser_bridge_install: { purpose: "Prepare the Agent Browser Bridge Chrome extension for unpacked install.", steps: [ "build_if_needed", "reveal_build_folder", "open_chrome_extensions", ], params: "n...
 - Contexts: browser, connectors, settings
@@ -17390,10 +17361,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-browser-bridge/src/actions.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:150)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-browser-bridge/src/actions.ts:161](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:161)
 
 Output / return cases observed:
 
@@ -17414,7 +17385,7 @@ logger.warn(`[${INSTALL_NAME}] ${text}`);
 
 </details>
 
-<details><summary>BROWSER_BRIDGE_OPEN_MANAGER - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:295</summary>
+<details><summary>BROWSER_BRIDGE_OPEN_MANAGER - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:315</summary>
 
 - Description: JSON.stringify({ browser_bridge_open_manager: { purpose: "Open chrome://extensions so the user can load the unpacked Agent Browser Bridge extension.", params: "none", }, })
 - Contexts: browser, connectors, settings
@@ -17425,15 +17396,15 @@ logger.warn(`[${INSTALL_NAME}] ${text}`);
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-browser-bridge/src/actions.ts:295](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:295)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-browser-bridge/src/actions.ts:315](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:315)
 
 Output / return cases observed:
 
 ```ts
-"Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.";
+);
       return {
         text,
         success: true,
@@ -17450,7 +17421,7 @@ logger.warn(`[${OPEN_MANAGER_NAME}] ${text}`);
 
 </details>
 
-<details><summary>BROWSER_BRIDGE_REFRESH - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:352</summary>
+<details><summary>BROWSER_BRIDGE_REFRESH - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:378</summary>
 
 - Description: JSON.stringify({ browser_bridge_refresh: { purpose: "Refresh Agent Browser Bridge connection status, paired companions, and packaging artifact paths.", provider_state: "Prefer provider state for passive status context...
 - Contexts: browser, connectors, settings
@@ -17461,10 +17432,10 @@ logger.warn(`[${OPEN_MANAGER_NAME}] ${text}`);
 - Sub-actions: -
 - External APIs: runtime-service, browser/device
 - Stack output: success, text, values, data, error
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
-- Source: [plugins/plugin-browser-bridge/src/actions.ts:352](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:352)
+- Source: [plugins/plugin-browser-bridge/src/actions.ts:378](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:378)
 
 Output / return cases observed:
 
@@ -17493,7 +17464,7 @@ logger.warn(`[${REFRESH_NAME}] ${text}`);
 
 </details>
 
-<details><summary>BROWSER_BRIDGE_REVEAL_FOLDER - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:232</summary>
+<details><summary>BROWSER_BRIDGE_REVEAL_FOLDER - plugin:plugin-browser-bridge - plugins/plugin-browser-bridge/src/actions.ts:249</summary>
 
 - Description: JSON.stringify({ browser_bridge_reveal_folder: { purpose: "Reveal the Agent Browser Bridge Chrome extension folder in the host file manager.", params: "none", }, })
 - Contexts: browser, files, connectors, settings
@@ -17504,15 +17475,15 @@ logger.warn(`[${REFRESH_NAME}] ${text}`);
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, values, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-browser-bridge/src/actions.ts:232](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:232)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-browser-bridge/src/actions.ts:249](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-browser-bridge/src/actions.ts:249)
 
 Output / return cases observed:
 
 ```ts
-const text = `Revealed the Agent Browser Bridge folder at ${reveal.path}.`;
+);
       return {
         text,
         success: true,
@@ -17539,7 +17510,7 @@ logger.warn(`[${REVEAL_FOLDER_NAME}] ${text}`);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-calendly/src/actions/calendly-op.ts:300](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-calendly/src/actions/calendly-op.ts:300)
@@ -17580,9 +17551,9 @@ if (op === "book") {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/list-workflows.ts:34)
 
 Output / return cases observed:
@@ -17628,9 +17599,9 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-claude-code-workbench/src/actions/run-workflow.ts:150)
 
 Output / return cases observed:
@@ -17676,7 +17647,7 @@ if (callback) {
 return {
         success: result.ok,
         text,
-        data: { ...result },
+        data: {
 ```
 
 ```ts
@@ -17704,9 +17675,9 @@ return {
 - Parameters: {questions}
 - Sub-actions: -
 - External APIs: -
-- Stack output: callback, delegated-return
-- Limits/caps: limit
-- Error/success handling: callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: limit, bounded-helper
+- Error/success handling: success branch, failure branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ask-user-question.ts:111)
 
@@ -17767,9 +17738,9 @@ return successActionResult(text, {
 - Parameters: {command}, {description}, {timeout}, {cwd}, {run_in_background}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, delegated-return
-- Limits/caps: timeout/retry
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: limit, truncate, timeout/retry, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/bash.ts:72](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/bash.ts:72)
 
@@ -17879,9 +17850,9 @@ if (settled.status === "completed") {
 - Parameters: {file_path}, {old_string}, {new_string}, {replace_all}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/edit.ts:49](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/edit.ts:49)
 
@@ -17988,10 +17959,10 @@ const text = `Replaced ${replacements} occurrence${replacements === 1 ? "" : "s"
 - Parameters: {name}, {path}, {base}
 - Sub-actions: -
 - External APIs: runtime-service, process/shell
-- Stack output: callback, delegated-return
-- Limits/caps: -
-- Error/success handling: catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/enter-worktree.ts:40)
 
 Output / return cases observed:
@@ -18029,7 +18000,7 @@ const msg = err instanceof Error ? err.message : String(err);
 ```
 
 ```ts
-const text = `Entered worktree ${worktreePath} on branch ${name} (from ${base})`;
+);
     if (callback) await callback({ text, source: "coding-tools" });
     return successActionResult(text, {
       worktreePath,
@@ -18053,10 +18024,10 @@ return successActionResult(text, {
 - Parameters: {cleanup}
 - Sub-actions: -
 - External APIs: runtime-service, process/shell
-- Stack output: callback, delegated-return
-- Limits/caps: -
-- Error/success handling: catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/exit-worktree.ts:26)
 
 Output / return cases observed:
@@ -18094,7 +18065,7 @@ const msg = err instanceof Error ? err.message : String(err);
 ```
 
 ```ts
-: `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`;
+);
     if (callback) await callback({ text, source: "coding-tools" });
     return successActionResult(text, {
       exited: popped.entered,
@@ -18118,9 +18089,9 @@ return successActionResult(text, {
 - Parameters: {pattern}, {path}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/glob.ts:132](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/glob.ts:132)
 
@@ -18204,9 +18175,9 @@ return successActionResult(text, {
 - Parameters: {pattern}, {path}, {glob}, {type}, {output_mode}, {-A}, {-B}, {-C}, {case_insensitive}, {multiline}, {head_limit}, {show_line_numbers}
 - Sub-actions: -
 - External APIs: runtime-service
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/grep.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/grep.ts:40)
 
@@ -18298,9 +18269,9 @@ const messageText = error instanceof Error ? error.message : String(error);
 - Parameters: {path}, {ignore}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/ls.ts:75](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/ls.ts:75)
 
@@ -18359,10 +18330,10 @@ return successActionResult(text, {
 - Parameters: {notebook_path}, {cell_id}, {new_source}, {cell_type}, {edit_mode}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, throws, delegated-return
-- Limits/caps: -
-- Error/success handling: throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Stack output: success, text, error, callback, throws, delegated-return
+- Limits/caps: slice, limit, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, throws, catch, callback output
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/notebook-edit.ts:86)
 
 Output / return cases observed:
@@ -18469,9 +18440,9 @@ if (!cellId) {
 - Parameters: {file_path}, {offset}, {limit}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: text, callback, delegated-return
-- Limits/caps: slice, limit, truncate, pagination
-- Error/success handling: catch, callback output
+- Stack output: text, success, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, pagination, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/read.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/read.ts:33)
 
@@ -18569,9 +18540,9 @@ return successActionResult(formatted, {
 - Parameters: {task_id}, {block}, {timeout}
 - Sub-actions: -
 - External APIs: runtime-service
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate, timeout/retry
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/task-output.ts:34](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-output.ts:34)
 
@@ -18640,9 +18611,9 @@ const messageText = error instanceof Error ? error.message : String(error);
 - Parameters: {task_id}
 - Sub-actions: -
 - External APIs: runtime-service
-- Stack output: callback, delegated-return
-- Limits/caps: slice, truncate
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/task-stop.ts:25](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/task-stop.ts:25)
 
@@ -18738,9 +18709,9 @@ const messageText = error instanceof Error ? error.message : String(error);
 - Parameters: {todos}
 - Sub-actions: -
 - External APIs: -
-- Stack output: callback, delegated-return
-- Limits/caps: -
-- Error/success handling: callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/todo-write.ts:93](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/todo-write.ts:93)
 
@@ -18793,9 +18764,9 @@ return successActionResult(text, {
 - Parameters: {url}, {prompt}
 - Sub-actions: -
 - External APIs: fetch/http
-- Stack output: callback, delegated-return
-- Limits/caps: slice, limit, truncate, timeout/retry
-- Error/success handling: catch, callback output
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/web-fetch.ts:45](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-fetch.ts:45)
 
@@ -18881,9 +18852,9 @@ return successActionResult(text, {
 - Parameters: {query}, {allowed_domains}, {blocked_domains}
 - Sub-actions: -
 - External APIs: -
-- Stack output: data, callback, delegated-return
-- Limits/caps: -
-- Error/success handling: callback output
+- Stack output: data, success, text, error, callback, delegated-return
+- Limits/caps: bounded-helper
+- Error/success handling: success branch, failure branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/web-search.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/web-search.ts:27)
 
@@ -18925,10 +18896,10 @@ return successActionResult(text, data);
 - Parameters: {file_path}, {content}
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
-- Stack output: callback, delegated-return
-- Limits/caps: -
-- Error/success handling: catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Stack output: success, text, error, callback, delegated-return
+- Limits/caps: slice, limit, truncate, bounded-helper
+- Error/success handling: success branch, failure branch, catch, callback output
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-coding-tools/src/actions/write.ts:29](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-coding-tools/src/actions/write.ts:29)
 
 Output / return cases observed:
@@ -18994,7 +18965,7 @@ const msg = err instanceof Error ? err.message : String(err);
 ```
 
 ```ts
-const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`;
+);
     if (callback) await callback({ text, source: "coding-tools" });
     return successActionResult(text, {
       path: resolved,
@@ -19019,7 +18990,7 @@ return successActionResult(text, {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, data
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-commands/src/actions/command.ts:273](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-commands/src/actions/command.ts:273)
@@ -19078,9 +19049,9 @@ await callback?.({ text });
 - Sub-actions: -
 - External APIs: runtime-service, browser/device
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-computeruse/src/actions/browser-action.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/browser-action.ts:83)
 
 Output / return cases observed:
@@ -19142,9 +19113,9 @@ return toComputerUseActionResult({
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-computeruse/src/actions/file-action.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/file-action.ts:27)
 
 Output / return cases observed:
@@ -19198,9 +19169,9 @@ return toComputerUseActionResult({
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-computeruse/src/actions/manage-window.ts:41](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/manage-window.ts:41)
 
 Output / return cases observed:
@@ -19239,9 +19210,9 @@ return toComputerUseActionResult({
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-computeruse/src/actions/terminal-action.ts:20](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/terminal-action.ts:20)
 
 Output / return cases observed:
@@ -19265,7 +19236,7 @@ if (callback) {
 }
       return { success: false, error: "Missing action" };
     }
-    const result = await service.executeTerminalAction(params);
+    const timeoutSeconds = Math.min(Number(params.timeout ?? params.timeoutSeconds ?? 30), 120);
 ```
 
 ```ts
@@ -19295,9 +19266,9 @@ return toComputerUseActionResult({
 - Sub-actions: -
 - External APIs: browser/device
 - Stack output: success, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-computeruse/src/actions/use-computer.ts:160](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/src/actions/use-computer.ts:160)
 
 Output / return cases observed:
@@ -19307,7 +19278,7 @@ if (!isMockComputerUseEnabled()) {
         return { success: false, error: "ComputerUseService not available" };
       }
       const mockResult = buildMockDesktopResult(params);
-      const text = formatDesktopResultText(params, mockResult);
+      const maxActionResultBytes = 4000;
 ```
 
 ```ts
@@ -19339,7 +19310,7 @@ await deliverResult(params, result, text, callback);
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-discord/actions/channelOp.ts:1062](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/channelOp.ts:1062)
@@ -19458,7 +19429,7 @@ Output / return cases observed:
 
 </details>
 
-<details><summary>DISCORD_GET_USER_INFO - plugin:plugin-discord - plugins/plugin-discord/actions/getUserInfo.ts:108</summary>
+<details><summary>DISCORD_GET_USER_INFO - plugin:plugin-discord - plugins/plugin-discord/actions/getUserInfo.ts:114</summary>
 
 - Description: spec.description
 - Contexts: messaging, connectors
@@ -19468,11 +19439,11 @@ Output / return cases observed:
 - Parameters: {userIdentifier}
 - Sub-actions: -
 - External APIs: fetch/http, runtime-service
-- Stack output: success, text, error
-- Limits/caps: -
+- Stack output: success, text, data, error
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-discord/actions/getUserInfo.ts:108](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/getUserInfo.ts:108)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-discord/actions/getUserInfo.ts:114](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/getUserInfo.ts:114)
 
 Output / return cases observed:
 
@@ -19514,7 +19485,7 @@ Output / return cases observed:
 
 ```ts
 }
-			return { success: true, text: response.text };
+			return { success: true, text: response.text, data: { timeoutMs } };
 		} catch (error) {
 			runtime.logger.error(
 				{
@@ -19541,7 +19512,7 @@ Output / return cases observed:
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-discord/actions/mediaOp.ts:413](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/mediaOp.ts:413)
@@ -19584,7 +19555,7 @@ case "transcribe":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-discord/actions/messageOp.ts:1301](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/messageOp.ts:1301)
@@ -19655,7 +19626,7 @@ case "unpin":
 
 </details>
 
-<details><summary>DISCORD_SETUP_CREDENTIALS - plugin:plugin-discord - plugins/plugin-discord/actions/setup-credentials.ts:494</summary>
+<details><summary>DISCORD_SETUP_CREDENTIALS - plugin:plugin-discord - plugins/plugin-discord/actions/setup-credentials.ts:500</summary>
 
 - Description: "Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely."
 - Contexts: messaging, connectors, settings
@@ -19666,10 +19637,10 @@ case "unpin":
 - Sub-actions: -
 - External APIs: fetch/http, sdk/client, runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-discord/actions/setup-credentials.ts:494](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/setup-credentials.ts:494)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-discord/actions/setup-credentials.ts:500](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/setup-credentials.ts:500)
 
 Output / return cases observed:
 
@@ -19697,7 +19668,7 @@ if (callback) {
 ```
 
 ```ts
-await dmChannel.send(buildServiceListMessage());
+);
 						return {
 							success: false,
 							error: `Unsupported credential preset: ${detectedService}`,
@@ -19716,7 +19687,7 @@ if (callback) {
 return {
 				success: true,
 				text: "Redirected credential setup to DMs",
-				data: terminalActionResultData(),
+				data: { ...terminalActionResultData(), timeoutMs },
 ```
 
 ```ts
@@ -19739,7 +19710,7 @@ if (callback) {
 				return {
 					success: true,
 					text: "Collecting next credential field",
-					data: terminalActionResultData(),
+					data: { ...terminalActionResultData(), timeoutMs },
 ```
 
 ```ts
@@ -19763,12 +19734,12 @@ if (callback) {
 				return {
 					success: true,
 					text: "Credentials stored",
-					data: terminalActionResultData(),
+					data: { ...terminalActionResultData(), timeoutMs },
 ```
 
 </details>
 
-<details><summary>DISCORD_SUMMARIZE_CONVERSATION - plugin:plugin-discord - plugins/plugin-discord/actions/summarizeConversation.ts:227</summary>
+<details><summary>DISCORD_SUMMARIZE_CONVERSATION - plugin:plugin-discord - plugins/plugin-discord/actions/summarizeConversation.ts:231</summary>
 
 - Description: spec.description
 - Contexts: messaging, knowledge, connectors
@@ -19778,11 +19749,11 @@ if (callback) {
 - Parameters: {range}, {objective}
 - Sub-actions: -
 - External APIs: llm, database/memory, cache, filesystem
-- Stack output: success, text, error
-- Limits/caps: -
+- Stack output: success, text, data, error
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-discord/actions/summarizeConversation.ts:227](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/summarizeConversation.ts:227)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-discord/actions/summarizeConversation.ts:231](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-discord/actions/summarizeConversation.ts:231)
 
 Output / return cases observed:
 
@@ -19824,7 +19795,7 @@ const entityUsername = "";
 
 ```ts
 }
-			return { success: true, text: callbackData.text };
+			return { success: true, text: callbackData.text, data: { timeoutMs } };
 		} else if (currentSummary.trim()) {
 			const summaryDir = "cache";
 			const summaryFilename = `${summaryDir}/conversation_summary_${Date.now()}`;
@@ -19832,10 +19803,10 @@ const entityUsername = "";
 
 ```ts
 }
-			return { success: true, text: `Summary saved to ${summaryFilename}` };
-		} else {
-			runtime.logger.warn(
-				{
+			return {
+				success: true,
+				text: `Summary saved to ${summaryFilename}`,
+				data: { timeoutMs },
 ```
 
 ```ts
@@ -19940,7 +19911,7 @@ Output / return cases observed:
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-elizacloud/actions/cloud-agent.ts:419](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-elizacloud/actions/cloud-agent.ts:419)
@@ -19999,7 +19970,7 @@ case "check_credits":
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, data, error, callback
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-executecode/src/action.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-executecode/src/action.ts:184)
@@ -20074,7 +20045,7 @@ const text = formatReturnValue(scriptValue);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: truncate
+- Limits/caps: limit, truncate
 - Error/success handling: success branch, failure branch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-farcaster/actions/castRouter.ts:55](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/actions/castRouter.ts:55)
@@ -20104,7 +20075,7 @@ return {
 
 </details>
 
-<details><summary>SEND_FEISHU_MESSAGE - plugin:plugin-feishu - plugins/plugin-feishu/src/actions/sendMessage.ts:16</summary>
+<details><summary>SEND_FEISHU_MESSAGE - plugin:plugin-feishu - plugins/plugin-feishu/src/actions/sendMessage.ts:23</summary>
 
 - Description: "Send a message to a Feishu/Lark chat"
 - Contexts: messaging, connectors
@@ -20115,10 +20086,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-feishu/src/actions/sendMessage.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-feishu/src/actions/sendMessage.ts:16)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-feishu/src/actions/sendMessage.ts:23](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-feishu/src/actions/sendMessage.ts:23)
 
 Output / return cases observed:
 
@@ -20169,7 +20140,7 @@ return {
 
 </details>
 
-<details><summary>FORM_RESTORE - plugin:plugin-form - plugins/plugin-form/src/actions/restore.ts:74</summary>
+<details><summary>FORM_RESTORE - plugin:plugin-form - plugins/plugin-form/src/actions/restore.ts:83</summary>
 
 - Description: "Restore a previously stashed form session"
 - Contexts: tasks, automation, memory
@@ -20180,10 +20151,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, filesystem
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-form/src/actions/restore.ts:74](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-form/src/actions/restore.ts:74)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-form/src/actions/restore.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-form/src/actions/restore.ts:83)
 
 Output / return cases observed:
 
@@ -20242,7 +20213,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-github/src/actions/issue-op.ts:291](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/issue-op.ts:291)
@@ -20342,7 +20313,7 @@ await callback?.({ text: message });
 
 </details>
 
-<details><summary>GitHubActions.GITHUB_NOTIFICATION_TRIAGE - plugin:plugin-github - plugins/plugin-github/src/actions/notification-triage.ts:81</summary>
+<details><summary>GitHubActions.GITHUB_NOTIFICATION_TRIAGE - plugin:plugin-github - plugins/plugin-github/src/actions/notification-triage.ts:83</summary>
 
 - Description: "Returns unread GitHub notifications sorted by a priority score derived from reason, subject type, and repo freshness."
 - Contexts: code, tasks, connectors, automation
@@ -20353,10 +20324,10 @@ await callback?.({ text: message });
 - Sub-actions: -
 - External APIs: database/memory
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-github/src/actions/notification-triage.ts:81](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/notification-triage.ts:81)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-github/src/actions/notification-triage.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/notification-triage.ts:83)
 
 Output / return cases observed:
 
@@ -20377,10 +20348,10 @@ typeof n.subject?.type === "string" ? n.subject.type : "Unknown";
 
 ```ts
 });
-      return { success: true, data: { notifications: triaged } };
-    } catch (err) {
-      const rl = inspectRateLimit(err);
-      const message = rl.isRateLimited
+      return {
+        success: true,
+        data: {
+          notifications: boundedTriaged,
 ```
 
 ```ts
@@ -20403,7 +20374,7 @@ await callback?.({ text: message });
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-github/src/actions/pr-op.ts:207](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-github/src/actions/pr-op.ts:207)
@@ -20434,7 +20405,7 @@ await callback?.({ text: message });
 
 </details>
 
-<details><summary>GOOGLE_CHAT_MESSAGE_OP - plugin:plugin-google-chat - plugins/plugin-google-chat/src/actions/messageOp.ts:244</summary>
+<details><summary>GOOGLE_CHAT_MESSAGE_OP - plugin:plugin-google-chat - plugins/plugin-google-chat/src/actions/messageOp.ts:252</summary>
 
 - Description: "Google Chat message operation router (send, react)."
 - Contexts: messaging, connectors
@@ -20445,10 +20416,10 @@ await callback?.({ text: message });
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-google-chat/src/actions/messageOp.ts:244](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-google-chat/src/actions/messageOp.ts:244)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-google-chat/src/actions/messageOp.ts:252](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-google-chat/src/actions/messageOp.ts:252)
 
 Output / return cases observed:
 
@@ -20463,7 +20434,8 @@ Output / return cases observed:
 });
       return { success: false, error: "Could not extract op parameters" };
     }
-    if (info.op === "react") {
+    info = {
+      ...info,
 ```
 
 ```ts
@@ -20482,7 +20454,7 @@ if (info.op === "react") {
 
 </details>
 
-<details><summary>IMESSAGE_SEND_MESSAGE - plugin:plugin-imessage - plugins/plugin-imessage/src/actions/sendMessage.ts:52</summary>
+<details><summary>IMESSAGE_SEND_MESSAGE - plugin:plugin-imessage - plugins/plugin-imessage/src/actions/sendMessage.ts:59</summary>
 
 - Description: "Send a text message via iMessage (macOS only)"
 - Contexts: phone, messaging, connectors
@@ -20493,10 +20465,10 @@ if (info.op === "react") {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-imessage/src/actions/sendMessage.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-imessage/src/actions/sendMessage.ts:52)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-imessage/src/actions/sendMessage.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-imessage/src/actions/sendMessage.ts:59)
 
 Output / return cases observed:
 
@@ -20542,7 +20514,8 @@ if (callback) {
 }
       return { success: false, error: "Could not extract message parameters" };
     }
-    // Determine target
+    msgInfo = {
+      ...msgInfo,
 ```
 
 ```ts
@@ -20584,7 +20557,7 @@ return {
 
 </details>
 
-<details><summary>INSTAGRAM_REPLY - plugin:plugin-instagram - plugins/plugin-instagram/src/actions/reply.ts:52</summary>
+<details><summary>INSTAGRAM_REPLY - plugin:plugin-instagram - plugins/plugin-instagram/src/actions/reply.ts:59</summary>
 
 - Description: "Reply on Instagram. mode=comment posts a comment on a media post (target=mediaId, text=comment). mode=dm sends a direct message to a thread (target=threadId, text=message)."
 - Contexts: social_posting, messaging, connectors
@@ -20595,10 +20568,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-instagram/src/actions/reply.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-instagram/src/actions/reply.ts:52)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-instagram/src/actions/reply.ts:59](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-instagram/src/actions/reply.ts:59)
 
 Output / return cases observed:
 
@@ -20671,7 +20644,7 @@ if (callback) {
 
 ```ts
 }
-      return { success: true, data: { mode, mediaId, commentId } };
+      return { success: true, data: { mode, mediaId, commentId, timeoutMs } };
     }
     const threadId = targetParam ?? (content.threadId as string | undefined);
 ```
@@ -20693,7 +20666,7 @@ if (callback) {
 
 </details>
 
-<details><summary>LINE_MESSAGE_OP - plugin:plugin-line - plugins/plugin-line/src/actions/messageOp.ts:259</summary>
+<details><summary>LINE_MESSAGE_OP - plugin:plugin-line - plugins/plugin-line/src/actions/messageOp.ts:272</summary>
 
 - Description: "LINE message operation router. Send text, flex/card, or location."
 - Contexts: messaging, connectors
@@ -20704,10 +20677,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-line/src/actions/messageOp.ts:259](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-line/src/actions/messageOp.ts:259)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-line/src/actions/messageOp.ts:272](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-line/src/actions/messageOp.ts:272)
 
 Output / return cases observed:
 
@@ -20722,7 +20695,8 @@ callback?.({ text: "LINE service is not available.", source: "line" });
 });
       return { success: false, error: "Could not extract op parameters" };
     }
-    const sourceLabel =
+    info = {
+      ...info,
 ```
 
 ```ts
@@ -20750,7 +20724,7 @@ case "location":
 
 </details>
 
-<details><summary>CLEAR_LINEAR_ACTIVITY - plugin:plugin-linear - plugins/plugin-linear/src/actions/clearActivity.ts:14</summary>
+<details><summary>CLEAR_LINEAR_ACTIVITY - plugin:plugin-linear - plugins/plugin-linear/src/actions/clearActivity.ts:16</summary>
 
 - Description: "Clear the Linear activity log"
 - Contexts: tasks, connectors, automation
@@ -20761,10 +20735,10 @@ case "location":
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, throws
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-linear/src/actions/clearActivity.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/clearActivity.ts:14)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-linear/src/actions/clearActivity.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/clearActivity.ts:16)
 
 Output / return cases observed:
 
@@ -20772,7 +20746,7 @@ Output / return cases observed:
 if (!linearService) {
         throw new Error("Linear service not available");
       }
-      await linearService.clearActivityLog();
+      await Promise.race([
 ```
 
 ```ts
@@ -20958,7 +20932,7 @@ return {
 
 </details>
 
-<details><summary>DELETE_LINEAR_ISSUE - plugin:plugin-linear - plugins/plugin-linear/src/actions/deleteIssue.ts:18</summary>
+<details><summary>DELETE_LINEAR_ISSUE - plugin:plugin-linear - plugins/plugin-linear/src/actions/deleteIssue.ts:21</summary>
 
 - Description: "Delete (archive) an issue in Linear"
 - Contexts: tasks, connectors, automation
@@ -20969,10 +20943,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-linear/src/actions/deleteIssue.ts:18](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/deleteIssue.ts:18)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-linear/src/actions/deleteIssue.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/deleteIssue.ts:21)
 
 Output / return cases observed:
 
@@ -21332,7 +21306,7 @@ return {
 
 </details>
 
-<details><summary>UPDATE_LINEAR_ISSUE - plugin:plugin-linear - plugins/plugin-linear/src/actions/updateIssue.ts:24</summary>
+<details><summary>UPDATE_LINEAR_ISSUE - plugin:plugin-linear - plugins/plugin-linear/src/actions/updateIssue.ts:27</summary>
 
 - Description: "Update an existing Linear issue"
 - Contexts: tasks, connectors, automation
@@ -21343,10 +21317,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, throws
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-linear/src/actions/updateIssue.ts:24](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/updateIssue.ts:24)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-linear/src/actions/updateIssue.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-linear/src/actions/updateIssue.ts:27)
 
 Output / return cases observed:
 
@@ -21411,7 +21385,7 @@ return {
 
 </details>
 
-<details><summary>MATRIX_JOIN_ROOM - plugin:plugin-matrix - plugins/plugin-matrix/src/actions/joinRoom.ts:37</summary>
+<details><summary>MATRIX_JOIN_ROOM - plugin:plugin-matrix - plugins/plugin-matrix/src/actions/joinRoom.ts:40</summary>
 
 - Description: "Join a Matrix room by ID or alias"
 - Contexts: messaging, connectors
@@ -21422,10 +21396,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-matrix/src/actions/joinRoom.ts:37](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/joinRoom.ts:37)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-matrix/src/actions/joinRoom.ts:40](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/joinRoom.ts:40)
 
 Output / return cases observed:
 
@@ -21491,7 +21465,7 @@ if (callback) {
 
 </details>
 
-<details><summary>MATRIX_MESSAGE_OP - plugin:plugin-matrix - plugins/plugin-matrix/src/actions/messageOp.ts:180</summary>
+<details><summary>MATRIX_MESSAGE_OP - plugin:plugin-matrix - plugins/plugin-matrix/src/actions/messageOp.ts:186</summary>
 
 - Description: "Matrix message operation router (send, react)."
 - Contexts: messaging, connectors
@@ -21502,10 +21476,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-matrix/src/actions/messageOp.ts:180](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/messageOp.ts:180)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-matrix/src/actions/messageOp.ts:186](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-matrix/src/actions/messageOp.ts:186)
 
 Output / return cases observed:
 
@@ -21520,7 +21494,8 @@ Output / return cases observed:
 });
       return { success: false, error: "Could not extract op parameters" };
     }
-    if (info.op === "react") {
+    info = {
+      ...info,
 ```
 
 ```ts
@@ -21552,7 +21527,7 @@ if (info.op === "react") {
 - Stack output: success, text, values, data, throws, delegated-return
 - Limits/caps: -
 - Error/success handling: success branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-mcp/src/actions/callToolAction.ts:16](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mcp/src/actions/callToolAction.ts:16)
 
 Output / return cases observed:
@@ -21707,9 +21682,9 @@ return {
 - Sub-actions: -
 - External APIs: fetch/http, runtime-service
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-minecraft/src/actions/attack.ts:26](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/attack.ts:26)
 
 Output / return cases observed:
@@ -21730,7 +21705,7 @@ if (entityId === null) {
 ```
 
 ```ts
-await service.request("attack", { entityId });
+await withMinecraftTimeout(service.request("attack", { entityId }), "minecraft attack");
       return await emit(
         ACTION_NAME,
         callback,
@@ -21747,7 +21722,7 @@ const msg = err instanceof Error ? err.message : String(err);
 
 </details>
 
-<details><summary>MC_BLOCK_OP - plugin:plugin-minecraft - plugins/plugin-minecraft/src/actions/block-op.ts:46</summary>
+<details><summary>MC_BLOCK_OP - plugin:plugin-minecraft - plugins/plugin-minecraft/src/actions/block-op.ts:47</summary>
 
 - Description: "Operate on a Minecraft block at coordinates: dig the block or place a block facing."
 - Contexts: automation, media
@@ -21758,10 +21733,10 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: fetch/http, sdk/client, runtime-service
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-minecraft/src/actions/block-op.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/block-op.ts:46)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-minecraft/src/actions/block-op.ts:47](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/block-op.ts:47)
 
 Output / return cases observed:
 
@@ -21805,7 +21780,7 @@ if (!face) {
 ```
 
 ```ts
-await service.request("place", { x: vec.x, y: vec.y, z: vec.z, face });
+);
       return await emit(
         ACTION_NAME,
         callback,
@@ -21833,9 +21808,9 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-minecraft/src/actions/chat.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/chat.ts:17)
 
 Output / return cases observed:
@@ -21856,11 +21831,11 @@ if (!text) {
 ```
 
 ```ts
-await service.chat(text);
+await withMinecraftTimeout(service.chat(text), "minecraft chat");
       return await emit(
         ACTION_NAME,
         callback,
-        `Sent Minecraft chat: ${text}`,
+        `Sent Minecraft chat: ${text.slice(0, maxChatPreviewLength)}`,
 ```
 
 ```ts
@@ -21884,9 +21859,9 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-minecraft/src/actions/connect.ts:33](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/connect.ts:33)
 
 Output / return cases observed:
@@ -21896,11 +21871,11 @@ const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     if (!service) return { text: "Minecraft service is not available", success: false };
     const params = mergedInput(message, options);
     try {
-      const session = await service.createBot(parseConnectOverrides(params));
+      const session = await withMinecraftTimeout(
 ```
 
 ```ts
-const session = await service.createBot(parseConnectOverrides(params));
+);
       return await emit(
         ACTION_NAME,
         callback,
@@ -21928,9 +21903,9 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-minecraft/src/actions/disconnect.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/disconnect.ts:17)
 
 Output / return cases observed:
@@ -21951,7 +21926,7 @@ if (!session) {
 ```
 
 ```ts
-await service.destroyBot(session.botId);
+await withMinecraftTimeout(service.destroyBot(session.botId), "minecraft disconnect");
       return await emit(
         ACTION_NAME,
         callback,
@@ -21968,7 +21943,7 @@ const msg = err instanceof Error ? err.message : String(err);
 
 </details>
 
-<details><summary>MC_LOCOMOTE_OP - plugin:plugin-minecraft - plugins/plugin-minecraft/src/actions/locomote-op.ts:95</summary>
+<details><summary>MC_LOCOMOTE_OP - plugin:plugin-minecraft - plugins/plugin-minecraft/src/actions/locomote-op.ts:103</summary>
 
 - Description: "Locomote the Minecraft bot: goto coords, stop movement, look yaw/pitch, set a control key, or navigate to a saved waypoint."
 - Contexts: automation, media
@@ -21979,10 +21954,10 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: fetch/http, sdk/client, runtime-service
 - Stack output: success, text, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-minecraft/src/actions/locomote-op.ts:95](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/locomote-op.ts:95)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-minecraft/src/actions/locomote-op.ts:103](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/locomote-op.ts:103)
 
 Output / return cases observed:
 
@@ -22003,7 +21978,7 @@ if (!op) {
 ```
 
 ```ts
-await service.request("stop", {});
+await withMinecraftTimeout(service.request("stop", {}), "minecraft stop");
           return await emit(ACTION_NAME, callback, "Stopped movement.", message.content.source, {
             success: true,
           });
@@ -22019,7 +21994,7 @@ if (!req) {
 ```
 
 ```ts
-await service.request("look", { yaw: req.yaw, pitch: req.pitch });
+);
           return await emit(ACTION_NAME, callback, "Adjusted view.", message.content.source, {
             success: true,
           });
@@ -22035,7 +22010,7 @@ if (!req) {
 ```
 
 ```ts
-});
+);
           return await emit(
             ACTION_NAME,
             callback,
@@ -22067,7 +22042,7 @@ if (!wp) {
 ```
 
 ```ts
-await service.request("goto", { x: wp.x, y: wp.y, z: wp.z });
+);
           return await emit(
             ACTION_NAME,
             callback,
@@ -22095,9 +22070,9 @@ if (!vec) {
 - Sub-actions: -
 - External APIs: fetch/http, sdk/client, runtime-service
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-minecraft/src/actions/waypoint-op.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-minecraft/src/actions/waypoint-op.ts:48)
 
 Output / return cases observed:
@@ -22166,7 +22141,7 @@ if (!wp) {
 ```
 
 ```ts
-await mc.request("goto", { x: wp.x, y: wp.y, z: wp.z });
+);
       return await emit(
         ACTION_NAME,
         callback,
@@ -22194,9 +22169,9 @@ const msg = err instanceof Error ? err.message : String(err);
 - Sub-actions: -
 - External APIs: database/memory
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-music-library/src/actions/downloadMusic.ts:88](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/downloadMusic.ts:88)
 
 Output / return cases observed:
@@ -22303,7 +22278,7 @@ await callback({
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-music-library/src/actions/playMusicQuery.ts:504](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-library/src/actions/playMusicQuery.ts:504)
@@ -22571,9 +22546,9 @@ logger.error("Error searching YouTube:", errorMessage);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
 - Error/success handling: catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-music-player/src/actions/manageRouting.ts:175](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageRouting.ts:175)
 
 Output / return cases observed:
@@ -22604,18 +22579,18 @@ if (text.includes("set mode") || text.includes("switch mode")) {
 
 ```ts
 ) {
-        return handleStartRouting(
-          routingService,
-          text,
-          effectiveCallback,
+        return Promise.race([
+          handleStartRouting(routingService, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("routing operation timed out")), timeoutMs),
 ```
 
 ```ts
 } else if (text.includes("stop routing")) {
-        return handleStopRouting(
-          routingService,
-          text,
-          effectiveCallback,
+        return Promise.race([
+          handleStopRouting(routingService, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("routing stop timed out")), timeoutMs),
 ```
 
 ```ts
@@ -22655,9 +22630,9 @@ logger.error(`Error managing routing: ${error}`);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry, bounded-helper
 - Error/success handling: catch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-music-player/src/actions/manageZones.ts:171](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/manageZones.ts:171)
 
 Output / return cases observed:
@@ -22680,10 +22655,10 @@ if (!zoneManager) {
 
 ```ts
 if (text.includes("create zone")) {
-        return handleCreateZone(zoneManager, text, effectiveCallback, source);
-      } else if (text.includes("delete zone") || text.includes("remove zone")) {
-        return handleDeleteZone(zoneManager, text, effectiveCallback, source);
-      } else if (/\b(?:list|show)\s+zones?\b/.test(text)) {
+        return Promise.race([
+          handleCreateZone(zoneManager, text, effectiveCallback, source),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("zone operation timed out")), timeoutMs),
 ```
 
 ```ts
@@ -22747,7 +22722,7 @@ logger.error(`Error managing zones: ${error}`);
 - Sub-actions: -
 - External APIs: fetch/http, runtime-service, database/memory, cache
 - Stack output: success, text, data, error, callback, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate, bounded-helper
 - Error/success handling: success branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-music-player/src/actions/playAudio.ts:538](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-music-player/src/actions/playAudio.ts:538)
@@ -22928,7 +22903,7 @@ return handleStop(runtime, message, state, merged, callback);
 
 </details>
 
-<details><summary>PAYMENT_OP - plugin:plugin-mysticism - plugins/plugin-mysticism/src/actions/payment-op.ts:43</summary>
+<details><summary>PAYMENT_OP - plugin:plugin-mysticism - plugins/plugin-mysticism/src/actions/payment-op.ts:44</summary>
 
 - Description: "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message)."
 - Contexts: finance, payments
@@ -22938,10 +22913,10 @@ return handleStop(runtime, message, state, merged, callback);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-mysticism/src/actions/payment-op.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/payment-op.ts:43)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-mysticism/src/actions/payment-op.ts:44](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/payment-op.ts:44)
 
 Output / return cases observed:
 
@@ -23004,9 +22979,9 @@ if (!session) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-mysticism/src/actions/reading-op.ts:456](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-mysticism/src/actions/reading-op.ts:456)
 
 Output / return cases observed:
@@ -23059,7 +23034,7 @@ if (subRaw === "followup") {
 
 </details>
 
-<details><summary>ACTIVATE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:71</summary>
+<details><summary>ACTIVATE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:72</summary>
 
 - Description: 'Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.'
 - Contexts: automation, connectors, tasks
@@ -23070,10 +23045,10 @@ if (subRaw === "followup") {
 - Sub-actions: -
 - External APIs: runtime-service, cache
 - Stack output: success, text, data, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:71](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:71)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:72](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts:72)
 
 Output / return cases observed:
 
@@ -23178,7 +23153,7 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service, cache
 - Stack output: success, data, error, callback, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, truncate, bounded-helper
 - Error/success handling: success branch, failure branch, catch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts:283)
@@ -23278,7 +23253,7 @@ if (callback) {
 
 </details>
 
-<details><summary>DEACTIVATE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:67</summary>
+<details><summary>DEACTIVATE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:69</summary>
 
 - Description: 'Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.'
 - Contexts: automation, connectors, tasks
@@ -23289,10 +23264,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:67](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:67)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:69](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deactivateWorkflow.ts:69)
 
 Output / return cases observed:
 
@@ -23372,7 +23347,7 @@ return { success: false };
 
 </details>
 
-<details><summary>DELETE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:75</summary>
+<details><summary>DELETE_N8N_WORKFLOW - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:76</summary>
 
 - Description: 'Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.'
 - Contexts: automation, connectors, tasks
@@ -23383,10 +23358,10 @@ return { success: false };
 - Sub-actions: -
 - External APIs: runtime-service, cache
 - Stack output: success, text, data, callback
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:75](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:75)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:76](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts:76)
 
 Output / return cases observed:
 
@@ -23602,9 +23577,9 @@ return { success: false };
 - Sub-actions: -
 - External APIs: runtime-service, cache
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: bounded-helper
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts:84)
 
 Output / return cases observed:
@@ -23701,7 +23676,7 @@ return { success: true, data: { workflowId, awaitingUserInput: true } };
 
 </details>
 
-<details><summary>WORKFLOW_LIFECYCLE_OP - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:396</summary>
+<details><summary>WORKFLOW_LIFECYCLE_OP - plugin:plugin-n8n-workflow - plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:398</summary>
 
 - Description: 'n8n workflow lifecycle operation. Pass `op` ("activate", "deactivate", or "delete") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.'
 - Contexts: automation, connectors, tasks
@@ -23712,10 +23687,10 @@ return { success: true, data: { workflowId, awaitingUserInput: true } };
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:396](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:396)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:398](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts:398)
 
 Output / return cases observed:
 
@@ -23751,26 +23726,26 @@ if (callback) {
 
 ```ts
 case 'activate':
-          return await runActivate(runtime, service, message, state, workflowIdParam, callback);
-        case 'deactivate':
-          return await runDeactivate(runtime, service, message, state, workflowIdParam, callback);
-        case 'delete':
+          return await Promise.race([
+            runActivate(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
 ```
 
 ```ts
 case 'deactivate':
-          return await runDeactivate(runtime, service, message, state, workflowIdParam, callback);
-        case 'delete':
-          return await runDelete(runtime, service, message, state, workflowIdParam, callback);
-      }
+          return await Promise.race([
+            runDeactivate(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
 ```
 
 ```ts
 case 'delete':
-          return await runDelete(runtime, service, message, state, workflowIdParam, callback);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          return await Promise.race([
+            runDelete(runtime, service, message, state, workflowIdParam, callback),
+            timeout,
+          ]);
 ```
 
 ```ts
@@ -23790,7 +23765,7 @@ if (callback) {
 
 </details>
 
-<details><summary>NOSTR_PUBLISH_NOTE - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/publishNote.ts:46</summary>
+<details><summary>NOSTR_PUBLISH_NOTE - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/publishNote.ts:52</summary>
 
 - Description: "Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; use NOSTR_SEND_DM for private messages."
 - Contexts: social_posting, connectors
@@ -23801,10 +23776,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-nostr/src/actions/publishNote.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishNote.ts:46)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-nostr/src/actions/publishNote.ts:52](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishNote.ts:52)
 
 Output / return cases observed:
 
@@ -23871,7 +23846,7 @@ return {
 
 </details>
 
-<details><summary>NOSTR_PUBLISH_PROFILE - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/publishProfile.ts:36</summary>
+<details><summary>NOSTR_PUBLISH_PROFILE - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/publishProfile.ts:46</summary>
 
 - Description: "Publish or update the bot's Nostr profile (kind:0 metadata)"
 - Contexts: social_posting, connectors
@@ -23882,10 +23857,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-nostr/src/actions/publishProfile.ts:36](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishProfile.ts:36)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-nostr/src/actions/publishProfile.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/publishProfile.ts:46)
 
 Output / return cases observed:
 
@@ -23951,7 +23926,7 @@ return {
 
 </details>
 
-<details><summary>NOSTR_SEND_DM - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/sendDm.ts:43</summary>
+<details><summary>NOSTR_SEND_DM - plugin:plugin-nostr - plugins/plugin-nostr/src/actions/sendDm.ts:48</summary>
 
 - Description: "Send an encrypted direct message via Nostr (NIP-04)"
 - Contexts: messaging, connectors
@@ -23962,10 +23937,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-nostr/src/actions/sendDm.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/sendDm.ts:43)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-nostr/src/actions/sendDm.ts:48](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-nostr/src/actions/sendDm.ts:48)
 
 Output / return cases observed:
 
@@ -24026,7 +24001,7 @@ if (callback) {
 }
         return { success: false, error: result.error };
       }
-      lastResult = { eventId: result.eventId, relays: result.relays };
+      lastResult = {
 ```
 
 ```ts
@@ -24046,7 +24021,7 @@ return {
 
 </details>
 
-<details><summary>EXECUTE_ROBLOX_ACTION - plugin:plugin-roblox - plugins/plugin-roblox/actions/executeRobloxAction.ts:192</summary>
+<details><summary>EXECUTE_ROBLOX_ACTION - plugin:plugin-roblox - plugins/plugin-roblox/actions/executeRobloxAction.ts:205</summary>
 
 - Description: "Trigger a server-side Roblox game action such as move-npc, give-coins, teleport, spawn-entity, or start-event."
 - Contexts: media, automation
@@ -24056,10 +24031,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-roblox/actions/executeRobloxAction.ts:192](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/executeRobloxAction.ts:192)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-roblox/actions/executeRobloxAction.ts:205](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/executeRobloxAction.ts:205)
 
 Output / return cases observed:
 
@@ -24074,7 +24049,7 @@ await callback?.({ text: "Roblox service not available.", action: actionName });
 await callback?.({ text: "Could not parse Roblox game action.", action: actionName });
       return { success: false, error: "Could not parse Roblox game action" };
     }
-    await service.executeAction(
+    const maxRobloxTargetIds = MAX_ROBLOX_TARGET_IDS;
 ```
 
 ```ts
@@ -24087,7 +24062,7 @@ await callback?.({ text: "Could not parse Roblox game action.", action: actionNa
 
 </details>
 
-<details><summary>ROBLOX_ACTION - plugin:plugin-roblox - plugins/plugin-roblox/actions/robloxAction.ts:390</summary>
+<details><summary>ROBLOX_ACTION - plugin:plugin-roblox - plugins/plugin-roblox/actions/robloxAction.ts:414</summary>
 
 - Description: "Route Roblox game integration with subaction message, execute, or get_player."
 - Contexts: media, automation
@@ -24097,10 +24072,10 @@ await callback?.({ text: "Could not parse Roblox game action.", action: actionNa
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: failure branch, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-roblox/actions/robloxAction.ts:390](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/robloxAction.ts:390)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-roblox/actions/robloxAction.ts:414](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/robloxAction.ts:414)
 
 Output / return cases observed:
 
@@ -24150,7 +24125,7 @@ await callback?.({ text: `Roblox action failed: ${errorMessage}`, action: action
 
 </details>
 
-<details><summary>SEND_ROBLOX_MESSAGE - plugin:plugin-roblox - plugins/plugin-roblox/actions/sendRobloxMessage.ts:87</summary>
+<details><summary>SEND_ROBLOX_MESSAGE - plugin:plugin-roblox - plugins/plugin-roblox/actions/sendRobloxMessage.ts:101</summary>
 
 - Description: "Send a chat or announcement message into the connected Roblox experience, optionally targeting specific player IDs."
 - Contexts: media, messaging
@@ -24160,10 +24135,10 @@ await callback?.({ text: `Roblox action failed: ${errorMessage}`, action: action
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-roblox/actions/sendRobloxMessage.ts:87](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/sendRobloxMessage.ts:87)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-roblox/actions/sendRobloxMessage.ts:101](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-roblox/actions/sendRobloxMessage.ts:101)
 
 Output / return cases observed:
 
@@ -24186,7 +24161,7 @@ await callback?.({ text: `Sent Roblox message ${targetText}.`, action: actionNam
     return {
       success: true,
       text: `Sent Roblox message ${targetText}`,
-      data: { targetPlayerIds, messageLength: content.length },
+      data: { targetPlayerIds, messageLength: cappedContent.length },
 ```
 
 </details>
@@ -24204,7 +24179,7 @@ await callback?.({ text: `Sent Roblox message ${targetText}.`, action: actionNam
 - Stack output: success, text, error, callback
 - Limits/caps: -
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
+- Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-shell/actions/clearHistory.ts:17](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-shell/actions/clearHistory.ts:17)
 
 Output / return cases observed:
@@ -24678,7 +24653,7 @@ await callback?.({ text: `Shopify search failed: ${msg}` });
 
 </details>
 
-<details><summary>SIGNAL_MESSAGE_OP - plugin:plugin-signal - plugins/plugin-signal/src/actions/messageOp.ts:214</summary>
+<details><summary>SIGNAL_MESSAGE_OP - plugin:plugin-signal - plugins/plugin-signal/src/actions/messageOp.ts:220</summary>
 
 - Description: "Signal message operation router (send, react)."
 - Contexts: phone, messaging, connectors
@@ -24689,10 +24664,10 @@ await callback?.({ text: `Shopify search failed: ${msg}` });
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, values, data, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-signal/src/actions/messageOp.ts:214](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-signal/src/actions/messageOp.ts:214)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-signal/src/actions/messageOp.ts:220](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-signal/src/actions/messageOp.ts:220)
 
 Output / return cases observed:
 
@@ -24707,7 +24682,8 @@ Output / return cases observed:
 });
       return { success: false, error: "Could not extract op parameters" };
     }
-    if (info.op === "react") {
+    info = {
+      ...info,
 ```
 
 ```ts
@@ -24775,7 +24751,7 @@ return {
 
 </details>
 
-<details><summary>SLACK_GET_USER_INFO - plugin:plugin-slack - plugins/plugin-slack/src/actions/getUserInfo.ts:73</summary>
+<details><summary>SLACK_GET_USER_INFO - plugin:plugin-slack - plugins/plugin-slack/src/actions/getUserInfo.ts:80</summary>
 
 - Description: "Get information about a Slack user"
 - Contexts: messaging, connectors
@@ -24786,10 +24762,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-slack/src/actions/getUserInfo.ts:73](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/getUserInfo.ts:73)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-slack/src/actions/getUserInfo.ts:80](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/getUserInfo.ts:80)
 
 Output / return cases observed:
 
@@ -24830,7 +24806,7 @@ return {
 
 </details>
 
-<details><summary>SLACK_MESSAGE_OP - plugin:plugin-slack - plugins/plugin-slack/src/actions/messageOp.ts:144</summary>
+<details><summary>SLACK_MESSAGE_OP - plugin:plugin-slack - plugins/plugin-slack/src/actions/messageOp.ts:146</summary>
 
 - Description: "Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op."
 - Contexts: messaging, connectors
@@ -24841,10 +24817,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-slack/src/actions/messageOp.ts:144](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/messageOp.ts:144)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-slack/src/actions/messageOp.ts:146](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-slack/src/actions/messageOp.ts:146)
 
 Output / return cases observed:
 
@@ -24859,7 +24835,8 @@ Output / return cases observed:
 });
       return { success: false, error: "Could not extract op parameters" };
     }
-    const stateData = state?.data;
+    info = {
+      ...info,
 ```
 
 ```ts
@@ -24881,7 +24858,7 @@ Output / return cases observed:
 await callback?.(response);
       return {
         success: true,
-        data: { op, messageTs: result.ts, channelId: targetChannelId },
+        data: { op, messageTs: result.ts, channelId: targetChannelId, timeoutMs },
       };
 ```
 
@@ -24937,7 +24914,7 @@ await callback?.(response);
 await callback?.(response);
       return {
         success: true,
-        data: { op, messageTs: info.messageTs, channelId },
+        data: { op, messageTs: info.messageTs, channelId, timeoutMs },
       };
 ```
 
@@ -25107,7 +25084,7 @@ if (callback) await callback({ text, actions: [] } as Content);
 
 </details>
 
-<details><summary>MUSIC_GENERATION - plugin:plugin-suno - plugins/plugin-suno/src/actions/musicGeneration.ts:96</summary>
+<details><summary>MUSIC_GENERATION - plugin:plugin-suno - plugins/plugin-suno/src/actions/musicGeneration.ts:99</summary>
 
 - Description: 'Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.'
 - Contexts: media
@@ -25117,10 +25094,10 @@ if (callback) await callback({ text, actions: [] } as Content);
 - Sub-actions: -
 - External APIs: fetch/http
 - Stack output: success, text, data, error, throws
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-suno/src/actions/musicGeneration.ts:96](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/actions/musicGeneration.ts:96)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-suno/src/actions/musicGeneration.ts:99](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/actions/musicGeneration.ts:99)
 
 Output / return cases observed:
 
@@ -25207,7 +25184,7 @@ if (callback) {
 
 </details>
 
-<details><summary>START_TAILSCALE - plugin:plugin-tailscale - plugins/plugin-tailscale/src/actions/start-tailscale.ts:62</summary>
+<details><summary>START_TAILSCALE - plugin:plugin-tailscale - plugins/plugin-tailscale/src/actions/start-tailscale.ts:64</summary>
 
 - Description: 'Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)'
 - Contexts: connectors, settings, admin
@@ -25218,10 +25195,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-tailscale/src/actions/start-tailscale.ts:62](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/start-tailscale.ts:62)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-tailscale/src/actions/start-tailscale.ts:64](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tailscale/src/actions/start-tailscale.ts:64)
 
 Output / return cases observed:
 
@@ -25428,7 +25405,7 @@ return { success: false, error: errorMessage };
 
 </details>
 
-<details><summary>TWITCH_CHANNEL_OP - plugin:plugin-twitch - plugins/plugin-twitch/src/actions/channelRouter.ts:87</summary>
+<details><summary>TWITCH_CHANNEL_OP - plugin:plugin-twitch - plugins/plugin-twitch/src/actions/channelRouter.ts:94</summary>
 
 - Description: "Join or leave a Twitch channel."
 - Contexts: messaging, connectors
@@ -25439,10 +25416,10 @@ return { success: false, error: errorMessage };
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, data, error
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-twitch/src/actions/channelRouter.ts:87](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/channelRouter.ts:87)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-twitch/src/actions/channelRouter.ts:94](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/channelRouter.ts:94)
 
 Output / return cases observed:
 
@@ -25471,13 +25448,13 @@ Output / return cases observed:
 });
         return {
           success: true,
-          data: { op, channel, alreadyJoined: true },
+          data: { op, channel, alreadyJoined: true, timeoutMs },
         };
 ```
 
 ```ts
 });
-      return { success: true, data: { op, channel } };
+      return { success: true, data: { op, channel, timeoutMs } };
     }
     const joinedChannels = twitchService.getJoinedChannels();
 ```
@@ -25498,13 +25475,13 @@ Output / return cases observed:
 
 ```ts
 });
-    return { success: true, data: { op, channel } };
+    return { success: true, data: { op, channel, timeoutMs } };
   }
 ```
 
 </details>
 
-<details><summary>TWITCH_SEND_MESSAGE - plugin:plugin-twitch - plugins/plugin-twitch/src/actions/sendMessage.ts:39</summary>
+<details><summary>TWITCH_SEND_MESSAGE - plugin:plugin-twitch - plugins/plugin-twitch/src/actions/sendMessage.ts:46</summary>
 
 - Description: "Send a message to a Twitch channel"
 - Contexts: messaging, connectors
@@ -25515,10 +25492,10 @@ Output / return cases observed:
 - Sub-actions: -
 - External APIs: runtime-service, llm
 - Stack output: success, text, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-twitch/src/actions/sendMessage.ts:39](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/sendMessage.ts:39)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-twitch/src/actions/sendMessage.ts:46](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/actions/sendMessage.ts:46)
 
 Output / return cases observed:
 
@@ -25584,7 +25561,7 @@ return {
 
 </details>
 
-<details><summary>CAPTURE_IMAGE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:434</summary>
+<details><summary>CAPTURE_IMAGE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:453</summary>
 
 - Description: "Captures the current frame from the camera and saves it as an image attachment. Returns image data with camera info and timestamp for action chaining. Can be combined with DESCRIBE_SCENE for analysis or NAME_ENTITY f...
 - Contexts: media, screen_time, automation
@@ -25595,10 +25572,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:434](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:434)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:453](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:453)
 
 Output / return cases observed:
 
@@ -25650,7 +25627,7 @@ return {
 
 </details>
 
-<details><summary>DESCRIBE_SCENE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:120</summary>
+<details><summary>DESCRIBE_SCENE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:133</summary>
 
 - Description: "Analyzes the current visual scene and provides a detailed description of what the agent sees through the camera. Returns scene analysis data including people count, objects, and camera info for action chaining."
 - Contexts: media, screen_time, automation
@@ -25661,10 +25638,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:120](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:120)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:133](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:133)
 
 Output / return cases observed:
 
@@ -25719,7 +25696,7 @@ acc[obj.type] = (acc[obj.type] || 0) + 1;
 ```ts
 return {
         success: true,
-        text: description,
+        text,
         values: {
 ```
 
@@ -25733,7 +25710,7 @@ error instanceof Error ? error.message : String(error);
 
 </details>
 
-<details><summary>IDENTIFY_PERSON - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:1211</summary>
+<details><summary>IDENTIFY_PERSON - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:1246</summary>
 
 - Description: "Identify a person in view if they have been seen before"
 - Contexts: media, memory
@@ -25744,10 +25721,10 @@ error instanceof Error ? error.message : String(error);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:1211](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1211)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:1246](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1246)
 
 Output / return cases observed:
 
@@ -25801,7 +25778,7 @@ if (callback) {
 
 </details>
 
-<details><summary>NAME_ENTITY - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:930</summary>
+<details><summary>NAME_ENTITY - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:961</summary>
 
 - Description: "Assign a name to a person or object currently visible in the camera view"
 - Contexts: media, memory
@@ -25812,10 +25789,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:930](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:930)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:961](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:961)
 
 Output / return cases observed:
 
@@ -25876,7 +25853,7 @@ if (callback) {
 
 </details>
 
-<details><summary>SET_VISION_MODE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:695</summary>
+<details><summary>SET_VISION_MODE - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:720</summary>
 
 - Description: "Set the vision mode to OFF, CAMERA, SCREEN, or BOTH"
 - Contexts: media, screen_time, settings
@@ -25887,10 +25864,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service, browser/device
 - Stack output: success, values, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:695](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:695)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:720](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:720)
 
 Output / return cases observed:
 
@@ -25944,7 +25921,7 @@ if (callback) {
 
 </details>
 
-<details><summary>TRACK_ENTITY - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:1468</summary>
+<details><summary>TRACK_ENTITY - plugin:plugin-vision - plugins/plugin-vision/src/action.ts:1507</summary>
 
 - Description: "Start tracking a specific person or object in view"
 - Contexts: media, screen_time, automation
@@ -25955,10 +25932,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-vision/src/action.ts:1468](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1468)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-vision/src/action.ts:1507](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/src/action.ts:1507)
 
 Output / return cases observed:
 
@@ -26082,7 +26059,7 @@ callback?.({ text: `Error: ${errorMessage}` });
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: limit, truncate, timeout/retry
 - Error/success handling: success branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/bridge.ts:527)
@@ -26125,7 +26102,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: text, data, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1047)
@@ -26259,7 +26236,7 @@ return callbackResult(callback, true, {
 - Sub-actions: -
 - External APIs: -
 - Stack output: text, data, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:690)
@@ -26460,7 +26437,7 @@ return callbackResult(callback, true, {
 - Sub-actions: -
 - External APIs: -
 - Stack output: text, data, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:1188)
@@ -26527,7 +26504,7 @@ return callbackResult(callback, true, {
 - Sub-actions: -
 - External APIs: -
 - Stack output: text, data, delegated-return
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/dexscreener/actions.ts:539)
@@ -26629,7 +26606,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, error, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: success branch, failure branch, catch
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/lp/actions/LpManagementAgentAction.ts:584)
@@ -26822,7 +26799,7 @@ const errorMessage = toActionError(error);
 
 </details>
 
-<details><summary>SOLANA_TRANSFER - plugin:plugin-wallet - plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:111</summary>
+<details><summary>SOLANA_TRANSFER - plugin:plugin-wallet - plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:114</summary>
 
 - Description: spec.description
 - Contexts: finance, crypto, wallet, payments
@@ -26833,10 +26810,10 @@ const errorMessage = toActionError(error);
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, values, data, error, callback, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: success branch, failure branch, throws, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:111](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:111)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:114](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/transfer.ts:114)
 
 Output / return cases observed:
 
@@ -26868,7 +26845,7 @@ const preview = `Review Solana transfer before submitting: ${content.amount} ${t
 if (!solanaService) {
         throw new Error("SolanaService not initialized");
       }
-      const walletResult = await solanaService.handleWalletAction({
+      const walletResult = await Promise.race([
 ```
 
 ```ts
@@ -26894,7 +26871,7 @@ return {
 ```
 
 ```ts
-: JSON.stringify(error);
+: JSON.stringify(error).slice(0, SOLANA_ERROR_MAX_CHARS);
         callback({
           text: `Transfer failed: ${message}`,
           content: { error: message },
@@ -26922,7 +26899,7 @@ return {
 - Sub-actions: -
 - External APIs: -
 - Stack output: success, text, values, data, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: success branch, callback output
 - Cleanup assessment: looks aligned; verify runtime trajectory event
 - Source: [plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/evm/actions/swap.ts:674)
@@ -26954,7 +26931,7 @@ return {
 
 </details>
 
-<details><summary>SWAP - plugin:plugin-wallet - plugins/plugin-wallet/src/chains/solana/actions/swap.ts:100</summary>
+<details><summary>SWAP - plugin:plugin-wallet - plugins/plugin-wallet/src/chains/solana/actions/swap.ts:103</summary>
 
 - Description: spec.description
 - Contexts: finance, crypto, wallet
@@ -26965,10 +26942,10 @@ return {
 - Sub-actions: -
 - External APIs: runtime-service
 - Stack output: success, text, error, throws, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, truncate, timeout/retry
 - Error/success handling: success branch, throws, catch
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-wallet/src/chains/solana/actions/swap.ts:100](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/swap.ts:100)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-wallet/src/chains/solana/actions/swap.ts:103](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/chains/solana/actions/swap.ts:103)
 
 Output / return cases observed:
 
@@ -27127,7 +27104,7 @@ if (callback) {
 
 </details>
 
-<details><summary>WHATSAPP_MESSAGE_OP - plugin:plugin-whatsapp - plugins/plugin-whatsapp/src/actions/messageOp.ts:225</summary>
+<details><summary>WHATSAPP_MESSAGE_OP - plugin:plugin-whatsapp - plugins/plugin-whatsapp/src/actions/messageOp.ts:239</summary>
 
 - Description: "WhatsApp message operations (send, react)."
 - Contexts: phone, messaging, connectors
@@ -27138,10 +27115,10 @@ if (callback) {
 - Sub-actions: -
 - External APIs: llm
 - Stack output: success, text, error, callback, delegated-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: failure branch, catch, callback output
-- Cleanup assessment: cap external results/timeouts
-- Source: [plugins/plugin-whatsapp/src/actions/messageOp.ts:225](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-whatsapp/src/actions/messageOp.ts:225)
+- Cleanup assessment: looks aligned; verify runtime trajectory event
+- Source: [plugins/plugin-whatsapp/src/actions/messageOp.ts:239](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-whatsapp/src/actions/messageOp.ts:239)
 
 Output / return cases observed:
 
@@ -27466,7 +27443,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: not statically obvious
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/agent/src/providers/admin-panel.ts:83](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/admin-panel.ts:83)
@@ -27766,7 +27743,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: values, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: not statically obvious
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/agent/src/providers/escalation-trigger.ts:184](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/escalation-trigger.ts:184)
@@ -27854,7 +27831,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/agent/src/providers/page-scoped-context.ts:691](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/page-scoped-context.ts:691)
@@ -28158,7 +28135,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/agent/src/providers/rolodex.ts:42](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/rolodex.ts:42)
@@ -28300,7 +28277,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, data
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/agent/src/providers/workspace-provider.ts:167](/Users/shawwalters/eliza-workspace/milady/eliza/packages/agent/src/providers/workspace-provider.ts:167)
@@ -28350,7 +28327,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: text, values, data
-- Limits/caps: truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [cloud/packages/lib/eliza/advanced-memory/providers.ts:86](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:86)
@@ -28400,7 +28377,7 @@ logger.error({ src: "provider:memory", err }, "Error in longTermMemoryProvider")
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: text, values, data
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [cloud/packages/lib/eliza/advanced-memory/providers.ts:21](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/advanced-memory/providers.ts:21)
@@ -28714,7 +28691,7 @@ async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 - Companion/sub-actions: -
 - External APIs: database/memory
 - Stack output: text, values, data
-- Limits/caps: truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-character-builder/providers/current-character.ts:65)
@@ -28788,7 +28765,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: database/memory
 - Stack output: text, values, data
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate, bounded-helper
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/action-state.ts:101)
@@ -28863,7 +28840,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: sdk/client
 - Stack output: text, values, data, delegated-return
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43](/Users/shawwalters/eliza-workspace/milady/eliza/cloud/packages/lib/eliza/plugin-cloud-bootstrap/providers/character.ts:43)
@@ -29354,7 +29331,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: data, boolean-return
-- Limits/caps: -
+- Limits/caps: slice, limit, truncate
 - Error/success handling: not statically obvious
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/core/src/features/basic-capabilities/providers/actions.ts:354](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/basic-capabilities/providers/actions.ts:354)
@@ -29574,7 +29551,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: text, values, data
-- Limits/caps: limit
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/core/src/features/autonomy/providers.ts:179](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/autonomy/providers.ts:179)
@@ -31123,7 +31100,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: not statically obvious
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [packages/core/src/features/advanced-capabilities/providers/relationships.ts:129](/Users/shawwalters/eliza-workspace/milady/eliza/packages/core/src/features/advanced-capabilities/providers/relationships.ts:129)
@@ -32041,7 +32018,7 @@ const p = state.player;
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: text
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/app-2004scape/src/providers/goals.ts:157](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-2004scape/src/providers/goals.ts:157)
@@ -32174,7 +32151,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, data
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/app-browser/src/provider.ts:57](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-browser/src/provider.ts:57)
@@ -32957,7 +32934,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: fetch/http
 - Stack output: text, data
-- Limits/caps: timeout/retry
+- Limits/caps: slice, limit, truncate, timeout/retry
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/app-steward/src/providers/steward-balance.ts:112](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-steward/src/providers/steward-balance.ts:112)
@@ -34080,7 +34057,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: sdk/client, runtime-service
 - Stack output: text, values, data
-- Limits/caps: truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-farcaster/providers/profileProvider.ts:14](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-farcaster/providers/profileProvider.ts:14)
@@ -36458,7 +36435,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, data
-- Limits/caps: -
+- Limits/caps: timeout/retry
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-streaming/src/core.ts:696](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-streaming/src/core.ts:696)
@@ -36499,7 +36476,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: limit
 - Error/success handling: not statically obvious
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-suno/src/providers/suno.ts:91](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-suno/src/providers/suno.ts:91)
@@ -36557,7 +36534,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-tee/src/providers/deriveKey.ts:154](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-tee/src/providers/deriveKey.ts:154)
@@ -36686,7 +36663,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: text, values, data
-- Limits/caps: truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-twitch/src/providers/userContext.ts:27](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-twitch/src/providers/userContext.ts:27)
@@ -37072,7 +37049,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: runtime-service
 - Stack output: values
-- Limits/caps: slice, truncate
+- Limits/caps: slice, limit, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/lpinfo/kamino/providers/kaminoLiquidityProvider.ts:109)
@@ -37124,7 +37101,7 @@ return {
 - Companion/sub-actions: -
 - External APIs: -
 - Stack output: text, values, data
-- Limits/caps: -
+- Limits/caps: slice, truncate
 - Error/success handling: catch
 - Cleanup assessment: looks aligned; verify segment hashing
 - Source: [plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153](/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-wallet/src/analytics/birdeye/providers/portfolio-factory.ts:153)

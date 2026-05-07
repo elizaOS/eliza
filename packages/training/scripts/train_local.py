@@ -11,7 +11,7 @@ Usage:
     # Real run
     uv run --extra train python scripts/train_local.py \
         --epochs 3 --batch-size 4 --grad-accum 8 \
-        --run-name qwen35-eliza-toon-v1
+        --run-name qwen35-eliza-native-v1
 """
 
 from __future__ import annotations
@@ -87,14 +87,22 @@ def build_dataset(
     from datasets import Dataset
 
     def render(example):
-        text = tokenizer.apply_chat_template(
-            example["messages"],
-            tokenize=False,
-            add_generation_prompt=False,
-        )
+        kwargs = {
+            "conversation": example["messages"],
+            "tokenize": False,
+            "add_generation_prompt": False,
+        }
+        if "tools" in example and example["tools"] is not None:
+            kwargs["tools"] = example["tools"]
+        try:
+            text = tokenizer.apply_chat_template(**kwargs)
+        except TypeError:
+            kwargs.pop("tools", None)
+            text = tokenizer.apply_chat_template(**kwargs)
         return {"text": text}
 
-    ds = Dataset.from_list(formatted).map(render, remove_columns=["messages"])
+    ds = Dataset.from_list(formatted)
+    ds = ds.map(render, remove_columns=list(ds.column_names))
     if max_chars:
         before = len(ds)
         ds = ds.filter(lambda ex: len(ex["text"]) <= max_chars)
@@ -108,7 +116,7 @@ def main() -> int:
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
-    ap.add_argument("--run-name", default="qwen35-eliza-toon")
+    ap.add_argument("--run-name", default="qwen35-eliza-native")
     ap.add_argument("--max-samples", type=int, default=0)
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--batch-size", type=int, default=4)
@@ -121,7 +129,7 @@ def main() -> int:
     ap.add_argument("--full-finetune", action="store_true",
                     help="skip LoRA — full-parameter SFT")
     ap.add_argument("--qlora", action="store_true",
-                    help="load model in 4-bit (bitsandbytes nf4) for QLoRA")
+                    help="disabled; this entrypoint is full-parameter APOLLO only")
     ap.add_argument(
         "--optimizer",
         choices=["apollo", "apollo_mini"],
@@ -135,8 +143,8 @@ def main() -> int:
         "--max-chars", type=int, default=0,
         help="Drop training records whose rendered chat-template text is "
              "longer than this many characters. 0 = no filter. Recommended "
-             "to use ~3.0 * max_seq_len at the local tier so long Claude "
-             "distill records don't get truncated through the system prompt.",
+             "to use ~3.0 * max_seq_len at the local tier for long native "
+             "trajectory rows.",
     )
     ap.add_argument(
         "--use-liger", default="auto", choices=("auto", "on", "off"),

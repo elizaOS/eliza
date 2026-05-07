@@ -2,8 +2,8 @@
  * Per-model price table and helpers for computing per-call USD cost.
  *
  * Source of truth for the trajectory recorder. Kept in sync with the
- * standalone copy at `scripts/lib/cost-table.ts` (used by `run-cerebras.ts`
- * and the `trajectory` CLI) — both files are written against PLAN.md §18.7
+ * standalone copy at `scripts/lib/cost-table.ts` (used by the `trajectory`
+ * CLI) — both files are written against PLAN.md §18.7
  * and MUST agree on every number. If a price changes, update both.
  *
  * Numbers are USD per 1,000,000 tokens (provider unit pricing).

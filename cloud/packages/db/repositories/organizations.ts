@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import type { CreditTransaction } from "../schemas/credit-transactions";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -57,6 +57,39 @@ export class OrganizationsRepository {
         users: true,
       },
     });
+  }
+
+  async listForAdminDashboard(limit: number): Promise<
+    Array<
+      Pick<
+        Organization,
+        | "id"
+        | "name"
+        | "slug"
+        | "credit_balance"
+        | "is_active"
+        | "billing_email"
+        | "steward_tenant_id"
+        | "created_at"
+        | "updated_at"
+      >
+    >
+  > {
+    return dbRead
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+        credit_balance: organizations.credit_balance,
+        is_active: organizations.is_active,
+        billing_email: organizations.billing_email,
+        steward_tenant_id: organizations.steward_tenant_id,
+        created_at: organizations.created_at,
+        updated_at: organizations.updated_at,
+      })
+      .from(organizations)
+      .orderBy(desc(organizations.created_at))
+      .limit(limit);
   }
 
   // ============================================================================

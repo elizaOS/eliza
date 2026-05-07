@@ -14,6 +14,19 @@ import {
 import type { VisionService } from "./service";
 import { VisionMode } from "./types";
 
+const VISION_ACTION_TIMEOUT_MS = 10_000;
+const MAX_VISION_TEXT_LENGTH = 4000;
+const MAX_VISION_ENTITIES = 25;
+
+function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), VISION_ACTION_TIMEOUT_MS),
+    ),
+  ]);
+}
+
 async function saveExecutionRecord(
   runtime: IAgentRuntime,
   messageContext: Memory,
@@ -220,7 +233,11 @@ export const describeSceneAction: Action = {
     }
 
     try {
-      const scene = await visionService.getSceneDescription();
+      const maxVisionEntities = MAX_VISION_ENTITIES;
+      const scene = await withVisionTimeout(
+        visionService.getSceneDescription(),
+        "vision scene description",
+      );
       const cameraInfo = visionService.getCameraInfo();
 
       if (!scene) {
@@ -262,6 +279,8 @@ export const describeSceneAction: Action = {
 
       const peopleCount = scene.people.length;
       const objectCount = scene.objects.length;
+      const people = scene.people.slice(0, maxVisionEntities);
+      const objects = scene.objects.slice(0, maxVisionEntities);
       const timestamp = new Date(scene.timestamp).toLocaleString();
       const detailLevel =
         readActionParams(_options).detailLevel === "summary"
@@ -273,7 +292,7 @@ export const describeSceneAction: Action = {
 
       if (detailLevel === "detailed" && peopleCount > 0) {
         description += `\n\nI can see ${peopleCount} ${peopleCount === 1 ? "person" : "people"}`;
-        const facingData = scene.people.reduce(
+        const facingData = people.reduce(
           (acc, person) => {
             if (person.facing && person.facing !== "unknown") {
               acc[person.facing] = (acc[person.facing] || 0) + 1;
@@ -293,7 +312,7 @@ export const describeSceneAction: Action = {
       }
 
       if (detailLevel === "detailed" && objectCount > 0) {
-        const objectTypes = scene.objects.reduce(
+        const objectTypes = objects.reduce(
           (acc, obj) => {
             acc[obj.type] = (acc[obj.type] || 0) + 1;
             return acc;
@@ -316,7 +335,7 @@ export const describeSceneAction: Action = {
       }
 
       const thought = `Analyzed the visual scene at ${timestamp}.`;
-      const text = description;
+      const text = description.slice(0, MAX_VISION_TEXT_LENGTH);
 
       await saveExecutionRecord(runtime, message, thought, text, [
         "DESCRIBE_SCENE",
@@ -331,7 +350,7 @@ export const describeSceneAction: Action = {
 
       return {
         success: true,
-        text: description,
+        text,
         values: {
           success: true,
           visionAvailable: true,
@@ -346,12 +365,12 @@ export const describeSceneAction: Action = {
         data: {
           actionName: "DESCRIBE_SCENE",
           sceneTimestamp: scene.timestamp,
-          sceneDescription: scene.description,
+          sceneDescription: scene.description.slice(0, MAX_VISION_TEXT_LENGTH),
           sceneChanged: scene.sceneChanged,
           changePercentage: scene.changePercentage,
           audioTranscription: scene.audioTranscription || undefined,
-          objectCount: scene.objects.length,
-          peopleCount: scene.people.length,
+          objectCount: objects.length,
+          peopleCount: people.length,
           cameraInfo: cameraInfo
             ? {
                 id: cameraInfo.id,
@@ -360,7 +379,7 @@ export const describeSceneAction: Action = {
               }
             : undefined,
           timestamp,
-          description,
+          description: text,
         },
       };
     } catch (error: unknown) {
@@ -519,7 +538,13 @@ export const captureImageAction: Action = {
     }
 
     try {
-      const imageBuffer = await visionService.captureImage();
+      const timeoutMs = VISION_ACTION_TIMEOUT_MS;
+      const imageBuffer = await Promise.race([
+        visionService.captureImage(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("vision capture timed out")), timeoutMs),
+        ),
+      ]);
       const cameraInfo = visionService.getCameraInfo();
 
       if (!imageBuffer) {
@@ -822,7 +847,13 @@ export const setVisionModeAction: Action = {
       }
 
       const currentMode = visionService.getVisionMode();
-      await visionService.setVisionMode(newMode);
+      const timeoutMs = VISION_ACTION_TIMEOUT_MS;
+      await Promise.race([
+        visionService.setVisionMode(newMode),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("vision mode change timed out")), timeoutMs),
+        ),
+      ]);
 
       const thought = `Changed vision mode from ${currentMode} to ${newMode}.`;
       let text = "";
@@ -1059,7 +1090,11 @@ export const nameEntityAction: Action = {
         };
       }
 
-      const scene = await visionService.getSceneDescription();
+      const maxVisionEntities = MAX_VISION_ENTITIES;
+      const scene = await withVisionTimeout(
+        visionService.getSceneDescription(),
+        "vision scene description",
+      );
 
       if (!scene || scene.people.length === 0) {
         const thought = "No people visible to name.";
@@ -1106,8 +1141,8 @@ export const nameEntityAction: Action = {
 
       // Update entities
       await entityTracker.updateEntities(
-        scene.objects,
-        scene.people,
+        scene.objects.slice(0, maxVisionEntities),
+        scene.people.slice(0, maxVisionEntities),
         undefined,
         runtime,
       );
@@ -1320,7 +1355,11 @@ export const identifyPersonAction: Action = {
         };
       }
 
-      const scene = await visionService.getSceneDescription();
+      const maxVisionEntities = MAX_VISION_ENTITIES;
+      const scene = await withVisionTimeout(
+        visionService.getSceneDescription(),
+        "vision scene description",
+      );
 
       if (!scene || scene.people.length === 0) {
         const thought = "No people visible to identify.";
@@ -1343,8 +1382,8 @@ export const identifyPersonAction: Action = {
 
       // Update entities
       await entityTracker.updateEntities(
-        scene.objects,
-        scene.people,
+        scene.objects.slice(0, maxVisionEntities),
+        scene.people.slice(0, maxVisionEntities),
         undefined,
         runtime,
       );
@@ -1430,7 +1469,7 @@ export const identifyPersonAction: Action = {
           text,
           actions: ["IDENTIFY_PERSON"],
           data: {
-            identifications: people.map((p) => ({
+            identifications: people.slice(0, maxVisionEntities).map((p) => ({
               id: p.id,
               entityType: p.entityType,
               name: p.attributes.name || undefined,
@@ -1574,7 +1613,11 @@ export const trackEntityAction: Action = {
         };
       }
 
-      const scene = await visionService.getSceneDescription();
+      const maxVisionEntities = MAX_VISION_ENTITIES;
+      const scene = await withVisionTimeout(
+        visionService.getSceneDescription(),
+        "vision scene description",
+      );
 
       if (!scene) {
         const thought = "No scene available for tracking.";
@@ -1596,8 +1639,8 @@ export const trackEntityAction: Action = {
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
       await entityTracker.updateEntities(
-        scene.objects,
-        scene.people,
+        scene.objects.slice(0, maxVisionEntities),
+        scene.people.slice(0, maxVisionEntities),
         undefined,
         runtime,
       );

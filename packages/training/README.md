@@ -1,15 +1,16 @@
 # eliza-1 — Training Pipeline
 
 Fine-tunes the **eliza-1** model series (`eliza-1-2b`, `eliza-1-9b`,
-`eliza-1-27b`) on the elizaOS prompt + TOON output format, ScamBench, and
-a curated set of tool-calling and agentic-trace datasets.
+`eliza-1-27b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
+request sent to the model plus the exact normalized response returned by the
+model, including native tool calls.
 
 > **This directory is gitignored.** The canonical artifact stores live on
 > HuggingFace, not in git history:
 >
 > | what                              | repo                                      | script                          |
 > |-----------------------------------|-------------------------------------------|---------------------------------|
-> | Dataset (TOON SFT corpus)         | `elizaos/eliza-toon-v1-sft` (dataset)     | `scripts/push_to_hf.py`         |
+> | Dataset (native trajectory SFT)   | runtime `eliza_native_v1` exports          | `scripts/trajectories_to_sft.py`|
 > | Trained models                    | `elizaos/eliza-1-{2b,9b,27b}` (model)     | `scripts/push_model_to_hf.py`   |
 > | Pipeline source (this directory)  | `elizaos/eliza-training-pipeline` (model) | `scripts/push_pipeline_to_hf.py`|
 >
@@ -38,10 +39,9 @@ A unified pipeline runner (`scripts/run_pipeline.py`) chains:
 
   base bench → APOLLO SFT → fine-tuned bench → PolarQuant + TurboQuant + QJL → quantized bench
 
-Per-task benchmarks live in `scripts/benchmark/eliza_bench.py` and score
-**format correctness** (TOON parses + required fields present) and
-**content correctness** (action-name match for the planner, RESPOND/IGNORE
-match for routing, text presence for replies) on the held-out test split.
+Per-task benchmarks live in `scripts/benchmark/native_tool_call_bench.py` and
+score native tool-call structure, tool names, argument keys, and JSON routing
+shape on the held-out trajectory split.
 
 ## Cloning the pipeline on a fresh machine
 
@@ -49,7 +49,6 @@ match for routing, text presence for replies) on the held-out test split.
 huggingface-cli download elizaos/eliza-training-pipeline --repo-type model --local-dir ./training
 cd training
 uv sync --extra train
-huggingface-cli download elizaos/eliza-toon-v1-sft --repo-type dataset --local-dir data/final
 ```
 
 ## Pipeline
@@ -81,15 +80,14 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
        polarquant_apply  turboquant_apply  qjl_apply (vendored)
                                   │
                                   ▼
-                          eliza_bench.py
-                  (format + content correctness on
-                   should_respond / message_handler / reply / claude_distill)
+                          native_tool_call_bench.py
+                  (native tool-call + JSON structure correctness)
 ```
 
-## Native tool-calling migration
+## Native Tool-Calling Data
 
-The v5 runtime refactor trains native JSON records instead of TOON targets.
-The migration contract is documented in
+The runtime training path uses native JSON records, not alternate harness rows.
+The contract is documented in
 [`docs/dataset/NATIVE_TOOL_CALLING_SPEC.md`](docs/dataset/NATIVE_TOOL_CALLING_SPEC.md).
 Source transform families are summarized in
 [`docs/dataset/NATIVE_SOURCE_TRANSFORMS.md`](docs/dataset/NATIVE_SOURCE_TRANSFORMS.md).
@@ -194,81 +192,29 @@ run.
   with peak memory + tokens/sec per logging window; hard-fails the run
   when `torch.cuda.max_memory_reserved()` exceeds the registry budget by
   more than 10 %.
-- **Benchmark** — `scripts/benchmark/eliza_bench.py`. Four task buckets
-  (`should_respond`, `message_handler`, `reply`, `claude_distill`) scored
-  on format (TOON parses + required fields, or `<think>...</think>final`
-  envelope for distill records) and content (action-name match,
-  RESPOND/IGNORE match, presence of final answer after the `</think>`
-  closing tag). Run on base + fine-tuned + each quantized variant for
-  direct A/B numbers.
+- **Benchmark** — `scripts/benchmark/native_tool_call_bench.py`. It scores
+  expected native tool names, argument keys, and JSON routing/planner shape.
+  Run on base + fine-tuned + each quantized variant for direct A/B numbers.
 
 ## Uniform chat format
 
-Every record in every adapter, in every output bucket, in both training
-and benchmark, lands as a list of role-tagged messages and is rendered
-through `tokenizer.apply_chat_template(messages, ...)`. There is exactly
-one chat formatting path:
+Every trajectory-training record is an `eliza_native_v1` boundary row. The
+renderer reads `request.messages` or `request.prompt`, appends the supervised
+assistant turn from `response.text` and/or `response.toolCalls`, and passes
+`request.tools` into `tokenizer.apply_chat_template(..., tools=...)` when the
+tokenizer supports native tool rendering.
 
 ```
-{role: "system",    content: <system prompt — adapter or task-type default>}
-{role: "user",      content: <currentMessage.content>}
-{role: "assistant", content: <expectedResponse — TOON OR raw <think>X</think>final>}
-```
-
-Memory turns (`memoryEntries`) sit between the system and the final user
-turn in the same role-tagged shape. The assistant content is **whatever
-the adapter emits** — TOON for elizaOS structured tasks (routing,
-planner, tool calls, shell, replies), and raw `<think>...</think>final`
-for reasoning distill tasks like `claude_distill`. Both shapes share the
-identical chat-template wrapping.
-
-The same chat template is applied at inference time
-(`scripts/benchmark/eliza_bench.py`), so what the model sees during
-training is byte-identical to what it sees at generation, modulo the
-`add_generation_prompt=True` tail used at inference.
-
-### Long-record handling (Claude distills)
-
-The Claude distill records have a long-tail token-length distribution
-(median ~6k, p90 ~27k tokens). At the local-tier `seq_len=8192`, only
-~42 % fit without truncation; the remaining 58 % would lose either the
-system prompt (`truncation_side=left`) or the assistant tail (`right`),
-both of which destroy the supervised signal.
-
-The packing/normalize pipeline keeps every record. The training script
-filters at character length via `--max-chars`:
-
-- Local tier (`seq_len=8192`): pass `--max-chars 24000` to keep records
-  that fit cleanly. Drops ~58 % of distill records but preserves ~100 %
-  of TOON records (which are short).
-- Cloud tier (`seq_len=16384+`): omit `--max-chars` and use the full
-  distill corpus.
-
-## Canonical record schema
-
-See `SCHEMA.md` for the full spec. The shape is the canonical eliza
-config exactly — same as ScamBench's `eliza` config — produced by
-`scripts/lib/eliza_record.py`:
-
-```jsonc
 {
-  "roomName":         "string",
-  "agentId":          "string",
-  "memoryEntries":    [{"role","speaker","content","channel"}],
-  "currentMessage":   {"role","speaker","content","channel"},
-  "expectedResponse": "string  (TOON for structured tasks, plain text for replies)",
-  "availableActions": ["RESPOND" | "IGNORE" | "STOP" | "REPLY"
-                         | "SHELL_COMMAND" | "TASK_CALL"
-                         | "MUTE_ROOM" | "UNMUTE_ROOM"
-                         | "FOLLOW_ROOM" | "UNFOLLOW_ROOM"
-                         | <custom>],
-  "metadata":         { "task_type": "...", "source_dataset": "...", ... }
+  "format": "eliza_native_v1",
+  "request": {"messages": [...], "tools": {...}, "toolChoice": "..."},
+  "response": {"text": "...", "toolCalls": [...]}
 }
 ```
 
-`expectedResponse` is the supervised target. `metadata.task_type` selects
-the prompt template the trainer renders into the system message at
-training time.
+The same chat template is applied at benchmark time with
+`add_generation_prompt=True`, so the model sees the same request structure at
+training and generation time.
 
 ## System prerequisites
 

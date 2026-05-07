@@ -15,6 +15,7 @@ import {
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
 } from "@/db/schemas/agent-sandboxes";
+import { jobs } from "@/db/schemas/jobs";
 import { AGENT_MANAGED_DISCORD_KEY } from "@/lib/services/eliza-agent-config";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "@/lib/storage/object-store";
@@ -102,6 +103,16 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.id, id))
       .limit(1);
     return r;
+  }
+
+  async findOrganizationIdById(id: string): Promise<string | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbRead
+      .select({ organizationId: agentSandboxes.organization_id })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, id))
+      .limit(1);
+    return r?.organizationId;
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -212,6 +223,46 @@ export class AgentSandboxesRepository {
     const [r] = await dbWrite.insert(agentSandboxes).values(data).returning();
     if (!r) throw new Error("Failed to create Agent sandbox record");
     return r;
+  }
+
+  async markStuckProvisioningWithoutActiveJobAsError(cutoff: Date): Promise<
+    Array<{
+      agentId: string;
+      agentName: string | null;
+      organizationId: string;
+      updatedAt: Date | null;
+    }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "error",
+        error_message:
+          "Agent was stuck in provisioning state with no active provisioning job. " +
+          "This usually means a container crashed before the provisioning job could be created, " +
+          "or the job was lost. Please try starting the agent again.",
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.status, "provisioning"),
+          lt(agentSandboxes.updated_at, cutoff),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
+        ),
+      )
+      .returning({
+        agentId: agentSandboxes.id,
+        agentName: agentSandboxes.agent_name,
+        organizationId: agentSandboxes.organization_id,
+        updatedAt: agentSandboxes.updated_at,
+      });
   }
 
   async update(id: string, data: Partial<NewAgentSandbox>): Promise<AgentSandbox | undefined> {

@@ -10,7 +10,7 @@ import type {
 } from "@elizaos/core";
 import type { JsonValue } from "../protocol.js";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
-import { emit } from "./helpers.js";
+import { emit, withMinecraftTimeout } from "./helpers.js";
 
 const ACTION_NAME = "MC_DISCONNECT";
 
@@ -45,7 +45,7 @@ export const minecraftDisconnectAction: Action = {
     }
 
     try {
-      await service.destroyBot(session.botId);
+      await withMinecraftTimeout(service.destroyBot(session.botId), "minecraft disconnect");
       return await emit(
         ACTION_NAME,
         callback,

@@ -7,14 +7,11 @@ Quantization (post-training) lives in `scripts/quantization/`; benchmarks in
 ## What is APOLLO?
 
 APOLLO ("Approximated Gradient Scaling for Memory-Efficient LLM Optimization",
-Zhu et al., MLSys 2025 — arXiv:2412.05270) is a drop-in replacement for AdamW
-that gives **SGD-like optimizer-state memory with AdamW-level convergence**.
-It works by projecting gradients into a low-rank random subspace, running the
-Adam moment updates in that subspace, then applying an approximated channel-
-or tensor-wise scaling factor back to the original gradient. Because the moment
-buffers (`exp_avg`, `exp_avg_sq`) live in the projected space, the optimizer
-state shrinks roughly with the projection rank. The reference implementation
-ships as the `apollo-torch` PyPI package
+Zhu et al., MLSys 2025 — arXiv:2412.05270) is the only optimizer exposed by
+the eliza-1 local training entrypoints. It projects gradients into a low-rank
+random subspace, applies an approximated channel- or tensor-wise scaling factor
+back to the original gradient, and keeps the large matrix state compact. The
+reference implementation ships as the `apollo-torch` PyPI package
 (<https://github.com/zhuhanqing/APOLLO>, MIT-licensed).
 
 We use APOLLO as the default optimizer because it lets us **full-fine-tune**
@@ -25,12 +22,12 @@ caps how much we can teach the model; APOLLO doesn't.
 
 | recipe       | rank | scale | scale_type | typical use |
 |--------------|------|-------|------------|-------------|
-| `apollo`      | 256  | 1     | channel    | default — closest to AdamW perf |
+| `apollo`      | 256  | 1     | channel    | default full APOLLO recipe |
 | `apollo_mini` | 1    | 128   | tensor     | smallest state, slight perf cost |
 
 Both apply only to **2-D weight matrices** (q/k/v/o/gate/up/down projections).
-Embeddings, lm_head, biases, and RMSNorm weights stay on plain AdamW (per
-the reference recipe — projecting them is either useless or harmful).
+Embeddings, lm_head, biases, and RMSNorm weights stay in APOLLO's unprojected
+parameter group.
 
 ## Recommended hyperparameters per eliza-1 size
 
@@ -84,39 +81,19 @@ uv run --extra train python3 scripts/train_local.py \
     --run-name qwen35-2b-apollo-mini-v1
 ```
 
-To compare against vanilla AdamW (still LoRA-friendly):
-
-```bash
-uv run --extra train python3 scripts/train_local.py \
-    --optimizer adamw \
-    --epochs 3 --batch-size 4 --grad-accum 8 \
-    --lr 2e-4 \
-    --run-name qwen35-2b-adamw-baseline
-```
-
-`--qlora` is rejected with `--optimizer apollo*` (4-bit base + low-rank
-projector double-claim the matrix space). Use AdamW if you want QLoRA.
+`--qlora` is rejected. This local pipeline is full-parameter APOLLO/APOLLO-Mini
+only.
 
 ## Validation
 
 `test_apollo.py` loads `Qwen/Qwen3.5-0.8B` on the local GPU, runs a single
-training step with each of {AdamW, APOLLO, APOLLO-Mini} on real records from
-`data/final/train.jsonl`, and asserts that APOLLO's optimizer-state memory and
-peak VRAM are both materially smaller than AdamW's.
+training step with APOLLO and APOLLO-Mini on real records from
+`data/final/train.jsonl`, and asserts that the APOLLO projector is active.
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
     uv run --extra train python3 scripts/training/test_apollo.py
 ```
 
-Measured on RTX 5080 Laptop, 16 GB, batch=1 seq=128, Qwen3.5-0.8B in bf16:
-
-| optimizer     | peak VRAM (MiB) | step (s) | opt-state (MiB) | bytes / param |
-|---------------|-----------------|----------|-----------------|---------------|
-| AdamW          | 7252.4           | 1.04      | 2870.15           | 4.00           |
-| APOLLO         | 4887.1           | 0.55      | 1487.90           | 2.07           |
-| APOLLO-Mini    | 4887.1           | 0.52      |  973.92           | 1.36           |
-
-APOLLO saves 48% of optimizer-state and 33% of peak VRAM vs AdamW even on a
-0.8B model where the (un-projected) lm_head + embeddings dominate. Savings
-grow to the paper's reported >75% on 7B+ models.
+APOLLO-Mini must report less optimizer state than full APOLLO; otherwise the
+rank-1 projector path is not engaged.

@@ -16,7 +16,7 @@ import { Info, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardAgentStats as AgentStats } from "@/lib/types/dashboard-agent-stats";
 import { cn } from "@/lib/utils";
-import { AgentCard } from "@elizaos/cloud-ui/components/agents/agent-card";
+import { AgentCard } from "../../components/agents/agent-card";
 
 interface Agent {
   id: string;

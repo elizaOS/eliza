@@ -30,7 +30,11 @@ interface MatrixOpInfo {
   roomId?: string;
   emoji?: string;
   eventId?: string;
+  timeoutMs?: number;
 }
+
+const MAX_MATRIX_TEXT_CHARS = 4_000;
+const MATRIX_ACTION_TIMEOUT_MS = 30_000;
 
 const messageOpTemplate = `# Task: Extract Matrix message operation parameters.
 
@@ -127,6 +131,7 @@ async function handleSend(
       op: "send",
       roomId: result.roomId,
       eventId: result.eventId,
+      timeoutMs: info.timeoutMs,
     },
   };
 }
@@ -173,6 +178,7 @@ async function handleReact(
       emoji: info.emoji,
       eventId: info.eventId,
       roomId,
+      timeoutMs: info.timeoutMs,
     },
   };
 }
@@ -275,6 +281,11 @@ export const messageOp: Action = {
       });
       return { success: false, error: "Could not extract op parameters" };
     }
+    info = {
+      ...info,
+      text: info.text?.slice(0, MAX_MATRIX_TEXT_CHARS),
+      timeoutMs: MATRIX_ACTION_TIMEOUT_MS,
+    };
 
     if (info.op === "react") {
       return handleReact(matrixService, composedState, message, info, callback);

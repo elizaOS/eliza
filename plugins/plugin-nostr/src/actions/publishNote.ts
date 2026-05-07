@@ -32,13 +32,19 @@ interface PublishNoteParams {
   text: string;
 }
 
+const MAX_NOSTR_NOTE_CHARS = 4_000;
+const MAX_NOSTR_RESULT_RELAYS = 10;
+const NOSTR_ACTION_TIMEOUT_MS = 30_000;
+
 function readDirectText(_options: Record<string, unknown> | undefined): string | null {
   if (!_options) return null;
   const direct = _options.text;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim().slice(0, MAX_NOSTR_NOTE_CHARS);
+  }
   const params = (_options as { parameters?: Record<string, unknown> }).parameters;
   if (params && typeof params.text === "string" && params.text.trim()) {
-    return params.text.trim();
+    return params.text.trim().slice(0, MAX_NOSTR_NOTE_CHARS);
   }
   return null;
 }
@@ -95,7 +101,7 @@ export const publishNote: Action = {
         const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
         const candidateText = parsed?.text;
         if (typeof candidateText === "string" && candidateText.trim()) {
-          params = { text: candidateText.trim() };
+          params = { text: candidateText.trim().slice(0, MAX_NOSTR_NOTE_CHARS) };
           break;
         }
       }
@@ -116,6 +122,7 @@ export const publishNote: Action = {
       { src: "plugin:nostr", op: "NOSTR_PUBLISH_NOTE", textLength: noteText.length },
       "Publishing Nostr note"
     );
+    const timeoutMs = NOSTR_ACTION_TIMEOUT_MS;
     const result = await nostrService.publishNote(noteText);
 
     if (!result.success) {
@@ -139,8 +146,9 @@ export const publishNote: Action = {
       success: true,
       data: {
         eventId: result.eventId,
-        relays: result.relays,
+        relays: result.relays?.slice(0, MAX_NOSTR_RESULT_RELAYS),
         text: noteText,
+        timeoutMs,
       },
     };
   },

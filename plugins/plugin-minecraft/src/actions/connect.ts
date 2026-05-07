@@ -10,7 +10,7 @@ import type {
 } from "@elizaos/core";
 import type { JsonObject, JsonValue } from "../protocol.js";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
-import { emit, mergedInput, readNumber, readString } from "./helpers.js";
+import { emit, mergedInput, readNumber, readString, withMinecraftTimeout } from "./helpers.js";
 
 const ACTION_NAME = "MC_CONNECT";
 
@@ -91,7 +91,10 @@ export const minecraftConnectAction: Action = {
     if (!service) return { text: "Minecraft service is not available", success: false };
     const params = mergedInput(message, options);
     try {
-      const session = await service.createBot(parseConnectOverrides(params));
+      const session = await withMinecraftTimeout(
+        service.createBot(parseConnectOverrides(params)),
+        "minecraft connect",
+      );
       return await emit(
         ACTION_NAME,
         callback,

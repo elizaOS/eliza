@@ -3029,6 +3029,7 @@
   "trajectoriesview.FailedToDelete": "删除轨迹失败",
   "trajectoriesview.FailedToExport": "导出轨迹失败",
   "trajectoriesview.FailedToLoad": "加载轨迹失败",
+  "trajectoriesview.JSONLNativeTraining": "JSONL（原生训练）",
   "trajectoriesview.JSONRedacted": "JSON（已编辑）",
   "trajectoriesview.JSONWithPrompts": "JSON（有提示）",
   "trajectoriesview.LoadingTrajectories": "正在加载轨迹...",

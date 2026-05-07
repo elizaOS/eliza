@@ -2,7 +2,7 @@
 
 Models the memory optimizations we run in combination:
 
-  - **APOLLO / APOLLO-Mini** (training)        — optimizer state ~30% / ~12% of AdamW
+  - **APOLLO / APOLLO-Mini** (training)        — projected optimizer state
   - **PolarQuant** (inference)                  — weights ~0.5 bytes/param (4-bit)
   - **TurboQuant** (training & inference)       — V cache ~0.5 bytes/elem (4-bit)
   - **QJL** (inference, optionally training)    — K cache ~0.0625 bytes/elem (1-bit)
@@ -13,9 +13,8 @@ Formula references:
   Weights        : params * dtype_bytes
   Gradients      : params * dtype_bytes  (same as weights, bf16)
   Optimizer state:
-    AdamW        : params * 8            (m, v as fp32; or 2*params*4 if bf16 master)
-    APOLLO       : (params - 2D_weights) * 8 + 2D_weights * (rank/feat_in) * 8
-    APOLLO-Mini  : (params - 2D_weights) * 8 + 2D_weights * 8 / feat_in   (rank=1)
+    APOLLO       : unprojected_params * 8 + 2D_weights * (rank/feat_in) * 8
+    APOLLO-Mini  : unprojected_params * 8 + 2D_weights * 8 / feat_in   (rank=1)
   Activations    : O(B * S * H * L)  with full caching;
                    O(B * sqrt(S) * H * L) with gradient checkpointing.
   Logits transient: B * S * V * 4   (fp32 for HF loss); ÷ chunk_count with Liger.
@@ -43,11 +42,7 @@ GB = 1024 ** 3
 
 
 class TrainOpt(str, Enum):
-    # APOLLO is the canonical optimizer for all eliza-1 sizes; ADAMW is
-    # kept as a baseline for the comparison test in test_apollo.py and
-    # for emergency fallback when an operator explicitly opts out via
-    # `--optimizer adamw` on the CLI.
-    ADAMW = "adamw"
+    # APOLLO is the canonical optimizer for all eliza-1 sizes.
     APOLLO = "apollo"
     APOLLO_MINI = "apollo_mini"
 
@@ -94,9 +89,8 @@ class ModelShape:
     Qwen/Qwen3.5-{2B,9B} and Qwen/Qwen3.6-27B model cards)."""
 
     embedding_params: int = 0
-    """Token embedding + lm_head — these stay on full-precision AdamW under
-    APOLLO and aren't quantized by PolarQuant by default. Set to 0 to skip
-    the special-cased accounting."""
+    """Token embedding + lm_head — these stay in APOLLO's unprojected group.
+    Set to 0 to skip the special-cased accounting."""
 
     twod_weight_params: int = 0
     """Sum of 2-D weight matrices (q/k/v/o/up/gate/down). These are what
@@ -223,14 +217,12 @@ def kv_cache_bytes(shape: ModelShape, *, seq_total: int, batch: int = 1,
 def optimizer_state_bytes(shape: ModelShape, *, opt: TrainOpt,
                           rank: int = 256) -> int:
     """Bytes occupied by optimizer moment buffers."""
-    if opt == TrainOpt.ADAMW:
-        return shape.params_total * 8  # m + v as fp32
     embed = shape.embedding_params
     twod = shape.twod_weight_params
     other = shape.params_total - embed - twod
-    # Embeddings + biases + norms stay on full AdamW per the APOLLO recipe.
-    full_adamw_params = embed + max(0, other)
-    full_state = full_adamw_params * 8
+    # Embeddings + biases + norms stay in APOLLO's unprojected group.
+    unprojected_params = embed + max(0, other)
+    full_state = unprojected_params * 8
     if opt == TrainOpt.APOLLO:
         # 2-D weight grads project to rank-r before m/v storage.
         # Approximate per-tensor ratio: rank / mean(in_features). For Qwen
@@ -241,7 +233,7 @@ def optimizer_state_bytes(shape: ModelShape, *, opt: TrainOpt,
     elif opt == TrainOpt.APOLLO_MINI:
         # Rank-1 tensor scaling — state shrinks to roughly 2 fp32 scalars
         # per 2-D tensor, but the per-tensor scaling vector adds back some
-        # constant. Empirically ~3% of AdamW state on 2-D weights.
+        # constant. Empirically ~3% of full-state moments on 2-D weights.
         twod_state = int(twod * 8 * 0.03)
     else:
         raise ValueError(opt)
@@ -412,13 +404,13 @@ SHAPES: dict[str, ModelShape] = {
 
 
 def print_train_table(shape_name: str = "qwen3.6-27b") -> None:
-    """Compare APOLLO/AdamW × seq_len for the named shape."""
+    """Compare APOLLO variants across seq_len for the named shape."""
     s = SHAPES[shape_name]
     print(f"\n=== TRAINING memory — {shape_name} ===")
     cols = ("seq_len", "optimizer", "weights", "grads", "opt", "act", "logits", "kv", "TOTAL")
     print(("{:<8}  " + "{:<12}  " + "{:>8}  " * 7).format(*cols))
     for seq in (4096, 8192, 16384, 32768, 65536, 131072, 147456):
-        for opt in (TrainOpt.ADAMW, TrainOpt.APOLLO_MINI, TrainOpt.APOLLO):
+        for opt in (TrainOpt.APOLLO_MINI, TrainOpt.APOLLO):
             cfg = TrainConfig(seq_len=seq, optimizer=opt, use_liger=True)
             b = estimate_train(s, cfg)
             print(("{:<8}  " + "{:<12}  " + "{:>7.1f}G  " * 7).format(

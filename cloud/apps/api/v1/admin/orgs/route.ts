@@ -7,10 +7,8 @@
  * Requires admin role.
  */
 
-import { desc } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead } from "@/db/helpers";
-import { organizations } from "@/db/schemas/organizations";
+import { organizationsRepository } from "@/db/repositories/organizations";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
@@ -24,21 +22,7 @@ app.get("/", async (c) => {
 
     const limit = Math.min(parseInt(c.req.query("limit") || "200", 10), 1000);
 
-    const rows = await dbRead
-      .select({
-        id: organizations.id,
-        name: organizations.name,
-        slug: organizations.slug,
-        credit_balance: organizations.credit_balance,
-        is_active: organizations.is_active,
-        billing_email: organizations.billing_email,
-        steward_tenant_id: organizations.steward_tenant_id,
-        created_at: organizations.created_at,
-        updated_at: organizations.updated_at,
-      })
-      .from(organizations)
-      .orderBy(desc(organizations.created_at))
-      .limit(limit);
+    const rows = await organizationsRepository.listForAdminDashboard(limit);
 
     return c.json({ orgs: rows, total: rows.length });
   } catch (error) {

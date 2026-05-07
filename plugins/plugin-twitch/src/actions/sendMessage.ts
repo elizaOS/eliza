@@ -36,6 +36,13 @@ interface SendMessageParams {
   channel: string;
 }
 
+const MAX_TWITCH_MESSAGE_CHARS = 500;
+const TWITCH_ACTION_TIMEOUT_MS = 30_000;
+
+function truncateActionText(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
+}
+
 export const sendMessage: Action = {
   name: "TWITCH_SEND_MESSAGE",
   similes: [
@@ -110,7 +117,7 @@ export const sendMessage: Action = {
       const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
       if (parsed?.text) {
         messageInfo = {
-          text: String(parsed.text),
+          text: truncateActionText(String(parsed.text), MAX_TWITCH_MESSAGE_CHARS),
           channel: String(parsed.channel || "current"),
         };
         break;
@@ -141,6 +148,7 @@ export const sendMessage: Action = {
     }
 
     // Send message
+    const timeoutMs = TWITCH_ACTION_TIMEOUT_MS;
     const result = await twitchService.sendMessage(messageInfo.text, {
       channel: targetChannel,
     });
@@ -167,6 +175,7 @@ export const sendMessage: Action = {
       data: {
         channel: targetChannel,
         messageId: result.messageId,
+        timeoutMs,
       },
     };
   },

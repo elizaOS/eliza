@@ -3029,6 +3029,7 @@
   "trajectoriesview.FailedToDelete": "트래젝터리를 삭제하지 못했습니다.",
   "trajectoriesview.FailedToExport": "궤적을 내보내지 못했습니다.",
   "trajectoriesview.FailedToLoad": "궤적을 불러오지 못했습니다.",
+  "trajectoriesview.JSONLNativeTraining": "JSONL(네이티브 학습)",
   "trajectoriesview.JSONRedacted": "JSON(수정됨)",
   "trajectoriesview.JSONWithPrompts": "JSON(프롬프트 포함)",
   "trajectoriesview.LoadingTrajectories": "궤적 로드 중...",

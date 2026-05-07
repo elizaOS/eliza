@@ -230,7 +230,7 @@ export class PlanningService extends Service {
 				) {
 					actions = ["SEARCH"];
 				} else if (text.includes("analyze")) {
-					actions = ["THINK", "REPLY"];
+					actions = ["REPLY"];
 				} else {
 					actions = ["REPLY"];
 				}

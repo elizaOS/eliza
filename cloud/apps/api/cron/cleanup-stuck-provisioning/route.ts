@@ -28,10 +28,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Protected by CRON_SECRET.
  */
 
-import { and, eq, lt, sql } from "drizzle-orm";
-import { dbWrite } from "@/db/client";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { jobs } from "@/db/schemas/jobs";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { logger } from "@/lib/utils/logger";
 
@@ -70,38 +67,11 @@ async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bi
      *          )
      *   RETURNING id, agent_name, organization_id, updated_at
      *
-     * We run this inside dbWrite so it lands on the primary replica and is
-     * subject to the write path's connection pool.
+     * The repository runs this on the write path so it lands on the primary
+     * replica and is subject to the write path's connection pool.
      */
-    const stuckAgents = await dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "error",
-        error_message:
-          "Agent was stuck in provisioning state with no active provisioning job. " +
-          "This usually means a container crashed before the provisioning job could be created, " +
-          "or the job was lost. Please try starting the agent again.",
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(agentSandboxes.status, "provisioning"),
-          lt(agentSandboxes.updated_at, cutoff),
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} = 'agent_provision'
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
-        ),
-      )
-      .returning({
-        agentId: agentSandboxes.id,
-        agentName: agentSandboxes.agent_name,
-        organizationId: agentSandboxes.organization_id,
-        updatedAt: agentSandboxes.updated_at,
-      });
+    const stuckAgents =
+      await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(cutoff);
 
     const results: CleanupResult[] = stuckAgents.map((row) => ({
       agentId: row.agentId,

@@ -16,7 +16,7 @@
  *      (`exportTrajectoryTaskDatasets`). When `task` is supplied, only that
  *      bucket is forwarded to the backend.
  *   4. Dispatch the chosen task's dataset to the configured backend
- *      (`vertex` | `atropos` | `tinker` | `native`).
+ *      (`atropos` | `tinker` | `native`).
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
@@ -249,19 +249,6 @@ async function defaultDispatcher(
         notes: result.notes,
       };
     }
-    case "vertex": {
-      // Vertex requires GCP project + bucket which the orchestrator does not
-      // know about by default; manual triggers must use the dedicated
-      // /api/training/vertex/orchestrate route. Threshold/cron firings cannot
-      // dispatch to vertex without explicit operator configuration, so we
-      // skip with a note rather than half-running.
-      return {
-        invoked: false,
-        notes: [
-          "vertex backend requires explicit projectId + gcsBucket; use /api/training/vertex/orchestrate",
-        ],
-      };
-    }
     case "native": {
       const { runNativeBackend } = await import("../backends/native.js");
       const useModelHandler = extractUseModel(input.runtime);
@@ -466,7 +453,7 @@ export async function listRuns(limit = 20): Promise<TrainingRunRecord[]> {
  *
  * Returns a record describing what happened, including `status: "skipped"`
  * when the pipeline ran but the configured backend declined to invoke (no
- * data, no backend configured, vertex without GCP creds, etc.). Errors are
+ * data, no backend configured, unavailable optimizer backend, etc.). Errors are
  * surfaced as `status: "failed"` with `reason`; never swallowed.
  */
 export async function triggerTraining(

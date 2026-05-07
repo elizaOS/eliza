@@ -16,6 +16,8 @@ import { buildConversationContext } from '../utils/context';
 import { matchWorkflow } from '../utils/generation';
 import { validateN8nWorkflowIntent } from './validation';
 
+const N8N_WORKFLOW_MATCH_LIMIT = 25;
+
 const examples: ActionExample[][] = [
   [
     {
@@ -135,7 +137,7 @@ export const deactivateWorkflowAction: Action = {
 
     try {
       const userId = message.entityId;
-      const workflows = await service.listWorkflows(userId);
+      const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
       if (workflows.length === 0) {
         if (callback) {

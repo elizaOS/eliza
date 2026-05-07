@@ -199,15 +199,6 @@ export interface TrajectoryFlattenedLlmCallRecord
 	tokenUsageEstimated: boolean;
 }
 
-export interface TrajectoryTrainingMessageRecord {
-	role: "system" | "user" | "model";
-	content: string;
-}
-
-export interface TrajectoryTrainingExampleRecord {
-	messages: TrajectoryTrainingMessageRecord[];
-}
-
 export interface ElizaNativeModelRequestRecord {
 	prompt?: string;
 	messages?: unknown[];
@@ -269,18 +260,9 @@ export interface ElizaNativeTrajectoryRow
 	cacheStats: TrajectoryCacheStatsRecord;
 }
 
-export interface TrajectoryHarnessExportRow
-	extends Omit<TrajectoryFlattenedLlmCallRecord, "messages">,
-		TrajectoryTrainingExampleRecord {
-	format: "trajectory_harness_v1";
-	trajectoryTotals: TrajectoryUsageTotalsRecord;
-	cacheStats: TrajectoryCacheStatsRecord;
-}
-
 export type TrajectoryJsonShape =
 	| "legacy"
 	| "context_object_events_v5"
-	| "harness_v1"
 	| ElizaNativeTrajectoryFormat;
 
 export type TrajectoryExportFormat = "json" | "jsonl" | "csv" | "art" | "zip";

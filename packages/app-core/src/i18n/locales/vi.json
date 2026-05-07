@@ -3029,6 +3029,7 @@
   "trajectoriesview.FailedToDelete": "Không thể xóa trajectory",
   "trajectoriesview.FailedToExport": "Xuất trajectories thất bại",
   "trajectoriesview.FailedToLoad": "Tải trajectories thất bại",
+  "trajectoriesview.JSONLNativeTraining": "JSONL (huấn luyện gốc)",
   "trajectoriesview.JSONRedacted": "JSON (đã ẩn)",
   "trajectoriesview.JSONWithPrompts": "JSON (kèm prompts)",
   "trajectoriesview.LoadingTrajectories": "Đang tải trajectories...",

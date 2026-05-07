@@ -19,6 +19,9 @@ import { SOLANA_SERVICE_NAME } from "../constants";
 import type { SolanaService, SolanaTransferParams, SolanaTransferResult } from "../service";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
+const SOLANA_ACTION_TIMEOUT_MS = 30_000;
+const SOLANA_ERROR_MAX_CHARS = 1_000;
+
 interface TransferContent extends Content {
   tokenAddress: string | null;
   recipient: string;
@@ -286,13 +289,18 @@ export default {
         throw new Error("SolanaService not initialized");
       }
 
-      const walletResult = await solanaService.handleWalletAction({
-        subaction: "transfer",
-        chain: "solana",
-        ...transferParams,
-        mode: options?.dryRun === true ? "prepare" : "execute",
-        dryRun: options?.dryRun === true,
-      });
+      const walletResult = await Promise.race([
+        solanaService.handleWalletAction({
+          subaction: "transfer",
+          chain: "solana",
+          ...transferParams,
+          mode: options?.dryRun === true ? "prepare" : "execute",
+          dryRun: options?.dryRun === true,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Solana transfer timeout")), SOLANA_ACTION_TIMEOUT_MS)
+        ),
+      ]);
       if (!("kind" in walletResult)) {
         throw new Error("SolanaService returned a non-transfer wallet action result");
       }
@@ -336,7 +344,7 @@ export default {
             ? error.message
             : typeof error === "string"
               ? error
-              : JSON.stringify(error);
+              : JSON.stringify(error).slice(0, SOLANA_ERROR_MAX_CHARS);
         callback({
           text: `Transfer failed: ${message}`,
           content: { error: message },
@@ -349,14 +357,14 @@ export default {
             ? error.message
             : typeof error === "string"
               ? error
-              : JSON.stringify(error)
+              : JSON.stringify(error).slice(0, SOLANA_ERROR_MAX_CHARS)
         }`,
         error:
           error instanceof Error
             ? error.message
             : typeof error === "string"
               ? error
-              : JSON.stringify(error),
+              : JSON.stringify(error).slice(0, SOLANA_ERROR_MAX_CHARS),
       };
     }
   },

@@ -115,6 +115,41 @@ export class AppsRepository {
     return app;
   }
 
+  async findPublicInfoById(
+    id: string,
+  ): Promise<
+    | Pick<
+        App,
+        | "id"
+        | "name"
+        | "description"
+        | "logo_url"
+        | "website_url"
+        | "app_url"
+        | "allowed_origins"
+        | "is_active"
+        | "is_approved"
+      >
+    | undefined
+  > {
+    const [app] = await dbRead
+      .select({
+        id: apps.id,
+        name: apps.name,
+        description: apps.description,
+        logo_url: apps.logo_url,
+        website_url: apps.website_url,
+        app_url: apps.app_url,
+        allowed_origins: apps.allowed_origins,
+        is_active: apps.is_active,
+        is_approved: apps.is_approved,
+      })
+      .from(apps)
+      .where(and(eq(apps.id, id), eq(apps.is_active, true), eq(apps.is_approved, true)))
+      .limit(1);
+    return app;
+  }
+
   /**
    * Lists all apps for an organization, ordered by updated date.
    * Always bounded — pass `limit` for pagination; clamped to [1, 200].

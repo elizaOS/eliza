@@ -241,8 +241,17 @@ function resolveProviderOptions(
   const skipCacheRetention = isCerebrasMode(runtime);
 
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
+  // When on Cerebras, scrub OpenAI-direct-only fields (e.g. `promptCacheRetention`)
+  // from `rawOpenAIOptions` before they're spread; otherwise they reach the wire
+  // and the Cerebras endpoint rejects with HTTP 400 `wrong_api_format`.
+  const sanitizedRawOpenAIOptions = (() => {
+    if (!rawOpenAIOptions || typeof rawOpenAIOptions !== "object") return rawOpenAIOptions;
+    if (!skipCacheRetention) return rawOpenAIOptions;
+    const { promptCacheRetention: _drop, ...rest2 } = rawOpenAIOptions as Record<string, unknown>;
+    return rest2;
+  })();
   const openaiOptions = {
-    ...(rawOpenAIOptions ?? {}),
+    ...(sanitizedRawOpenAIOptions ?? {}),
     ...(promptCacheOptions.promptCacheKey
       ? { promptCacheKey: promptCacheOptions.promptCacheKey }
       : {}),
@@ -396,7 +405,12 @@ async function generateTextByModelType(
     experimental_telemetry: telemetryConfig,
     ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
     ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
-    ...(paramsWithAttachments.responseSchema
+    // Cerebras's OpenAI-compatible endpoint does not accept the
+    // `response_format: { type: "json_schema", ... }` payload that the AI SDK
+    // emits when `output: Output.object(...)` is set. Fall back to relying on
+    // `responseFormat: { type: "json_object" }` (already passed by callers)
+    // plus the schema embedded in the prompt body.
+    ...(paramsWithAttachments.responseSchema && !isCerebrasMode(runtime)
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
       : {}),
     ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),

@@ -72,10 +72,12 @@ export const claudeCodeWorkbenchListAction: Action = {
         ? (options.parameters as { includeDisabled?: unknown })
         : (options as { includeDisabled?: unknown });
     const includeDisabled = params.includeDisabled !== false;
+    const maxWorkflows = 50;
     const workflows = service
       .listWorkflows()
-      .filter((workflow) => includeDisabled || workflow.enabled);
-    const text = toText(service, includeDisabled);
+      .filter((workflow) => includeDisabled || workflow.enabled)
+      .slice(0, maxWorkflows);
+    const text = toText(service, includeDisabled).slice(0, 6000);
 
     if (callback) {
       await callback({ text, source: message.content.source });

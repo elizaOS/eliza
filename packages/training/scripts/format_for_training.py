@@ -1,18 +1,13 @@
-"""Render canonical eliza records into Qwen chat-template messages.
+"""Render Eliza-native trajectory rows for Qwen chat-template training.
 
-The dataset on disk is the flat eliza shape (`SCHEMA.md`). The training-time
-system prompt is rendered HERE so the dataset stays compatible with the
-elizaOS runtime decoder.
+The primary input is `eliza_native_v1`: one row per Vercel AI SDK model
+boundary with the exact request sent to the provider and the exact normalized
+response received from the provider. The renderer appends the response as the
+supervised assistant turn and passes native tools through to the tokenizer chat
+template when the tokenizer supports tool rendering.
 
-Resolution order for the system prompt:
-
-  1. `metadata.system_prompt`   (carried explicitly by some adapters)
-  2. eliza prompt template by   `metadata.task_type` from `data/prompts/registry.json`
-  3. a built-in fallback        (TASK_FALLBACK_SYSTEM)
-
-Tool specs from `metadata.toolSpecs` are appended to the system prompt as a
-JSON block so the student sees the tool surface inline. We do NOT use Qwen's
-tool-calling JSON convention because the student emits TOON.
+Legacy flat ElizaRecord rows are still accepted as a compatibility fallback,
+but the runtime trajectory path should use `eliza_native_v1` only.
 """
 
 from __future__ import annotations
@@ -27,36 +22,13 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPT_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
 
 
-TASK_FALLBACK_SYSTEM = """You are an autonomous elizaOS agent. Decide which
-action to take from `availableActions` and respond with ONE TOON document
-matching the action's expected schema.
-
-  - REPLY      → emit `thought: ...\\ntext: ...`
-  - SHELL_COMMAND → emit `command: <shell>\\nexplanation: <why>`
-  - TASK_CALL  → emit `tool_calls[N]{name,arguments}: ...`
-  - RESPOND/IGNORE/STOP → emit `name`, `reasoning`, `action`, `primaryContext`,
-                          `secondaryContexts`, `evidenceTurnIds`
-
-Always TOON. No fences, no <think>, no prose before or after.""".rstrip()
+TASK_FALLBACK_SYSTEM = """You are an autonomous elizaOS agent. Use the provided
+conversation context and native tools to choose the next action. When tools are
+available, call the correct tool with JSON arguments. When no tool is needed,
+return the direct assistant response or the requested JSON object.""".rstrip()
 
 
-REPLY_SYSTEM = """You are {agentId}. Respond with ONE TOON document:
-
-thought: a short description of your plan
-text: the message to send
-
-Always TOON. No fences, no <think>, no prose before or after.""".rstrip()
-
-
-# Reasoning-distill records (Kassadin88/Claude-Distills, claude_distill task
-# type) ship `<think>...</think>final` verbatim. The system prompt is the
-# minimal one used by the adapter; we look up `metadata.system_prompt` first
-# so the per-record prompt always wins, and fall back here only if the
-# adapter forgot to set it.
-CLAUDE_DISTILL_SYSTEM = (
-    "You are a helpful, careful assistant. Think step by step inside "
-    "<think>...</think> tags before producing your final answer."
-)
+REPLY_SYSTEM = "You are {agentId}. Reply directly and use tools only when they are needed."
 
 
 @lru_cache(maxsize=1)
@@ -108,8 +80,6 @@ def system_prompt_for(record: dict[str, Any]) -> str:
 
     if task_type == "reply":
         return REPLY_SYSTEM.format(agentId=record.get("agentId") or "assistant")
-    if task_type == "claude_distill":
-        return CLAUDE_DISTILL_SYSTEM
 
     canonical = TASK_TYPE_ALIASES.get(task_type, task_type)
     entry = registry.get(canonical)
@@ -133,58 +103,176 @@ def _normalize_message_role(role: Any) -> str | None:
     if not isinstance(role, str):
         return None
     normalized = role.strip().lower()
-    if normalized == "model":
-        return "assistant"
-    if normalized in ("system", "user", "assistant"):
+    if normalized in ("system", "developer", "user", "assistant", "tool"):
         return normalized
     return None
 
 
-def _format_messages_record(
-    record: dict[str, Any],
-) -> dict[str, list[dict[str, str]]] | None:
-    """Accept runtime trajectory/Gemini rows that already carry messages."""
+def _has_message_payload(message: dict[str, Any]) -> bool:
+    if (
+        "parts" in message
+        or "tool_calls" in message
+        or "tool_call_id" in message
+        or "name" in message
+    ):
+        return True
+    if "content" in message:
+        content = message.get("content")
+        if isinstance(content, str):
+            return len(content.strip()) > 0
+        return content is not None
+    return False
+
+
+def _normalize_message(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    role = _normalize_message_role(raw.get("role"))
+    if role is None:
+        return None
+    message: dict[str, Any] = {"role": role}
+    for key in (
+        "content",
+        "parts",
+        "name",
+        "tool_call_id",
+        "tool_calls",
+    ):
+        if key in raw:
+            message[key] = raw[key]
+    if not _has_message_payload(message):
+        return None
+    return message
+
+
+def _json_arguments(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "{}"
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _normalize_tool_call(raw: Any, index: int) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    function = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+    name = (
+        raw.get("toolName")
+        or raw.get("name")
+        or function.get("name")
+    )
+    if not isinstance(name, str) or not name.strip():
+        return None
+
+    args = (
+        raw.get("input")
+        if "input" in raw
+        else raw.get("args")
+        if "args" in raw
+        else raw.get("arguments")
+        if "arguments" in raw
+        else function.get("arguments")
+    )
+    call_id = raw.get("toolCallId") or raw.get("id") or f"call_{index}"
+    return {
+        "id": str(call_id),
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": _json_arguments(args),
+        },
+    }
+
+
+def _assistant_from_native_response(response: dict[str, Any]) -> dict[str, Any] | None:
+    text = response.get("text")
+    tool_calls_raw = response.get("toolCalls")
+    tool_calls = []
+    if isinstance(tool_calls_raw, list):
+        tool_calls = [
+            call
+            for i, raw in enumerate(tool_calls_raw)
+            if (call := _normalize_tool_call(raw, i)) is not None
+        ]
+
+    if isinstance(text, str) and text.strip():
+        message: dict[str, Any] = {"role": "assistant", "content": text}
+    elif tool_calls:
+        message = {"role": "assistant", "content": ""}
+    else:
+        return None
+
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    return message
+
+
+def _request_messages(request: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_messages = request.get("messages")
+    if isinstance(raw_messages, list):
+        messages = [
+            msg
+            for raw in raw_messages
+            if (msg := _normalize_message(raw)) is not None
+        ]
+        if messages:
+            return messages
+
+    prompt = request.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        return [{"role": "user", "content": prompt}]
+    return []
+
+
+def _format_native_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    if record.get("format") != "eliza_native_v1":
+        return None
+    request = record.get("request")
+    response = record.get("response")
+    if not isinstance(request, dict) or not isinstance(response, dict):
+        return None
+
+    messages = _request_messages(request)
+    assistant = _assistant_from_native_response(response)
+    if not messages or assistant is None:
+        return None
+    if not any(message.get("role") == "user" for message in messages):
+        return None
+
+    out: dict[str, Any] = {"messages": [*messages, assistant]}
+    if "tools" in request:
+        out["tools"] = request["tools"]
+    return out
+
+
+def _format_messages_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Accept already-rendered native SFT rows with messages + optional tools."""
 
     raw_messages = record.get("messages")
     if not isinstance(raw_messages, list):
         return None
 
-    messages: list[dict[str, str]] = []
-    for raw in raw_messages:
-        if not isinstance(raw, dict):
-            continue
-        role = _normalize_message_role(raw.get("role"))
-        content = raw.get("content")
-        if role is None or not isinstance(content, str) or not content.strip():
-            continue
-        messages.append({"role": role, "content": content})
-
+    messages = [
+        msg
+        for raw in raw_messages
+        if (msg := _normalize_message(raw)) is not None
+    ]
     if not messages:
         return None
-
-    if messages[0]["role"] != "system":
-        messages.insert(0, {"role": "system", "content": system_prompt_for(record)})
-
-    # Supervised SFT needs an assistant target. Runtime harness rows and
-    # Vertex/Gemini rows both place it at the end; reject partial prompt-only
-    # rows so they cannot train the model to predict user text.
-    if messages[-1]["role"] != "assistant":
+    if messages[-1].get("role") != "assistant":
+        return None
+    if not any(message.get("role") == "user" for message in messages):
         return None
 
-    if not any(message["role"] == "user" for message in messages):
-        return None
+    out: dict[str, Any] = {"messages": messages}
+    if "tools" in record:
+        out["tools"] = record["tools"]
+    return out
 
-    return {"messages": messages}
 
-
-def format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | None:
-    """Return {"messages": [...]} ready for tokenizer.apply_chat_template,
-    or None if the record can't be rendered."""
-
-    messages_record = _format_messages_record(record)
-    if messages_record is not None:
-        return messages_record
-
+def _format_legacy_flat_record(record: dict[str, Any]) -> dict[str, Any] | None:
     expected = record.get("expectedResponse") or ""
     if not expected:
         return None
@@ -195,7 +283,6 @@ def format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | N
         return None
 
     system_prompt = system_prompt_for(record)
-
     md = record.get("metadata") or {}
     tool_specs = md.get("toolSpecs") or []
     if tool_specs:
@@ -213,9 +300,9 @@ def format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | N
             + ", ".join(str(a) for a in actions)
         )
 
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for m in record.get("memoryEntries") or []:
-        role = m.get("role") or "user"
+        role = _normalize_message_role(m.get("role") or "user")
         if role not in ("user", "assistant"):
             continue
         content = m.get("content") or ""
@@ -225,5 +312,18 @@ def format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | N
 
     messages.append({"role": "user", "content": cm_content})
     messages.append({"role": "assistant", "content": expected})
-
     return {"messages": messages}
+
+
+def format_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a row ready for tokenizer.apply_chat_template, or None."""
+
+    native = _format_native_record(record)
+    if native is not None:
+        return native
+
+    messages_record = _format_messages_record(record)
+    if messages_record is not None:
+        return messages_record
+
+    return _format_legacy_flat_record(record)

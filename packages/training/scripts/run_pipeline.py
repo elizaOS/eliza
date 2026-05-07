@@ -167,7 +167,7 @@ def main() -> int:
     if not args.skip_base_bench and not args.skip_bench:
         rc = run([
             "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
+            "scripts/benchmark/native_tool_call_bench.py",
             "--model", entry.hf_id,
             "--test-file", str(test_file),
             "--out-dir", str(bench_dir / "base"),
@@ -204,7 +204,7 @@ def main() -> int:
     if not args.skip_bench:
         rc = run([
             "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
+            "scripts/benchmark/native_tool_call_bench.py",
             "--model", str(ckpt_dir / "final"),
             "--test-file", str(test_file),
             "--out-dir", str(bench_dir / "finetuned"),
@@ -241,7 +241,7 @@ def main() -> int:
                 continue
             rc = run([
                 "uv", "run", "--extra", "train", "python",
-                "scripts/benchmark/eliza_bench.py",
+                "scripts/benchmark/native_tool_call_bench.py",
                 "--model", str(ck),
                 "--test-file", str(test_file),
                 "--out-dir", str(bench_dir / q),

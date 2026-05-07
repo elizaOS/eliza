@@ -27,6 +27,8 @@ Respond with JSON only:
 {"port":3000}`;
 
 const DEFAULT_PORT = 3000;
+const TAILSCALE_MODEL_TIMEOUT_MS = 10_000;
+const TAILSCALE_START_TIMEOUT_MS = 30_000;
 
 function isValidPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65535;
@@ -116,13 +118,23 @@ export const startTailscaleAction: Action = {
       directPort ??
       parsePort(
         String(
-          await runtime.useModel(ModelType.TEXT_SMALL, {
-            prompt: PORT_PROMPT_TEMPLATE.replace('{{userMessage}}', userMessage),
-            temperature: 0.3,
-          }),
+          await Promise.race([
+            runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt: PORT_PROMPT_TEMPLATE.replace('{{userMessage}}', userMessage),
+              temperature: 0.3,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Tailscale port extraction timeout')), TAILSCALE_MODEL_TIMEOUT_MS),
+            ),
+          ]),
         ),
       );
-    const url = await tunnelService.startTunnel(port);
+    const url = await Promise.race([
+      tunnelService.startTunnel(port),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tailscale start timeout')), TAILSCALE_START_TIMEOUT_MS),
+      ),
+    ]);
     const publicUrl = typeof url === 'string' ? url : tunnelService.getUrl();
 
     if (callback) {

@@ -216,10 +216,6 @@ const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/training/generate-dataset" },
   { type: "POST", path: "/api/training/generate-roleplay" },
   { type: "POST", path: "/api/training/roleplay/execute" },
-  { type: "POST", path: "/api/training/vertex/tune" },
-  { type: "GET", path: "/api/training/vertex/job-status" },
-  { type: "POST", path: "/api/training/vertex/orchestrate" },
-  { type: "GET", path: "/api/training/vertex/jobs" },
 ];
 
 const VAST_ROUTES: Array<{ type: string; path: string }> = [

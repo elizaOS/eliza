@@ -46,6 +46,7 @@ interface ClientCharacterState {
 }
 
 const CHARACTER_BUILDER_CONTEXTS = ["general", "agent_internal"];
+const CREATE_CHARACTER_TEXT_MAX_CHARS = 2_000;
 const CREATE_CHARACTER_KEYWORDS = [
   "create",
   "save",
@@ -127,6 +128,11 @@ function hasSelectedContext(state: State | undefined, contexts: string[]): boole
 
 function hasKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function truncateCreateCharacterText(text: string): string {
+  if (text.length <= CREATE_CHARACTER_TEXT_MAX_CHARS) return text;
+  return `${text.slice(0, CREATE_CHARACTER_TEXT_MAX_CHARS)}\n\n[truncated create-character response]`;
 }
 
 export const createCharacterAction = {
@@ -297,14 +303,18 @@ export const createCharacterAction = {
     }
 
     // Callback with success and character ID for frontend redirect
+    const callbackText = truncateCreateCharacterText(
+      `Done! I've saved ${savedCharacter.name}. You can now enter **Edit Mode** to chat with your character while refining them, or go to **Chat** for a full conversation. In Edit Mode, you can also use **Test Response** to preview how they'd answer specific prompts.`,
+    );
     await callback({
-      text: `Done! I've saved ${savedCharacter.name}. You can now enter **Edit Mode** to chat with your character while refining them, or go to **Chat** for a full conversation. In Edit Mode, you can also use **Test Response** to preview how they'd answer specific prompts.`,
+      text: callbackText,
       metadata: {
         action: "CREATE_CHARACTER",
         characterCreated: true,
         characterId: savedCharacter.id,
         characterName: savedCharacter.name,
         roomLocked: true,
+        outputTruncated: false,
       },
     });
     return {
@@ -321,6 +331,7 @@ export const createCharacterAction = {
         characterId: savedCharacter.id,
         characterName: savedCharacter.name,
         roomLocked: true,
+        outputTruncated: false,
       },
     };
   },

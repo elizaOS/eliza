@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildTrajectoryHarnessRows,
 	iterateTrajectoryLlmCalls,
 	resolveJsonShape,
 	serializeTrajectoryExport,
 	summarizeTrajectoryCache,
 	summarizeTrajectoryUsage,
 } from "./trajectory-export";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 import type { TrajectoryDetailRecord } from "./trajectory-types";
 
 const sampleTrajectory: TrajectoryDetailRecord = {
@@ -87,22 +87,13 @@ describe("trajectory-export", () => {
 		});
 	});
 
-	it("builds harness rows and honors prompt redaction", () => {
-		const rows = buildTrajectoryHarnessRows([sampleTrajectory], {
-			includePrompts: false,
-		});
-		expect(rows).toHaveLength(2);
-		expect(rows[0]).toMatchObject({
-			format: "trajectory_harness_v1",
-			messages: [],
-			systemPrompt: undefined,
-			userPrompt: undefined,
-			response: undefined,
-		});
-	});
-
-	it("supports explicit legacy jsonl and defaults jsonl to harness rows", () => {
-		expect(resolveJsonShape("jsonl", undefined)).toBe("harness_v1");
+	it("supports explicit legacy jsonl while defaulting jsonl to native rows", () => {
+		expect(resolveJsonShape("jsonl", undefined)).toBe(
+			ELIZA_NATIVE_TRAJECTORY_FORMAT,
+		);
+		expect(resolveJsonShape("json", undefined)).toBe(
+			ELIZA_NATIVE_TRAJECTORY_FORMAT,
+		);
 
 		const legacy = serializeTrajectoryExport([sampleTrajectory], {
 			format: "jsonl",
@@ -114,14 +105,18 @@ describe("trajectory-export", () => {
 			trajectoryId: "traj-1",
 		});
 
-		const harness = serializeTrajectoryExport([sampleTrajectory], {
+		const native = serializeTrajectoryExport([sampleTrajectory], {
 			format: "jsonl",
 		});
-		const harnessLines = String(harness.data).trim().split("\n");
-		expect(harnessLines).toHaveLength(2);
-		expect(JSON.parse(harnessLines[0] ?? "")).toMatchObject({
-			format: "trajectory_harness_v1",
+		const nativeLines = String(native.data).trim().split("\n");
+		expect(nativeLines).toHaveLength(2);
+		expect(JSON.parse(nativeLines[0] ?? "")).toMatchObject({
+			format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+			boundary: "vercel_ai_sdk.generateText",
 			callId: "call-1",
+			response: {
+				text: "Hello there",
+			},
 		});
 	});
 });

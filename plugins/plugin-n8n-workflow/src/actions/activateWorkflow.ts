@@ -19,6 +19,7 @@ import { matchWorkflow } from '../utils/generation';
 import { validateN8nWorkflowIntent } from './validation';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
+const N8N_WORKFLOW_MATCH_LIMIT = 25;
 
 const examples: ActionExample[][] = [
   [
@@ -209,7 +210,7 @@ export const activateWorkflowAction: Action = {
 
       // Fetch workflows directly from service
       const userId = message.entityId;
-      const workflows = await service.listWorkflows(userId);
+      const workflows = (await service.listWorkflows(userId)).slice(0, N8N_WORKFLOW_MATCH_LIMIT);
 
       if (workflows.length === 0) {
         if (callback) {

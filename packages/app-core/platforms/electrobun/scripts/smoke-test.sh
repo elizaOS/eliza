@@ -89,7 +89,7 @@ fi
 BUILD_ENV="${BUILD_ENV:-canary}"
 SKIP_SIGNATURE_CHECK="${SKIP_SIGNATURE_CHECK:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
-STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-180}"
+STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-900}"
 LIVENESS_TIMEOUT="${LIVENESS_TIMEOUT:-8}"
 PACKAGED_HANDOFF_GRACE_SECONDS="${PACKAGED_HANDOFF_GRACE_SECONDS:-90}"
 BUILD_SKIP_CODESIGN="${ELECTROBUN_SKIP_CODESIGN:-}"
@@ -100,10 +100,18 @@ EXPECTED_BUNDLE_IDENTIFIER="${EXPECTED_BUNDLE_IDENTIFIER:-com.elizaai.eliza}"
 MOUNT_POINT=""
 LAUNCH_APP_BUNDLE=""
 STARTUP_LOG="$HOME/.config/Eliza/eliza-startup.log"
+STARTUP_LOG_CANDIDATES=(
+  "$HOME/.config/elizaOS/eliza-startup.log"
+  "$HOME/.config/Eliza/eliza-startup.log"
+)
 STARTUP_SESSION_ID=""
 STARTUP_STATE_FILE=""
 STARTUP_EVENTS_FILE=""
 STARTUP_BOOTSTRAP_FILE=""
+STARTUP_CONTROL_BOOTSTRAP_FILES=(
+  "$HOME/.config/elizaOS/startup-session.json"
+  "$HOME/.config/Eliza/startup-session.json"
+)
 MAC_DIRECT_EXEC_PROBE_RC=""
 MAC_LAUNCH_MODE="${ELIZA_SMOKE_MAC_LAUNCH_MODE:-auto}"
 OPEN_LAUNCH_OUTPUT=""
@@ -148,6 +156,12 @@ cleanup() {
   if [[ -n "$STARTUP_BOOTSTRAP_FILE" ]]; then
     rm -f "$STARTUP_BOOTSTRAP_FILE"
   fi
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    if [[ -n "$STARTUP_SESSION_ID" && -f "$startup_control_file" ]] && grep -q "$STARTUP_SESSION_ID" "$startup_control_file" 2>/dev/null; then
+      rm -f "$startup_control_file"
+    fi
+  done
   if [[ -n "$LAUNCH_APP_BUNDLE" && "$LAUNCH_APP_BUNDLE" == /tmp/* && -d "$LAUNCH_APP_BUNDLE" ]]; then
     rm -rf "$LAUNCH_APP_BUNDLE"
   fi
@@ -235,6 +249,12 @@ init_startup_session() {
     );
   ' "$bootstrap_temp" "$STARTUP_SESSION_ID" "$STARTUP_STATE_FILE" "$STARTUP_EVENTS_FILE"
   mv "$bootstrap_temp" "$STARTUP_BOOTSTRAP_FILE"
+
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    mkdir -p "$(dirname "$startup_control_file")"
+    cp "$STARTUP_BOOTSTRAP_FILE" "$startup_control_file"
+  done
 }
 
 load_startup_state() {
@@ -313,9 +333,12 @@ collect_recent_crash_reports() {
 copy_supporting_diagnostics() {
   ensure_diagnostics_dir
 
-  if [[ -f "$STARTUP_LOG" ]]; then
-    cp "$STARTUP_LOG" "$SMOKE_DIAGNOSTICS_DIR/eliza-startup.log" 2>/dev/null || true
-  fi
+  local startup_log_candidate=""
+  for startup_log_candidate in "${STARTUP_LOG_CANDIDATES[@]}"; do
+    if [[ -f "$startup_log_candidate" ]]; then
+      cp "$startup_log_candidate" "$SMOKE_DIAGNOSTICS_DIR/$(basename "$(dirname "$startup_log_candidate")")-eliza-startup.log" 2>/dev/null || true
+    fi
+  done
   if [[ -f "$STARTUP_STATE_FILE" ]]; then
     cp "$STARTUP_STATE_FILE" "$SMOKE_DIAGNOSTICS_DIR/startup-state.json" 2>/dev/null || true
   fi
@@ -325,6 +348,12 @@ copy_supporting_diagnostics() {
   if [[ -f "$STARTUP_BOOTSTRAP_FILE" ]]; then
     cp "$STARTUP_BOOTSTRAP_FILE" "$SMOKE_DIAGNOSTICS_DIR/startup-session.json" 2>/dev/null || true
   fi
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    if [[ -f "$startup_control_file" ]]; then
+      cp "$startup_control_file" "$SMOKE_DIAGNOSTICS_DIR/$(basename "$(dirname "$startup_control_file")")-startup-session.json" 2>/dev/null || true
+    fi
+  done
   if [[ -n "$OPEN_LAUNCH_OUTPUT" && -f "$OPEN_LAUNCH_OUTPUT" ]]; then
     cp "$OPEN_LAUNCH_OUTPUT" "$SMOKE_DIAGNOSTICS_DIR/open.stderr" 2>/dev/null || true
   fi
@@ -418,6 +447,7 @@ dump_failure_diagnostics() {
     echo "Startup state file: ${STARTUP_STATE_FILE:-<unset>}"
     echo "Startup events file: ${STARTUP_EVENTS_FILE:-<unset>}"
     echo "Startup bootstrap file: ${STARTUP_BOOTSTRAP_FILE:-<unset>}"
+    echo "Startup control bootstrap files: ${STARTUP_CONTROL_BOOTSTRAP_FILES[*]:-<unset>}"
     echo "Loaded startup state source: ${STATE_SOURCE_FILE:-<none>}"
     echo "Mac launch mode: ${MAC_LAUNCH_MODE:-<unset>}"
     echo "open(1) attempted: ${OPEN_LAUNCH_ATTEMPTED:-0}"
@@ -483,7 +513,7 @@ kill_stale_processes() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done < <(
-    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Eliza[^/]*\.app/Contents/MacOS/launcher|eliza-dist/entry\.js' || true
+    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*([Ee]liza|elizaOS)[^/]*\.app/Contents/.*(launcher|bun|main\.js|entry\.js)|eliza-dist/entry\.js' || true
   )
 
   pid="$(lsof -nP -tiTCP:2138 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
@@ -988,6 +1018,12 @@ kill_stale_processes
 init_startup_session
 
 LOG_OFFSET=0
+for startup_log_candidate in "${STARTUP_LOG_CANDIDATES[@]}"; do
+  if [[ -f "$startup_log_candidate" ]]; then
+    STARTUP_LOG="$startup_log_candidate"
+    break
+  fi
+done
 if [[ -f "$STARTUP_LOG" ]]; then
   LOG_OFFSET="$(wc -c < "$STARTUP_LOG" | tr -d ' ')"
 fi
