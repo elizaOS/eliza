@@ -53,7 +53,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     description:
       "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; requires confirmed:true to actually edit the hosts file. Heuristic and LLM extract hosts from intent.",
     descriptionCompressed:
-      "hosts-file block hostnames duration-minutes confirmed-true heuristic+LLM extract-hosts",
+      "hosts-file block hostnames duration draft-confirm heuristic+LLM extract-hosts",
     required: ["intent"],
     optional: ["hostnames", "durationMinutes", "confirmed"],
   },
@@ -67,14 +67,14 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
   status: {
     description:
       "Check whether a hosts-file website block is currently active and when it ends.",
-    descriptionCompressed: "hosts-block active? endsAt",
+    descriptionCompressed: "hosts-block active+endsAt",
     required: [],
   },
   request_permission: {
     description:
       "Request administrator/root approval for hosts-file edits, or explain the manual change needed when the OS does not support an elevation prompt.",
     descriptionCompressed:
-      "request admin approval hosts-file edits OR explain manual change",
+      "request admin/root approval hosts-edits | explain manual-change",
     required: [],
   },
 };
@@ -941,75 +941,3 @@ export const ownerWebsiteBlockAction: Action & {
   },
 };
 
-// ── Back-compat shims ──
-//
-// External callers (block-rule-service, website-blocker/public, public.ts,
-// index.ts) import the four legacy action constants directly and call
-// `.handler(runtime, message, state, { parameters: ... })` programmatically
-// with the legacy parameter shape (websites, durationMinutes, confirmed for
-// block; nothing for the rest). These shims pin the subaction and translate
-// `websites` → `hostnames` so behavior is preserved while there is exactly
-// one canonical implementation.
-
-function makeSubactionShim(
-  shimName: string,
-  fixedSubaction: WebsiteBlockSubaction,
-  translate?: (legacy: Record<string, unknown>) => Record<string, unknown>,
-): Action {
-  return {
-    name: shimName,
-    similes: ownerWebsiteBlockAction.similes,
-    description: ownerWebsiteBlockAction.description,
-    descriptionCompressed: ownerWebsiteBlockAction.descriptionCompressed,
-    parameters: ownerWebsiteBlockAction.parameters,
-    examples: ownerWebsiteBlockAction.examples,
-    validate: ownerWebsiteBlockAction.validate,
-    handler: async (runtime, message, state, options, callback) => {
-      const legacyParams =
-        options &&
-        typeof options === "object" &&
-        "parameters" in options &&
-        options.parameters &&
-        typeof options.parameters === "object"
-          ? (options.parameters as Record<string, unknown>)
-          : {};
-      const translated = translate ? translate(legacyParams) : legacyParams;
-      const pinned: HandlerOptions = {
-        ...(options as HandlerOptions | undefined),
-        parameters: { ...translated, subaction: fixedSubaction },
-      };
-      const handler = ownerWebsiteBlockAction.handler;
-      if (typeof handler !== "function") {
-        return {
-          success: false,
-          text: "OWNER_WEBSITE_BLOCK handler is unavailable.",
-        };
-      }
-      return handler(runtime, message, state, pinned, callback);
-    },
-  };
-}
-
-export const blockWebsitesAction: Action = makeSubactionShim(
-  "BLOCK_WEBSITES",
-  "block",
-  (legacy) => {
-    const out: Record<string, unknown> = { ...legacy };
-    if (legacy.websites !== undefined && out.hostnames === undefined) {
-      out.hostnames = legacy.websites;
-    }
-    return out;
-  },
-);
-export const unblockWebsitesAction: Action = makeSubactionShim(
-  "UNBLOCK_WEBSITES",
-  "unblock",
-);
-export const getWebsiteBlockStatusAction: Action = makeSubactionShim(
-  "GET_WEBSITE_BLOCK_STATUS",
-  "status",
-);
-export const requestWebsiteBlockingPermissionAction: Action = makeSubactionShim(
-  "REQUEST_WEBSITE_BLOCKING_PERMISSION",
-  "request_permission",
-);

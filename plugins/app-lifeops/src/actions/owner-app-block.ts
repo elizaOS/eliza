@@ -26,7 +26,7 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { formatPromptSection } from "./prompt-format.js";
+import { formatPromptSection } from "./lib/prompt-format.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
 
@@ -46,19 +46,19 @@ const SUBACTIONS: SubactionsMap<AppBlockSubaction> = {
       "Android: requires packageNames from the installed-app inventory. " +
       "iOS: requires appTokens from a previous Family Controls picker selection.",
     descriptionCompressed:
-      "phone-app block packages/tokens duration-minutes iOS-FamilyControls Android-UsageAccess",
+      "block phone apps(packages|tokens duration?) iOS-Family-Controls Android-Usage-Access owner",
     required: ["intent"],
     optional: ["packageNames", "appTokens", "durationMinutes"],
   },
   unblock: {
     description: "Remove the active phone-app block, unshielding all apps.",
-    descriptionCompressed: "clear phone-app block unshield",
+    descriptionCompressed: "unblock phone apps clear shield owner",
     required: [],
   },
   status: {
     description:
       "Report whether a phone-app block is currently active and when it ends.",
-    descriptionCompressed: "phone-app-block active? endsAt",
+    descriptionCompressed: "phone-app-block active+endsAt owner",
     required: [],
   },
 };

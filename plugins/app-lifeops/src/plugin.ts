@@ -1,7 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { getDefaultTriageService, registerSendPolicy } from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
-import { intentSyncAction } from "./actions/intent-sync.js";
+import { ownerDeviceIntentAction } from "./actions/owner-device-intent.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";
 import { ownerAutofillAction } from "./actions/owner-autofill.js";
 import { bookTravelAction } from "./actions/owner-book-travel.js";
@@ -10,13 +10,11 @@ import { chatThreadControlAction } from "./actions/owner-chat-thread.js";
 import { ownerCheckinAction } from "./actions/owner-checkin.js";
 import { lifeOpsComputerUseAction } from "./actions/owner-computer-use.js";
 import { lifeOpsConnectorAction } from "./actions/owner-connector.js";
-import { ownerDigestAction } from "./actions/owner-digest.js";
-import { dossierAction } from "./actions/owner-dossier.js";
 import { healthAction } from "./actions/owner-health.js";
 import { lifeAction } from "./actions/owner-life.js";
 import { passwordManagerAction } from "./actions/owner-password-manager.js";
 import { paymentsAction } from "./actions/owner-payments.js";
-import { updateOwnerProfileAction } from "./actions/owner-profile.js";
+import { ownerProfileAction } from "./actions/owner-profile.js";
 import { relationshipAction } from "./actions/owner-relationship.js";
 import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
 import { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
@@ -209,7 +207,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerResolveRequestAction,
     lifeAction,
     bookTravelAction,
-    updateOwnerProfileAction,
+    ownerProfileAction,
     ownerCheckinAction,
     relationshipAction,
     ownerScreenTimeAction,
@@ -217,16 +215,14 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerRemoteDesktopAction,
     lifeOpsComputerUseAction,
     ownerScheduleAction,
-    intentSyncAction,
+    ownerDeviceIntentAction,
     passwordManagerAction,
     ownerAutofillAction,
-    dossierAction,
     healthAction,
     subscriptionsAction,
     paymentsAction,
     chatThreadControlAction,
     lifeOpsConnectorAction,
-    ownerDigestAction,
     toggleLifeOpsFeatureAction,
   ],
   providers: [

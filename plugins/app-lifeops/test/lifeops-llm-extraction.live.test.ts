@@ -20,7 +20,6 @@ import { afterAll, beforeAll, describe, expect } from "vitest";
 import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
-import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";
 import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
 import { extractGoalCreatePlanWithLlm } from "../src/actions/life-goal-extractor.js";
 import { extractTaskCreatePlanWithLlm } from "../src/actions/life-param-extractor.js";
@@ -212,83 +211,6 @@ describeIfLive("LLM plan extraction (live)", () => {
       },
       { perRunTimeoutMs: TEST_TIMEOUT },
     );
-  });
-
-  describe("extractGmailPlanWithLlm", () => {
-    const cases = [
-      {
-        intent: "who emailed me today",
-        expectedSubaction: "search",
-        expectQueries: true,
-      },
-      {
-        intent: "busca en mi correo si Suran me escribio hoy",
-        expectedSubaction: "search",
-        expectQueries: true,
-      },
-      {
-        intent: "check my inbox",
-        expectedSubaction: "triage",
-        expectQueries: false,
-      },
-      {
-        intent: "draft a reply to John's email",
-        expectedSubaction: "draft_reply",
-        expectQueries: false,
-      },
-      {
-        intent: "any emails from Sarah about the report",
-        expectedSubaction: "search",
-        expectQueries: true,
-      },
-      {
-        intent: "which emails need a response",
-        expectedSubaction: "needs_response",
-        expectQueries: false,
-      },
-      {
-        intent:
-          "enviale un correo a maria@example.com con asunto hola y cuerpo nos vemos manana",
-        expectedSubaction: "send_message",
-        expectQueries: false,
-        expectedTo: "maria@example.com",
-      },
-      {
-        intent: "send that reply now",
-        expectedSubaction: "send_reply",
-        expectQueries: false,
-        recentMessages:
-          "user: draft a reply to John's email\nassistant: I drafted a reply to John's email. Want me to send it?",
-      },
-    ] as const;
-
-    for (const {
-      intent,
-      expectedSubaction,
-      expectQueries,
-      expectedTo,
-      recentMessages,
-    } of cases) {
-      stochasticTest(
-        `classifies "${intent}" as ${expectedSubaction}`,
-        async () => {
-          const plan = await extractGmailPlanWithLlm(
-            runtime,
-            makeMessage(runtime, intent),
-            makeState(recentMessages),
-            intent,
-          );
-          expect(plan.subaction).toBe(expectedSubaction);
-          if (expectQueries) {
-            expect(plan.queries.length).toBeGreaterThan(0);
-          }
-          if (expectedTo) {
-            expect(plan.to ?? []).toContain(expectedTo);
-          }
-        },
-        { perRunTimeoutMs: TEST_TIMEOUT },
-      );
-    }
   });
 
   describe("extractCalendarPlanWithLlm", () => {

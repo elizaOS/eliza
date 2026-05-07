@@ -1337,7 +1337,7 @@ export const lifeOpsConnectorAction: Action & {
     `Connectors: ${VALID_CONNECTORS.join(" | ")}. ` +
     `Subactions: ${VALID_SUBACTIONS.join(" | ")}.`,
   descriptionCompressed:
-    "manage connectors Google Telegram Discord Signal X iMessage WhatsApp Health Browser-Bridge: connect disconnect verify status list owner",
+    "connector lifecycle+verify-probes (google|x|telegram|signal|discord|imessage|whatsapp|health|browser-bridge): connect disconnect verify status list owner",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory) =>

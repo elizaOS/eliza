@@ -18,7 +18,7 @@
  *     fallback: rawTemplateString,
  *     context: { summary, totalSeconds },
  *   });
- *   await callback?.({ text, source: "action", action: "SCREEN_TIME" });
+ *   await callback?.({ text, source: "action", action: "OWNER_SCREEN_TIME" });
  *   return { text, success: true, data: {...} };
  *
  * Defaults set here: `domain: "lifeops"`, `preferCharacterVoice: true`. The

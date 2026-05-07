@@ -9,19 +9,13 @@ import { runExtractorPipeline } from "../extractor-pipeline.js";
 import { resolveContextWindow } from "../lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [
-  "create_definition",
-  "create_goal",
-  "update_definition",
-  "update_goal",
-  "delete_definition",
-  "delete_goal",
-  "complete_occurrence",
-  "skip_occurrence",
-  "snooze_occurrence",
-  "review_goal",
-  "capture_phone",
-  "configure_escalation",
-  "set_reminder_preference",
+  "create",
+  "update",
+  "delete",
+  "complete",
+  "skip",
+  "snooze",
+  "review",
   "query_calendar_today",
   "query_calendar_next",
   "query_email",
@@ -34,8 +28,6 @@ export type ExtractedLifeMissingField =
   | "schedule"
   | "target"
   | "goal"
-  | "phone_number"
-  | "reminder_intensity"
   | "details";
 
 type ExtractedLifeOperationPlan = {
@@ -46,9 +38,9 @@ type ExtractedLifeOperationPlan = {
 };
 
 type CoreLifeOperation =
-  | "create_definition"
-  | "complete_occurrence"
-  | "snooze_occurrence"
+  | "create"
+  | "complete"
+  | "snooze"
   | "query_overview"
   | null;
 
@@ -148,8 +140,6 @@ const VALID_MISSING_FIELDS = new Set<ExtractedLifeMissingField>([
   "schedule",
   "target",
   "goal",
-  "phone_number",
-  "reminder_intensity",
   "details",
 ]);
 
@@ -235,9 +225,9 @@ function buildRepairPrompt(args: {
 
 function normalizeCoreLifeOperation(value: unknown): CoreLifeOperation {
   switch (value) {
-    case "create_definition":
-    case "complete_occurrence":
-    case "snooze_occurrence":
+    case "create":
+    case "complete":
+    case "snooze":
     case "query_overview":
       return value;
     default:
@@ -278,32 +268,32 @@ async function recoverCoreLifeOperationWithLlm(args: {
   const prompt = [
     "Recover the core LifeOps intent for this request.",
     "The user may speak in any language.",
-    "Choose the closest operation from: create_definition, complete_occurrence, snooze_occurrence, query_overview, or null.",
-    "create_definition is for creating a reminder, alarm, routine, or recurring task.",
-    "complete_occurrence is for saying the user already did something.",
-    "snooze_occurrence is for deferring or postponing something to later.",
+    "Choose the closest operation from: create, complete, snooze, query_overview, or null.",
+    "create is for creating a reminder, alarm, routine, recurring task, or goal.",
+    "complete is for saying the user already did something.",
+    "snooze is for deferring or postponing something to later.",
     "query_overview is for asking what is still left, active, or remaining today.",
     "Use null only when the request is casual chat or not a core LifeOps action.",
     "",
     "Return ONLY a TOON record with exactly these fields:",
-    "  operation: create_definition, complete_occurrence, snooze_occurrence, query_overview, or null",
+    "  operation: create, complete, snooze, query_overview, or null",
     "  confidence: number from 0 to 1",
     "  shouldAct: boolean",
-    "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
+    "  missing: list of missing fields from title, schedule, target, goal, details",
     "",
     "Examples:",
     '  Input: "remind me to brush my teeth every night"',
-    "  operation: create_definition",
+    "  operation: create",
     "  confidence: 0.95",
     "  shouldAct: true",
     "  missing: []",
     '  Input: "Je viens de me brosser les dents"',
-    "  operation: complete_occurrence",
+    "  operation: complete",
     "  confidence: 0.95",
     "  shouldAct: true",
     "  missing: []",
     '  Input: "remind me later"',
-    "  operation: snooze_occurrence",
+    "  operation: snooze",
     "  confidence: 0.9",
     "  shouldAct: true",
     "  missing: []",
@@ -370,28 +360,22 @@ export async function extractLifeOperationWithLlm(args: {
     "Requests with concrete routine content and interpretable cadence are actionable even when some fields are implied.",
     "Treat requests like weekdays after lunch, during the day, every morning, tomorrow at 9, set an alarm for 7 am, and remind me about my Invisalign as specific enough to act on now.",
     "A goal horizon like this year, this month, by June, or before my trip does not create a routine cadence by itself.",
-    "Use create_goal for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
+    "Use create with a goal-flavored intent for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
     "",
     "Return a TOON record with exactly these fields:",
     "  operation: one of the allowed operations below, or null when this should be reply-only/no-op",
     "  confidence: number from 0 to 1",
     "  shouldAct: boolean",
-    "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
+    "  missing: list of missing fields from title, schedule, target, goal, details",
     "",
     "Operations and when to use each:",
-    "  create_definition — create a new habit, routine, task, one-off alarm, or reminder (e.g. 'remind me to brush my teeth every night', 'set an alarm for 7am', 'set a reminder for tomorrow at 9')",
-    "  create_goal — create an aspiration or goal without a routine cadence (e.g. 'I want to run a marathon')",
-    "  update_definition — edit, rename, reschedule, or modify an existing task/habit/routine (e.g. 'change my workout to 6am')",
-    "  update_goal — edit or modify an existing goal (e.g. 'update my marathon goal to June')",
-    "  delete_definition — delete, remove, cancel, or stop tracking a task/habit/routine (e.g. 'stop tracking my meditation')",
-    "  delete_goal — delete or remove a goal (e.g. 'delete my marathon goal')",
-    "  complete_occurrence — mark an item as done (e.g. 'I brushed my teeth', 'done with workout', 'I did it')",
-    "  skip_occurrence — skip an item for today (e.g. 'skip brushing', 'not today', 'pass on workout')",
-    "  snooze_occurrence — postpone or defer an item (e.g. 'snooze', 'remind me later', 'push it back')",
-    "  review_goal — check progress on a goal or ask for a weekly goal review (e.g. 'how am I doing on my marathon goal', 'review my progress', 'give me my weekly goal review')",
-    "  capture_phone — save or confirm a phone number (e.g. 'my number is 555-1234', 'text me at...')",
-    "  configure_escalation — set up SMS/voice/call escalation (e.g. 'text me if I ignore the reminder', 'call me if I miss it')",
-    "  set_reminder_preference — adjust reminder frequency (e.g. 'less reminders', 'more reminders', 'pause reminders', 'high priority only')",
+    "  create — create a new habit, routine, task, one-off alarm, reminder, or aspirational goal (e.g. 'remind me to brush my teeth every night', 'set an alarm for 7am', 'I want to run a marathon')",
+    "  update — edit, rename, reschedule, or modify an existing task/habit/routine/goal (e.g. 'change my workout to 6am', 'update my marathon goal to June')",
+    "  delete — delete, remove, cancel, or stop tracking a task/habit/routine/goal (e.g. 'stop tracking my meditation', 'delete my marathon goal')",
+    "  complete — mark an item as done (e.g. 'I brushed my teeth', 'done with workout', 'I did it')",
+    "  skip — skip an item for today (e.g. 'skip brushing', 'not today', 'pass on workout')",
+    "  snooze — postpone or defer an item (e.g. 'snooze', 'remind me later', 'push it back')",
+    "  review — check progress on a goal or ask for a weekly goal review (e.g. 'how am I doing on my marathon goal', 'review my progress')",
     "  query_calendar_today — today's/tomorrow's/this week's schedule (e.g. 'what's on my calendar today')",
     "  query_calendar_next — next upcoming event (e.g. 'what's my next meeting')",
     "  query_email — inbox/email status (e.g. 'any new emails', 'who emailed me')",
@@ -399,22 +383,17 @@ export async function extractLifeOperationWithLlm(args: {
     "",
     "Examples:",
     '  Input: "I brushed my teeth"',
-    "  operation: complete_occurrence",
+    "  operation: complete",
     "  confidence: 0.95",
     "  shouldAct: true",
     "  missing: []",
-    '  Input: "less reminders please"',
-    "  operation: set_reminder_preference",
-    "  confidence: 0.9",
-    "  shouldAct: true",
-    "  missing: []",
     '  Input: "remind me to take vitamins every morning"',
-    "  operation: create_definition",
+    "  operation: create",
     "  confidence: 0.95",
     "  shouldAct: true",
     "  missing: []",
     '  Input: "I want to learn guitar this year"',
-    "  operation: create_goal",
+    "  operation: create",
     "  confidence: 0.9",
     "  shouldAct: true",
     "  missing: []",
@@ -424,7 +403,7 @@ export async function extractLifeOperationWithLlm(args: {
     "  shouldAct: true",
     "  missing: []",
     '  Input: "lol yeah. can you help me add a todo for my life?"',
-    "  operation: create_definition",
+    "  operation: create",
     "  confidence: 0.82",
     "  shouldAct: false",
     "  missing: [title, schedule]",

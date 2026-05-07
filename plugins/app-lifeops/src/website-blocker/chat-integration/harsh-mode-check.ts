@@ -4,9 +4,9 @@ import { BLOCK_RULES_TABLE } from "./block-rule-schema.js";
 
 /**
  * Returns true when the agent has at least one active `harsh_no_bypass`
- * rule. Used by `UNBLOCK_WEBSITES` to refuse a soft hosts-file restore
- * that the reconciler would re-create on its 60s tick anyway, leaving a
- * window of unprotected state.
+ * rule. Used by the website-block unblock flow to refuse a soft hosts-file
+ * restore that the reconciler would re-create on its 60s tick anyway, leaving
+ * a window of unprotected state.
  *
  * Returns false when the runtime database adapter is unavailable
  * (e.g. unit tests with a stub runtime). The hosts-file engine has no

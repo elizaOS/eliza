@@ -173,7 +173,10 @@ export class NodeAutoscaler {
       belowBuffer &&
       (!recentlyProvisioned || belowHotFloor);
 
-    const drainCandidates = await this.findDrainCandidates(enabled);
+    const drainCandidates =
+      shouldScaleUp || belowBuffer
+        ? []
+        : await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable);
 
     let reason = "steady";
     if (shouldScaleUp) {
@@ -276,6 +279,7 @@ export class NodeAutoscaler {
       ssh_user: "root",
       metadata: {
         provider: "hetzner-cloud",
+        autoscaled: true,
         hcloudServerId: provisioned.server.id,
         serverType,
         location,
@@ -370,22 +374,50 @@ export class NodeAutoscaler {
    * ago that we are not deprovisioning a node that has just barely come
    * online before any container could land on it.
    */
-  private async findDrainCandidates(enabled: DockerNode[]): Promise<DockerNode[]> {
-    if (enabled.length <= 1) return [];
+  private async findDrainCandidates(
+    healthyEnabled: DockerNode[],
+    allocatedByNode: Map<string, number>,
+    totalAvailable: number,
+  ): Promise<DockerNode[]> {
+    if (healthyEnabled.length <= 1) return [];
 
     const ageThreshold = this.nowFn() - this.policy.idleNodeMinAgeMs;
-    const oldEnough = enabled.filter(
+    const oldEnough = healthyEnabled.filter(
       (n) => isAutoscaledHetznerNode(n) && n.created_at.getTime() < ageThreshold,
     );
     if (oldEnough.length === 0) return [];
 
+    const preservationFloor = Math.max(
+      this.policy.minFreeSlotsBuffer,
+      this.policy.minHotAvailableSlots,
+    );
     const counts = await Promise.all(
       oldEnough.map(async (node) => ({
         node,
-        count: await countRetainedWorkloadsOnNode(node.node_id),
+        retainedCount: await countRetainedWorkloadsOnNode(node.node_id),
       })),
     );
-    return counts.filter((c) => c.count === 0).map((c) => c.node);
+
+    let remainingAvailable = totalAvailable;
+    let remainingHealthyNodes = healthyEnabled.length;
+    const drainCandidates: DockerNode[] = [];
+
+    for (const { node, retainedCount } of counts) {
+      if (retainedCount > 0) continue;
+
+      const allocated = allocatedByNode.get(node.node_id) ?? node.allocated_count;
+      if (allocated > 0) continue;
+
+      const nodeAvailable = Math.max(0, node.capacity - allocated);
+      if (remainingHealthyNodes <= 1) continue;
+      if (remainingAvailable - nodeAvailable < preservationFloor) continue;
+
+      drainCandidates.push(node);
+      remainingAvailable -= nodeAvailable;
+      remainingHealthyNodes -= 1;
+    }
+
+    return drainCandidates;
   }
 }
 
@@ -406,7 +438,11 @@ function getHcloudServerId(node: DockerNode): number | undefined {
 
 function isAutoscaledHetznerNode(node: DockerNode): boolean {
   const meta = (node.metadata ?? {}) as Record<string, unknown>;
-  return meta.provider === "hetzner-cloud" && getHcloudServerId(node) !== undefined;
+  return (
+    meta.provider === "hetzner-cloud" &&
+    meta.autoscaled === true &&
+    getHcloudServerId(node) !== undefined
+  );
 }
 
 let cachedAutoscaler: NodeAutoscaler | null = null;

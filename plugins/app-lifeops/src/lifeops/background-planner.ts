@@ -51,7 +51,6 @@
  *
  * Other background entry points / sweeps that flow through the workers above:
  *
- *   - Dossier service: dossier/service.ts                          (on-demand by chat + brief builder)
  *   - Activity profile rebuilds: activity-profile/service.ts       (driven by PROACTIVE_AGENT)
  *   - Reminder enforcement windows: lifeops/enforcement-windows.ts (driven by reminders mixin)
  *

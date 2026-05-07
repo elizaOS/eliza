@@ -1093,7 +1093,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
-    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, or CROSS_CHANNEL_SEND instead.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose OWNER_CALENDAR, TRIAGE_MESSAGES, or SEND_DRAFT instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     "Examples:",

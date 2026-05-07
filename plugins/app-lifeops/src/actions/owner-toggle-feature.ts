@@ -21,7 +21,7 @@ import {
   isLifeOpsFeatureKey,
   type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
-import { formatPromptSection } from "./prompt-format.js";
+import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 const ACTION_NAME = "OWNER_TOGGLE_FEATURE";

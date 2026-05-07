@@ -233,7 +233,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
         category,
         actionNames:
           category === "priority"
-            ? ["OWNER_DIGEST", "LIST_INBOX"]
+            ? ["OWNER_CHECKIN", "LIST_INBOX"]
             : ["TRIAGE_MESSAGES"],
         intent,
         parameters: compactParameters({

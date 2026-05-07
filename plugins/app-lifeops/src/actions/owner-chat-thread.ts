@@ -15,7 +15,7 @@ import {
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { recentConversationTexts } from "./lib/recent-context.js";
 import { messageText } from "./lifeops-google-helpers.js";
-import { formatPromptSection } from "./prompt-format.js";
+import { formatPromptSection } from "./lib/prompt-format.js";
 import { scheduleOnceTriggerTask } from "./scheduled-trigger-task.js";
 
 type ChatThreadOperation = "mute_chat" | "unmute_chat";
@@ -229,7 +229,7 @@ export const chatThreadControlAction: Action & {
   description:
     "Mute or unmute a specific connector chat that is not necessarily the current room, and optionally schedule an automatic unmute.",
   descriptionCompressed:
-    "mute/unmute named connector chat not current room: mute_chat(target,until?) | unmute_chat(target); owner",
+    "mute|unmute named connector chat (telegram|discord|...) not-current-room: mute_chat(target,duration?) unmute_chat(target) auto-unmute-schedule owner",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),

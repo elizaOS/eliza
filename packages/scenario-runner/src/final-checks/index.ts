@@ -388,9 +388,6 @@ function actionMatchesChannel(
         "SEND_DRAFT",
         "RESPOND_TO_MESSAGE",
         "TRIAGE_MESSAGES",
-        "GMAIL_ACTION",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
       ].includes(action.actionName);
     case "discord":
     case "telegram":
@@ -402,17 +399,12 @@ function actionMatchesChannel(
         "SEND_DRAFT",
         "RESPOND_TO_MESSAGE",
         "TRIAGE_MESSAGES",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
       ].includes(action.actionName);
     case "x-dm":
       return [
         "OWNER_X",
         "SEND_DRAFT",
         "RESPOND_TO_MESSAGE",
-        "X_READ",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
       ].includes(action.actionName);
     case "desktop":
     case "mobile":
@@ -420,10 +412,6 @@ function actionMatchesChannel(
       return [
         "OWNER_DEVICE_INTENT",
         "OWNER_VOICE_CALL",
-        "PUBLISH_DEVICE_INTENT",
-        "INTENT_SYNC",
-        "CALL_USER",
-        "CALL_EXTERNAL",
       ].includes(action.actionName);
     default:
       return false;
@@ -760,7 +748,6 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
     const blob = actionBlob(action);
     return (
       action.actionName === "OWNER_DEVICE_INTENT" ||
-      action.actionName === "INTENT_SYNC" ||
       (/acknowledge/.test(blob) && /sync/.test(blob))
     );
   });

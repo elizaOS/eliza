@@ -468,3 +468,4 @@ packages/app-core/test/**/*.d.ts
 test/**/*.js
 test/**/*.d.ts
 test_output/
+research/

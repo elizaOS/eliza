@@ -42,36 +42,26 @@ type RuntimeActionLike = Pick<
 
 const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops/public";
 
-let selfControlFallbackActionsPromise: Promise<{
-  BLOCK_WEBSITES?: RuntimeActionLike;
-  REQUEST_WEBSITE_BLOCKING_PERMISSION?: RuntimeActionLike;
-} | null> | null = null;
+let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
+  null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
 ): Promise<RuntimeActionLike | null> {
-  if (
-    actionName !== "BLOCK_WEBSITES" &&
-    actionName !== "REQUEST_WEBSITE_BLOCKING_PERMISSION"
-  ) {
+  if (actionName !== "OWNER_WEBSITE_BLOCK") {
     return null;
   }
 
-  if (!selfControlFallbackActionsPromise) {
-    selfControlFallbackActionsPromise = import(
+  if (!ownerWebsiteBlockFallbackPromise) {
+    ownerWebsiteBlockFallbackPromise = import(
       /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
     )
       .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
-      .then((mod) => ({
-        BLOCK_WEBSITES: mod.blockWebsitesAction,
-        REQUEST_WEBSITE_BLOCKING_PERMISSION:
-          mod.requestWebsiteBlockingPermissionAction,
-      }))
+      .then((mod) => mod.ownerWebsiteBlockAction ?? null)
       .catch(() => null);
   }
 
-  const actions = await selfControlFallbackActionsPromise;
-  return actions?.[actionName] ?? null;
+  return ownerWebsiteBlockFallbackPromise;
 }
 
 export function inferBalanceChainFromText(
@@ -235,7 +225,7 @@ export async function executeFallbackParsedActions(
           currentText,
         );
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "BLOCK_WEBSITES" &&
+        parsed.name === "OWNER_WEBSITE_BLOCK" &&
         actionSucceeded === true &&
         currentTextLooksLikeCompletedWebsiteBlock;
       if (fallbackText) {

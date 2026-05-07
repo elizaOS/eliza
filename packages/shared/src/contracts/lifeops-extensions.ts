@@ -370,21 +370,6 @@ export interface LifeOpsScreenTimeHistoryResponse {
 // Scheduling interfaces live in `./lifeops.ts` — see LifeOpsSchedulingNegotiation,
 // LifeOpsSchedulingProposal, LIFEOPS_PROPOSAL_STATUSES, LIFEOPS_PROPOSAL_PROPOSERS.
 
-// ── Dossier ──────────────────────────────────────────────────────────────────
-
-export interface LifeOpsDossier {
-  id: string;
-  agentId: string;
-  calendarEventId: string | null;
-  subject: string;
-  generatedForAt: string;
-  contentMd: string;
-  sources: Array<{ kind: string; ref: string; snippet?: string }>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // ── iMessage connector ───────────────────────────────────────────────────────
 
 export type LifeOpsIMessageHostPlatform =

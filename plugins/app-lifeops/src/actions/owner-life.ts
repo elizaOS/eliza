@@ -19,10 +19,7 @@ import type {
   LifeOpsDefinitionRecord,
   LifeOpsDomain,
   LifeOpsGoalRecord,
-  LifeOpsReminderIntensity,
-  LifeOpsReminderStep,
   LifeOpsWindowPolicy,
-  SetLifeOpsReminderPreferenceRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
 } from "../contracts/index.js";
@@ -52,7 +49,6 @@ import {
 } from "./lib/extract-life-operation.js";
 import {
   type ExtractedTaskParams,
-  extractReminderIntensityWithLlm,
   extractTaskCreatePlanWithLlm,
 } from "./lib/extract-task-plan.js";
 import {
@@ -75,23 +71,13 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import {
-  calendarReadUnavailableMessage,
-  dayRange,
-  detailArray,
   detailBoolean,
   detailNumber,
   detailObject,
   detailString,
-  formatCalendarFeed,
-  formatEmailTriage,
-  formatNextEventContext,
   formatOverviewForQuery,
-  getGoogleCapabilityStatus,
-  gmailReadUnavailableMessage,
-  INTERNAL_URL,
   messageText,
   toActionData,
-  weekRange,
 } from "./lifeops-google-helpers.js";
 import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
@@ -99,133 +85,128 @@ import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 // ── Types ─────────────────────────────────────────────
 
 type LifeOperation = ExtractedLifeOperation;
+type LifeOwnedOperation = Exclude<
+  LifeOperation,
+  | "query_calendar_today"
+  | "query_calendar_next"
+  | "query_email"
+  | "query_overview"
+>;
+/** Internal handler discriminator: definition vs goal flow. */
+type LifeKind = "definition" | "goal";
 type ResolvedLifeOperationPlan = {
   confidence: number | null;
   missing: ExtractedLifeMissingField[];
-  operation: LifeOperation | null;
+  operation: LifeOwnedOperation | null;
+  kind?: LifeKind;
   shouldAct: boolean;
 };
 
 type LifeParams = {
   subaction?: LifeOperation;
+  kind?: LifeKind;
   intent?: string;
   title?: string;
   target?: string;
+  minutes?: number;
   details?: Record<string, unknown>;
 };
 
 const SUBACTIONS = {
-  create_definition: {
+  create: {
     description:
-      "Create a new habit, routine, task, one-off alarm, or reminder.",
+      "Create a life-item: kind=definition (habit/routine/reminder/alarm/todo) or kind=goal (long-term aspiration).",
     descriptionCompressed:
-      "create habit routine task alarm reminder definition",
-    required: ["intent"],
+      "create life-item: kind=definition(habit/routine/reminder/alarm/todo) or goal; cadence/title/details from intent",
+    required: ["kind", "title"],
+    optional: ["intent", "details"],
+  },
+  update: {
+    description:
+      "Update an existing life-item by id or title (kind: definition or goal).",
+    descriptionCompressed: "update life-item by id/title: kind, target, fields",
+    required: ["kind", "target"],
     optional: ["title", "details"],
   },
-  create_goal: {
-    description:
-      "Create a new aspirational goal with a success criterion and horizon.",
-    descriptionCompressed: "create goal aspiration success-criterion horizon",
-    required: ["intent"],
-    optional: ["title", "details"],
+  delete: {
+    description: "Delete a life-item by id or title (kind: definition or goal).",
+    descriptionCompressed: "delete life-item by id/title",
+    required: ["kind", "target"],
   },
-  update_definition: {
-    description:
-      "Edit, rename, reschedule, or modify an existing task/habit/routine.",
-    descriptionCompressed: "update edit rename reschedule habit routine task",
+  complete: {
+    description: "Mark an occurrence as done.",
+    descriptionCompressed: "mark occurrence done",
     required: ["target"],
-    optional: ["intent", "title", "details"],
   },
-  update_goal: {
-    description: "Edit or modify an existing goal.",
-    descriptionCompressed: "update edit modify goal",
+  skip: {
+    description: "Skip an occurrence.",
+    descriptionCompressed: "skip occurrence",
     required: ["target"],
-    optional: ["intent", "title", "details"],
   },
-  delete_definition: {
-    description:
-      "Delete, remove, cancel, or stop tracking a task/habit/routine.",
-    descriptionCompressed: "delete remove cancel stop task habit routine",
+  snooze: {
+    description: "Snooze an occurrence by minutes or preset duration.",
+    descriptionCompressed: "snooze occurrence; duration",
     required: ["target"],
-    optional: ["intent"],
+    optional: ["minutes"],
   },
-  delete_goal: {
-    description: "Delete or remove a goal.",
-    descriptionCompressed: "delete remove goal",
+  review: {
+    description: "Review progress on a goal.",
+    descriptionCompressed: "review goal progress",
     required: ["target"],
-    optional: ["intent"],
   },
-  complete_occurrence: {
-    description: "Mark an item as done (also: reminder_complete).",
-    descriptionCompressed: "complete done finished marked-done item reminder",
-    required: ["target"],
-    optional: ["intent", "details"],
-  },
-  skip_occurrence: {
-    description: "Skip an item for today.",
-    descriptionCompressed: "skip pass-on item today",
-    required: ["target"],
-    optional: ["intent"],
-  },
-  snooze_occurrence: {
-    description: "Postpone or defer an item (also: reminder_snooze).",
-    descriptionCompressed: "snooze postpone defer remind-later item reminder",
-    required: ["target"],
-    optional: ["intent", "details"],
-  },
-  review_goal: {
-    description:
-      "Check progress on a goal, or run weekly goal review when no target supplied.",
-    descriptionCompressed: "review progress weekly goal-review",
-    required: [],
-    optional: ["target", "intent"],
-  },
-  set_reminder_preference: {
-    description:
-      "Adjust reminder frequency or intensity (minimal, normal, persistent, high-priority-only).",
-    descriptionCompressed:
-      "reminder intensity frequency minimal persistent high-priority",
-    required: ["intent"],
-    optional: ["target", "details"],
-  },
-  capture_phone: {
-    description: "Save or confirm a phone number for SMS / voice escalation.",
-    descriptionCompressed: "phone number sms voice escalation capture",
-    required: ["details"],
-    optional: ["intent", "title"],
-  },
-  configure_escalation: {
-    description: "Set up SMS/voice/call escalation steps for a definition.",
-    descriptionCompressed: "escalation sms voice call steps definition",
-    required: ["target"],
-    optional: ["intent", "details"],
-  },
-  query_calendar_today: {
-    description: "Today's, tomorrow's, or this week's calendar feed.",
-    descriptionCompressed: "calendar today tomorrow week feed",
-    required: [],
-    optional: ["intent", "details"],
-  },
-  query_calendar_next: {
-    description: "Next upcoming calendar event.",
-    descriptionCompressed: "calendar next upcoming event",
-    required: [],
-    optional: ["intent"],
-  },
-  query_email: {
-    description: "Inbox / email triage status (delegates to gmail).",
-    descriptionCompressed: "email inbox triage status",
-    required: [],
-    optional: ["intent", "details"],
-  },
-  query_overview: {
-    description: "Broad LifeOps status summary or remaining items today.",
-    descriptionCompressed: "overview status remaining active items today",
-    required: [],
-    optional: ["intent"],
-  },
-} as const satisfies SubactionsMap<LifeOperation>;
+} as const satisfies SubactionsMap<LifeOwnedOperation>;
+
+/**
+ * Internal handler key — the dispatch table inside the action handler still
+ * branches on definition-vs-goal for create/update/delete because the
+ * underlying LifeOpsService methods are split. The umbrella surface (the
+ * SUBACTIONS map above) uses the 7 plain verbs and resolves the kind
+ * separately via params.kind.
+ */
+type InternalLifeOp =
+  | "create_definition"
+  | "create_goal"
+  | "update_definition"
+  | "update_goal"
+  | "delete_definition"
+  | "delete_goal"
+  | "complete_occurrence"
+  | "skip_occurrence"
+  | "snooze_occurrence"
+  | "review_goal";
+
+function toInternalLifeOp(
+  operation: LifeOwnedOperation,
+  kind: LifeKind | undefined,
+): InternalLifeOp {
+  switch (operation) {
+    case "create":
+      return kind === "goal" ? "create_goal" : "create_definition";
+    case "update":
+      return kind === "goal" ? "update_goal" : "update_definition";
+    case "delete":
+      return kind === "goal" ? "delete_goal" : "delete_definition";
+    case "complete":
+      return "complete_occurrence";
+    case "skip":
+      return "skip_occurrence";
+    case "snooze":
+      return "snooze_occurrence";
+    case "review":
+      return "review_goal";
+  }
+}
+
+function inferLifeKindFromIntent(intent: string): LifeKind {
+  const normalized = intent.toLowerCase();
+  if (
+    /\bgoal\b|\baspirat|achiev|long[\s-]?term/.test(normalized) ||
+    /\bi (?:want|hope|wish|aspire) to\b/.test(normalized)
+  ) {
+    return "goal";
+  }
+  return "definition";
+}
 
 const GENERIC_DERIVED_TITLE_RE =
   /^(?:new\s+)?(?:habit|routine|task|goal|life goal|thing|item|something|anything|stuff|plan|reminder|todo|to do|achieve|achieve a|achieve an)$/i;
@@ -236,12 +217,24 @@ function normalizeLifeTimeZoneToken(
   return normalizeExplicitTimeZoneToken(value);
 }
 
+function isLifeOwnedOperation(
+  value: LifeOperation | null | undefined,
+): value is LifeOwnedOperation {
+  return (
+    value != null &&
+    value !== "query_calendar_today" &&
+    value !== "query_calendar_next" &&
+    value !== "query_email" &&
+    value !== "query_overview"
+  );
+}
+
 async function resolveLifeOperationPlan(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
   intent: string;
-  explicitOperation: LifeOperation | undefined;
+  explicitOperation: LifeOwnedOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, intent, explicitOperation } = args;
   if (explicitOperation) {
@@ -259,9 +252,15 @@ async function resolveLifeOperationPlan(args: {
     state,
     intent,
   });
-  if (!extracted.shouldAct || !extracted.operation) {
+  if (
+    !extracted.shouldAct ||
+    !extracted.operation ||
+    !isLifeOwnedOperation(extracted.operation)
+  ) {
     return {
-      operation: extracted.operation,
+      operation: isLifeOwnedOperation(extracted.operation)
+        ? extracted.operation
+        : null,
       confidence: extracted.confidence,
       missing: extracted.missing,
       shouldAct: false,
@@ -290,10 +289,10 @@ async function routeLifeSubaction(args: {
   state: State | undefined;
   options: HandlerOptions | undefined;
   intent: string;
-  explicitSubaction: LifeOperation | undefined;
+  explicitSubaction: LifeOwnedOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, options, intent, explicitSubaction } = args;
-  const resolved = await resolveActionArgs<LifeOperation, LifeParams>({
+  const resolved = await resolveActionArgs<LifeOwnedOperation, LifeParams>({
     runtime,
     message,
     state,
@@ -358,10 +357,11 @@ function shouldForceLifeCreateExecution(args: {
   intent: string;
   missing: ExtractedLifeMissingField[];
   operation: LifeOperation | null;
+  kind: LifeKind | undefined;
   details: Record<string, unknown> | undefined;
   title: string | undefined;
 }): boolean {
-  if (args.operation !== "create_definition") {
+  if (args.operation !== "create" || args.kind === "goal") {
     return false;
   }
 
@@ -457,7 +457,7 @@ function tokenizeTitle(value: string): string[] {
     .filter((token) => token.length >= 3);
 }
 
-async function resolveDefinitionFromIntent(
+export async function resolveDefinitionFromIntent(
   service: LifeOpsService,
   target: string | undefined,
   intent: string,
@@ -672,7 +672,7 @@ function deriveOccurrenceTargetFromIntent(
   }
 
   let candidate = normalized;
-  if (operation === "snooze_occurrence") {
+  if (operation === "snooze") {
     candidate = candidate
       .replace(
         /^(?:please\s+)?(?:snooze|postpone|push\b.*\bback|remind me later about)\s+/i,
@@ -681,12 +681,12 @@ function deriveOccurrenceTargetFromIntent(
       .replace(/\bfor\s+\d+\s*(?:minutes?|hours?)\b.*$/i, "")
       .replace(/\b(?:until|til)\b.+$/i, "")
       .trim();
-  } else if (operation === "skip_occurrence") {
+  } else if (operation === "skip") {
     candidate = candidate
       .replace(/^(?:please\s+)?(?:skip|pass on)\s+/i, "")
       .replace(/\b(?:today|tonight|for now)\b.*$/i, "")
       .trim();
-  } else if (operation === "complete_occurrence") {
+  } else if (operation === "complete") {
     candidate = candidate
       .replace(
         /^(?:please\s+)?(?:mark\s+|i(?:'ve| have)?\s+|just\s+)?(?:done|completed|finished|did)\s+/i,
@@ -800,9 +800,6 @@ type LifeReplyScenario =
   | "completed_occurrence"
   | "skipped_occurrence"
   | "snoozed_occurrence"
-  | "set_reminder_preference"
-  | "captured_phone"
-  | "configured_escalation"
   | "overview"
   | "weekly_goal_review"
   | "service_error";
@@ -909,9 +906,10 @@ async function renderLifeActionReply(args: {
 function buildLifeClarificationFallback(args: {
   missing: ExtractedLifeMissingField[];
   operation: LifeOperation | null;
+  kind: LifeKind | undefined;
 }): string {
   const missing = new Set(args.missing);
-  if (args.operation === "create_goal") {
+  if (args.operation === "create" && args.kind === "goal") {
     return "What do you want the goal to be?";
   }
   if (missing.has("title") && missing.has("schedule")) {
@@ -1862,22 +1860,6 @@ function shouldRequireLifeCreateConfirmation(args: {
   return !args.confirmed;
 }
 
-function describeReminderIntensity(
-  intensity: LifeOpsReminderIntensity,
-): string {
-  switch (intensity) {
-    case "minimal":
-      return "minimal";
-    case "normal":
-      return "normal";
-    case "persistent":
-      return "persistent";
-    case "high_priority_only":
-      return "high priority only";
-  }
-  return "normal";
-}
-
 function formatGoalExperienceLoopSummary(
   experienceLoop:
     | {
@@ -1982,7 +1964,6 @@ export const lifeAction: Action & {
     "ALARM",
     "ROUTINE",
     "TASK",
-    "ESCALATION",
     "TRACK_HABIT",
     "MARK_DONE",
     "SNOOZE",
@@ -1991,9 +1972,9 @@ export const lifeAction: Action & {
     "NEW_GOAL",
   ],
   description:
-    "Owner-only. Manage personal routines, habits, goals, todos, reminders, alarms, escalation settings, calendar/email queries about life state, and reminder mutations. The single LifeOps action for: creating/editing/deleting/completing items; logging progress; setting reminders or alarms; capturing the owner's phone number; configuring escalation; querying today's calendar, the next event, recent email, or a high-level overview.",
+    "Owner-only. Personal life management: create/update/delete habits, routines, reminders, alarms, todos, and long-term goals; mark occurrences complete/skip/snooze; review goal progress. Owner profile persistence (phone, escalation rules, reminder preferences) lives in OWNER_PROFILE. Calendar/email/overview queries belong to OWNER_CALENDAR and OWNER_CHECKIN — do not invoke OWNER_LIFE for those.",
   descriptionCompressed:
-    "Manage life routines: definitions, goals, occurrences, reminders, prefs, calendar/email queries, overview. Owner only.",
+    "life: create update delete (kind=definition|goal) + occurrence complete skip snooze + goal review owner",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     if (looksLikeCodingTaskRequest(messageText(message))) {
@@ -2108,7 +2089,7 @@ export const lifeAction: Action & {
     const explicitSubaction =
       typeof params.subaction === "string" &&
       Object.hasOwn(SUBACTIONS, params.subaction)
-        ? (params.subaction as LifeOperation)
+        ? (params.subaction as LifeOwnedOperation)
         : undefined;
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
       details,
@@ -2146,14 +2127,15 @@ export const lifeAction: Action & {
     // we trust it. Otherwise dispatch through resolveActionArgs (the
     // shared LLM pre-routing substrate). The legacy extractLifeOperationWithLlm
     // stays available as a fallback for richer "missing field" diagnostics.
-    const operationPlan =
+    const operationPlan: ResolvedLifeOperationPlan =
       reuseDeferredDraft && deferredDraft
-        ? ({
+        ? {
             confidence: 1,
             missing: [] as ExtractedLifeMissingField[],
-            operation: deferredDraft.operation,
+            operation: "create",
+            kind: deferredDraft.operation === "create_goal" ? "goal" : "definition",
             shouldAct: true,
-          } satisfies ResolvedLifeOperationPlan)
+          }
         : await routeLifeSubaction({
             runtime,
             message,
@@ -2162,10 +2144,17 @@ export const lifeAction: Action & {
             intent,
             explicitSubaction,
           });
+    const explicitKind: LifeKind | undefined =
+      params.kind === "definition" || params.kind === "goal"
+        ? params.kind
+        : undefined;
+    const resolvedKind: LifeKind | undefined =
+      operationPlan.kind ?? explicitKind;
     const forceCreateExecution = shouldForceLifeCreateExecution({
       intent,
       missing: operationPlan.missing,
       operation: operationPlan.operation,
+      kind: resolvedKind,
       details,
       title: params.title,
     });
@@ -2173,6 +2162,7 @@ export const lifeAction: Action & {
       const fallback = buildLifeClarificationFallback({
         missing: operationPlan.missing,
         operation: operationPlan.operation,
+        kind: resolvedKind,
       });
       return {
         success: true,
@@ -2182,7 +2172,7 @@ export const lifeAction: Action & {
           state,
           intent,
           scenario:
-            operationPlan.operation === "create_goal"
+            operationPlan.operation === "create" && resolvedKind === "goal"
               ? "clarify_create_goal"
               : "clarify_create_definition",
           fallback,
@@ -2198,9 +2188,22 @@ export const lifeAction: Action & {
         },
       };
     }
-    const operation = forceCreateExecution
-      ? "create_definition"
+    const operation: LifeOwnedOperation | null = forceCreateExecution
+      ? "create"
       : operationPlan.operation;
+    // Internal handler dispatch key (definition vs goal split lives here).
+    // For create/update/delete, infer kind from explicit param, plan, draft, or
+    // intent; for occurrence-level verbs the kind is irrelevant.
+    const kind: LifeKind =
+      resolvedKind ??
+      (operation === "create" ||
+      operation === "update" ||
+      operation === "delete"
+        ? inferLifeKindFromIntent(intent)
+        : "definition");
+    const internalOp: InternalLifeOp | null = operation
+      ? toInternalLifeOp(operation, kind)
+      : null;
     if (!operation) {
       const fallback = "Tell me what LifeOps action you want me to take.";
       return {
@@ -2225,7 +2228,6 @@ export const lifeAction: Action & {
     const service = new LifeOpsService(runtime);
     const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
     const ownership = requestedOwnership(domain);
-    const chatText = intent;
     const targetName = params.target ?? params.title;
     const createConfirmed =
       deferredDraftReuseMode === "confirm" ||
@@ -2588,118 +2590,13 @@ export const lifeAction: Action & {
         };
       };
 
-      // ── Queries ─────────────────────────────────────
-
-      if (
-        operation === "query_calendar_today" ||
-        operation === "query_calendar_next"
-      ) {
-        const google = await getGoogleCapabilityStatus(service);
-        if (!google.hasCalendarRead) {
-          return {
-            success: false,
-            text: calendarReadUnavailableMessage(google),
-          };
-        }
-        if (operation === "query_calendar_next") {
-          const ctx = await service.getNextCalendarEventContext(INTERNAL_URL);
-          return {
-            success: true,
-            text: formatNextEventContext(ctx),
-            data: toActionData(ctx),
-          };
-        }
-        // The planner extracts the time window as a structured `when` param
-        // ("today" | "tomorrow" | "this_week"), so we never re-parse the
-        // free-form `intent` string at runtime. Default to "today" when the
-        // caller omits it.
-        const whenRaw = detailString(details, "when")?.toLowerCase().trim();
-        const when: "today" | "tomorrow" | "this_week" =
-          whenRaw === "tomorrow"
-            ? "tomorrow"
-            : whenRaw === "this_week" ||
-                whenRaw === "this week" ||
-                whenRaw === "week"
-              ? "this_week"
-              : "today";
-        const range =
-          when === "tomorrow"
-            ? dayRange(1)
-            : when === "this_week"
-              ? weekRange()
-              : dayRange(0);
-        const label =
-          when === "tomorrow"
-            ? "tomorrow"
-            : when === "this_week"
-              ? "this week"
-              : "today";
-        const feed = await service.getCalendarFeed(INTERNAL_URL, {
-          includeHiddenCalendars: true,
-          timeMin: range.timeMin,
-          timeMax: range.timeMax,
-        });
-        return {
-          success: true,
-          text: formatCalendarFeed(feed, label),
-          data: toActionData(feed),
-        };
-      }
-
-      if (operation === "query_email") {
-        const limit = detailNumber(details, "limit") ?? 10;
-        const google = await getGoogleCapabilityStatus(service);
-        if (!google.hasGmailTriage) {
-          return {
-            success: false,
-            text: gmailReadUnavailableMessage(google),
-          };
-        }
-        const feed = await service.getGmailTriage(INTERNAL_URL, {
-          maxResults: limit,
-          forceSync: detailBoolean(details, "forceSync") ?? false,
-        });
-        return {
-          success: true,
-          text: formatEmailTriage(feed),
-          data: toActionData(feed),
-        };
-      }
-
-      if (operation === "query_overview") {
-        const overview = await service.getOverview();
-        const userQuery = messageText(message) || intent || "overview";
-        const fallback = formatOverviewForQuery(overview, userQuery);
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent: userQuery,
-            scenario: "overview",
-            fallback,
-            context: {
-              summary: overview.owner.summary,
-              occurrenceTitles: overview.owner.occurrences
-                .slice(0, 6)
-                .map((occurrence) => occurrence.title),
-              goalTitles: overview.owner.goals
-                .slice(0, 3)
-                .map((goal) => goal.title),
-            },
-          }),
-          data: toActionData(overview),
-        };
-      }
-
       // ── Mutations ───────────────────────────────────
 
-      if (operation === "create_definition") {
+      if (internalOp === "create_definition") {
         return await createDefinition();
       }
 
-      if (operation === "create_goal") {
+      if (internalOp === "create_goal") {
         const deferredGoalDraft =
           reuseDeferredDraft && deferredDraft?.operation === "create_goal"
             ? deferredDraft
@@ -2959,7 +2856,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "update_definition") {
+      if (internalOp === "update_definition") {
         const target = await resolveDefinition(service, targetName, domain);
         if (!target)
           return {
@@ -3052,7 +2949,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "update_goal") {
+      if (internalOp === "update_goal") {
         const target = await resolveGoal(service, targetName, domain);
         if (!target)
           return {
@@ -3155,7 +3052,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "delete_definition") {
+      if (internalOp === "delete_definition") {
         const target = await resolveDefinition(service, targetName, domain);
         if (!target)
           return {
@@ -3182,7 +3079,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "delete_goal") {
+      if (internalOp === "delete_goal") {
         const target = await resolveGoal(service, targetName, domain);
         if (!target)
           return {
@@ -3209,9 +3106,8 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "complete_occurrence") {
-        // Direct occurrenceId path absorbed from former LIFEOPS_MUTATE
-        // reminder_complete subaction. When the planner already knows the
+      if (internalOp === "complete_occurrence") {
+        // Direct occurrenceId path: when the planner already knows the
         // occurrence id we skip title/intent matching.
         const directOccurrenceId = detailString(details, "occurrenceId");
         let resolvedTargetId: string;
@@ -3264,7 +3160,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "skip_occurrence") {
+      if (internalOp === "skip_occurrence") {
         const { match: target, ambiguousCandidates } =
           await resolveOccurrenceWithIntentFallback({
             service,
@@ -3306,9 +3202,8 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "snooze_occurrence") {
-        // Direct occurrenceId path absorbed from former LIFEOPS_MUTATE
-        // reminder_snooze subaction.
+      if (internalOp === "snooze_occurrence") {
+        // Direct occurrenceId path for reminder_snooze.
         const directOccurrenceId = detailString(details, "occurrenceId");
         let resolvedTargetId: string;
         if (directOccurrenceId) {
@@ -3370,7 +3265,7 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "review_goal") {
+      if (internalOp === "review_goal") {
         const target = await resolveGoal(service, targetName, domain);
         if (!target) {
           const weeklyReview = await service.reviewGoalsForWeek();
@@ -3436,168 +3331,6 @@ export const lifeAction: Action & {
         };
       }
 
-      if (operation === "set_reminder_preference") {
-        const reminderIntensityPlan = await extractReminderIntensityWithLlm({
-          runtime,
-          intent,
-        });
-        if (reminderIntensityPlan.intensity === "unknown") {
-          return {
-            success: false,
-            text: "I need to know whether you want reminders minimal, normal, persistent, or high priority only.",
-          };
-        }
-        const intensity = reminderIntensityPlan.intensity;
-        const target = await resolveDefinitionFromIntent(
-          service,
-          targetName,
-          intent,
-          domain,
-        );
-        const request: SetLifeOpsReminderPreferenceRequest = {
-          intensity,
-          definitionId: target?.definition.id ?? null,
-          note: chatText || intent,
-        };
-        const preference = await service.setReminderPreference(request);
-        if (target) {
-          const fallback =
-            intensity === "high_priority_only"
-              ? `Reminder intensity for "${target.definition.title}" is now high priority only.`
-              : `Reminder intensity for "${target.definition.title}" is now ${describeReminderIntensity(preference.effective.intensity)}.`;
-          return {
-            success: true,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "set_reminder_preference",
-              fallback,
-              context: {
-                scope: "definition",
-                targetTitle: target.definition.title,
-                intensity: preference.effective.intensity,
-              },
-            }),
-            data: toActionData(preference),
-          };
-        }
-        const fallback =
-          intensity === "high_priority_only"
-            ? "Global LifeOps reminders are now high priority only."
-            : `Global LifeOps reminders are now ${describeReminderIntensity(preference.effective.intensity)}.`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "set_reminder_preference",
-            fallback,
-            context: {
-              scope: "global",
-              intensity: preference.effective.intensity,
-            },
-          }),
-          data: toActionData(preference),
-        };
-      }
-
-      if (operation === "capture_phone") {
-        const phoneNumber =
-          detailString(details, "phoneNumber") ?? params.title;
-        if (!phoneNumber)
-          return {
-            success: false,
-            text: "I need a phone number to set up SMS or voice contact.",
-          };
-        const allowSms = detailBoolean(details, "allowSms") ?? true;
-        const allowVoice = detailBoolean(details, "allowVoice") ?? false;
-        const result = await service.capturePhoneConsent({
-          phoneNumber,
-          consentGiven: true,
-          allowSms,
-          allowVoice,
-          privacyClass: "private",
-        });
-        const channels: string[] = [];
-        if (allowSms) channels.push("SMS");
-        if (allowVoice) channels.push("voice calls");
-        const fallback = `Phone number ${result.phoneNumber} saved. Enabled for: ${channels.join(" and ") || "reminders"}.`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "captured_phone",
-            fallback,
-            context: {
-              phoneNumber: result.phoneNumber,
-              channels,
-            },
-          }),
-          data: toActionData(result),
-        };
-      }
-
-      if (operation === "configure_escalation") {
-        const target = await resolveDefinition(service, targetName, domain);
-        if (!target)
-          return {
-            success: false,
-            text: "I could not find that item to configure its reminders.",
-          };
-        const rawSteps =
-          detailArray(details, "steps") ??
-          detailArray(details, "escalationSteps");
-        const steps: LifeOpsReminderStep[] = rawSteps
-          ? rawSteps
-              .filter(
-                (s): s is Record<string, unknown> =>
-                  typeof s === "object" && s !== null,
-              )
-              .map((s) => ({
-                channel: String(
-                  s.channel ?? "in_app",
-                ) as LifeOpsReminderStep["channel"],
-                offsetMinutes:
-                  typeof s.offsetMinutes === "number" ? s.offsetMinutes : 0,
-                label:
-                  typeof s.label === "string"
-                    ? s.label
-                    : String(s.channel ?? "reminder"),
-              }))
-          : [{ channel: "in_app", offsetMinutes: 0, label: "In-app reminder" }];
-        const updated = await service.updateDefinition(target.definition.id, {
-          ownership,
-          reminderPlan: { steps },
-        });
-        const summary = steps
-          .map((s) => `${s.channel} at +${s.offsetMinutes}m`)
-          .join(", ");
-        const fallback = `Updated reminder plan for "${updated.definition.title}": ${summary}.`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "configured_escalation",
-            fallback,
-            context: {
-              targetTitle: updated.definition.title,
-              steps,
-            },
-          }),
-          data: toActionData(updated),
-        };
-      }
-
       return {
         success: false,
         text: "I didn't understand that life management request.",
@@ -3632,30 +3365,30 @@ export const lifeAction: Action & {
       schema: {
         type: "string" as const,
         enum: [
-          "create_definition",
-          "create_goal",
-          "update_definition",
-          "update_goal",
-          "delete_definition",
-          "delete_goal",
-          "complete_occurrence",
-          "skip_occurrence",
-          "snooze_occurrence",
-          "review_goal",
-          "set_reminder_preference",
-          "capture_phone",
-          "configure_escalation",
-          "query_calendar_today",
-          "query_calendar_next",
-          "query_email",
-          "query_overview",
+          "create",
+          "update",
+          "delete",
+          "complete",
+          "skip",
+          "snooze",
+          "review",
         ],
+      },
+    },
+    {
+      name: "kind",
+      description:
+        "For create/update/delete: 'definition' (habit/routine/reminder/alarm/todo) or 'goal' (long-term aspiration). Ignored for occurrence-level verbs (complete/skip/snooze) and review.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["definition", "goal"],
       },
     },
     {
       name: "intent",
       description:
-        'Natural language description of what to do. Examples: "create a daily brushing habit for morning and night", "snooze brushing for 30 minutes", "what\'s on my calendar today".',
+        'Natural language description of what to do. Examples: "create a daily brushing habit for morning and night", "snooze brushing for 30 minutes".',
       required: false,
       schema: { type: "string" as const },
     },
@@ -3669,14 +3402,20 @@ export const lifeAction: Action & {
     {
       name: "target",
       description:
-        "Name or ID of an existing item when different from title (e.g., when renaming).",
+        "Name or ID of an existing item to act on.",
       required: false,
       schema: { type: "string" as const },
     },
     {
+      name: "minutes",
+      description: "Snooze duration in minutes (alternative to a preset).",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
       name: "details",
       description:
-        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), minutes (snooze minutes), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), phoneNumber, allowSms, allowVoice, steps escalation list, goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops), or reminder preference targeting.",
+        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops).",
       required: false,
       schema: { type: "object" as const },
     },
@@ -3841,21 +3580,6 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 1 LifeOps task left for today: pay rent.",
-          actions: ["OWNER_LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "remind me less about brush teeth",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Reminder intensity for "Brush teeth" is now minimal.',
           actions: ["OWNER_LIFE"],
         },
       },

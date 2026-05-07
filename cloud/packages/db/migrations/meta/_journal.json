@@ -715,6 +715,13 @@
       "when": 1777801800000,
       "tag": "0105_managed_domains_cloudflare_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1778109900000,
+      "tag": "0106_ensure_agent_sandbox_backups",
+      "breakpoints": true
     }
   ]
 }

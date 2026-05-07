@@ -229,7 +229,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
     description:
       "List calendar events over a time window (today, this week, etc).",
-    descriptionCompressed: "list events over time window",
+    descriptionCompressed: "list events time-window",
     required: [],
     optional: ["intent", "details"],
   },
@@ -242,49 +242,49 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   search_events: {
     description:
       "Search calendar events by title, attendee, location, or date.",
-    descriptionCompressed: "search events",
+    descriptionCompressed: "search events title|attendee|location|date",
     required: [],
     optional: ["intent", "query", "queries", "details"],
   },
   create_event: {
     description: "Create a new Google Calendar event.",
-    descriptionCompressed: "create event",
+    descriptionCompressed: "create gcal event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   update_event: {
     description: "Update an existing Google Calendar event.",
-    descriptionCompressed: "update event",
+    descriptionCompressed: "update gcal event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   delete_event: {
     description: "Delete a Google Calendar event.",
-    descriptionCompressed: "delete event",
+    descriptionCompressed: "delete gcal event",
     required: [],
     optional: ["intent", "details"],
   },
   trip_window: {
     description: "List events occurring during a trip or while in a place.",
-    descriptionCompressed: "events during trip",
+    descriptionCompressed: "events trip-window place",
     required: [],
     optional: ["intent", "query", "details"],
   },
   bulk_reschedule: {
     description: "Preview a cohort of meetings to push into a future window.",
-    descriptionCompressed: "preview bulk reschedule cohort",
+    descriptionCompressed: "preview bulk reschedule cohort future-window",
     required: [],
     optional: ["timeZone", "intent"],
   },
   check_availability: {
     description: "Check whether the owner is free in an ISO start/end window.",
-    descriptionCompressed: "check free busy in window",
+    descriptionCompressed: "check free|busy ISO-window",
     required: [],
     optional: ["startAt", "endAt", "intent"],
   },
   propose_times: {
     description: "Propose candidate meeting slots within a window.",
-    descriptionCompressed: "propose candidate slots",
+    descriptionCompressed: "propose candidate meeting slots window",
     required: [],
     optional: [
       "durationMinutes",
@@ -299,7 +299,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   update_preferences: {
     description:
       "Update meeting preferences (preferred hours, blackouts, travel buffer).",
-    descriptionCompressed: "update meeting preferences",
+    descriptionCompressed: "update meeting prefs hours blackouts travel-buffer",
     required: [],
     optional: [
       "timeZone",
@@ -312,13 +312,13 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   },
   calendly_list_event_types: {
     description: "List Calendly event types.",
-    descriptionCompressed: "list calendly event types",
+    descriptionCompressed: "list calendly event-types",
     required: [],
     optional: [],
   },
   calendly_availability: {
     description: "Check Calendly availability for an event type URI.",
-    descriptionCompressed: "calendly availability for event type",
+    descriptionCompressed: "calendly availability event-type-uri",
     required: ["eventTypeUri"],
     optional: ["startDate", "endDate", "timezone"],
   },
@@ -330,13 +330,13 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   },
   calendly_single_use_link: {
     description: "Generate a single-use Calendly booking link.",
-    descriptionCompressed: "single-use calendly link",
+    descriptionCompressed: "calendly single-use booking link",
     required: ["eventTypeUri"],
     optional: [],
   },
   negotiate_start: {
     description: "Start a multi-turn scheduling negotiation.",
-    descriptionCompressed: "start scheduling negotiation",
+    descriptionCompressed: "start multi-turn scheduling negotiation",
     required: [],
     optional: [
       "subject",
@@ -348,25 +348,25 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   },
   negotiate_propose: {
     description: "Propose a slot in an active scheduling negotiation.",
-    descriptionCompressed: "propose slot in negotiation",
+    descriptionCompressed: "propose slot active negotiation",
     required: ["negotiationId"],
     optional: ["startAt", "endAt", "proposedBy"],
   },
   negotiate_respond: {
     description: "Respond to a scheduling proposal.",
-    descriptionCompressed: "respond to scheduling proposal",
+    descriptionCompressed: "respond scheduling proposal accept|decline|expire",
     required: ["proposalId", "response"],
     optional: ["negotiationId"],
   },
   negotiate_finalize: {
     description: "Finalize a scheduling negotiation by confirming a proposal.",
-    descriptionCompressed: "finalize negotiation",
+    descriptionCompressed: "finalize negotiation confirm proposal",
     required: ["proposalId"],
     optional: ["negotiationId", "confirmed"],
   },
   negotiate_cancel: {
     description: "Cancel an active scheduling negotiation.",
-    descriptionCompressed: "cancel negotiation",
+    descriptionCompressed: "cancel active negotiation",
     required: ["negotiationId"],
     optional: ["reason"],
   },
@@ -378,7 +378,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   },
   negotiate_list_proposals: {
     description: "List proposals on a single scheduling negotiation.",
-    descriptionCompressed: "list proposals in negotiation",
+    descriptionCompressed: "list proposals negotiation",
     required: ["subaction", "negotiationId"],
     optional: [],
   },

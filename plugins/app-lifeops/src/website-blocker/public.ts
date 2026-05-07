@@ -3,12 +3,7 @@
  * `@elizaos/app-lifeops/selfcontrol` subpath imports.
  */
 
-export {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "../actions/owner-website-block.ts";
+export { ownerWebsiteBlockAction } from "../actions/owner-website-block.ts";
 
 export { websiteBlockerProvider } from "../providers/website-blocker.ts";
 export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.ts";

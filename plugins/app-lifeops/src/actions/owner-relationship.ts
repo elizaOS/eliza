@@ -4,11 +4,6 @@
  * Subactions: list_contacts, add_contact, log_interaction, add_follow_up,
  * complete_follow_up, follow_up_list, days_since, list_overdue_followups,
  * mark_followup_done, set_followup_threshold.
- *
- * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
- * data templates land in the agent's character voice instead of being streamed
- * raw. The structured `data` payload on each ActionResult is preserved verbatim
- * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
@@ -485,7 +480,7 @@ async function resolveRelationshipPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the OWNER_RELATIONSHIP (Rolodex) subaction for this request.",
+    "Plan the OWNER_RELATIONSHIP (Rolodex / follow-up) subaction for this request.",
     "The user may speak in any language.",
     "Return TOON only with exactly these fields:",
     "subaction: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
@@ -579,13 +574,9 @@ export const relationshipAction: Action & {
     "MARK_FOLLOWUP_DONE",
   ],
   description:
-    "OWNER-scoped contacts / rolodex / follow-up tracker. Single umbrella for " +
-    "everything to do with the owner's people graph. " +
-    "Subactions: list_contacts | add_contact | log_interaction | days_since | " +
-    "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
-    "mark_followup_done | set_followup_threshold.",
+    "Owner-only. Contacts / rolodex / follow-up tracker. The owner's people graph: list/add contacts, log interactions, ask how long since the owner talked to someone, create or complete a follow-up, list overdue follow-ups, tune the overdue threshold.",
   descriptionCompressed:
-    "Manage contacts: list/add, log interactions, add/complete/list followups, days_since, overdue list, threshold. Owner only.",
+    "contacts rolodex follow-ups: list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold owner",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (

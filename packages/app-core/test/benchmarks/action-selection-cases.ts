@@ -190,7 +190,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "email-unread",
     userMessage: "summarize my unread emails",
     expectedAction: "TRIAGE_MESSAGES",
-    acceptableActions: ["LIST_INBOX", "OWNER_DIGEST"],
+    acceptableActions: ["LIST_INBOX", "OWNER_CHECKIN"],
     tags: ["email", "standard"],
   },
   {
@@ -226,7 +226,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "inbox-digest",
     userMessage: "give me my inbox digest",
-    expectedAction: "OWNER_DIGEST",
+    expectedAction: "OWNER_CHECKIN",
     acceptableActions: ["LIST_INBOX"],
     tags: ["inbox", "standard"],
   },
@@ -389,21 +389,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     ],
     expectedParams: { intent: "propose" },
     tags: ["scheduling", "critical"],
-  },
-
-  // ─── Dossier ──────────────────────────────────────────────────────────
-  {
-    id: "dossier-person",
-    userMessage: "pull up a dossier on Satya Nadella",
-    expectedAction: "OWNER_DOSSIER",
-    tags: ["dossier", "standard"],
-  },
-  {
-    id: "dossier-prep",
-    userMessage:
-      "give me the background on the person I'm meeting next: Julia Chen",
-    expectedAction: "OWNER_DOSSIER",
-    tags: ["dossier", "standard"],
   },
 
   // ─── Twilio voice ─────────────────────────────────────────────────────

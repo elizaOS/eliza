@@ -1579,11 +1579,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    return (
-                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
-                      canonicalName === "BLOCK_WEBSITES" ||
-                      canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
-                    );
+                    return canonicalName === "OWNER_WEBSITE_BLOCK";
                   });
                 const callbacksBeforeFallback = actionCallbacksSeen;
 
@@ -1607,11 +1603,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    if (
-                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
-                      canonicalName === "BLOCK_WEBSITES" ||
-                      canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
-                    ) {
+                    if (canonicalName === "OWNER_WEBSITE_BLOCK") {
                       return !selfControlFallbackExecuted;
                     }
                     return true;

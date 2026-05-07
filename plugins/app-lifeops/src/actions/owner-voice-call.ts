@@ -44,7 +44,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Place a generic Twilio voice call to a specific E.164 phone number. Drafts first; requires confirmed:true to dispatch.",
     descriptionCompressed:
-      "Twilio voice call E.164 phone draft-confirm required",
+      "Twilio voice-call E.164 number draft-confirm",
     required: ["phoneNumber"],
     optional: ["bodyText", "confirmed"],
   },
@@ -52,7 +52,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Call the owner as an escalation when the agent is blocked. Acknowledges standing escalation policies and uses the approval queue.",
     descriptionCompressed:
-      "call owner escalation agent-blocked standing-policy approval-queue",
+      "call owner escalation agent-blocked standing-policy approval-queue draft-confirm",
     required: [],
     optional: ["bodyText", "confirmed", "reason"],
   },
@@ -60,7 +60,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Call a third party. Recipient name resolved via relationships, then normalized against the allow-list. Uses the approval queue.",
     descriptionCompressed:
-      "call third-party name->phone relationships allowlist-normalized approval-queue",
+      "call third-party name->phone relationships allowlist-check approval-queue draft-confirm",
     required: ["recipient"],
     optional: ["bodyText", "confirmed", "reason"],
   },
