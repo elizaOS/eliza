@@ -31,14 +31,14 @@ export default scenario({
       kind: "message",
       name: "reschedule-event",
       text: "Move my sync with Alex to 4pm instead.",
-      expectedActions: ["OWNER_CALENDAR"],
+      expectedActions: ["CALENDAR"],
       responseIncludesAny: ["alex", "4", "move", "reschedul", "updated"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       minCount: 1,
     },
   ],

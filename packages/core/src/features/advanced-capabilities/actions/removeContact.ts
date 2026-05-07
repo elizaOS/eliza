@@ -4,7 +4,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { removeContactTemplate } from "../../../prompts.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Action,
@@ -16,8 +15,6 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
@@ -28,9 +25,40 @@ const REMOVE_CONTACT_TERMS = getValidationKeywordTerms(
 	},
 );
 
-interface RemoveContactToonResult {
+interface RemoveContactInput {
 	contactName?: string;
-	confirmed?: string;
+	confirmed?: boolean;
+}
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
+
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (["true", "yes", "y"].includes(normalized)) return true;
+		if (["false", "no", "n"].includes(normalized)) return false;
+	}
+	return undefined;
+}
+
+function readRemoveContactInput(
+	message: Memory,
+	options?: HandlerOptions,
+): RemoveContactInput {
+	const params = readParams(options);
+	return {
+		contactName: readString(params.contactName ?? message.content.contactName),
+		confirmed: readBoolean(params.confirmed ?? message.content.confirmed),
+	};
 }
 
 export const removeContactAction: Action = {
@@ -44,8 +72,11 @@ export const removeContactAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		const hasService = !!runtime.getService("relationships");
+		const params = readRemoveContactInput(message, options);
+		if (hasService && params.contactName) return true;
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = findKeywordTermMatch(text, REMOVE_CONTACT_TERMS);
@@ -55,7 +86,7 @@ export const removeContactAction: Action = {
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: State,
+		_state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
@@ -67,28 +98,7 @@ export const removeContactAction: Action = {
 				throw new Error("RelationshipsService not available");
 			}
 
-			// Build state for prompt composition
-			const removeState: State = {
-				values: {
-					...state?.values,
-					message: message.content.text,
-					senderName: state?.values?.senderName || "User",
-					senderId: message.entityId,
-				},
-				data: state?.data || {},
-				text: state?.text || "",
-			};
-
-			const prompt = composePromptFromState({
-				state: removeState,
-				template: removeContactTemplate,
-			});
-
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt,
-				stopSequences: [],
-			});
-			const parsed = parseToonKeyValue<RemoveContactToonResult>(response);
+			const parsed = readRemoveContactInput(message, _options);
 
 			if (!parsed?.contactName) {
 				logger.warn("[RemoveContact] No contact name provided");
@@ -102,8 +112,7 @@ export const removeContactAction: Action = {
 				};
 			}
 
-			const confirmed = parsed.confirmed?.trim().toLowerCase();
-			if (confirmed !== "yes") {
+			if (parsed.confirmed !== true) {
 				await callback?.({
 					text: `To remove ${parsed.contactName} from your contacts, please confirm by saying "yes, remove ${parsed.contactName}".`,
 				});
@@ -170,4 +179,19 @@ export const removeContactAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "contactName",
+			description: "Name of the contact to remove.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "confirmed",
+			description:
+				"Whether the user explicitly confirmed removal of this contact.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
 };

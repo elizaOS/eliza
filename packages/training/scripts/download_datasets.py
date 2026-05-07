@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -34,6 +35,7 @@ from huggingface_hub.utils import HfHubHTTPError
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "raw"
 REGISTRY = ROOT / "datasets.yaml"
+DOWNLOAD_MANIFEST = RAW_DIR / "download_manifest.json"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -213,6 +215,7 @@ def main() -> int:
         return 2
 
     fails: list[tuple[str, str]] = []
+    results: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=args.max_workers) as ex:
         fut2slug = {ex.submit(download_one, e): e["slug"] for e in selected}
         for fut in as_completed(fut2slug):
@@ -222,12 +225,15 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 log.exception("worker for %s crashed", slug)
                 fails.append((slug, repr(e)))
+                results.append({"slug": slug, "status": "FAILED", "error": repr(e), "size_gb": 0.0})
                 continue
             if status == "ok":
                 log.info("done %-35s %6.2f GB", slug, size)
+                results.append({"slug": slug, "status": "ok", "size_gb": round(size, 4)})
             else:
                 log.error("FAIL %-35s %s", slug, status)
                 fails.append((slug, status))
+                results.append({"slug": slug, "status": "FAILED", "error": status, "size_gb": round(size, 4)})
             if needs_network and free_gb(RAW_DIR) < args.min_free_gb and not args.force:
                 log.error(
                     "free space dropped below %.1f GB; aborting remaining downloads",
@@ -238,6 +244,21 @@ def main() -> int:
                     if not f.done():
                         f.cancel()
                 break
+
+    DOWNLOAD_MANIFEST.write_text(
+        json.dumps(
+            {
+                "selected": [e["slug"] for e in selected],
+                "results": results,
+                "failed": [{"slug": slug, "error": msg} for slug, msg in fails],
+                "raw_dir": str(RAW_DIR),
+                "free_gb_after": round(free_gb(RAW_DIR), 2),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    log.info("download manifest at %s", DOWNLOAD_MANIFEST)
 
     if fails:
         log.error("%d datasets failed:", len(fails))

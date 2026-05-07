@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 
 async function getJson(pathname: string): Promise<unknown> {
@@ -22,7 +22,31 @@ async function postJson(pathname: string, body: unknown): Promise<unknown> {
   return response.json();
 }
 
+function stubLocalStorage(): Storage {
+  const items = new Map<string, string>();
+  return {
+    getItem: vi.fn((key: string) => items.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      items.set(key, value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      items.delete(key);
+    }),
+    clear: vi.fn(() => {
+      items.clear();
+    }),
+    key: vi.fn((index: number) => [...items.keys()][index] ?? null),
+    get length() {
+      return items.size;
+    },
+  } as Storage;
+}
+
 describe("handleIosLocalAgentRequest", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("matches app catalog response contracts", async () => {
     await expect(getJson("/api/apps")).resolves.toEqual([]);
     await expect(getJson("/api/catalog/apps")).resolves.toEqual([]);
@@ -58,6 +82,69 @@ describe("handleIosLocalAgentRequest", () => {
       movers: [],
       predictions: [],
     });
+  });
+
+  it("loads and caches local wallet market overview data", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        generatedAt: "2026-05-06T00:00:00.000Z",
+        cacheTtlSeconds: 120,
+        stale: false,
+        sources: {
+          prices: {
+            providerId: "coingecko",
+            providerName: "CoinGecko",
+            providerUrl: "https://www.coingecko.com/",
+            available: true,
+            stale: false,
+            error: null,
+          },
+          movers: {
+            providerId: "coingecko",
+            providerName: "CoinGecko",
+            providerUrl: "https://www.coingecko.com/",
+            available: true,
+            stale: false,
+            error: null,
+          },
+          predictions: {
+            providerId: "polymarket",
+            providerName: "Polymarket",
+            providerUrl: "https://polymarket.com/",
+            available: true,
+            stale: false,
+            error: null,
+          },
+        },
+        prices: [
+          {
+            id: "bitcoin",
+            symbol: "BTC",
+            name: "Bitcoin",
+            priceUsd: 103000,
+            change24hPct: 2.1,
+            imageUrl: null,
+          },
+        ],
+        movers: [],
+        predictions: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getJson("/api/wallet/market-overview")).resolves.toMatchObject(
+      {
+        prices: [{ id: "bitcoin", symbol: "BTC" }],
+      },
+    );
+    await expect(getJson("/api/wallet/market-overview")).resolves.toMatchObject(
+      {
+        prices: [{ id: "bitcoin", symbol: "BTC" }],
+      },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("serves local web browser workspace contracts instead of 404s", async () => {

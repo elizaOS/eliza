@@ -22,9 +22,9 @@ import {
   type LifeOpsReminderIntensity,
 } from "../../contracts/index.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
-import { recentConversationTexts } from "./recent-context.js";
 import { resolveContextWindow } from "../lifeops-extraction-config.js";
 import { normalizeExplicitTimeZoneToken } from "../timezone-normalization.js";
+import { recentConversationTexts } from "./recent-context.js";
 
 // ── Types ─────────────────────────────────────────────
 

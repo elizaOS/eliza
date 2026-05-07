@@ -9,7 +9,6 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -29,8 +28,25 @@ Recent conversation:
 Extract the following:
 1. userId: The Slack user ID to look up (format: U followed by alphanumeric characters, e.g., U0123456789)
 
-Respond with TOON only:
-userId: U0123456789`;
+Respond with JSON only. Return exactly one JSON object with this shape:
+{"userId":"U0123456789"}`;
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value.trim()) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function readParams(
   options?: HandlerOptions | unknown,
@@ -154,8 +170,7 @@ export const getUserInfo: Action = {
           prompt,
         });
 
-        const parsedResponse =
-          parseToonKeyValue<Record<string, unknown>>(response);
+        const parsedResponse = parseJsonObject(response);
         if (parsedResponse?.userId) {
           userInfo = {
             userId: String(parsedResponse.userId),

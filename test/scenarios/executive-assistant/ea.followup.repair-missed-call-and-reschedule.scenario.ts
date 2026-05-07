@@ -37,7 +37,7 @@ export default scenario({
         acceptedActions: [
           "TRIAGE_MESSAGES",
           "TRIAGE_MESSAGES",
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEND_DRAFT",
         ],
         description: "missed-call repair draft",
@@ -70,7 +70,7 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "TRIAGE_MESSAGES",
-          "OWNER_RESOLVE_REQUEST",
+          "RESOLVE_REQUEST",
           "SEND_DRAFT",
           "TRIAGE_MESSAGES",
         ],
@@ -90,7 +90,7 @@ export default scenario({
       room: "main",
       text: "They confirmed Thursday at 2pm works. Mark the Frontier Tower follow-up done and close the loop.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP", "OWNER_CALENDAR", "TRIAGE_MESSAGES"],
+        acceptedActions: ["RELATIONSHIP", "CALENDAR", "TRIAGE_MESSAGES"],
         description: "follow-up loop closure",
         includesAny: [
           "Frontier Tower",
@@ -118,10 +118,10 @@ export default scenario({
       type: "selectedAction",
       actionName: [
         "TRIAGE_MESSAGES",
-        "OWNER_RELATIONSHIP",
-        "OWNER_RESOLVE_REQUEST",
+        "RELATIONSHIP",
+        "RESOLVE_REQUEST",
         "TRIAGE_MESSAGES",
-        "OWNER_CALENDAR",
+        "CALENDAR",
         "SEND_DRAFT",
       ],
     },
@@ -142,10 +142,10 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: [
           "TRIAGE_MESSAGES",
-          "OWNER_RELATIONSHIP",
-          "OWNER_RESOLVE_REQUEST",
+          "RELATIONSHIP",
+          "RESOLVE_REQUEST",
           "TRIAGE_MESSAGES",
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEND_DRAFT",
         ],
         description: "missed-call repair lifecycle",

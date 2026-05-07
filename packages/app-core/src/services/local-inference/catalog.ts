@@ -261,7 +261,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "small",
     blurb:
-      "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt + TOON output format.",
+      "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt and structured chat output.",
   },
   {
     id: "eliza-1-9b",
@@ -275,7 +275,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     blurb:
-      "Workstation-class Milady tune with 128k context, agentic tool calling, and TOON-native output.",
+      "Workstation-class Milady tune with 128k context, agentic tool calling, and structured output.",
   },
   {
     id: "eliza-1-27b",

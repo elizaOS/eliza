@@ -14,6 +14,7 @@ export {
   setRestartHandler,
 } from "@elizaos/shared";
 export * from "@elizaos/ui";
+export { TrajectoryCacheStats } from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./account-pool.js";
 export * from "./api/auth";

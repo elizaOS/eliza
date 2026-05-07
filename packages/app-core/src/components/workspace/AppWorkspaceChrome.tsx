@@ -4,7 +4,7 @@ import {
   WorkspaceMobileSidebarControlsContext,
 } from "@elizaos/ui";
 import {
-  LayoutDashboard,
+  PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
@@ -113,80 +113,67 @@ function MobileWorkspacePaneSwitcher({
   chatOpen,
   sidebar,
   onChat,
-  onMain,
   onSidebar,
+  onCloseChat,
+  onCloseSidebar,
 }: {
   chatAvailable: boolean;
   chatOpen: boolean;
   sidebar: WorkspaceMobileSidebarControl | null;
   onChat: () => void;
-  onMain: () => void;
   onSidebar: () => void;
-}): JSX.Element {
+  onCloseChat: () => void;
+  onCloseSidebar: () => void;
+}): JSX.Element | null {
   const sidebarOpen = sidebar?.open ?? false;
-  const mainOpen = !sidebarOpen && (!chatAvailable || !chatOpen);
-  const baseButtonClassName =
-    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/55 text-muted shadow-sm transition-colors hover:text-txt";
-  const activeButtonClassName =
-    "border-accent/70 bg-accent text-accent-fg hover:text-accent-fg";
+  const showLeft = Boolean(sidebar) && !chatOpen;
+  const showRight = chatAvailable && !sidebarOpen;
+  if (!showLeft && !showRight) return null;
+  const buttonClassName =
+    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm backdrop-blur transition-colors hover:text-txt";
 
   return (
     <div
-      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-border/35 bg-bg/92 px-2 py-1.5"
+      className="grid shrink-0 grid-cols-[1fr_1fr] items-center border-b border-border/35 bg-bg/92 px-2 py-1.5"
       data-testid="app-workspace-mobile-pane-switcher"
     >
-      <div className="flex min-w-0 justify-start">
-        {sidebar ? (
+      <div className="flex min-w-0 items-center justify-start">
+        {showLeft ? (
           <button
             type="button"
-            aria-label="Show left sidebar"
-            aria-current={sidebarOpen ? "page" : undefined}
-            title="Show left sidebar"
+            aria-label={sidebarOpen ? "Hide left sidebar" : "Show left sidebar"}
+            aria-pressed={sidebarOpen}
+            title={sidebarOpen ? "Hide left sidebar" : "Show left sidebar"}
             data-testid="app-workspace-mobile-pane-left"
-            onClick={onSidebar}
-            className={`${baseButtonClassName} ${
-              sidebarOpen ? activeButtonClassName : ""
-            }`}
+            onClick={sidebarOpen ? onCloseSidebar : onSidebar}
+            className={buttonClassName}
           >
-            <PanelLeftOpen className="h-4 w-4" aria-hidden />
+            {sidebarOpen ? (
+              <PanelLeftClose className="h-4 w-4" aria-hidden />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4" aria-hidden />
+            )}
           </button>
-        ) : (
-          <span className="h-9 w-9" aria-hidden />
-        )}
+        ) : null}
       </div>
-      <div className="flex min-w-0 justify-center">
-        <button
-          type="button"
-          aria-label="Show content"
-          aria-current={mainOpen ? "page" : undefined}
-          title="Show content"
-          data-testid="app-workspace-mobile-pane-main"
-          onClick={onMain}
-          className={`${baseButtonClassName} ${
-            mainOpen ? activeButtonClassName : ""
-          }`}
-        >
-          <LayoutDashboard className="h-4 w-4" aria-hidden />
-        </button>
-      </div>
-      <div className="flex min-w-0 justify-end">
-        {chatAvailable ? (
+      <div className="flex min-w-0 items-center justify-end">
+        {showRight ? (
           <button
             type="button"
-            aria-label="Show page chat"
-            aria-current={chatOpen ? "page" : undefined}
-            title="Show page chat"
+            aria-label={chatOpen ? "Hide page chat" : "Show page chat"}
+            aria-pressed={chatOpen}
+            title={chatOpen ? "Hide page chat" : "Show page chat"}
             data-testid="app-workspace-mobile-pane-chat"
-            onClick={onChat}
-            className={`${baseButtonClassName} ${
-              chatOpen ? activeButtonClassName : ""
-            }`}
+            onClick={chatOpen ? onCloseChat : onChat}
+            className={buttonClassName}
           >
-            <PanelRightOpen className="h-4 w-4" aria-hidden />
+            {chatOpen ? (
+              <PanelRightClose className="h-4 w-4" aria-hidden />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" aria-hidden />
+            )}
           </button>
-        ) : (
-          <span className="h-9 w-9" aria-hidden />
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -374,13 +361,19 @@ export function AppWorkspaceChrome({
   const handleOpenMobileSidebar = useCallback(() => {
     if (!mobileSidebarControl) return;
     setMobileChatOpen(false);
+    if (isControlled) {
+      onToggleChat?.(true);
+    }
     mobileSidebarControl.setOpen(true);
+  }, [isControlled, mobileSidebarControl, onToggleChat]);
+
+  const handleCloseMobileSidebar = useCallback(() => {
+    mobileSidebarControl?.setOpen(false);
   }, [mobileSidebarControl]);
 
-  const handleOpenMobileMain = useCallback(() => {
-    mobileSidebarControl?.setOpen(false);
+  const handleCloseMobileChat = useCallback(() => {
     handleToggle(true);
-  }, [handleToggle, mobileSidebarControl]);
+  }, [handleToggle]);
 
   useEffect(() => {
     if (!isMobileViewport) {
@@ -486,8 +479,9 @@ export function AppWorkspaceChrome({
               chatOpen={!effectiveCollapsed}
               sidebar={mobileSidebarControl}
               onChat={() => handleToggle(false)}
-              onMain={handleOpenMobileMain}
+              onCloseChat={handleCloseMobileChat}
               onSidebar={handleOpenMobileSidebar}
+              onCloseSidebar={handleCloseMobileSidebar}
             />
           ) : null}
 

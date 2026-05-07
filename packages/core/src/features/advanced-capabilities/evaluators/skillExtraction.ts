@@ -30,7 +30,6 @@ import type {
 import { ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
-import { tryParseToonValue } from "../../../utils/toon";
 
 interface TrajectoryStep {
 	stepId?: string;
@@ -82,17 +81,17 @@ procedures. You will look at one completed trajectory (a sequence of steps,
 each with a system prompt, user prompt, and model response) and decide whether
 there is a generalizable, repeatable procedure worth saving as a SKILL.md.
 
-Output format: TOON only. Return exactly one TOON document, no prose or fences.
+Return a JSON object matching the provided schema. Do not include prose or fences.
 
-If there is NO generalizable skill, output exactly:
-extract: false
-reason: short reason
+If there is NO generalizable skill, set:
+- extract: false
+- reason: short reason
 
-If there IS a generalizable skill, output:
-extract: true
-name: lowercase-hyphen-name
-description: one-sentence description, <=200 chars
-body: "markdown body for the skill with \\n escapes for line breaks"
+If there IS a generalizable skill, set:
+- extract: true
+- name: lowercase-hyphen-name
+- description: one-sentence description, <=200 chars
+- body: markdown body for the skill
 
 Rules:
 - name MUST be lowercase a-z, 0-9, hyphens only, no leading/trailing/double hyphens.
@@ -117,25 +116,22 @@ interface ExtractionDraft {
 	body?: string;
 }
 
-function parseExtractionResponse(raw: string): ExtractionDraft | null {
-	const toon = tryParseToonValue(raw);
-	if (toon && typeof toon === "object" && !Array.isArray(toon)) {
-		const obj = toon as Record<string, unknown>;
-		const extract = obj.extract === true;
-		const draft: ExtractionDraft = { extract };
-		if (typeof obj.reason === "string") draft.reason = obj.reason;
-		if (typeof obj.name === "string") draft.name = obj.name;
-		if (typeof obj.description === "string")
-			draft.description = obj.description;
-		if (typeof obj.body === "string") draft.body = obj.body;
-		return draft;
-	}
+const EXTRACTION_RESPONSE_SCHEMA = {
+	type: "object",
+	properties: {
+		extract: { type: "boolean" },
+		reason: { type: "string" },
+		name: { type: "string" },
+		description: { type: "string" },
+		body: { type: "string" },
+	},
+	required: ["extract"],
+};
 
+function parseJsonObject(raw: string): Record<string, unknown> | null {
 	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
 	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
-	if (!jsonText) {
-		return null;
-	}
+	if (!jsonText) return null;
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(jsonText);
@@ -145,7 +141,17 @@ function parseExtractionResponse(raw: string): ExtractionDraft | null {
 	if (!parsed || typeof parsed !== "object") {
 		return null;
 	}
-	const obj = parsed as Record<string, unknown>;
+	return parsed as Record<string, unknown>;
+}
+
+function parseExtractionResponse(raw: unknown): ExtractionDraft | null {
+	const obj =
+		raw && typeof raw === "object" && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: typeof raw === "string"
+				? parseJsonObject(raw)
+				: null;
+	if (!obj) return null;
 	const extract = obj.extract === true;
 	const draft: ExtractionDraft = { extract };
 	if (typeof obj.reason === "string") draft.reason = obj.reason;
@@ -342,10 +348,11 @@ export const skillExtractionEvaluator: Evaluator = {
 		if (!trajectory) return undefined;
 
 		const trajectoryDigest = formatTrajectoryForPrompt(trajectory);
-		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+		const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
 			prompt: `${EXTRACTION_SYSTEM_PROMPT}\n\n${trajectoryDigest}`,
+			schema: EXTRACTION_RESPONSE_SCHEMA,
 		});
-		if (!response || typeof response !== "string") {
+		if (!response) {
 			logger.debug(
 				{
 					src: "plugin:advanced-capabilities:evaluator:skill_extraction",

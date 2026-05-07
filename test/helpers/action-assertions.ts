@@ -9,7 +9,7 @@
  *   const before = Date.now();
  *   await handleMessage(runtime, message);
  *   const invocations = await getActionInvocations(runtime, roomId, before);
- *   expectActionCalled(invocations, "OWNER_CALENDAR", { status: "success" });
+ *   expectActionCalled(invocations, "CALENDAR", { status: "success" });
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -20,7 +20,7 @@ import { expect } from "vitest";
  * an action_result memory persisted by the runtime.
  */
 export interface ActionInvocation {
-  /** Canonical action name as recorded by the runtime (e.g. "OWNER_CALENDAR"). */
+  /** Canonical action name as recorded by the runtime (e.g. "CALENDAR"). */
   actionName: string;
   /** Whether the action succeeded or failed. */
   actionStatus: "success" | "failed" | string;
@@ -38,7 +38,7 @@ export interface ActionInvocation {
 
 /**
  * Normalize an action name for fuzzy comparison: uppercase and strip
- * underscores so that "owner_calendar", "OWNER_CALENDAR", and
+ * underscores so that "owner_calendar", "CALENDAR", and
  * "OwnerCalendar" all match.
  */
 function normalizeActionName(name: string): string {
@@ -93,7 +93,7 @@ export async function getActionInvocations(
  * Assert that a specific action was called among the given invocations.
  *
  * Name matching is fuzzy: strips underscores and compares uppercase, so
- * "OWNER_CALENDAR" matches "owner_calendar" or "OwnerCalendar".
+ * "CALENDAR" matches "owner_calendar" or "OwnerCalendar".
  *
  * Optionally checks that the action's status and/or params match.
  * Throws a descriptive error listing what WAS called if the expected

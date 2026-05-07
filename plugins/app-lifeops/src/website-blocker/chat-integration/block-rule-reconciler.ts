@@ -99,7 +99,7 @@ async function evaluateRule(
 }
 
 async function scheduleAutoReLock(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   writer: BlockRuleWriter,
   rule: BlockRule,
   nowMs: number,

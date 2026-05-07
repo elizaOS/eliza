@@ -62,7 +62,7 @@ export default scenario({
       room: "main",
       text: "How much time did I spend on x.com today?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "per-site time lookup for x.com",
       }),
       responseIncludesAny: [/x\.com/i, /minute|hour|m\./i, /time/i],
@@ -72,13 +72,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_SCREEN_TIME",
+      actionName: "SCREEN_TIME",
     },
     {
       type: "custom",
       name: "per-site-time-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "per-site time lookup for x.com",
       }),
     },
@@ -87,7 +87,7 @@ export default scenario({
       name: "per-site-time-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "OWNER_SCREEN_TIME",
+          (action) => action.actionName === "SCREEN_TIME",
         );
         if (!hit) {
           return "expected GET_TIME_ON_SITE action result";

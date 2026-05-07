@@ -80,7 +80,7 @@ export function SleepInspectionPanel(): JSX.Element {
       </div>
     );
   }
-  if (!inspection || !inspection.insight) {
+  if (!inspection?.insight) {
     return (
       <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-xs text-muted">
         No schedule inspection available yet.

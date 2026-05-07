@@ -1,6 +1,6 @@
 import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateText, type JSONSchema7, type ModelMessage, type ToolSet } from "ai";
 import { createAnthropicClient } from "../providers";
 import type {
   ExtractedJSON,
@@ -30,6 +30,62 @@ interface AnthropicUsageWithCache {
 
 interface ObjectGenerationParamsWithProviderOptions extends ObjectGenerationParams {
   providerOptions?: ProviderOptions;
+  messages?: ModelMessage[];
+  responseSchema?: unknown;
+}
+
+type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativePrompt =
+  | { prompt: string; messages?: never }
+  | { messages: ModelMessage[]; prompt?: never };
+type NativeGenerateTextParams = Omit<
+  Parameters<typeof generateText<ToolSet, NativeOutput>>[0],
+  "messages" | "prompt"
+> &
+  NativePrompt;
+type NativeProviderOptions = NativeGenerateTextParams["providerOptions"];
+
+function buildStructuredOutput(responseSchema: unknown): NativeOutput {
+  if (
+    responseSchema &&
+    typeof responseSchema === "object" &&
+    "responseFormat" in responseSchema &&
+    "parseCompleteOutput" in responseSchema
+  ) {
+    return responseSchema as NativeOutput;
+  }
+
+  const schemaOptions =
+    responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
+      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      : { schema: responseSchema };
+
+  return {
+    name: "object",
+    responseFormat: Promise.resolve({
+      type: "json" as const,
+      schema: schemaOptions.schema as JSONSchema7,
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    }),
+    async parseCompleteOutput({ text }: { text: string }) {
+      return JSON.parse(text);
+    },
+    async parsePartialOutput(): Promise<undefined> {
+      return undefined;
+    },
+    createElementStreamTransform(): undefined {
+      return undefined;
+    },
+  } satisfies NativeOutput;
+}
+
+function resolveResponseSchema(params: ObjectGenerationParamsWithProviderOptions): unknown {
+  const responseSchema = params.responseSchema ?? params.schema;
+  if (responseSchema && typeof responseSchema === "object" && "schema" in responseSchema) {
+    return (responseSchema as { schema: unknown }).schema;
+  }
+  return responseSchema;
 }
 
 function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl | undefined {
@@ -104,20 +160,27 @@ async function generateObjectByModelType(
   const anthropicProviderOptions = providerOptions.anthropic
     ? { anthropic: providerOptions.anthropic }
     : undefined;
+  const responseSchema = resolveResponseSchema(params as ObjectGenerationParamsWithProviderOptions);
 
   let text: string;
   let usage: AnthropicUsageWithCache | undefined;
 
   try {
-    const response = await executeWithRetry(operationName, () =>
-      generateText({
-        model: anthropic(modelName),
-        messages: [{ role: "user" as const, content: jsonPrompt }],
-        system: systemPrompt,
-        temperature,
-        ...(anthropicProviderOptions ? { providerOptions: anthropicProviderOptions } : {}),
-      })
-    );
+    const promptOrMessages: NativePrompt = (params as ObjectGenerationParamsWithProviderOptions)
+      .messages
+      ? { messages: (params as ObjectGenerationParamsWithProviderOptions).messages }
+      : { messages: [{ role: "user" as const, content: jsonPrompt }] };
+    const generateParams: NativeGenerateTextParams = {
+      model: anthropic(modelName),
+      ...promptOrMessages,
+      system: systemPrompt,
+      temperature,
+      ...(responseSchema ? { output: buildStructuredOutput(responseSchema) } : {}),
+      ...(anthropicProviderOptions
+        ? { providerOptions: anthropicProviderOptions as NativeProviderOptions }
+        : {}),
+    };
+    const response = await executeWithRetry(operationName, () => generateText(generateParams));
 
     text = response.text;
     usage = response.usage as AnthropicUsageWithCache | undefined;

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   getAvailableActionNames,
+  normalizeCloudActionArgs,
+  parseNativeMultiStepDecision,
+  toNativeActionParams,
   validateMultiStepDecision,
 } from "@/lib/eliza/plugin-cloud-bootstrap/utils/multi-step-guards";
 
@@ -69,5 +72,50 @@ describe("cloud bootstrap multi-step guards", () => {
       parameters: {},
       thought: undefined,
     });
+  });
+
+  test("parses v5 native tool-call-compatible planner output", () => {
+    const parsed = parseNativeMultiStepDecision(
+      JSON.stringify({
+        thought: "search current docs",
+        tool_calls: [
+          {
+            type: "function",
+            function: {
+              name: "WEB_SEARCH",
+              arguments: { query: "native tool calls" },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed).toEqual({
+      action: "WEB_SEARCH",
+      isFinish: undefined,
+      parameters: { query: "native tool calls" },
+      thought: "search current docs",
+    });
+  });
+
+  test("normalizes legacy cloud arg shapes into native params", () => {
+    expect(toNativeActionParams("web_search", { query: "eliza" })).toEqual({
+      WEB_SEARCH: { query: "eliza" },
+    });
+
+    expect(
+      normalizeCloudActionArgs("WEB_SEARCH", {
+        params: { WEB_SEARCH: { query: "native" } },
+        actionParams: { query: "legacy" },
+        actionInput: { query: "older" },
+      }),
+    ).toEqual({ query: "native" });
+
+    expect(
+      normalizeCloudActionArgs("WEB_SEARCH", {
+        actionParams: { query: "legacy" },
+        actionInput: { query: "older" },
+      }),
+    ).toEqual({ query: "legacy" });
   });
 });

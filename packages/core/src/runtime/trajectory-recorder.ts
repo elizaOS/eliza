@@ -1,0 +1,539 @@
+/**
+ * Trajectory recorder — JSON-file backend for the v5 native-tool-calling
+ * trajectory observability subsystem.
+ *
+ * Spec: PLAN.md §18.1 (`RecordedStage` / `RecordedTrajectory` schemas) and
+ * §18.2 (`TrajectoryRecorder` interface).
+ *
+ * Output shape MUST match `scripts/run-cerebras.ts` `LocalRecorder` byte for
+ * byte so a single CLI (`scripts/trajectory.ts`) can read both.
+ *
+ * Persistence model:
+ * - One JSON file per trajectory at
+ *   `${MILADY_TRAJECTORY_DIR ?? `${MILADY_STATE_DIR ?? `${ELIZA_STATE_DIR ?? ~/.milady`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
+ * - Atomic writes: write to `<id>.json.tmp`, rename to `<id>.json`.
+ * - Append-only stages: `recordStage` rewrites the whole file (small files,
+ *   sub-100 KB typical).
+ * - Failures must NOT crash the runtime — every I/O operation is wrapped in
+ *   try/catch and routed through `runtime.logger.warn`.
+ *
+ * Toggle via `MILADY_TRAJECTORY_RECORDING=0`. Default on.
+ */
+
+import fs from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+import type { EvaluationResult } from "../types/components";
+import type {
+	ChatMessage,
+	ToolCall,
+	ToolChoice,
+	ToolDefinition,
+} from "../types/model";
+import { computeCallCostUsd } from "./cost-table";
+
+// ---------------------------------------------------------------------------
+// Schema (mirrors PLAN.md §18.1)
+// ---------------------------------------------------------------------------
+
+export type RecordedStageKind =
+	| "messageHandler"
+	| "planner"
+	| "tool"
+	| "evaluation"
+	| "subPlanner"
+	| "compaction";
+
+export interface RecordedUsage {
+	promptTokens: number;
+	completionTokens: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+	totalTokens: number;
+}
+
+export interface RecordedToolCall {
+	id?: string;
+	name?: string;
+	args?: Record<string, unknown>;
+}
+
+export interface RecordedModelCall {
+	modelType: string;
+	modelName?: string;
+	provider: string;
+	prompt: string;
+	messages?: ChatMessage[] | unknown[];
+	tools?: Array<{ name?: string; description?: string }> | ToolDefinition[];
+	toolChoice?: ToolChoice | unknown;
+	response: string;
+	toolCalls?: RecordedToolCall[];
+	usage?: RecordedUsage;
+	finishReason?: string;
+	costUsd?: number;
+}
+
+export interface RecordedToolStage {
+	name: string;
+	args: Record<string, unknown>;
+	result: unknown;
+	success: boolean;
+	durationMs: number;
+}
+
+export interface RecordedEvaluationStage extends EvaluationResult {
+	[key: string]: unknown;
+}
+
+export interface RecordedCacheStage {
+	segmentHashes: string[];
+	prefixHash: string;
+	diffFromPriorStage?: {
+		added: number;
+		unchanged: number;
+		removed: number;
+	};
+}
+
+export interface RecordedStage {
+	stageId: string;
+	kind: RecordedStageKind;
+	iteration?: number;
+	parentStageId?: string;
+	startedAt: number;
+	endedAt: number;
+	latencyMs: number;
+	model?: RecordedModelCall;
+	tool?: RecordedToolStage;
+	evaluation?: RecordedEvaluationStage;
+	cache?: RecordedCacheStage;
+}
+
+export interface RecordedTrajectoryMetrics {
+	totalLatencyMs: number;
+	totalPromptTokens: number;
+	totalCompletionTokens: number;
+	totalCacheReadTokens: number;
+	totalCacheCreationTokens: number;
+	totalCostUsd: number;
+	plannerIterations: number;
+	toolCallsExecuted: number;
+	toolCallFailures: number;
+	evaluatorFailures: number;
+	finalDecision?: "FINISH" | "CONTINUE" | "max_iterations" | "error";
+}
+
+export interface RecordedTrajectory {
+	trajectoryId: string;
+	agentId: string;
+	roomId?: string;
+	rootMessage: { id: string; text: string; sender?: string };
+	startedAt: number;
+	endedAt?: number;
+	status: "running" | "finished" | "errored";
+	stages: RecordedStage[];
+	metrics: RecordedTrajectoryMetrics;
+}
+
+// ---------------------------------------------------------------------------
+// TrajectoryRecorder interface (PLAN.md §18.2)
+// ---------------------------------------------------------------------------
+
+export interface StartTrajectoryInput {
+	agentId: string;
+	roomId?: string;
+	rootMessage: { id: string; text: string; sender?: string };
+}
+
+export interface ListTrajectoriesOptions {
+	agentId?: string;
+	since?: number;
+	limit?: number;
+}
+
+export interface TrajectoryRecorder {
+	startTrajectory(input: StartTrajectoryInput): string;
+	recordStage(trajectoryId: string, stage: RecordedStage): Promise<void>;
+	endTrajectory(
+		trajectoryId: string,
+		status: "finished" | "errored",
+	): Promise<void>;
+	load(trajectoryId: string): Promise<RecordedTrajectory | null>;
+	list(opts?: ListTrajectoriesOptions): Promise<RecordedTrajectory[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+interface RecorderLogger {
+	warn?: (context: unknown, message?: string) => void;
+	debug?: (context: unknown, message?: string) => void;
+	error?: (context: unknown, message?: string) => void;
+}
+
+/**
+ * Resolve the on-disk trajectory directory. Precedence per PLAN.md §18.1:
+ *   MILADY_TRAJECTORY_DIR
+ *   MILADY_STATE_DIR/trajectories
+ *   ELIZA_STATE_DIR/trajectories
+ *   ~/.milady/trajectories
+ */
+export function resolveTrajectoryDir(): string {
+	const explicit = process.env.MILADY_TRAJECTORY_DIR?.trim();
+	if (explicit) return explicit;
+
+	const miladyState = process.env.MILADY_STATE_DIR?.trim();
+	if (miladyState) return path.join(miladyState, "trajectories");
+
+	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	if (elizaState) return path.join(elizaState, "trajectories");
+
+	return path.join(homedir(), ".milady", "trajectories");
+}
+
+/**
+ * Whether the recorder is enabled. Off when MILADY_TRAJECTORY_RECORDING=0.
+ */
+export function isTrajectoryRecordingEnabled(): boolean {
+	const raw = process.env.MILADY_TRAJECTORY_RECORDING;
+	if (raw === undefined) return true;
+	const normalized = raw.trim().toLowerCase();
+	return !(
+		normalized === "0" ||
+		normalized === "false" ||
+		normalized === "no" ||
+		normalized === "off"
+	);
+}
+
+function safeRandomId(prefix: string): string {
+	// Avoid pulling in node:crypto for hot-path id generation; the recorder
+	// id space is small per agent.
+	const rand = Math.random().toString(16).slice(2, 10);
+	const ts = Date.now().toString(16).slice(-6);
+	return `${prefix}-${ts}${rand}`;
+}
+
+function trajectoryFileName(id: string): string {
+	return `${id}.json`;
+}
+
+async function atomicWriteJson(
+	filePath: string,
+	value: unknown,
+	logger?: RecorderLogger,
+): Promise<void> {
+	const dir = path.dirname(filePath);
+	const tmp = `${filePath}.tmp`;
+	try {
+		await fs.mkdir(dir, { recursive: true });
+		await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
+		await fs.rename(tmp, filePath);
+	} catch (err) {
+		logger?.warn?.(
+			{ err: (err as Error).message, filePath },
+			"[TrajectoryRecorder] atomic write failed",
+		);
+		try {
+			await fs.unlink(tmp).catch(() => undefined);
+		} catch {
+			// ignore — best effort cleanup of the tmp file
+		}
+	}
+}
+
+function applyMetricsForStage(
+	metrics: RecordedTrajectoryMetrics,
+	stage: RecordedStage,
+): void {
+	metrics.totalLatencyMs += Number.isFinite(stage.latencyMs)
+		? stage.latencyMs
+		: 0;
+
+	if (stage.model?.usage) {
+		metrics.totalPromptTokens += stage.model.usage.promptTokens ?? 0;
+		metrics.totalCompletionTokens += stage.model.usage.completionTokens ?? 0;
+		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
+		metrics.totalCacheCreationTokens +=
+			stage.model.usage.cacheCreationInputTokens ?? 0;
+	}
+	if (typeof stage.model?.costUsd === "number") {
+		metrics.totalCostUsd += stage.model.costUsd;
+	}
+
+	if (stage.kind === "planner") metrics.plannerIterations += 1;
+	if (stage.kind === "tool") {
+		metrics.toolCallsExecuted += 1;
+		if (stage.tool && !stage.tool.success) metrics.toolCallFailures += 1;
+	}
+	if (stage.kind === "evaluation" && stage.evaluation?.success === false) {
+		metrics.evaluatorFailures += 1;
+	}
+
+	const decision = stage.evaluation?.decision;
+	if (decision === "FINISH") {
+		metrics.finalDecision = "FINISH";
+	} else if (decision) {
+		// Track that we're still going. `endTrajectory` will overwrite on error.
+		metrics.finalDecision = "CONTINUE";
+	}
+}
+
+/**
+ * Annotate a stage with `costUsd` if the model has known pricing and the
+ * stage didn't already set it. The `model.modelName` is the lookup key.
+ *
+ * Recorder hooks call `computeCallCostUsd` themselves when they have the
+ * data; this function is a fallback for callers that hand off raw stages.
+ */
+export function annotateStageCost(stage: RecordedStage): void {
+	if (!stage.model) return;
+	if (typeof stage.model.costUsd === "number") return;
+	const cost = computeCallCostUsd(stage.model.modelName, stage.model.usage);
+	if (cost > 0) {
+		stage.model.costUsd = cost;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// JsonFileTrajectoryRecorder
+// ---------------------------------------------------------------------------
+
+export interface CreateJsonFileRecorderOptions {
+	rootDir?: string;
+	logger?: RecorderLogger;
+	enabled?: boolean;
+}
+
+interface MutableTrajectory extends RecordedTrajectory {}
+
+class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
+	private readonly rootDir: string;
+	private readonly logger?: RecorderLogger;
+	private readonly enabled: boolean;
+	private readonly active = new Map<string, MutableTrajectory>();
+
+	constructor(opts: CreateJsonFileRecorderOptions = {}) {
+		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
+		this.logger = opts.logger;
+		this.enabled =
+			opts.enabled !== undefined ? opts.enabled : isTrajectoryRecordingEnabled();
+	}
+
+	startTrajectory(input: StartTrajectoryInput): string {
+		const id = safeRandomId("tj");
+		if (!this.enabled) {
+			return id;
+		}
+
+		const trajectory: MutableTrajectory = {
+			trajectoryId: id,
+			agentId: input.agentId,
+			roomId: input.roomId,
+			rootMessage: input.rootMessage,
+			startedAt: Date.now(),
+			status: "running",
+			stages: [],
+			metrics: {
+				totalLatencyMs: 0,
+				totalPromptTokens: 0,
+				totalCompletionTokens: 0,
+				totalCacheReadTokens: 0,
+				totalCacheCreationTokens: 0,
+				totalCostUsd: 0,
+				plannerIterations: 0,
+				toolCallsExecuted: 0,
+				toolCallFailures: 0,
+				evaluatorFailures: 0,
+			},
+		};
+		this.active.set(id, trajectory);
+
+		// Best-effort initial flush so the file exists even if the run crashes
+		// before any stage lands. Errors are logged and swallowed.
+		void this.flushTrajectory(trajectory).catch((err) => {
+			this.logger?.warn?.(
+				{ err: (err as Error).message, trajectoryId: id },
+				"[TrajectoryRecorder] initial flush failed",
+			);
+		});
+		return id;
+	}
+
+	async recordStage(trajectoryId: string, stage: RecordedStage): Promise<void> {
+		if (!this.enabled) return;
+		const trajectory = this.active.get(trajectoryId);
+		if (!trajectory) {
+			this.logger?.warn?.(
+				{ trajectoryId },
+				"[TrajectoryRecorder] recordStage: trajectory not found (was startTrajectory called?)",
+			);
+			return;
+		}
+
+		annotateStageCost(stage);
+		trajectory.stages.push(stage);
+		applyMetricsForStage(trajectory.metrics, stage);
+
+		await this.flushTrajectory(trajectory);
+	}
+
+	async endTrajectory(
+		trajectoryId: string,
+		status: "finished" | "errored",
+	): Promise<void> {
+		if (!this.enabled) return;
+		const trajectory = this.active.get(trajectoryId);
+		if (!trajectory) {
+			this.logger?.warn?.(
+				{ trajectoryId },
+				"[TrajectoryRecorder] endTrajectory: trajectory not found",
+			);
+			return;
+		}
+
+		trajectory.status = status;
+		trajectory.endedAt = Date.now();
+		if (status === "errored" && !trajectory.metrics.finalDecision) {
+			trajectory.metrics.finalDecision = "error";
+		}
+
+		await this.flushTrajectory(trajectory);
+		this.active.delete(trajectoryId);
+	}
+
+	async load(trajectoryId: string): Promise<RecordedTrajectory | null> {
+		const inMem = this.active.get(trajectoryId);
+		if (inMem) return inMem;
+
+		try {
+			const files = await this.collectAllFiles();
+			const match = files.find((f) => f.id === trajectoryId);
+			if (!match) return null;
+			const raw = await fs.readFile(match.filePath, "utf8");
+			return JSON.parse(raw) as RecordedTrajectory;
+		} catch (err) {
+			this.logger?.warn?.(
+				{ err: (err as Error).message, trajectoryId },
+				"[TrajectoryRecorder] load failed",
+			);
+			return null;
+		}
+	}
+
+	async list(
+		opts: ListTrajectoriesOptions = {},
+	): Promise<RecordedTrajectory[]> {
+		try {
+			const files = await this.collectAllFiles();
+			const out: RecordedTrajectory[] = [];
+			for (const file of files) {
+				try {
+					const raw = await fs.readFile(file.filePath, "utf8");
+					const trajectory = JSON.parse(raw) as RecordedTrajectory;
+					if (opts.agentId && trajectory.agentId !== opts.agentId) continue;
+					if (opts.since && trajectory.startedAt < opts.since) continue;
+					out.push(trajectory);
+				} catch (err) {
+					this.logger?.warn?.(
+						{ err: (err as Error).message, filePath: file.filePath },
+						"[TrajectoryRecorder] list: skipping unreadable trajectory file",
+					);
+				}
+			}
+			out.sort((a, b) => b.startedAt - a.startedAt);
+			if (opts.limit && out.length > opts.limit) {
+				return out.slice(0, opts.limit);
+			}
+			return out;
+		} catch (err) {
+			this.logger?.warn?.(
+				{ err: (err as Error).message },
+				"[TrajectoryRecorder] list failed",
+			);
+			return [];
+		}
+	}
+
+	private async flushTrajectory(trajectory: MutableTrajectory): Promise<void> {
+		const filePath = path.join(
+			this.rootDir,
+			trajectory.agentId,
+			trajectoryFileName(trajectory.trajectoryId),
+		);
+		await atomicWriteJson(filePath, trajectory, this.logger);
+	}
+
+	private async collectAllFiles(): Promise<
+		Array<{ id: string; filePath: string }>
+	> {
+		const out: Array<{ id: string; filePath: string }> = [];
+		const stack: string[] = [this.rootDir];
+		try {
+			await fs.access(this.rootDir);
+		} catch {
+			return out;
+		}
+
+		while (stack.length > 0) {
+			const dir = stack.pop();
+			if (!dir) continue;
+			let entries: import("node:fs").Dirent[];
+			try {
+				entries = (await fs.readdir(dir, { withFileTypes: true })) as import("node:fs").Dirent[];
+			} catch {
+				continue;
+			}
+			for (const entry of entries) {
+				const full = path.join(dir, entry.name);
+				if (entry.isDirectory()) {
+					stack.push(full);
+					continue;
+				}
+				if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+				out.push({
+					id: entry.name.replace(/\.json$/, ""),
+					filePath: full,
+				});
+			}
+		}
+
+		return out;
+	}
+}
+
+/**
+ * Construct a JSON-file backed `TrajectoryRecorder`. The default rootDir is
+ * resolved from `MILADY_TRAJECTORY_DIR` → `MILADY_STATE_DIR/trajectories` →
+ * `ELIZA_STATE_DIR/trajectories` → `~/.milady/trajectories`.
+ *
+ * Pass `enabled: false` to short-circuit every method to a no-op (test
+ * fixtures, opt-out at construction time).
+ */
+export function createJsonFileTrajectoryRecorder(
+	opts: CreateJsonFileRecorderOptions = {},
+): TrajectoryRecorder {
+	return new JsonFileTrajectoryRecorder(opts);
+}
+
+// ---------------------------------------------------------------------------
+// No-op recorder (used when recording is disabled or no recorder was passed
+// into a sub-runtime call). This lets every hook be unconditional.
+// ---------------------------------------------------------------------------
+
+const NOOP_RECORDER: TrajectoryRecorder = {
+	startTrajectory: () => safeRandomId("tj-noop"),
+	recordStage: async () => undefined,
+	endTrajectory: async () => undefined,
+	load: async () => null,
+	list: async () => [],
+};
+
+/**
+ * Get a no-op recorder. Useful when wiring a runtime path that may or may
+ * not have a recorder attached.
+ */
+export function getNoopTrajectoryRecorder(): TrajectoryRecorder {
+	return NOOP_RECORDER;
+}

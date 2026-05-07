@@ -24,14 +24,13 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index";
-import { ModelType } from "../../../types/index";
 import {
 	TRIGGER_SCHEMA_VERSION,
 	type TriggerConfig,
 	type TriggerType,
 	type TriggerWakeMode,
 } from "../../../types/trigger";
-import { parseToonKeyValue, stringToUuid } from "../../../utils";
+import { stringToUuid } from "../../../utils";
 
 const CREATE_TASK_KEYWORDS = getValidationKeywordTerms(
 	"action.createTask.request",
@@ -48,10 +47,10 @@ interface TriggerExtraction {
 	displayName?: string;
 	instructions?: string;
 	wakeMode?: string;
-	intervalMs?: string;
+	intervalMs?: string | number;
 	scheduledAtIso?: string;
 	cronExpression?: string;
-	maxRuns?: string;
+	maxRuns?: string | number;
 }
 
 function deriveTriggerType(e: TriggerExtraction): TriggerType {
@@ -62,7 +61,10 @@ function deriveTriggerType(e: TriggerExtraction): TriggerType {
 	return "interval";
 }
 
-function parsePositiveInt(raw: string | undefined): number | undefined {
+function parsePositiveInt(raw: string | number | undefined): number | undefined {
+	if (typeof raw === "number") {
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : undefined;
+	}
 	if (!raw || !/^\d+$/.test(raw.trim())) return undefined;
 	const v = Number(raw.trim());
 	return Number.isFinite(v) && v > 0 ? v : undefined;
@@ -81,14 +83,6 @@ function describeSchedule(t: TriggerConfig): string {
 	return `cron ${t.cronExpression ?? "* * * * *"}`;
 }
 
-const EXTRACTION_PROMPT_PREFIX = [
-	"Extract trigger config from the request. Output TOON only.",
-	"Keys: triggerType(interval|once|cron), displayName, instructions, wakeMode(inject_now|next_autonomy_cycle), intervalMs, scheduledAtIso, cronExpression, maxRuns",
-	"Return only top-level TOON fields for keys that are known.",
-	"Default to interval if no schedule is explicit.",
-	"",
-].join("\n");
-
 function triggersDisabled(runtime: IAgentRuntime): boolean {
 	const setting = runtime.getSetting("TRIGGERS_ENABLED");
 	if (setting === false || setting === "false" || setting === "0") return true;
@@ -97,6 +91,39 @@ function triggersDisabled(runtime: IAgentRuntime): boolean {
 			? process.env.ELIZA_TRIGGERS_ENABLED
 			: undefined;
 	return env === "0" || env === "false";
+}
+
+function readTriggerParameters(options?: HandlerOptions): TriggerExtraction {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	return {
+		triggerType:
+			typeof params.triggerType === "string" ? params.triggerType : undefined,
+		displayName:
+			typeof params.displayName === "string" ? params.displayName : undefined,
+		instructions:
+			typeof params.instructions === "string" ? params.instructions : undefined,
+		wakeMode: typeof params.wakeMode === "string" ? params.wakeMode : undefined,
+		intervalMs:
+			typeof params.intervalMs === "string" ||
+			typeof params.intervalMs === "number"
+				? params.intervalMs
+				: undefined,
+		scheduledAtIso:
+			typeof params.scheduledAtIso === "string"
+				? params.scheduledAtIso
+				: undefined,
+		cronExpression:
+			typeof params.cronExpression === "string"
+				? params.cronExpression
+				: undefined,
+		maxRuns:
+			typeof params.maxRuns === "string" || typeof params.maxRuns === "number"
+				? params.maxRuns
+				: undefined,
+	};
 }
 
 export const createTaskAction: Action = {
@@ -125,8 +152,17 @@ export const createTaskAction: Action = {
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (!runtime.enableAutonomy) return false;
+		const params = readTriggerParameters(options);
+		if (
+			(params.instructions && params.instructions.trim()) ||
+			(params.displayName && params.displayName.trim())
+		) {
+			return true;
+		}
 		const text = message.content.text ?? "";
 		return (
 			text.trim().length > 0 &&
@@ -142,7 +178,8 @@ export const createTaskAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		const text = (message.content.text ?? "").trim().replace(/\s+/g, " ");
-		if (!text)
+		const inputParameters = readTriggerParameters(_options);
+		if (!text && !inputParameters.instructions?.trim())
 			return {
 				success: false,
 				text: "Empty request.",
@@ -159,16 +196,10 @@ export const createTaskAction: Action = {
 				success: false,
 				text: "Triggers are disabled.",
 				data: { actionName: "CREATE_TASK" },
-			};
+		};
 
 		try {
-			const extracted =
-				parseToonKeyValue<TriggerExtraction>(
-					await runtime.useModel(ModelType.TEXT_SMALL, {
-						prompt: `${EXTRACTION_PROMPT_PREFIX}Request: ${text}`,
-						stopSequences: [],
-					}),
-				) ?? {};
+			const extracted = inputParameters;
 
 			const triggerType = deriveTriggerType(extracted);
 			const displayName =
@@ -331,4 +362,63 @@ export const createTaskAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "triggerType",
+			description:
+				"Trigger schedule type. Use once for a specific date/time, cron for a cron expression, otherwise interval.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["interval", "once", "cron"],
+				default: "interval",
+			},
+		},
+		{
+			name: "displayName",
+			description: "Short name for the autonomous trigger task.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "instructions",
+			description: "Task instructions to run when the trigger fires.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "wakeMode",
+			description: "How the trigger wakes the agent when it fires.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["inject_now", "next_autonomy_cycle"],
+				default: "inject_now",
+			},
+		},
+		{
+			name: "intervalMs",
+			description: "Interval schedule frequency in milliseconds.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+		{
+			name: "scheduledAtIso",
+			description: "ISO timestamp for a one-time trigger.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "cronExpression",
+			description: "Five-field cron expression for cron triggers.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "maxRuns",
+			description: "Optional maximum number of times this trigger may run.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+	],
 };

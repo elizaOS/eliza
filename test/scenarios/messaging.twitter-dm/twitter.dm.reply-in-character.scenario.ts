@@ -47,7 +47,7 @@ export default scenario({
       room: "main",
       text: "Draft a reply to that Twitter DM from @eliza_art in my usual tone.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "Twitter/X DM draft in the owner's tone",
         includesAny: ["x", "dm", "draft", "eliza_art"],
       }),
@@ -62,7 +62,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "draftExists",
@@ -73,7 +73,7 @@ export default scenario({
       type: "custom",
       name: "twitter-dm-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["X", "TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "Twitter/X DM draft in the owner's tone",
         includesAny: ["x", "dm", "draft", "eliza_art"],
       }),

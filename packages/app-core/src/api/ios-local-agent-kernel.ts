@@ -1,6 +1,7 @@
+import { getBootConfig } from "../config/boot-config-store";
 import {
-  MODEL_CATALOG,
   findCatalogModel,
+  MODEL_CATALOG,
 } from "../services/local-inference/catalog";
 import type { ProviderStatus } from "../services/local-inference/providers";
 import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
@@ -21,9 +22,37 @@ const CONVERSATIONS_KEY = `${STORAGE_PREFIX}:conversations:v1`;
 const ACTIVE_MODEL_KEY = `${STORAGE_PREFIX}:active-model:v1`;
 const ASSIGNMENTS_KEY = `${STORAGE_PREFIX}:assignments:v1`;
 const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
+const WALLET_MARKET_OVERVIEW_KEY = `${STORAGE_PREFIX}:wallet-market-overview:v1`;
 const AGENT_NAME = "Eliza";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
+const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://www.elizacloud.ai";
+const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
+const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
+const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
+const COINGECKO_MARKET_LIMIT = 80;
+const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"] as const;
+const MARKET_PRICE_ID_SET = new Set<string>(MARKET_PRICE_IDS);
+const STABLE_ASSET_IDS = new Set([
+  "tether",
+  "usd-coin",
+  "binance-usd",
+  "first-digital-usd",
+  "dai",
+  "ethena-usde",
+  "true-usd",
+  "usds",
+]);
+const STABLE_ASSET_SYMBOLS = new Set([
+  "usdt",
+  "usdc",
+  "busd",
+  "fdusd",
+  "dai",
+  "usde",
+  "tusd",
+  "usds",
+]);
 const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   preferredProvider: {},
   policy: {},
@@ -65,6 +94,21 @@ interface LocalBrowserWorkspaceTab {
 
 interface BrowserWorkspaceStore {
   tabs: LocalBrowserWorkspaceTab[];
+}
+
+interface CachedWalletMarketOverview {
+  response: Record<string, unknown>;
+  expiresAt: number;
+}
+
+interface CoinGeckoMarketRecord {
+  id: string;
+  symbol: string;
+  name: string;
+  currentPriceUsd: number;
+  change24hPct: number;
+  marketCapRank: number | null;
+  imageUrl: string | null;
 }
 
 const EMPTY_WALLET_ADDRESSES = {
@@ -170,6 +214,29 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function integerFromUnknown(value: unknown): number | null {
+  const parsed = numberFromUnknown(value);
+  if (parsed === null) return null;
+  return Number.isInteger(parsed) ? parsed : Math.round(parsed);
+}
+
 function readStore(): ConversationStore {
   const parsed = readJson<ConversationStore>(CONVERSATIONS_KEY, {
     conversations: [],
@@ -202,9 +269,7 @@ function normalizeBrowserWorkspaceUrl(rawUrl: unknown): string {
   const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
   if (!value) return "about:blank";
   if (value === "about:blank") return value;
-  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
-    ? value
-    : `https://${value}`;
+  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) ? value : `https://${value}`;
 }
 
 function normalizeBrowserWorkspaceKind(
@@ -223,9 +288,7 @@ function browserWorkspaceSnapshot(): {
   };
 }
 
-async function openBrowserWorkspaceTab(
-  request: Request,
-): Promise<Response> {
+async function openBrowserWorkspaceTab(request: Request): Promise<Response> {
   const body = await requestJson(request);
   const now = nowIso();
   const show = body.show !== false;
@@ -453,7 +516,284 @@ function localWalletConfig(): Record<string, unknown> {
   };
 }
 
-function emptyWalletMarketOverview(): Record<string, unknown> {
+function isWalletMarketOverviewSource(value: unknown): boolean {
+  const record = asRecord(value);
+  return (
+    record !== null &&
+    typeof record.providerId === "string" &&
+    typeof record.providerName === "string" &&
+    typeof record.providerUrl === "string" &&
+    typeof record.available === "boolean" &&
+    typeof record.stale === "boolean" &&
+    (record.error === null ||
+      record.error === undefined ||
+      typeof record.error === "string")
+  );
+}
+
+function isWalletMarketOverview(
+  value: unknown,
+): value is Record<string, unknown> {
+  const record = asRecord(value);
+  const sources = asRecord(record?.sources);
+  return (
+    record !== null &&
+    typeof record.generatedAt === "string" &&
+    typeof record.cacheTtlSeconds === "number" &&
+    typeof record.stale === "boolean" &&
+    sources !== null &&
+    isWalletMarketOverviewSource(sources.prices) &&
+    isWalletMarketOverviewSource(sources.movers) &&
+    isWalletMarketOverviewSource(sources.predictions) &&
+    Array.isArray(record.prices) &&
+    Array.isArray(record.movers) &&
+    Array.isArray(record.predictions)
+  );
+}
+
+function readCachedWalletMarketOverview(): CachedWalletMarketOverview | null {
+  const parsed = readJson<CachedWalletMarketOverview | null>(
+    WALLET_MARKET_OVERVIEW_KEY,
+    null,
+  );
+  if (
+    !parsed ||
+    typeof parsed.expiresAt !== "number" ||
+    !isWalletMarketOverview(parsed.response)
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+function writeCachedWalletMarketOverview(
+  response: Record<string, unknown>,
+): void {
+  const cacheTtlSeconds =
+    typeof response.cacheTtlSeconds === "number" && response.cacheTtlSeconds > 0
+      ? response.cacheTtlSeconds
+      : Math.floor(WALLET_MARKET_OVERVIEW_CACHE_TTL_MS / 1000);
+  writeJson(WALLET_MARKET_OVERVIEW_KEY, {
+    response,
+    expiresAt: Date.now() + cacheTtlSeconds * 1000,
+  } satisfies CachedWalletMarketOverview);
+}
+
+function staleWalletMarketOverview(
+  response: Record<string, unknown>,
+): Record<string, unknown> {
+  const sources = asRecord(response.sources) ?? {};
+  const markStale = (value: unknown) => {
+    const source = asRecord(value);
+    return source ? { ...source, stale: true } : value;
+  };
+  return {
+    ...response,
+    stale: true,
+    sources: {
+      prices: markStale(sources.prices),
+      movers: markStale(sources.movers),
+      predictions: markStale(sources.predictions),
+    },
+  };
+}
+
+function normalizeCloudMarketPreviewBaseUrl(rawBaseUrl: string): string {
+  try {
+    const parsed = new URL(rawBaseUrl);
+    parsed.hash = "";
+    parsed.search = "";
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/api/v1";
+    } else if (!parsed.pathname.endsWith("/api/v1")) {
+      parsed.pathname = `${parsed.pathname}/api/v1`;
+    }
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return `${DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL}/api/v1`;
+  }
+}
+
+function resolveCloudWalletMarketOverviewUrl(): string {
+  const cloudApiBase =
+    typeof getBootConfig().cloudApiBase === "string"
+      ? getBootConfig().cloudApiBase
+      : DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL;
+  return `${normalizeCloudMarketPreviewBaseUrl(cloudApiBase)}${CLOUD_WALLET_MARKET_OVERVIEW_PATH}`;
+}
+
+async function fetchJsonWithTimeout(url: string | URL): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => {
+    controller.abort();
+  }, WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Market feed responded ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
+function mapCoinGeckoMarket(input: unknown): CoinGeckoMarketRecord | null {
+  const record = asRecord(input);
+  if (!record) return null;
+
+  const id = stringFromUnknown(record.id);
+  const symbol = stringFromUnknown(record.symbol);
+  const name = stringFromUnknown(record.name);
+  const currentPriceUsd = numberFromUnknown(record.current_price);
+  const change24hPct = numberFromUnknown(record.price_change_percentage_24h);
+  if (
+    !id ||
+    !symbol ||
+    !name ||
+    currentPriceUsd === null ||
+    change24hPct === null
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    symbol: symbol.toUpperCase(),
+    name,
+    currentPriceUsd,
+    change24hPct,
+    marketCapRank: integerFromUnknown(record.market_cap_rank),
+    imageUrl: stringFromUnknown(record.image),
+  };
+}
+
+function isStableAsset(market: CoinGeckoMarketRecord): boolean {
+  const id = market.id.toLowerCase();
+  const symbol = market.symbol.toLowerCase();
+  return STABLE_ASSET_IDS.has(id) || STABLE_ASSET_SYMBOLS.has(symbol);
+}
+
+function buildLocalPriceSnapshots(markets: CoinGeckoMarketRecord[]): unknown[] {
+  const byId = new Map(markets.map((market) => [market.id, market]));
+  return MARKET_PRICE_IDS.reduce<unknown[]>((items, id) => {
+    const market = byId.get(id);
+    if (!market) return items;
+    items.push({
+      id: market.id,
+      symbol: market.symbol,
+      name: market.name,
+      priceUsd: market.currentPriceUsd,
+      change24hPct: market.change24hPct,
+      imageUrl: market.imageUrl,
+    });
+    return items;
+  }, []);
+}
+
+function buildLocalMovers(markets: CoinGeckoMarketRecord[]): unknown[] {
+  return markets
+    .filter((market) => !MARKET_PRICE_ID_SET.has(market.id))
+    .filter((market) => !isStableAsset(market))
+    .filter(
+      (market) => market.marketCapRank === null || market.marketCapRank <= 200,
+    )
+    .sort(
+      (left, right) =>
+        Math.abs(right.change24hPct) - Math.abs(left.change24hPct),
+    )
+    .slice(0, 6)
+    .map((market) => ({
+      id: market.id,
+      symbol: market.symbol,
+      name: market.name,
+      priceUsd: market.currentPriceUsd,
+      change24hPct: market.change24hPct,
+      marketCapRank: market.marketCapRank,
+      imageUrl: market.imageUrl,
+    }));
+}
+
+async function fetchCoinGeckoWalletMarketOverview(): Promise<
+  Record<string, unknown>
+> {
+  const url = new URL("https://api.coingecko.com/api/v3/coins/markets");
+  url.searchParams.set("vs_currency", "usd");
+  url.searchParams.set("order", "market_cap_desc");
+  url.searchParams.set("per_page", String(COINGECKO_MARKET_LIMIT));
+  url.searchParams.set("page", "1");
+  url.searchParams.set("price_change_percentage", "24h");
+
+  const payload = await fetchJsonWithTimeout(url);
+  if (!Array.isArray(payload)) {
+    throw new Error("CoinGecko payload was not an array");
+  }
+
+  const markets = payload
+    .map(mapCoinGeckoMarket)
+    .filter((market): market is CoinGeckoMarketRecord => market !== null);
+
+  const coinGeckoSource = {
+    providerId: "coingecko",
+    providerName: "CoinGecko",
+    providerUrl: "https://www.coingecko.com/",
+    available: true,
+    stale: false,
+    error: null,
+  };
+
+  return {
+    generatedAt: nowIso(),
+    cacheTtlSeconds: Math.floor(WALLET_MARKET_OVERVIEW_CACHE_TTL_MS / 1000),
+    stale: false,
+    sources: {
+      prices: coinGeckoSource,
+      movers: coinGeckoSource,
+      predictions: {
+        providerId: "polymarket",
+        providerName: "Polymarket",
+        providerUrl: "https://polymarket.com/",
+        available: false,
+        stale: false,
+        error: "Polymarket preview requires the Eliza Cloud market feed.",
+      },
+    },
+    prices: buildLocalPriceSnapshots(markets),
+    movers: buildLocalMovers(markets),
+    predictions: [],
+  };
+}
+
+let walletMarketOverviewInFlight: Promise<Record<string, unknown>> | null =
+  null;
+
+async function refreshWalletMarketOverview(): Promise<Record<string, unknown>> {
+  if (!walletMarketOverviewInFlight) {
+    walletMarketOverviewInFlight = (async () => {
+      const cloudPayload = await fetchJsonWithTimeout(
+        resolveCloudWalletMarketOverviewUrl(),
+      ).catch(() => fetchCoinGeckoWalletMarketOverview());
+      if (!isWalletMarketOverview(cloudPayload)) {
+        throw new Error("Wallet market feed returned an invalid response");
+      }
+      writeCachedWalletMarketOverview(cloudPayload);
+      return cloudPayload;
+    })().finally(() => {
+      walletMarketOverviewInFlight = null;
+    });
+  }
+  return walletMarketOverviewInFlight;
+}
+
+function emptyWalletMarketOverview(
+  error = "Market data is unavailable in local iOS mode.",
+): Record<string, unknown> {
   const unavailable = (
     providerId: "coingecko" | "polymarket",
     providerName: string,
@@ -464,7 +804,7 @@ function emptyWalletMarketOverview(): Record<string, unknown> {
     providerUrl,
     available: false,
     stale: false,
-    error: "Market data is unavailable in local iOS mode.",
+    error,
   });
 
   return {
@@ -472,8 +812,16 @@ function emptyWalletMarketOverview(): Record<string, unknown> {
     cacheTtlSeconds: 0,
     stale: false,
     sources: {
-      prices: unavailable("coingecko", "CoinGecko", "https://www.coingecko.com"),
-      movers: unavailable("coingecko", "CoinGecko", "https://www.coingecko.com"),
+      prices: unavailable(
+        "coingecko",
+        "CoinGecko",
+        "https://www.coingecko.com",
+      ),
+      movers: unavailable(
+        "coingecko",
+        "CoinGecko",
+        "https://www.coingecko.com",
+      ),
       predictions: unavailable(
         "polymarket",
         "Polymarket",
@@ -484,6 +832,29 @@ function emptyWalletMarketOverview(): Record<string, unknown> {
     movers: [],
     predictions: [],
   };
+}
+
+async function localWalletMarketOverview(): Promise<Record<string, unknown>> {
+  if (typeof window === "undefined") {
+    return emptyWalletMarketOverview();
+  }
+
+  const cached = readCachedWalletMarketOverview();
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      return cached.response;
+    }
+    void refreshWalletMarketOverview();
+    return staleWalletMarketOverview(cached.response);
+  }
+
+  try {
+    return await refreshWalletMarketOverview();
+  } catch (error) {
+    return emptyWalletMarketOverview(
+      error instanceof Error ? error.message : "Market data is unavailable.",
+    );
+  }
 }
 
 function emptyWalletTradingProfile(url: URL): Record<string, unknown> {
@@ -1013,7 +1384,7 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/wallet/market-overview") {
-    return json(emptyWalletMarketOverview());
+    return json(await localWalletMarketOverview());
   }
 
   if (method === "GET" && pathname === "/api/wallet/trading/profile") {

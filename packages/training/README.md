@@ -86,6 +86,32 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                    should_respond / message_handler / reply / claude_distill)
 ```
 
+## Native tool-calling migration
+
+The v5 runtime refactor trains native JSON records instead of TOON targets.
+The migration contract is documented in
+[`docs/dataset/NATIVE_TOOL_CALLING_SPEC.md`](docs/dataset/NATIVE_TOOL_CALLING_SPEC.md).
+Source transform families are summarized in
+[`docs/dataset/NATIVE_SOURCE_TRANSFORMS.md`](docs/dataset/NATIVE_SOURCE_TRANSFORMS.md).
+
+Bootstrap flow:
+
+```bash
+uv run python scripts/download_datasets.py --priority all \
+    --skip nubilio-trajectories,scam-defense-corpus,light-multilight \
+    --max-workers 2 --min-free-gb 40
+uv run python scripts/normalize.py
+uv run python scripts/prepare_native_tool_calling_data.py --write-matrix
+uv run python scripts/prepare_native_tool_calling_data.py \
+    --transform-normalized --validate-native
+```
+
+The source matrix is written to `data/native/source_matrix.json` and
+`data/native/SOURCE_MATRIX.md`. It records every datasource's transform family,
+strengths, weaknesses, raw-data status, and recommended native-training weight.
+The three skipped corpora are local-path sources; drop the `--skip` once those
+local corpora are mounted under `local-corpora/`.
+
 ### Quick reference
 
 ```bash

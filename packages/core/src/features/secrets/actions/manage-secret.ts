@@ -179,7 +179,7 @@ export const manageSecretAction: Action = {
 				],
 				options: {
 					modelType: ModelType.TEXT_SMALL,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 					contextCheckLevel: 0,
 					maxRetries: 1,
 				},

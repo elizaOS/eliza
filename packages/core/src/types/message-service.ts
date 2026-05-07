@@ -61,15 +61,6 @@ export interface MessageProcessingOptions
 }
 
 /**
- * Dual-pressure scores from the shouldRespond classifier.
- */
-export interface DualPressureScores {
-	speakUp: number;
-	holdBack: number;
-	net: number;
-}
-
-/**
  * Result of message processing
  */
 export interface MessageProcessingResult {
@@ -80,8 +71,6 @@ export interface MessageProcessingResult {
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;
 	reason?: string;
-	dualPressure?: DualPressureScores | null;
-	shouldRespondClassifierAction?: string | null;
 }
 
 /**
@@ -91,22 +80,17 @@ export interface ResponseDecision {
 	shouldRespond: boolean;
 	skipEvaluation: boolean;
 	reason: string;
-	pressure?: DualPressureScores | null;
-	classifierAction?: string | null;
 }
 
 /**
  * Extended response decision that includes context routing.
- * Used by the fine-tuned shouldRespond + context-routing classifier.
- * Falls back to ResponseDecision when context routing is not available.
+ * Used by deterministic shouldRespond bypasses and v5 message routing metadata.
  */
 export interface ContextRoutedResponseDecision extends ResponseDecision {
 	/** The single best-matching domain context for this turn */
 	primaryContext?: AgentContext;
 	/** Additional relevant contexts (may enable extra providers/actions) */
 	secondaryContexts?: AgentContext[];
-	/** Turn IDs that contributed to the intent (for multi-turn extraction) */
-	evidenceTurnIds?: string[];
 }
 
 export type ShouldRespondModelType =

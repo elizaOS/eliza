@@ -2,7 +2,7 @@
  * LifeOps cross-device intent sync tests against a real PGLite runtime.
  *
  * Exercises broadcast / receive / acknowledge / prune over the local
- * `life_intents` table as well as the OWNER_DEVICE_INTENT action handler. No SQL
+ * `life_intents` table as well as the DEVICE_INTENT action handler. No SQL
  * mocks, no LLM.
  */
 
@@ -12,7 +12,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/real-runtime";
-import { ownerDeviceIntentAction } from "../src/actions/owner-device-intent.js";
+import { deviceIntentAction } from "../src/actions/device-intent.js";
 import {
   acknowledgeIntent,
   broadcastIntent,
@@ -173,8 +173,8 @@ describe("intent-sync — real PGLite", () => {
     expect(result.pruned).toBeGreaterThanOrEqual(1);
   });
 
-  it("ownerDeviceIntentAction broadcast subaction creates an intent", async () => {
-    const result = await ownerDeviceIntentAction.handler!(
+  it("deviceIntentAction broadcast subaction creates an intent", async () => {
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "broadcast a reminder") as never,
       undefined,
@@ -199,8 +199,8 @@ describe("intent-sync — real PGLite", () => {
     expect(pending.find((i) => i.id === data?.intent?.id)).toBeTruthy();
   });
 
-  it("ownerDeviceIntentAction list_pending subaction returns count", async () => {
-    const result = await ownerDeviceIntentAction.handler!(
+  it("deviceIntentAction list_pending subaction returns count", async () => {
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "list pending intents") as never,
       undefined,
@@ -213,7 +213,7 @@ describe("intent-sync — real PGLite", () => {
     expect(typeof values?.count).toBe("number");
   });
 
-  it("ownerDeviceIntentAction acknowledge suppresses the remaining ladder rungs", async () => {
+  it("deviceIntentAction acknowledge suppresses the remaining ladder rungs", async () => {
     const ladderId = `ack-action-${Date.now()}-${Math.random()}`;
     const firstRung = await broadcastIntent(runtime, {
       kind: "routine_reminder",
@@ -230,7 +230,7 @@ describe("intent-sync — real PGLite", () => {
       metadata: { ladderId, rungIndex: 1 },
     });
 
-    const result = await ownerDeviceIntentAction.handler!(
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "acknowledge ladder reminder") as never,
       undefined,
@@ -255,8 +255,8 @@ describe("intent-sync — real PGLite", () => {
     expect(ladderPending).toHaveLength(0);
   });
 
-  it("ownerDeviceIntentAction broadcast rejects unknown kind", async () => {
-    const result = await ownerDeviceIntentAction.handler!(
+  it("deviceIntentAction broadcast rejects unknown kind", async () => {
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "bad broadcast") as never,
       undefined,
@@ -283,8 +283,8 @@ describe("intent-sync — real PGLite", () => {
     ).toBe("UNKNOWN_KIND");
   });
 
-  it("ownerDeviceIntentAction treats a leaked intent kind in subaction as a broadcast", async () => {
-    const result = await ownerDeviceIntentAction.handler!(
+  it("deviceIntentAction treats a leaked intent kind in subaction as a broadcast", async () => {
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "broadcast a stretch reminder") as never,
       undefined,
@@ -310,8 +310,8 @@ describe("intent-sync — real PGLite", () => {
     expect(data?.intent?.target).toBe("mobile");
   });
 
-  it("ownerDeviceIntentAction defaults structured payloads without subaction to broadcast", async () => {
-    const result = await ownerDeviceIntentAction.handler!(
+  it("deviceIntentAction defaults structured payloads without subaction to broadcast", async () => {
+    const result = await deviceIntentAction.handler!(
       runtime,
       makeMessage(runtime, "broadcast a phone reminder") as never,
       undefined,

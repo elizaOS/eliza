@@ -42,6 +42,11 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "mobile-chromium",
+      testMatch: /backgrounds\.spec\.ts/,
+      use: { ...devices["Pixel 7"] },
+    },
   ],
   webServer: {
     command: `node ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,

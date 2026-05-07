@@ -101,7 +101,7 @@ function trimReports(
     return reports;
   }
   const newestEndMs =
-    parseIsoMs(reports[reports.length - 1]!.windowEnd) ?? Date.now();
+    parseIsoMs(reports[reports.length - 1]?.windowEnd) ?? Date.now();
   const earliestAllowedMs = newestEndMs - MAX_REPORT_AGE_MS;
   const ageTrimmed = reports.filter((report) => {
     const reportEndMs = parseIsoMs(report.windowEnd);

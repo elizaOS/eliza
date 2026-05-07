@@ -6,7 +6,7 @@ export default scenario({
   domain: "selfcontrol",
   tags: ["lifeops", "selfcontrol", "confirmation", "happy-path"],
   description:
-    "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; OWNER_WEBSITE_BLOCK must fire.",
+    "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; WEBSITE_BLOCK must fire.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -26,7 +26,7 @@ export default scenario({
       name: "propose-block",
       room: "main",
       text: "Should I block X for an hour while I do deep work?",
-      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
+      forbiddenActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/block/i, /x/i, /hour/i, /confirm/i, /\?/],
     },
     {
@@ -34,14 +34,14 @@ export default scenario({
       name: "confirm-block",
       room: "main",
       text: "Yes, block it for one hour.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/blocked/i, /block/i, /hour/i, /x/i],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

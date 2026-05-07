@@ -14,7 +14,6 @@ import { ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
 	parseBooleanFromText,
-	parseToonKeyValue,
 } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -51,12 +50,7 @@ export const unfollowRoomAction: Action = {
 				prompt: shouldUnfollowPrompt,
 			});
 
-			const parsed = parseToonKeyValue<{ decision?: boolean | string }>(
-				response,
-			);
-			const parsedResponse = parseBooleanFromText(
-				parsed?.decision ?? response.trim(),
-			);
+			const parsedResponse = parseBooleanFromText(response.trim());
 
 			return parsedResponse as boolean;
 		}

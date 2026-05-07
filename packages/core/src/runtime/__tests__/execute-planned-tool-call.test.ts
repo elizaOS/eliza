@@ -1,0 +1,170 @@
+import { describe, expect, it, vi } from "vitest";
+import type {
+	Action,
+	HandlerCallback,
+	IAgentRuntime,
+	Memory,
+} from "../../types";
+import { executePlannedToolCall } from "../execute-planned-tool-call";
+
+function makeAction(overrides: Partial<Action>): Action {
+	return {
+		name: "TEST_ACTION",
+		description: "Run the test action",
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+		...overrides,
+	};
+}
+
+function makeRuntime(actions: Action[]): IAgentRuntime {
+	return {
+		actions,
+		logger: {
+			debug: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+		},
+	} as unknown as IAgentRuntime;
+}
+
+function makeMessage(): Memory {
+	return {
+		id: "message-id",
+		entityId: "entity-id",
+		roomId: "room-id",
+		content: { text: "hello" },
+	} as Memory;
+}
+
+describe("executePlannedToolCall", () => {
+	it("matches action names exactly only", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const runtime = makeRuntime([
+			makeAction({ name: "SEARCH_KNOWLEDGE", handler }),
+		]);
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "search_knowledge", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("Action not found: search_knowledge");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("rejects invalid native tool arguments before invoking the handler", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "CREATE_TASK",
+			parameters: [
+				{
+					name: "title",
+					description: "Task title",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "CREATE_TASK", params: { title: 42 } },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain(
+			"Argument 'title' expected string, got number",
+		);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("passes validated parameters and HandlerCallback through to the action handler", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const handler = vi.fn(async () => ({ success: true, text: "ok" }));
+		const action = makeAction({
+			name: "CREATE_TASK",
+			parameters: [
+				{
+					name: "title",
+					description: "Task title",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "priority",
+					description: "Task priority",
+					required: false,
+					schema: { type: "string", default: "normal" },
+				},
+			],
+			handler,
+		});
+
+		await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: { title: "Ship it" } },
+		);
+
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { title: "Ship it", priority: "normal" },
+			}),
+			callback,
+			undefined,
+		);
+	});
+
+	it("converts thrown handler errors into failure ActionResults", async () => {
+		const action = makeAction({
+			name: "BOOM",
+			handler: async () => {
+				throw new Error("handler failed");
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "BOOM", params: {} },
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: "handler failed",
+			data: { actionName: "BOOM" },
+		});
+	});
+
+	it("denies actions that fail role or context gates", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "OWNER_ONLY",
+			contextGate: { anyOf: ["admin"] },
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{
+				message: makeMessage(),
+				activeContexts: ["general"],
+				userRoles: ["MEMBER"],
+			},
+			{ name: "OWNER_ONLY", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("not allowed");
+		expect(handler).not.toHaveBeenCalled();
+	});
+});

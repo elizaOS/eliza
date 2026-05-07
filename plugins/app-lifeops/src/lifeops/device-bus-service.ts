@@ -9,7 +9,7 @@ import {
 
 /**
  * Service-layer wrappers around the local intent store. The agent-facing
- * action exposes only the broadcast flow (OWNER_DEVICE_INTENT); these
+ * action exposes only the broadcast flow (DEVICE_INTENT); these
  * helpers cover the management operations invoked directly by callers.
  */
 

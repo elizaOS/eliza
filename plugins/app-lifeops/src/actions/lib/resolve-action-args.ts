@@ -39,7 +39,7 @@ export type SubactionsMap<TSubaction extends string = string> = {
   readonly [K in TSubaction]: SubactionSpec;
 };
 
-export interface ResolveActionArgsInput<TSubaction extends string, TParams> {
+export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
   runtime: IAgentRuntime;
   message: Memory;
   state?: State;
@@ -103,10 +103,7 @@ function isSubactionKey<TSubaction extends string>(
   value: unknown,
   subactions: SubactionsMap<TSubaction>,
 ): value is TSubaction {
-  return (
-    typeof value === "string" &&
-    Object.prototype.hasOwnProperty.call(subactions, value)
-  );
+  return typeof value === "string" && Object.hasOwn(subactions, value);
 }
 
 function missingRequiredKeys<TSubaction extends string>(
@@ -310,7 +307,7 @@ export async function resolveActionArgs<
   } = input;
 
   const plannerParams =
-    options && options.parameters && typeof options.parameters === "object"
+    options?.parameters && typeof options.parameters === "object"
       ? (options.parameters as Record<string, unknown>)
       : {};
 
@@ -332,6 +329,8 @@ export async function resolveActionArgs<
     }
   }
 
+  // TODO(native-parameters): delete this legacy extractor fallback once
+  // LifeOps planners reliably populate options.parameters for umbrella actions.
   // 2. LLM extraction path.
   const intent = asTrimmedString(intentHint) || getMessageText(message);
   const recentConversation = recentConversationTextsFromState(

@@ -48,7 +48,7 @@ let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
 async function resolveBuiltInFallbackAction(
   actionName: string,
 ): Promise<RuntimeActionLike | null> {
-  if (actionName !== "OWNER_WEBSITE_BLOCK") {
+  if (actionName !== "WEBSITE_BLOCK") {
     return null;
   }
 
@@ -57,7 +57,7 @@ async function resolveBuiltInFallbackAction(
       /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
     )
       .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
-      .then((mod) => mod.ownerWebsiteBlockAction ?? null)
+      .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }
 
@@ -225,7 +225,7 @@ export async function executeFallbackParsedActions(
           currentText,
         );
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "OWNER_WEBSITE_BLOCK" &&
+        parsed.name === "WEBSITE_BLOCK" &&
         actionSucceeded === true &&
         currentTextLooksLikeCompletedWebsiteBlock;
       if (fallbackText) {

@@ -341,6 +341,9 @@ packages/elizaos/examples/
 /benchmarks/**/*.art.jsonl
 /benchmarks/**/*.grpo.groups.json
 
+# Native-tool-calling v5 run-cerebras / trajectory CLI output
+/trajectories/
+
 # AgentBench: generated local run folders (do not commit)
 /benchmarks/agentbench/benchmark_results/
 /benchmarks/agentbench/canonical_*/

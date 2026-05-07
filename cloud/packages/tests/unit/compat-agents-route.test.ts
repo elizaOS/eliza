@@ -59,7 +59,15 @@ describe("compat agents route", () => {
       requireUserOrApiKeyWithOrg: async () => TEST_USER,
     }));
     mock.module("@/lib/services/eliza-agent-config", () => ({
+      AGENT_CHARACTER_OWNERSHIP_KEY: "__agentCharacterOwnership",
+      AGENT_INTERNAL_CONFIG_PREFIX: "__agent",
+      AGENT_MANAGED_DISCORD_GATEWAY_KEY: "__agentManagedDiscordGateway",
+      AGENT_MANAGED_DISCORD_KEY: "__agentManagedDiscord",
+      AGENT_MANAGED_GITHUB_KEY: "__agentManagedGithub",
+      AGENT_REUSE_EXISTING_CHARACTER: "reuse-existing",
+      reusesExistingElizaCharacter: () => false,
       stripReservedElizaConfigKeys: (value: unknown) => value,
+      withReusedElizaCharacterOwnership: (value: unknown) => value,
     }));
     mock.module("@/lib/services/eliza-sandbox", () => ({
       elizaSandboxService: {

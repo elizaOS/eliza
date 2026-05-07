@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -26,53 +24,30 @@ function isValidAppendInput(obj: Record<string, unknown>): boolean {
 	);
 }
 
-const EXTRACT_TEMPLATE = `Extract the clipboard entry ID and content to append from the user's message.
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
 
-User message: {{text}}
-
-Available clipboard entries:
-{{entries}}
-
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
-
-Fields:
-- id: The ID of the clipboard entry to append to (required)
-- content: The new content to append (required)
-
-Example:
-id: entry-id
-content: Content to append`;
-
-async function extractAppendInfo(
-	runtime: IAgentRuntime,
+function extractAppendInfo(
 	message: Memory,
-	availableEntries: string,
-): Promise<AppendInput | null> {
-	const prompt = EXTRACT_TEMPLATE.replace(
-		"{{text}}",
-		message.content.text ?? "",
-	).replace("{{entries}}", availableEntries);
+	options?: HandlerOptions,
+): AppendInput | null {
+	const params = readParams(options);
+	const raw = {
+		id: params.id ?? message.content.id ?? message.content.entryId,
+		content: params.content ?? message.content.content,
+	};
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
-
-	logger.debug("[ClipboardAppend] Extract result:", result);
-
-	const parsed = parseToonKeyValue(String(result)) as Record<
-		string,
-		unknown
-	> | null;
-
-	if (!parsed || !isValidAppendInput(parsed)) {
+	if (!isValidAppendInput(raw)) {
 		logger.error("[ClipboardAppend] Failed to extract valid append info");
 		return null;
 	}
 
 	return {
-		id: String(parsed.id),
-		content: String(parsed.content),
+		id: String(raw.id),
+		content: String(raw.content),
 	};
 }
 
@@ -104,6 +79,10 @@ export const clipboardAppendAction: Action = {
 			? __avSource === __avExpectedSource
 			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
 		const __avOptions = options && typeof options === "object" ? options : {};
+		const __avParams = readParams(options);
+		if (isValidAppendInput(__avParams)) {
+			return true;
+		}
 		const __avInputOk =
 			__avText.trim().length > 0 ||
 			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
@@ -153,11 +132,7 @@ export const clipboardAppendAction: Action = {
 			return { success: false, text: "No entries available" };
 		}
 
-		const appendInfo = await extractAppendInfo(
-			runtime,
-			message,
-			entriesContext,
-		);
+		const appendInfo = extractAppendInfo(message, _options);
 
 		if (!appendInfo) {
 			if (callback) {
@@ -222,6 +197,20 @@ export const clipboardAppendAction: Action = {
 		}
 	},
 
+	parameters: [
+		{
+			name: "id",
+			description: "Clipboard entry ID to append content to.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "content",
+			description: "Content to append to the clipboard entry.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+	],
 	examples: [],
 };
 

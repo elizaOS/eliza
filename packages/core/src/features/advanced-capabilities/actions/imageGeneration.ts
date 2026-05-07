@@ -5,7 +5,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { imageGenerationTemplate } from "../../../prompts.ts";
 import type {
 	Action,
 	ActionExample,
@@ -17,7 +16,6 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ContentType, ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("GENERATE_IMAGE");
@@ -45,11 +43,32 @@ const getFileExtension = (url: string): string => {
 	return IMAGE_EXTENSIONS.has(extension) ? extension : "png";
 };
 
+function readImagePrompt(
+	message: Memory,
+	options?: HandlerOptions,
+): string | undefined {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	const prompt = params.prompt ?? message.content.prompt;
+	if (typeof prompt === "string" && prompt.trim()) return prompt.trim();
+	const text = message.content.text;
+	return typeof text === "string" && text.trim() ? text.trim() : undefined;
+}
+
 export const generateImageAction = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
-	validate: async (_runtime: IAgentRuntime, message: Memory) => {
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+	) => {
+		const prompt = readImagePrompt(message, options);
+		if (prompt && options?.parameters) return true;
 		const text =
 			typeof message?.content === "string"
 				? message.content
@@ -63,45 +82,20 @@ export const generateImageAction = {
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: State,
+		_state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
-		responses?: Memory[],
+		_responses?: Memory[],
 	): Promise<ActionResult> => {
-		const allProviders: string[] = [];
-		if (responses) {
-			for (const res of responses) {
-				const providers = res.content?.providers;
-				if (providers && providers.length > 0) {
-					allProviders.push(...providers);
-				}
-			}
+		const imagePrompt = readImagePrompt(message, _options);
+		if (!imagePrompt) {
+			return {
+				text: "Image prompt is required",
+				values: { success: false, error: "MISSING_PROMPT" },
+				data: { actionName: "GENERATE_IMAGE", error: "Missing prompt" },
+				success: false,
+			};
 		}
-
-		state = await runtime.composeState(message, [
-			...(allProviders ?? []),
-			"RECENT_MESSAGES",
-		]);
-
-		const prompt = composePromptFromState({
-			state,
-			template:
-				runtime.character.templates?.imageGenerationTemplate ||
-				imageGenerationTemplate,
-		});
-
-		const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			stopSequences: [],
-		});
-
-		const parsedToon = parseToonKeyValue(promptResponse);
-		const promptValue = parsedToon?.prompt;
-
-		const imagePrompt: string =
-			typeof promptValue === "string"
-				? promptValue
-				: "Unable to generate descriptive prompt for image";
 
 		const imageResponse = await runtime.useModel(ModelType.IMAGE, {
 			prompt: imagePrompt,
@@ -195,5 +189,13 @@ export const generateImageAction = {
 			success: true,
 		};
 	},
+	parameters: [
+		{
+			name: "prompt",
+			description: "Detailed image generation prompt.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+	],
 	examples: (spec.examples ?? []) as ActionExample[][],
 } as Action;

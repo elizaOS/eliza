@@ -71,7 +71,7 @@ const BOOTSTRAP_STATEMENTS = [
 
 /**
  * Stub runtime with task-worker and getTasks hooks so the BlockWriter's call
- * into ownerWebsiteBlockAction handler can complete synchronously. The
+ * into websiteBlockAction handler can complete synchronously. The
  * SelfControl engine degrades gracefully on non-macOS test hosts; when engine
  * is unavailable the action returns `success: false`, which we catch in tests
  * that need to skip the SelfControl side-effect path.

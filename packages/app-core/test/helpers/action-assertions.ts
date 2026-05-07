@@ -25,7 +25,7 @@ import type { ActionSpy, ActionSpyCall } from "./action-spy.js";
  * `action_result` memory persisted by the runtime.
  */
 export interface ActionInvocation {
-  /** Canonical action name as recorded by the runtime (e.g. "OWNER_CALENDAR"). */
+  /** Canonical action name as recorded by the runtime (e.g. "CALENDAR"). */
   actionName: string;
   /** Whether the action succeeded or failed. */
   actionStatus: "success" | "failed" | string;

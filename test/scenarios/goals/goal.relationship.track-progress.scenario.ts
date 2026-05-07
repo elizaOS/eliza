@@ -73,7 +73,7 @@ export default scenario({
       kind: "message",
       name: "progress-query",
       text: "How many days since I talked to Alice Chen?",
-      expectedActions: ["OWNER_RELATIONSHIP"],
+      expectedActions: ["RELATIONSHIP"],
     },
   ],
   finalChecks: [
@@ -82,7 +82,7 @@ export default scenario({
       name: "relationship-progress-structured",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_RELATIONSHIP",
+          (entry) => entry.actionName === "RELATIONSHIP",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"

@@ -3,14 +3,14 @@
  *
  * Two invariants the agent relies on:
  *
- *   1. LifeOps umbrella actions (TRIAGE_MESSAGES, OWNER_CALENDAR, etc.) are visible to the LLM in any
+ *   1. LifeOps umbrella actions (TRIAGE_MESSAGES, CALENDAR, etc.) are visible to the LLM in any
  *      channel — no `gatePluginSessionForHostedApp` wrapper that hides them
  *      when the LifeOps UI isn't foregrounded. Previously the plugin wrapped
  *      every action's validate() to return false unless an AppManager run or
  *      dashboard overlay heartbeat existed, which meant Discord/Telegram users
  *      could not trigger owner inbox/calendar work at all.
  *
- *   2. OWNER_RELATIONSHIP is the single registered entry point for the
+ *   2. RELATIONSHIP is the single registered entry point for the
  *      follow-up surface, and it enforces owner-only access.
  *
  * Uses a real AgentRuntime with PGLite (plugin-sql) — no SQL mocks — so the
@@ -93,13 +93,13 @@ describe("LifeOps plugin action gating", () => {
     // Spot-check a mix of categories: email, calendar, inbox, scheduling, followups.
     for (const expected of [
       "TRIAGE_MESSAGES",
-      "OWNER_CALENDAR",
-      "OWNER_LIFE",
-      "OWNER_RELATIONSHIP",
+      "CALENDAR",
+      "LIFE",
+      "RELATIONSHIP",
       "SEND_DRAFT",
-      "OWNER_BOOK_TRAVEL",
-      "OWNER_DEVICE_INTENT",
-      "OWNER_RESOLVE_REQUEST",
+      "BOOK_TRAVEL",
+      "DEVICE_INTENT",
+      "RESOLVE_REQUEST",
     ]) {
       expect(actionNames).toContain(expected);
     }
@@ -123,7 +123,7 @@ describe("LifeOps plugin action gating", () => {
 });
 
 describe.each([
-  "OWNER_RELATIONSHIP",
+  "RELATIONSHIP",
 ])("%s owner-only access gate", (actionName) => {
   it("validate() rejects non-owner senders", async () => {
     const action = findAction(actionName);

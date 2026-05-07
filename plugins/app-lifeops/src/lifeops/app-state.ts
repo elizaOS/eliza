@@ -20,7 +20,7 @@ export interface LifeOpsAppState {
 
 type RuntimeCacheLike = {
   getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | void>;
+  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
 };
 
 const DEFAULT_PRIORITY_SCORING: LifeOpsPriorityScoringState = {

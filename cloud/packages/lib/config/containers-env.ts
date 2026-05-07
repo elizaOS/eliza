@@ -150,13 +150,13 @@ export const containersEnv = {
 
   /**
    * Default Hetzner Cloud location for provisioning nodes and volumes
-   * (e.g. "fsn1", "nbg1", "hel1"). Hetzner Cloud volumes are
-   * location-bound — the volume and the server it attaches to must be in
-   * the same location. Defaults to "fsn1" (Falkenstein, Germany).
+   * (e.g. "ash", "hil", "fsn1"). Hetzner volumes are location-bound, so
+   * the volume and the server it attaches to must share a location.
+   * Defaults to "ash" (Ashburn, Virginia, US).
    */
   defaultHcloudLocation(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
+    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "ash";
   },
 
   /**
@@ -166,5 +166,41 @@ export const containersEnv = {
   defaultHcloudServerType(): string {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32";
+  },
+
+  // ── Warm pool ───────────────────────────────────────────────────────────
+
+  /**
+   * Whether the agent warm pool is enabled. When false, claim flow always
+   * falls through to the cold-start async path; replenish/drain crons no-op.
+   * Default: false (opt-in).
+   */
+  warmPoolEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_ENABLED);
+    return raw === "true" || raw === "1";
+  },
+
+  /**
+   * Maximum number of pool containers ever provisioned. The forecast may
+   * recommend more, but this is the hard ceiling on cost.
+   * Default: 10.
+   */
+  warmPoolMaxSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MAX_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(50, Math.floor(parsed)) : 10;
+  },
+
+  /**
+   * Floor: the pool replenisher will keep at least this many containers
+   * ready when the pool is enabled. Default: 1.
+   */
+  warmPoolMinSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MIN_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 1;
   },
 };

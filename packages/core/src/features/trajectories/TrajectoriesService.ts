@@ -11,6 +11,7 @@
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
+import { buildContextObjectTrajectoryExport } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
 
@@ -98,6 +99,7 @@ export interface TrajectoryStats {
 
 export interface TrajectoryExportOptions {
 	format: "json" | "art" | "csv";
+	jsonShape?: "legacy" | "context_object_events_v5";
 	includePrompts?: boolean;
 	trajectoryIds?: string[];
 	startDate?: string;
@@ -1973,8 +1975,18 @@ export class TrajectoriesService extends Service {
 		}
 
 		// For JSON format, optionally redact prompts
-		let exportData = trajectories;
-		if (!options.includePrompts) {
+		let exportData:
+			| Trajectory[]
+			| ReturnType<typeof buildContextObjectTrajectoryExport>[] =
+			options.jsonShape === "context_object_events_v5"
+				? trajectories.map((trajectory) =>
+						buildContextObjectTrajectoryExport({ trajectory }),
+					)
+				: trajectories;
+		if (
+			options.jsonShape !== "context_object_events_v5" &&
+			!options.includePrompts
+		) {
 			exportData = trajectories.map((trajectory) =>
 				this.redactTrajectoryPrompts(trajectory),
 			);

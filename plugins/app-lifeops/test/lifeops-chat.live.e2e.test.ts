@@ -769,7 +769,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes itinerary questions toward OWNER_CALENDAR instead of task agents",
+      "routes itinerary questions toward CALENDAR instead of task agents",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const { conversationId } = await createConversation(liveRuntime.port, {
@@ -794,7 +794,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
           prompt,
         );
         const plannerResponse = String(trajectory.llmCall.response ?? "");
-        expect(plannerResponse).toMatch(/OWNER_CALENDAR/i);
+        expect(plannerResponse).toMatch(/CALENDAR/i);
         expect(plannerResponse).not.toMatch(
           /CREATE_TASK|SPAWN_AGENT|SEND_TO_AGENT|LIST_AGENTS/i,
         );

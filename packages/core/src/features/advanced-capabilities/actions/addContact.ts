@@ -5,7 +5,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { addContactTemplate } from "../../../prompts.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Action,
@@ -18,12 +17,8 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { asUUID, ModelType } from "../../../types/index.ts";
-import {
-	composePromptFromState,
-	parseToonKeyValue,
-	stringToUuid,
-} from "../../../utils.ts";
+import { asUUID } from "../../../types/index.ts";
+import { stringToUuid } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("ADD_CONTACT");
@@ -31,14 +26,59 @@ const ADD_KEYWORDS = getValidationKeywordTerms("action.addContact.request", {
 	includeAllLocales: true,
 });
 
-interface AddContactToonResult {
+interface AddContactInput {
 	contactName?: string;
 	entityId?: string;
-	categories?: string;
+	categories?: string | string[];
 	notes?: string;
 	timezone?: string;
 	language?: string;
 	reason?: string;
+}
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
+
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const values = value
+			.map((item) => readString(item))
+			.filter((item): item is string => Boolean(item));
+		return values.length > 0 ? values : undefined;
+	}
+	if (typeof value === "string") {
+		const values = value
+			.split(",")
+			.map((item) => item.trim())
+			.filter(Boolean);
+		return values.length > 0 ? values : undefined;
+	}
+	return undefined;
+}
+
+function readAddContactInput(
+	message: Memory,
+	options?: HandlerOptions,
+): AddContactInput {
+	const params = readParams(options);
+	return {
+		contactName: readString(params.contactName ?? message.content.contactName),
+		entityId: readString(params.entityId ?? message.content.entityId),
+		categories:
+			readStringArray(params.categories ?? message.content.categories) ??
+			undefined,
+		notes: readString(params.notes ?? message.content.notes),
+		timezone: readString(params.timezone ?? message.content.timezone),
+		language: readString(params.language ?? message.content.language),
+		reason: readString(params.reason ?? message.content.reason),
+	};
 }
 
 export const addContactAction: Action = {
@@ -51,6 +91,7 @@ export const addContactAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		const relationshipsService = runtime.getService(
 			"relationships",
@@ -59,6 +100,9 @@ export const addContactAction: Action = {
 			logger.warn("[AddContact] RelationshipsService not available");
 			return false;
 		}
+
+		const params = readAddContactInput(message, options);
+		if (params.contactName) return true;
 
 		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
@@ -80,38 +124,7 @@ export const addContactAction: Action = {
 			throw new Error("RelationshipsService not available");
 		}
 
-		if (!state) {
-			state = {
-				values: {},
-				data: {},
-				text: "",
-			};
-		}
-
-		state.values = {
-			...state.values,
-			message: message.content.text,
-			senderId: message.entityId,
-			senderName: state.values?.senderName || "User",
-		};
-
-		const prompt = composePromptFromState({
-			state,
-			template: addContactTemplate,
-		});
-
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			stopSequences: [],
-		});
-
-		const parsedResponse = parseToonKeyValue<AddContactToonResult>(response);
-		if (!parsedResponse) {
-			logger.warn(
-				"[AddContact] Failed to parse contact information from response",
-			);
-			throw new Error("Could not extract contact information");
-		}
+		const parsedResponse = readAddContactInput(message, _options);
 
 		const contactName = parsedResponse.contactName?.trim();
 		if (!contactName) {
@@ -124,7 +137,13 @@ export const addContactAction: Action = {
 			: null;
 
 		if (!entityId) {
-			const entity = await findEntityByName(runtime, message, state);
+			const currentState =
+				state ?? {
+					values: {},
+					data: {},
+					text: "",
+				};
+			const entity = await findEntityByName(runtime, message, currentState);
 
 			if (entity?.id) {
 				entityId = entity.id;
@@ -154,12 +173,9 @@ export const addContactAction: Action = {
 		}
 
 		// Parse categories
-		const categories = parsedResponse.categories
-			? parsedResponse.categories
-					.split(",")
-					.map((c: string) => c.trim())
-					.filter(Boolean)
-			: ["acquaintance"];
+		const categories = readStringArray(parsedResponse.categories) ?? [
+			"acquaintance",
+		];
 
 		// Build preferences
 		const preferences: Record<string, string> = {};
@@ -210,4 +226,52 @@ export const addContactAction: Action = {
 			text: responseText,
 		};
 	},
+	parameters: [
+		{
+			name: "contactName",
+			description: "Display name of the contact to add.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "entityId",
+			description: "Existing entity ID for the contact, if known.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "categories",
+			description: "Relationship categories for this contact.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+				default: ["acquaintance"],
+			},
+		},
+		{
+			name: "notes",
+			description: "Optional notes to store with the contact.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "timezone",
+			description: "Optional contact timezone.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "language",
+			description: "Optional preferred language for the contact.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "reason",
+			description: "Short explanation for the user-facing confirmation.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 };

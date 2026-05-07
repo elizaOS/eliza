@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createTaskClipboardService } from "../services/taskClipboardService.ts";
@@ -14,7 +12,15 @@ import { createTaskClipboardService } from "../services/taskClipboardService.ts"
 async function resolveItemId(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options?: HandlerOptions,
 ): Promise<string | null> {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	if (typeof params.itemId === "string" && params.itemId.trim()) {
+		return params.itemId.trim();
+	}
 	if (
 		typeof message.content.itemId === "string" &&
 		message.content.itemId.trim()
@@ -36,26 +42,10 @@ async function resolveItemId(
 	if (!text.trim() || items.length === 0) {
 		return null;
 	}
-	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt: [
-			"Select the clipboard item ID to remove.",
-			"",
-			`User message: ${text}`,
-			"",
-			"Clipboard items:",
-			...items.map((item) => `- ${item.id}: ${item.title}`),
-			"",
-			"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
-			"itemId: sp-1234abcd",
-		].join("\n"),
-		stopSequences: [],
-	});
-	const parsed = parseToonKeyValue(String(response)) as Record<
-		string,
-		unknown
-	> | null;
-	if (parsed && typeof parsed.itemId === "string" && parsed.itemId.trim()) {
-		return parsed.itemId.trim();
+	for (const item of items) {
+		if (text.includes(item.id)) {
+			return item.id;
+		}
 	}
 	return null;
 }
@@ -65,7 +55,23 @@ export const removeFromClipboardAction: Action = {
 	similes: ["CLEAR_CLIPBOARD_ITEM", "DELETE_CLIPBOARD_ITEM"],
 	description:
 		"Remove an item from the bounded clipboard when it is no longer needed for the current task.",
-	validate: async (_runtime, message) => {
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+	): Promise<boolean> => {
+		const params =
+			options &&
+			typeof options === "object" &&
+			"parameters" in options &&
+			options.parameters &&
+			typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
+		if (typeof params.itemId === "string" && params.itemId.trim()) {
+			return true;
+		}
 		if (typeof message.content.itemId === "string") {
 			return true;
 		}
@@ -82,7 +88,7 @@ export const removeFromClipboardAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		try {
-			const itemId = await resolveItemId(runtime, message);
+			const itemId = await resolveItemId(runtime, message, _options);
 			if (!itemId) {
 				throw new Error("I couldn't determine which clipboard item to remove.");
 			}
@@ -128,6 +134,14 @@ export const removeFromClipboardAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "itemId",
+			description: "Stable bounded clipboard item ID to remove.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+	],
 	examples: [],
 };
 

@@ -49,7 +49,7 @@ function recordFixtureInterventionTransition(
     subject: "intervention",
     from: "none",
     to: "requested",
-    actionName: "OWNER_DEVICE_INTENT",
+    actionName: "DEVICE_INTENT",
     metadata: { channel, reason: "expired_id_copy" },
     at: new Date().toISOString(),
   } satisfies CapturedStateTransition);
@@ -251,7 +251,7 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
   };
   let service: LifeOpsService | null = null;
   const computerUseAction: Action = {
-    name: "OWNER_COMPUTER_USE",
+    name: "COMPUTER_USE",
     similes: [],
     description: "Deterministic browser portal fixture action.",
     validate: async () => true,
@@ -319,7 +319,7 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
     examples: [],
   };
   const publishDeviceIntentAction: Action = {
-    name: "OWNER_DEVICE_INTENT",
+    name: "DEVICE_INTENT",
     similes: [],
     description: "Deterministic ID-copy intervention fixture action.",
     validate: async () => true,

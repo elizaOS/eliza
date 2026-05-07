@@ -12,9 +12,52 @@ type ActionWithOptionalParams = Action & {
     name: string;
     required?: boolean;
     description: string;
-    schema: { type: string };
+    schema: { type: string; [key: string]: unknown };
   }>;
 };
+
+type NativeToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+function buildNativeToolDefinition(action: Action): NativeToolDefinition {
+  const params = (action as ActionWithOptionalParams).parameters ?? [];
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+
+  for (const param of params) {
+    properties[param.name] = {
+      ...param.schema,
+      description: param.description,
+    };
+    if (param.required) {
+      required.push(param.name);
+    }
+  }
+
+  return {
+    type: "function",
+    function: {
+      name: action.name,
+      description: action.description,
+      parameters: {
+        type: "object",
+        properties,
+        ...(required.length > 0 ? { required } : {}),
+        additionalProperties: params.length === 0,
+      },
+    },
+  };
+}
+
+function buildNativeToolDefinitions(actions: Action[]): NativeToolDefinition[] {
+  return actions.map(buildNativeToolDefinition);
+}
 
 function formatActionsWithParams(actions: Action[]): string {
   return actions
@@ -58,7 +101,7 @@ function buildFallbackActionsProviderResult() {
   );
 
   return {
-    data: { actionsData: [] },
+    data: { actionsData: [], nativeTools: [] },
     values: {
       actionNames: "Possible response actions: FINISH, REPLY, NONE",
       actionExamples: "",
@@ -152,7 +195,7 @@ export const actionsProvider: Provider = {
       const actionExamples = hasActions ? safeComposeActionExamples(actionsData, 10) : "";
 
       return {
-        data: { actionsData },
+        data: { actionsData, nativeTools: buildNativeToolDefinitions(actionsData) },
         values: {
           actionNames,
           actionExamples: actionExamples ? addHeader("# Action Examples", actionExamples) : "",

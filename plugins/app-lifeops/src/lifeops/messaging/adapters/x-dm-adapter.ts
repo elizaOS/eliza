@@ -1,4 +1,5 @@
 import {
+  BaseMessageAdapter,
   type DraftRequest,
   type IAgentRuntime,
   type ListOptions,
@@ -7,7 +8,6 @@ import {
   type MessageSource,
   NotYetImplementedError,
 } from "@elizaos/core";
-import { BaseMessageAdapter } from "@elizaos/core";
 import { LifeOpsService } from "../../service.js";
 import { pullXInboundDms } from "../../x-dm-reader.js";
 import { readXPosterCredentialsFromEnv, sendXDm } from "../../x-poster.js";

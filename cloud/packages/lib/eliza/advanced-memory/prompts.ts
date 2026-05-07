@@ -19,13 +19,12 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in TOON:
-text: Your comprehensive summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point`;
+Respond with JSON only, with no prose, markdown, or code fences:
+{
+  "text": "Your comprehensive summary here",
+  "topics": ["topic1", "topic2", "topic3"],
+  "keyPoints": ["First key point", "Second key point"]
+}`;
 
 export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
 
@@ -50,13 +49,12 @@ Update the summary by:
 
 The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
 
-Respond in TOON:
-text: Your updated and condensed summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point`;
+Respond with JSON only, with no prose, markdown, or code fences:
+{
+  "text": "Your updated and condensed summary here",
+  "topics": ["topic1", "topic2", "topic3"],
+  "keyPoints": ["First key point", "Second key point"]
+}`;
 
 export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
 
@@ -143,11 +141,19 @@ If there are no qualifying facts, return no memories entries.
 
 # Response Format
 
-memories[0]:
-  category: semantic
-  content: User is a senior TypeScript developer with 8 years of backend experience
-  confidence: 0.95
-memories[1]:
-  category: procedural
-  content: User follows TDD workflow: writes tests before implementation, runs tests after each change
-  confidence: 0.88`;
+Respond with JSON only, with no prose, markdown, or code fences:
+
+{
+  "memories": [
+    {
+      "category": "semantic",
+      "content": "User is a senior TypeScript developer with 8 years of backend experience",
+      "confidence": 0.95
+    },
+    {
+      "category": "procedural",
+      "content": "User follows TDD workflow: writes tests before implementation, runs tests after each change",
+      "confidence": 0.88
+    }
+  ]
+}`;

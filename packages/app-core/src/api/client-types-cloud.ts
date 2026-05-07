@@ -649,6 +649,227 @@ export interface TrajectoryProviderAccess {
   createdAt: string;
 }
 
+export type TrajectoryJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | TrajectoryJsonValue[]
+  | { [key: string]: TrajectoryJsonValue };
+
+export type ContextEventType =
+  | "message"
+  | "memory"
+  | "provider"
+  | "tool"
+  | "instruction"
+  | "segment"
+  | "metadata"
+  | (string & {});
+
+export type ContextEventRole =
+  | "system"
+  | "user"
+  | "assistant"
+  | "tool"
+  | (string & {});
+
+export interface ContextEventBase {
+  id: string;
+  type: ContextEventType;
+  createdAt?: number;
+  source?: string;
+  metadata?: Record<string, TrajectoryJsonValue | undefined>;
+}
+
+export interface ContextMessageEvent extends ContextEventBase {
+  type: "message";
+  message: {
+    id?: string;
+    role: ContextEventRole;
+    content: string | TrajectoryJsonValue;
+    name?: string;
+    metadata?: Record<string, TrajectoryJsonValue | undefined>;
+  };
+}
+
+export interface ContextMemoryEvent extends ContextEventBase {
+  type: "memory";
+  memory: Record<string, unknown>;
+}
+
+export interface ContextProviderEvent extends ContextEventBase {
+  type: "provider";
+  name: string;
+  text?: string;
+  values?: Record<string, TrajectoryJsonValue | undefined>;
+  data?: Record<string, unknown>;
+}
+
+export interface ContextToolEvent extends ContextEventBase {
+  type: "tool";
+  tool: {
+    id?: string;
+    name: string;
+    description?: string;
+    parameters?: unknown;
+    metadata?: Record<string, TrajectoryJsonValue | undefined>;
+  };
+}
+
+export interface ContextInstructionEvent extends ContextEventBase {
+  type: "instruction";
+  content: string;
+  role?: ContextEventRole;
+  stable?: boolean;
+}
+
+export interface ContextSegmentEvent extends ContextEventBase {
+  type: "segment";
+  segment: Record<string, unknown> & {
+    id?: string;
+    label?: string;
+    tokenCount?: number;
+  };
+}
+
+export interface ContextMetadataEvent extends ContextEventBase {
+  type: "metadata";
+  key: string;
+  value: TrajectoryJsonValue;
+}
+
+export type ContextEvent =
+  | ContextMessageEvent
+  | ContextMemoryEvent
+  | ContextProviderEvent
+  | ContextToolEvent
+  | ContextInstructionEvent
+  | ContextSegmentEvent
+  | ContextMetadataEvent
+  | (ContextEventBase & Record<string, unknown>);
+
+export type NativeToolCallStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "skipped"
+  | "failed";
+
+export interface TrajectoryEventBase {
+  id: string;
+  trajectoryId?: string;
+  stepId?: string;
+  stage?: PipelineStageName;
+  timestamp?: number;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type PipelineStageName =
+  | "input"
+  | "should_respond"
+  | "message_handler"
+  | "plan"
+  | "planner"
+  | "sub_planner"
+  | "actions"
+  | "evaluators"
+  | "evaluator"
+  | "context"
+  | "cache"
+  | (string & {});
+
+export interface NativeToolCallEvent extends TrajectoryEventBase {
+  type: "tool_call" | "tool_result" | "tool_error";
+  callId?: string;
+  toolCallId?: string;
+  actionName?: string;
+  toolName?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  result?: unknown;
+  output?: unknown;
+  status?: NativeToolCallStatus;
+  success?: boolean;
+  durationMs?: number;
+  duration?: number;
+  error?: string;
+}
+
+export interface TrajectoryEvaluationEvent extends TrajectoryEventBase {
+  type: "evaluation" | "evaluator";
+  evaluatorName?: string;
+  name?: string;
+  status?: NativeToolCallStatus;
+  success?: boolean;
+  decision?: string;
+  thought?: string;
+  result?: unknown;
+  durationMs?: number;
+  error?: string;
+}
+
+export interface TrajectoryCacheObservation extends TrajectoryEventBase {
+  type: "cache_observation" | "cache";
+  cacheName?: string;
+  key?: string;
+  scope?: string;
+  hit: boolean;
+  reason?: string;
+  ttlMs?: number;
+  ageMs?: number;
+  sizeBytes?: number;
+  tokenCount?: number;
+}
+
+export type ContextDiffChangeType =
+  | "added"
+  | "removed"
+  | "changed"
+  | "unchanged"
+  | (string & {});
+
+export interface TrajectoryContextDiffChange {
+  type: ContextDiffChangeType;
+  path?: string;
+  before?: unknown;
+  after?: unknown;
+  summary?: string;
+  tokenDelta?: number;
+}
+
+export interface TrajectoryContextDiff extends TrajectoryEventBase {
+  type: "context_diff";
+  label?: string;
+  beforeContextId?: string;
+  afterContextId?: string;
+  added?: number;
+  removed?: number;
+  changed?: number;
+  tokenDelta?: number;
+  changes?: TrajectoryContextDiffChange[];
+  before?: unknown;
+  after?: unknown;
+}
+
+export type TrajectoryEvent =
+  | NativeToolCallEvent
+  | TrajectoryEvaluationEvent
+  | TrajectoryCacheObservation
+  | TrajectoryContextDiff
+  | (TrajectoryEventBase & { type: string; [key: string]: unknown });
+
+export interface TrajectoryCacheStatsData {
+  hits: number;
+  misses: number;
+  total: number;
+  hitRate: number;
+  tokenCount?: number;
+  sizeBytes?: number;
+}
+
 export interface TrajectoryListOptions {
   limit?: number;
   offset?: number;
@@ -672,6 +893,13 @@ export interface TrajectoryDetailResult {
   trajectory: TrajectoryRecord;
   llmCalls: TrajectoryLlmCall[];
   providerAccesses: TrajectoryProviderAccess[];
+  events?: TrajectoryEvent[];
+  contextEvents?: ContextEvent[];
+  toolEvents?: NativeToolCallEvent[];
+  evaluationEvents?: TrajectoryEvaluationEvent[];
+  cacheObservations?: TrajectoryCacheObservation[];
+  cacheStats?: TrajectoryCacheStatsData;
+  contextDiffs?: TrajectoryContextDiff[];
 }
 
 export interface TrajectoryStats {
@@ -691,6 +919,7 @@ export interface TrajectoryConfig {
 
 export interface TrajectoryExportOptions {
   format: TrajectoryExportFormat;
+  jsonShape?: "legacy" | "context_object_events_v5";
   includePrompts?: boolean;
   trajectoryIds?: string[];
   startDate?: string;

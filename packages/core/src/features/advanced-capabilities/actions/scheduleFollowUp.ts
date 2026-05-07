@@ -5,7 +5,6 @@ import {
 	getValidationKeywordTerms,
 } from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
-import { scheduleFollowUpTemplate } from "../../../prompts.ts";
 import type { FollowUpService } from "../../../services/followUp.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
@@ -18,16 +17,8 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { asUUID, ModelType } from "../../../types/index.ts";
-import {
-	composePromptFromState,
-	parseJSONObjectFromText,
-	parseToonKeyValue,
-} from "../../../utils.ts";
-import {
-	extractScheduleFollowUpResponseFromText,
-	type ParsedScheduleFollowUpResponse,
-} from "../../shared/schedule-follow-up-response.ts";
+import { asUUID } from "../../../types/index.ts";
+import type { ParsedScheduleFollowUpResponse } from "../../shared/schedule-follow-up-response.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SCHEDULE_FOLLOW_UP");
@@ -37,6 +28,34 @@ const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
 		includeAllLocales: true,
 	},
 );
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
+
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readFollowUpInput(
+	message: Memory,
+	options?: HandlerOptions,
+): ParsedScheduleFollowUpResponse | null {
+	const params = readParams(options);
+	const parsed = {
+		contactName: readString(params.contactName ?? message.content.contactName),
+		entityId: readString(params.entityId ?? message.content.entityId),
+		scheduledAt: readString(params.scheduledAt ?? message.content.scheduledAt),
+		reason: readString(params.reason ?? message.content.reason),
+		priority: readString(params.priority ?? message.content.priority),
+		message: readString(params.message ?? message.content.message),
+	} satisfies ParsedScheduleFollowUpResponse;
+	return parsed.contactName || parsed.entityId || parsed.scheduledAt
+		? parsed
+		: null;
+}
 
 export const scheduleFollowUpAction: Action = {
 	name: spec.name,
@@ -49,11 +68,12 @@ export const scheduleFollowUpAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (
 			runtime.actions.some(
 				(action) =>
-					action.name === "OWNER_RELATIONSHIP" ||
+					action.name === "RELATIONSHIP" ||
 					action.name === "RELATIONSHIP",
 			)
 		) {
@@ -68,6 +88,11 @@ export const scheduleFollowUpAction: Action = {
 		if (!relationshipsService || !followUpService) {
 			logger.warn("[ScheduleFollowUp] Required services not available");
 			return false;
+		}
+
+		const params = readFollowUpInput(message, options);
+		if (params?.scheduledAt && (params.contactName || params.entityId)) {
+			return true;
 		}
 
 		const messageText = message.content.text ?? "";
@@ -91,38 +116,7 @@ export const scheduleFollowUpAction: Action = {
 			throw new Error("Required services not available");
 		}
 
-		if (!state) {
-			state = {
-				values: {},
-				data: {},
-				text: "",
-			};
-		}
-
-		state.values = {
-			...state.values,
-			message: message.content.text,
-			senderId: message.entityId,
-			senderName: state.values?.senderName || "User",
-			currentDateTime: new Date().toISOString(),
-		};
-
-		const prompt = composePromptFromState({
-			state,
-			template: scheduleFollowUpTemplate,
-		});
-
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			stopSequences: [],
-		});
-
-		const parsedResponse =
-			parseToonKeyValue<ParsedScheduleFollowUpResponse>(response) ??
-			(parseJSONObjectFromText(
-				response,
-			) as ParsedScheduleFollowUpResponse | null) ??
-			extractScheduleFollowUpResponseFromText(response);
+		const parsedResponse = readFollowUpInput(message, _options);
 		const contactName = parsedResponse?.contactName?.trim();
 		if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {
 			logger.warn(
@@ -142,6 +136,7 @@ export const scheduleFollowUpAction: Action = {
 			if (contacts.length > 0) {
 				entityId = contacts[0]?.entityId ?? null;
 			} else {
+				state ??= { values: {}, data: {}, text: "" };
 				const entity = await findEntityByName(runtime, message, state);
 				if (entity?.id) {
 					entityId = entity.id;
@@ -218,4 +213,46 @@ export const scheduleFollowUpAction: Action = {
 			text: responseText,
 		};
 	},
+	parameters: [
+		{
+			name: "contactName",
+			description: "Name of the contact to follow up with.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "entityId",
+			description: "Entity ID of the contact to follow up with, if known.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "scheduledAt",
+			description: "ISO date/time for the follow-up.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "reason",
+			description: "Reason for the follow-up.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "priority",
+			description: "Follow-up priority.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["high", "medium", "low"],
+				default: "medium",
+			},
+		},
+		{
+			name: "message",
+			description: "Optional follow-up message or reminder text.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 };

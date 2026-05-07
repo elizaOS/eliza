@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Tell me what slides, bio, title, or portal assets I still owe before the event.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "OWNER_CALENDAR", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["TRIAGE_MESSAGES", "CALENDAR", "COMPUTER_USE"],
         description: "event asset checklist generation",
         includesAny: ["slides", "bio", "title", "portal", "event"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "OWNER_CALENDAR", "OWNER_COMPUTER_USE"],
+      actionName: ["TRIAGE_MESSAGES", "CALENDAR", "COMPUTER_USE"],
     },
     {
       type: "memoryWriteOccurred",
@@ -57,7 +57,7 @@ export default scenario({
       type: "custom",
       name: "ea-asset-deadline-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "OWNER_CALENDAR", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["TRIAGE_MESSAGES", "CALENDAR", "COMPUTER_USE"],
         description: "event asset checklist generation",
         includesAny: ["slides", "bio", "title", "portal", "event"],
       }),

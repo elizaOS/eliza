@@ -12,7 +12,7 @@
  *
  * This endpoint reserves a `pending` remote_sessions row. The session is
  * promoted to `active` when the agent consumes the code via
- * OWNER_REMOTE_DESKTOP (subaction:"start"), or expires if the code is never consumed.
+ * REMOTE_DESKTOP (subaction:"start"), or expires if the code is never consumed.
  */
 
 import { Hono } from "hono";

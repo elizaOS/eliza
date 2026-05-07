@@ -131,7 +131,7 @@ export async function parseX402Response(
   response: Response,
 ): Promise<X402PaymentRequirement[] | null> {
   const headerValue = response.headers.get("www-authenticate");
-  if (headerValue && headerValue.toLowerCase().startsWith("x402")) {
+  if (headerValue?.toLowerCase().startsWith("x402")) {
     const jsonPart = headerValue.slice(4).trim();
     if (jsonPart.length > 0) {
       const parsed = JSON.parse(jsonPart) as RawX402Body | RawRequirement[];

@@ -34,7 +34,7 @@ export default scenario({
       text: "We're gonna cancel some stuff and push everything back until next month. All partnership meetings.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEND_DRAFT",
           "TRIAGE_MESSAGES",
         ],
@@ -58,12 +58,12 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_CALENDAR", "SEND_DRAFT", "TRIAGE_MESSAGES"],
+      actionName: ["CALENDAR", "SEND_DRAFT", "TRIAGE_MESSAGES"],
     },
     {
       type: "approvalRequestExists",
       expected: true,
-      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "OWNER_CALENDAR"],
+      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "CALENDAR"],
     },
     {
       type: "noSideEffectOnReject",
@@ -74,7 +74,7 @@ export default scenario({
       name: "ea-travel-blackout-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "OWNER_CALENDAR",
+          "CALENDAR",
           "SEND_DRAFT",
           "TRIAGE_MESSAGES",
         ],
@@ -88,7 +88,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "bulk reschedule is queued behind a single approval covering the partnership cohort",
-        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "OWNER_CALENDAR"],
+        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "CALENDAR"],
       }),
     },
     {

@@ -5,8 +5,6 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -27,63 +25,49 @@ function isValidWriteInput(obj: Record<string, unknown>): boolean {
 	);
 }
 
-const EXTRACT_TEMPLATE = `Extract the following information from the user's message to save to the clipboard:
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: {};
+}
 
-User message: {{text}}
+function normalizeTags(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const tags = value
+			.map((tag) => (typeof tag === "string" ? tag.trim() : ""))
+			.filter(Boolean);
+		return tags.length > 0 ? tags : undefined;
+	}
+	if (typeof value === "string") {
+		const tags = value
+			.split(",")
+			.map((tag) => tag.trim())
+			.filter(Boolean);
+		return tags.length > 0 ? tags : undefined;
+	}
+	return undefined;
+}
 
-Recent conversation:
-{{messageHistory}}
-
-Respond with TOON only. Return exactly one TOON document, no prose or fences.
-
-Fields:
-- title: A short, descriptive title for the note (required)
-- content: The main content to save (required)
-- tags: Comma-separated tags for categorization (optional)
-
-Example:
-title: The note title
-content: The content to save
-tags: tag1, tag2`;
-
-async function extractWriteInfo(
-	runtime: IAgentRuntime,
+function extractWriteInfo(
 	message: Memory,
-	_state: State,
-): Promise<WriteInput | null> {
-	const prompt = EXTRACT_TEMPLATE.replace(
-		"{{text}}",
-		message.content.text ?? "",
-	).replace("{{messageHistory}}", "");
+	options?: HandlerOptions,
+): WriteInput | null {
+	const params = readParams(options);
+	const raw = {
+		title: params.title ?? message.content.title,
+		content: params.content ?? message.content.content,
+		tags: params.tags ?? message.content.tags,
+	};
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
-
-	logger.debug("[ClipboardWrite] Extract result:", result);
-
-	const parsed = parseToonKeyValue(String(result)) as Record<
-		string,
-		unknown
-	> | null;
-
-	if (!parsed || !isValidWriteInput(parsed)) {
+	if (!isValidWriteInput(raw)) {
 		logger.error("[ClipboardWrite] Failed to extract valid write info");
 		return null;
 	}
 
-	const tags = parsed.tags
-		? String(parsed.tags)
-				.split(",")
-				.map((t: string) => t.trim())
-				.filter(Boolean)
-		: undefined;
-
 	return {
-		title: String(parsed.title),
-		content: String(parsed.content),
-		tags,
+		title: String(raw.title),
+		content: String(raw.content),
+		tags: normalizeTags(raw.tags),
 	};
 }
 
@@ -115,6 +99,10 @@ export const clipboardWriteAction: Action = {
 			? __avSource === __avExpectedSource
 			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
 		const __avOptions = options && typeof options === "object" ? options : {};
+		const __avParams = readParams(options);
+		if (isValidWriteInput(__avParams)) {
+			return true;
+		}
 		const __avInputOk =
 			__avText.trim().length > 0 ||
 			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
@@ -151,13 +139,12 @@ export const clipboardWriteAction: Action = {
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		stateFromTrigger: State | undefined,
+		_stateFromTrigger: State | undefined,
 		_options: HandlerOptions | undefined,
 		callback?: HandlerCallback,
 		_responses?: Memory[],
 	) => {
-		const state = stateFromTrigger ?? (await runtime.composeState(message, []));
-		const writeInfo = await extractWriteInfo(runtime, message, state);
+		const writeInfo = extractWriteInfo(message, _options);
 
 		if (!writeInfo) {
 			if (callback) {
@@ -203,6 +190,29 @@ export const clipboardWriteAction: Action = {
 		}
 	},
 
+	parameters: [
+		{
+			name: "title",
+			description: "Short, descriptive title for the clipboard note.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "content",
+			description: "Full note content to save to the clipboard.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "tags",
+			description: "Optional tags for categorizing the clipboard note.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+	],
 	examples: [],
 };
 

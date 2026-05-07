@@ -108,7 +108,7 @@ export function withRelationships<
         this.agentId(),
         relationshipId,
       );
-      if (!rel || !rel.lastContactedAt) {
+      if (!rel?.lastContactedAt) {
         return null;
       }
       const lastMs = Date.parse(rel.lastContactedAt);

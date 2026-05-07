@@ -19,6 +19,47 @@
  * - 3 (Full): Codes at start AND end, maximum safety.
  */
 
+import type { EvaluationResult } from "./components";
+import type { ContextEvent } from "./context-object";
+import type { ToolCall } from "./model";
+
+type MaybePromise<T> = T | Promise<T>;
+
+export interface StreamingToolCallPayload {
+	toolCall: ToolCall;
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface StreamingToolResultPayload {
+	toolCall?: ToolCall;
+	toolCallId?: string;
+	result?: ToolCall["result"];
+	status?: ToolCall["status"];
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface StreamingEvaluationPayload {
+	evaluation: EvaluationResult;
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export type StreamingContextEventPayload = ContextEvent;
+
+export interface StreamingEventHooks {
+	onToolCall?: (payload: StreamingToolCallPayload) => MaybePromise<void>;
+	onToolResult?: (payload: StreamingToolResultPayload) => MaybePromise<void>;
+	onEvaluation?: (payload: StreamingEvaluationPayload) => MaybePromise<void>;
+	onContextEvent?: (
+		payload: StreamingContextEventPayload,
+	) => MaybePromise<void>;
+}
+
 /**
  * Interface for stream content extractors.
  *

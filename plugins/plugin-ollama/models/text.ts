@@ -23,6 +23,28 @@ const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
 
+type GenerateTextParamsWithNativeOptions = GenerateTextParams & {
+  messages?: unknown[];
+  tools?: unknown;
+  toolChoice?: unknown;
+  responseSchema?: unknown;
+};
+
+function assertNoUnsupportedNativeOptions(params: GenerateTextParamsWithNativeOptions): void {
+  const unsupported = [
+    params.messages ? "messages" : undefined,
+    params.tools ? "tools" : undefined,
+    params.toolChoice ? "toolChoice" : undefined,
+    params.responseSchema ? "responseSchema" : undefined,
+  ].filter((name): name is string => Boolean(name));
+
+  if (unsupported.length > 0) {
+    throw new Error(
+      `[Ollama] Native ${unsupported.join(", ")} plumbing is not supported by this adapter yet.`
+    );
+  }
+}
+
 async function generateOllamaText(
   runtime: IAgentRuntime,
   ollama: ReturnType<typeof createOllama>,
@@ -98,15 +120,19 @@ function getModelNameForType(runtime: IAgentRuntime, modelType: TextModelType): 
 async function handleTextWithModelType(
   runtime: IAgentRuntime,
   modelType: TextModelType,
-  {
+  params: GenerateTextParams
+): Promise<string> {
+  assertNoUnsupportedNativeOptions(params as GenerateTextParamsWithNativeOptions);
+
+  const {
     prompt,
     stopSequences = [],
     maxTokens = 8192,
     temperature = 0.7,
     frequencyPenalty = 0.7,
     presencePenalty = 0.7,
-  }: GenerateTextParams
-): Promise<string> {
+  } = params;
+
   try {
     const baseURL = getBaseURL(runtime);
     const customFetch = runtime.fetch ?? undefined;

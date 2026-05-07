@@ -9,7 +9,6 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { TextChannel } from "discord.js";
@@ -18,6 +17,7 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { createPollTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 import {
 	terminalActionInteractionSemantics,
 	terminalActionResultData,
@@ -27,11 +27,23 @@ const getPollInfo = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
 	state: State,
+	options?: HandlerOptions,
 ): Promise<{
 	question: string;
 	options: string[];
 	useEmojis: boolean;
 } | null> => {
+	const parameters = getActionParameters(options);
+	if (parameters.question && Array.isArray(parameters.options)) {
+		return {
+			question: String(parameters.question),
+			options: parameters.options.slice(0, 10).map(String),
+			useEmojis:
+				parameters.useEmojis !== false &&
+				String(parameters.useEmojis).toLowerCase() !== "false",
+		};
+	}
+
 	const prompt = composePromptFromState({
 		state,
 		template: createPollTemplate,
@@ -42,7 +54,7 @@ const getPollInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseJsonObjectFromText(response);
 		if (
 			parsedResponse?.question &&
 			Array.isArray(parsedResponse.options) &&
@@ -128,7 +140,7 @@ export const createPoll: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
-		_options?: HandlerOptions,
+		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		const discordService = runtime.getService(
@@ -155,7 +167,7 @@ export const createPoll: Action = {
 			return { success: false, error: "State is not available" };
 		}
 
-		const pollInfo = await getPollInfo(runtime, message, state);
+		const pollInfo = await getPollInfo(runtime, message, state, options);
 		if (!pollInfo) {
 			if (callback) {
 				await callback?.({

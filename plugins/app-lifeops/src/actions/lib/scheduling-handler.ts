@@ -45,13 +45,13 @@ import {
 } from "../../lifeops/owner-profile.js";
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops-grounded-reply.js";
 import { inferTimeZoneFromLocationText } from "../timezone-normalization.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;

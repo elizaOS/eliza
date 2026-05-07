@@ -9,7 +9,6 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { GuildMember } from "discord.js";
@@ -18,15 +17,27 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { getUserInfoTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 
 const getUserIdentifier = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
 	state: State,
+	options?: HandlerOptions,
 ): Promise<{
 	userIdentifier: string;
 	detailed: boolean;
 } | null> => {
+	const parameters = getActionParameters(options);
+	if (parameters.userIdentifier) {
+		return {
+			userIdentifier: String(parameters.userIdentifier),
+			detailed:
+				parameters.detailed === true ||
+				String(parameters.detailed).toLowerCase() === "true",
+		};
+	}
+
 	const prompt = composePromptFromState({
 		state,
 		template: getUserInfoTemplate,
@@ -37,7 +48,7 @@ const getUserIdentifier = async (
 			prompt,
 		});
 
-		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseJsonObjectFromText(response);
 		if (parsedResponse?.userIdentifier) {
 			return {
 				userIdentifier: String(parsedResponse.userIdentifier),
@@ -154,7 +165,7 @@ export const getUserInfo: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
-		_options?: HandlerOptions,
+		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		const discordService = runtime.getService(
@@ -181,7 +192,7 @@ export const getUserInfo: Action = {
 			return { success: false, error: "State is not available" };
 		}
 
-		const userInfo = await getUserIdentifier(runtime, message, state);
+		const userInfo = await getUserIdentifier(runtime, message, state, options);
 		if (!userInfo) {
 			if (callback) {
 				await callback?.({

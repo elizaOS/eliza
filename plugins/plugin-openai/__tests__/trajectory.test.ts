@@ -53,6 +53,7 @@ describe("OpenAI trajectory wrapping", () => {
     vi.doMock("ai", () => ({
       generateText,
       generateObject,
+      jsonSchema: vi.fn((schema: unknown) => ({ schema })),
       streamText: vi.fn(),
     }));
     vi.doMock("../providers", () => ({

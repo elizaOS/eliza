@@ -22,7 +22,6 @@ import type {
   LifeOpsScreenTimeTargetBucket,
   LifeOpsScreenTimeVisibleBuckets,
   LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
   LifeOpsScreenTimeBucket as ScreenTimeBucket,
   LifeOpsSocialHabitDataSource as SocialHabitDataSource,
   LifeOpsSocialHabitSummary as SocialHabitSummary,

@@ -117,7 +117,7 @@ export class TravelTimeUnavailableError extends Error {
 
 export class TravelTimeService {
   constructor(
-    private readonly runtime: IAgentRuntime,
+    readonly _runtime: IAgentRuntime,
     private readonly deps: TravelTimeServiceDeps,
   ) {}
 

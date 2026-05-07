@@ -15,11 +15,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import {
   APICallError,
-  convertToModelMessages,
   generateText,
+  jsonSchema,
+  type ModelMessage,
   RetryError,
   streamText,
-  type UIMessage,
 } from "ai";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -92,6 +92,7 @@ function computeEffectiveMaxTokens(
 interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content:
+    | null
     | string
     | Array<{
         type: string;
@@ -127,6 +128,17 @@ interface ChatRequest {
     };
   }>;
   tool_choice?: "auto" | "none" | { type: "function"; function: { name: string } };
+  response_format?:
+    | { type: "json_object" | "text" }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name?: string;
+          description?: string;
+          schema?: Record<string, unknown>;
+          strict?: boolean;
+        };
+      };
   /** Enable provider-native web search. Defaults to false. */
   webSearchEnabled?: boolean;
   /** Optional max search budget for provider-native web search. */
@@ -200,67 +212,203 @@ function inferFileMediaType(fileData: string | undefined, filename: string | und
   return "application/octet-stream";
 }
 
-function convertToUIMessages(messages: ChatMessage[]): UIMessage[] {
-  return messages.map((msg) => {
-    // Handle simple string content
-    if (typeof msg.content === "string") {
-      return {
-        id: crypto.randomUUID(),
-        role: msg.role as "system" | "user" | "assistant",
-        parts: [{ type: "text" as const, text: msg.content }],
-      };
-    }
-
-    // Handle multipart content (text + images)
-    const parts = msg.content
-      .map((part) => {
-        if (part.image_url) {
-          const imageUrl = getImageUrl(part.image_url);
-          if (!imageUrl) {
-            logger.warn("[chat/completions] Ignoring image part without url", {
-              role: msg.role,
-            });
-            return null;
-          }
-          return {
-            type: "file" as const,
-            url: imageUrl,
-            mediaType: inferImageMediaType(imageUrl),
-          };
-        }
-        if (part.file) {
-          const fileUrl = part.file.file_data;
-          if (!fileUrl) {
-            logger.warn("[chat/completions] Ignoring file part without file_data", {
-              role: msg.role,
-              filename: part.file.filename,
-              hasFileId: typeof part.file.file_id === "string",
-            });
-            return null;
-          }
-          return {
-            type: "file" as const,
-            url: fileUrl,
-            filename: part.file.filename,
-            mediaType: inferFileMediaType(fileUrl, part.file.filename),
-          };
-        }
-        if (part.text) {
-          return { type: "text" as const, text: part.text };
-        }
-        return null;
-      })
-      .filter((part): part is NonNullable<typeof part> => part !== null);
-
-    return {
-      id: crypto.randomUUID(),
-      role: msg.role as "system" | "user" | "assistant",
-      parts,
-    };
-  });
+function parseToolArguments(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
+function toOpenAIArguments(input: unknown): string {
+  if (typeof input === "string") return input;
+  try {
+    return JSON.stringify(input ?? {});
+  } catch {
+    return "{}";
+  }
+}
+
+function toModelContentParts(content: Exclude<ChatMessage["content"], string | null>) {
+  return content
+    .map((part) => {
+      if (part.image_url) {
+        const imageUrl = getImageUrl(part.image_url);
+        if (!imageUrl) {
+          logger.warn("[chat/completions] Ignoring image part without url");
+          return null;
+        }
+        return {
+          type: "file" as const,
+          data: imageUrl,
+          mediaType: inferImageMediaType(imageUrl),
+        };
+      }
+      if (part.file) {
+        const fileUrl = part.file.file_data;
+        if (!fileUrl) {
+          logger.warn("[chat/completions] Ignoring file part without file_data", {
+            filename: part.file.filename,
+            hasFileId: typeof part.file.file_id === "string",
+          });
+          return null;
+        }
+        return {
+          type: "file" as const,
+          data: fileUrl,
+          filename: part.file.filename,
+          mediaType: inferFileMediaType(fileUrl, part.file.filename),
+        };
+      }
+      if (part.text) {
+        return { type: "text" as const, text: part.text };
+      }
+      return null;
+    })
+    .filter((part): part is NonNullable<typeof part> => part !== null);
+}
+
+function convertToModelMessagesFromOpenAI(messages: ChatMessage[]): ModelMessage[] {
+  const modelMessages: ModelMessage[] = [];
+  const toolNames = new Map<string, string>();
+
+  for (const msg of messages) {
+    if (msg.role === "assistant" && msg.tool_calls?.length) {
+      for (const toolCall of msg.tool_calls) {
+        toolNames.set(toolCall.id, toolCall.function.name);
+      }
+    }
+  }
+
+  for (const msg of messages) {
+    // Handle simple string content
+    if (msg.role === "system") {
+      modelMessages.push({ role: "system", content: getMessageContent(msg) });
+      continue;
+    }
+
+    if (msg.role === "tool") {
+      modelMessages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: msg.tool_call_id ?? crypto.randomUUID(),
+            toolName: toolNames.get(msg.tool_call_id ?? "") ?? "unknown_tool",
+            output: { type: "text", value: getMessageContent(msg) },
+          },
+        ],
+      } as ModelMessage);
+      continue;
+    }
+
+    const parts =
+      typeof msg.content === "string" || msg.content == null
+        ? msg.content
+          ? [{ type: "text" as const, text: msg.content }]
+          : []
+        : toModelContentParts(msg.content);
+
+    if (msg.role === "assistant") {
+      const assistantParts = [
+        ...parts,
+        ...(msg.tool_calls ?? []).map((toolCall) => ({
+          type: "tool-call" as const,
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          input: parseToolArguments(toolCall.function.arguments),
+        })),
+      ];
+      modelMessages.push({
+        role: "assistant",
+        content: assistantParts.length > 0 ? assistantParts : [{ type: "text", text: "" }],
+      } as ModelMessage);
+      continue;
+    }
+
+    modelMessages.push({
+      role: "user",
+      content: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+    } as ModelMessage);
+  }
+
+  return modelMessages;
+}
+
+function convertTools(tools: ChatRequest["tools"]) {
+  if (!tools?.length) return undefined;
+
+  return Object.fromEntries(
+    tools.map((tool) => [
+      tool.function.name,
+      {
+        ...(tool.function.description ? { description: tool.function.description } : {}),
+        inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
+        outputSchema: jsonSchema({ type: "object", additionalProperties: true }),
+      },
+    ]),
+  );
+}
+
+function mapToolChoice(
+  toolChoice: ChatRequest["tool_choice"],
+): "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined {
+  if (!toolChoice) return undefined;
+  if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
+  return { type: "tool", toolName: toolChoice.function.name };
+}
+
+function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
+  if (!responseFormat || responseFormat.type === "text") return undefined;
+  const schema =
+    responseFormat.type === "json_schema"
+      ? (responseFormat.json_schema.schema ?? { type: "object" })
+      : { type: "object", additionalProperties: true };
+  const name = responseFormat.type === "json_schema" ? responseFormat.json_schema.name : undefined;
+  const description =
+    responseFormat.type === "json_schema" ? responseFormat.json_schema.description : undefined;
+
+  const output = {
+    name: "object",
+    responseFormat: Promise.resolve({
+      type: "json" as const,
+      schema,
+      ...(name ? { name } : {}),
+      ...(description ? { description } : {}),
+    }),
+    async parseCompleteOutput({ text }: { text: string }) {
+      return JSON.parse(text);
+    },
+    async parsePartialOutput({ text }: { text: string }) {
+      try {
+        return { partial: JSON.parse(text) };
+      } catch {
+        return undefined;
+      }
+    },
+    createElementStreamTransform() {
+      return undefined;
+    },
+  };
+
+  if (responseFormat.type === "json_object") {
+    return output;
+  }
+  return output;
+}
+
+export const __nativeToolingTestHooks = {
+  convertToModelMessagesFromOpenAI,
+  convertTools,
+  mapToolChoice,
+  mapResponseFormat,
+};
+
 function getMessageContent(msg: ChatMessage): string {
+  if (msg.content == null) return "";
   if (typeof msg.content === "string") return msg.content;
   return msg.content.map((p) => p.text || "").join("");
 }
@@ -568,7 +716,7 @@ export async function handleChatCompletionsPOST(
     const systemMessage = request.messages.find((m) => m.role === "system");
     const systemPrompt = systemMessage ? getMessageContent(systemMessage) : undefined;
     const nonSystemMessages = request.messages.filter((m) => m.role !== "system");
-    const uiMessages = convertToUIMessages(nonSystemMessages);
+    const modelMessages = convertToModelMessagesFromOpenAI(nonSystemMessages);
 
     logger.info("[Chat Completions] Request", {
       model,
@@ -583,7 +731,7 @@ export async function handleChatCompletionsPOST(
       return await handleStreamingRequest(
         model,
         systemPrompt,
-        uiMessages,
+        modelMessages,
         request,
         user,
         apiKey ? { id: apiKey.id } : null,
@@ -602,7 +750,7 @@ export async function handleChatCompletionsPOST(
       return await handleNonStreamingRequest(
         model,
         systemPrompt,
-        uiMessages,
+        modelMessages,
         request,
         user,
         apiKey ? { id: apiKey.id } : null,
@@ -664,7 +812,7 @@ export async function handleChatCompletionsPOST(
 async function handleStreamingRequest(
   model: string,
   systemPrompt: string | undefined,
-  messages: UIMessage[],
+  messages: ModelMessage[],
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
@@ -680,6 +828,9 @@ async function handleStreamingRequest(
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
+  const tools = convertTools(request.tools);
+  const toolChoice = mapToolChoice(request.tool_choice);
+  const experimentalOutput = mapResponseFormat(request.response_format);
 
   const safeParams = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -696,11 +847,14 @@ async function handleStreamingRequest(
   const result = streamText({
     model: getLanguageModel(model),
     system: systemPrompt,
-    messages: await convertToModelMessages(messages),
+    messages,
     ...webSearchOptions,
     abortSignal,
     timeout: timeoutMs,
     ...safeParams,
+    ...(tools ? { tools } : {}),
+    ...(toolChoice ? { toolChoice } : {}),
+    ...(experimentalOutput ? { output: experimentalOutput } : {}),
     ...(effectiveMaxTokens != null && { maxOutputTokens: effectiveMaxTokens }),
     ...cotOptions,
     onFinish: async ({ text, usage }) => {
@@ -772,35 +926,139 @@ async function handleStreamingRequest(
   });
 
   // Convert to OpenAI-compatible SSE stream
-  const stream = result.textStream;
   const encoder = new TextEncoder();
 
   const openAIStream = new ReadableStream({
     async start(controller) {
-      const reader = stream.getReader();
       const responseId = `chatcmpl-${Date.now()}`;
+      const toolCallIndexes = new Map<string, number>();
+      let nextToolCallIndex = 0;
+      let finishReason = "stop";
 
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        for await (const part of result.fullStream as AsyncIterable<any>) {
+          if (part.type === "text-delta") {
+            const chunk = {
+              id: responseId,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: part.text },
+                  finish_reason: null,
+                },
+              ],
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            continue;
+          }
 
-          // Send OpenAI-format SSE chunk
-          const chunk = {
-            id: responseId,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: value },
-                finish_reason: null,
-              },
-            ],
-          };
+          if (part.type === "tool-input-start") {
+            const index = nextToolCallIndex++;
+            toolCallIndexes.set(part.id, index);
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: responseId,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        tool_calls: [
+                          {
+                            index,
+                            id: part.id,
+                            type: "function",
+                            function: { name: part.toolName, arguments: "" },
+                          },
+                        ],
+                      },
+                      finish_reason: null,
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            );
+            continue;
+          }
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          if (part.type === "tool-input-delta") {
+            const index = toolCallIndexes.get(part.id) ?? 0;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: responseId,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        tool_calls: [
+                          {
+                            index,
+                            function: { arguments: part.delta },
+                          },
+                        ],
+                      },
+                      finish_reason: null,
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            );
+            continue;
+          }
+
+          if (part.type === "tool-call") {
+            const index = toolCallIndexes.get(part.toolCallId) ?? nextToolCallIndex++;
+            toolCallIndexes.set(part.toolCallId, index);
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: responseId,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        tool_calls: [
+                          {
+                            index,
+                            id: part.toolCallId,
+                            type: "function",
+                            function: {
+                              name: part.toolName,
+                              arguments: toOpenAIArguments(part.input),
+                            },
+                          },
+                        ],
+                      },
+                      finish_reason: null,
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            );
+            finishReason = "tool_calls";
+            continue;
+          }
+
+          if (part.type === "finish") {
+            finishReason = part.finishReason === "tool-calls" ? "tool_calls" : part.finishReason;
+          }
+
+          if (part.type === "error") {
+            throw part.error;
+          }
         }
 
         // Send final chunk with finish_reason
@@ -813,7 +1071,7 @@ async function handleStreamingRequest(
             {
               index: 0,
               delta: {},
-              finish_reason: "stop",
+              finish_reason: finishReason === "tool-calls" ? "tool_calls" : finishReason,
             },
           ],
         };
@@ -844,7 +1102,7 @@ async function handleStreamingRequest(
 async function handleNonStreamingRequest(
   model: string,
   systemPrompt: string | undefined,
-  messages: UIMessage[],
+  messages: ModelMessage[],
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
@@ -860,6 +1118,9 @@ async function handleNonStreamingRequest(
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
+  const tools = convertTools(request.tools);
+  const toolChoice = mapToolChoice(request.tool_choice);
+  const experimentalOutput = mapResponseFormat(request.response_format);
 
   const safeParamsNonStream = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -877,11 +1138,14 @@ async function handleNonStreamingRequest(
     const result = await generateText({
       model: getLanguageModel(model),
       system: systemPrompt,
-      messages: await convertToModelMessages(messages),
+      messages,
       ...webSearchOptions,
       abortSignal,
       timeout: timeoutMs,
       ...safeParamsNonStream,
+      ...(tools ? { tools } : {}),
+      ...(toolChoice ? { toolChoice } : {}),
+      ...(experimentalOutput ? { output: experimentalOutput } : {}),
       ...(effectiveMaxTokens != null && {
         maxOutputTokens: effectiveMaxTokens,
       }),
@@ -953,9 +1217,28 @@ async function handleNonStreamingRequest(
             index: 0,
             message: {
               role: "assistant",
-              content: result.text,
+              content: result.text || null,
+              ...(result.toolCalls?.length
+                ? {
+                    tool_calls: result.toolCalls.map((toolCall) => ({
+                      id: toolCall.toolCallId,
+                      type: "function",
+                      function: {
+                        name: toolCall.toolName,
+                        arguments: toOpenAIArguments(toolCall.input),
+                      },
+                    })),
+                  }
+                : {}),
             },
-            finish_reason: "stop",
+            finish_reason:
+              result.toolCalls?.length || result.finishReason === "tool-calls"
+                ? "tool_calls"
+                : result.finishReason === "length"
+                  ? "length"
+                  : result.finishReason === "content-filter"
+                    ? "content_filter"
+                    : "stop",
           },
         ],
         usage: {

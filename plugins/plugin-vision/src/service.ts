@@ -25,6 +25,7 @@ import { FaceRecognition } from "./face-recognition";
 import { Florence2Model } from "./florence2-model";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
+import { getTestImage } from "./test-input";
 import {
   type BoundingBox,
   type CameraInfo,
@@ -663,16 +664,23 @@ export class VisionService extends Service {
     try {
       const currentTime = Date.now();
 
+      // Test-input override: when ELIZA_VISION_TEST_INPUT=image, replace the
+      // captured frame with the fixture PNG so the rest of the pipeline runs
+      // unmodified. Returns null when no override is active.
+      const testImage = getTestImage();
+
       // Convert frame to base64 for VLM
-      const jpegBuffer = await sharp(frame.data, {
-        raw: {
-          width: frame.width,
-          height: frame.height,
-          channels: 4,
-        },
-      })
-        .jpeg()
-        .toBuffer();
+      const jpegBuffer = testImage
+        ? await sharp(testImage).jpeg().toBuffer()
+        : await sharp(frame.data, {
+            raw: {
+              width: frame.width,
+              height: frame.height,
+              channels: 4,
+            },
+          })
+            .jpeg()
+            .toBuffer();
 
       const base64Image = jpegBuffer.toString("base64");
       const imageUrl = `data:image/jpeg;base64,${base64Image}`;

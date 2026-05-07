@@ -272,3 +272,55 @@ body.desktop {
     padding-top: 0px;
   }
 }
+
+/* ─── Mobile (native iOS / Android) lockdown ───
+   The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
+   bounce, no two-finger drag, no callout/long-press menu, no scrollbars. */
+body.native,
+body.platform-ios,
+body.platform-android {
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  /* Lock the body to viewport extents so a stray drag can't scroll the
+     entire app off-screen. Inner regions opt back in to overflow. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Allow text selection inside inputs/contenteditable so users can still type,
+   select, copy and paste. */
+body.native input,
+body.native textarea,
+body.native [contenteditable="true"],
+body.platform-ios input,
+body.platform-ios textarea,
+body.platform-ios [contenteditable="true"],
+body.platform-android input,
+body.platform-android textarea,
+body.platform-android [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Hide scrollbars on native shells. Mobile users don't need a visible
+   scrollbar; they get a momentum scroller. */
+body.native *::-webkit-scrollbar,
+body.platform-ios *::-webkit-scrollbar,
+body.platform-android *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+body.native *,
+body.platform-ios *,
+body.platform-android * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

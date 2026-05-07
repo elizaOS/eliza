@@ -1,3 +1,9 @@
+import type {
+	AgentContext,
+	CacheScope,
+	ContextGate,
+	RoleGate,
+} from "./contexts";
 import type { Memory } from "./memory";
 import type { Content } from "./primitives";
 import type {
@@ -11,25 +17,12 @@ import type {
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
-/**
- * Canonical domain contexts for routing and plugin/action gating.
- *
- * The shouldRespond + context-routing classifier assigns one primary context
- * and zero or more secondary contexts per turn.  Plugins, actions, and
- * providers declare which contexts they belong to so the planner can scope
- * its search space accordingly.
- */
-export type AgentContext =
-	| "general"
-	| "wallet"
-	| "knowledge"
-	| "browser"
-	| "code"
-	| "media"
-	| "automation"
-	| "social"
-	| "system"
-	| (string & {}); // extensible — plugins can declare custom contexts
+export type {
+	AgentContext,
+	CacheScope,
+	ContextGate,
+	RoleGate,
+} from "./contexts";
 
 /**
  * JSON Schema type for action parameter validation.
@@ -49,12 +42,20 @@ export interface ActionParameterSchema
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
 	properties?: Record<string, ActionParameterSchema>;
+	/** Whether object-valued parameters allow undeclared properties */
+	additionalProperties?: boolean | ActionParameterSchema;
 	/** For array types, define the item schema */
 	items?: ActionParameterSchema;
 	/** Enumerated allowed values (schema-compatible) */
 	enumValues?: string[];
 	/** Enumerated allowed values */
 	enum?: string[];
+	/** Minimum string length for string-valued parameters */
+	minLength?: number;
+	/** Maximum string length for string-valued parameters */
+	maxLength?: number;
+	/** Regular expression pattern for string-valued parameters */
+	pattern?: string;
 }
 
 /**
@@ -124,6 +125,31 @@ export interface ActionExample
 export interface EvaluationExample
 	extends Omit<ProtoEvaluationExample, "$typeName" | "$unknown" | "messages"> {
 	messages: ActionExample[];
+}
+
+export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
+
+export interface MessageHandlerResult {
+	action: MessageHandlerAction;
+	simple: boolean;
+	contexts: AgentContext[];
+	thought: string;
+	reply?: string;
+}
+
+export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE";
+
+export interface EvaluationResult {
+	success: boolean;
+	decision: EvaluationDecision;
+	thought: string;
+	messageToUser?: string;
+	copyToClipboard?: {
+		title: string;
+		content: string;
+		tags?: string[];
+	};
+	recommendedToolCallId?: string;
 }
 
 /**
@@ -240,6 +266,24 @@ export interface Action {
 	 * "wallet" and "automation").
 	 */
 	contexts?: AgentContext[];
+
+	/** Declarative context gate for v5 native tool planning. */
+	contextGate?: ContextGate;
+
+	/** Whether prompt/tool metadata for this action is stable enough to cache. */
+	cacheStable?: boolean;
+
+	/** Cache partition hint for stable action metadata. */
+	cacheScope?: CacheScope;
+
+	/** Optional role gate checked by planners before exposing this action. */
+	roleGate?: RoleGate;
+
+	/** Child tool/action names or inline definitions exposed beneath this action. */
+	subActions?: Array<string | Action>;
+
+	/** Whether this action should delegate selection to a sub-planner. */
+	subPlanner?: boolean | { name?: string; description?: string };
 }
 
 /**
@@ -367,6 +411,24 @@ export interface Provider {
 	 * include in the planner's state composition for a given turn.
 	 */
 	contexts?: AgentContext[];
+
+	/** Declarative context gate for v5 provider selection. */
+	contextGate?: ContextGate;
+
+	/** Whether this provider's prompt contribution is stable enough to cache. */
+	cacheStable?: boolean;
+
+	/** Cache partition hint for stable provider content. */
+	cacheScope?: CacheScope;
+
+	/** Optional role gate checked before including this provider. */
+	roleGate?: RoleGate;
+
+	/** Child provider/action names exposed beneath this provider, if any. */
+	subActions?: string[];
+
+	/** Whether this provider should be composed through a sub-planner. */
+	subPlanner?: boolean | { name?: string; description?: string };
 
 	/**
 	 * Additional providers that should run alongside this provider when it is

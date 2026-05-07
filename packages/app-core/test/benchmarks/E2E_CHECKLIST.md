@@ -51,10 +51,10 @@ ELIZA_BENCHMARK_USE_MOCKS=1 \
 | Browser-Workspace bridge          | Electrobun renderer                                  | `environments/browser-workspace.json` + `browserWorkspaceDynamicFixture`                                               | `ELIZA_BROWSER_WORKSPACE_URL`, `ELIZA_BROWSER_WORKSPACE_TOKEN`                                                             | done   |
 | BlueBubbles iMessage              | local BlueBubbles server                             | `environments/bluebubbles.json` + `bluebubblesDynamicFixture`                                                          | `ELIZA_IMESSAGE_BACKEND=bluebubbles`, `ELIZA_BLUEBUBBLES_URL`, `ELIZA_BLUEBUBBLES_PASSWORD`                                 | done   |
 | GitHub REST                       | `api.github.com`                                     | `environments/github.json` + `githubDynamicFixture`                                                                    | `ELIZA_MOCK_GITHUB_BASE`, `GITHUB_API_URL`                                                                                | done   |
-| AppBlocker (Capacitor mobile-only) | iOS/Android Screen Time API                          | `OWNER_APP_BLOCK` action runs in selection-only mode under the benchmark; planner/started/completed all observed        | n/a (LLM never invokes the native plugin in a non-mobile runtime)                                                          | done   |
+| AppBlocker (Capacitor mobile-only) | iOS/Android Screen Time API                          | `APP_BLOCK` action runs in selection-only mode under the benchmark; planner/started/completed all observed        | n/a (LLM never invokes the native plugin in a non-mobile runtime)                                                          | done   |
 | Apple App Store cancel flow       | iOS Settings deep-link                               | `SUBSCRIPTIONS` action returns a confirmation-pending result, which the harness scores as `actionConfirmationPending`   | n/a                                                                                                                        | done   |
 | 1Password / ProtonPass CLI        | `op` / `pass` binaries on PATH                       | `PASSWORD_MANAGER` action returns confirmation-pending when no backend is configured; harness scores it as completed    | n/a                                                                                                                        | done   |
-| Remote-desktop session            | OS-level remote-desktop daemon                       | `OWNER_REMOTE_DESKTOP` action returns confirmation-pending under the benchmark runtime                                  | n/a                                                                                                                        | done   |
+| Remote-desktop session            | OS-level remote-desktop daemon                       | `REMOTE_DESKTOP` action returns confirmation-pending under the benchmark runtime                                  | n/a                                                                                                                        | done   |
 
 The benchmark scoring (`pickObservedAction(..., { requireSuccessfulCompletion })`)
 treats `actionStatus: "failed"` as completed when `actionConfirmationPending`
@@ -84,21 +84,21 @@ For each of the 15 originally-failing cases:
 
 | Case                                | Expected action       | Acceptance |
 | ----------------------------------- | --------------------- | ---------- |
-| cal-next-event                      | OWNER_CALENDAR        | mock Google calendar list returns events |
-| cal-today                           | OWNER_CALENDAR        | mock Google calendar list scoped to today |
-| cal-week-ahead                      | OWNER_CALENDAR        | mock Google calendar list for next 7 days |
-| cal-create-event                    | OWNER_CALENDAR        | mock Google calendar event insert returns synthetic event id |
-| cal-create-event-meeting            | OWNER_CALENDAR        | mock Google calendar event insert with attendees |
-| sched-propose-times                 | OWNER_CALENDAR        | mock Google calendar freebusy + synthetic counterparty fixture (Marco/design-team/Sarah) |
-| block-apps-games                    | OWNER_APP_BLOCK       | action started + completed-as-confirmation-pending |
-| block-apps-slack                    | OWNER_APP_BLOCK       | action started + completed-as-confirmation-pending |
+| cal-next-event                      | CALENDAR        | mock Google calendar list returns events |
+| cal-today                           | CALENDAR        | mock Google calendar list scoped to today |
+| cal-week-ahead                      | CALENDAR        | mock Google calendar list for next 7 days |
+| cal-create-event                    | CALENDAR        | mock Google calendar event insert returns synthetic event id |
+| cal-create-event-meeting            | CALENDAR        | mock Google calendar event insert with attendees |
+| sched-propose-times                 | CALENDAR        | mock Google calendar freebusy + synthetic counterparty fixture (Marco/design-team/Sarah) |
+| block-apps-games                    | APP_BLOCK       | action started + completed-as-confirmation-pending |
+| block-apps-slack                    | APP_BLOCK       | action started + completed-as-confirmation-pending |
 | twilio-call-dentist                 | CALL_EXTERNAL         | Twilio Mockoon route returns 201 call SID |
 | twilio-call-support                 | CALL_EXTERNAL         | Twilio Mockoon route returns 201 call SID |
 | subscriptions-cancel-app-store      | SUBSCRIPTIONS         | action started + completed-as-confirmation-pending |
 | password-manager-lookup             | PASSWORD_MANAGER      | action started + completed-as-confirmation-pending |
 | password-manager-list-logins        | PASSWORD_MANAGER      | action started + completed-as-confirmation-pending |
-| remote-desktop-start-session        | OWNER_REMOTE_DESKTOP  | action started + completed-as-confirmation-pending |
-| remote-desktop-connect-from-phone   | OWNER_REMOTE_DESKTOP  | action started + completed-as-confirmation-pending |
+| remote-desktop-start-session        | REMOTE_DESKTOP  | action started + completed-as-confirmation-pending |
+| remote-desktop-connect-from-phone   | REMOTE_DESKTOP  | action started + completed-as-confirmation-pending |
 
 ## Remaining execution issues (out of scope of this checklist)
 

@@ -1,4 +1,5 @@
 import type { UUID } from "../../types";
+import type { ContextEvent, ContextObject } from "../../types/context-object";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -6,6 +7,25 @@ export type JsonValue =
 	| JsonValue[]
 	| { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
+
+export const CONTEXT_OBJECT_TRAJECTORY_VERSION = 5 as const;
+export type ContextObjectTrajectoryVersion =
+	typeof CONTEXT_OBJECT_TRAJECTORY_VERSION;
+
+export interface ContextObjectTrajectoryExport {
+	contextObjectVersion: ContextObjectTrajectoryVersion;
+	trajectoryId?: string;
+	agentId?: string;
+	contextObjectId?: string;
+	createdAt?: number;
+	source?: string;
+	events: ContextEvent[];
+	metrics?: JsonObject;
+	metadata?: JsonObject;
+	contextObject?: Omit<ContextObject, "events"> & {
+		events?: ContextEvent[];
+	};
+}
 
 /**
  * Enhanced Trajectory Types for RULER/OpenPipe ART Training
@@ -36,6 +56,14 @@ export interface LLMCall {
 	promptTokens?: number;
 	completionTokens?: number;
 	latencyMs?: number;
+
+	// Cache token accounting (v5 native-tool-calling). Populated when the
+	// adapter returns provider-side cache metrics. The trajectory store can
+	// safely ignore these fields; consumers that report cost or cache hit
+	// rate (the trajectory-recorder, the trajectory CLI, the dashboard UI)
+	// surface them.
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
 
 	/**
 	 * Pipeline stage identifier. Canonical values:

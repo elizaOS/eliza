@@ -614,8 +614,10 @@ function CompanionSceneSurface({
       onLostPointerCaptureCapture={releaseCameraDrag}
     >
       <div
+        data-testid="companion-background"
+        data-theme={uiTheme === "dark" ? "dark" : "light"}
         aria-hidden={!active}
-        className={`fixed inset-0 z-0 overflow-hidden rounded-2xl transition-opacity duration-200 ${
+        className={`fixed inset-0 z-0 overflow-hidden transition-opacity duration-200 ${
           uiTheme === "dark" ? "bg-[#08060e]" : "bg-[#f5f5f5]"
         } ${active ? "opacity-100" : "pointer-events-none opacity-0"}`}
         style={{

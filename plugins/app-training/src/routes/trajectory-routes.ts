@@ -54,7 +54,7 @@ interface TrajectoryLoggerApi {
   deleteTrajectories(trajectoryIds: string[]): Promise<number>;
   clearAllTrajectories(): Promise<number>;
   exportTrajectories(
-    options: TrajectoryExportOptions,
+    options: RouteTrajectoryExportOptions,
   ): Promise<TrajectoryExportResult>;
   exportTrajectoriesZip?: (
     options: TrajectoryZipExportOptions,
@@ -136,7 +136,126 @@ interface UITrajectoryDetailResult {
   trajectory: UITrajectoryRecord;
   llmCalls: UILlmCall[];
   providerAccesses: UIProviderAccess[];
+  events?: UITrajectoryEvent[];
+  contextEvents?: UIContextEvent[];
+  toolEvents?: UINativeToolCallEvent[];
+  evaluationEvents?: UIEvaluationEvent[];
+  cacheObservations?: UICacheObservation[];
+  cacheStats?: UICacheStats;
+  contextDiffs?: UIContextDiff[];
 }
+
+type UIContextEvent = Record<string, unknown> & {
+  id: string;
+  type: string;
+  createdAt?: number;
+  source?: string;
+  metadata?: Record<string, unknown>;
+};
+
+interface UITrajectoryEventBase {
+  id: string;
+  trajectoryId?: string;
+  stepId?: string;
+  stage?: string;
+  timestamp?: number;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+type UIToolCallStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "skipped"
+  | "failed";
+
+interface UINativeToolCallEvent extends UITrajectoryEventBase {
+  type: "tool_call" | "tool_result" | "tool_error";
+  callId?: string;
+  toolCallId?: string;
+  actionName?: string;
+  toolName?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  result?: unknown;
+  output?: unknown;
+  status?: UIToolCallStatus;
+  success?: boolean;
+  durationMs?: number;
+  duration?: number;
+  error?: string;
+}
+
+interface UIEvaluationEvent extends UITrajectoryEventBase {
+  type: "evaluation" | "evaluator";
+  evaluatorName?: string;
+  name?: string;
+  status?: UIToolCallStatus;
+  success?: boolean;
+  decision?: string;
+  thought?: string;
+  result?: unknown;
+  durationMs?: number;
+  error?: string;
+}
+
+interface UICacheObservation extends UITrajectoryEventBase {
+  type: "cache_observation" | "cache";
+  cacheName?: string;
+  key?: string;
+  scope?: string;
+  hit: boolean;
+  reason?: string;
+  ttlMs?: number;
+  ageMs?: number;
+  sizeBytes?: number;
+  tokenCount?: number;
+}
+
+interface UIContextDiffChange {
+  type: string;
+  path?: string;
+  before?: unknown;
+  after?: unknown;
+  summary?: string;
+  tokenDelta?: number;
+}
+
+interface UIContextDiff extends UITrajectoryEventBase {
+  type: "context_diff";
+  label?: string;
+  beforeContextId?: string;
+  afterContextId?: string;
+  added?: number;
+  removed?: number;
+  changed?: number;
+  tokenDelta?: number;
+  changes?: UIContextDiffChange[];
+  before?: unknown;
+  after?: unknown;
+}
+
+type UITrajectoryEvent =
+  | UINativeToolCallEvent
+  | UIEvaluationEvent
+  | UICacheObservation
+  | UIContextDiff
+  | (UITrajectoryEventBase & { type: string; [key: string]: unknown });
+
+interface UICacheStats {
+  hits: number;
+  misses: number;
+  total: number;
+  hitRate: number;
+  tokenCount?: number;
+  sizeBytes?: number;
+}
+
+type RouteTrajectoryExportOptions = TrajectoryExportOptions & {
+  jsonShape?: "legacy" | "context_object_events_v5";
+};
 
 // ============================================================================
 // Helpers
@@ -263,6 +382,543 @@ function toFiniteNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function toCacheHit(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "hit" || normalized === "true") return true;
+    if (normalized === "miss" || normalized === "false") return false;
+  }
+  return null;
+}
+
+function toToolCallStatus(value: unknown): UIToolCallStatus | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "queued" ||
+    normalized === "running" ||
+    normalized === "completed" ||
+    normalized === "skipped" ||
+    normalized === "failed"
+    ? normalized
+    : undefined;
+}
+
+function normalizeCreatedAt(
+  value: unknown,
+  timestamp?: number,
+): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  if (typeof timestamp === "number" && Number.isFinite(timestamp)) {
+    return new Date(timestamp).toISOString();
+  }
+  return undefined;
+}
+
+function timestampFromRecord(
+  record: Record<string, unknown>,
+): number | undefined {
+  const timestamp = toFiniteNumber(record.timestamp);
+  if (timestamp !== null) return timestamp;
+
+  const createdAt = toFiniteNumber(record.createdAt);
+  if (createdAt !== null) return createdAt;
+
+  if (typeof record.createdAt === "string") {
+    const parsed = Date.parse(record.createdAt);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function eventBaseFromRecord(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UITrajectoryEventBase {
+  const timestamp = timestampFromRecord(record);
+  return {
+    id: toOptionalString(record.id) ?? fallbackId,
+    trajectoryId,
+    stepId: toOptionalString(record.stepId),
+    stage: toOptionalString(record.stage),
+    timestamp,
+    createdAt: normalizeCreatedAt(record.createdAt, timestamp),
+    metadata: asRecord(record.metadata) ?? undefined,
+  };
+}
+
+function normalizeContextEvent(
+  event: unknown,
+  index: number,
+): UIContextEvent | null {
+  const record = asRecord(event);
+  const type = toOptionalString(record?.type);
+  if (!record || !type) return null;
+  return {
+    ...record,
+    id: toOptionalString(record.id) ?? `context-event-${index}`,
+    type,
+    metadata: asRecord(record.metadata) ?? undefined,
+  } as UIContextEvent;
+}
+
+function hasV5ContextEvents(traj: Trajectory): boolean {
+  const record = asRecord(traj);
+  const metadata = asRecord(traj.metadata);
+  return Boolean(
+    asRecord(record?.contextObject) ||
+      asRecord(metadata?.contextObject) ||
+      Array.isArray(record?.contextEvents) ||
+      Array.isArray(metadata?.contextEvents) ||
+      record?.contextObjectVersion === 5,
+  );
+}
+
+function readContextEventsFromObject(value: unknown): unknown[] | null {
+  const record = asRecord(value);
+  return Array.isArray(record?.events) ? record.events : null;
+}
+
+function extractContextEventsForRoute(traj: Trajectory): unknown[] {
+  const record = asRecord(traj);
+  const metadata = asRecord(traj.metadata);
+
+  return (
+    readContextEventsFromObject(record?.contextObject) ??
+    readContextEventsFromObject(metadata?.contextObject) ??
+    (Array.isArray(record?.contextEvents) ? record.contextEvents : null) ??
+    (Array.isArray(metadata?.contextEvents) ? metadata.contextEvents : null) ??
+    (record?.contextObjectVersion === 5 && Array.isArray(record.events)
+      ? record.events
+      : null) ??
+    []
+  );
+}
+
+function readRecordArray(
+  record: Record<string, unknown> | null,
+  key: string,
+): Record<string, unknown>[] {
+  const value = record?.[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> =>
+    Boolean(asRecord(item)),
+  );
+}
+
+function normalizeToolEvent(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UINativeToolCallEvent | null {
+  const type = toOptionalString(record.type);
+  if (type !== "tool_call" && type !== "tool_result" && type !== "tool_error") {
+    return null;
+  }
+  const tool = asRecord(record.tool);
+  return {
+    ...eventBaseFromRecord(record, trajectoryId, fallbackId),
+    type,
+    callId: toOptionalString(record.callId),
+    toolCallId: toOptionalString(record.toolCallId),
+    actionName: toOptionalString(record.actionName),
+    toolName: toOptionalString(record.toolName) ?? toOptionalString(tool?.name),
+    name: toOptionalString(record.name),
+    args: asRecord(record.args) ?? undefined,
+    input: asRecord(record.input) ?? undefined,
+    result: record.result,
+    output: record.output,
+    status: toToolCallStatus(record.status),
+    success: toOptionalBoolean(record.success),
+    durationMs: toFiniteNumber(record.durationMs) ?? undefined,
+    duration: toFiniteNumber(record.duration) ?? undefined,
+    error: toOptionalString(record.error),
+  };
+}
+
+function normalizeEvaluationEvent(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UIEvaluationEvent | null {
+  const type = toOptionalString(record.type);
+  if (type !== "evaluation" && type !== "evaluator") return null;
+  return {
+    ...eventBaseFromRecord(record, trajectoryId, fallbackId),
+    type,
+    evaluatorName: toOptionalString(record.evaluatorName),
+    name: toOptionalString(record.name),
+    status: toToolCallStatus(record.status),
+    success: toOptionalBoolean(record.success),
+    decision: toOptionalString(record.decision),
+    thought: toOptionalString(record.thought),
+    result: record.result,
+    durationMs: toFiniteNumber(record.durationMs) ?? undefined,
+    error: toOptionalString(record.error),
+  };
+}
+
+function normalizeCacheObservation(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UICacheObservation | null {
+  const type = toOptionalString(record.type);
+  if (type !== "cache_observation" && type !== "cache") return null;
+  const hit =
+    toCacheHit(record.hit) ??
+    toCacheHit(record.cacheHit) ??
+    toCacheHit(record.result) ??
+    toCacheHit(record.status);
+  if (hit === null) return null;
+  return {
+    ...eventBaseFromRecord(record, trajectoryId, fallbackId),
+    type,
+    cacheName:
+      toOptionalString(record.cacheName) ?? toOptionalString(record.name),
+    key: toOptionalString(record.key),
+    scope: toOptionalString(record.scope),
+    hit,
+    reason: toOptionalString(record.reason),
+    ttlMs: toFiniteNumber(record.ttlMs) ?? undefined,
+    ageMs: toFiniteNumber(record.ageMs) ?? undefined,
+    sizeBytes: toFiniteNumber(record.sizeBytes) ?? undefined,
+    tokenCount:
+      toFiniteNumber(record.tokenCount) ??
+      toFiniteNumber(record.cachedInputTokens) ??
+      toFiniteNumber(record.cacheReadInputTokens) ??
+      undefined,
+  };
+}
+
+function normalizeContextDiffChange(
+  value: unknown,
+): UIContextDiffChange | null {
+  const record = asRecord(value);
+  const type = toOptionalString(record?.type);
+  if (!record || !type) return null;
+  return {
+    type,
+    path: toOptionalString(record.path) ?? toOptionalString(record.key),
+    before: record.before ?? record.previous,
+    after: record.after ?? record.current,
+    summary: toOptionalString(record.summary),
+    tokenDelta: toFiniteNumber(record.tokenDelta) ?? undefined,
+  };
+}
+
+function normalizeContextDiff(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UIContextDiff | null {
+  if (toOptionalString(record.type) !== "context_diff") return null;
+  const summary = asRecord(record.summary);
+  const changes = Array.isArray(record.changes)
+    ? record.changes
+        .map((change) => normalizeContextDiffChange(change))
+        .filter((change): change is UIContextDiffChange => change !== null)
+    : undefined;
+  return {
+    ...eventBaseFromRecord(record, trajectoryId, fallbackId),
+    type: "context_diff",
+    label: toOptionalString(record.label),
+    beforeContextId: toOptionalString(record.beforeContextId),
+    afterContextId: toOptionalString(record.afterContextId),
+    added:
+      toFiniteNumber(record.added) ??
+      toFiniteNumber(summary?.added) ??
+      undefined,
+    removed:
+      toFiniteNumber(record.removed) ??
+      toFiniteNumber(summary?.removed) ??
+      undefined,
+    changed:
+      toFiniteNumber(record.changed) ??
+      toFiniteNumber(summary?.changed) ??
+      undefined,
+    tokenDelta:
+      toFiniteNumber(record.tokenDelta) ??
+      toFiniteNumber(summary?.tokenDelta) ??
+      undefined,
+    changes,
+    before: record.before,
+    after: record.after,
+  };
+}
+
+function normalizeTrajectoryEvent(
+  record: Record<string, unknown>,
+  trajectoryId: string,
+  fallbackId: string,
+): UITrajectoryEvent | null {
+  const specialized =
+    normalizeToolEvent(record, trajectoryId, fallbackId) ??
+    normalizeEvaluationEvent(record, trajectoryId, fallbackId) ??
+    normalizeCacheObservation(record, trajectoryId, fallbackId) ??
+    normalizeContextDiff(record, trajectoryId, fallbackId);
+  if (specialized) return specialized;
+
+  const type = toOptionalString(record.type);
+  if (!type) return null;
+  return {
+    ...record,
+    ...eventBaseFromRecord(record, trajectoryId, fallbackId),
+    type,
+  } as UITrajectoryEvent;
+}
+
+function normalizeCacheStats(value: unknown): UICacheStats | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const hits = toFiniteNumber(record.hits);
+  const misses = toFiniteNumber(record.misses);
+  const total = toFiniteNumber(record.total);
+  if (hits === null || misses === null || total === null) return null;
+  return {
+    hits,
+    misses,
+    total,
+    hitRate: toFiniteNumber(record.hitRate) ?? hits / Math.max(total, 1),
+    tokenCount: toFiniteNumber(record.tokenCount) ?? undefined,
+    sizeBytes: toFiniteNumber(record.sizeBytes) ?? undefined,
+  };
+}
+
+function cacheStatsFromObservations(
+  observations: UICacheObservation[],
+): UICacheStats | undefined {
+  if (observations.length === 0) return undefined;
+  const hits = observations.filter((observation) => observation.hit).length;
+  const total = observations.length;
+  const tokenCount = observations.reduce(
+    (sum, observation) => sum + (observation.tokenCount ?? 0),
+    0,
+  );
+  const sizeBytes = observations.reduce(
+    (sum, observation) => sum + (observation.sizeBytes ?? 0),
+    0,
+  );
+  return {
+    hits,
+    misses: total - hits,
+    total,
+    hitRate: hits / Math.max(total, 1),
+    ...(tokenCount > 0 ? { tokenCount } : {}),
+    ...(sizeBytes > 0 ? { sizeBytes } : {}),
+  };
+}
+
+function contextEventToTrajectoryEvent(
+  event: UIContextEvent,
+  trajectoryId: string,
+  index: number,
+): UITrajectoryEvent {
+  const { createdAt: _createdAt, ...eventWithoutCreatedAt } = event;
+  const stage =
+    event.type === "tool"
+      ? "actions"
+      : event.type === "cache"
+        ? "cache"
+        : "context";
+  const base = eventBaseFromRecord(
+    { ...event, stage: event.stage ?? stage },
+    trajectoryId,
+    `context-event-${index}`,
+  );
+  return {
+    ...eventWithoutCreatedAt,
+    ...base,
+    createdAt: base.createdAt,
+    type: event.type,
+  } as UITrajectoryEvent;
+}
+
+function embeddedEventRecordsFromContextEvent(
+  event: UIContextEvent,
+): Record<string, unknown>[] {
+  const metadata = asRecord(event.metadata);
+  const value = event.type === "metadata" ? asRecord(event.value) : null;
+  return [
+    asRecord(event.event),
+    asRecord(event.trajectoryEvent),
+    asRecord(event.toolEvent),
+    asRecord(event.cacheObservation),
+    asRecord(event.contextDiff),
+    asRecord(metadata?.event),
+    asRecord(metadata?.trajectoryEvent),
+    asRecord(metadata?.toolEvent),
+    asRecord(metadata?.cacheObservation),
+    asRecord(metadata?.contextDiff),
+    value && toOptionalString(event.key) === "toolEvent"
+      ? { ...value, type: value.type ?? "tool_call" }
+      : null,
+    value && toOptionalString(event.key) === "cacheObservation"
+      ? { ...value, type: value.type ?? "cache_observation" }
+      : null,
+    value && toOptionalString(event.key) === "contextDiff"
+      ? { ...value, type: value.type ?? "context_diff" }
+      : null,
+  ].filter((record): record is Record<string, unknown> => record !== null);
+}
+
+function cacheStatsFromContextEvents(
+  events: UIContextEvent[],
+): UICacheStats | null {
+  for (const event of events) {
+    if (
+      event.type === "metadata" &&
+      (event.key === "cacheStats" || event.key === "cache_stats")
+    ) {
+      const stats = normalizeCacheStats(event.value);
+      if (stats) return stats;
+    }
+    const metadata = asRecord(event.metadata);
+    const stats = normalizeCacheStats(metadata?.cacheStats);
+    if (stats) return stats;
+  }
+  return null;
+}
+
+function dedupeTrajectoryEvents<T extends { id?: string; type?: string }>(
+  events: T[],
+): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const [index, event] of events.entries()) {
+    const key = `${event.type ?? "event"}:${event.id ?? index}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(event);
+  }
+  return deduped;
+}
+
+function buildUIEventFields(
+  traj: Trajectory,
+  trajectoryId: string,
+): Omit<
+  UITrajectoryDetailResult,
+  "trajectory" | "llmCalls" | "providerAccesses"
+> {
+  const root = asRecord(traj);
+  const metadata = asRecord(traj.metadata);
+  const contextEvents = hasV5ContextEvents(traj)
+    ? extractContextEventsForRoute(traj)
+        .map((event, index) => normalizeContextEvent(event, index))
+        .filter((event): event is UIContextEvent => event !== null)
+    : [];
+
+  const explicitRecords = [
+    ...readRecordArray(root, "events"),
+    ...readRecordArray(metadata, "events"),
+    ...readRecordArray(metadata, "trajectoryEvents"),
+    ...contextEvents,
+    ...contextEvents.flatMap(embeddedEventRecordsFromContextEvent),
+  ];
+
+  const toolEvents = dedupeTrajectoryEvents(
+    [
+      ...readRecordArray(root, "toolEvents"),
+      ...readRecordArray(metadata, "toolEvents"),
+      ...explicitRecords,
+    ]
+      .map((record, index) =>
+        normalizeToolEvent(record, trajectoryId, `tool-event-${index}`),
+      )
+      .filter((event): event is UINativeToolCallEvent => event !== null),
+  );
+
+  const evaluationEvents = dedupeTrajectoryEvents(
+    [
+      ...readRecordArray(root, "evaluationEvents"),
+      ...readRecordArray(metadata, "evaluationEvents"),
+      ...explicitRecords,
+    ]
+      .map((record, index) =>
+        normalizeEvaluationEvent(
+          record,
+          trajectoryId,
+          `evaluation-event-${index}`,
+        ),
+      )
+      .filter((event): event is UIEvaluationEvent => event !== null),
+  );
+
+  const cacheObservations = dedupeTrajectoryEvents(
+    [
+      ...readRecordArray(root, "cacheObservations"),
+      ...readRecordArray(metadata, "cacheObservations"),
+      ...explicitRecords,
+    ]
+      .map((record, index) =>
+        normalizeCacheObservation(
+          record,
+          trajectoryId,
+          `cache-observation-${index}`,
+        ),
+      )
+      .filter((event): event is UICacheObservation => event !== null),
+  );
+
+  const contextDiffs = dedupeTrajectoryEvents(
+    [
+      ...readRecordArray(root, "contextDiffs"),
+      ...readRecordArray(metadata, "contextDiffs"),
+      ...explicitRecords,
+    ]
+      .map((record, index) =>
+        normalizeContextDiff(record, trajectoryId, `context-diff-${index}`),
+      )
+      .filter((event): event is UIContextDiff => event !== null),
+  );
+
+  const events = dedupeTrajectoryEvents([
+    ...explicitRecords
+      .map((record, index) =>
+        normalizeTrajectoryEvent(record, trajectoryId, `event-${index}`),
+      )
+      .filter((event): event is UITrajectoryEvent => event !== null),
+    ...contextEvents.map((event, index) =>
+      contextEventToTrajectoryEvent(event, trajectoryId, index),
+    ),
+    ...toolEvents,
+    ...evaluationEvents,
+    ...cacheObservations,
+    ...contextDiffs,
+  ]);
+
+  const cacheStats =
+    normalizeCacheStats(root?.cacheStats) ??
+    normalizeCacheStats(metadata?.cacheStats) ??
+    cacheStatsFromContextEvents(contextEvents) ??
+    cacheStatsFromObservations(cacheObservations);
+
+  return {
+    ...(events.length > 0 ? { events } : {}),
+    ...(contextEvents.length > 0 ? { contextEvents } : {}),
+    ...(toolEvents.length > 0 ? { toolEvents } : {}),
+    ...(evaluationEvents.length > 0 ? { evaluationEvents } : {}),
+    ...(cacheObservations.length > 0 ? { cacheObservations } : {}),
+    ...(cacheStats ? { cacheStats } : {}),
+    ...(contextDiffs.length > 0 ? { contextDiffs } : {}),
+  };
 }
 
 function estimateTokenCount(text: string): number {
@@ -554,7 +1210,12 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
     updatedAt: new Date(updatedAtMs).toISOString(),
   };
 
-  return { trajectory, llmCalls, providerAccesses };
+  return {
+    trajectory,
+    llmCalls,
+    providerAccesses,
+    ...buildUIEventFields(traj, trajectoryId),
+  };
 }
 
 function isSyntheticTrajectoryCall(call: TrajectoryLlmCall): boolean {
@@ -1197,6 +1858,7 @@ async function handleExportTrajectories(
     endDate?: string;
     scenarioId?: string;
     batchId?: string;
+    jsonShape?: string;
   }>(req, res);
   if (!body) return;
 
@@ -1240,6 +1902,19 @@ async function handleExportTrajectories(
     return;
   }
 
+  const jsonShape =
+    body.jsonShape === "legacy" || body.jsonShape === "context_object_events_v5"
+      ? body.jsonShape
+      : undefined;
+  if (body.jsonShape !== undefined && !jsonShape) {
+    sendJsonError(
+      res,
+      "jsonShape must be 'legacy' or 'context_object_events_v5'",
+      400,
+    );
+    return;
+  }
+
   const result = await logger.exportTrajectories({
     format: body.format,
     includePrompts: body.includePrompts,
@@ -1248,6 +1923,7 @@ async function handleExportTrajectories(
     endDate: body.endDate,
     scenarioId: body.scenarioId,
     batchId: body.batchId,
+    ...(body.format === "json" && jsonShape ? { jsonShape } : {}),
   });
 
   res.statusCode = 200;

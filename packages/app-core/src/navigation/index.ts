@@ -251,6 +251,7 @@ export function getTabGroups(
   browserEnabled = true,
   dynamicTabs?: DynamicNavTab[],
   phoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled(),
+  automationsEnabled = true,
 ): TabGroup[] {
   const groups = ALL_TAB_GROUPS.filter(
     (g) =>
@@ -258,7 +259,8 @@ export function getTabGroups(
       (phoneSurfaceEnabled || g.label !== "Phone") &&
       (streamEnabled || g.label !== "Stream") &&
       (walletEnabled || g.label !== "Wallet") &&
-      (browserEnabled || g.label !== "Browser"),
+      (browserEnabled || g.label !== "Browser") &&
+      (automationsEnabled || g.label !== "Automations"),
   );
 
   // Merge dynamic plugin-provided nav-page tabs into groups.

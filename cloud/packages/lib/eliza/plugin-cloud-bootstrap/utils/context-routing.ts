@@ -22,7 +22,6 @@ export type AgentContext = (typeof AGENT_CONTEXTS)[number];
 export interface ContextRoutingDecision {
   primaryContext?: AgentContext;
   secondaryContexts?: AgentContext[];
-  evidenceTurnIds?: string[];
 }
 
 const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
@@ -110,30 +109,6 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   FINISH: ["general"],
 };
 
-const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
-  time: ["general"],
-  boredom: ["general"],
-  facts: ["general", "knowledge"],
-  knowledge: ["knowledge"],
-  entities: ["social"],
-  relationships: ["social"],
-  recentMessages: ["general"],
-  worldInfo: ["general"],
-  roleInfo: ["general"],
-  settings: ["system"],
-  walletBalance: ["wallet"],
-  walletPortfolio: ["wallet"],
-  tokenPrices: ["wallet", "knowledge"],
-  chainInfo: ["wallet"],
-  contacts: ["social"],
-  trustScores: ["social"],
-  platformIdentity: ["social"],
-  cronJobs: ["automation"],
-  taskList: ["automation", "code"],
-  agentConfig: ["system"],
-  pluginList: ["system"],
-};
-
 function normalizeContext(value: unknown): AgentContext | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -203,12 +178,10 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
   const value = raw as Record<string, unknown>;
   const primaryContext = normalizeContext(value.primaryContext);
   const secondaryContexts = parseContextList(value.secondaryContexts);
-  const evidenceTurnIds = dedupeStringValues(parseDelimitedList(value.evidenceTurnIds));
 
   return {
     primaryContext,
     secondaryContexts,
-    evidenceTurnIds,
   };
 }
 
@@ -265,15 +238,6 @@ export function resolveActionContexts(action: Action): AgentContext[] {
   return ACTION_CONTEXT_MAP[action.name.toUpperCase()] ?? ["general"];
 }
 
-function resolveProviderContexts(provider: Provider): AgentContext[] {
-  const declared = parseContextList((provider as { contexts?: unknown }).contexts);
-  if (declared.length > 0) {
-    return declared;
-  }
-
-  return PROVIDER_CONTEXT_MAP[provider.name] ?? ["general"];
-}
-
 export function deriveAvailableContexts(actions: Action[], providers: Provider[]): AgentContext[] {
   const contexts = new Set<AgentContext>(["general"]);
 
@@ -283,11 +247,7 @@ export function deriveAvailableContexts(actions: Action[], providers: Provider[]
     }
   }
 
-  for (const provider of providers) {
-    for (const context of resolveProviderContexts(provider)) {
-      contexts.add(context);
-    }
-  }
+  void providers;
 
   return [...contexts].sort((left, right) => left.localeCompare(right));
 }

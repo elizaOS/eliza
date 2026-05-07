@@ -45,6 +45,8 @@ export interface TrajectoryTaskDatasetSummary {
   generatedAt: string;
   trajectoryCount: number;
   llmCallCount: number;
+  skippedLegacyRows: number;
+  warnings: string[];
   counts: Record<TrajectoryTrainingTask, number>;
   tasks: TrajectoryTrainingTask[];
   taskMetrics: Record<TrajectoryTrainingTask, TrajectoryTaskDatasetTaskSummary>;
@@ -71,6 +73,8 @@ interface TrajectoryTaskExtractionResult {
   sourceCallCounts: TaskCountMap;
   sourceTrajectoryIds: TaskTrajectoryIdMap;
   llmCallCount: number;
+  skippedLegacyRows: number;
+  warnings: string[];
 }
 
 function createEmptyExampleMap(): TaskExampleMap {
@@ -144,11 +148,16 @@ function hasContextRoutingFields(text: string): boolean {
   return (
     /(^|\n)primaryContext:/m.test(text) ||
     /(^|\n)secondaryContexts:/m.test(text) ||
-    /(^|\n)evidenceTurnIds:/m.test(text) ||
     /<primaryContext>/i.test(text) ||
-    /<secondaryContexts>/i.test(text) ||
-    /<evidenceTurnIds>/i.test(text)
+    /<secondaryContexts>/i.test(text)
   );
+}
+
+function hasMessageHandlerJsonFields(text: string): boolean {
+  const parsed = parseJsonObject(text);
+  if (!parsed) return false;
+  const candidate = getMessageHandlerCandidate(parsed);
+  return Boolean(candidate);
 }
 
 function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
@@ -171,38 +180,71 @@ function clampTrajectoryText(text: string): string {
     : text;
 }
 
-function stripContextRoutingPrompt(prompt: string): string {
-  const clamped = clampTrajectoryText(prompt);
-  // Find first context_routing: and the next decision_note: after it via
-  // string indexOf to avoid polynomial backtracking on inputs containing
-  // many repeated 'context_routing:' segments.
-  const startMarker = "\ncontext_routing:";
-  const endMarker = "\ndecision_note:";
-  let stripped = clamped;
-  const startIdx = stripped.indexOf(startMarker);
-  if (startIdx !== -1) {
-    const endIdx = stripped.indexOf(endMarker, startIdx + startMarker.length);
-    if (endIdx !== -1) {
-      stripped = stripped.slice(0, startIdx) + stripped.slice(endIdx);
-    }
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  if (!trimmed.startsWith("{")) {
+    return null;
   }
-  return stripped
-    .replace(/\n- primaryContext:[^\n]*/g, "")
-    .replace(/\n- secondaryContexts:[^\n]*/g, "")
-    .replace(/\n- evidenceTurnIds:[^\n]*/g, "")
-    .trim();
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-function stripContextRoutingResponse(response: string): string {
-  return response
-    .replace(/\nprimaryContext:[^\n]*/g, "")
-    .replace(/\nsecondaryContexts:[^\n]*/g, "")
-    .replace(/\nevidenceTurnIds:[^\n]*/g, "")
-    .replace(/<primaryContext>[\s\S]*?<\/primaryContext>/gi, "")
-    .replace(/<secondaryContexts>[\s\S]*?<\/secondaryContexts>/gi, "")
-    .replace(/<evidenceTurnIds>[\s\S]*?<\/evidenceTurnIds>/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function getMessageHandlerCandidate(
+  parsed: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const nested = parsed.messageHandler;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  if (
+    typeof parsed.action === "string" &&
+    typeof parsed.simple === "boolean" &&
+    Array.isArray(parsed.contexts) &&
+    typeof parsed.thought === "string"
+  ) {
+    return parsed;
+  }
+  return null;
+}
+
+function normalizeMessageHandlerJson(response: string): string | null {
+  const parsed = parseJsonObject(response);
+  if (!parsed) return null;
+  const candidate = getMessageHandlerCandidate(parsed);
+  if (!candidate) return null;
+
+  const action = candidate.action;
+  if (action !== "RESPOND" && action !== "IGNORE" && action !== "STOP") {
+    return null;
+  }
+
+  const contexts = Array.isArray(candidate.contexts)
+    ? candidate.contexts.filter(
+        (context): context is string => typeof context === "string",
+      )
+    : [];
+  const normalized = {
+    messageHandler: {
+      action,
+      simple:
+        typeof candidate.simple === "boolean"
+          ? candidate.simple
+          : action === "RESPOND" && contexts.length === 0,
+      contexts,
+      thought: typeof candidate.thought === "string" ? candidate.thought : "",
+      reply: typeof candidate.reply === "string" ? candidate.reply : "",
+    },
+  };
+  return JSON.stringify(normalized);
 }
 
 function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
@@ -213,7 +255,8 @@ function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
   if (
     hints.includes("should_respond") ||
     hints.includes("response_handler") ||
-    hints.includes("shouldrespond")
+    hints.includes("shouldrespond") ||
+    hasMessageHandlerJsonFields(response)
   ) {
     tasks.add("should_respond");
   }
@@ -274,12 +317,16 @@ function buildExampleForTask(
     return null;
   }
 
-  if (task === "should_respond") {
+  if (task === "should_respond" || task === "context_routing") {
+    const messageHandlerResponse = normalizeMessageHandlerJson(response);
+    if (!messageHandlerResponse) {
+      return null;
+    }
     return {
       messages: [
-        { role: "system", content: stripContextRoutingPrompt(systemPrompt) },
+        { role: "system", content: clampTrajectoryText(systemPrompt) },
         { role: "user", content: userPrompt },
-        { role: "model", content: stripContextRoutingResponse(response) },
+        { role: "model", content: messageHandlerResponse },
       ],
     };
   }
@@ -310,6 +357,13 @@ function collectTrajectoryExamplesByTask(
   const sourceCallCounts = createEmptyCountMap();
   const sourceTrajectoryIds = createEmptyTrajectoryIdMap();
   let llmCallCount = 0;
+  let skippedLegacyRows = 0;
+  const warnings: string[] = [];
+  const warnSkip = (message: string): void => {
+    skippedLegacyRows += 1;
+    warnings.push(message);
+    console.warn(message);
+  };
 
   for (const trajectory of trajectories) {
     const trajectoryId = trajectory.trajectoryId;
@@ -325,6 +379,11 @@ function collectTrajectoryExamplesByTask(
 
           const example = buildExampleForTask(call, task);
           if (!example) {
+            if (task === "should_respond" || task === "context_routing") {
+              warnSkip(
+                `[trajectory-task-datasets] skipped legacy ${task} row from trajectory ${trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+              );
+            }
             continue;
           }
 
@@ -341,6 +400,8 @@ function collectTrajectoryExamplesByTask(
     sourceCallCounts,
     sourceTrajectoryIds,
     llmCallCount,
+    skippedLegacyRows,
+    warnings,
   };
 }
 
@@ -380,6 +441,8 @@ export async function exportTrajectoryTaskDatasets(
     generatedAt: new Date().toISOString(),
     trajectoryCount: trajectories.length,
     llmCallCount: extraction.llmCallCount,
+    skippedLegacyRows: extraction.skippedLegacyRows,
+    warnings: extraction.warnings,
     counts,
     tasks: [
       "should_respond",

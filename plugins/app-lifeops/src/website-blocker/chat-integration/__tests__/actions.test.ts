@@ -21,8 +21,8 @@ const { defaultSelfControlStatus } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../actions/owner-website-block.js", () => ({
-  ownerWebsiteBlockAction: {
+vi.mock("../../../actions/website-block.js", () => ({
+  websiteBlockAction: {
     handler: vi.fn(async () => ({
       success: true,
       text: "Website block side effect mocked for chat integration tests.",

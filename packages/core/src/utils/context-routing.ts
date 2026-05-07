@@ -18,7 +18,6 @@ const LIST_SPLIT_RE = /[\n,;]/;
 export interface ContextRoutingDecision {
 	primaryContext?: AgentContext;
 	secondaryContexts?: AgentContext[];
-	evidenceTurnIds?: string[];
 }
 
 function normalizeContext(value: unknown): AgentContext | undefined {
@@ -137,14 +136,10 @@ export function parseContextRoutingMetadata(
 	const value = raw as Record<string, unknown>;
 	const primaryContext = normalizeContext(value.primaryContext);
 	const secondaryContexts = parseContextList(value.secondaryContexts);
-	const evidenceTurnIds = dedupeStringValues(
-		parseDelimitedList(value.evidenceTurnIds),
-	);
 
 	return {
 		primaryContext,
 		secondaryContexts,
-		evidenceTurnIds,
 	};
 }
 
@@ -179,11 +174,6 @@ export function mergeContextRouting(
 		...(messageRouting.secondaryContexts || []),
 	]) as AgentContext[];
 
-	const mergedEvidenceTurnIds = dedupeStringValues([
-		...(stateRouting.evidenceTurnIds || []),
-		...(messageRouting.evidenceTurnIds || []),
-	]);
-
 	const primaryContext =
 		messageRouting.primaryContext || stateRouting.primaryContext || undefined;
 	if (primaryContext && !mergedSecondary.includes(primaryContext)) {
@@ -193,7 +183,6 @@ export function mergeContextRouting(
 	return {
 		primaryContext,
 		secondaryContexts: mergedSecondary,
-		evidenceTurnIds: mergedEvidenceTurnIds,
 	};
 }
 

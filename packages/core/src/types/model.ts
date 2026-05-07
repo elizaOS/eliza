@@ -1,4 +1,5 @@
 import type { StreamChunkCallback } from "./components";
+import type { AgentContext } from "./contexts";
 import type {
 	JsonValue,
 	AudioProcessingParams as ProtoAudioProcessingParams,
@@ -281,6 +282,61 @@ export interface GenerateTextAttachment {
 	filename?: string;
 }
 
+export interface ToolDefinition {
+	name: string;
+	description?: string;
+	parameters?: JSONSchema;
+	/** Provider-specific type. Defaults to a callable function/tool. */
+	type?: "function" | "tool" | (string & {});
+	contexts?: AgentContext[];
+	metadata?: Record<string, JsonValue | object | undefined>;
+	strict?: boolean;
+}
+
+export type ToolChoice =
+	| "auto"
+	| "none"
+	| "required"
+	| { type: "tool"; name: string }
+	| { type: "function"; function: { name: string } }
+	| { name: string };
+
+export interface ToolCall {
+	id: string;
+	name: string;
+	arguments: Record<string, JsonValue> | string;
+	type?: "function" | "tool" | (string & {});
+	result?: JsonValue;
+	status?: "pending" | "completed" | "failed" | (string & {});
+}
+
+export type ChatMessageRole =
+	| "system"
+	| "developer"
+	| "user"
+	| "assistant"
+	| "tool";
+
+export type ChatMessageContentPart =
+	| { type: "text"; text: string }
+	| { type: "image"; image: string | URL | Uint8Array; mediaType?: string }
+	| {
+			type: "file";
+			data: string | URL | Uint8Array;
+			mediaType: string;
+			filename?: string;
+	  }
+	| { type: string; [key: string]: JsonValue | object | undefined };
+
+export interface ChatMessage {
+	role: ChatMessageRole;
+	content?: string | ChatMessageContentPart[] | null;
+	name?: string;
+	toolCallId?: string;
+	toolCalls?: ToolCall[];
+	metadata?: Record<string, JsonValue | object | undefined>;
+}
+
 /**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
@@ -308,6 +364,17 @@ export interface GenerateTextParams
 	 */
 	attachments?: GenerateTextAttachment[];
 	/**
+	 * Provider-neutral chat messages for native chat-completion APIs. Existing
+	 * prompt-only providers may ignore this and use `prompt`.
+	 */
+	messages?: ChatMessage[];
+	/** Native tool definitions available for this generation call. */
+	tools?: ToolDefinition[];
+	/** Native tool selection policy for this generation call. */
+	toolChoice?: ToolChoice;
+	/** Optional schema for structured final responses. */
+	responseSchema?: JSONSchema;
+	/**
 	 * Optional ordered segments for prompt cache hints. When set, must satisfy:
 	 * prompt === promptSegments.map(s => s.content).join("")
 	 * Why: providers that ignore segments still get correct behavior via prompt;
@@ -319,9 +386,17 @@ export interface GenerateTextParams
 /**
  * Token usage information from a model response.
  * Provides metrics about token consumption for billing and monitoring.
+ *
+ * `cacheReadInputTokens` and `cacheCreationInputTokens` are extension fields
+ * for v5 cache observability. Not in the protobuf today; adapters that know
+ * about provider-side cache (Anthropic prompt caching, OpenAI cached input,
+ * etc.) populate them. Consumers that don't care can ignore them.
  */
 export interface TokenUsage
-	extends Omit<ProtoTokenUsage, "$typeName" | "$unknown"> {}
+	extends Omit<ProtoTokenUsage, "$typeName" | "$unknown"> {
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+}
 
 /**
  * Represents a single chunk in a text stream.
@@ -403,7 +478,11 @@ export interface GenerateTextOptions
  * Structured response from text generation.
  */
 export interface GenerateTextResult
-	extends Omit<ProtoGenerateTextResult, "$typeName" | "$unknown"> {}
+	extends Omit<ProtoGenerateTextResult, "$typeName" | "$unknown"> {
+	finishReason?: string;
+	toolCalls?: ToolCall[];
+	providerMetadata?: Record<string, JsonValue | object | undefined>;
+}
 
 /**
  * Parameters for text tokenization models

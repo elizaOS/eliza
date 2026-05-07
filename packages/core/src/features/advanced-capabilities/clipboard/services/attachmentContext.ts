@@ -4,7 +4,6 @@ import {
 	type Media,
 	type Memory,
 	ModelType,
-	parseToonKeyValue,
 } from "../../../../types/index.ts";
 
 type AttachmentWithInlineData = Media & {
@@ -48,26 +47,6 @@ function attachmentStoredContent(attachment: Media): string {
 		.trim();
 }
 
-function selectionPrompt(messageText: string, attachments: Media[]): string {
-	const choices = attachments
-		.map(
-			(attachment) =>
-				`- ${attachment.id}: ${attachmentLocator(attachment)} (${attachment.contentType ?? "unknown"})`,
-		)
-		.join("\n");
-	return [
-		"Select the attachment ID the user is asking about.",
-		"",
-		`User message: ${messageText}`,
-		"",
-		"Available attachments:",
-		choices,
-		"",
-		"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
-		"attachmentId: attachment-id",
-	].join("\n");
-}
-
 async function describeImageAttachment(
 	runtime: IAgentRuntime,
 	attachment: AttachmentWithInlineData,
@@ -102,17 +81,15 @@ async function describeImageAttachment(
 		return "";
 	}
 	if (typeof response === "string") {
-		const parsed = parseToonKeyValue(response) as Record<
-			string,
-			unknown
-		> | null;
-		if (parsed) {
+		try {
+			const parsed = JSON.parse(response) as Record<string, unknown>;
 			const value =
 				(typeof parsed.text === "string" ? parsed.text : "") ||
 				(typeof parsed.description === "string" ? parsed.description : "");
 			return value.trim();
+		} catch {
+			return String(response).trim();
 		}
-		return String(response).trim();
 	}
 	if (
 		response &&
@@ -196,7 +173,7 @@ export async function listConversationAttachments(
 }
 
 export async function resolveAttachmentSelection(
-	runtime: IAgentRuntime,
+	_runtime: IAgentRuntime,
 	message: Memory,
 	attachments: Media[],
 ): Promise<string | null> {
@@ -217,17 +194,14 @@ export async function resolveAttachmentSelection(
 	if (!text.trim()) {
 		return null;
 	}
-	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt: selectionPrompt(text, attachments),
-		stopSequences: [],
-	});
-	const parsed = parseToonKeyValue(String(response)) as Record<
-		string,
-		unknown
-	> | null;
-	const attachmentId = parsed?.attachmentId;
-	if (typeof attachmentId === "string" && attachmentId.trim()) {
-		return attachmentId.trim();
+	for (const attachment of attachments) {
+		if (text.includes(attachment.id)) {
+			return attachment.id;
+		}
+		const locator = attachmentLocator(attachment);
+		if (locator && text.toLowerCase().includes(locator.toLowerCase())) {
+			return attachment.id;
+		}
 	}
 	return null;
 }

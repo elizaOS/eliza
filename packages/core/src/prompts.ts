@@ -432,45 +432,7 @@ memories[2]:
 
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
-export const messageClassifierTemplate = `Analyze this user request and classify it for planning purposes:
-
-"{{text}}"
-
-Classify the request across these dimensions:
-
-1. COMPLEXITY LEVEL:
-- simple: Direct actions that don't require planning
-- medium: Multi-step tasks requiring coordination
-- complex: Strategic initiatives with multiple stakeholders
-- enterprise: Large-scale transformations with full complexity
-
-2. PLANNING TYPE:
-- direct_action: Single action, no planning needed
-- sequential_planning: Multiple steps in sequence
-- strategic_planning: Complex coordination with stakeholders
-
-3. REQUIRED CAPABILITIES:
-- List specific capabilities needed (analysis, communication, project_management, etc.)
-
-4. STAKEHOLDERS:
-- List types of people/groups involved
-
-5. CONSTRAINTS:
-- List limitations or requirements mentioned
-
-6. DEPENDENCIES:
-- List dependencies between tasks or external factors
-
-Respond using TOON:
-complexity: simple|medium|complex|enterprise
-planning: direct_action|sequential_planning|strategic_planning
-capabilities[n]: analysis,communication
-stakeholders[n]: person_or_group
-constraints[n]: limitation_or_requirement
-dependencies[n]: dependency
-confidence: 0.0-1.0
-
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.`;
+export const messageClassifierTemplate = `Legacy messageClassifierTemplate is disabled. The v5 message runtime handles routing through messageHandler contexts and the planner loop.`;
 
 export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
 
@@ -504,8 +466,8 @@ rules[22]:
 - if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
 - when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
 	- do not wait for portal names, deck attachments, updated-id uploads, exact flight times, reservation ids, fee-risk item names, priority labels, event IDs, exact travel preferences, or the definition of "important" before selecting the owning action; let the action gather those details
-	- future portal uploads, updated-id interventions, and cancellation-fee warning policies are operational workflows, not prose acknowledgements; choose OWNER_COMPUTER_USE or OWNER_DEVICE_INTENT first and let those actions ask the missing follow-up
-	- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call OWNER_LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
+	- future portal uploads, updated-id interventions, and cancellation-fee warning policies are operational workflows, not prose acknowledgements; choose COMPUTER_USE or DEVICE_INTENT first and let those actions ask the missing follow-up
+	- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
 - only choose actions that directly satisfy the user's request or an explicit live-state question; do not opportunistically triage inboxes, summarize calendars, propose meetings, or call adjacent tools just because provider context makes them available
 - when the user is venting, reflecting, stating an opinion, or asking for generic advice about a domain, stay in REPLY or NONE unless they explicitly ask you to inspect state, change state, send something, schedule something, or perform a real operation
 
@@ -1051,7 +1013,6 @@ available_contexts:
 context_routing:
 - primaryContext: choose one context from available_contexts, or "general" if none apply
 - secondaryContexts: optional comma-separated list of additional relevant contexts
-- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
 
 decision_note:
 - respond only when the latest message is talking TO {{agentName}}
@@ -1070,8 +1031,7 @@ name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
 action: RESPOND
 primaryContext: general
-secondaryContexts:
-evidenceTurnIds:`;
+secondaryContexts:`;
 
 export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
 
@@ -1220,79 +1180,6 @@ customFields: company:Acme,title:Designer
 notes: Prefers async communication`;
 
 export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
-
-export const updateEntityTemplate = `# Task: Update entity information.
-
-{{providers}}
-
-# Current Entity Information:
-{{entityInfo}}
-
-# Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
-
-Respond using TOON like this:
-thought: Your reasoning for the entity update
-entity_id: The entity ID to update
-updates[1]{name,value}:
-  field_name,new_value
-
-IMPORTANT: Your response must ONLY contain the TOON document above.`;
-
-export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
-
-export const updateRoleTemplate = `task: Extract the requested role change.
-
-context:
-{{providers}}
-
-current_roles:
-{{roles}}
-
-recent_messages:
-{{recentMessages}}
-
-current_message:
-{{message}}
-
-instructions[6]:
-- identify the single entity whose role should be updated
-- return entity_id only when the UUID is explicit in context
-- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
-- if the user is removing elevated access without naming a new role, use NONE
-- do not invent entity ids or roles
-- include a short thought describing the change
-
-output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
-
-Example:
-thought: Sarah should become an admin.
-entity_id: 00000000-0000-0000-0000-000000000000
-new_role: ADMIN`;
-
-export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
-
-export const updateSettingsTemplate = `# Task: Update settings based on the request.
-
-{{providers}}
-
-# Current Settings:
-{{settings}}
-
-# Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
-
-Respond using TOON like this:
-thought: Your reasoning for the settings changes
-updates[1]{key,value}:
-  setting_key,new_value
-
-IMPORTANT: Your response must ONLY contain the TOON document above.`;
-
-export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
 
 export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
 

@@ -25,6 +25,10 @@ function formatActionResult(result: MultiStepActionResult, index: number): strin
       .join("\n");
     lines.push(`   Values:\n${values}`);
   }
+  const toolCallId = (result.data as Record<string, unknown> | undefined)?.toolCallId;
+  if (typeof toolCallId === "string" && toolCallId.trim()) {
+    lines.push(`   Tool Call ID: ${toolCallId}`);
+  }
 
   return lines.join("\n");
 }
