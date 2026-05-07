@@ -2496,7 +2496,7 @@ export const allActionsSpec = {
 		{
 			name: "ATTACK_NPC",
 			description:
-				"Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
+				"Engage a nearby NPC in the SCAPE world in combat by its instance id (taken from the SCAPE_NEARBY provider's npcs list). The game server pathfinds the agent into attack range and starts combat via PlayerManager.attackNpcAsAgent. Use only when an enemy id is known and combat is desired; this is a write action that mutates world state.",
 			parameters: [
 				{
 					name: "npcId",
@@ -2508,7 +2508,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "NPC id.",
 				},
 			],
-			descriptionCompressed: "Attack NPC by id.",
+			descriptionCompressed: "scape:attack-npc by-id (paths-into-range)",
 			similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
 			exampleCalls: [
 				{
@@ -2604,7 +2604,7 @@ export const allActionsSpec = {
 		{
 			name: "BLOCK_UNTIL_TASK_COMPLETE",
 			description:
-				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. ",
+				"Create a website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (e.g. 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, the todo is created first; an optional unlockDurationMinutes re-locks the same hosts after the gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking') — those belong to OWNER_WEBSITE_BLOCK.",
 			parameters: [
 				{
 					name: "websites",
@@ -2661,7 +2661,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Optional profile label for the block rule.",
 				},
 			],
-			descriptionCompressed: "Block websites until a named todo is completed.",
+			descriptionCompressed:
+				"block-websites-until-todo-complete: websites + todoId|todoName + optional unlockDurationMinutes",
 			similes: [
 				"BLOCK_SITES_UNTIL_TODO_DONE",
 				"BLOCK_WEBSITE_UNTIL_TASK",
@@ -5323,7 +5324,7 @@ export const allActionsSpec = {
 		{
 			name: "LIST_ACTIVE_BLOCKS",
 			description:
-				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+				"Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with the LifeOps-managed block rules (id, gateType, websites, gate target — todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus / includeManagedRules. Only for website/app blocking status — do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
 			parameters: [
 				{
 					name: "includeLiveStatus",
@@ -5349,7 +5350,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"List live website blocker status and active block rules.",
+				"list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
 			similes: [
 				"LIST_BLOCK_RULES",
 				"SHOW_ACTIVE_BLOCKS",
@@ -8651,7 +8652,7 @@ export const allActionsSpec = {
 		{
 			name: "TASK_CONTROL",
 			description:
-				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+				"Apply a control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a session, optional follow-up instruction + agentType override), continue (send a follow-up instruction to the existing or a new session), archive (hide from active lists), reopen (restore from archive). The target thread is resolved from threadId, sessionId, or a free-text search; resume/continue accept an optional instruction.",
 			parameters: [
 				{
 					name: "operation",
@@ -8725,7 +8726,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Pause/stop/resume/archive/reopen coordinator task thread.",
+				"task-control:op=pause|stop|resume|continue|archive|reopen coordinator-task-thread (threadId|sessionId|search; +note|instruction|agentType)",
 			similes: [
 				"CONTROL_TASK",
 				"PAUSE_TASK",
@@ -8756,7 +8757,7 @@ export const allActionsSpec = {
 		{
 			name: "TASK_HISTORY",
 			description:
-				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+				"Query the agent-orchestrator coordinator's task threads as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for 'what am I working on right now', date-range summaries, topic search, task counts, or a single thread's detail — never to dump raw conversation history into context.",
 			parameters: [
 				{
 					name: "metric",
@@ -8827,7 +8828,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Query task history: active work, summaries, search, thread details.",
+				"task-history:metric=list|count|detail + window + statuses + search + limit (no raw transcripts)",
 			similes: [
 				"LIST_TASK_HISTORY",
 				"GET_TASK_HISTORY",
@@ -9117,7 +9118,7 @@ export const allActionsSpec = {
 		{
 			name: "TODO_WRITE",
 			description:
-				"Replace the conversation's todo list with the provided array. Each todo has content, status (pending|in_progress|completed), and an optional activeForm describing the in-progress phrasing. The full list is replaced on every call. Use to plan multi-step work and track progress within a session.",
+				"Replace the per-conversation coding-agent todo list (keyed by roomId, kept in process memory) with the provided array. Each item is { id?: string, content: string, status: pending|in_progress|completed, activeForm?: string }; missing ids are auto-generated, missing activeForm falls back to content. The full list is overwritten on every call — pass the complete updated list, not a delta. Use to plan multi-step coding work and track progress within a session.",
 			parameters: [
 				{
 					name: "todos",
@@ -9150,7 +9151,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Replace conversation todo list with {content,status,activeForm}[].",
+				"todo-write:replace conversation list [{id?,content,status:pending|in_progress|completed,activeForm?}]",
 			similes: ["UPDATE_TODOS", "SET_TODOS"],
 			exampleCalls: [
 				{
