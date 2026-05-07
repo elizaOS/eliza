@@ -1,5 +1,5 @@
 /**
- * UPDATE_ROLE action — role assignment backed by LLM extraction.
+ * RUNTIME_UPDATE_ROLE action — runtime role assignment backed by LLM extraction.
  *
  * The action becomes available for messages that clearly mention role or
  * authority language. The planner can extract structured parameters, and the
@@ -636,7 +636,7 @@ async function resolveRoleTargetEntity(args: {
 }
 
 export const updateRoleAction: Action = {
-  name: "UPDATE_ROLE",
+  name: "RUNTIME_UPDATE_ROLE",
   contexts: ["admin", "settings"],
   roleGate: { minRole: "OWNER" },
   similes: [
@@ -677,7 +677,7 @@ export const updateRoleAction: Action = {
     const emitRoleUpdate = async (text: string): Promise<void> => {
       await callback?.({
         text,
-        action: "UPDATE_ROLE",
+        action: "RUNTIME_UPDATE_ROLE",
       });
     };
 

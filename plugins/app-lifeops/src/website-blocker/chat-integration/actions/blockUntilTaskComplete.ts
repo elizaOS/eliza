@@ -183,6 +183,10 @@ export const blockUntilTaskCompleteAction: Action = {
       return {
         success: false,
         text: "BLOCK_UNTIL_TASK_COMPLETE requires at least one website.",
+        data: {
+          actionName: "BLOCK_UNTIL_TASK_COMPLETE",
+          reason: "missing_websites",
+        },
       };
     }
 
@@ -208,6 +212,11 @@ export const blockUntilTaskCompleteAction: Action = {
       return {
         success: false,
         text: "BLOCK_UNTIL_TASK_COMPLETE requires either todoId or todoName.",
+        data: {
+          actionName: "BLOCK_UNTIL_TASK_COMPLETE",
+          reason: "missing_todo_gate",
+          websites,
+        },
       };
     }
 
@@ -228,6 +237,7 @@ export const blockUntilTaskCompleteAction: Action = {
       success: true,
       text: `Block rule created for ${websites.join(", ")} until todo ${todoId} is completed.`,
       data: {
+        actionName: "BLOCK_UNTIL_TASK_COMPLETE",
         ruleId,
         todoId,
         createdTodo,

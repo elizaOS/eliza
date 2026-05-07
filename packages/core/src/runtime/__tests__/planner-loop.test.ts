@@ -86,20 +86,32 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledWith(
 			ModelType.ACTION_PLANNER,
-			expect.objectContaining({ prompt: expect.any(String) }),
+			expect.objectContaining({
+				messages: expect.any(Array),
+				promptSegments: expect.any(Array),
+			}),
 			undefined,
 		);
 		const plannerParams = runtime.useModel.mock.calls[0][1];
+		// Wire-shape contract: planner emits ONLY `messages`. No legacy
+		// `prompt: string` is sent on v5 calls — adapters consume `messages`.
+		expect(plannerParams.prompt).toBeUndefined();
 		expect(plannerParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
 		]);
 		expect(plannerParams.messages[0].content).toContain("planner_stage:");
 		expect(plannerParams.messages[0].content).toContain("agent_name: Eliza");
+		// Provider events render as `provider:NAME:\n<text>` (label + content).
+		// The previous shape baked an extra `provider: <name>` line into the
+		// content body, doubling up with the label. The new render drops that.
 		expect(plannerParams.messages[1].content).toContain(
-			"provider: RECENT_MESSAGES",
+			"provider:RECENT_MESSAGES:",
 		);
 		expect(plannerParams.messages[1].content).toContain("Check status.");
+		expect(plannerParams.messages[1].content).not.toMatch(
+			/provider:RECENT_MESSAGES:\nprovider: RECENT_MESSAGES/,
+		);
 		// After the stacking fix, trajectory steps are conveyed as assistant/tool
 		// message pairs, NOT as a JSON dump in the user message. The user message
 		// (messages[1]) should no longer contain "trajectory:\n[".

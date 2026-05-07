@@ -247,6 +247,44 @@ export function actionParameterSchemaToJsonSchema(
 	return jsonSchema;
 }
 
+function preferCompressedParamDescription(
+	parameter: ActionParameter,
+): string | undefined {
+	// Match `actionToTool`'s preference for the function-level description:
+	// caveman-compressed form wins, then the alias, then the verbose form.
+	// Surfacing the compressed text on parameters keeps the wire payload tight
+	// and consistent with how action descriptions are rendered.
+	return (
+		parameter.descriptionCompressed ??
+		parameter.compressedDescription ??
+		parameter.description
+	);
+}
+
+function appendParameterExamples(
+	description: string | undefined,
+	examples: ActionParameter["examples"],
+): string | undefined {
+	if (!Array.isArray(examples) || examples.length === 0) {
+		return description;
+	}
+	const parts = examples
+		.slice(0, 3)
+		.map((example) =>
+			typeof example === "string" ||
+			typeof example === "number" ||
+			typeof example === "boolean"
+				? String(example)
+				: JSON.stringify(example),
+		)
+		.filter((entry) => entry.length > 0);
+	if (parts.length === 0) {
+		return description;
+	}
+	const examplesPart = `e.g. ${parts.join(", ")}`;
+	return description ? `${description} (${examplesPart})` : examplesPart;
+}
+
 export function actionParametersToJsonSchema(
 	parameters: ActionParameter[] = [],
 ): ActionParametersJsonSchema {
@@ -255,11 +293,16 @@ export function actionParametersToJsonSchema(
 
 	for (const parameter of parameters) {
 		const enumValues = readEnumValues(parameter);
+		const baseDescription = preferCompressedParamDescription(parameter);
+		const description = appendParameterExamples(
+			baseDescription,
+			parameter.examples,
+		);
 		properties[parameter.name] = actionParameterSchemaToJsonSchema(
 			parameter.schema,
 			{
 				path: parameter.name,
-				description: parameter.description,
+				description,
 				enumValues,
 			},
 		);

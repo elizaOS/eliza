@@ -125,7 +125,7 @@ describe("LifeOps native options.parameters migration", () => {
         typeof action === "string" ? action : action.name,
       ),
     ).toEqual([
-      "CALENDAR_ACTION",
+      "CALENDAR",
       "PROPOSE_MEETING_TIMES",
       "CHECK_AVAILABILITY",
       "UPDATE_MEETING_PREFERENCES",

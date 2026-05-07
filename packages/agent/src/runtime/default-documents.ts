@@ -37,45 +37,44 @@ export const ELIZA_HISTORY_TEXT =
 export const ELIZA_CLOUD_BASICS_TEXT =
   "Eliza Cloud is the managed backend and app platform for Eliza when cloud mode is enabled. Builders can create an app, keep its appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media APIs through Cloud, monetize app usage with inference markup and purchase-share settings, and deploy Docker containers when an app needs server-side execution.";
 
-export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] =
-  [
-    {
-      key: "eliza-overview",
-      version: 1,
-      filename: "eliza-overview.txt",
-      contentType: "text/plain",
-      text: ELIZA_OVERVIEW_TEXT,
-      fragments: [
-        {
-          text: ELIZA_OVERVIEW_TEXT,
-        },
-      ],
-    },
-    {
-      key: "eliza-history",
-      version: 1,
-      filename: "eliza-history.txt",
-      contentType: "text/plain",
-      text: ELIZA_HISTORY_TEXT,
-      fragments: [
-        {
-          text: ELIZA_HISTORY_TEXT,
-        },
-      ],
-    },
-    {
-      key: "eliza-cloud-basics",
-      version: 1,
-      filename: "eliza-cloud-basics.txt",
-      contentType: "text/plain",
-      text: ELIZA_CLOUD_BASICS_TEXT,
-      fragments: [
-        {
-          text: ELIZA_CLOUD_BASICS_TEXT,
-        },
-      ],
-    },
-  ];
+export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
+  {
+    key: "eliza-overview",
+    version: 1,
+    filename: "eliza-overview.txt",
+    contentType: "text/plain",
+    text: ELIZA_OVERVIEW_TEXT,
+    fragments: [
+      {
+        text: ELIZA_OVERVIEW_TEXT,
+      },
+    ],
+  },
+  {
+    key: "eliza-history",
+    version: 1,
+    filename: "eliza-history.txt",
+    contentType: "text/plain",
+    text: ELIZA_HISTORY_TEXT,
+    fragments: [
+      {
+        text: ELIZA_HISTORY_TEXT,
+      },
+    ],
+  },
+  {
+    key: "eliza-cloud-basics",
+    version: 1,
+    filename: "eliza-cloud-basics.txt",
+    contentType: "text/plain",
+    text: ELIZA_CLOUD_BASICS_TEXT,
+    fragments: [
+      {
+        text: ELIZA_CLOUD_BASICS_TEXT,
+      },
+    ],
+  },
+];
 
 function getDocumentId(agentId: UUID, key: string): UUID {
   return stringToUuid(`eliza-default-knowledge:${agentId}:${key}:document`);
@@ -399,7 +398,8 @@ export async function seedBundledDocuments(
 export const seedBundledKnowledge = seedBundledDocuments;
 
 // Legacy type aliases
-export type DefaultKnowledgeFragmentDefinition = DefaultDocumentFragmentDefinition;
+export type DefaultKnowledgeFragmentDefinition =
+  DefaultDocumentFragmentDefinition;
 export type DefaultKnowledgeDocumentDefinition = DefaultDocumentDefinition;
 /** @deprecated Use DEFAULT_DOCUMENTS */
 export const DEFAULT_KNOWLEDGE_DOCUMENTS = DEFAULT_DOCUMENTS;

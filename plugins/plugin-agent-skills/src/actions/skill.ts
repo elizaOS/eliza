@@ -162,7 +162,7 @@ export const skillAction: Action = {
 			schema: { type: "string", enum: [...ALL_OPS] },
 		},
 	],
-	validate: async (runtime: IAgentRuntime, message: Memory) => {
+	validate: async (_runtime: IAgentRuntime, message: Memory) => {
 		const text = typeof message.content?.text === "string" ? message.content.text : "";
 		if (!text.trim()) return false;
 		return (

@@ -138,11 +138,11 @@ function textFromUnknown(value: unknown): string {
 }
 
 function renderProviderContent(event: ContextProviderEvent): string {
-	const parts: string[] = [`provider: ${event.name}`];
-	if (event.text?.trim()) {
-		parts.push(event.text.trim());
-	}
-	return parts.join("\n");
+	// The segment is already labeled `provider:<name>` by `appendPromptSegment`,
+	// which `segmentBlock` then renders as `provider:<name>:\n<content>`. Do NOT
+	// also bake the provider name into the content body — that produced a
+	// duplicated `provider: <name>` line at the top of every provider block.
+	return event.text?.trim() ?? "";
 }
 
 function toChatRole(role: string | undefined): ChatMessageRole {

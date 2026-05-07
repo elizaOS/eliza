@@ -23,6 +23,7 @@ export type FirstPartyAgentContext =
 	| "wallet"
 	| "crypto"
 	| "messaging"
+	| "phone"
 	| "social_posting"
 	| "media"
 	| "automation"

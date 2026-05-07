@@ -379,8 +379,8 @@ Your choice:`;
     const action = this.extractActionName(parsed);
     if (!action) return null;
 
-    // Solo WALK_TO action: not a router, dispatched directly.
-    if (action === "WALK_TO") {
+    // Solo movement action: not a router, dispatched directly.
+    if (action === "RS_2004_WALK_TO") {
       const params = this.extractParamsFromParsedResponse(parsed);
       this.mapParamAliases("walkTo", params);
       return { actionType: "walkTo", params };

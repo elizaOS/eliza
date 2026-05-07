@@ -24,7 +24,7 @@
  *
  * Action path (operator / elizaOS routing):
  *   runtime.processActions(message)
- *     ↳ validate(runtime, message)            ← hasActionRequest(message, "WALK_TO")
+ *     ↳ validate(runtime, message)            ← hasActionRequest(message, "SCAPE_WALK_TO")
  *     ↳ handler(runtime, message, …)          ← reads message.content.text
  */
 

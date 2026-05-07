@@ -40,12 +40,12 @@ interface N8nOptions {
 
 function parseOpFromText(text: string): N8nOp | null {
   const lower = text.toLowerCase();
-  if (/\b(modify|update|edit|change|adjust|tweak)\b/.test(lower)) return 'modify';
-  if (/\b(execution|run|history|ran|executed)\b/.test(lower)) return 'executions';
-  if (/\b(delete|remove|destroy|get rid of)\b/.test(lower)) return 'delete';
-  if (/\b(deactivate|disable|stop|pause|turn off)\b/.test(lower)) return 'deactivate';
-  if (/\b(activate|enable|start|turn on)\b/.test(lower)) return 'activate';
-  if (/\b(create|build|make|generate|new workflow)\b/.test(lower)) return 'create';
+  if (/\b(modify|update|edit|change|adjust|tweak)\b/.test(lower)) { return 'modify'; }
+  if (/\b(execution|run|history|ran|executed)\b/.test(lower)) { return 'executions'; }
+  if (/\b(delete|remove|destroy|get rid of)\b/.test(lower)) { return 'delete'; }
+  if (/\b(deactivate|disable|stop|pause|turn off)\b/.test(lower)) { return 'deactivate'; }
+  if (/\b(activate|enable|start|turn on)\b/.test(lower)) { return 'activate'; }
+  if (/\b(create|build|make|generate|new workflow)\b/.test(lower)) { return 'create'; }
   return null;
 }
 

@@ -163,9 +163,19 @@ async function dispatchRoute(
 
   const result =
     (await route.action.handler(runtime, message, state, options as HandlerOptions, callback)) ??
-    ({ success: true } as ActionResult);
+    ({
+      success: true,
+      text: `${routerName} routed to ${route.action.name}.`,
+      data: {},
+    } as ActionResult);
+  const text =
+    typeof result.text === "string" && result.text.length > 0
+      ? result.text
+      : `${routerName} routed to ${route.action.name}.`;
   return {
     ...result,
+    success: result.success ?? true,
+    text,
     data: {
       ...(typeof result.data === "object" && result.data ? result.data : {}),
       actionName: routerName,

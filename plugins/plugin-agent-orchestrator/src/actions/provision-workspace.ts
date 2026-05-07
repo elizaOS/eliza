@@ -26,13 +26,13 @@ const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
 const WORKSPACE_PATH_MAX_CHARS = 500;
 
 export const provisionWorkspaceAction: Action = {
-  name: "PROVISION_WORKSPACE",
+  name: "CREATE_WORKSPACE",
   contexts: ["code", "files", "tasks", "automation"],
   contextGate: { anyOf: ["code", "files", "tasks", "automation"] },
   roleGate: { minRole: "USER" },
 
   similes: [
-    "CREATE_WORKSPACE",
+    "PROVISION_WORKSPACE",
     "CLONE_REPO",
     "SETUP_WORKSPACE",
     "PREPARE_WORKSPACE",
@@ -56,7 +56,7 @@ export const provisionWorkspaceAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'll set up a workspace for you.",
-          action: "PROVISION_WORKSPACE",
+          action: "CREATE_WORKSPACE",
         },
       },
     ],
@@ -69,7 +69,7 @@ export const provisionWorkspaceAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Creating an isolated worktree for the bug fix.",
-          action: "PROVISION_WORKSPACE",
+          action: "CREATE_WORKSPACE",
         },
       },
     ],

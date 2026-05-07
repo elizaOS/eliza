@@ -79,20 +79,27 @@ describe("v5 evaluator skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledWith(
 			ModelType.RESPONSE_HANDLER,
-			expect.objectContaining({ prompt: expect.any(String) }),
+			expect.objectContaining({ messages: expect.any(Array) }),
 			undefined,
 		);
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
+		// Wire-shape contract: evaluator emits ONLY `messages`.
+		expect(evaluatorParams.prompt).toBeUndefined();
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
 		]);
 		expect(evaluatorParams.messages[0].content).toContain("evaluator_stage:");
 		expect(evaluatorParams.messages[0].content).toContain("agent_name: Eliza");
+		// Provider events render as `provider:NAME:\n<text>` (label + content);
+		// the old shape baked `provider: <name>` into the body, duplicating it.
 		expect(evaluatorParams.messages[1].content).toContain(
-			"provider: RECENT_MESSAGES",
+			"provider:RECENT_MESSAGES:",
 		);
 		expect(evaluatorParams.messages[1].content).toContain("Check status.");
+		expect(evaluatorParams.messages[1].content).not.toMatch(
+			/provider:RECENT_MESSAGES:\nprovider: RECENT_MESSAGES/,
+		);
 		// After the stacking fix, trajectory steps are conveyed as assistant/tool
 		// message pairs, NOT as a JSON dump in the user message.
 		expect(evaluatorParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);

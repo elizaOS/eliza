@@ -44,13 +44,13 @@ const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
     optional: ["pairingCode"],
   },
   status: {
-    description: "Look up one remote session by id via the legacy backend.",
-    descriptionCompressed: "lookup remote session sessionId legacy-backend",
+    description: "Look up one remote session by id via the stored session backend.",
+    descriptionCompressed: "lookup remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   end: {
-    description: "Close a remote session by id via the legacy backend.",
-    descriptionCompressed: "close remote session sessionId legacy-backend",
+    description: "Close a remote session by id via the stored session backend.",
+    descriptionCompressed: "close remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   list: {
@@ -313,12 +313,12 @@ export const remoteDesktopAction: Action & {
   description:
     "Owner-only. Manage remote-control desktop sessions so the owner can connect to this machine from another device. " +
     "Subactions: start (open a session via RemoteSessionService — requires confirmed:true and may require a pairing code; local-mode skips the code), " +
-    "status (look up one session by id via legacy backend), " +
-    "end (close a session by id via legacy backend), " +
+    "status (look up one session by id via the stored session backend), " +
+    "end (close a session by id via the stored session backend), " +
     "list (enumerate active sessions via RemoteSessionService), " +
     "revoke (revoke an active session by id via RemoteSessionService).",
   descriptionCompressed:
-    "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId); RemoteSessionService+legacy",
+    "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId)",
   contexts: ["browser", "automation", "settings", "admin"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -430,7 +430,16 @@ export const remoteDesktopAction: Action & {
       return {
         success: false,
         text: resolved.clarification,
-        data: { actionName: ACTION_NAME, missing: resolved.missing },
+        values: {
+          success: false,
+          error: "MISSING_REMOTE_DESKTOP_ARGUMENTS",
+          missing: resolved.missing,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          reason: "missing_arguments",
+          missing: resolved.missing,
+        },
       };
     }
 

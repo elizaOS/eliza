@@ -230,10 +230,15 @@ export const executeCodeAction: Action = {
   ): Promise<ActionResult> => {
     const disable = runtime.getSetting?.("EXECUTECODE_DISABLE");
     if (disable === true || disable === "true" || disable === "1") {
+      const text = `${LOG_PREFIX} disabled via EXECUTECODE_DISABLE`;
       return {
         success: false,
-        text: `${LOG_PREFIX} disabled via EXECUTECODE_DISABLE`,
+        text,
         error: new Error("executeCode disabled"),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "disabled",
+        },
       };
     }
 
@@ -243,6 +248,10 @@ export const executeCodeAction: Action = {
         success: false,
         text: parsed.error,
         error: new Error(parsed.error),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "invalid_parameters",
+        },
       };
     }
     const { script, allowedActions, timeoutMs } = parsed.params;
@@ -252,6 +261,10 @@ export const executeCodeAction: Action = {
         success: false,
         text: "executeCode: message has no roomId; cannot dispatch tools",
         error: new Error("missing roomId"),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "missing_room_id",
+        },
       };
     }
     const roomId = message.roomId as UUID;
@@ -331,6 +344,7 @@ export const executeCodeAction: Action = {
     }
 
     const summary: Record<string, unknown> = {
+      actionName: "EXECUTE_CODE",
       parentStepId,
       childSteps,
       childCount: childSteps.length,

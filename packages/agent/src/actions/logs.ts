@@ -1,9 +1,9 @@
 /**
  * Log inspection actions — let the agent introspect its own log buffer.
  *
- * QUERY_LOGS  → GET /api/logs (filterable)
- * EXPORT_LOGS → POST /api/logs/export (json or csv)
- * CLEAR_LOGS  → DELETE /api/logs
+ * SEARCH_LOGS (was QUERY_LOGS)  → GET /api/logs (filterable)
+ * EXPORT_LOGS                  → POST /api/logs/export (json or csv)
+ * DELETE_LOGS (was CLEAR_LOGS) → DELETE /api/logs
  */
 
 import type {
@@ -68,10 +68,11 @@ function formatLogPreview(entries: LogEntry[], limit: number): string {
 }
 
 export const queryLogsAction: Action = {
-  name: "QUERY_LOGS",
+  name: "SEARCH_LOGS",
   contexts: ["admin", "agent_internal", "settings"],
   roleGate: { minRole: "OWNER" },
   similes: [
+    "QUERY_LOGS",
     "READ_LOGS",
     "GET_LOGS",
     "INSPECT_LOGS",
@@ -138,7 +139,7 @@ export const queryLogsAction: Action = {
           totalSources: data.sources.length,
         },
         data: {
-          actionName: "QUERY_LOGS",
+          actionName: "SEARCH_LOGS",
           entries: entries.slice(0, limit),
           sources: data.sources,
           tags: data.tags,
@@ -195,7 +196,7 @@ export const queryLogsAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Showing recent agent error log entries...",
-          action: "QUERY_LOGS",
+          action: "SEARCH_LOGS",
         },
       },
     ],
@@ -316,7 +317,8 @@ export const exportLogsAction: Action = {
     },
     {
       name: "filter",
-      description: "Optional log filter (same shape as QUERY_LOGS parameters).",
+      description:
+        "Optional log filter (same shape as SEARCH_LOGS parameters).",
       required: false,
       schema: { type: "object" as const },
     },
@@ -325,10 +327,10 @@ export const exportLogsAction: Action = {
 };
 
 export const clearLogsAction: Action = {
-  name: "CLEAR_LOGS",
+  name: "DELETE_LOGS",
   contexts: ["admin", "agent_internal", "settings"],
   roleGate: { minRole: "OWNER" },
-  similes: ["WIPE_LOGS", "RESET_LOGS", "EMPTY_LOGS"],
+  similes: ["CLEAR_LOGS", "WIPE_LOGS", "RESET_LOGS", "EMPTY_LOGS"],
   description:
     "Clear the agent's in-memory log buffer via DELETE /api/logs. Owner-only destructive reset when the user wants diagnostic logs wiped or the buffer emptied.",
   descriptionCompressed:
@@ -357,7 +359,7 @@ export const clearLogsAction: Action = {
         success: true,
         text: `Cleared ${cleared} log entries.`,
         values: { cleared },
-        data: { actionName: "CLEAR_LOGS", cleared },
+        data: { actionName: "DELETE_LOGS", cleared },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -376,7 +378,7 @@ export const clearLogsAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Cleared the in-memory log buffer.",
-          action: "CLEAR_LOGS",
+          action: "DELETE_LOGS",
         },
       },
     ],

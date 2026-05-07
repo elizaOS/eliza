@@ -46,7 +46,7 @@ export const coreActionsSpec = {
       ],
     },
     {
-      name: "SWAP",
+      name: "EVM_SWAP",
       description: "Swap tokens on a decentralized exchange",
       descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],
@@ -91,7 +91,7 @@ export const allActionsSpec = {
       ],
     },
     {
-      name: "SWAP",
+      name: "EVM_SWAP",
       description: "Swap tokens on a decentralized exchange",
       descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],

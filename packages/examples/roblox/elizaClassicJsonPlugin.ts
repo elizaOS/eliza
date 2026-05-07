@@ -54,7 +54,7 @@ async function handle(
   _runtime: IAgentRuntime,
   params: GenerateTextParams,
 ): Promise<string> {
-  const input = extractUserMessage(params.prompt);
+  const input = extractUserMessage(params.prompt ?? "");
   return generateElizaResponse(input);
 }
 

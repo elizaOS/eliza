@@ -29,7 +29,7 @@ export const evaluateTrustAction: ElizaAction = {
 		{
 			name: "entityName",
 			description:
-				"Optional target entity name. Name resolution is not implemented and will return a bounded failure.",
+				"Optional target entity name. EVALUATE_TRUST requires entityId for lookups; name-only requests return a bounded failure.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -84,7 +84,15 @@ export const evaluateTrustAction: ElizaAction = {
 		} | null;
 
 		if (!trustEngine) {
-			throw new Error("Trust engine service not available");
+			return {
+				success: false,
+				text: "Trust engine service is not available.",
+				error: "Trust engine service not available",
+				data: {
+					actionName: "EVALUATE_TRUST",
+					reason: "trust_engine_unavailable",
+				},
+			};
 		}
 
 		const params =
@@ -110,9 +118,13 @@ export const evaluateTrustAction: ElizaAction = {
 		} else if (requestData.entityName) {
 			return {
 				success: false,
-				text: "Entity name resolution not yet implemented. Please provide entity ID.",
-				error: "Entity name resolution not implemented",
-				data: { actionName: "EVALUATE_TRUST" },
+				text: "EVALUATE_TRUST requires an entity ID for name-based requests. Please provide entityId.",
+				error: "Entity ID required for name-based trust lookup",
+				data: {
+					actionName: "EVALUATE_TRUST",
+					entityName: requestData.entityName,
+					reason: "entity_id_required",
+				},
 			};
 		} else {
 			targetEntityId = message.entityId;

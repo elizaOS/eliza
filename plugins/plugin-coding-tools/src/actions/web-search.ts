@@ -15,6 +15,8 @@ import {
 } from "../lib/format.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
+const ACTION_NAME = "CODE_WEB_SEARCH";
+
 function asStringArray(value: unknown[] | undefined): string[] | undefined {
   if (!value) return undefined;
   const out: string[] = [];
@@ -25,15 +27,15 @@ function asStringArray(value: unknown[] | undefined): string[] | undefined {
 }
 
 export const webSearchAction: Action = {
-  name: "WEB_SEARCH",
+  name: ACTION_NAME,
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   roleGate: { minRole: "ADMIN" },
-  similes: ["SEARCH_WEB", "GOOGLE", "BING"],
+  similes: ["CODING_WEB_SEARCH", "DEV_WEB_SEARCH", "CODE_SEARCH_WEB"],
   description:
-    "Run a web search and return ranked results. Stub in v1: no provider is wired in this plugin, so the action returns a placeholder success that echoes the query and any domain filters. Wire a Brave/Bing/Tavily backend before relying on this for real results.",
+    "Run a coding-agent web search request. This plugin reports query and domain filters when no search provider is configured; use the global WEB_SEARCH action for hosted generic web search when that plugin is available.",
   descriptionCompressed:
-    "Web search (stub — no backend configured; echoes query + filters).",
+    "Coding web search request; reports query + filters when no provider is configured.",
   parameters: [
     {
       name: "query",
@@ -75,6 +77,9 @@ export const webSearchAction: Action = {
       return failureToActionResult({
         reason: "missing_param",
         message: "query is required",
+      }, {
+        actionName: ACTION_NAME,
+        reason: "missing_query",
       });
     }
 
@@ -85,9 +90,10 @@ export const webSearchAction: Action = {
       readArrayParam(options, "blocked_domains"),
     );
 
-    const text = `WEB_SEARCH not configured (no provider). Query: "${query}". When a provider is wired (Brave/Bing/Tavily), this action will return ranked results.`;
+    const text = `${ACTION_NAME} not configured (no provider). Query: "${query}". Use WEB_SEARCH for hosted generic web search when available.`;
 
     const data: Record<string, unknown> = {
+      actionName: ACTION_NAME,
       stub: true,
       query,
       ...(allowedDomains ? { allowed_domains: allowedDomains } : {}),

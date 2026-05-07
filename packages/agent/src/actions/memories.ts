@@ -1,9 +1,9 @@
 /**
  * Memory introspection actions.
  *
- * RECALL_MEMORY_FILTERED → GET /api/memories/browse or /api/memories/by-entity/:id
- * FORGET_MEMORY          → DELETE /api/memories/:id
- * EDIT_MEMORY            → PATCH /api/memories/:id (server re-embeds)
+ * SEARCH_MEMORIES (was RECALL_MEMORY_FILTERED) → GET /api/memories/browse or /api/memories/by-entity/:id
+ * DELETE_MEMORY   (was FORGET_MEMORY)          → DELETE /api/memories/:id
+ * UPDATE_MEMORY   (was EDIT_MEMORY)            → PATCH /api/memories/:id (server re-embeds)
  */
 
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
@@ -42,10 +42,15 @@ interface MemoryBrowseResponseShape {
 }
 
 export const recallMemoryFilteredAction: Action = {
-  name: "RECALL_MEMORY_FILTERED",
+  name: "SEARCH_MEMORIES",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["BROWSE_MEMORIES", "FILTER_MEMORIES", "FIND_MEMORIES"],
+  similes: [
+    "RECALL_MEMORY_FILTERED",
+    "BROWSE_MEMORIES",
+    "FILTER_MEMORIES",
+    "FIND_MEMORIES",
+  ],
   description:
     "Recall memories filtered by type, entityId, roomId, or text query. Routes to /api/memories/by-entity when entityId is supplied; otherwise /api/memories/browse.",
   descriptionCompressed:
@@ -111,7 +116,7 @@ export const recallMemoryFilteredAction: Action = {
         ].join("\n"),
         values: { count: memories.length, total: data.total ?? null },
         data: {
-          actionName: "RECALL_MEMORY_FILTERED",
+          actionName: "SEARCH_MEMORIES",
           memories,
           total: data.total,
           offset: data.offset,
@@ -167,7 +172,7 @@ export const recallMemoryFilteredAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Found N memory item(s)...",
-          action: "RECALL_MEMORY_FILTERED",
+          action: "SEARCH_MEMORIES",
         },
       },
     ],
@@ -184,10 +189,10 @@ interface ForgetMemoryParams {
 }
 
 export const forgetMemoryAction: Action = {
-  name: "FORGET_MEMORY",
+  name: "DELETE_MEMORY",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["DELETE_MEMORY", "REMOVE_MEMORY"],
+  similes: ["FORGET_MEMORY", "REMOVE_MEMORY"],
   description:
     "Permanently delete a memory by id. Requires explicit confirm:true.",
   descriptionCompressed:
@@ -241,7 +246,7 @@ export const forgetMemoryAction: Action = {
         success: true,
         text: `Forgot memory ${memoryId}.`,
         values: { memoryId },
-        data: { actionName: "FORGET_MEMORY", memoryId },
+        data: { actionName: "DELETE_MEMORY", memoryId },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -283,10 +288,10 @@ interface EditMemoryResponseShape {
 }
 
 export const editMemoryAction: Action = {
-  name: "EDIT_MEMORY",
+  name: "UPDATE_MEMORY",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["UPDATE_MEMORY", "MODIFY_MEMORY"],
+  similes: ["EDIT_MEMORY", "MODIFY_MEMORY"],
   description:
     "Edit the text of an existing memory. Server re-embeds the new text. Requires explicit confirm:true.",
   descriptionCompressed:
@@ -352,7 +357,7 @@ export const editMemoryAction: Action = {
         text: `Updated memory ${memoryId}.`,
         values: { memoryId },
         data: {
-          actionName: "EDIT_MEMORY",
+          actionName: "UPDATE_MEMORY",
           memoryId,
           memory: data.memory ?? null,
         },

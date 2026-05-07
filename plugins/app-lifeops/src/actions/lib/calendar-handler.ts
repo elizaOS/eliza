@@ -2982,9 +2982,9 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "CALENDAR_ACTION",
+  name: "CALENDAR",
   similes: [
-    "CALENDAR",
+    "CALENDAR_ACTION",
     "CHECK_CALENDAR",
     "SHOW_CALENDAR_TODAY",
     "TODAY_SCHEDULE",

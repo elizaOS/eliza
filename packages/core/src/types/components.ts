@@ -213,6 +213,60 @@ export type Validator = (
 ) => Promise<boolean>;
 
 /**
+ * When an action should fire.
+ *
+ * Three trigger scopes (ALWAYS / CONTEXT / MESSAGE) × three lifecycle phases
+ * (BEFORE / DURING / AFTER) plus the default planner mode. All non-PLANNER
+ * modes are hooks; the runtime fires them at fixed positions in the message
+ * pipeline.
+ *
+ * - ALWAYS_*: every message, regardless of routing decision.
+ * - CONTEXT_*: only when one of the action's `contexts` was selected by Stage 1.
+ * - MESSAGE_*: hooks specifically on the messageHandler model call.
+ * - PLANNER (default): planner picks based on user intent.
+ *
+ * `*_DURING` modes are non-blocking (parallel with the corresponding pipeline
+ * step). All other hook modes are blocking.
+ *
+ * Cache contract: any hook that wants to influence the model prompt MUST use
+ * the v5 staged-prefix renderer so Cerebras-style prompt-cache hits stay
+ * intact across iterations.
+ */
+export const ActionMode = {
+	PLANNER: "PLANNER",
+	ALWAYS_BEFORE: "ALWAYS_BEFORE",
+	ALWAYS_DURING: "ALWAYS_DURING",
+	ALWAYS_AFTER: "ALWAYS_AFTER",
+	CONTEXT_BEFORE: "CONTEXT_BEFORE",
+	CONTEXT_DURING: "CONTEXT_DURING",
+	CONTEXT_AFTER: "CONTEXT_AFTER",
+	MESSAGE_BEFORE: "MESSAGE_BEFORE",
+	MESSAGE_DURING: "MESSAGE_DURING",
+	MESSAGE_AFTER: "MESSAGE_AFTER",
+} as const;
+export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
+
+/** Hook modes that run in parallel with the corresponding pipeline step. */
+export const NON_BLOCKING_MODES = new Set<ActionMode>([
+	ActionMode.ALWAYS_DURING,
+	ActionMode.CONTEXT_DURING,
+	ActionMode.MESSAGE_DURING,
+]);
+
+/** All non-PLANNER hook modes, in canonical pipeline order. */
+export const HOOK_MODES: readonly ActionMode[] = [
+	ActionMode.ALWAYS_BEFORE,
+	ActionMode.MESSAGE_BEFORE,
+	ActionMode.MESSAGE_DURING,
+	ActionMode.MESSAGE_AFTER,
+	ActionMode.CONTEXT_BEFORE,
+	ActionMode.CONTEXT_DURING,
+	ActionMode.CONTEXT_AFTER,
+	ActionMode.ALWAYS_DURING,
+	ActionMode.ALWAYS_AFTER,
+];
+
+/**
  * Represents an action the agent can perform
  */
 export interface Action {
@@ -314,6 +368,20 @@ export interface Action {
 
 	/** Whether this action should delegate selection to a sub-planner. */
 	subPlanner?: boolean | { name?: string; description?: string };
+
+	/**
+	 * When this action should fire. Defaults to {@link ActionMode.PLANNER}.
+	 * Non-PLANNER values turn the action into a hook that fires at a fixed
+	 * pipeline position; see {@link ActionMode} for the full taxonomy.
+	 */
+	mode?: ActionMode;
+
+	/**
+	 * Ordering hint for hook actions sharing the same mode. Lower priority
+	 * runs first. Default: 100. Ignored for `*_DURING` modes (parallel) and
+	 * for `PLANNER`.
+	 */
+	modePriority?: number;
 }
 
 /**
