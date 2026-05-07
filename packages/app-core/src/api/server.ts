@@ -87,7 +87,7 @@ export {
   isSafeResetStateDir,
   resolveCorsOrigin,
 } from "./server-startup";
-export { resolveWalletExportRejection } from "./server-wallet-trade";
+export { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,

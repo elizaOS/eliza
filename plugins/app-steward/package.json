@@ -71,6 +71,7 @@
     "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@toon-format/toon": "^2.1.0",
