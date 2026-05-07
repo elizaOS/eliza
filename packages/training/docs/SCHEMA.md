@@ -14,7 +14,7 @@ top-level fields — adapter-specific extras live under `metadata`.
                          "channel":"dm|public|tool|system"}],
   "currentMessage":   {"role":"user", "speaker":"string", "content":"string",
                          "channel":"dm|public"},
-  "expectedResponse": "string  — the supervised target. TOON-encoded for
+  "expectedResponse": "string  — the supervised target. JSON-encoded for
                                    structured tasks (routing, tool calls,
                                    shell commands), plain text only for
                                    reasoning-distill records that ship a
@@ -70,33 +70,33 @@ reflection, and distill records use task-specific shapes.
 
 | task_type                     | expectedResponse format                                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------------- |
-| `should_respond`              | TOON: `name`, `reasoning`, `action: RESPOND\|IGNORE\|STOP`, `primaryContext`, `secondaryContexts`, `evidenceTurnIds` |
+| `should_respond`              | JSON: `name`, `reasoning`, `action: RESPOND\|IGNORE\|STOP`, `primaryContext`, `secondaryContexts`, `evidenceTurnIds` |
 | `should_respond_with_context` | same shape as `should_respond`                                                                |
-| `should_mute_room`            | TOON: `decision: true\|false`                                                                 |
-| `should_unmute_room`          | TOON: `decision: true\|false`                                                                 |
-| `should_follow_room`          | TOON: `decision: true\|false`                                                                 |
-| `should_unfollow_room`        | TOON: `decision: true\|false`                                                                 |
-| `reply`                       | TOON planner envelope (`thought`, `actions[1]: REPLY`, `providers`, `text`, `simple`) — older records may carry the slim `thought, text` shape, both accepted by `audit_pipeline_shapes.py:validate_reply` |
-| `tool_call` / `mcp_tool_call` | TOON planner envelope; tool calls are `actions[N]{name: TASK_CALL, params: {tool, arguments}}` |
-| `mcp_routing`                 | TOON: `server`, `tool`, `arguments`                                                           |
-| `shell_command`               | TOON planner envelope; `actions[1]{name: SHELL_COMMAND, params: {command, cwd, explanation}}` |
-| `scam_defense`                | TOON planner envelope (REPLY for engage/verify/decline; IGNORE for block)                     |
-| `dialogue_routing`            | TOON: `name`, `reasoning`, `action: RESPOND\|IGNORE`                                          |
-| `agent_trace`                 | TOON planner envelope                                                                         |
-| `mobile_action`               | TOON planner envelope                                                                         |
-| `n8n_workflow_generation`     | TOON planner envelope; the workflow JSON rides under `actions[1].params.workflow`             |
-| `reflection`                  | TOON: `thought`, `quality_score: 0-100`, `strengths`, `improvements`, `learnings`             |
-| `reflection_evaluator`        | TOON: `thought`, `task_completed: bool`, `task_completion_reason`, `relationships[N]{sourceEntityId,targetEntityId,tags[M]}` |
-| `fact_extractor`              | RAW JSON: `{"ops":[{"op":"add_durable\|add_current\|strengthen\|decay\|contradict", ...}]}` — empty `{"ops":[]}` is a valid (and common) output. NOT TOON-encoded. |
-| `summarization`               | TOON: `text`, `topics[N]`, `keyPoints[M]`                                                     |
-| `long_term_extraction`        | TOON: `memories[N]{category: episodic\|semantic\|procedural, content, confidence: >=0.85}` — empty `memories` block is the common case |
-| `add_contact`                 | TOON: action-specific; see `addContactTemplate` in `eliza/packages/core/src/prompts.ts`        |
-| `choose_option`               | TOON: `option`, `reasoning`                                                                   |
-| `extract_secrets`             | TOON: `key`, `value`, `exists: bool`                                                          |
-| `multi_step_decision`         | TOON: action+next-step decision per `multiStepDecisionTemplate`                               |
-| `message_classifier`          | TOON: classification only per `messageClassifierTemplate`                                     |
-| `should_follow_room`          | TOON: `decision: true\|false`                                                                 |
-| `reasoning_cot`               | TOON: `thought, text` (slim) or full planner envelope — **OUT OF BAND, see COVERAGE_AUDIT.md** |
+| `should_mute_room`            | JSON: `decision: true\|false`                                                                 |
+| `should_unmute_room`          | JSON: `decision: true\|false`                                                                 |
+| `should_follow_room`          | JSON: `decision: true\|false`                                                                 |
+| `should_unfollow_room`        | JSON: `decision: true\|false`                                                                 |
+| `reply`                       | JSON planner envelope (`thought`, `actions[1]: REPLY`, `providers`, `text`, `simple`) — older records may carry the slim `thought, text` shape, both accepted by `audit_pipeline_shapes.py:validate_reply` |
+| `tool_call` / `mcp_tool_call` | JSON planner envelope; tool calls are `actions[N]{name: TASK_CALL, params: {tool, arguments}}` |
+| `mcp_routing`                 | JSON: `server`, `tool`, `arguments`                                                           |
+| `shell_command`               | JSON planner envelope; `actions[1]{name: SHELL_COMMAND, params: {command, cwd, explanation}}` |
+| `scam_defense`                | JSON planner envelope (REPLY for engage/verify/decline; IGNORE for block)                     |
+| `dialogue_routing`            | JSON: `name`, `reasoning`, `action: RESPOND\|IGNORE`                                          |
+| `agent_trace`                 | JSON planner envelope                                                                         |
+| `mobile_action`               | JSON planner envelope                                                                         |
+| `n8n_workflow_generation`     | JSON planner envelope; the workflow JSON rides under `actions[1].params.workflow`             |
+| `reflection`                  | JSON: `thought`, `quality_score: 0-100`, `strengths`, `improvements`, `learnings`             |
+| `reflection_evaluator`        | JSON: `thought`, `task_completed: bool`, `task_completion_reason`, `relationships[N]{sourceEntityId,targetEntityId,tags[M]}` |
+| `fact_extractor`              | RAW JSON: `{"ops":[{"op":"add_durable\|add_current\|strengthen\|decay\|contradict", ...}]}` — empty `{"ops":[]}` is a valid (and common) output. |
+| `summarization`               | JSON: `text`, `topics[N]`, `keyPoints[M]`                                                     |
+| `long_term_extraction`        | JSON: `memories[N]{category: episodic\|semantic\|procedural, content, confidence: >=0.85}` — empty `memories` block is the common case |
+| `add_contact`                 | JSON: action-specific; see `addContactTemplate` in `eliza/packages/core/src/prompts.ts`        |
+| `choose_option`               | JSON: `option`, `reasoning`                                                                   |
+| `extract_secrets`             | JSON: `key`, `value`, `exists: bool`                                                          |
+| `multi_step_decision`         | JSON: action+next-step decision per `multiStepDecisionTemplate`                               |
+| `message_classifier`          | JSON: classification only per `messageClassifierTemplate`                                     |
+| `should_follow_room`          | JSON: `decision: true\|false`                                                                 |
+| `reasoning_cot`               | JSON: `thought, text` (slim) or full planner envelope — **OUT OF BAND, see COVERAGE_AUDIT.md** |
 | `claude_distill`              | RAW: `<think>{reasoning}</think>{final answer}` — **OUT OF BAND, transformed into `reply` per COVERAGE_AUDIT.md** |
 
 `scripts/audit_pipeline_shapes.py` validates each record against the
@@ -113,8 +113,7 @@ top-level fields would diverge the published shape, force consumers to
 strip them, and confuse the elizaOS runtime which expects the canonical
 keys. All adapter-specific information rides under `metadata`.
 
-## TOON encoding
+## JSON encoding
 
-`expectedResponse` for structured tasks is encoded by
-`tools/toon_encode.mjs` (Bun, backed by `@toon-format/toon`) so it is
-byte-identical to what the elizaOS runtime decoder expects.
+`expectedResponse` for structured tasks is JSON-encoded so it matches
+what the elizaOS runtime decoder expects.

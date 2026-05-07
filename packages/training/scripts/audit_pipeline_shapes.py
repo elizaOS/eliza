@@ -1,9 +1,9 @@
 """Audit normalized records against canonical elizaOS pipeline-stage schemas.
 
 Reads every line under ``data/normalized/*.jsonl`` (skipping ``.errors.jsonl``),
-TOON-decodes each ``expectedResponse`` via ``tools/toon_decode.mjs``, then
-checks the decoded shape against the schema documented in
-``previews/PIPELINE_SCHEMAS.md`` for the record's ``metadata.task_type``.
+JSON-decodes each ``expectedResponse``, then checks the decoded shape against
+the schema documented in ``previews/PIPELINE_SCHEMAS.md`` for the record's
+``metadata.task_type``.
 
 Outputs:
 
@@ -32,7 +32,6 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.toon import ToonDecoder  # noqa: E402
 from lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
 
 log = logging.getLogger("audit")
@@ -695,13 +694,6 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
 
 # ─────────────────────────── audit driver ────────────────────────────────────
 
-def _decode_or_none(decoder: ToonDecoder, text: str) -> tuple[Any | None, str | None]:
-    try:
-        return decoder.decode(text), None
-    except (ValueError, RuntimeError) as e:
-        return None, str(e)[:200]
-
-
 def _json_or_none(text: str) -> tuple[Any | None, str | None]:
     try:
         return json.loads(text), None
@@ -710,11 +702,8 @@ def _json_or_none(text: str) -> tuple[Any | None, str | None]:
 
 
 def _is_json_target(task_type: str) -> bool:
-    """Return True if the record's expectedResponse is RAW JSON (not TOON).
-
-    fact_extractor records emit raw JSON per the runtime template.
-    """
-    return task_type in FACT_EXTRACTOR_TASK_TYPES
+    """All expectedResponse values are JSON in native v5."""
+    return True
 
 
 def _classify(task_type: str, decoded: Any) -> list[str]:
@@ -770,8 +759,6 @@ def audit(
     normalized_dir: Path, *, only: str | None, sample_per_file: int | None,
 ) -> dict[str, Any]:
     """Run the full audit and return a structured report."""
-    decoder = ToonDecoder()
-
     # task_type → {"total": int, "ok": int, "reasons": Counter,
     #              "examples": {reason: [{slug, original_id, decoded_preview}]}}
     by_task: dict[str, dict[str, Any]] = collections.defaultdict(
@@ -803,11 +790,7 @@ def audit(
             by_task[task_type]["reasons"]["missing_or_non_string_target"] += 1
             continue
 
-        # fact_extractor (and any other RAW-JSON task_type) bypasses TOON.
-        if _is_json_target(task_type):
-            decoded, decode_err = _json_or_none(target)
-        else:
-            decoded, decode_err = _decode_or_none(decoder, target)
+        decoded, decode_err = _json_or_none(target)
         bucket = by_task[task_type]
         bucket["total"] += 1
         if decode_err is not None:
