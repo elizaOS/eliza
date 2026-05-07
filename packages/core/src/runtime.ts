@@ -165,10 +165,7 @@ import type {
 	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import {
-	parseJSONObjectFromText,
-	stringToUuid,
-} from "./utils";
+import { parseJSONObjectFromText, stringToUuid } from "./utils";
 import {
 	collectActionResultSizeWarnings,
 	getActionResultActionName,
@@ -270,7 +267,7 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_COMPLETION,
 ];
 
-type StructuredResponseFormat = "JSON";
+type StructuredResponseFormat = "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
 	text: string;
@@ -3306,7 +3303,7 @@ export class AgentRuntime implements IAgentRuntime {
 										? result
 										: result === null
 											? null
-												: stringifyStructuredForPrompt({ result });
+											: stringifyStructuredForPrompt({ result });
 						actionResult = {
 							success: true,
 							data: {
@@ -3582,7 +3579,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.stateCache.set(`${message.id}_action_results`, {
 					values: { actionResults },
 					data: { actionResults, actionPlan },
-						text: stringifyStructuredForPrompt({ actionResults }),
+					text: stringifyStructuredForPrompt({ actionResults }),
 				});
 			}
 		}
