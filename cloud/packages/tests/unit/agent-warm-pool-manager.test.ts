@@ -187,21 +187,27 @@ describe("WarmPoolManager", () => {
     });
     const { WarmPoolManager } = await importManager();
     const creator: CreatorMock = {
-      ...makeCreator(),
+      createCalls: 0,
+      destroyCalls: [],
+      probeReturns: new Map(),
       async createPoolContainer() {
         this.createCalls++;
         if (this.createCalls === 2) throw new Error("hcloud quota exceeded");
         return { id: `c-${this.createCalls}`, nodeId: "node-1" };
       },
+      async destroyPoolContainer(id: string) {
+        this.destroyCalls.push(id);
+      },
+      async healthProbe() {
+        return true;
+      },
     } as CreatorMock;
+    const mgr = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, () => NOW);
 
-    const result = await mgr.replenishWithCreator(creator);
+    const result = await mgr.replenish(IMAGE);
     expect(result.created.length).toBe(1);
     expect(result.failed.length).toBe(1);
     expect(result.failed[0]?.error).toContain("hcloud quota");
-
-    function _ignored<T>(_v: T): void {}
-    _ignored(creator);
   });
 
   test("drainIdle removes only past-idle-window entries when target == floor", async () => {

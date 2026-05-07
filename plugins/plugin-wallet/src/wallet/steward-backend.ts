@@ -19,6 +19,24 @@ interface StewardEvmAccountBinding {
 }
 
 /**
+ * Shape of the dynamically imported @elizaos/app-steward/services/steward-evm-account
+ * module. Defined locally to avoid a devDependency cycle with app-steward.
+ */
+interface StewardEvmAccountModule {
+  initStewardEvmAccount(): Promise<StewardEvmAccountBinding | null>;
+  resolveStewardEvmConfig(): {
+    apiUrl: string;
+    agentToken: string;
+    agentId: string;
+  } | null;
+  fetchStewardVaultChainAddresses(
+    apiUrl: string,
+    agentToken: string,
+    agentId: string,
+  ): Promise<{ evm: `0x${string}` | null; solana: string | null }>;
+}
+
+/**
  * Cloud / mobile signing via Steward for EVM. Solana addresses may be exposed from
  * Steward when `/vault/.../addresses` returns them; Solana **transaction** signing is
  * not implemented here yet — callers must treat Solana writes as unavailable until wired.
@@ -40,7 +58,7 @@ export class StewardBackend implements WalletBackend {
 
   static async create(_runtime: IAgentRuntime): Promise<StewardBackend> {
     void _runtime;
-    let steward: typeof import("@elizaos/app-steward/services/steward-evm-account");
+    let steward: StewardEvmAccountModule;
     try {
       steward = await import(
         "@elizaos/app-steward/services/steward-evm-account"

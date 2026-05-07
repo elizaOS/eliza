@@ -14,7 +14,6 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 	trimTokens,
 } from "@elizaos/core";
@@ -23,6 +22,7 @@ import {
 	attachmentSummarizationTemplate as summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 
 const SPEC_NAME = "DISCORD_CHAT_WITH_ATTACHMENTS";
 
@@ -37,7 +37,16 @@ const getAttachmentIds = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
 	state: State,
+	options?: HandlerOptions,
 ): Promise<{ objective: string; attachmentIds: string[] } | null> => {
+	const parameters = getActionParameters(options);
+	if (parameters.objective && Array.isArray(parameters.attachmentIds)) {
+		return {
+			objective: String(parameters.objective),
+			attachmentIds: parameters.attachmentIds.map(String),
+		};
+	}
+
 	const prompt = composePromptFromState({
 		state,
 		template: attachmentIdsTemplate,
@@ -47,10 +56,7 @@ const getAttachmentIds = async (
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
-		// Try parsing the TOON response.
-		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
-			response,
-		) as {
+		const parsedResponse = parseJsonObjectFromText(response) as {
 			objective: string;
 			attachmentIds: string[];
 		} | null;
@@ -176,7 +182,7 @@ export const chatWithAttachments: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
-		_options?: HandlerOptions,
+		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		if (!state) {
@@ -196,7 +202,7 @@ export const chatWithAttachments: Action = {
 		};
 
 		// 1. extract attachment IDs from the message
-		const attachmentData = await getAttachmentIds(runtime, message, state);
+		const attachmentData = await getAttachmentIds(runtime, message, state, options);
 		if (!attachmentData) {
 			runtime.logger.warn(
 				{

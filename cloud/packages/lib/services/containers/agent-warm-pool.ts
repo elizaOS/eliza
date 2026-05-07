@@ -383,13 +383,4 @@ function emptyState(): PoolStateSnapshot {
   };
 }
 
-/**
- * Helper used by the claim flow to persist a row update + delete pool row
- * in one transaction. Lives on the repo; this re-export is purely for
- * call-site clarity.
- */
-export const claimWarmContainer = agentSandboxesRepository.claimWarmContainer.bind(
-  agentSandboxesRepository,
-);
-
 export type { AgentSandbox };

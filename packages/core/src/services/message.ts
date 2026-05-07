@@ -28,6 +28,9 @@ import {
 } from "../prompts/message-handler";
 import { filterByContextGate } from "../runtime/context-gates";
 import { createContextObject } from "../runtime/context-object";
+import type { ContextRegistry } from "../runtime/context-registry";
+import { checkSenderRole } from "../roles";
+import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -51,6 +54,11 @@ import {
 	runPlannerLoop,
 } from "../runtime/planner-loop";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
+import {
+	createJsonFileTrajectoryRecorder,
+	isTrajectoryRecordingEnabled,
+	type TrajectoryRecorder,
+} from "../runtime/trajectory-recorder";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
