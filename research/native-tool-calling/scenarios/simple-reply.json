@@ -1,0 +1,7 @@
+{
+  "message": "What is 2 + 2?",
+  "expect": {
+    "noPlanner": true,
+    "rationale": "Simple arithmetic — no tool needed, should produce a direct reply without entering the planner."
+  }
+}

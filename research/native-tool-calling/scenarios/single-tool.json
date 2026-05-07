@@ -1,0 +1,8 @@
+{
+  "message": "Search the web for the latest news about elizaOS.",
+  "expect": {
+    "tools": ["WEB_SEARCH"],
+    "stages": ["planner", "tool"],
+    "rationale": "Single web search — should call WEB_SEARCH exactly once then respond."
+  }
+}
