@@ -53,6 +53,9 @@ import {
 } from "../runtime/planner-loop";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import {
+	buildCanonicalSystemPrompt,
+} from "../runtime/system-prompt";
+import {
 	createJsonFileTrajectoryRecorder,
 	isTrajectoryRecordingEnabled,
 	type TrajectoryRecorder,
@@ -62,7 +65,10 @@ import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
 } from "../streaming-context";
-import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	getTrajectoryContext,
+	runWithTrajectoryContext,
+} from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
@@ -1108,19 +1114,6 @@ function appendStateProviderEvents(
 	}
 }
 
-function renderCharacterBio(value: unknown): string {
-	if (typeof value === "string") {
-		return value.trim();
-	}
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-			.filter(Boolean)
-			.join(" ");
-	}
-	return "";
-}
-
 function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1211,22 +1204,10 @@ function createV5MessageContextObject(args: {
 		}
 	}
 
-	const characterContent = [
-		args.runtime.character.name
-			? `agent_name: ${args.runtime.character.name}`
-			: "",
-		renderCharacterBio(args.runtime.character.bio)
-			? `# About ${args.runtime.character.name ?? "the agent"}\n${renderCharacterBio(
-					args.runtime.character.bio,
-				)}`
-			: "",
-		typeof args.runtime.character.system === "string"
-			? args.runtime.character.system
-			: "",
-	]
-		.filter(Boolean)
-		.join("\n")
-		.trim();
+	const systemPrompt = buildCanonicalSystemPrompt({
+		character: args.runtime.character,
+		userRole: args.userRoles?.[0],
+	});
 	const expandedTools = events
 		.filter((event) => event.type === "tool" && "tool" in event)
 		.map((event) => {
@@ -1245,20 +1226,20 @@ function createV5MessageContextObject(args: {
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
 		createdAt: Date.now(),
-		metadata: {
-			roomId: args.message.roomId,
-			messageId: args.message.id,
-			selectedContexts: [...(args.selectedContexts ?? [])],
-		},
-		staticPrefix: {
-			characterPrompt: characterContent
-				? {
-						id: "character",
-						label: "character",
-						content: characterContent,
-						stable: true,
-					}
-				: undefined,
+			metadata: {
+				roomId: args.message.roomId,
+				messageId: args.message.id,
+				selectedContexts: [...(args.selectedContexts ?? [])],
+			},
+			staticPrefix: {
+				systemPrompt: systemPrompt
+					? {
+							id: "system",
+							label: "system",
+							content: systemPrompt,
+							stable: true,
+						}
+					: undefined,
 			contextRegistryDigest: availableContexts.join(","),
 		},
 		trajectoryPrefix: {
@@ -1362,6 +1343,9 @@ function renderContextSegmentBlock(segment: {
 	stable?: boolean;
 }): string {
 	const label = segment.label ?? segment.id ?? "context";
+	if (label === "system") {
+		return segment.content.trim();
+	}
 	return `${label}:\n${segment.content.trim()}`;
 }
 
@@ -1667,13 +1651,16 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 }): Promise<V5MessageRuntimeStage1Result> {
-	const senderRole = await resolveStage1SenderRole(args.runtime, args.message);
+	const senderRole =
+		getTrajectoryContext()?.userRole ??
+		(await resolveStage1SenderRole(args.runtime, args.message));
 	const availableContexts = listAvailableContextsForRole(
 		args.runtime.contexts,
 		senderRole,
 	);
 	const context = createV5MessageContextObject({
 		...args,
+		userRoles: [senderRole],
 		availableContexts,
 	});
 
@@ -2511,7 +2498,6 @@ async function _repairCanonicalPlannerActions(args: {
 		],
 		options: {
 			modelType: ModelType.TEXT_LARGE,
-			preferredEncapsulation: "json",
 			contextCheckLevel: 0,
 			maxRetries: 1,
 		},
@@ -3699,7 +3685,6 @@ async function _recoverProvidersForTurn(args: {
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -3796,7 +3781,6 @@ async function shouldUseKnowledgeProviders(
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -4398,27 +4382,33 @@ export class DefaultMessageService implements IMessageService {
 				"trajectoryStepId" in message.metadata
 					? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 					: undefined;
-			trajectoryId =
-				typeof message.metadata === "object" &&
-				message.metadata !== null &&
-				"trajectoryId" in message.metadata
-					? (message.metadata as { trajectoryId?: string }).trajectoryId
-					: undefined;
-		}
+				trajectoryId =
+					typeof message.metadata === "object" &&
+					message.metadata !== null &&
+					"trajectoryId" in message.metadata
+						? (message.metadata as { trajectoryId?: string }).trajectoryId
+						: undefined;
+			}
 
-		return await runWithTrajectoryContext<MessageProcessingResult>(
-			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
-				? {
-						...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
-							? { trajectoryId: trajectoryId.trim() }
-							: {}),
-						trajectoryStepId: trajectoryStepId.trim(),
-						runId: runtime.getCurrentRunId?.(),
-						roomId: message.roomId,
-						messageId: message.id,
-					}
-				: undefined,
-			async (): Promise<MessageProcessingResult> => {
+			const senderRole = await resolveStage1SenderRole(runtime, message);
+			const trajectoryContextBase = {
+				runId: runtime.getCurrentRunId?.(),
+				roomId: message.roomId,
+				messageId: message.id,
+				userRole: senderRole,
+			};
+
+			return await runWithTrajectoryContext<MessageProcessingResult>(
+				typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
+					? {
+							...trajectoryContextBase,
+							...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
+								? { trajectoryId: trajectoryId.trim() }
+								: {}),
+							trajectoryStepId: trajectoryStepId.trim(),
+						}
+					: trajectoryContextBase,
+				async (): Promise<MessageProcessingResult> => {
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",
