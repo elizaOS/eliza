@@ -85,6 +85,12 @@ const ELIZA_SUPPORTED_CRED_TYPES: ReadonlySet<string> = new Set([
   "googleDriveOAuth2Api",
   "slackApi",
   "slackOAuth2Api",
+  "whatsAppApi",
+  "matrixApi",
+  "httpHeaderAuth",
+  "httpQueryAuth",
+  "googleChatOAuth2Api",
+  "facebookGraphApi",
 ]);
 
 interface RuntimeContextSupportedCredential {
@@ -179,6 +185,32 @@ const CRED_TYPE_FACTS: Record<
   slackApi: {
     friendlyName: "Slack Workspace",
     nodeTypes: ["n8n-nodes-base.slack"],
+  },
+  whatsAppApi: {
+    friendlyName: "WhatsApp",
+    nodeTypes: ["n8n-nodes-base.whatsApp"],
+  },
+  matrixApi: {
+    friendlyName: "Matrix",
+    nodeTypes: ["n8n-nodes-base.matrix"],
+  },
+  // httpHeaderAuth / httpQueryAuth: used by LINE, Twitch, Feishu, Signal, Farcaster, Bluesky, Nextcloud.
+  // These are generic HTTP credential types — advertised as available when any such connector is wired.
+  httpHeaderAuth: {
+    friendlyName: "HTTP Header Auth",
+    nodeTypes: ["n8n-nodes-base.httpRequest"],
+  },
+  httpQueryAuth: {
+    friendlyName: "HTTP Query Auth (e.g. BlueBubbles)",
+    nodeTypes: ["n8n-nodes-base.httpRequest"],
+  },
+  googleChatOAuth2Api: {
+    friendlyName: "Google Chat",
+    nodeTypes: ["n8n-nodes-base.googleChat"],
+  },
+  facebookGraphApi: {
+    friendlyName: "Instagram (Meta Graph API)",
+    nodeTypes: ["n8n-nodes-base.facebookGraphApi"],
   },
 };
 
