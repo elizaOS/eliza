@@ -130,7 +130,7 @@ export const todoWriteAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ) => {

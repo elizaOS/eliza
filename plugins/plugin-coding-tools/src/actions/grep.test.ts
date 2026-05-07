@@ -16,7 +16,11 @@ import {
 import { grepAction } from "./grep.js";
 
 function locateSystemRg(): string | undefined {
-  const candidates = ["/opt/homebrew/bin/rg", "/usr/local/bin/rg", "/usr/bin/rg"];
+  const candidates = [
+    "/opt/homebrew/bin/rg",
+    "/usr/local/bin/rg",
+    "/usr/bin/rg",
+  ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
@@ -55,7 +59,9 @@ async function buildRuntime(
   if (!existsSync(initialBinary)) {
     const sysRg = locateSystemRg();
     if (!sysRg) {
-      console.warn(`no usable ripgrep found (tried ${initialBinary} and system paths); skipping`);
+      console.warn(
+        `no usable ripgrep found (tried ${initialBinary} and system paths); skipping`,
+      );
       return null;
     }
     (rg as unknown as { rgPath: string }).rgPath = sysRg;
@@ -84,8 +90,14 @@ beforeEach(async () => {
   await fs.mkdir(subDir, { recursive: true });
   await fs.writeFile(path.join(fooDir, "a.ts"), "export const NEEDLE = 1;\n");
   await fs.writeFile(path.join(fooDir, "b.ts"), "// nothing matches here\n");
-  await fs.writeFile(path.join(subDir, "c.ts"), "function needle() { return 'NEEDLE'; }\n");
-  await fs.writeFile(path.join(fooDir, "notes.md"), "Some markdown about NEEDLE.\n");
+  await fs.writeFile(
+    path.join(subDir, "c.ts"),
+    "function needle() { return 'NEEDLE'; }\n",
+  );
+  await fs.writeFile(
+    path.join(fooDir, "notes.md"),
+    "Some markdown about NEEDLE.\n",
+  );
 });
 
 afterEach(async () => {
@@ -103,7 +115,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler!(runtime, message, state, {
+    const result = await grepAction.handler?.(runtime, message, state, {
       parameters: { pattern: "NEEDLE" },
     });
 
@@ -124,13 +136,15 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const sensitive = await grepAction.handler!(runtime, message, state, {
+    const sensitive = await grepAction.handler?.(runtime, message, state, {
       parameters: { pattern: "needle", output_mode: "files_with_matches" },
     });
     expect(sensitive.success).toBe(true);
-    const sensitiveCount = (sensitive.data as Record<string, unknown> | undefined)?.matches_count as number;
+    const sensitiveCount = (
+      sensitive.data as Record<string, unknown> | undefined
+    )?.matches_count as number;
 
-    const insensitive = await grepAction.handler!(runtime, message, state, {
+    const insensitive = await grepAction.handler?.(runtime, message, state, {
       parameters: {
         pattern: "needle",
         output_mode: "files_with_matches",
@@ -138,7 +152,9 @@ describe("GREP", () => {
       },
     });
     expect(insensitive.success).toBe(true);
-    const insensitiveCount = (insensitive.data as Record<string, unknown> | undefined)?.matches_count as number;
+    const insensitiveCount = (
+      insensitive.data as Record<string, unknown> | undefined
+    )?.matches_count as number;
 
     expect(insensitiveCount).toBeGreaterThan(sensitiveCount);
   });
@@ -151,7 +167,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler!(runtime, message, state, {
+    const result = await grepAction.handler?.(runtime, message, state, {
       parameters: { pattern: "NEEDLE", path: blockedPath },
     });
     expect(result.success).toBe(false);
@@ -166,12 +182,14 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler!(runtime, message, state, {
+    const result = await grepAction.handler?.(runtime, message, state, {
       parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("no matches");
-    expect((result.data as Record<string, unknown> | undefined)?.matches_count).toBe(0);
+    expect(
+      (result.data as Record<string, unknown> | undefined)?.matches_count,
+    ).toBe(0);
   });
 
   it("fails when roomId is missing", async () => {
@@ -181,7 +199,7 @@ describe("GREP", () => {
       return;
     }
     const { runtime } = bundle;
-    const result = await grepAction.handler!(runtime, {} as Memory, state, {
+    const result = await grepAction.handler?.(runtime, {} as Memory, state, {
       parameters: { pattern: "NEEDLE" },
     });
     expect(result.success).toBe(false);

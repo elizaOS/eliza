@@ -30,7 +30,10 @@ async function initRepo(repoDir: string): Promise<void> {
     GIT_COMMITTER_EMAIL: "t@t",
   };
   execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, env });
-  execFileSync("git", ["commit", "--allow-empty", "-m", "init"], { cwd: repoDir, env });
+  execFileSync("git", ["commit", "--allow-empty", "-m", "init"], {
+    cwd: repoDir,
+    env,
+  });
 }
 
 async function setupRepo(): Promise<TestEnv> {
@@ -54,8 +57,9 @@ async function setupRepo(): Promise<TestEnv> {
     [SANDBOX_SERVICE]: sandbox,
     [SESSION_CWD_SERVICE]: session,
   };
-  (runtime as unknown as { getService: (k: string) => unknown }).getService = (key: string) =>
-    services[key] ?? null;
+  (runtime as unknown as { getService: (k: string) => unknown }).getService = (
+    key: string,
+  ) => services[key] ?? null;
 
   return {
     repoDir,
@@ -94,7 +98,7 @@ describe("ENTER_WORKTREE", () => {
   });
 
   it("creates a worktree, sets session cwd to it, and adds it as a sandbox root", async () => {
-    const result = await enterWorktreeAction.handler!(
+    const result = await enterWorktreeAction.handler?.(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -113,14 +117,16 @@ describe("ENTER_WORKTREE", () => {
     const stat = await fs.stat(worktreePath);
     expect(stat.isDirectory()).toBe(true);
 
-    expect(env.session.getCwd(env.conversationId)).toBe(path.resolve(worktreePath));
+    expect(env.session.getCwd(env.conversationId)).toBe(
+      path.resolve(worktreePath),
+    );
 
     expect(typeof data?.branch).toBe("string");
     expect(result.text).toContain("Entered worktree");
   });
 
   it("uses the provided name when supplied", async () => {
-    const result = await enterWorktreeAction.handler!(
+    const result = await enterWorktreeAction.handler?.(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -158,12 +164,17 @@ describe("ENTER_WORKTREE", () => {
       [SANDBOX_SERVICE]: sandbox,
       [SESSION_CWD_SERVICE]: session,
     };
-    (runtime as unknown as { getService: (k: string) => unknown }).getService = (key: string) =>
-      services[key] ?? null;
+    (runtime as unknown as { getService: (k: string) => unknown }).getService =
+      (key: string) => services[key] ?? null;
 
-    const result = await enterWorktreeAction.handler!(runtime, makeMessage(conversationId), state, {
-      parameters: {},
-    });
+    const result = await enterWorktreeAction.handler?.(
+      runtime,
+      makeMessage(conversationId),
+      state,
+      {
+        parameters: {},
+      },
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("io_error");
@@ -173,7 +184,7 @@ describe("ENTER_WORKTREE", () => {
   });
 
   it("fails with missing_param when message has no roomId", async () => {
-    const result = await enterWorktreeAction.handler!(
+    const result = await enterWorktreeAction.handler?.(
       env.runtime,
       {} as unknown as Memory,
       state,

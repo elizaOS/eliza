@@ -28,7 +28,8 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   tasks: ShellTaskService;
 }> {
   const settings: Record<string, unknown> = {};
-  if (opts.workspaceRoots) settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
+  if (opts.workspaceRoots)
+    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
   if (opts.bashTimeoutMs !== undefined)
     settings.CODING_TOOLS_BASH_TIMEOUT_MS = opts.bashTimeoutMs;
   if (opts.bashBgBudgetMs !== undefined)
@@ -78,7 +79,7 @@ describe("bashAction", () => {
     const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
     started = tasks;
 
-    const result = await bashAction.handler!(
+    const result = await bashAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -99,7 +100,7 @@ describe("bashAction", () => {
     });
     started = tasks;
 
-    const result = await bashAction.handler!(
+    const result = await bashAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -115,7 +116,7 @@ describe("bashAction", () => {
     const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
     started = tasks;
 
-    const result = await bashAction.handler!(
+    const result = await bashAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -131,7 +132,7 @@ describe("bashAction", () => {
     const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
     started = tasks;
 
-    const startResult = await bashAction.handler!(
+    const startResult = await bashAction.handler?.(
       runtime,
       makeMessage(),
       undefined,

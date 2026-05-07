@@ -63,13 +63,15 @@ const state: State | undefined = undefined;
 describe("LS", () => {
   it("lists fixture entries with directories first then files (sorted)", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler!(runtime, message, state, {
+    const result = await lsAction.handler?.(runtime, message, state, {
       parameters: {},
     });
 
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
-    const entries = data?.entries as { name: string; type: string }[] | undefined;
+    const entries = data?.entries as
+      | { name: string; type: string }[]
+      | undefined;
     expect(Array.isArray(entries)).toBe(true);
     expect(entries?.length).toBe(6);
 
@@ -96,7 +98,7 @@ describe("LS", () => {
 
   it("respects the ignore glob list", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler!(runtime, message, state, {
+    const result = await lsAction.handler?.(runtime, message, state, {
       parameters: { ignore: ["*.log"] },
     });
 
@@ -111,7 +113,7 @@ describe("LS", () => {
 
   it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler!(runtime, message, state, {
+    const result = await lsAction.handler?.(runtime, message, state, {
       parameters: { path: blockedPath },
     });
     expect(result.success).toBe(false);
@@ -120,7 +122,7 @@ describe("LS", () => {
 
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
-    const result = await lsAction.handler!(runtime, {} as Memory, state, {
+    const result = await lsAction.handler?.(runtime, {} as Memory, state, {
       parameters: {},
     });
     expect(result.success).toBe(false);
@@ -129,12 +131,14 @@ describe("LS", () => {
 
   it("includes file size for files in the entries data", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler!(runtime, message, state, {
+    const result = await lsAction.handler?.(runtime, message, state, {
       parameters: {},
     });
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
-    const entries = data?.entries as { name: string; type: string; size?: number }[] | undefined;
+    const entries = data?.entries as
+      | { name: string; type: string; size?: number }[]
+      | undefined;
     const alpha = entries?.find((e) => e.name === "alpha.ts");
     expect(alpha?.type).toBe("file");
     expect(typeof alpha?.size).toBe("number");
