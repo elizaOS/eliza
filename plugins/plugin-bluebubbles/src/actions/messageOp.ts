@@ -9,16 +9,12 @@ import type {
 	ActionExample,
 	ActionResult,
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
 } from "@elizaos/core";
-import {
-	composePromptFromState,
-	logger,
-	ModelType,
-	parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, logger, ModelType } from "@elizaos/core";
 import { BLUEBUBBLES_SERVICE_NAME } from "../constants.js";
 import type { BlueBubblesService } from "../service.js";
 
@@ -45,12 +41,8 @@ Operations:
 - send: send an iMessage reply. Provide \`text\` with the reply.
 - react: add or remove a reaction. Provide \`emoji\`, \`messageId\` ("last" for the most recent message), and \`remove\` (true to remove).
 
-Respond with TOON only:
-op: send
-text:
-emoji:
-messageId: last
-remove: false
+Respond with JSON only. Return exactly one JSON object with this shape:
+{"op":"send","text":"","emoji":null,"messageId":"last","remove":false}
 `;
 
 const sendMessageTemplate = `# Task: Generate a response to send via iMessage (BlueBubbles)
@@ -89,11 +81,38 @@ const examples: ActionExample[][] = [
 	],
 ];
 
-function parseInfo(raw: string): MessageOpInfo | null {
-	const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
-	if (!parsed) {
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+	if (value && typeof value === "object" && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
+	}
+	if (typeof value !== "string") {
 		return null;
 	}
+	try {
+		const parsed = JSON.parse(value.trim()) as unknown;
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+function readParams(
+	options?: HandlerOptions | Record<string, unknown> | unknown,
+): Record<string, unknown> {
+	const direct =
+		options && typeof options === "object"
+			? (options as Record<string, unknown>)
+			: {};
+	const parameters =
+		direct.parameters && typeof direct.parameters === "object"
+			? (direct.parameters as Record<string, unknown>)
+			: {};
+	return { ...direct, ...parameters };
+}
+
+function normalizeInfo(parsed: Record<string, unknown>): MessageOpInfo | null {
 	const opRaw =
 		typeof parsed.op === "string" ? parsed.op.toLowerCase().trim() : "";
 	if (!VALID_OPS.has(opRaw as MessageOp)) {
@@ -117,6 +136,11 @@ function parseInfo(raw: string): MessageOpInfo | null {
 			parsed.remove === true ||
 			String(parsed.remove ?? "").toLowerCase() === "true",
 	};
+}
+
+function parseInfo(raw: unknown): MessageOpInfo | null {
+	const parsed = parseJsonObject(raw);
+	return parsed ? normalizeInfo(parsed) : null;
 }
 
 async function handleSend(
@@ -272,7 +296,7 @@ export const bluebubblesMessageOp: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state: State | undefined,
-		_options: Record<string, unknown> | undefined,
+		_options: HandlerOptions | Record<string, unknown> | undefined,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const service = runtime.getService<BlueBubblesService>(
@@ -315,12 +339,13 @@ export const bluebubblesMessageOp: Action = {
 			template: messageOpTemplate,
 		});
 
-		let info: MessageOpInfo | null = null;
+		let info: MessageOpInfo | null = normalizeInfo(readParams(_options));
 		for (let attempt = 0; attempt < 3; attempt++) {
+			if (info) {
+				break;
+			}
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-			info = parseInfo(
-				typeof response === "string" ? response : String(response),
-			);
+			info = parseInfo(response);
 			if (info) {
 				break;
 			}

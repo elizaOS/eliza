@@ -12,13 +12,13 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseToonKeyValue,
 	type Service,
 	ServiceType,
 	type State,
 } from "@elizaos/core";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 
 type DiscordMediaOp = "download" | "transcribe";
 
@@ -33,8 +33,8 @@ Allowed values for "op":
 - download: download a media attachment or URL from Discord
 - transcribe: transcribe an audio or video attachment from Discord
 
-Respond with TOON only:
-op: <one of: download|transcribe>`;
+Respond with JSON only, no markdown:
+{"op":"download"}`;
 
 const TRANSCRIBE_REQUEST_PATTERN =
 	/\b(?:transcribe|transcript|audio|video|media|youtube|meeting|recording|podcast|call|conference|interview|speech|lecture|presentation|voice|song)\b/i;
@@ -201,9 +201,10 @@ function quickResolveOp(
 	options: HandlerOptions | undefined,
 	message: Memory,
 ): DiscordMediaOp | null {
+	const parameters = getActionParameters(options);
 	const optsOp =
-		typeof (options as Record<string, unknown> | undefined)?.op === "string"
-			? ((options as Record<string, unknown>).op as string).toLowerCase()
+		typeof parameters.op === "string"
+			? parameters.op.toLowerCase()
 			: undefined;
 	if (optsOp && (VALID_OPS as readonly string[]).includes(optsOp)) {
 		return optsOp as DiscordMediaOp;
@@ -227,7 +228,7 @@ async function modelResolveOp(
 	const prompt = composePromptFromState({ state, template: opRouterTemplate });
 	for (let i = 0; i < 3; i++) {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		const op =
 			typeof parsed?.op === "string" ? parsed.op.toLowerCase() : undefined;
 		if (op && (VALID_OPS as readonly string[]).includes(op)) {
@@ -241,6 +242,7 @@ async function handleDownload(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const videoService = runtime.getService<VideoServiceInterface>(
@@ -257,11 +259,14 @@ async function handleDownload(
 		return { success: false, error: "Video service not available" };
 	}
 
+	const parameters = getActionParameters(options);
+	let mediaUrl =
+		typeof parameters.mediaUrl === "string" ? parameters.mediaUrl : null;
 	const prompt = composePromptFromState({ state, template: mediaUrlTemplate });
-	let mediaUrl: string | null = null;
 	for (let i = 0; i < 5; i++) {
+		if (mediaUrl) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.mediaUrl) {
 			mediaUrl = String(parsed.mediaUrl);
 			break;
@@ -446,7 +451,7 @@ export const mediaOp: Action = {
 			case "download": {
 				const downloadState =
 					currentState ?? (await runtime.composeState(message));
-				return handleDownload(runtime, message, downloadState, callback);
+				return handleDownload(runtime, message, downloadState, options, callback);
 			}
 			case "transcribe":
 				return handleTranscribe(runtime, message, callback);
