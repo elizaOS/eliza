@@ -1,7 +1,6 @@
 """Expected-response encoders for ElizaRecord generation.
 
-Native v5 training exports are JSON documents. The legacy TOON encoder remains
-available only for compatibility corpus rebuilds that explicitly opt in.
+Native v5 training exports are JSON documents.
 """
 
 from __future__ import annotations
@@ -30,8 +29,4 @@ def make_expected_response_encoder(fmt: str = "json") -> ExpectedResponseEncoder
     normalized = fmt.strip().lower().replace("_", "-")
     if normalized in {"json", "native-json"}:
         return JsonExpectedResponseEncoder()
-    if normalized in {"legacy-toon", "toon"}:
-        from .toon import ToonEncoder
-
-        return ToonEncoder()
     raise ValueError(f"unsupported expected response format: {fmt}")

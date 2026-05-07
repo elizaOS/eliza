@@ -74,9 +74,6 @@ from typing import Any, Iterable
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Lazy import — TOON decoder spawns a Bun process at first decode().
-from scripts.lib import toon as toon_lib  # noqa: E402
-
 # Canonical action vocabulary (mirrors lib/eliza_record.py).
 ACTION_RESPOND = "RESPOND"
 ACTION_IGNORE = "IGNORE"
@@ -145,20 +142,9 @@ SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
 # ──────────────────────── decode helpers ────────────────────────
 
 
-_decoder_singleton: toon_lib.ToonDecoder | None = None
-
-
-def _decoder() -> toon_lib.ToonDecoder:
-    global _decoder_singleton
-    if _decoder_singleton is None:
-        _decoder_singleton = toon_lib.ToonDecoder()
-    return _decoder_singleton
-
-
 def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
-    """Best-effort structured decode.
+    """Structured decode for native v5 JSON expectedResponse values.
 
-    Native v5 rows are JSON. Legacy rows fall back to TOON compatibility.
     Returns `(ok, value, error)`.
     """
     if not isinstance(text, str) or not text.strip():
@@ -167,12 +153,9 @@ def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
     if stripped.startswith("{") or stripped.startswith("["):
         try:
             return True, json.loads(stripped), ""
-        except json.JSONDecodeError:
-            pass
-    try:
-        return True, _decoder().decode(text), ""
-    except (ValueError, RuntimeError) as e:
-        return False, None, str(e)[:200]
+        except json.JSONDecodeError as e:
+            return False, None, str(e)[:200]
+    return False, None, "not_json"
 
 
 def _action_names(actions: list[Any]) -> list[str]:
@@ -435,7 +418,7 @@ TASK_TYPE_VALIDATORS = {
 
 def _extract_thought(rec: dict, decoded: Any | None) -> str | None:
     """Pull a candidate `thought:` string out of the decoded envelope or the
-    raw expectedResponse (for adapters that didn't TOON-encode)."""
+    raw expectedResponse."""
     if isinstance(decoded, dict):
         t = decoded.get("thought")
         if isinstance(t, str):
@@ -512,8 +495,8 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     task_type = md.get("task_type") or ""
     expected = rec.get("expectedResponse") or ""
 
-    # Decode TOON once if expected by the task_type — the per-task_type
-    # validators read from `decoded` rather than re-decoding.
+    # Decode the JSON expectedResponse once for task_types that need structured
+    # validation — validators read from `decoded` rather than re-decoding.
     decoded: Any | None = None
     if task_type in {"tool_call", "shell_command", "agent_trace",
                      "should_respond_with_context", "should_respond",
