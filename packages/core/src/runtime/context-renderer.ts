@@ -310,15 +310,22 @@ function renderEvent(
 	}
 
 	if (isInstructionEvent(event)) {
+		// System-role instruction events are part of the agent's stable system
+		// prompt and their content is already self-labeled (e.g. starts with
+		// `available_contexts:`). Use label="system" so segmentBlock emits the
+		// raw content without an extra `instruction:system:\n` header. Non-
+		// system roles keep the label so the model can spot them.
+		const role = event.role ?? "system";
+		const label = role === "system" ? "system" : `instruction:${role}`;
 		appendPromptSegment(
 			rendered,
 			{
 				id: event.id,
-				label: `instruction:${event.role ?? "system"}`,
+				label,
 				content: event.content,
 				stable: Boolean(event.stable),
 			},
-			event.role,
+			role,
 		);
 		return;
 	}
@@ -393,10 +400,14 @@ export function renderContextObject(
 	for (const segment of context.staticPrefix?.staticProviders ?? []) {
 		appendPromptSegment(rendered, segment, "system");
 	}
+	// Synthetic system segments use label="system" so segmentBlock emits the
+	// raw content without a redundant `<label>:\n` header — every content body
+	// below is already self-labeled (e.g. `context_registry_digest: ...`,
+	// `selected_contexts: ...`).
 	if (context.staticPrefix?.contextRegistryDigest) {
 		appendSyntheticSegment(rendered, {
 			id: "context-registry-digest",
-			label: "context-registry",
+			label: "system",
 			content: `context_registry_digest: ${context.staticPrefix.contextRegistryDigest}`,
 			stable: true,
 		});
@@ -404,7 +415,7 @@ export function renderContextObject(
 	if (context.trajectoryPrefix?.messageHandlerThought) {
 		appendSyntheticSegment(rendered, {
 			id: "message-handler-thought",
-			label: "message-handler",
+			label: "system",
 			content: `message_handler_thought: ${context.trajectoryPrefix.messageHandlerThought}`,
 			stable: true,
 		});
@@ -412,21 +423,29 @@ export function renderContextObject(
 	if (context.trajectoryPrefix?.selectedContexts?.length) {
 		appendSyntheticSegment(rendered, {
 			id: "selected-contexts",
-			label: "selected-contexts",
+			label: "system",
 			content: `selected_contexts: ${context.trajectoryPrefix.selectedContexts.join(", ")}`,
 			stable: true,
 		});
 	}
 	if (context.trajectoryPrefix?.contextDefinitions?.length) {
+		// Surface selectionGuidance + covers + description so planner/evaluator
+		// see the same rich context catalog Stage 1 sees, not just IDs.
+		const definitions = context.trajectoryPrefix.contextDefinitions.map(
+			(definition) => {
+				const entry: Record<string, unknown> = { id: definition.id };
+				if (definition.description) entry.description = definition.description;
+				if (definition.selectionGuidance)
+					entry.selectionGuidance = definition.selectionGuidance;
+				if (Array.isArray(definition.covers) && definition.covers.length > 0)
+					entry.covers = definition.covers;
+				return entry;
+			},
+		);
 		appendSyntheticSegment(rendered, {
 			id: "context-definitions",
-			label: "context-definitions",
-			content: `context_definitions: ${JSON.stringify(
-				context.trajectoryPrefix.contextDefinitions.map((definition) => ({
-					id: definition.id,
-					description: definition.description,
-				})),
-			)}`,
+			label: "system",
+			content: `context_definitions: ${JSON.stringify(definitions)}`,
 			stable: true,
 		});
 	}

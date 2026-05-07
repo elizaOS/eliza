@@ -1165,13 +1165,11 @@ function createV5MessageContextObject(args: {
 	const availableContexts =
 		args.availableContexts?.map((definition) => definition.id) ??
 		parseContextList(args.state.values?.[AVAILABLE_CONTEXTS_STATE_KEY]);
-	addInstruction(
-		"available_contexts",
-		`available_contexts: ${
-			availableContexts.length > 0 ? availableContexts.join(", ") : "general"
-		}`,
-		true,
-	);
+	// `available_contexts` was previously emitted as an instruction event AND
+	// as `staticPrefix.contextRegistryDigest`. Both held the same flat ID list,
+	// duplicating the line in the planner system message. Keep only the
+	// registry digest (set on `staticPrefix` below) — it's already cache-stable
+	// and self-labeled in the rendered output.
 	appendStateProviderEvents(
 		events,
 		args.state,
