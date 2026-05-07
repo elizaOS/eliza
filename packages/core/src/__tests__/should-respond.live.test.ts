@@ -129,7 +129,6 @@ liveDescribe("shouldRespond live", () => {
 			schema: getClassifierSchema(),
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
