@@ -1,8 +1,9 @@
 /**
  * Generic in-memory rate limiter with automatic sweep.
  *
- * Consolidates the per-IP rate limiting pattern from wallet-export-guard.ts
- * and the pairing attempt limiter in server.ts.
+ * Consolidates the per-IP rate limiting pattern from
+ * `@elizaos/plugin-wallet/lib/wallet-export-guard` and the pairing attempt
+ * limiter in `server.ts`.
  */
 
 export interface RateLimiterOptions {
