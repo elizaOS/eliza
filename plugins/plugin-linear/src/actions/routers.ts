@@ -5,6 +5,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 import { clearActivityAction } from "./clearActivity";
@@ -19,6 +20,124 @@ import { updateIssueAction } from "./updateIssue";
 export const LINEAR_ISSUE_CONTEXT = "linear_issue";
 export const LINEAR_COMMENT_CONTEXT = "linear_comment";
 export const LINEAR_WORKFLOW_CONTEXT = "linear_workflow";
+
+/**
+ * Common envelope every Linear router result carries. `actionName` identifies
+ * the router that produced the result, `routedActionName` names the child
+ * action that handled the request, and `subaction` is the resolved verb (or
+ * `null` when no route matched and the router returned a missing-subaction
+ * error). The index signature is required so the result is assignable to
+ * `ProviderDataRecord`.
+ */
+interface LinearRouterEnvelope {
+  routedActionName: string | null;
+  subaction: string | null;
+  /** List of valid subactions, populated only on missing-subaction errors. */
+  availableSubactions?: string;
+  [key: string]: ProviderValue;
+}
+
+interface LinearIssueSummary {
+  id: string;
+  identifier: string;
+  title: string;
+}
+
+/**
+ * `LINEAR_ISSUE` router result. Fields below are the union of what
+ * createIssue/getIssue/updateIssue/deleteIssue place in `data`. Each is
+ * optional because only the routed child populates its subset.
+ */
+export interface LinearIssueRouterResultData extends LinearRouterEnvelope {
+  actionName: "LINEAR_ISSUE";
+  /** createIssue, updateIssue, deleteIssue (also prompt branches). */
+  issueId?: string;
+  /** createIssue, updateIssue, deleteIssue. */
+  identifier?: string;
+  /** createIssue, updateIssue. */
+  url?: string;
+  /** updateIssue: snapshot of fields that were changed. */
+  updates?: Record<string, ProviderValue>;
+  /** deleteIssue. */
+  title?: string;
+  archived?: boolean;
+  /** deleteIssue (pending confirmation) and any future awaiting branches. */
+  awaitingUserInput?: boolean;
+  /** deleteIssue (user declined). */
+  cancelled?: boolean;
+  /** getIssue (single hit): full serialized issue details. */
+  issue?: Record<string, ProviderValue>;
+  /** getIssue (multi-result clarify branch). */
+  multipleResults?: boolean;
+  /** getIssue clarify branch: shortlist for the user to disambiguate. */
+  issues?: LinearIssueSummary[];
+}
+
+/**
+ * `LINEAR_COMMENT` router result. Sourced from createComment.
+ */
+export interface LinearCommentRouterResultData extends LinearRouterEnvelope {
+  actionName: "LINEAR_COMMENT";
+  /** createComment success. */
+  commentId?: string;
+  issueId?: string;
+  issueIdentifier?: string;
+  commentBody?: string;
+  createdAt?: string;
+  /** createComment clarify branch when multiple issues match. */
+  multipleMatches?: boolean;
+  issues?: LinearIssueSummary[];
+  /** Comment text held while clarifying which issue to attach it to. */
+  pendingComment?: string;
+}
+
+interface LinearActivityItem {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  success: boolean;
+  error?: string;
+  details: ProviderValue;
+  timestamp: string;
+}
+
+interface LinearSearchIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  priority: number | null;
+  state: { name: string; type: string } | null;
+  assignee: { name: string; email: string } | null;
+  team: { name: string; key: string } | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+/**
+ * `LINEAR_WORKFLOW` router result. Sourced from
+ * getActivity/clearActivity/searchIssues.
+ */
+export interface LinearWorkflowRouterResultData extends LinearRouterEnvelope {
+  actionName: "LINEAR_WORKFLOW";
+  /** getActivity. */
+  activity?: LinearActivityItem[];
+  /** getActivity, searchIssues. */
+  filters?: Record<string, ProviderValue>;
+  count?: number;
+  /** searchIssues. */
+  issues?: LinearSearchIssue[];
+  /** clearActivity (pending confirmation). */
+  awaitingUserInput?: boolean;
+  /** clearActivity (user declined). */
+  cancelled?: boolean;
+}
+
+type LinearRouterResultData =
+  | LinearIssueRouterResultData
+  | LinearCommentRouterResultData
+  | LinearWorkflowRouterResultData;
 
 type RouterAction = Action & {
   actionGroup?: {
@@ -139,8 +258,8 @@ async function validateRouter(
   return routes.some((route) => route.match.test(text)) || fallback.test(text);
 }
 
-async function dispatchRoute(
-  routerName: string,
+async function dispatchRoute<T extends LinearRouterResultData>(
+  routerName: T["actionName"],
   routes: readonly LinearRoute[],
   runtime: IAgentRuntime,
   message: Memory,
@@ -153,11 +272,17 @@ async function dispatchRoute(
     const subactions = routes.map((candidate) => candidate.subaction).join(", ");
     const text = `${routerName} requires one of these subactions: ${subactions}.`;
     await callback?.({ text, source: message.content?.source });
+    const data: T = {
+      actionName: routerName,
+      routedActionName: null,
+      subaction: null,
+      availableSubactions: subactions,
+    } as T;
     return {
       success: false,
       text,
       values: { error: "MISSING_SUBACTION" },
-      data: { actionName: routerName, availableSubactions: subactions },
+      data,
     };
   }
 
@@ -172,16 +297,19 @@ async function dispatchRoute(
     typeof result.text === "string" && result.text.length > 0
       ? result.text
       : `${routerName} routed to ${route.action.name}.`;
+  const childData =
+    typeof result.data === "object" && result.data !== null ? result.data : {};
+  const data: T = {
+    ...childData,
+    actionName: routerName,
+    routedActionName: route.action.name,
+    subaction: route.subaction,
+  } as T;
   return {
     ...result,
     success: result.success ?? true,
     text,
-    data: {
-      ...(typeof result.data === "object" && result.data ? result.data : {}),
-      actionName: routerName,
-      routedActionName: route.action.name,
-      subaction: route.subaction,
-    },
+    data,
   };
 }
 
@@ -195,6 +323,13 @@ export function getLinearRouteForTest(
   return selectRoute(routes, message, options)?.subaction ?? null;
 }
 
+/**
+ * Routes natural-language issue intents to CREATE/GET/UPDATE/DELETE Linear
+ * issue actions. `data` is `LinearIssueRouterResultData`: always carries
+ * `actionName: "LINEAR_ISSUE"`, `routedActionName`, and `subaction`. Result
+ * fields like `issueId`, `identifier`, and `url` are populated by the routed
+ * child; absent fields just mean that child didn't supply them.
+ */
 export const linearIssueRouterAction: RouterAction = {
   name: "LINEAR_ISSUE",
   description: "Route Linear issue operations: create, get, update, or delete issues.",
@@ -206,7 +341,15 @@ export const linearIssueRouterAction: RouterAction = {
   validate: (runtime, message) =>
     validateRouter(runtime, message, issueRoutes, /\b(linear|issue|bug|task|ticket|[a-z]+-\d+)\b/i),
   handler: (runtime, message, state, options, callback) =>
-    dispatchRoute("LINEAR_ISSUE", issueRoutes, runtime, message, state, options, callback),
+    dispatchRoute<LinearIssueRouterResultData>(
+      "LINEAR_ISSUE",
+      issueRoutes,
+      runtime,
+      message,
+      state,
+      options,
+      callback
+    ),
   parameters: [
     {
       name: "subaction",
@@ -232,6 +375,12 @@ export const linearIssueRouterAction: RouterAction = {
   ],
 };
 
+/**
+ * Routes Linear comment intents to the comment child actions. `data` is
+ * `LinearCommentRouterResultData` with the standard envelope plus
+ * `commentId`, `issueId`, `issueIdentifier`, `commentBody`, and `createdAt`
+ * on success, or a `multipleMatches`/`pendingComment` clarify branch.
+ */
 export const linearCommentRouterAction: RouterAction = {
   name: "LINEAR_COMMENT",
   description: "Route Linear comment operations for issues.",
@@ -243,7 +392,15 @@ export const linearCommentRouterAction: RouterAction = {
   validate: (runtime, message) =>
     validateRouter(runtime, message, commentRoutes, /\b(comment|reply|note|tell)\b/i),
   handler: (runtime, message, state, options, callback) =>
-    dispatchRoute("LINEAR_COMMENT", commentRoutes, runtime, message, state, options, callback),
+    dispatchRoute<LinearCommentRouterResultData>(
+      "LINEAR_COMMENT",
+      commentRoutes,
+      runtime,
+      message,
+      state,
+      options,
+      callback
+    ),
   parameters: [
     {
       name: "subaction",
@@ -269,6 +426,12 @@ export const linearCommentRouterAction: RouterAction = {
   ],
 };
 
+/**
+ * Routes Linear workflow intents to getActivity/clearActivity/searchIssues.
+ * `data` is `LinearWorkflowRouterResultData`: standard envelope plus
+ * `activity`/`filters`/`count` (activity), `issues`/`filters`/`count`
+ * (search), or `awaitingUserInput`/`cancelled` (clearActivity).
+ */
 export const linearWorkflowRouterAction: RouterAction = {
   name: "LINEAR_WORKFLOW",
   description: "Route Linear workflow, activity, and issue search operations.",
@@ -280,7 +443,15 @@ export const linearWorkflowRouterAction: RouterAction = {
   validate: (runtime, message) =>
     validateRouter(runtime, message, workflowRoutes, /\b(linear|activity|search|issues?|bugs?)\b/i),
   handler: (runtime, message, state, options, callback) =>
-    dispatchRoute("LINEAR_WORKFLOW", workflowRoutes, runtime, message, state, options, callback),
+    dispatchRoute<LinearWorkflowRouterResultData>(
+      "LINEAR_WORKFLOW",
+      workflowRoutes,
+      runtime,
+      message,
+      state,
+      options,
+      callback
+    ),
   parameters: [
     {
       name: "subaction",
