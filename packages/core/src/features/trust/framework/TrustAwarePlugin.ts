@@ -252,19 +252,19 @@ export const exampleTrustAwarePlugin: Plugin = {
 			description: "A sensitive action requiring trust",
 			parameters: [],
 			examples: [],
-				validate: async (_runtime, message, state) => {
-					return hasActionContextOrKeyword(message, state, {
-						contexts: ["admin", "secrets", "settings"],
-						keywords: [
-							"sensitive action",
-							"trust",
-							"permission",
-							"secret",
-							"admin",
-							"security",
-						],
-					});
-				},
+			validate: async (_runtime, message, state) => {
+				return hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "secrets", "settings"],
+					keywords: [
+						"sensitive action",
+						"trust",
+						"permission",
+						"secret",
+						"admin",
+						"security",
+					],
+				});
+			},
 			handler: async (
 				runtime,
 				message,

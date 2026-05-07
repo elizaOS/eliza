@@ -2251,8 +2251,8 @@ export const lifeAction: Action & {
         );
         const hasCompleteNativeDefinitionCreatePlan = Boolean(
           params.title &&
-          explicitCadenceDetail &&
-          detailString(details, "kind"),
+            explicitCadenceDetail &&
+            detailString(details, "kind"),
         );
         const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
         let title: string | null = editingDeferredDefinitionDraft
@@ -2285,7 +2285,7 @@ export const lifeAction: Action & {
             ? (explicitCadenceDetail ??
               deferredDefinitionDraft?.request.cadence)
             : deferredDefinitionDraft?.request.cadence) ??
-          explicitCadenceDetail,
+            explicitCadenceDetail,
         );
         const hadExplicitTitle = Boolean(
           (editingDeferredDefinitionDraft

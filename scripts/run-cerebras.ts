@@ -6,14 +6,13 @@
  *
  * Spec: PLAN.md §19.2 / §19.3.
  *
- * The script is intentionally self-contained: it does NOT import
- * `runtime/trajectory-recorder.ts` (Agent B owns that file and may not have
- * built it yet). Instead, a `LocalRecorder` defined inline implements the
- * §18.1 schema. When Agent B lands, both producers can write the same shape.
+ * The script is intentionally self-contained: it does NOT spin up a full
+ * AgentRuntime. Instead, a `LocalRecorder` defined inline implements the
+ * §18.1 schema and stays structurally compatible with the runtime recorder.
  *
- * Cerebras serves an OpenAI-compatible API, so we re-use `plugin-openai`
- * with `OPENAI_BASE_URL` + `CEREBRAS_API_KEY` (the alias path G6a wired in
- * `plugins/plugin-openai/utils/config.ts`).
+ * Cerebras serves an OpenAI-compatible API, so this harness calls
+ * `/v1/chat/completions` directly while plugin-openai/plugin-cerebras cover
+ * runtime provider integration.
  *
  * Flags (PLAN.md §19.3):
  *   --message "..."         Provide message inline (default: positional arg).
@@ -792,10 +791,9 @@ function renderSelectedContextEvidence(contexts: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Stage runners — minimal v5-shaped pipeline. We avoid importing the
-// in-tree planner-loop because Agent B has not finished wiring native
-// tool-call passthrough (G3) yet. Once that lands, this script can be
-// updated to call `runV5MessageRuntimeStage1` directly.
+// Stage runners — minimal v5-shaped provider harness. This is intentionally
+// not the full AgentRuntime path; it is a fast live-provider smoke test that
+// emits the same recorded trajectory shape for review and dataset alignment.
 // ---------------------------------------------------------------------------
 
 interface RunOptions {

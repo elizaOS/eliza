@@ -21,6 +21,7 @@
         --amber: #ffb454;
         --red: #f07178;
         --magenta: #d896ff;
+        --pink: #f78fb3;
       }
       * { box-sizing: border-box; }
       html, body {
@@ -40,25 +41,18 @@
       }
       button:hover { border-color: var(--cyan); color: var(--cyan); }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
-      input, textarea {
+      input {
         font-family: inherit; font-size: inherit; color: var(--fg);
         background: var(--bg-1); border: 1px solid var(--line-2);
         padding: 6px 10px; outline: none; border-radius: 1px;
       }
-      input:focus, textarea:focus { border-color: var(--cyan); }
+      input:focus { border-color: var(--cyan); }
 
-      /* layout */
-      .app {
-        display: grid;
-        grid-template-rows: 32px 44px 1fr;
-        height: 100vh;
-      }
+      .app { display: grid; grid-template-rows: 32px 44px 1fr; height: 100vh; }
 
-      /* header */
       .hdr {
         display: flex; align-items: center; gap: 16px;
-        padding: 0 12px;
-        border-bottom: 1px solid var(--line);
+        padding: 0 12px; border-bottom: 1px solid var(--line);
         background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
       }
       .hdr .brand { color: var(--cyan); letter-spacing: 0.18em; font-weight: 600; }
@@ -66,46 +60,34 @@
       .hdr .field { color: var(--fg-dim); }
       .hdr .field b { color: var(--fg); font-weight: 500; }
       .hdr .spacer { flex: 1; }
-      .hdr .stat {
-        color: var(--fg-dim); display: inline-flex; align-items: center; gap: 6px;
-      }
+      .hdr .stat { color: var(--fg-dim); display: inline-flex; align-items: center; gap: 6px; }
       .hdr .dot {
         width: 8px; height: 8px; border-radius: 50%;
-        background: var(--fg-faint);
-        box-shadow: 0 0 8px transparent;
+        background: var(--fg-faint); box-shadow: 0 0 8px transparent;
       }
       .hdr .dot.idle { background: var(--fg-faint); }
       .hdr .dot.run  { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.2s ease-in-out infinite; }
       .hdr .dot.err  { background: var(--red); box-shadow: 0 0 8px var(--red); }
-      .hdr .dot.abrt { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+      .hdr .dot.warn { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+      .hdr .dot.boot { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 1.2s ease-in-out infinite; }
       @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.4; }
       }
 
-      /* input row */
       .input-row {
-        display: grid;
-        grid-template-columns: 1fr auto auto;
+        display: grid; grid-template-columns: 1fr auto;
         gap: 8px; align-items: center;
-        padding: 6px 12px;
-        border-bottom: 1px solid var(--line);
-        background: var(--bg-1);
+        padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg-1);
       }
-      .input-row input {
-        height: 30px;
-        font-size: 13px;
-      }
-      .input-row .prompt {
-        color: var(--cyan); margin-right: 6px;
-      }
+      .input-row > div:first-child { display: flex; align-items: center; }
+      .input-row .prompt { color: var(--cyan); margin-right: 6px; }
+      .input-row input { flex: 1; height: 30px; font-size: 13px; width: 100%; }
 
-      /* main grid */
       .main {
         display: grid;
-        grid-template-columns: minmax(380px, 1.4fr) minmax(320px, 1fr) minmax(300px, 0.8fr);
-        gap: 0;
-        min-height: 0;
+        grid-template-columns: minmax(420px, 1.5fr) minmax(320px, 1fr) minmax(280px, 0.8fr);
+        gap: 0; min-height: 0;
       }
       .col {
         display: flex; flex-direction: column;
@@ -116,29 +98,21 @@
       .col-hdr {
         flex: 0 0 24px;
         display: flex; align-items: center; gap: 8px;
-        padding: 0 10px;
-        background: var(--bg-2);
-        border-bottom: 1px solid var(--line);
-        color: var(--fg-dim);
-        text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px;
+        padding: 0 10px; background: var(--bg-2); border-bottom: 1px solid var(--line);
+        color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px;
       }
       .col-hdr .tag { color: var(--cyan); }
       .col-hdr .count { margin-left: auto; color: var(--fg-faint); }
       .col-body {
-        flex: 1 1 auto;
-        overflow-y: auto; overflow-x: hidden;
-        padding: 6px;
-        scrollbar-width: thin;
-        scrollbar-color: var(--line-2) transparent;
+        flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+        padding: 6px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
       }
       .col-body::-webkit-scrollbar { width: 8px; }
       .col-body::-webkit-scrollbar-thumb { background: var(--line-2); }
 
-      /* pipeline cards */
       .card {
         position: relative;
-        border: 1px solid var(--line-2);
-        background: var(--bg-1);
+        border: 1px solid var(--line-2); background: var(--bg-1);
         margin-bottom: 6px;
       }
       .card::before {
@@ -148,73 +122,40 @@
       .card-hdr {
         display: flex; align-items: center; gap: 8px;
         padding: 4px 8px 4px 12px;
-        background: var(--bg-2);
-        border-bottom: 1px solid var(--line);
+        background: var(--bg-2); border-bottom: 1px solid var(--line);
         font-size: 11px;
       }
-      .card-hdr .ix {
-        color: var(--fg-faint); min-width: 22px;
-      }
-      .card-hdr .typ {
-        text-transform: uppercase; letter-spacing: 0.12em;
-        color: var(--cyan);
-      }
-      .card-hdr .typ.tool { color: var(--magenta); }
+      .card-hdr .ix { color: var(--fg-faint); min-width: 22px; }
+      .card-hdr .typ { text-transform: uppercase; letter-spacing: 0.12em; }
+      .typ-run      { color: var(--cyan); }
+      .typ-msg-in   { color: var(--green); }
+      .typ-msg-out  { color: var(--cyan-2); }
+      .typ-model    { color: var(--cyan); }
+      .typ-action   { color: var(--magenta); }
+      .typ-eval     { color: var(--pink); }
+      .typ-end      { color: var(--fg-dim); }
+      .typ-log      { color: var(--amber); }
+      .typ-err      { color: var(--red); }
+
       .card-hdr .name { color: var(--fg); }
-      .card-hdr .meta { margin-left: auto; color: var(--fg-dim); display: flex; gap: 10px; }
+      .card-hdr .meta { margin-left: auto; color: var(--fg-dim); display: flex; gap: 10px; align-items: center; }
       .card-hdr .meta .ok { color: var(--green); }
       .card-hdr .meta .err { color: var(--red); }
       .card-hdr .meta .live { color: var(--amber); }
 
       .card-body { padding: 6px 8px 6px 12px; }
-      .stream {
+      .text {
         white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
         color: var(--fg);
-        min-height: 14px;
       }
-      .stream.empty::after {
-        content: "▍"; color: var(--cyan);
-        animation: blink 1s steps(1) infinite;
-      }
-      .stream.dim { color: var(--fg-dim); }
-      @keyframes blink {
-        50% { opacity: 0; }
-      }
+      .text.dim { color: var(--fg-dim); }
+      .text.err { color: var(--red); }
 
-      .tc {
-        margin-top: 6px;
-        border: 1px solid var(--line);
-        background: var(--bg-2);
-      }
-      .tc-hdr {
-        display: flex; gap: 8px; padding: 3px 8px;
-        font-size: 11px; color: var(--magenta);
-        border-bottom: 1px solid var(--line);
-        background: var(--bg-3);
-      }
-      .tc-hdr .id { color: var(--fg-faint); margin-left: auto; }
-      .tc-args {
-        padding: 6px 8px; font-size: 11px;
-        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
-        color: var(--fg-dim);
-      }
-      .tc-result {
-        padding: 6px 8px; font-size: 11px;
-        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
-        background: var(--bg-3); border-top: 1px solid var(--line);
-        color: var(--fg);
-        max-height: 240px; overflow-y: auto;
-      }
-      .tc-result.err { color: var(--red); }
-
-      details.raw {
-        margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 4px;
-      }
+      details.raw { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 4px; }
       details.raw > summary {
         cursor: pointer; color: var(--fg-faint); font-size: 10px;
         text-transform: uppercase; letter-spacing: 0.12em;
-        list-style: none;
-        user-select: none;
+        list-style: none; user-select: none;
       }
       details.raw > summary::-webkit-details-marker { display: none; }
       details.raw > summary::before { content: "▸ "; }
@@ -222,16 +163,13 @@
       details.raw pre {
         margin: 6px 0 0 0; font-size: 10.5px;
         background: var(--bg-3); border: 1px solid var(--line);
-        padding: 6px; max-height: 320px; overflow: auto;
+        padding: 6px; max-height: 380px; overflow: auto;
         color: var(--fg-dim);
       }
 
-      /* context column */
       .msg {
         position: relative;
-        border: 1px solid var(--line);
-        margin-bottom: 6px;
-        background: var(--bg-1);
+        border: 1px solid var(--line); margin-bottom: 6px; background: var(--bg-1);
       }
       .msg::before {
         content: ""; position: absolute; left: 0; top: 0; bottom: 0;
@@ -240,58 +178,39 @@
       .msg-hdr {
         display: flex; gap: 8px; padding: 3px 8px 3px 12px;
         font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
-        color: var(--fg-dim);
-        border-bottom: 1px solid var(--line);
-        background: var(--bg-2);
+        color: var(--fg-dim); border-bottom: 1px solid var(--line); background: var(--bg-2);
       }
       .msg-hdr .role { color: var(--cyan); }
-      .msg-hdr .role.system { color: var(--fg-dim); }
       .msg-hdr .role.user { color: var(--green); }
-      .msg-hdr .role.assistant { color: var(--cyan); }
-      .msg-hdr .role.tool { color: var(--magenta); }
+      .msg-hdr .role.assistant { color: var(--cyan-2); }
       .msg-hdr .meta { margin-left: auto; color: var(--fg-faint); }
       .msg-body {
         padding: 6px 8px 6px 12px;
         white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
       }
-      .msg-body.empty { color: var(--fg-faint); font-style: italic; }
-      .msg-tc {
-        margin: 4px 8px 6px 12px; padding: 4px 8px;
-        font-size: 11px;
-        background: var(--bg-2); border: 1px solid var(--line);
-        color: var(--fg-dim);
-      }
-      .msg-tc .name { color: var(--magenta); }
 
-      /* events column */
       .ev {
-        display: grid;
-        grid-template-columns: 56px 14px 1fr;
-        gap: 6px;
-        padding: 1px 6px 1px 6px;
-        font-size: 11px;
+        display: grid; grid-template-columns: 56px 18px 1fr;
+        gap: 6px; padding: 1px 6px; font-size: 11px;
         border-left: 3px solid var(--c, transparent);
         align-items: baseline;
       }
       .ev .t { color: var(--fg-faint); text-align: right; }
-      .ev .k { color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.06em; }
-      .ev .k.start { color: var(--cyan); }
-      .ev .k.end { color: var(--green); }
-      .ev .k.tool { color: var(--magenta); }
-      .ev .k.chunk { color: var(--fg-faint); }
-      .ev .k.log { color: var(--amber); }
-      .ev .k.err { color: var(--red); }
-      .ev .k.context { color: var(--fg-dim); }
+      .ev .k { color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+      .ev.run     .k { color: var(--cyan); }
+      .ev.msg     .k { color: var(--green); }
+      .ev.model   .k { color: var(--cyan); }
+      .ev.action  .k { color: var(--magenta); }
+      .ev.eval    .k { color: var(--pink); }
+      .ev.log     .k { color: var(--amber); }
+      .ev.err     .k { color: var(--red); }
       .ev .v { color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .ev .v b { color: var(--fg); font-weight: 500; }
 
-      /* trajectory header banner */
       .traj-hdr {
         display: flex; align-items: center; gap: 8px;
-        padding: 4px 8px 4px 12px;
-        margin-bottom: 6px;
-        border: 1px solid var(--line-2);
-        background: var(--bg-2);
+        padding: 4px 8px 4px 12px; margin-bottom: 6px;
+        border: 1px solid var(--line-2); background: var(--bg-2);
         position: relative;
       }
       .traj-hdr::before {
@@ -302,14 +221,29 @@
       .traj-hdr .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .traj-hdr .meta { color: var(--fg-faint); display: flex; gap: 12px; font-size: 11px; }
 
-      /* placeholder when nothing has happened */
       .empty-state {
         display: flex; align-items: center; justify-content: center;
         height: 100%;
-        color: var(--fg-faint);
-        text-align: center; padding: 20px;
+        color: var(--fg-faint); text-align: center; padding: 20px;
         font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em;
       }
+
+      .io { display: grid; grid-template-columns: 1fr; gap: 6px; }
+      .io-block { border: 1px solid var(--line); background: var(--bg-2); padding: 6px 8px; }
+      .io-label {
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+        color: var(--fg-faint); margin-bottom: 4px;
+        display: flex; gap: 8px; align-items: center;
+      }
+      .io-label .arrow { color: var(--cyan); }
+      .io-text {
+        font-size: 11px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+        max-height: 280px; overflow-y: auto;
+        color: var(--fg);
+      }
+      .io-text.empty { color: var(--fg-faint); font-style: italic; }
+      .io-text.err { color: var(--red); }
     </style>
   </head>
   <body>
@@ -319,34 +253,35 @@
         <span class="sep">│</span>
         <span class="field">prov <b id="prov">—</b></span>
         <span class="field">model <b id="model">—</b></span>
-        <span class="field">sandbox <b id="sandbox">—</b></span>
+        <span class="field">small <b id="model-small">—</b></span>
+        <span class="field">agent <b id="agent">—</b></span>
         <span class="spacer"></span>
-        <span class="stat">step <b id="stat-step">0</b></span>
+        <span class="stat">stages <b id="stat-stages">0</b></span>
+        <span class="stat">model‑calls <b id="stat-mc">0</b></span>
         <span class="stat">in <b id="stat-tin">0</b></span>
         <span class="stat">out <b id="stat-tout">0</b></span>
         <span class="stat">elapsed <b id="stat-elapsed">0ms</b></span>
-        <span class="stat"><span id="state-dot" class="dot idle"></span><b id="state-label">IDLE</b></span>
+        <span class="stat"><span id="state-dot" class="dot boot"></span><b id="state-label">BOOT</b></span>
       </header>
 
       <div class="input-row">
-        <div style="display:flex; align-items:center;">
+        <div>
           <span class="prompt">▸</span>
-          <input id="input" placeholder="type message and hit enter — sends new trajectory, clears pipeline" autofocus />
+          <input id="input" placeholder="message — enter clears prior trajectory and starts a new run" autofocus disabled />
         </div>
-        <button id="abort">ABORT</button>
-        <button id="send">SEND ▸</button>
+        <button id="send" disabled>SEND ▸</button>
       </div>
 
       <div class="main">
         <div class="col">
-          <div class="col-hdr"><span class="tag">[ PIPELINE ]</span> current trajectory<span class="count" id="pipe-count"></span></div>
+          <div class="col-hdr"><span class="tag">[ PIPELINE ]</span> stages of the current run<span class="count" id="pipe-count">0</span></div>
           <div class="col-body" id="pipeline">
             <div class="empty-state">awaiting message</div>
           </div>
         </div>
 
         <div class="col">
-          <div class="col-hdr"><span class="tag">[ CONTEXT ]</span> messages sent to model<span class="count" id="ctx-count">0</span></div>
+          <div class="col-hdr"><span class="tag">[ CONTEXT ]</span> conversation built up<span class="count" id="ctx-count">0</span></div>
           <div class="col-body" id="context">
             <div class="empty-state">no context yet</div>
           </div>
@@ -360,65 +295,40 @@
     </div>
 
     <script>
-      // ---------- state ----------
       const state = {
-        provider: null, model: null,
-        currentTraj: null,           // { id, color, startedAt, totalIn, totalOut, steps }
-        steps: new Map(),            // stepIndex -> step record (for current traj only)
-        msgCount: 0,
-        evCount: 0,
+        currentTraj: null,
+        cards: new Map(),
         elapsedTimer: null,
+        evCount: 0,
+        ctxMsgs: [],
       };
 
-      // ---------- elements ----------
-      const $prov = document.getElementById("prov");
-      const $model = document.getElementById("model");
-      const $sandbox = document.getElementById("sandbox");
-      const $stateDot = document.getElementById("state-dot");
-      const $stateLabel = document.getElementById("state-label");
-      const $statStep = document.getElementById("stat-step");
-      const $statTin = document.getElementById("stat-tin");
-      const $statTout = document.getElementById("stat-tout");
-      const $statElapsed = document.getElementById("stat-elapsed");
-      const $pipeline = document.getElementById("pipeline");
-      const $context = document.getElementById("context");
-      const $events = document.getElementById("events");
-      const $pipeCount = document.getElementById("pipe-count");
-      const $ctxCount = document.getElementById("ctx-count");
-      const $evCount = document.getElementById("ev-count");
-      const $input = document.getElementById("input");
-      const $send = document.getElementById("send");
-      const $abort = document.getElementById("abort");
+      const $ = (id) => document.getElementById(id);
+      const $prov = $("prov"), $model = $("model"), $modelSmall = $("model-small"), $agent = $("agent");
+      const $stateDot = $("state-dot"), $stateLabel = $("state-label");
+      const $statStages = $("stat-stages"), $statMc = $("stat-mc");
+      const $statTin = $("stat-tin"), $statTout = $("stat-tout"), $statElapsed = $("stat-elapsed");
+      const $pipeline = $("pipeline"), $context = $("context"), $events = $("events");
+      const $pipeCount = $("pipe-count"), $ctxCount = $("ctx-count"), $evCount = $("ev-count");
+      const $input = $("input"), $send = $("send");
 
-      // ---------- helpers ----------
-      function fmtMs(ms) {
-        if (ms < 1000) return ms + "ms";
-        return (ms / 1000).toFixed(2) + "s";
-      }
+      function fmtMs(ms) { return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(2) + "s"; }
       function relT(absT) {
         if (!state.currentTraj) return "+0.00";
-        const d = (absT - state.currentTraj.startedAt) / 1000;
-        return "+" + d.toFixed(2);
+        return "+" + ((absT - state.currentTraj.startedAt) / 1000).toFixed(2);
       }
       function autoStick(el) {
-        // Keep scrolled to bottom unless user scrolled up
         const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (dist < 60) el.scrollTop = el.scrollHeight;
+        if (dist < 80) el.scrollTop = el.scrollHeight;
       }
-      function jsonPretty(v) {
-        try { return JSON.stringify(v, null, 2); }
-        catch { return String(v); }
+      function jsonPretty(v) { try { return JSON.stringify(v, null, 2); } catch { return String(v); } }
+      function escHtml(s) {
+        return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       }
-      function safeStr(s) { return (s == null ? "" : String(s)); }
-      function bytesOf(v) {
-        try { return JSON.stringify(v).length; } catch { return 0; }
-      }
-
       function setState(label, cls) {
         $stateLabel.textContent = label;
         $stateDot.className = "dot " + cls;
       }
-
       function startElapsed() {
         stopElapsed();
         state.elapsedTimer = setInterval(() => {
@@ -430,351 +340,360 @@
         if (state.elapsedTimer) clearInterval(state.elapsedTimer);
         state.elapsedTimer = null;
       }
+      function bumpStage() {
+        if (!state.currentTraj) return 0;
+        state.currentTraj.stages++;
+        $statStages.textContent = state.currentTraj.stages;
+        $pipeCount.textContent = state.currentTraj.stages;
+        return state.currentTraj.stages;
+      }
 
-      // ---------- fetch initial status ----------
       async function loadStatus() {
-        try {
-          const r = await fetch("/status");
-          const s = await r.json();
-          $prov.textContent = s.provider ?? "MISSING";
-          $model.textContent = s.model ?? "—";
-          $sandbox.textContent = s.sandbox ? s.sandbox.replace(/^.*\//, "…/") : "—";
-          state.provider = s.provider;
-          state.model = s.model;
-          if (!s.provider) {
-            $prov.style.color = "var(--red)";
-            const missing = (s.availableProviders || []).map(p => p.envVar).join(", ");
-            pushEvent({ type: "log", level: "error", message: "No API key found. Set one of: " + missing, t: Date.now() });
-          }
-        } catch (e) {
-          pushEvent({ type: "log", level: "error", message: "status fetch failed: " + e.message, t: Date.now() });
+        const r = await fetch("/status").then(x => x.json()).catch(() => null);
+        if (!r) return;
+        $prov.textContent = r.provider ?? "—";
+        $model.textContent = r.model ?? "—";
+        $modelSmall.textContent = r.smallModel ?? "—";
+        $agent.textContent = r.agent ?? "—";
+        if (r.runtimeState === "ready") {
+          setState("READY", "idle");
+          $input.disabled = false; $send.disabled = false; $input.focus();
+        } else if (r.runtimeState === "error") {
+          setState("ERR", "err");
+          $events.appendChild(rowHTML("0.00", "err", "init", escHtml(r.runtimeError || "")));
+        } else {
+          setState("BOOT", "boot");
+          setTimeout(loadStatus, 1000);
         }
       }
 
-      // ---------- render: pipeline ----------
-      function renderTrajHeader(ev) {
-        const div = document.createElement("div");
-        div.className = "traj-hdr";
-        div.style.setProperty("--c", ev.color);
-        div.innerHTML = `
-          <span class="id">▸ ${ev.trajectoryId}</span>
-          <span class="msg" title="${escapeAttr(ev.userMessage)}">${escapeHtml(ev.userMessage)}</span>
-          <span class="meta">
-            <span>${ev.provider}</span>
-            <span>${ev.model}</span>
-          </span>
-        `;
-        return div;
+      function rowHTML(t, cls, kind, vHtml) {
+        const row = document.createElement("div");
+        row.className = "ev " + cls;
+        row.innerHTML = `<span class="t">${t}</span><span class="k">${kind}</span><span class="v">${vHtml}</span>`;
+        return row;
       }
 
-      function renderStepCard(stepIndex, kind) {
+      function pushEvent(label, cls, kind, vHtml, color) {
+        state.evCount++;
+        $evCount.textContent = state.evCount;
+        const t = state.currentTraj ? relT(Date.now()) : "+0.00";
+        const row = rowHTML(t, cls, kind, vHtml);
+        if (color) row.style.setProperty("--c", color);
+        $events.appendChild(row);
+        autoStick($events);
+      }
+
+      function makeCard(opts) {
+        const { kind, typ, name, meta, color, ix } = opts;
         const card = document.createElement("div");
         card.className = "card";
-        card.dataset.step = stepIndex;
-        card.style.setProperty("--c", state.currentTraj?.color || "var(--fg-faint)");
+        card.style.setProperty("--c", color);
         card.innerHTML = `
           <div class="card-hdr">
-            <span class="ix">#${String(stepIndex).padStart(2, "0")}</span>
-            <span class="typ ${kind === "tool_call" ? "tool" : ""}">${kind}</span>
-            <span class="name"></span>
-            <span class="meta">
-              <span class="status live">▶ live</span>
-              <span class="dur"></span>
-              <span class="usage"></span>
-            </span>
+            <span class="ix">#${String(ix).padStart(2, "0")}</span>
+            <span class="typ ${typ}">${kind}</span>
+            <span class="name">${name ?? ""}</span>
+            <span class="meta">${meta ?? ""}</span>
           </div>
           <div class="card-body"></div>
         `;
         return card;
       }
 
-      function pipelineEmptyState(active) {
-        const e = $pipeline.querySelector(".empty-state");
-        if (active && e) e.remove();
-      }
-
-      // ---------- render: context ----------
-      function renderContext(messages) {
-        $ctxCount.textContent = messages.length;
+      function renderCtx() {
+        $ctxCount.textContent = state.ctxMsgs.length;
+        if (state.ctxMsgs.length === 0) {
+          $context.innerHTML = `<div class="empty-state">no context yet</div>`;
+          return;
+        }
         $context.innerHTML = "";
-        for (const m of messages) {
+        const color = state.currentTraj?.color || "var(--fg-faint)";
+        for (const m of state.ctxMsgs) {
           const card = document.createElement("div");
           card.className = "msg";
-          card.style.setProperty("--c", state.currentTraj?.color || "var(--fg-faint)");
-          const role = m.role || "?";
-          const bytes = bytesOf(m);
-          let body = "";
-          if (typeof m.content === "string" && m.content.length > 0) {
-            body = `<div class="msg-body">${escapeHtml(m.content)}</div>`;
-          } else if (m.content == null && (!m.tool_calls || m.tool_calls.length === 0)) {
-            body = `<div class="msg-body empty">∅ empty</div>`;
-          }
-          let tcs = "";
-          if (Array.isArray(m.tool_calls)) {
-            for (const tc of m.tool_calls) {
-              tcs += `<div class="msg-tc">↪ <span class="name">${escapeHtml(tc.function?.name ?? "?")}</span>(${escapeHtml(tc.function?.arguments ?? "")})</div>`;
-            }
-          }
-          let toolHead = "";
-          if (m.role === "tool" && m.name) {
-            toolHead = ` ↞ ${escapeHtml(m.name)}`;
-          }
+          card.style.setProperty("--c", color);
           card.innerHTML = `
             <div class="msg-hdr">
-              <span class="role ${role}">${role}${toolHead}</span>
-              <span class="meta">${bytes}b</span>
+              <span class="role ${m.role}">${m.role}</span>
+              <span class="meta">${m.bytes}b</span>
             </div>
-            ${body}
-            ${tcs}
-            <details class="raw">
-              <summary>raw</summary>
-              <pre>${escapeHtml(jsonPretty(m))}</pre>
-            </details>
+            <div class="msg-body">${escHtml(m.text)}</div>
           `;
           $context.appendChild(card);
         }
         autoStick($context);
       }
 
-      // ---------- render: events ----------
-      function pushEvent(ev) {
-        state.evCount++;
-        $evCount.textContent = state.evCount;
-        const row = document.createElement("div");
-        row.className = "ev";
-        const traj = state.currentTraj;
-        row.style.setProperty("--c", ev.color || (traj && ev.trajectoryId === traj.id ? traj.color : "transparent"));
-        const t = relT(ev.t);
-        let kind = ev.type, klass = "", v = "";
-        switch (ev.type) {
-          case "trajectory_start":
-            kind = "start"; klass = "start";
-            v = `<b>${ev.provider}</b>/${ev.model} ◂ ${escapeHtml(ev.userMessage)}`;
-            break;
-          case "trajectory_end":
-            kind = "end"; klass = "end";
-            v = `${ev.reason} · ${ev.totalSteps} steps · ${fmtMs(ev.durationMs)}`;
-            break;
-          case "step_start":
-            kind = ev.stepType === "tool_call" ? "tool" : "model";
-            klass = ev.stepType === "tool_call" ? "tool" : "start";
-            v = ev.stepType === "tool_call"
-              ? `#${ev.stepIndex} <b>${escapeHtml(ev.toolCall?.name ?? "")}</b>`
-              : `#${ev.stepIndex} request · ${ev.request?.messages?.length ?? 0} msgs`;
-            break;
-          case "step_end":
-            kind = "done"; klass = "end";
-            const tag = ev.toolResult !== undefined ? "tool" : "model";
-            v = `#${ev.stepIndex} ${tag} · ${fmtMs(ev.durationMs)}`;
-            break;
-          case "model_chunk":
-            kind = ev.kind; klass = "chunk";
-            v = `#${ev.stepIndex} ${escapeHtml(safeStr(ev.delta).slice(0, 80))}`;
-            break;
-          case "context":
-            kind = "ctx"; klass = "context";
-            v = `${ev.messages.length} messages`;
-            break;
-          case "log":
-            kind = ev.level; klass = ev.level === "error" ? "err" : "log";
-            v = escapeHtml(ev.message ?? "");
-            break;
-          case "hello":
-            kind = "hello"; klass = "log";
-            v = "stream connected";
-            break;
+      function pipelineEnsureClear() {
+        $pipeline.querySelector(".empty-state")?.remove();
+      }
+
+      function appendModelCallStart(ev) {
+        pipelineEnsureClear();
+        const ix = bumpStage();
+        const card = makeCard({
+          kind: "MODEL CALL", typ: "typ-model",
+          name: ev.modelType, meta: `<span class="live">▶ live</span>`,
+          color: state.currentTraj.color, ix,
+        });
+        const body = card.querySelector(".card-body");
+        body.innerHTML = `
+          <div class="io">
+            <div class="io-block">
+              <div class="io-label"><span class="arrow">▸ IN</span><span>${ev.promptBytes}b</span></div>
+              <div class="io-text">${escHtml(ev.promptPreview ?? "")}</div>
+            </div>
+            <div class="io-block">
+              <div class="io-label"><span class="arrow">◂ OUT</span><span data-role="dur">…</span></div>
+              <div class="io-text empty" data-role="response">awaiting…</div>
+            </div>
+          </div>
+          <details class="raw"><summary>request params</summary><pre>${escHtml(jsonPretty(ev.params))}</pre></details>
+        `;
+        state.cards.set("mc:" + ev.callId, card);
+        $pipeline.appendChild(card);
+        autoStick($pipeline);
+        if (state.currentTraj) {
+          state.currentTraj.mc++;
+          $statMc.textContent = state.currentTraj.mc;
         }
-        row.innerHTML = `<span class="t">${t}</span><span class="k ${klass}">${kind}</span><span class="v">${v}</span>`;
-        $events.appendChild(row);
-        autoStick($events);
       }
 
-      // ---------- escape ----------
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-      }
-      function escapeAttr(s) {
-        return escapeHtml(s).replace(/"/g, "&quot;");
+      function appendModelCallEnd(ev) {
+        const card = state.cards.get("mc:" + ev.callId);
+        if (!card) return;
+        const meta = card.querySelector(".meta");
+        const body = card.querySelector('[data-role="response"]');
+        const errored = !!ev.error;
+        meta.innerHTML = errored
+          ? `<span class="err">✗ ${escHtml(ev.error)}</span><span>${fmtMs(ev.durationMs)}</span>`
+          : `<span class="ok">✓</span><span>${fmtMs(ev.durationMs)}</span>`;
+        body.classList.remove("empty");
+        if (errored) {
+          body.classList.add("err");
+          body.textContent = ev.error;
+        } else {
+          body.textContent = ev.responseText || "(empty)";
+        }
+        const det = document.createElement("details");
+        det.className = "raw";
+        det.innerHTML = `<summary>raw response</summary><pre>${escHtml(jsonPretty(ev.result ?? ev.error))}</pre>`;
+        card.querySelector(".card-body").appendChild(det);
       }
 
-      // ---------- event handlers ----------
+      function appendSimpleCard(opts) {
+        pipelineEnsureClear();
+        const ix = bumpStage();
+        const card = makeCard({ ...opts, ix, color: state.currentTraj?.color || "var(--fg-faint)" });
+        if (opts.body) card.querySelector(".card-body").innerHTML = opts.body;
+        $pipeline.appendChild(card);
+        autoStick($pipeline);
+        return card;
+      }
+
       function handleEvent(ev) {
-        if (ev.type === "trajectory_start") {
-          state.currentTraj = {
-            id: ev.trajectoryId, color: ev.color,
-            startedAt: ev.t,
-            totalIn: 0, totalOut: 0, steps: 0,
-          };
-          state.steps.clear();
-          $pipeline.innerHTML = "";
-          $context.innerHTML = "";
-          $ctxCount.textContent = "0";
-          $statStep.textContent = "0";
-          $statTin.textContent = "0";
-          $statTout.textContent = "0";
-          setState("RUN", "run");
-          startElapsed();
+        const isCurrent = state.currentTraj && ev.trajectoryId === state.currentTraj.id;
+        const color = ev.color || (isCurrent ? state.currentTraj.color : null);
 
-          $pipeline.appendChild(renderTrajHeader(ev));
-          // also push to events column
-          pushEvent(ev);
-          $pipeCount.textContent = "0";
-          return;
-        }
+        switch (ev.type) {
+          case "hello": {
+            pushEvent(0, "log", "stream", "connected");
+            return;
+          }
+          case "trajectory_start": {
+            state.currentTraj = {
+              id: ev.trajectoryId, color: ev.color, startedAt: ev.t,
+              stages: 0, mc: 0, tIn: 0, tOut: 0,
+            };
+            state.cards.clear();
+            state.ctxMsgs = [];
+            $pipeline.innerHTML = "";
+            $statStages.textContent = "0"; $statMc.textContent = "0";
+            $statTin.textContent = "0"; $statTout.textContent = "0";
+            $pipeCount.textContent = "0";
+            $statElapsed.textContent = "0ms";
+            renderCtx();
+            setState("RUN", "run");
+            startElapsed();
 
-        if (ev.type === "context") {
-          renderContext(ev.messages);
-          pushEvent(ev);
-          return;
-        }
-
-        if (ev.type === "step_start") {
-          state.currentTraj && (state.currentTraj.steps = ev.stepIndex);
-          $statStep.textContent = ev.stepIndex;
-          $pipeCount.textContent = ev.stepIndex;
-
-          const card = renderStepCard(ev.stepIndex, ev.stepType);
-          const body = card.querySelector(".card-body");
-          const nameEl = card.querySelector(".name");
-
-          if (ev.stepType === "model_call") {
-            const reqMsgs = ev.request?.messages?.length ?? 0;
-            const reqBytes = bytesOf(ev.request);
-            nameEl.textContent = `${reqMsgs} msgs · ${reqBytes}b`;
-            body.innerHTML = `
-              <div class="stream empty" data-role="content"></div>
-              <div data-role="tool-calls"></div>
-              <details class="raw"><summary>request</summary><pre>${escapeHtml(jsonPretty(ev.request))}</pre></details>
+            const banner = document.createElement("div");
+            banner.className = "traj-hdr";
+            banner.style.setProperty("--c", ev.color);
+            banner.innerHTML = `
+              <span class="id">▸ ${ev.trajectoryId}</span>
+              <span class="msg">${escHtml(ev.userMessage)}</span>
+              <span class="meta">
+                <span>${ev.provider}</span><span>${ev.model}</span>
+              </span>
             `;
-          } else {
-            nameEl.textContent = ev.toolCall?.name ?? "";
-            const argsStr = ev.toolCall?.argumentsRaw ?? jsonPretty(ev.toolCall?.arguments ?? {});
-            body.innerHTML = `
-              <div class="tc">
-                <div class="tc-hdr">
-                  <span>↪ ${escapeHtml(ev.toolCall?.name ?? "")}</span>
-                  <span class="id">${escapeHtml(ev.toolCall?.id ?? "")}</span>
-                </div>
-                <div class="tc-args">${escapeHtml(argsStr)}</div>
-                <div class="tc-result" data-role="tool-result"><span class="dim">▍ awaiting…</span></div>
-              </div>
-              <details class="raw"><summary>tool call</summary><pre>${escapeHtml(jsonPretty(ev.toolCall))}</pre></details>
-            `;
+            $pipeline.appendChild(banner);
+            pushEvent(relT(ev.t), "run", "start", `<b>${escHtml(ev.userMessage)}</b>`, ev.color);
+            return;
           }
 
-          $pipeline.appendChild(card);
-          state.steps.set(ev.stepIndex, { card, body, kind: ev.stepType });
-          autoStick($pipeline);
-          pushEvent(ev);
-          return;
-        }
-
-        if (ev.type === "model_chunk") {
-          const step = state.steps.get(ev.stepIndex);
-          if (!step) return;
-          if (ev.kind === "content") {
-            const c = step.body.querySelector('[data-role="content"]');
-            if (c) {
-              c.classList.remove("empty");
-              c.textContent = (c.textContent || "") + ev.delta;
-            }
-          } else if (ev.kind === "tool_name" || ev.kind === "tool_args") {
-            const wrap = step.body.querySelector('[data-role="tool-calls"]');
-            if (!wrap) return;
-            const idx = ev.toolIndex ?? 0;
-            let tc = wrap.querySelector(`[data-tc="${idx}"]`);
-            if (!tc) {
-              tc = document.createElement("div");
-              tc.className = "tc"; tc.dataset.tc = String(idx);
-              tc.innerHTML = `
-                <div class="tc-hdr">
-                  <span>↪ <span data-role="tc-name"></span></span>
-                </div>
-                <div class="tc-args" data-role="tc-args"></div>
-              `;
-              wrap.appendChild(tc);
-            }
-            if (ev.kind === "tool_name") {
-              tc.querySelector('[data-role="tc-name"]').textContent =
-                (tc.querySelector('[data-role="tc-name"]').textContent || "") + ev.delta;
-            } else {
-              const a = tc.querySelector('[data-role="tc-args"]');
-              a.textContent = (a.textContent || "") + ev.delta;
-            }
+          case "RUN_STARTED": {
+            appendSimpleCard({
+              kind: "RUN STARTED", typ: "typ-run",
+              name: "", meta: `<span>${escHtml((ev.runId||"").slice(0, 8))}</span>`,
+            });
+            pushEvent(relT(ev.t), "run", "RUN", "started", color);
+            return;
           }
-          // Skip auto-scroll on tiny chunks; scroll periodically
-          autoStick($pipeline);
-          return;
-        }
 
-        if (ev.type === "step_end") {
-          const step = state.steps.get(ev.stepIndex);
-          if (step) {
-            const status = step.card.querySelector(".status");
-            const dur = step.card.querySelector(".dur");
-            const usage = step.card.querySelector(".usage");
-            status.textContent = "✓ done"; status.className = "status";
-            status.style.color = "var(--green)";
-            dur.textContent = fmtMs(ev.durationMs);
-
-            if (ev.response) {
-              const u = ev.response.usage;
-              if (u) {
-                const ti = u.prompt_tokens ?? 0, to = u.completion_tokens ?? 0;
-                usage.textContent = `${ti}↓ ${to}↑`;
-                if (state.currentTraj) {
-                  state.currentTraj.totalIn += ti;
-                  state.currentTraj.totalOut += to;
-                  $statTin.textContent = state.currentTraj.totalIn;
-                  $statTout.textContent = state.currentTraj.totalOut;
-                }
-              }
-              const c = step.body.querySelector('[data-role="content"]');
-              if (c && (!c.textContent || c.textContent.length === 0)) {
-                c.classList.add("dim"); c.classList.remove("empty");
-                c.textContent = "(no text content)";
-              } else if (c) {
-                c.classList.remove("empty");
-              }
-              const det = document.createElement("details");
-              det.className = "raw";
-              det.innerHTML = `<summary>response</summary><pre>${escapeHtml(jsonPretty(ev.response))}</pre>`;
-              step.body.appendChild(det);
-            }
-
-            if (ev.toolResult !== undefined) {
-              const r = step.body.querySelector('[data-role="tool-result"]');
-              const isErr = ev.toolResult && typeof ev.toolResult === "object" && "error" in ev.toolResult;
-              if (r) {
-                r.classList.toggle("err", !!isErr);
-                r.textContent = jsonPretty(ev.toolResult);
-              }
-            }
+          case "RUN_ENDED": {
+            appendSimpleCard({
+              kind: "RUN ENDED", typ: "typ-end",
+              name: "",
+              meta: `<span class="${ev.error ? 'err' : 'ok'}">${ev.status ?? 'completed'}</span><span>${ev.duration ? fmtMs(Number(ev.duration)) : ''}</span>`,
+              body: ev.error ? `<div class="text err">${escHtml(ev.error)}</div>` : "",
+            });
+            pushEvent(relT(ev.t), "run", "RUN", `ended · ${ev.status ?? ''}`, color);
+            return;
           }
-          pushEvent(ev);
-          return;
-        }
 
-        if (ev.type === "trajectory_end") {
-          stopElapsed();
-          $statElapsed.textContent = fmtMs(ev.durationMs);
-          if (ev.reason === "error") setState("ERR", "err");
-          else if (ev.reason === "aborted") setState("ABRT", "abrt");
-          else setState("DONE", "idle");
-          pushEvent(ev);
-          return;
-        }
+          case "MESSAGE_RECEIVED": {
+            state.ctxMsgs.push({ role: "user", text: ev.text || "", bytes: (ev.text || "").length });
+            renderCtx();
+            appendSimpleCard({
+              kind: "MESSAGE IN", typ: "typ-msg-in",
+              name: `↞ user`, meta: `<span>${(ev.text || "").length}b</span>`,
+              body: `<div class="text">${escHtml(ev.text)}</div>`,
+            });
+            pushEvent(relT(ev.t), "msg", "↞", escHtml((ev.text || "").slice(0, 80)), color);
+            return;
+          }
 
-        if (ev.type === "log") {
-          pushEvent(ev);
-          return;
+          case "MESSAGE_SENT": {
+            if (ev.text) {
+              state.ctxMsgs.push({ role: "assistant", text: ev.text, bytes: ev.text.length });
+              renderCtx();
+            }
+            const actLabel = ev.actions
+              ? `[${(Array.isArray(ev.actions) ? ev.actions : [ev.actions]).join(",")}]`
+              : "assistant";
+            appendSimpleCard({
+              kind: "MESSAGE OUT", typ: "typ-msg-out",
+              name: `↠ ${actLabel}`, meta: `<span>${(ev.text || "").length}b</span>`,
+              body: ev.text
+                ? `<div class="text">${escHtml(ev.text)}</div>`
+                : `<div class="text dim">(no text)</div>`,
+            });
+            pushEvent(relT(ev.t), "msg", "↠", escHtml((ev.text || "").slice(0, 80)), color);
+            return;
+          }
+
+          case "model_call_start": {
+            appendModelCallStart(ev);
+            pushEvent(relT(ev.t), "model", "→", `<b>${ev.modelType}</b> ${ev.promptBytes}b`, color);
+            return;
+          }
+
+          case "model_call_end": {
+            appendModelCallEnd(ev);
+            pushEvent(
+              relT(ev.t), "model", ev.error ? "✗" : "←",
+              `<b>${ev.modelType}</b> ${fmtMs(ev.durationMs)}${ev.error ? " · " + escHtml(ev.error) : ""}`,
+              color
+            );
+            return;
+          }
+
+          case "MODEL_USED": {
+            if (ev.tokens && state.currentTraj) {
+              state.currentTraj.tIn += ev.tokens.prompt || 0;
+              state.currentTraj.tOut += ev.tokens.completion || 0;
+              $statTin.textContent = state.currentTraj.tIn;
+              $statTout.textContent = state.currentTraj.tOut;
+            }
+            pushEvent(
+              relT(ev.t), "model", "↯",
+              `<b>${ev.modelType}</b> ${ev.tokens ? (ev.tokens.prompt || 0) + "↓ " + (ev.tokens.completion || 0) + "↑" : ""}`,
+              color
+            );
+            return;
+          }
+
+          case "ACTION_STARTED": {
+            appendSimpleCard({
+              kind: "ACTION", typ: "typ-action",
+              name: ev.name, meta: `<span class="live">▶ running</span>`,
+              body: `<details class="raw"><summary>content</summary><pre>${escHtml(jsonPretty(ev.content))}</pre></details>`,
+            });
+            pushEvent(relT(ev.t), "action", "▶", `<b>${escHtml(ev.name)}</b>`, color);
+            return;
+          }
+
+          case "ACTION_COMPLETED": {
+            appendSimpleCard({
+              kind: "ACTION DONE", typ: "typ-action",
+              name: ev.name, meta: `<span class="ok">✓</span>`,
+              body: `<details class="raw"><summary>result</summary><pre>${escHtml(jsonPretty(ev.content))}</pre></details>`,
+            });
+            pushEvent(relT(ev.t), "action", "✓", `<b>${escHtml(ev.name)}</b>`, color);
+            return;
+          }
+
+          case "EVALUATOR_STARTED": {
+            appendSimpleCard({
+              kind: "EVAL", typ: "typ-eval",
+              name: ev.name, meta: `<span class="live">▶ running</span>`,
+            });
+            pushEvent(relT(ev.t), "eval", "▶", `<b>${escHtml(ev.name)}</b>`, color);
+            return;
+          }
+
+          case "EVALUATOR_COMPLETED": {
+            appendSimpleCard({
+              kind: "EVAL DONE", typ: "typ-eval",
+              name: ev.name,
+              meta: ev.error
+                ? `<span class="err">✗ ${escHtml(ev.error)}</span>`
+                : `<span class="ok">✓</span>`,
+            });
+            pushEvent(
+              relT(ev.t), "eval", ev.error ? "✗" : "✓",
+              `<b>${escHtml(ev.name)}</b>${ev.error ? " · " + escHtml(ev.error) : ""}`, color
+            );
+            return;
+          }
+
+          case "response_chunk": return;
+
+          case "log": {
+            appendSimpleCard({
+              kind: "LOG", typ: ev.level === "error" ? "typ-err" : "typ-log",
+              name: ev.level, meta: "",
+              body: `<div class="text ${ev.level === "error" ? "err" : "dim"}">${escHtml(ev.message)}</div>`,
+            });
+            pushEvent(
+              relT(ev.t), ev.level === "error" ? "err" : "log",
+              ev.level, escHtml((ev.message || "").slice(0, 200)), color
+            );
+            return;
+          }
+
+          case "trajectory_end": {
+            stopElapsed();
+            $statElapsed.textContent = fmtMs(ev.durationMs);
+            const cls = ev.reason === "ok" ? "idle" : ev.reason === "error" ? "err" : "warn";
+            const lbl = ev.reason === "ok" ? "DONE" : ev.reason === "error" ? "ERR" : "WARN";
+            setState(lbl, cls);
+            appendSimpleCard({
+              kind: "TRAJECTORY END", typ: "typ-end",
+              name: "",
+              meta: `<span>${ev.reason}</span><span>${fmtMs(ev.durationMs)}</span>`,
+              body: ev.finalText ? `<div class="text">${escHtml(ev.finalText)}</div>` : "",
+            });
+            pushEvent(
+              relT(ev.t), ev.reason === "error" ? "err" : "run",
+              "END", `${ev.reason} · ${fmtMs(ev.durationMs)}`, ev.color
+            );
+            return;
+          }
         }
       }
 
-      // ---------- SSE ----------
       function connect() {
         const es = new EventSource("/events");
         es.onmessage = (e) => {
@@ -788,33 +707,25 @@
         };
       }
 
-      // ---------- input ----------
       async function send() {
         const v = $input.value.trim();
         if (!v) return;
         $input.value = "";
         try {
           await fetch("/message", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: v }),
           });
         } catch (e) {
-          pushEvent({ type: "log", level: "error", message: "send failed: " + e.message, t: Date.now() });
+          pushEvent("0.00", "err", "send", escHtml(e.message));
         }
       }
 
       $send.addEventListener("click", send);
       $input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault(); send();
-        }
-      });
-      $abort.addEventListener("click", () => {
-        fetch("/abort", { method: "POST" }).catch(() => {});
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
       });
 
-      // ---------- boot ----------
       loadStatus();
       connect();
     </script>

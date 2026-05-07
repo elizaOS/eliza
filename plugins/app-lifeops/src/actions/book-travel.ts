@@ -9,11 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ApprovalQueue,
@@ -30,6 +26,7 @@ import {
   PaymentRequiredError,
   type X402PaymentRequirement,
 } from "../lifeops/x402-payment-handler.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 

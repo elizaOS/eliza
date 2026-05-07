@@ -1,0 +1,46 @@
+{
+  "trajectoryId": "tj-f89613bf937d35",
+  "agentId": "93432706-b3b2-08ea-ab6a-ba55340a8848",
+  "roomId": "0ee3c8ee-1740-4fdd-9a38-ed2b787dd6ef",
+  "rootMessage": {
+    "id": "d876c8a2-a822-4221-9836-652695bb5a58",
+    "text": "Use the BROKEN_ACTION tool with reason='intentional test failure', then explain what happened.",
+    "sender": "ec5e22b0-a374-44bb-b9a6-8457c4105e35"
+  },
+  "startedAt": 1778149529107,
+  "status": "finished",
+  "stages": [
+    {
+      "stageId": "stage-msghandler-1778149529107",
+      "kind": "messageHandler",
+      "startedAt": 1778149529107,
+      "endedAt": 1778149529591,
+      "latencyMs": 484,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "prompt": "task: Decide processMessage and the plan for this message.\n\ncontext:\n{\n  \"id\": \"d876c8a2-a822-4221-9836-652695bb5a58\",\n  \"version\": \"v5\",\n  \"createdAt\": 1778149529106,\n  \"metadata\": {\n    \"roomId\": \"0ee3c8ee-1740-4fdd-9a38-ed2b787dd6ef\",\n    \"messageId\": \"d876c8a2-a822-4221-9836-652695bb5a58\",\n    \"selectedContexts\": []\n  },\n  \"staticPrefix\": {\n    \"characterPrompt\": {\n      \"id\": \"character\",\n      \"label\": \"character\",\n      \"content\": \"agent_name: ElizaCerebrasTest\\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\",\n      \"stable\": true\n    },\n    \"contextRegistryDigest\": \"\"\n  },\n  \"trajectoryPrefix\": {\n    \"selectedContexts\": [],\n    \"expandedTools\": [],\n    \"createdAtStageId\": \"message-handler\"\n  },\n  \"plannedQueue\": [],\n  \"metrics\": {},\n  \"limits\": {},\n  \"events\": [\n    {\n      \"id\": \"available_contexts\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"available_contexts: general\",\n      \"stable\": true\n    },\n    {\n      \"id\": \"composed_state\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"No prior conversation.\",\n      \"stable\": false\n    },\n    {\n      \"id\": \"d876c8a2-a822-4221-9836-652695bb5a58\",\n      \"type\": \"message\",\n      \"source\": \"run-eliza-cerebras\",\n      \"createdAt\": 1778149529106,\n      \"message\": {\n        \"id\": \"d876c8a2-a822-4221-9836-652695bb5a58\",\n        \"role\": \"user\",\n        \"content\": {\n          \"text\": \"Use the BROKEN_ACTION tool with reason='intentional test failure', then explain what happened.\",\n          \"source\": \"run-eliza-cerebras\"\n        },\n        \"metadata\": {\n          \"roomId\": \"0ee3c8ee-1740-4fdd-9a38-ed2b787dd6ef\",\n          \"entityId\": \"ec5e22b0-a374-44bb-b9a6-8457c4105e35\"\n        }\n      }\n    }\n  ]\n}\n\navailable_contexts:\n- simple: Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from its own knowledge.\n- general: Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.\n- memory: Read, write, and recall agent memories and long-term facts.\n- knowledge: Search the agent's knowledge base and grounded long-form documents.\n- web: Web search and reading public internet pages.\n- media: Generate or process images, audio, and video. Includes screenshots and transcription.\n\nrules:\n- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n- plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email\n- never invent context ids that are not in available_contexts\n- choose plan.contexts=[\"simple\"] (and only \"simple\") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply\n- otherwise list every relevant context id; planning will run and tools will be selected from those contexts\n- include plan.reply only on the simple shortcut path (plan.contexts=[\"simple\"])\n- thought is internal routing rationale and is not shown to the user\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.",
+        "response": "{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"simple\"],\"reply\":\"I’m unable to run the BROKEN_ACTION tool because it isn’t available in my current set of tools. Since I can’t execute that action, there’s no tool output to explain. If you’d like me to try something else or need information on a different topic, just let me know!\"},\"thought\":\"The user requests use of a specific tool that isn’t defined in any available context. Since no such tool exists, I can’t perform the action, so I’ll respond directly using the simple context, providing an explanation of why the tool can’t be used.\"}",
+        "usage": {
+          "promptTokens": 1192,
+          "completionTokens": 395,
+          "totalTokens": 1587,
+          "cacheReadInputTokens": 256
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "totalLatencyMs": 484,
+    "totalPromptTokens": 1192,
+    "totalCompletionTokens": 395,
+    "totalCacheReadTokens": 256,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 0,
+    "toolCallsExecuted": 0,
+    "toolCallFailures": 0,
+    "evaluatorFailures": 0
+  },
+  "endedAt": 1778149529593
+}

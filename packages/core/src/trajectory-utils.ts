@@ -32,9 +32,20 @@ export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number];
 export type TrajectoryLlmCallDetails = {
 	model: string;
 	modelVersion?: string;
+	modelType?: string;
+	provider?: string;
 	systemPrompt: string;
 	userPrompt: string;
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
 	response: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	providerMetadata?: unknown;
 	reasoning?: string;
 	temperature: number;
 	maxTokens: number;
@@ -52,6 +63,8 @@ export type TrajectoryLlmCallDetails = {
 	latencyMs: number;
 	promptTokens?: number;
 	completionTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
 };
 
 export type TrajectoryProviderAccessParams = {

@@ -4,16 +4,11 @@ import type {
   TrajectoryStep,
 } from "@elizaos/agent/types/trajectory";
 import {
-  buildContextObjectTrajectoryExport,
-  buildTrajectoryHarnessRows,
-  type TrajectoryDetailRecord as CoreTrajectoryDetailRecord,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  iterateTrajectoryLlmCalls,
+  type ElizaNativeTrajectoryRow,
   type TrajectoryHarnessExportRow,
 } from "@elizaos/core";
-
-export type TrainingTrajectoryJsonShape =
-  | "legacy"
-  | "context_object_events_v5"
-  | "harness_v1";
 
 export interface TrajectoryCallEntry {
   trajectory: Trajectory;
@@ -52,6 +47,15 @@ function isHarnessExportRow(value: unknown): value is TrajectoryHarnessExportRow
   );
 }
 
+function isElizaNativeExportRow(value: unknown): value is ElizaNativeTrajectoryRow {
+  return (
+    isRecord(value) &&
+    value.format === ELIZA_NATIVE_TRAJECTORY_FORMAT &&
+    isRecord(value.request) &&
+    isRecord(value.response)
+  );
+}
+
 function reconstructTrajectoriesFromHarnessRows(
   rows: readonly TrajectoryHarnessExportRow[],
 ): Trajectory[] {
@@ -80,8 +84,7 @@ function reconstructTrajectoriesFromHarnessRows(
           steps: [],
           metrics: {
             finalStatus:
-              row.status === "error" ||
-              row.status === "timeout"
+              row.status === "error" || row.status === "timeout"
                 ? row.status
                 : "completed",
           },
@@ -141,9 +144,7 @@ function reconstructTrajectoriesFromHarnessRows(
 
   return [...trajectories.values()].map(({ trajectory }) => {
     const trajectorySteps = trajectory.steps ?? [];
-    trajectorySteps.sort(
-      (left, right) => left.timestamp - right.timestamp,
-    );
+    trajectorySteps.sort((left, right) => left.timestamp - right.timestamp);
     for (const step of trajectorySteps) {
       const calls = step.llmCalls ?? [];
       calls.sort(
@@ -166,14 +167,24 @@ export function parseTrajectoryExportText(payload: string): unknown[] {
   }
 
   if (trimmed.startsWith("{")) {
-    return [JSON.parse(trimmed) as unknown];
+    try {
+      return [JSON.parse(trimmed) as unknown];
+    } catch {
+      if (!trimmed.includes("\n")) {
+        return [];
+      }
+    }
   }
 
-  return trimmed
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as unknown);
+  if (trimmed.includes("\n")) {
+    return trimmed
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown);
+  }
+
+  return [];
 }
 
 export function extractTrajectoriesFromExportText(payload: string): Trajectory[] {
@@ -189,85 +200,36 @@ export function extractTrajectoriesFromExportText(payload: string): Trajectory[]
   return [];
 }
 
-export function serializeExportRecordsAsJsonl(records: readonly unknown[]): string {
-  return records.map((record) => JSON.stringify(record)).join("\n");
+export function extractElizaNativeRowsFromExportText(
+  payload: string,
+): ElizaNativeTrajectoryRow[] {
+  return parseTrajectoryExportText(payload).filter(isElizaNativeExportRow);
 }
 
 export function listTrajectoryCallEntries(
   trajectory: Trajectory,
 ): TrajectoryCallEntry[] {
   const trajectoryId = String(trajectory.trajectoryId);
-  const entries: TrajectoryCallEntry[] = [];
-
   const steps = trajectory.steps ?? [];
-  for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
-    const step = steps[stepIndex];
-    if (!step) continue;
-    const stepId =
-      typeof step.stepId === "string" && step.stepId.trim().length > 0
-        ? step.stepId
-        : `${trajectoryId}-step-${stepIndex + 1}`;
 
-    for (let callIndex = 0; callIndex < (step.llmCalls ?? []).length; callIndex++) {
-      const call = step.llmCalls?.[callIndex];
-      if (!call) continue;
-      entries.push({
-        trajectory,
-        trajectoryId,
-        step,
-        stepId,
-        stepIndex,
-        call,
-        callIndex,
-      });
-    }
-  }
+  return iterateTrajectoryLlmCalls(trajectory).map((call) => {
+    const step =
+      steps[call.stepIndex] ??
+      ({
+        stepId: call.stepId,
+        timestamp: call.stepTimestamp,
+        llmCalls: [],
+        providerAccesses: [],
+      } satisfies TrajectoryStep);
 
-  return entries;
-}
-
-function redactTrajectoryPrompts(trajectory: Trajectory): Trajectory {
-  return {
-    ...trajectory,
-    steps: (trajectory.steps ?? []).map((step) => ({
-      ...step,
-      llmCalls: (step.llmCalls ?? []).map((call) => ({
-        ...call,
-        systemPrompt: "",
-        userPrompt: "",
-      })),
-    })),
-  };
-}
-
-export function serializeTrajectoryExportAsJsonl(
-  trajectories: readonly Trajectory[],
-  options?: {
-    includePrompts?: boolean;
-    jsonShape?: TrainingTrajectoryJsonShape;
-  },
-): string {
-  const rows =
-    options?.jsonShape === "context_object_events_v5"
-      ? trajectories.map((trajectory) =>
-          buildContextObjectTrajectoryExport({
-            trajectory: trajectory as unknown as Parameters<
-              typeof buildContextObjectTrajectoryExport
-            >[0]["trajectory"],
-          }),
-        )
-      : options?.jsonShape === "harness_v1"
-        ? buildTrajectoryHarnessRows(
-            trajectories as readonly CoreTrajectoryDetailRecord[],
-            {
-              includePrompts: options?.includePrompts,
-            },
-          )
-      : trajectories.map((trajectory) =>
-          options?.includePrompts === false
-            ? redactTrajectoryPrompts(trajectory)
-            : trajectory,
-        );
-
-  return rows.map((row) => JSON.stringify(row)).join("\n");
+    return {
+      trajectory,
+      trajectoryId,
+      step,
+      stepId: call.stepId,
+      stepIndex: call.stepIndex,
+      call: call as TrajectoryLlmCall,
+      callIndex: call.callIndex,
+    };
+  });
 }

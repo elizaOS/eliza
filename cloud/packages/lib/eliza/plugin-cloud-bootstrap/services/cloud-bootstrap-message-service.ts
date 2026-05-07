@@ -235,7 +235,10 @@ async function withRetry<T>(
       logger.warn(`[NativePlanner] ${label} validation failed on attempt ${attempt}/${maxRetries}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`[NativePlanner] ${label} error on attempt ${attempt}/${maxRetries}:`, errorMessage);
+      logger.error(
+        `[NativePlanner] ${label} error on attempt ${attempt}/${maxRetries}:`,
+        errorMessage,
+      );
       if (attempt >= maxRetries) throw error;
     }
 
@@ -931,7 +934,9 @@ export class CloudBootstrapMessageService implements IMessageService {
         }
 
         if (!parsedStep) {
-          logger.warn(`[NativePlanner] Failed to parse step result after ${maxParseRetries} attempts`);
+          logger.warn(
+            `[NativePlanner] Failed to parse step result after ${maxParseRetries} attempts`,
+          );
           incompleteReason = `The planner produced invalid output ${maxParseRetries} time(s) in a row.`;
           traceActionResult.push({
             data: { actionName: "parse_error" },
@@ -974,7 +979,9 @@ export class CloudBootstrapMessageService implements IMessageService {
 
             break;
           }
-          logger.warn(`[NativePlanner] No action at iteration ${iterationCount}, forcing completion`);
+          logger.warn(
+            `[NativePlanner] No action at iteration ${iterationCount}, forcing completion`,
+          );
           break;
         }
 
@@ -1016,7 +1023,9 @@ export class CloudBootstrapMessageService implements IMessageService {
 
         try {
           if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
-            logger.info("[NativePlanner] Newer message detected before action execution, cancelling");
+            logger.info(
+              "[NativePlanner] Newer message detected before action execution, cancelling",
+            );
             wasCancelled = true;
             break;
           }

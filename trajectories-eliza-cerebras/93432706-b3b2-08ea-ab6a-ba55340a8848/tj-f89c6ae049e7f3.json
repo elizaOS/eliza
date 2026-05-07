@@ -1,0 +1,323 @@
+{
+  "trajectoryId": "tj-f89c6ae049e7f3",
+  "agentId": "93432706-b3b2-08ea-ab6a-ba55340a8848",
+  "roomId": "18f07999-e482-46f8-8f75-597a717c8bfb",
+  "rootMessage": {
+    "id": "d53c605b-280c-47ab-b010-7736335522ce",
+    "text": "use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'",
+    "sender": "02d6841e-ecd0-48f2-831b-e5de98077ea8"
+  },
+  "startedAt": 1778149530730,
+  "status": "finished",
+  "stages": [
+    {
+      "stageId": "stage-msghandler-1778149530730",
+      "kind": "messageHandler",
+      "startedAt": 1778149530730,
+      "endedAt": 1778149531101,
+      "latencyMs": 371,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "prompt": "task: Decide processMessage and the plan for this message.\n\ncontext:\n{\n  \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n  \"version\": \"v5\",\n  \"createdAt\": 1778149530729,\n  \"metadata\": {\n    \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n    \"messageId\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n    \"selectedContexts\": []\n  },\n  \"staticPrefix\": {\n    \"characterPrompt\": {\n      \"id\": \"character\",\n      \"label\": \"character\",\n      \"content\": \"agent_name: ElizaCerebrasTest\\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\",\n      \"stable\": true\n    },\n    \"contextRegistryDigest\": \"\"\n  },\n  \"trajectoryPrefix\": {\n    \"selectedContexts\": [],\n    \"expandedTools\": [],\n    \"createdAtStageId\": \"message-handler\"\n  },\n  \"plannedQueue\": [],\n  \"metrics\": {},\n  \"limits\": {},\n  \"events\": [\n    {\n      \"id\": \"available_contexts\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"available_contexts: general\",\n      \"stable\": true\n    },\n    {\n      \"id\": \"composed_state\",\n      \"type\": \"instruction\",\n      \"source\": \"message-service\",\n      \"content\": \"No prior conversation.\",\n      \"stable\": false\n    },\n    {\n      \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n      \"type\": \"message\",\n      \"source\": \"run-eliza-cerebras\",\n      \"createdAt\": 1778149530729,\n      \"message\": {\n        \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n        \"role\": \"user\",\n        \"content\": {\n          \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n          \"source\": \"run-eliza-cerebras\"\n        },\n        \"metadata\": {\n          \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n          \"entityId\": \"02d6841e-ecd0-48f2-831b-e5de98077ea8\"\n        }\n      }\n    }\n  ]\n}\n\navailable_contexts:\n- simple: Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from its own knowledge.\n- general: Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.\n- memory: Read, write, and recall agent memories and long-term facts.\n- knowledge: Search the agent's knowledge base and grounded long-form documents.\n- web: Web search and reading public internet pages.\n- media: Generate or process images, audio, and video. Includes screenshots and transcription.\n\nrules:\n- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n- plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email\n- never invent context ids that are not in available_contexts\n- choose plan.contexts=[\"simple\"] (and only \"simple\") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply\n- otherwise list every relevant context id; planning will run and tools will be selected from those contexts\n- include plan.reply only on the simple shortcut path (plan.contexts=[\"simple\"])\n- thought is internal routing rationale and is not shown to the user\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.",
+        "response": "{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}",
+        "usage": {
+          "promptTokens": 1186,
+          "completionTokens": 305,
+          "totalTokens": 1491,
+          "cacheReadInputTokens": 256
+        }
+      }
+    },
+    {
+      "stageId": "stage-planner-iter-1-1778149531104",
+      "kind": "planner",
+      "iteration": 1,
+      "startedAt": 1778149531104,
+      "endedAt": 1778149531629,
+      "latencyMs": 525,
+      "model": {
+        "modelType": "ACTION_PLANNER",
+        "provider": "default",
+        "prompt": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\n\nselected_contexts: web\n\ntool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info\n\navailable_contexts: general\n\nNo prior conversation.\n\nuse the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\n\nmessage_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}\n\nplanner_stage:\ntask: Plan the next native tool calls for the current ContextObject.\n\nrules:\n- use only tools exposed in the current context object\n- plan the smallest grounded queue of useful tool calls\n- include arguments only when grounded in the user request or prior tool results\n- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser\n- do not invent tool names, connector names, providers, ids, or benchmark ids\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.\n\ntrajectory:\n[]",
+        "messages": [
+          {
+            "role": "system",
+            "content": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily."
+          },
+          {
+            "role": "system",
+            "content": "selected_contexts: web"
+          },
+          {
+            "role": "system",
+            "content": "tool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info"
+          },
+          {
+            "role": "system",
+            "content": "available_contexts: general"
+          },
+          {
+            "role": "system",
+            "content": "No prior conversation."
+          },
+          {
+            "role": "user",
+            "content": "{\n  \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n  \"source\": \"run-eliza-cerebras\"\n}"
+          },
+          {
+            "role": "system",
+            "content": "message_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}"
+          },
+          {
+            "role": "system",
+            "content": "planner_stage:\ntask: Plan the next native tool calls for the current ContextObject.\n\nrules:\n- use only tools exposed in the current context object\n- plan the smallest grounded queue of useful tool calls\n- include arguments only when grounded in the user request or prior tool results\n- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser\n- do not invent tool names, connector names, providers, ids, or benchmark ids\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats."
+          },
+          {
+            "role": "user",
+            "content": "trajectory:\n[]"
+          }
+        ],
+        "tools": [
+          {
+            "name": "SEARCH_KNOWLEDGE",
+            "description": "Search the KB for specific info"
+          }
+        ],
+        "toolChoice": "auto",
+        "response": "",
+        "toolCalls": [
+          {
+            "id": "34af984db",
+            "name": "SEARCH_KNOWLEDGE",
+            "args": {
+              "query": "eliza",
+              "limit": 1
+            }
+          }
+        ],
+        "usage": {
+          "promptTokens": 517,
+          "completionTokens": 450,
+          "totalTokens": 967,
+          "cacheReadInputTokens": 128
+        },
+        "finishReason": "tool_calls",
+        "costUsd": 0
+      },
+      "cache": {
+        "segmentHashes": [
+          "d318fc0fd88811631c805d203bc955a152d6dacdcfe737cf1c39d766a6048f8d",
+          "93adffd90cbf5a590a65e5753ca91a30e1d5ecaf2356242bdd1ddd9df58bc01a",
+          "5444c06aedacb7b48c08746342e7a8328e4532923760618419b8066498d1406f",
+          "d5e368b2cc467787b0d402ef7de3106baf33937100ebf52306752ab16947799c",
+          "d2923cddffe2c797ffe4d9867410d53fd1d96f600b7475eac08cda0e6f917f5d",
+          "6e0d8f054c5ac97839ab930f8b1973b087ca11b5938328b21a2089989a52b39a",
+          "6260905b97ff3ace58b3b3a996843c62ef385d926ff1a4a2dc510a20eef350a4",
+          "615bcd86f1c6ab3a7f48a760c1699fc7f331a15e289e4d4bfb9abdef728b8b43",
+          "3953d2daf2b9c21ad14fdc62a60e2b07fa911558e5d183365c2050937173ac7e"
+        ],
+        "prefixHash": "168c882096297c28e2eb90ab7cb717560e1e6b8341812331eba5abcff68a39a5"
+      }
+    },
+    {
+      "stageId": "stage-tool-SEARCH_KNOWLEDGE-1778149531630",
+      "kind": "tool",
+      "startedAt": 1778149531630,
+      "endedAt": 1778149531631,
+      "latencyMs": 1,
+      "tool": {
+        "name": "SEARCH_KNOWLEDGE",
+        "args": {
+          "query": "eliza",
+          "limit": 1
+        },
+        "result": {
+          "success": false,
+          "text": "I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING",
+          "data": {
+            "actionName": "SEARCH_KNOWLEDGE"
+          },
+          "error": "No handler found for delegate type: TEXT_EMBEDDING"
+        },
+        "success": false,
+        "durationMs": 1
+      }
+    },
+    {
+      "stageId": "stage-eval-iter-1-1778149531633",
+      "kind": "evaluation",
+      "iteration": 1,
+      "startedAt": 1778149531633,
+      "endedAt": 1778149532154,
+      "latencyMs": 521,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "prompt": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\n\nselected_contexts: web\n\ntool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info\n\navailable_contexts: general\n\nNo prior conversation.\n\nuse the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\n\nmessage_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}\n\nevaluator_stage:\ntask: Evaluate the just-executed action and route the next planner-loop step.\n\nroutes:\n- FINISH: the task is complete or should stop\n- NEXT_RECOMMENDED: one queued tool should run next before replanning\n- CONTINUE: call the planner again because the queued plan is missing or stale\n\nrules:\n- evaluate the latest action result against the user's goal\n- success means the user's requested outcome is fully evidenced by completed tool results, not merely planned\n- never infer that a side effect happened unless a matching successful tool result exists\n- if the user requested a write/send/save/create/update/delete/payment/transfer action and the only evidence is read/search/plan output, choose CONTINUE\n- choose NEXT_RECOMMENDED only when one queued tool is clearly still grounded\n- choose CONTINUE when the next step requires new planning\n- messageToUser is optional progress, diagnosis, question, or final output\n- copyToClipboard is optional and must include title and content\n- thought is internal and not shown to the user\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.\n\ntrajectory:\n{\n  \"context\": {\n    \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n    \"version\": \"v5\",\n    \"createdAt\": 1778149531102,\n    \"metadata\": {\n      \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n      \"messageId\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n      \"selectedContexts\": [\n        \"web\"\n      ]\n    },\n    \"staticPrefix\": {\n      \"characterPrompt\": {\n        \"id\": \"character\",\n        \"label\": \"character\",\n        \"content\": \"agent_name: ElizaCerebrasTest\\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\",\n        \"stable\": true\n      },\n      \"contextRegistryDigest\": \"\"\n    },\n    \"trajectoryPrefix\": {\n      \"selectedContexts\": [\n        \"web\"\n      ],\n      \"expandedTools\": [\n        {\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"description\": \"Search the KB for specific info\",\n          \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"query\": {\n                \"type\": \"string\",\n                \"description\": \"Knowledge base search query.\"\n              },\n              \"limit\": {\n                \"type\": \"number\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"default\": 3,\n                \"minimum\": 1,\n                \"maximum\": 20\n              }\n            },\n            \"required\": [],\n            \"additionalProperties\": false\n          },\n          \"type\": \"function\"\n        }\n      ],\n      \"createdAtStageId\": \"message-handler\"\n    },\n    \"plannedQueue\": [\n      {\n        \"id\": \"34af984db\",\n        \"name\": \"SEARCH_KNOWLEDGE\",\n        \"args\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n        \"status\": \"failed\",\n        \"sourceStageId\": \"planner:1\"\n      }\n    ],\n    \"metrics\": {},\n    \"limits\": {},\n    \"events\": [\n      {\n        \"id\": \"available_contexts\",\n        \"type\": \"instruction\",\n        \"source\": \"message-service\",\n        \"content\": \"available_contexts: general\",\n        \"stable\": true\n      },\n      {\n        \"id\": \"composed_state\",\n        \"type\": \"instruction\",\n        \"source\": \"message-service\",\n        \"content\": \"No prior conversation.\",\n        \"stable\": false\n      },\n      {\n        \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n        \"type\": \"message\",\n        \"source\": \"run-eliza-cerebras\",\n        \"createdAt\": 1778149530729,\n        \"message\": {\n          \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n          \"role\": \"user\",\n          \"content\": {\n            \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n            \"source\": \"run-eliza-cerebras\"\n          },\n          \"metadata\": {\n            \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n            \"entityId\": \"02d6841e-ecd0-48f2-831b-e5de98077ea8\"\n          }\n        }\n      },\n      {\n        \"id\": \"tool:SEARCH_KNOWLEDGE\",\n        \"type\": \"tool\",\n        \"source\": \"message-service\",\n        \"tool\": {\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"description\": \"Search the KB for specific info\",\n          \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"query\": {\n                \"type\": \"string\",\n                \"description\": \"Knowledge base search query.\"\n              },\n              \"limit\": {\n                \"type\": \"number\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"default\": 3,\n                \"minimum\": 1,\n                \"maximum\": 20\n              }\n            },\n            \"required\": [],\n            \"additionalProperties\": false\n          },\n          \"action\": {\n            \"name\": \"SEARCH_KNOWLEDGE\",\n            \"contexts\": [\n              \"knowledge\",\n              \"memory\",\n              \"web\"\n            ],\n            \"roleGate\": {\n              \"minRole\": \"USER\"\n            },\n            \"description\": \"Search the knowledge base for specific information\",\n            \"suppressPostActionContinuation\": true,\n            \"parameters\": [\n              {\n                \"name\": \"query\",\n                \"description\": \"Knowledge base search query.\",\n                \"required\": false,\n                \"schema\": {\n                  \"type\": \"string\"\n                },\n                \"descriptionCompressed\": \"KB search query.\"\n              },\n              {\n                \"name\": \"limit\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"required\": false,\n                \"schema\": {\n                  \"type\": \"number\",\n                  \"minimum\": 1,\n                  \"maximum\": 20,\n                  \"default\": 3\n                },\n                \"descriptionCompressed\": \"max number of matching knowledge items to include.\"\n              }\n            ],\n            \"similes\": [\n              \"search knowledge\",\n              \"find information\",\n              \"look up\",\n              \"query knowledge base\",\n              \"search documents\",\n              \"find in knowledge\"\n            ],\n            \"examples\": [\n              [\n                {\n                  \"name\": \"user\",\n                  \"content\": {\n                    \"text\": \"Search your knowledge for information about quantum computing\"\n                  }\n                },\n                {\n                  \"name\": \"assistant\",\n                  \"content\": {\n                    \"text\": \"I'll search my knowledge base for information about quantum computing.\",\n                    \"actions\": [\n                      \"SEARCH_KNOWLEDGE\"\n                    ]\n                  }\n                }\n              ]\n            ],\n            \"descriptionCompressed\": \"Search the KB for specific info\"\n          }\n        }\n      },\n      {\n        \"id\": \"message-handler:1778149531101\",\n        \"type\": \"message_handler\",\n        \"source\": \"message-service\",\n        \"createdAt\": 1778149531101,\n        \"metadata\": {\n          \"processMessage\": \"RESPOND\",\n          \"plan\": {\n            \"contexts\": [\n              \"web\"\n            ]\n          },\n          \"thought\": \"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"\n        }\n      },\n      {\n        \"id\": \"queue:34af984db:1\",\n        \"type\": \"planned_tool_call\",\n        \"source\": \"planner-loop\",\n        \"createdAt\": 1778149531630,\n        \"metadata\": {\n          \"iteration\": 1,\n          \"toolCallId\": \"34af984db\",\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"params\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n          \"status\": \"queued\"\n        }\n      },\n      {\n        \"id\": \"tool-result:34af984db:1778149531631\",\n        \"type\": \"tool_result\",\n        \"source\": \"planner-loop\",\n        \"createdAt\": 1778149531631,\n        \"metadata\": {\n          \"iteration\": 1,\n          \"toolCallId\": \"34af984db\",\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"params\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n          \"result\": \"{\\n  \\\"success\\\": false,\\n  \\\"text\\\": \\\"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\\\",\\n  \\\"data\\\": {\\n    \\\"actionName\\\": \\\"SEARCH_KNOWLEDGE\\\"\\n  },\\n  \\\"error\\\": \\\"No handler found for delegate type: TEXT_EMBEDDING\\\"\\n}\",\n          \"status\": \"failed\"\n        }\n      }\n    ]\n  },\n  \"steps\": [\n    {\n      \"iteration\": 1,\n      \"toolCall\": {\n        \"id\": \"34af984db\",\n        \"name\": \"SEARCH_KNOWLEDGE\",\n        \"params\": {\n          \"query\": \"eliza\",\n          \"limit\": 1\n        }\n      },\n      \"result\": {\n        \"success\": false,\n        \"text\": \"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\",\n        \"data\": {\n          \"actionName\": \"SEARCH_KNOWLEDGE\"\n        },\n        \"error\": \"No handler found for delegate type: TEXT_EMBEDDING\"\n      }\n    }\n  ],\n  \"plannedQueue\": [],\n  \"evaluatorOutputs\": []\n}",
+        "messages": [
+          {
+            "role": "system",
+            "content": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily."
+          },
+          {
+            "role": "system",
+            "content": "selected_contexts: web"
+          },
+          {
+            "role": "system",
+            "content": "tool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info"
+          },
+          {
+            "role": "system",
+            "content": "available_contexts: general"
+          },
+          {
+            "role": "system",
+            "content": "No prior conversation."
+          },
+          {
+            "role": "user",
+            "content": "{\n  \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n  \"source\": \"run-eliza-cerebras\"\n}"
+          },
+          {
+            "role": "system",
+            "content": "message_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}"
+          },
+          {
+            "role": "system",
+            "content": "evaluator_stage:\ntask: Evaluate the just-executed action and route the next planner-loop step.\n\nroutes:\n- FINISH: the task is complete or should stop\n- NEXT_RECOMMENDED: one queued tool should run next before replanning\n- CONTINUE: call the planner again because the queued plan is missing or stale\n\nrules:\n- evaluate the latest action result against the user's goal\n- success means the user's requested outcome is fully evidenced by completed tool results, not merely planned\n- never infer that a side effect happened unless a matching successful tool result exists\n- if the user requested a write/send/save/create/update/delete/payment/transfer action and the only evidence is read/search/plan output, choose CONTINUE\n- choose NEXT_RECOMMENDED only when one queued tool is clearly still grounded\n- choose CONTINUE when the next step requires new planning\n- messageToUser is optional progress, diagnosis, question, or final output\n- copyToClipboard is optional and must include title and content\n- thought is internal and not shown to the user\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats."
+          },
+          {
+            "role": "user",
+            "content": "trajectory:\n{\n  \"context\": {\n    \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n    \"version\": \"v5\",\n    \"createdAt\": 1778149531102,\n    \"metadata\": {\n      \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n      \"messageId\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n      \"selectedContexts\": [\n        \"web\"\n      ]\n    },\n    \"staticPrefix\": {\n      \"characterPrompt\": {\n        \"id\": \"character\",\n        \"label\": \"character\",\n        \"content\": \"agent_name: ElizaCerebrasTest\\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\",\n        \"stable\": true\n      },\n      \"contextRegistryDigest\": \"\"\n    },\n    \"trajectoryPrefix\": {\n      \"selectedContexts\": [\n        \"web\"\n      ],\n      \"expandedTools\": [\n        {\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"description\": \"Search the KB for specific info\",\n          \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"query\": {\n                \"type\": \"string\",\n                \"description\": \"Knowledge base search query.\"\n              },\n              \"limit\": {\n                \"type\": \"number\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"default\": 3,\n                \"minimum\": 1,\n                \"maximum\": 20\n              }\n            },\n            \"required\": [],\n            \"additionalProperties\": false\n          },\n          \"type\": \"function\"\n        }\n      ],\n      \"createdAtStageId\": \"message-handler\"\n    },\n    \"plannedQueue\": [\n      {\n        \"id\": \"34af984db\",\n        \"name\": \"SEARCH_KNOWLEDGE\",\n        \"args\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n        \"status\": \"failed\",\n        \"sourceStageId\": \"planner:1\"\n      }\n    ],\n    \"metrics\": {},\n    \"limits\": {},\n    \"events\": [\n      {\n        \"id\": \"available_contexts\",\n        \"type\": \"instruction\",\n        \"source\": \"message-service\",\n        \"content\": \"available_contexts: general\",\n        \"stable\": true\n      },\n      {\n        \"id\": \"composed_state\",\n        \"type\": \"instruction\",\n        \"source\": \"message-service\",\n        \"content\": \"No prior conversation.\",\n        \"stable\": false\n      },\n      {\n        \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n        \"type\": \"message\",\n        \"source\": \"run-eliza-cerebras\",\n        \"createdAt\": 1778149530729,\n        \"message\": {\n          \"id\": \"d53c605b-280c-47ab-b010-7736335522ce\",\n          \"role\": \"user\",\n          \"content\": {\n            \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n            \"source\": \"run-eliza-cerebras\"\n          },\n          \"metadata\": {\n            \"roomId\": \"18f07999-e482-46f8-8f75-597a717c8bfb\",\n            \"entityId\": \"02d6841e-ecd0-48f2-831b-e5de98077ea8\"\n          }\n        }\n      },\n      {\n        \"id\": \"tool:SEARCH_KNOWLEDGE\",\n        \"type\": \"tool\",\n        \"source\": \"message-service\",\n        \"tool\": {\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"description\": \"Search the KB for specific info\",\n          \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"query\": {\n                \"type\": \"string\",\n                \"description\": \"Knowledge base search query.\"\n              },\n              \"limit\": {\n                \"type\": \"number\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"default\": 3,\n                \"minimum\": 1,\n                \"maximum\": 20\n              }\n            },\n            \"required\": [],\n            \"additionalProperties\": false\n          },\n          \"action\": {\n            \"name\": \"SEARCH_KNOWLEDGE\",\n            \"contexts\": [\n              \"knowledge\",\n              \"memory\",\n              \"web\"\n            ],\n            \"roleGate\": {\n              \"minRole\": \"USER\"\n            },\n            \"description\": \"Search the knowledge base for specific information\",\n            \"suppressPostActionContinuation\": true,\n            \"parameters\": [\n              {\n                \"name\": \"query\",\n                \"description\": \"Knowledge base search query.\",\n                \"required\": false,\n                \"schema\": {\n                  \"type\": \"string\"\n                },\n                \"descriptionCompressed\": \"KB search query.\"\n              },\n              {\n                \"name\": \"limit\",\n                \"description\": \"Maximum number of matching knowledge items to include.\",\n                \"required\": false,\n                \"schema\": {\n                  \"type\": \"number\",\n                  \"minimum\": 1,\n                  \"maximum\": 20,\n                  \"default\": 3\n                },\n                \"descriptionCompressed\": \"max number of matching knowledge items to include.\"\n              }\n            ],\n            \"similes\": [\n              \"search knowledge\",\n              \"find information\",\n              \"look up\",\n              \"query knowledge base\",\n              \"search documents\",\n              \"find in knowledge\"\n            ],\n            \"examples\": [\n              [\n                {\n                  \"name\": \"user\",\n                  \"content\": {\n                    \"text\": \"Search your knowledge for information about quantum computing\"\n                  }\n                },\n                {\n                  \"name\": \"assistant\",\n                  \"content\": {\n                    \"text\": \"I'll search my knowledge base for information about quantum computing.\",\n                    \"actions\": [\n                      \"SEARCH_KNOWLEDGE\"\n                    ]\n                  }\n                }\n              ]\n            ],\n            \"descriptionCompressed\": \"Search the KB for specific info\"\n          }\n        }\n      },\n      {\n        \"id\": \"message-handler:1778149531101\",\n        \"type\": \"message_handler\",\n        \"source\": \"message-service\",\n        \"createdAt\": 1778149531101,\n        \"metadata\": {\n          \"processMessage\": \"RESPOND\",\n          \"plan\": {\n            \"contexts\": [\n              \"web\"\n            ]\n          },\n          \"thought\": \"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"\n        }\n      },\n      {\n        \"id\": \"queue:34af984db:1\",\n        \"type\": \"planned_tool_call\",\n        \"source\": \"planner-loop\",\n        \"createdAt\": 1778149531630,\n        \"metadata\": {\n          \"iteration\": 1,\n          \"toolCallId\": \"34af984db\",\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"params\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n          \"status\": \"queued\"\n        }\n      },\n      {\n        \"id\": \"tool-result:34af984db:1778149531631\",\n        \"type\": \"tool_result\",\n        \"source\": \"planner-loop\",\n        \"createdAt\": 1778149531631,\n        \"metadata\": {\n          \"iteration\": 1,\n          \"toolCallId\": \"34af984db\",\n          \"name\": \"SEARCH_KNOWLEDGE\",\n          \"params\": \"{\\n  \\\"query\\\": \\\"eliza\\\",\\n  \\\"limit\\\": 1\\n}\",\n          \"result\": \"{\\n  \\\"success\\\": false,\\n  \\\"text\\\": \\\"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\\\",\\n  \\\"data\\\": {\\n    \\\"actionName\\\": \\\"SEARCH_KNOWLEDGE\\\"\\n  },\\n  \\\"error\\\": \\\"No handler found for delegate type: TEXT_EMBEDDING\\\"\\n}\",\n          \"status\": \"failed\"\n        }\n      }\n    ]\n  },\n  \"steps\": [\n    {\n      \"iteration\": 1,\n      \"toolCall\": {\n        \"id\": \"34af984db\",\n        \"name\": \"SEARCH_KNOWLEDGE\",\n        \"params\": {\n          \"query\": \"eliza\",\n          \"limit\": 1\n        }\n      },\n      \"result\": {\n        \"success\": false,\n        \"text\": \"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\",\n        \"data\": {\n          \"actionName\": \"SEARCH_KNOWLEDGE\"\n        },\n        \"error\": \"No handler found for delegate type: TEXT_EMBEDDING\"\n      }\n    }\n  ],\n  \"plannedQueue\": [],\n  \"evaluatorOutputs\": []\n}"
+          }
+        ],
+        "response": "{\"success\":false,\"decision\":\"CONTINUE\",\"thought\":\"SEARCH_KNOWLEDGE failed due to missing handler. To fulfill the user request, we need to invoke a web search (WEB_SEARCH) for 'eliza' and then save the first result to clipboard with title 'eliza-summary'.\",\"messageToUser\":\"I couldn't perform the knowledge search. Let me try a web search for \\\"eliza\\\" and will save the first result to the clipboard as requested.\"}",
+        "usage": {
+          "promptTokens": 2713,
+          "completionTokens": 318,
+          "totalTokens": 3031,
+          "cacheReadInputTokens": 384
+        },
+        "costUsd": 0
+      },
+      "evaluation": {
+        "success": false,
+        "decision": "CONTINUE",
+        "thought": "SEARCH_KNOWLEDGE failed due to missing handler. To fulfill the user request, we need to invoke a web search (WEB_SEARCH) for 'eliza' and then save the first result to clipboard with title 'eliza-summary'.",
+        "messageToUser": "I couldn't perform the knowledge search. Let me try a web search for \"eliza\" and will save the first result to the clipboard as requested."
+      },
+      "cache": {
+        "segmentHashes": [
+          "d318fc0fd88811631c805d203bc955a152d6dacdcfe737cf1c39d766a6048f8d",
+          "93adffd90cbf5a590a65e5753ca91a30e1d5ecaf2356242bdd1ddd9df58bc01a",
+          "5444c06aedacb7b48c08746342e7a8328e4532923760618419b8066498d1406f",
+          "d5e368b2cc467787b0d402ef7de3106baf33937100ebf52306752ab16947799c",
+          "d2923cddffe2c797ffe4d9867410d53fd1d96f600b7475eac08cda0e6f917f5d",
+          "6e0d8f054c5ac97839ab930f8b1973b087ca11b5938328b21a2089989a52b39a",
+          "6260905b97ff3ace58b3b3a996843c62ef385d926ff1a4a2dc510a20eef350a4",
+          "6f3835ed1c62e05c9c4f2d0f80475b9e798566c38e8a36ab1718d78c7078985d",
+          "dcbd0d7afdea3a5986520d594926fb27e2ce4fd53bb9981f8c814b0e33ec35cb"
+        ],
+        "prefixHash": "168c882096297c28e2eb90ab7cb717560e1e6b8341812331eba5abcff68a39a5"
+      }
+    },
+    {
+      "stageId": "stage-planner-iter-2-1778149532157",
+      "kind": "planner",
+      "iteration": 2,
+      "startedAt": 1778149532157,
+      "endedAt": 1778149532850,
+      "latencyMs": 693,
+      "model": {
+        "modelType": "ACTION_PLANNER",
+        "provider": "default",
+        "prompt": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.\n\nselected_contexts: web\n\ntool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info\n\navailable_contexts: general\n\nNo prior conversation.\n\nuse the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\n\nmessage_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}\n\nplanner_stage:\ntask: Plan the next native tool calls for the current ContextObject.\n\nrules:\n- use only tools exposed in the current context object\n- plan the smallest grounded queue of useful tool calls\n- include arguments only when grounded in the user request or prior tool results\n- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser\n- do not invent tool names, connector names, providers, ids, or benchmark ids\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats.\n\ntrajectory:\n[\n  {\n    \"iteration\": 1,\n    \"toolCall\": {\n      \"id\": \"34af984db\",\n      \"name\": \"SEARCH_KNOWLEDGE\",\n      \"params\": {\n        \"query\": \"eliza\",\n        \"limit\": 1\n      }\n    },\n    \"result\": {\n      \"success\": false,\n      \"text\": \"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\",\n      \"data\": {\n        \"actionName\": \"SEARCH_KNOWLEDGE\"\n      },\n      \"error\": \"No handler found for delegate type: TEXT_EMBEDDING\"\n    }\n  }\n]",
+        "messages": [
+          {
+            "role": "system",
+            "content": "agent_name: ElizaCerebrasTest\nYou are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily."
+          },
+          {
+            "role": "system",
+            "content": "selected_contexts: web"
+          },
+          {
+            "role": "system",
+            "content": "tool: SEARCH_KNOWLEDGE\ndescription: Search the KB for specific info"
+          },
+          {
+            "role": "system",
+            "content": "available_contexts: general"
+          },
+          {
+            "role": "system",
+            "content": "No prior conversation."
+          },
+          {
+            "role": "user",
+            "content": "{\n  \"text\": \"use the WEB_SEARCH tool to look up 'eliza', then save the first result to clipboard with title 'eliza-summary'\",\n  \"source\": \"run-eliza-cerebras\"\n}"
+          },
+          {
+            "role": "system",
+            "content": "message_handler: {\"id\":\"message-handler:1778149531101\",\"type\":\"message_handler\",\"source\":\"message-service\",\"createdAt\":1778149531101,\"metadata\":{\"processMessage\":\"RESPOND\",\"plan\":{\"contexts\":[\"web\"]},\"thought\":\"User explicitly asks for a web search and to save the result, which requires the web context; cannot answer directly from internal knowledge, so we must respond and invoke the web tool.\"}}"
+          },
+          {
+            "role": "system",
+            "content": "planner_stage:\ntask: Plan the next native tool calls for the current ContextObject.\n\nrules:\n- use only tools exposed in the current context object\n- plan the smallest grounded queue of useful tool calls\n- include arguments only when grounded in the user request or prior tool results\n- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser\n- do not invent tool names, connector names, providers, ids, or benchmark ids\n\nreturn:\nJSON object only. No markdown, no prose, no XML, no legacy formats."
+          },
+          {
+            "role": "user",
+            "content": "trajectory:\n[\n  {\n    \"iteration\": 1,\n    \"toolCall\": {\n      \"id\": \"34af984db\",\n      \"name\": \"SEARCH_KNOWLEDGE\",\n      \"params\": {\n        \"query\": \"eliza\",\n        \"limit\": 1\n      }\n    },\n    \"result\": {\n      \"success\": false,\n      \"text\": \"I encountered an error while searching the knowledge base: No handler found for delegate type: TEXT_EMBEDDING\",\n      \"data\": {\n        \"actionName\": \"SEARCH_KNOWLEDGE\"\n      },\n      \"error\": \"No handler found for delegate type: TEXT_EMBEDDING\"\n    }\n  }\n]"
+          }
+        ],
+        "tools": [
+          {
+            "name": "SEARCH_KNOWLEDGE",
+            "description": "Search the KB for specific info"
+          }
+        ],
+        "toolChoice": "auto",
+        "response": "I’m sorry—I don’t have a web‑search tool available. The only tool I can use in this context is `SEARCH_KNOWLEDGE`, and the previous attempt to run it resulted in an internal error. Because I can’t retrieve a web result right now, I’m unable to copy a summary for you.",
+        "toolCalls": [],
+        "usage": {
+          "promptTokens": 658,
+          "completionTokens": 332,
+          "totalTokens": 990,
+          "cacheReadInputTokens": 512
+        },
+        "finishReason": "stop",
+        "costUsd": 0
+      },
+      "cache": {
+        "segmentHashes": [
+          "d318fc0fd88811631c805d203bc955a152d6dacdcfe737cf1c39d766a6048f8d",
+          "93adffd90cbf5a590a65e5753ca91a30e1d5ecaf2356242bdd1ddd9df58bc01a",
+          "5444c06aedacb7b48c08746342e7a8328e4532923760618419b8066498d1406f",
+          "d5e368b2cc467787b0d402ef7de3106baf33937100ebf52306752ab16947799c",
+          "d2923cddffe2c797ffe4d9867410d53fd1d96f600b7475eac08cda0e6f917f5d",
+          "6e0d8f054c5ac97839ab930f8b1973b087ca11b5938328b21a2089989a52b39a",
+          "6260905b97ff3ace58b3b3a996843c62ef385d926ff1a4a2dc510a20eef350a4",
+          "615bcd86f1c6ab3a7f48a760c1699fc7f331a15e289e4d4bfb9abdef728b8b43",
+          "f29e7a2c58a6c22071f7cb025faf56150bdd312906c12f89c8318429937e7e3d"
+        ],
+        "prefixHash": "168c882096297c28e2eb90ab7cb717560e1e6b8341812331eba5abcff68a39a5"
+      }
+    }
+  ],
+  "metrics": {
+    "totalLatencyMs": 2111,
+    "totalPromptTokens": 5074,
+    "totalCompletionTokens": 1405,
+    "totalCacheReadTokens": 1280,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 2,
+    "toolCallsExecuted": 1,
+    "toolCallFailures": 1,
+    "evaluatorFailures": 1,
+    "finalDecision": "CONTINUE"
+  },
+  "endedAt": 1778149532851
+}

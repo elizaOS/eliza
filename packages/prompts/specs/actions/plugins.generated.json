@@ -52,6 +52,64 @@
       ]
     },
     {
+      "name": "ASK_USER_QUESTION",
+      "description": "Broadcast 1-4 structured questions back to the user. Each question has a short header, a full question string, and optional multi-choice options with descriptions and previews. This is a structured-question broadcast surface — the action returns the question payload as data so a UI layer can render it; the action does NOT block waiting for an answer. UI integration is pending; for now treat the response as a published question, not as an interactive prompt.",
+      "parameters": [
+        {
+          "name": "questions",
+          "description": "Array of 1-4 question objects. Each: { question: string, header: string, options?: Array<{label, description?, preview?}>, multiSelect?: boolean }. If options is empty/undefined, the question is treated as freeform.",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string"
+                },
+                "header": {
+                  "type": "string"
+                },
+                "multiSelect": {
+                  "type": "boolean"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "preview": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Broadcast 1-4 structured questions to the user (UI integration pending; non-blocking).",
+      "similes": ["ASK", "CLARIFY"],
+      "exampleCalls": [
+        {
+          "user": "Use ASK_USER_QUESTION with the provided parameters.",
+          "actions": ["ASK_USER_QUESTION"],
+          "params": {
+            "ASK_USER_QUESTION": {
+              "questions": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "ATTACK_NPC",
       "description": "Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
       "parameters": [
@@ -74,6 +132,69 @@
           "params": {
             "ATTACK_NPC": {
               "npcId": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BASH",
+      "description": "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd unless an explicit cwd inside the sandbox roots is supplied. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Respects the sandbox command denylist.",
+      "parameters": [
+        {
+          "name": "command",
+          "description": "Shell command to run; executed via /bin/bash -c <command>.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "description",
+          "description": "Five to ten word humanly-readable summary of the command.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeout",
+          "description": "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cwd",
+          "description": "Absolute working directory; must resolve inside the configured workspace roots. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "run_in_background",
+          "description": "If true, return a task_id immediately. Use TASK_OUTPUT to poll and TASK_STOP to terminate.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Run a shell command (foreground or background) within sandbox roots.",
+      "similes": ["SHELL", "EXEC", "RUN_COMMAND"],
+      "exampleCalls": [
+        {
+          "user": "Use BASH with the provided parameters.",
+          "actions": ["BASH"],
+          "params": {
+            "BASH": {
+              "command": "example",
+              "description": "example",
+              "timeout": 1,
+              "cwd": "example",
+              "run_in_background": false
             }
           }
         }
@@ -1344,6 +1465,105 @@
       ]
     },
     {
+      "name": "EDIT",
+      "description": "Replace text in an existing file. Default behavior requires `old_string` to match exactly once; pass `replace_all=true` to substitute every occurrence. The file must have been READ in this session, must still match its recorded mtime, and the new content cannot introduce a detected secret pattern.",
+      "parameters": [
+        {
+          "name": "file_path",
+          "description": "Absolute path to the file to edit.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "old_string",
+          "description": "Exact substring to replace.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "new_string",
+          "description": "Replacement text. Must differ from old_string.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "replace_all",
+          "description": "If true, replace every occurrence; otherwise require exactly one match.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Replace exact-match text in a file (single match by default; pass replace_all for multiple).",
+      "similes": ["EDIT_FILE", "MODIFY_FILE"],
+      "exampleCalls": [
+        {
+          "user": "Use EDIT with the provided parameters.",
+          "actions": ["EDIT"],
+          "params": {
+            "EDIT": {
+              "file_path": "example",
+              "old_string": "example",
+              "new_string": "example",
+              "replace_all": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ENTER_WORKTREE",
+      "description": "Create a git worktree for the current repo and switch the session into it. The new worktree path becomes the session cwd and a sandbox root, so subsequent file operations land there until EXIT_WORKTREE pops it. Use to isolate a parallel branch of work without disturbing the main checkout.",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "Optional worktree branch/dir name. Defaults to a random auto-* identifier.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "Optional absolute worktree directory. Must lie within sandbox roots. Defaults to a per-call directory under the OS temp dir.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "base",
+          "description": "Optional base ref for the new worktree (default HEAD).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Create and switch into a git worktree for parallel work.",
+      "similes": ["GIT_WORKTREE_ADD", "ADD_WORKTREE", "OPEN_WORKTREE"],
+      "exampleCalls": [
+        {
+          "user": "Use ENTER_WORKTREE with the provided parameters.",
+          "actions": ["ENTER_WORKTREE"],
+          "params": {
+            "ENTER_WORKTREE": {
+              "name": "example",
+              "path": "example",
+              "base": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "EXECUTE_TRADE",
       "description": "Execute a BSC token trade (buy or sell). Use this when a user asks to ",
       "parameters": [
@@ -1401,6 +1621,33 @@
               "amount": "example",
               "slippageBps": 1,
               "routeProvider": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "EXIT_WORKTREE",
+      "description": "Pop the most recent ENTER_WORKTREE: restore the previous session cwd, drop the added sandbox root, and (with cleanup=true) run `git worktree remove --force` to delete the worktree directory.",
+      "parameters": [
+        {
+          "name": "cleanup",
+          "description": "If true, also `git worktree remove --force` the popped worktree directory.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Exit current worktree, restore previous cwd, optionally git worktree remove --force.",
+      "similes": ["LEAVE_WORKTREE", "POP_WORKTREE", "GIT_WORKTREE_REMOVE"],
+      "exampleCalls": [
+        {
+          "user": "Use EXIT_WORKTREE with the provided parameters.",
+          "actions": ["EXIT_WORKTREE"],
+          "params": {
+            "EXIT_WORKTREE": {
+              "cleanup": false
             }
           }
         }
@@ -1898,6 +2145,169 @@
       ]
     },
     {
+      "name": "GLOB",
+      "description": "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
+      "parameters": [
+        {
+          "name": "pattern",
+          "description": "Glob pattern relative to the search root (e.g. '**/*.ts').",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "Absolute path of the directory to search. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
+      "similes": ["FIND_FILES"],
+      "exampleCalls": [
+        {
+          "user": "Use GLOB with the provided parameters.",
+          "actions": ["GLOB"],
+          "params": {
+            "GLOB": {
+              "pattern": "example",
+              "path": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GREP",
+      "description": "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
+      "parameters": [
+        {
+          "name": "pattern",
+          "description": "Regex pattern to search for.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "Absolute path to a file or directory to search. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "glob",
+          "description": "Optional glob filter passed to ripgrep -g (e.g. '*.ts').",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "description": "Optional ripgrep file type passed via -t (e.g. 'js', 'py').",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "output_mode",
+          "description": "How to render matches: 'content' returns matching lines, 'files_with_matches' returns file paths, 'count' returns per-file counts. Defaults to 'files_with_matches'.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["content", "files_with_matches", "count"]
+          }
+        },
+        {
+          "name": "-A",
+          "description": "Lines of context to show after each match (content mode).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-B",
+          "description": "Lines of context to show before each match (content mode).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-C",
+          "description": "Lines of context around each match (content mode).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "case_insensitive",
+          "description": "Match case-insensitively (alias of -i).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "multiline",
+          "description": "Enable multiline matching (the pattern can span newlines).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "head_limit",
+          "description": "Truncate output to the first N lines. 0 means unlimited. Defaults to CODING_TOOLS_GREP_HEAD_LIMIT or 250.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "show_line_numbers",
+          "description": "Show 1-based line numbers in content mode.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
+      "similes": ["SEARCH_CONTENT", "RIPGREP", "RG"],
+      "exampleCalls": [
+        {
+          "user": "Use GREP with the provided parameters.",
+          "actions": ["GREP"],
+          "params": {
+            "GREP": {
+              "pattern": "example",
+              "path": "example",
+              "glob": "example",
+              "type": "example",
+              "output_mode": "content",
+              "-A": 1,
+              "-B": 1,
+              "-C": 1,
+              "case_insensitive": false,
+              "multiline": false,
+              "head_limit": 1,
+              "show_line_numbers": false
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "HEALTH",
       "description": "Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
       "parameters": [
@@ -2341,6 +2751,45 @@
               "tokenB": "example",
               "chainId": 1,
               "slippageBps": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LS",
+      "description": "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
+      "parameters": [
+        {
+          "name": "path",
+          "description": "Absolute path of the directory to list. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ignore",
+          "description": "Array of glob patterns to exclude (e.g. ['*.log', 'tmp/*']).",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "List a directory; dirs first, files second; supports ignore globs.",
+      "similes": ["LIST_DIR", "DIR"],
+      "exampleCalls": [
+        {
+          "user": "Use LS with the provided parameters.",
+          "actions": ["LS"],
+          "params": {
+            "LS": {
+              "path": "example",
+              "ignore": "example"
             }
           }
         }
@@ -3024,6 +3473,69 @@
       ]
     },
     {
+      "name": "NOTEBOOK_EDIT",
+      "description": "Replace, insert, or delete a cell in a Jupyter `.ipynb` notebook. Default `edit_mode` is `replace`. Insert places a new cell after `cell_id` (or at the start if omitted). Delete removes the matching cell. The notebook must have been READ in this session and must still match its recorded mtime.",
+      "parameters": [
+        {
+          "name": "notebook_path",
+          "description": "Absolute path to a .ipynb notebook.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cell_id",
+          "description": "Target cell id. Required for replace and delete; optional for insert.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "new_source",
+          "description": "New cell source text. Required for replace and insert.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cell_type",
+          "description": "Cell type: code | markdown | raw.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "edit_mode",
+          "description": "replace | insert | delete (default replace).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Replace/insert/delete a cell in a Jupyter notebook by cell_id.",
+      "similes": ["EDIT_NOTEBOOK"],
+      "exampleCalls": [
+        {
+          "user": "Use NOTEBOOK_EDIT with the provided parameters.",
+          "actions": ["NOTEBOOK_EDIT"],
+          "params": {
+            "NOTEBOOK_EDIT": {
+              "notebook_path": "example",
+              "cell_id": "example",
+              "new_source": "example",
+              "cell_type": "example",
+              "edit_mode": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "PAYMENT_OP",
       "description": "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
       "parameters": [
@@ -3615,6 +4127,51 @@
               "baseBranch": "example",
               "useWorktree": false,
               "parentWorkspaceId": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "description": "Read the contents of a file at an absolute path. Returns numbered lines, capped by a per-call line limit and a per-file byte limit. Use offset/limit to paginate through large files. Required before WRITE/EDIT can mutate an existing file.",
+      "parameters": [
+        {
+          "name": "file_path",
+          "description": "Absolute path to the file to read.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "offset",
+          "description": "Zero-based line offset to start reading from.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Max number of lines to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Read a file by absolute path; returns numbered lines (offset/limit supported).",
+      "similes": ["READ_FILE", "CAT", "OPEN_FILE"],
+      "exampleCalls": [
+        {
+          "user": "Use READ with the provided parameters.",
+          "actions": ["READ"],
+          "params": {
+            "READ": {
+              "file_path": "example",
+              "offset": 1,
+              "limit": 1
             }
           }
         }
@@ -4940,6 +5497,51 @@
       ]
     },
     {
+      "name": "TASK_OUTPUT",
+      "description": "Read captured output and current status of a background BASH task. Pass block=true to wait for completion (or until timeout) before returning.",
+      "parameters": [
+        {
+          "name": "task_id",
+          "description": "Task id returned by BASH (background or auto-promoted).",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "block",
+          "description": "If true, wait for the task to finish (or until timeout) before returning.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "timeout",
+          "description": "When blocking, max ms to wait. Clamped to [0, 600000]. Default 30000 when block=true, 0 otherwise.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Read background shell task output (optionally blocking).",
+      "similes": ["GET_TASK_OUTPUT"],
+      "exampleCalls": [
+        {
+          "user": "Use TASK_OUTPUT with the provided parameters.",
+          "actions": ["TASK_OUTPUT"],
+          "params": {
+            "TASK_OUTPUT": {
+              "task_id": "example",
+              "block": false,
+              "timeout": 1
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "TASK_SHARE",
       "description": "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
       "parameters": [
@@ -4986,6 +5588,33 @@
               "threadId": "example",
               "sessionId": "example",
               "search": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TASK_STOP",
+      "description": "Terminate a running background BASH task by id. Sends SIGTERM (and SIGKILL after a grace period). Returns the task's terminal status.",
+      "parameters": [
+        {
+          "name": "task_id",
+          "description": "Task id returned by BASH (background or auto-promoted).",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Stop a background shell task.",
+      "similes": ["KILL_TASK", "STOP_TASK"],
+      "exampleCalls": [
+        {
+          "user": "Use TASK_STOP with the provided parameters.",
+          "actions": ["TASK_STOP"],
+          "params": {
+            "TASK_STOP": {
+              "task_id": "example"
             }
           }
         }
@@ -5093,6 +5722,51 @@
               "text": "example",
               "timeout": 30,
               "timeoutSeconds": 30
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TODO_WRITE",
+      "description": "Replace the conversation's todo list with the provided array. Each todo has content, status (pending|in_progress|completed), and an optional activeForm describing the in-progress phrasing. The full list is replaced on every call. Use to plan multi-step work and track progress within a session.",
+      "parameters": [
+        {
+          "name": "todos",
+          "description": "Array of todo objects. Each item: { id?: string, content: string, status: 'pending'|'in_progress'|'completed', activeForm?: string }. Replaces the entire list.",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "in_progress", "completed"]
+                },
+                "activeForm": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Replace conversation todo list with {content,status,activeForm}[].",
+      "similes": ["UPDATE_TODOS", "SET_TODOS"],
+      "exampleCalls": [
+        {
+          "user": "Use TODO_WRITE with the provided parameters.",
+          "actions": ["TODO_WRITE"],
+          "params": {
+            "TODO_WRITE": {
+              "todos": "example"
             }
           }
         }
@@ -5575,6 +6249,93 @@
       ]
     },
     {
+      "name": "WEB_FETCH",
+      "description": "Fetch a single http(s) URL and return its body as text. HTML responses are stripped of tags and collapsed to plain text. Body is capped at 5MB; text is capped at 50000 chars. Loopback addresses (localhost, 127.0.0.1, 0.0.0.0, ::1, 169.254.*) are blocked by default; set CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK=1 to permit them. Use for reading documentation, blog posts, or pasting in a URL the user referenced.",
+      "parameters": [
+        {
+          "name": "url",
+          "description": "Absolute http:// or https:// URL to fetch.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "prompt",
+          "description": "Optional summary/extraction instruction. Echoed verbatim in the result text; no LLM is run on the body in v1.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Fetch http(s) URL and return body as plain text (HTML stripped, capped).",
+      "similes": ["FETCH_URL", "GET_URL", "DOWNLOAD_PAGE"],
+      "exampleCalls": [
+        {
+          "user": "Use WEB_FETCH with the provided parameters.",
+          "actions": ["WEB_FETCH"],
+          "params": {
+            "WEB_FETCH": {
+              "url": "example",
+              "prompt": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WEB_SEARCH",
+      "description": "Run a web search and return ranked results. Stub in v1: no provider is wired in this plugin, so the action returns a placeholder success that echoes the query and any domain filters. Wire a Brave/Bing/Tavily backend before relying on this for real results.",
+      "parameters": [
+        {
+          "name": "query",
+          "description": "Search query string.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "allowed_domains",
+          "description": "Optional list of domains to restrict results to.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "blocked_domains",
+          "description": "Optional list of domains to exclude from results.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Web search (stub — no backend configured; echoes query + filters).",
+      "similes": ["SEARCH_WEB", "GOOGLE", "BING"],
+      "exampleCalls": [
+        {
+          "user": "Use WEB_SEARCH with the provided parameters.",
+          "actions": ["WEB_SEARCH"],
+          "params": {
+            "WEB_SEARCH": {
+              "query": "example",
+              "allowed_domains": "example",
+              "blocked_domains": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "WORKFLOW_LIFECYCLE_OP",
       "description": "n8n workflow lifecycle operation. Pass `op` (\"activate\", \"deactivate\", or \"delete\") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.",
       "parameters": [
@@ -5621,6 +6382,42 @@
             "WORKFLOW_LIFECYCLE_OP": {
               "op": "example",
               "workflowId": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WRITE",
+      "description": "Write a file at an absolute path, replacing any existing contents. The file's parent directory is created if missing. Existing files must have been READ in this session first; otherwise the write is rejected to avoid clobbering external edits.",
+      "parameters": [
+        {
+          "name": "file_path",
+          "description": "Absolute path to the file to write.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "content",
+          "description": "Full new file contents.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Write a file at an absolute path (creates parents; rejects if existing file was not READ first).",
+      "similes": ["WRITE_FILE", "CREATE_FILE"],
+      "exampleCalls": [
+        {
+          "user": "Use WRITE with the provided parameters.",
+          "actions": ["WRITE"],
+          "params": {
+            "WRITE": {
+              "file_path": "example",
+              "content": "example"
             }
           }
         }
