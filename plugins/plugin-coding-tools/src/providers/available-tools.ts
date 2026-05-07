@@ -32,6 +32,8 @@ export const availableToolsProvider: Provider = {
   position: -10,
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  cacheStable: true,
+  cacheScope: "agent",
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,

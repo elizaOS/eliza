@@ -421,8 +421,9 @@ async function extractSettingValues(
 	explicitUpdates: SettingUpdate[] = [],
 ): Promise<SettingUpdate[]> {
 	if (explicitUpdates.length > 0) {
+		const defs = worldSettings.settings;
 		return explicitUpdates.filter(
-			(update) => worldSettings.settings[update.key],
+			(update) => defs !== undefined && defs[update.key] !== undefined,
 		);
 	}
 
