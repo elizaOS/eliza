@@ -33,7 +33,7 @@ export default scenario({
           (action) => action.actionName === "OWNER_WEBSITE_BLOCK",
         );
         if (!hit) {
-          return "Expected BLOCK_WEBSITES to fire for the manual block request.";
+          return "Expected OWNER_WEBSITE_BLOCK to fire for the manual block request.";
         }
         const blob = JSON.stringify({
           parameters: hit.parameters ?? null,

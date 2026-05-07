@@ -522,11 +522,7 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (
-    actionName === "OWNER_VOICE_CALL" ||
-    actionName === "CALL_USER" ||
-    actionName === "CALL_EXTERNAL"
-  ) {
+  if (actionName === "OWNER_VOICE_CALL") {
     const channel = blob.includes("sms") ? "sms" : "phone_call";
     push(channel, params ?? resultData ?? {});
   }

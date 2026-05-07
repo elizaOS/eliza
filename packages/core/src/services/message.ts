@@ -1812,21 +1812,11 @@ function findDirectOwnedActionSuggestion(
 			messageText,
 		)
 	) {
-		const ownerCalendarAction = (runtime.actions ?? []).find((action) => {
-			const normalizedName = normalizeActionIdentifier(action.name);
-			if (normalizedName === normalizeActionIdentifier("OWNER_CALENDAR")) {
-				return true;
-			}
-			return (action.similes ?? []).some(
-				(simile) =>
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("UPDATE_MEETING_PREFERENCES") ||
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("NO_CALL_HOURS") ||
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("PROTECT_SLEEP"),
-			);
-		});
+		const ownerCalendarAction = (runtime.actions ?? []).find(
+			(action) =>
+				normalizeActionIdentifier(action.name) ===
+				normalizeActionIdentifier("OWNER_CALENDAR"),
+		);
 		if (ownerCalendarAction) {
 			return {
 				actionName: ownerCalendarAction.name,

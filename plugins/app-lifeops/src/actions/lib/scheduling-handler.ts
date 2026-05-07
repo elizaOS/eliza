@@ -1203,8 +1203,8 @@ export const schedulingAction: Action & {
     "finalize the winning proposal, cancel, or list negotiations/proposals. " +
     "Do not use this for first-turn calendar requests, recurring blocks, " +
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
-    "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
-    "or CROSS_CHANNEL_SEND.",
+    "searches; those belong to OWNER_CALENDAR, TRIAGE_MESSAGES, " +
+    "or SEND_DRAFT.",
   descriptionCompressed:
     "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
   suppressPostActionContinuation: true,
