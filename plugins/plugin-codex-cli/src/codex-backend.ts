@@ -284,7 +284,12 @@ async function consumeResponseStream(
       let payload: any;
       try {
         payload = JSON.parse(next.value.data);
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const preview = next.value.data.slice(0, 200);
+        logger.debug(
+          `[codex-cli] dropped malformed SSE event: ${message} preview=${preview}`,
+        );
         continue;
       }
       const evType: string = next.value.event ?? payload?.type ?? "";
@@ -349,7 +354,9 @@ async function consumeResponseStream(
     void iter.return?.(undefined).catch(() => {});
     if (!body.locked) void body.cancel().catch(() => {});
   }
-  logger.warn("[codex-cli] SSE stream ended without response.completed");
+  logger.warn(
+    `[codex-cli] SSE stream ended without response.completed; returning partial result (text=${text.length} toolCalls=${toolCalls.length} finishReason=${finishReason})`,
+  );
   return { text, toolCalls, finishReason, usage };
 }
 
