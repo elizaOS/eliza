@@ -4,11 +4,12 @@ import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import { CHAT_STATE_PROVIDER, chatStateProvider } from "./providers";
 import { FeishuService } from "./service";
+import { FeishuN8nCredentialProvider } from "./n8n-credential-provider";
 
 const feishuPlugin: Plugin = {
 	name: FEISHU_SERVICE_NAME,
 	description: "Feishu/Lark client plugin for elizaOS",
-	services: [FeishuService],
+	services: [FeishuService, FeishuN8nCredentialProvider],
 	actions: [],
 	providers: [chatStateProvider],
 	tests: [],
