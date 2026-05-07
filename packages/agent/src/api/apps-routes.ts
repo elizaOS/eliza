@@ -3,15 +3,15 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { createGeneratedAppHeroSvg } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
+  createGeneratedAppHeroSvg,
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,

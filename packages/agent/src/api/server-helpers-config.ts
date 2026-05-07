@@ -9,12 +9,10 @@ import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
-} from "../contracts/onboarding.js";
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
 import { sendJsonError } from "./http-helpers.js";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 

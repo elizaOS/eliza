@@ -18,9 +18,9 @@
  * up — see `runtime/eliza.ts`.
  */
 
+import type { WalletChain } from "@elizaos/shared";
 import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.js";
-import type { WalletChain } from "../contracts/wallet.js";
 
 const PREFIX = "agent";
 const SEGMENT = "wallet";

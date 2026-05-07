@@ -5,6 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { isLoopbackUrl, toRecord } from "../utils.js";
 import type {
   ScenarioContext,
   ScenarioFinalCheck,
@@ -88,12 +89,6 @@ function matchesChannel(
   );
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function actionParameters(
   action: ScenarioContext["actionsCalled"][number],
 ): Record<string, unknown> | null {
@@ -150,22 +145,6 @@ function matchesExpectedFields(
   );
 }
 
-function isLoopbackUrl(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "::1" ||
-      url.hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
-}
 
 type GmailMockRequest = {
   environment?: string;
@@ -608,94 +587,6 @@ registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
   return {
     status: "passed",
     detail: `${matched.length} matching approval transition(s)`,
-  };
-});
-
-registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
-  if (ctx.connectorDispatches === undefined) {
-    return {
-      status: "skipped-dependency-missing",
-      detail: "no connector dispatcher registered",
-    };
-  }
-  const { channel, actionName, minCount } = check as {
-    channel: string | string[];
-    actionName?: string | string[];
-    minCount?: number;
-  };
-  const channels = toArray(channel);
-  const matched = ctx.connectorDispatches.filter((dispatch) => {
-    if (channels.length > 0 && !channels.includes(dispatch.channel)) {
-      return false;
-    }
-    return matchesActionName(dispatch.actionName ?? "", actionName);
-  });
-  const min = typeof minCount === "number" ? minCount : 1;
-  if (matched.length < min) {
-    return {
-      status: "failed",
-      detail: `expected ${min} connector dispatch(es) on [${channels.join(",")}], saw ${matched.length} of ${ctx.connectorDispatches.length}`,
-    };
-  }
-  return {
-    status: "passed",
-    detail: `${matched.length} connector dispatch(es) on [${channels.join(",")}]`,
-  };
-});
-
-registerFinalCheckHandler("draftExists", (check, { ctx }) => {
-  const { channel, expected } = check as {
-    channel?: string | string[];
-    expected?: boolean;
-  };
-  const channels = toArray(channel);
-  const any = ctx.actionsCalled.some((action) => {
-    const blob = actionBlob(action);
-    const channelOk =
-      channels.length === 0 ||
-      channels.some((candidate) => actionMatchesChannel(action, candidate));
-    return channelOk && /draft/.test(blob);
-  });
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `draftExists=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected draftExists=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
-  const { channel, expected } = check as {
-    channel?: string | string[];
-    expected?: boolean;
-  };
-  const channels = toArray(channel);
-  const anyDispatch = (ctx.connectorDispatches ?? []).some((dispatch) =>
-    channels.length === 0 ? true : channels.includes(dispatch.channel),
-  );
-  const anyAction = ctx.actionsCalled.some((action) => {
-    const channelOk =
-      channels.length === 0 ||
-      channels.some((candidate) => actionMatchesChannel(action, candidate));
-    if (!channelOk) {
-      return false;
-    }
-    const blob = actionBlob(action);
-    return (
-      action.result?.success === true &&
-      /(deliver|delivered|sent|send|placed|dial|reply|booking link)/.test(blob)
-    );
-  });
-  const any = anyDispatch || anyAction;
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `messageDelivered=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected messageDelivered=${want}, saw ${any}`,
   };
 });
 

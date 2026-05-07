@@ -1,15 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { getPackageRoot } from "./package-info.js";
 import type { TemplateDefinition, TemplatesManifest } from "./types.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 let cachedManifest: TemplatesManifest | null = null;
-
-function getPackageRoot(): string {
-  return path.resolve(__dirname, "..");
-}
 
 export function getTemplatesDir(): string {
   const dir = path.join(getPackageRoot(), "templates");
@@ -54,3 +48,8 @@ export function getTemplateById(id: string): TemplateDefinition | undefined {
     (template) => template.id === id || template.aliases?.includes(id),
   );
 }
+
+export const TEMPLATE_ICONS: Record<string, string> = {
+  plugin: "🔌",
+  project: "🧱",
+};

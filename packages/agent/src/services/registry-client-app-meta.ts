@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "../contracts/apps.js";
+import { packageNameToAppDisplayName } from "@elizaos/shared";
 import type {
   AppUiExtensionConfig,
   RegistryAppMeta,

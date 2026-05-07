@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
+import type { TrajectoryFinalStatus } from "../../trajectory-utils";
 import type {
 	IAgentRuntime,
 	JsonValue,
@@ -13,8 +14,6 @@ const pendingTrajectoryStepByReplyId = new Map<string, string>();
 const pendingTrajectoryStepByMessageId = new Map<string, string>();
 const pendingTrajectoryMessageIdByStepId = new Map<string, string>();
 const pendingTrajectoryEndTargetByStepId = new Map<string, string>();
-
-type TrajectoryFinalStatus = "completed" | "error" | "timeout" | "terminated";
 
 function cleanupPendingTrajectory(
 	runtime: IAgentRuntime,

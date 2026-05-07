@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
 import type {
   AppRunAwaySummary,
   AppRunCapabilityAvailability,
@@ -13,7 +12,8 @@ import type {
   AppSessionJsonValue,
   AppSessionState,
   AppViewerConfig,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
+import { resolveStateDir } from "../config/paths.js";
 import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 
 const APP_RUN_STORE_VERSION = 2;

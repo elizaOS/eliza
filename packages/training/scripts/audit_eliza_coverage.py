@@ -13,7 +13,7 @@ Outputs (deterministic, sorted keys/lists):
 
 CLI:
   uv run python scripts/audit_eliza_coverage.py \
-    --eliza-root /home/shaw/milady/eliza/packages/core/src \
+    --eliza-root <path-to-eliza>/packages/core/src \
     --corpus data/final/train.jsonl \
     --report data/synthesized/review/eliza_coverage.json \
     --markdown data/synthesized/review/eliza_coverage.md \
@@ -692,7 +692,7 @@ def main() -> int:
     ap.add_argument(
         "--eliza-root",
         type=Path,
-        default=Path("/home/shaw/milady/eliza/packages/core/src"),
+        default=Path(__file__).parent.parent.parent.parent / "packages" / "core" / "src",
     )
     ap.add_argument(
         "--corpus",

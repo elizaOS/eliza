@@ -1,5 +1,6 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
+import { isLoopbackUrl } from "./utils.js";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
@@ -155,22 +156,6 @@ function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
-function isLoopbackUrl(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "::1" ||
-      url.hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
-}
 
 function readScenarioNow(ctx: ScenarioContext): Date {
   return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))

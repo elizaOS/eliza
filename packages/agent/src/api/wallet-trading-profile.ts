@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
 import type {
   BscTradeSide,
   BscTradeTxStatus,
@@ -13,7 +12,8 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileTokenBreakdown,
   WalletTradingProfileWindow,
-} from "../contracts/wallet.js";
+} from "@elizaos/shared";
+import { resolveStateDir } from "../config/paths.js";
 import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;

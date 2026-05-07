@@ -51,7 +51,8 @@ interface ResolvedTextParams {
   readonly providerOptions: ProviderOptions;
 }
 
-interface GenerateTextParamsWithProviderOptions extends GenerateTextParams {
+interface GenerateTextParamsWithProviderOptions
+  extends Omit<GenerateTextParams, "messages" | "tools" | "toolChoice" | "responseSchema"> {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
@@ -315,7 +316,8 @@ function resolveTextParams(
     isOpus4Model(modelName) ? 32_000 : 64_000
   );
 
-  const rawProviderOptions = (params as GenerateTextParamsWithProviderOptions).providerOptions;
+  const rawProviderOptions = (params as unknown as GenerateTextParamsWithProviderOptions)
+    .providerOptions;
   const baseProviderOptions: ProviderOptions = rawProviderOptions
     ? {
         ...rawProviderOptions,
@@ -353,7 +355,7 @@ async function generateTextWithModel(
   modelSize: ModelSize,
   modelType: TextModelType
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as GenerateTextParamsWithProviderOptions;
+  const paramsWithAttachments = params as unknown as GenerateTextParamsWithProviderOptions;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
 
   if (getAuthMode(runtime) === "cli") {

@@ -13,14 +13,14 @@ import {
   type AppViewerAuthMessage,
   hasAppInterface,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 import { readJsonFile } from "../utils/atomic-json.js";
 import { getPluginInfo } from "./registry-client.js";
 
 export type {
   AppLaunchSessionContext,
   AppRunSessionContext,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 
 export type AppLaunchPreparationResolver = (
   ctx: AppLaunchSessionContext,
