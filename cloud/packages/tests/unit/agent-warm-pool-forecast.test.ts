@@ -41,9 +41,7 @@ describe("computeForecast", () => {
   });
 
   test("EMA smooths a single quiet hour after sustained traffic", () => {
-    const sustained = computeForecast(
-      input({ bucketCounts: [10, 10, 10, 10, 10, 10] }),
-    );
+    const sustained = computeForecast(input({ bucketCounts: [10, 10, 10, 10, 10, 10] }));
     const quietBlip = computeForecast(input({ bucketCounts: [10, 10, 10, 10, 10, 0] }));
     // Recovering from one zero bucket should not collapse the recommendation
     // to the floor.
@@ -52,9 +50,9 @@ describe("computeForecast", () => {
   });
 
   test("clamps respect min ≤ max contract", () => {
-    expect(() =>
-      computeForecast(input({ minPoolSize: 5, maxPoolSize: 2 })),
-    ).toThrow(/minPoolSize cannot exceed maxPoolSize/);
+    expect(() => computeForecast(input({ minPoolSize: 5, maxPoolSize: 2 }))).toThrow(
+      /minPoolSize cannot exceed maxPoolSize/,
+    );
   });
 
   test("rejects out-of-range alpha", () => {
@@ -85,9 +83,7 @@ describe("computeForecast", () => {
   });
 
   test("zero leadTimeBuckets collapses to floor", () => {
-    const out = computeForecast(
-      input({ bucketCounts: [10, 10, 10], leadTimeBuckets: 0 }),
-    );
+    const out = computeForecast(input({ bucketCounts: [10, 10, 10], leadTimeBuckets: 0 }));
     expect(out.targetPoolSize).toBe(1);
   });
 

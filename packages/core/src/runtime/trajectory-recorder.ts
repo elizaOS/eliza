@@ -24,12 +24,7 @@ import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { EvaluationResult } from "../types/components";
-import type {
-	ChatMessage,
-	ToolCall,
-	ToolChoice,
-	ToolDefinition,
-} from "../types/model";
+import type { ChatMessage, ToolChoice, ToolDefinition } from "../types/model";
 import { computeCallCostUsd } from "./cost-table";
 
 // ---------------------------------------------------------------------------
@@ -318,7 +313,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
 		this.logger = opts.logger;
 		this.enabled =
-			opts.enabled !== undefined ? opts.enabled : isTrajectoryRecordingEnabled();
+			opts.enabled !== undefined
+				? opts.enabled
+				: isTrajectoryRecordingEnabled();
 	}
 
 	startTrajectory(input: StartTrajectoryInput): string {
@@ -481,7 +478,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			if (!dir) continue;
 			let entries: import("node:fs").Dirent[];
 			try {
-				entries = (await fs.readdir(dir, { withFileTypes: true })) as import("node:fs").Dirent[];
+				entries = (await fs.readdir(dir, {
+					withFileTypes: true,
+				})) as import("node:fs").Dirent[];
 			} catch {
 				continue;
 			}

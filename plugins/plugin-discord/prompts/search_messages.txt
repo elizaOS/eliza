@@ -12,12 +12,13 @@ Examples:
 - "search #general for links from last week" -> query: "links", channelIdentifier: "general", timeRange: "week"
 - "search for messages about 'spartan' in this channel" -> query: "spartan", channelIdentifier: "current"
 
-Respond with TOON only:
-query: <search keywords>
-channelIdentifier: <channel-name|channel-id|current>
-author: <username>
-timeRange: <hour|day|week|month>
-limit: <number between 1-100, default 20>
-
+Respond with JSON only, no markdown:
+{
+  "query": "search keywords",
+  "channelIdentifier": "channel-name|channel-id|current",
+  "author": "username",
+  "timeRange": "hour|day|week|month",
+  "limit": 20
+}
 
 

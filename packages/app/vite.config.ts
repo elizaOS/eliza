@@ -29,6 +29,7 @@ import {
 import { syncElizaEnvAliases } from "../../scripts/lib/sync-eliza-env-aliases.mjs";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
+import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 
 const _require = createRequire(import.meta.url);
@@ -93,18 +94,6 @@ viteLogger.error = (message, options) => {
 
 function ensureTrailingSlash(value: string): string {
   return value.endsWith("/") ? value : `${value}/`;
-}
-
-function normalizeEnvPrefix(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-  if (!normalized) {
-    throw new Error("App envPrefix must resolve to a non-empty identifier");
-  }
-  return normalized;
 }
 
 function escapeRegExp(value: string): string {

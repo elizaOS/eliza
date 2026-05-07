@@ -114,7 +114,8 @@ export function computeCallCostUsd(
 	const completion = usage.completionTokens ?? 0;
 
 	const inputCost = (nonCachedInput / 1_000_000) * price.input;
-	const cacheReadCost = (cacheRead / 1_000_000) * (price.cacheRead || price.input);
+	const cacheReadCost =
+		(cacheRead / 1_000_000) * (price.cacheRead || price.input);
 	const cacheWriteCost =
 		(cacheWrite / 1_000_000) * (price.cacheWrite || price.input);
 	const outputCost = (completion / 1_000_000) * price.output;

@@ -5,6 +5,11 @@ import type {
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
 } from "@elizaos/shared";
+import {
+  normalizeWalletRpcSelections,
+  type WalletConfigUpdateRequest,
+  type WalletRpcSelections,
+} from "@elizaos/shared";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import {
   type CloudWalletDescriptor,
@@ -19,11 +24,6 @@ import {
 } from "../cloud/cloud-wallet.js";
 import type { ElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
-import {
-  normalizeWalletRpcSelections,
-  type WalletConfigUpdateRequest,
-  type WalletRpcSelections,
-} from "../contracts/wallet.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { persistConfigEnv } from "./config-env.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";

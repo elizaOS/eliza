@@ -51,7 +51,7 @@ function resolveFilePath(
 	return path.resolve(workdir ?? process.cwd(), inputPath);
 }
 
-function hasReadFilePath(obj: Record<string, unknown>): boolean {
+function _hasReadFilePath(obj: Record<string, unknown>): boolean {
 	return typeof obj.filePath === "string" && obj.filePath.trim().length > 0;
 }
 
@@ -118,9 +118,7 @@ function readClipboardContentOverrides(
 	return overrides as Partial<Memory["content"]>;
 }
 
-function extractReadFileInput(
-	message: Memory,
-): ReadFileInput | null {
+function extractReadFileInput(message: Memory): ReadFileInput | null {
 	const explicitPath =
 		typeof message.content.filePath === "string"
 			? message.content.filePath.trim()
@@ -165,7 +163,7 @@ function extractReadFileInput(
 }
 
 export async function readFileFromActionInput(
-	runtime: IAgentRuntime,
+	_runtime: IAgentRuntime,
 	message: Memory,
 	state?: State,
 	explicitInput?: Partial<ReadFileInput>,

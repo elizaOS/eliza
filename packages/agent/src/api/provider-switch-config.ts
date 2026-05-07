@@ -1,36 +1,35 @@
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceCapability,
+  ServiceRoutingConfig,
+} from "@elizaos/shared";
+import {
+  asNonEmptyString,
+  asRecord,
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  deriveOnboardingCredentialPersistencePlan,
+  getOnboardingProviderOption,
+  getOnboardingProviderSignalEnvKeys,
+  getStoredOnboardingProviderId,
+  migrateLegacyRuntimeConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeOnboardingCredentialInputs,
+  normalizeOnboardingProviderId,
+  normalizeServiceRoutingConfig,
+  type OnboardingConnection,
+  type OnboardingCredentialInputs,
+  type OnboardingLlmPersistenceSelection,
+  type OnboardingLocalProviderId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/shared";
 import {
   applySubscriptionCredentials,
   deleteCredentials,
 } from "../auth/credentials.js";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import {
-  deriveOnboardingCredentialPersistencePlan,
-  getOnboardingProviderOption,
-  getOnboardingProviderSignalEnvKeys,
-  getStoredOnboardingProviderId,
-  migrateLegacyRuntimeConfig,
-  normalizeOnboardingCredentialInputs,
-  normalizeOnboardingProviderId,
-  type OnboardingConnection,
-  type OnboardingCredentialInputs,
-  type OnboardingLlmPersistenceSelection,
-  type OnboardingLocalProviderId,
-  requiresAdditionalRuntimeProvider,
-} from "../contracts/onboarding.js";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceCapability,
-  ServiceRoutingConfig,
-} from "../contracts/service-routing.js";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-  normalizeDeploymentTargetConfig,
-  normalizeServiceRoutingConfig,
-} from "../contracts/service-routing.js";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;

@@ -37,11 +37,14 @@ export interface ActionParameterSchema
 		| "properties"
 		| "items"
 		| "enumValues"
+		| "required"
 	> {
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
 	properties?: Record<string, ActionParameterSchema>;
+	/** Required child property names for object-valued parameters */
+	required?: string[];
 	/** Whether object-valued parameters allow undeclared properties */
 	additionalProperties?: boolean | ActionParameterSchema;
 	/** For array types, define the item schema */

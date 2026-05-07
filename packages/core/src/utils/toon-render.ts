@@ -1,4 +1,3 @@
-import { encode as encodeToon } from "@toon-format/toon";
 import type {
 	Action,
 	ActionExample,
@@ -9,21 +8,19 @@ import type {
 import { compressPromptDescription } from "./prompt-compression";
 
 /**
- * Plain JSON-shaped values accepted by `@toon-format/toon` `encode()`.
- * The `EncodeReplacer` ultimately normalizes everything through `JSON.stringify`,
- * so we only feed it values that are guaranteed-serializable.
+ * Plain JSON-shaped values accepted by JSON.stringify().
  */
-type ToonValue =
+type SerializableValue =
 	| string
 	| number
 	| boolean
 	| null
-	| ToonValue[]
-	| { [key: string]: ToonValue | undefined };
+	| SerializableValue[]
+	| { [key: string]: SerializableValue | undefined };
 
 /**
  * Best-effort, deterministic compressed-description lookup. Mirrors the logic
- * of `renderCompressedDescription` in `actions.ts` so the TOON renderer and
+ * of `renderCompressedDescription` in `actions.ts` so the compatibility renderer and
  * the prose renderer stay in sync.
  */
 function pickCompressedDescription(item: {
@@ -86,10 +83,10 @@ function formatParameterTypeLabel(parameter: ActionParameter): string {
 }
 
 function renderParameter(parameter: ActionParameter): {
-	[key: string]: ToonValue | undefined;
+	[key: string]: SerializableValue | undefined;
 } {
 	const description = pickCompressedDescription(parameter);
-	const out: { [key: string]: ToonValue | undefined } = {
+	const out: { [key: string]: SerializableValue | undefined } = {
 		name: parameter.name,
 		type: formatParameterTypeLabel(parameter),
 		required: parameter.required ?? false,
@@ -101,7 +98,7 @@ function renderParameter(parameter: ActionParameter): {
 		out.enum = [...parameter.schema.enum];
 	}
 	if (parameter.schema.default !== undefined) {
-		out.default = parameter.schema.default as ToonValue;
+		out.default = toSerializableValue(parameter.schema.default);
 	}
 	return out;
 }
@@ -131,7 +128,7 @@ function getExampleHints(example: ActionExample[]): string[] {
  * Build the same kind of single-line example summary that
  * `formatActionExampleSummary` in `actions.ts` produces. We keep behavior
  * deliberately equivalent so callers can swap renderers without changing
- * the TOON contract.
+ * prompt contents.
  */
 function buildExampleSummary(action: Action): string | null {
 	const examples = action.examples ?? [];
@@ -156,7 +153,10 @@ function buildExampleSummary(action: Action): string | null {
 }
 
 /**
- * Serialize an `Action` to TOON. Output mirrors what `formatActions` would
+ * Serialize an `Action` to human-readable JSON. The exported name is retained
+ * for older callers that imported the TOON-specific helper.
+ *
+ * Output mirrors what `formatActions` would
  * include for a single action: name, similes/aliases, parameters, ONE example
  * summary, and the compressed description (via `renderCompressedDescription`).
  */
@@ -169,7 +169,7 @@ export function toonRenderAction(action: Action): string {
 	const parameters = (action.parameters ?? []).map(renderParameter);
 	const example = buildExampleSummary(action);
 
-	const payload: { [key: string]: ToonValue | undefined } = {
+	const payload: { [key: string]: SerializableValue | undefined } = {
 		name: action.name,
 	};
 
@@ -189,13 +189,13 @@ export function toonRenderAction(action: Action): string {
 		payload.example = example;
 	}
 
-	const cleaned: { [key: string]: ToonValue } = {};
+	const cleaned: { [key: string]: SerializableValue } = {};
 	for (const [key, value] of Object.entries(payload)) {
 		if (value === undefined) continue;
 		cleaned[key] = value;
 	}
 
-	return encodeToon(cleaned);
+	return JSON.stringify(cleaned, null, 2);
 }
 
 function isPrimitive(
@@ -209,30 +209,31 @@ function isPrimitive(
 	);
 }
 
-function toToonValue(value: unknown): ToonValue {
+function toSerializableValue(value: unknown): SerializableValue {
 	if (isPrimitive(value)) {
 		return value;
 	}
 	if (Array.isArray(value)) {
-		return value.map((entry) => toToonValue(entry));
+		return value.map((entry) => toSerializableValue(entry));
 	}
 	if (typeof value === "object" && value !== null) {
-		const out: { [key: string]: ToonValue } = {};
+		const out: { [key: string]: SerializableValue } = {};
 		for (const [k, v] of Object.entries(value)) {
 			if (v === undefined) continue;
-			out[k] = toToonValue(v);
+			out[k] = toSerializableValue(v);
 		}
 		return out;
 	}
-	// `bigint`, `function`, `symbol`, `undefined` — collapse to a string view so
-	// the encoder never sees an unsupported value.
+	// `bigint`, `function`, `symbol`, `undefined` collapse to a string view so
+	// JSON serialization stays deterministic.
 	return String(value);
 }
 
 /**
- * Serialize a provider's static metadata + dynamic result to TOON. Plugin
+ * Serialize a provider's static metadata + dynamic result to JSON. Plugin
  * authors use this when they want to emit provider state in the same shape
- * the planner already understands.
+ * the planner already understands. The exported name is retained for older
+ * callers that imported the TOON-specific helper.
  *
  * `result` is optional because providers can be rendered before they have run
  * (for catalog/diagnostic UIs).
@@ -248,7 +249,7 @@ export function toonRenderProvider(
 		(provider as Provider & { tags?: string[] }).tags ?? [],
 	);
 
-	const payload: { [key: string]: ToonValue | undefined } = {
+	const payload: { [key: string]: SerializableValue | undefined } = {
 		name: provider.name,
 	};
 
@@ -272,18 +273,18 @@ export function toonRenderProvider(
 			payload.text = result.text.trim();
 		}
 		if (result.values && Object.keys(result.values).length > 0) {
-			payload.values = toToonValue(result.values);
+			payload.values = toSerializableValue(result.values);
 		}
 		if (result.data && Object.keys(result.data).length > 0) {
-			payload.data = toToonValue(result.data);
+			payload.data = toSerializableValue(result.data);
 		}
 	}
 
-	const cleaned: { [key: string]: ToonValue } = {};
+	const cleaned: { [key: string]: SerializableValue } = {};
 	for (const [key, value] of Object.entries(payload)) {
 		if (value === undefined) continue;
 		cleaned[key] = value;
 	}
 
-	return encodeToon(cleaned);
+	return JSON.stringify(cleaned, null, 2);
 }

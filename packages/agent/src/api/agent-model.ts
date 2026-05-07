@@ -1,10 +1,10 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
 import {
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "../contracts/onboarding.js";
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
 

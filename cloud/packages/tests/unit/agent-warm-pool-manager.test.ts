@@ -70,16 +70,13 @@ function installRepoMocks(repo: RepoMock): void {
   }));
 }
 
-function installEnvMock(enabled: boolean): void {
-  mock.module("@/lib/config/containers-env", () => ({
-    containersEnv: {
-      warmPoolEnabled: () => enabled,
-      warmPoolMinSize: () => 1,
-      warmPoolMaxSize: () => 10,
-      defaultAgentImage: () => IMAGE,
-      defaultAgentImagePlatform: () => "linux/amd64",
-    },
-  }));
+/**
+ * Toggle warm-pool via real env vars (avoids mock.module on containers-env,
+ * which leaks across test files in Bun).
+ */
+function setEnv(enabled: boolean): void {
+  if (enabled) process.env.WARM_POOL_ENABLED = "true";
+  else delete process.env.WARM_POOL_ENABLED;
 }
 
 function installLoggerMock(): void {
@@ -117,17 +114,37 @@ async function importManager() {
   return import(url.href) as Promise<typeof import("@/lib/services/containers/agent-warm-pool")>;
 }
 
+const ENV_KEYS_TO_SCRUB = [
+  "WARM_POOL_ENABLED",
+  "WARM_POOL_MIN_SIZE",
+  "WARM_POOL_MAX_SIZE",
+] as const;
+let envSnapshot: Record<string, string | undefined> = {};
+
+// Note: do NOT call mock.restore() here. Bun's mock.restore() wipes module
+// mocks installed at file scope by other test files, so calling it leaks
+// failures into adjacent suites (e.g. provisioning-jobs-heartbeat). Each
+// `mock.module(path, factory)` call overrides the previous one for that
+// path, so re-installing per-test is sufficient.
 beforeEach(() => {
-  mock.restore();
   installLoggerMock();
+  envSnapshot = {};
+  for (const k of ENV_KEYS_TO_SCRUB) {
+    envSnapshot[k] = process.env[k];
+    delete process.env[k];
+  }
 });
 afterEach(() => {
-  mock.restore();
+  for (const k of ENV_KEYS_TO_SCRUB) {
+    const v = envSnapshot[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
 });
 
 describe("WarmPoolManager", () => {
   test("disabled pool no-ops on every operation", async () => {
-    installEnvMock(false);
+    setEnv(false);
     installRepoMocks({
       countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
       countUnclaimedPool: mock(async () => 0),
@@ -156,7 +173,7 @@ describe("WarmPoolManager", () => {
   });
 
   test("replenish creates pool entries up to forecast target", async () => {
-    installEnvMock(true);
+    setEnv(true);
     installRepoMocks({
       countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
       countUnclaimedPool: mock(async () => 0),
@@ -177,7 +194,7 @@ describe("WarmPoolManager", () => {
   });
 
   test("replenish stops on first failure", async () => {
-    installEnvMock(true);
+    setEnv(true);
     installRepoMocks({
       countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
       countUnclaimedPool: mock(async () => 0),
@@ -211,7 +228,7 @@ describe("WarmPoolManager", () => {
   });
 
   test("drainIdle removes only past-idle-window entries when target == floor", async () => {
-    installEnvMock(true);
+    setEnv(true);
     const old = new Date(NOW - 90 * 60 * 1000);
     const recent = new Date(NOW - 60_000);
     installRepoMocks({
@@ -238,15 +255,12 @@ describe("WarmPoolManager", () => {
   });
 
   test("healthCheck removes failing pool entries and reaps stuck ones", async () => {
-    installEnvMock(true);
+    setEnv(true);
     installRepoMocks({
       countAllPoolEntries: mock(async () => ({ ready: 2, provisioning: 0 })),
       countUnclaimedPool: mock(async () => 2),
       countUserProvisionsByHour: mock(async () => [0, 0, 0]),
-      listUnclaimedPool: mock(async () => [
-        makeRow({ id: "alive" }),
-        makeRow({ id: "dead" }),
-      ]),
+      listUnclaimedPool: mock(async () => [makeRow({ id: "alive" }), makeRow({ id: "dead" })]),
       findStuckPoolProvisioning: mock(async () => [
         makeRow({ id: "stuck", status: "provisioning", pool_ready_at: null }),
       ]),
@@ -265,7 +279,7 @@ describe("WarmPoolManager", () => {
   });
 
   test("rollout drains rows whose docker_image differs from current", async () => {
-    installEnvMock(true);
+    setEnv(true);
     installRepoMocks({
       countAllPoolEntries: mock(async () => ({ ready: 2, provisioning: 0 })),
       countUnclaimedPool: mock(async () => 2),

@@ -11,11 +11,12 @@ If they say "this channel" or "here", use the current channel.
 If they mention a specific channel name or ID, extract that.
 If they ask to "summarize" or mention what someone is "talking about", set summarize to true.
 
-Respond with TOON only:
-channelIdentifier: <current|channel-name|channel-id>
-messageCount: <number between 1 and 50>
-summarize: true/false
-focusUser: <username or null>
-
+Respond with JSON only, no markdown:
+{
+  "channelIdentifier": "current",
+  "messageCount": 10,
+  "summarize": false,
+  "focusUser": null
+}
 
 

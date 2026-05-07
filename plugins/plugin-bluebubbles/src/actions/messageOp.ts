@@ -334,20 +334,21 @@ export const bluebubblesMessageOp: Action = {
 			return { success: false, error: "No chat GUID" };
 		}
 
-		const prompt = composePromptFromState({
-			state: currentState,
-			template: messageOpTemplate,
-		});
-
 		let info: MessageOpInfo | null = normalizeInfo(readParams(_options));
-		for (let attempt = 0; attempt < 3; attempt++) {
-			if (info) {
-				break;
-			}
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-			info = parseInfo(response);
-			if (info) {
-				break;
+		if (!info) {
+			const prompt = composePromptFromState({
+				state: currentState,
+				template: messageOpTemplate,
+			});
+
+			for (let attempt = 0; attempt < 3; attempt++) {
+				const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+					prompt,
+				});
+				info = parseInfo(response);
+				if (info) {
+					break;
+				}
 			}
 		}
 

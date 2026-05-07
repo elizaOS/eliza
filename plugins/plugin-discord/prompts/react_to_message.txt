@@ -11,9 +11,10 @@ Examples:
 - "react to that message with ❤️" -> messageRef: "previous", emoji: "❤️"
 - "add a thumbs up to john's message about the meeting" -> messageRef: "john meeting", emoji: "👍"
 
-Respond with TOON only:
-messageRef: <last|previous|message-id|search-text>
-emoji: <emoji-character|:emoji-name:>
-
+Respond with JSON only, no markdown:
+{
+  "messageRef": "last|previous|message-id|search-text",
+  "emoji": "emoji-character|:emoji-name:"
+}
 
 

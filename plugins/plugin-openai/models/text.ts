@@ -56,7 +56,8 @@ interface OpenAIPromptCacheOptions {
   promptCacheRetention?: PromptCacheRetention;
 }
 
-interface GenerateTextParamsWithOpenAIOptions extends GenerateTextParams {
+interface GenerateTextParamsWithOpenAIOptions
+  extends Omit<GenerateTextParams, "messages" | "tools" | "toolChoice" | "responseSchema"> {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
@@ -127,7 +128,12 @@ function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserCont
 // ============================================================================
 
 /**
- * Converts AI SDK usage to our token usage format
+ * Converts AI SDK usage to our token usage format.
+ *
+ * Emits both the legacy `cachedPromptTokens` (kept for back-compat with
+ * existing OpenAI consumers) and the canonical v5 `cacheReadInputTokens`
+ * (consumed by the trajectory recorder + cost table). They always carry the
+ * same value when the AI SDK reports cached input.
  */
 function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undefined {
   if (!usage) {
@@ -138,17 +144,19 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
   const promptTokens = usage.inputTokens ?? 0;
   const completionTokens = usage.outputTokens ?? 0;
   const usageWithCache = usage as LanguageModelUsageWithCache;
+  const cachedInput = usageWithCache.cachedInputTokens;
 
   return {
     promptTokens,
     completionTokens,
     totalTokens: promptTokens + completionTokens,
-    cachedPromptTokens: usageWithCache.cachedInputTokens,
+    cachedPromptTokens: cachedInput,
+    cacheReadInputTokens: cachedInput,
   };
 }
 
 function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
-  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
   return {
     promptCacheKey: withOpenAIOptions.providerOptions?.openai?.promptCacheKey,
     promptCacheRetention: withOpenAIOptions.providerOptions?.openai?.promptCacheRetention,
@@ -156,7 +164,7 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
 }
 
 function resolveProviderOptions(params: GenerateTextParams): Record<string, unknown> | undefined {
-  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
 
@@ -287,7 +295,7 @@ async function generateTextByModelType(
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
+  const paramsWithAttachments = params as unknown as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
   const modelName = getModelFn(runtime);
 

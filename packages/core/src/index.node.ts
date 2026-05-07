@@ -129,8 +129,10 @@ export * from "./roles";
 export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
+export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/sub-planner";
+export * from "./runtime/trajectory-recorder";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 // Export character schemas

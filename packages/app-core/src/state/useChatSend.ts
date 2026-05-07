@@ -6,6 +6,7 @@
  */
 
 import { type MutableRefObject, useCallback, useRef } from "react";
+import { asRecord } from "@elizaos/shared";
 import type { Conversation, CustomActionDef } from "../api";
 import {
   type CodingAgentSession,
@@ -53,12 +54,6 @@ function uniq(values: string[]): string[] {
     result.push(normalized);
   }
   return result;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function asStringList(value: unknown): string[] {

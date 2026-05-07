@@ -20,6 +20,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
 import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
@@ -213,13 +214,6 @@ const STATIC_AUTOMATION_NODE_SPECS: StaticAutomationNodeSpec[] = [
     disabledReason: "Load an order-event-capable runtime plugin.",
   },
 ];
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function asString(value: unknown): string | undefined {
   if (typeof value !== "string") {

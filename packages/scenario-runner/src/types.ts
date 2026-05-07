@@ -1,8 +1,7 @@
 /**
  * Internal types for the scenario runner. Scenario definitions themselves are
- * ambient via the `@elizaos/scenario-schema` type shim in
- * `test/scenarios/scenario-schema-shim.d.ts`; this file only models the
- * runner's execution & report state.
+ * imported from `@elizaos/scenario-schema`; this file only models the runner's
+ * execution & report state.
  */
 
 import type {

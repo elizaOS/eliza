@@ -178,7 +178,8 @@ function extractEvaluatorUsage(
 	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
 	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
 	const totalTokens =
-		(usage.totalTokens as number | undefined) ?? promptTokens + completionTokens;
+		(usage.totalTokens as number | undefined) ??
+		promptTokens + completionTokens;
 	const out: RecordedUsage = {
 		promptTokens,
 		completionTokens,

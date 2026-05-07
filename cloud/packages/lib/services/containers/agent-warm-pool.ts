@@ -91,9 +91,7 @@ export function decideDrain(
   if (surplus <= 0) return { toDrain: [], reason: "at or below floor" };
 
   const eligible = state.unclaimedRows
-    .filter(
-      (r) => r.pool_ready_at && nowMs - r.pool_ready_at.getTime() > policy.idleScaleDownMs,
-    )
+    .filter((r) => r.pool_ready_at && nowMs - r.pool_ready_at.getTime() > policy.idleScaleDownMs)
     .sort((a, b) => (a.pool_ready_at?.getTime() ?? 0) - (b.pool_ready_at?.getTime() ?? 0))
     .slice(0, surplus);
 
@@ -120,7 +118,8 @@ export function decideRollout(
   );
   return {
     toReplace: stale.map((r) => r.id),
-    reason: stale.length > 0 ? `replacing ${stale.length} stale-image rows` : "all rows on current image",
+    reason:
+      stale.length > 0 ? `replacing ${stale.length} stale-image rows` : "all rows on current image",
   };
 }
 
@@ -261,7 +260,11 @@ export class WarmPoolManager {
 
   async drainIdle(image: string): Promise<DrainResult> {
     if (!containersEnv.warmPoolEnabled()) {
-      return { decision: { toDrain: [], reason: "WARM_POOL_ENABLED=false (no-op)" }, drained: [], failed: [] };
+      return {
+        decision: { toDrain: [], reason: "WARM_POOL_ENABLED=false (no-op)" },
+        drained: [],
+        failed: [],
+      };
     }
 
     const state = await this.snapshot(image);

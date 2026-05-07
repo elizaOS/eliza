@@ -10,7 +10,6 @@
  * - Grouping by scenario for GRPO
  */
 
-import { encodeToonValue } from "../../utils/toon";
 import type {
 	ARTTrajectory,
 	ChatMessage,
@@ -77,7 +76,7 @@ function buildUserMessage(step: TrajectoryStep): string | null {
 
 	for (const provider of step.providerAccesses) {
 		parts.push(`\n${provider.providerName} data:`);
-		parts.push(encodeToonValue({ data: provider.data }));
+		parts.push(JSON.stringify({ data: provider.data }, null, 2));
 	}
 
 	parts.push("\nWhat action should you take?");
@@ -98,7 +97,7 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 		parts.push(`Reasoning: ${action.reasoning}`);
 	}
 	parts.push(
-		`Parameters:\n${encodeToonValue({ parameters: action.parameters })}`,
+		`Parameters:\n${JSON.stringify({ parameters: action.parameters }, null, 2)}`,
 	);
 
 	return parts.join("\n");

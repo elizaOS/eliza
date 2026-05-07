@@ -15,10 +15,11 @@ export const attachmentIdsTemplate = `# Messages we are summarizing
 The "objective" is a detailed description of what the user wants to summarize based on the conversation.
 The "attachmentIds" is an array of attachment IDs that the user wants to summarize. If not specified, default to including all attachments from the conversation.
 
-Respond with TOON only:
-objective: <What the user wants to summarize>
-attachmentIds[0]: <Attachment ID 1>
-attachmentIds[1]: <Attachment ID 2>`;
+Respond with JSON only, no markdown:
+{
+  "objective": "What the user wants to summarize",
+  "attachmentIds": ["Attachment ID 1", "Attachment ID 2"]
+}`;
 
 export const ATTACHMENT_IDS_TEMPLATE = attachmentIdsTemplate;
 
@@ -47,11 +48,13 @@ If they say "this channel" or "here", use the current channel.
 If they mention a specific channel name or ID, extract that.
 If they ask to "summarize" or mention what someone is "talking about", set summarize to true.
 
-Respond with TOON only:
-channelIdentifier: <current|channel-name|channel-id>
-messageCount: <number between 1 and 50>
-summarize: true/false
-focusUser: <username or null>`;
+Respond with JSON only, no markdown:
+{
+  "channelIdentifier": "current",
+  "messageCount": 10,
+  "summarize": false,
+  "focusUser": null
+}`;
 
 export const CHANNEL_INFO_TEMPLATE = channelInfoTemplate;
 
@@ -69,11 +72,12 @@ Examples:
 - "poll: Should we have a meeting tomorrow? Yes/No"
   -> question: "Should we have a meeting tomorrow?", options: ["Yes", "No"]
 
-Respond with TOON only:
-question: <poll question>
-options[0]: <option1>
-options[1]: <option2>
-useEmojis: true/false`;
+Respond with JSON only, no markdown:
+{
+  "question": "poll question",
+  "options": ["option1", "option2"],
+  "useEmojis": true
+}`;
 
 export const CREATE_POLL_TEMPLATE = createPollTemplate;
 
@@ -85,10 +89,12 @@ The "objective" is a detailed description of what the user wants to summarize ba
 The "start" and "end" are the range of dates that the user wants to summarize, relative to the current time. The start and end should be relative to the current time, and measured in seconds, minutes, hours and days. The format is "2 days ago" or "3 hours ago" or "4 minutes ago" or "5 seconds ago", i.e. "<integer> <unit> ago".
 If you aren't sure, you can use a default range of "0 minutes ago" to "2 hours ago" or more. Better to err on the side of including too much than too little.
 
-Respond with TOON only:
-objective: <What the user wants to summarize>
-start: 0 minutes ago
-end: 2 hours ago`;
+Respond with JSON only, no markdown:
+{
+  "objective": "What the user wants to summarize",
+  "start": "0 minutes ago",
+  "end": "2 hours ago"
+}`;
 
 export const DATE_RANGE_TEMPLATE = dateRangeTemplate;
 
@@ -105,9 +111,11 @@ Examples:
 - "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
 - "who am I?" -> userIdentifier: "self", detailed: false
 
-Respond with TOON only:
-userIdentifier: <username|user-id|mention|self>
-detailed: true/false`;
+Respond with JSON only, no markdown:
+{
+  "userIdentifier": "username|user-id|mention|self",
+  "detailed": false
+}`;
 
 export const GET_USER_INFO_TEMPLATE = getUserInfoTemplate;
 
@@ -122,9 +130,11 @@ Extract the channel identifier from their request:
 - If they provide a channel ID (long number), extract that
 - If they mention "voice", "vc", "voice channel", include that as a hint
 
-Respond with TOON only:
-channelIdentifier: <channel-name|channel-id|#mention>
-isVoiceChannel: true/false`;
+Respond with JSON only, no markdown:
+{
+  "channelIdentifier": "channel-name|channel-id|#mention",
+  "isVoiceChannel": false
+}`;
 
 export const JOIN_CHANNEL_TEMPLATE = joinChannelTemplate;
 
@@ -146,9 +156,11 @@ Examples:
 - "leave voice" -> channelIdentifier: "current", isVoiceChannel: true
 - "stop listening to this channel" -> channelIdentifier: "current", isVoiceChannel: false
 
-Respond with TOON only:
-channelIdentifier: <actual-channel-name-or-id-or-current>
-isVoiceChannel: true/false`;
+Respond with JSON only, no markdown:
+{
+  "channelIdentifier": "actual-channel-name-or-id-or-current",
+  "isVoiceChannel": false
+}`;
 
 export const LEAVE_CHANNEL_TEMPLATE = leaveChannelTemplate;
 
@@ -158,8 +170,10 @@ export const mediaAttachmentIdTemplate = `# Messages we are transcribing
 # Instructions: {{senderName}} is requesting a transcription of a specific media file (audio or video). Your goal is to determine the ID of the attachment they want transcribed.
 The "attachmentId" is the ID of the media file attachment that the user wants transcribed. If not specified, return null.
 
-Respond with TOON only:
-attachmentId: <Attachment ID>`;
+Respond with JSON only, no markdown:
+{
+  "attachmentId": "Attachment ID"
+}`;
 
 export const MEDIA_ATTACHMENT_ID_TEMPLATE = mediaAttachmentIdTemplate;
 
@@ -169,8 +183,10 @@ export const mediaUrlTemplate = `# Messages we are searching for a media URL
 # Instructions: {{senderName}} is requesting to download a specific media file (video or audio). Your goal is to determine the URL of the media they want to download.
 The "mediaUrl" is the URL of the media file that the user wants downloaded. If not specified, return null.
 
-Respond with TOON only:
-mediaUrl: <Media URL>`;
+Respond with JSON only, no markdown:
+{
+  "mediaUrl": "Media URL"
+}`;
 
 export const MEDIA_URL_TEMPLATE = mediaUrlTemplate;
 
@@ -185,8 +201,10 @@ Examples:
 - "pin john's message about the meeting" -> messageRef: "john meeting"
 - "pin message 123456789" -> messageRef: "123456789"
 
-Respond with TOON only:
-messageRef: <last|previous|message-id|search-text>`;
+Respond with JSON only, no markdown:
+{
+  "messageRef": "last|previous|message-id|search-text"
+}`;
 
 export const PIN_MESSAGE_TEMPLATE = pinMessageTemplate;
 
@@ -203,9 +221,11 @@ Examples:
 - "react to that message with ❤️" -> messageRef: "previous", emoji: "❤️"
 - "add a thumbs up to john's message about the meeting" -> messageRef: "john meeting", emoji: "👍"
 
-Respond with TOON only:
-messageRef: <last|previous|message-id|search-text>
-emoji: <emoji-character|:emoji-name:>`;
+Respond with JSON only, no markdown:
+{
+  "messageRef": "last|previous|message-id|search-text",
+  "emoji": "emoji-character|:emoji-name:"
+}`;
 
 export const REACT_TO_MESSAGE_TEMPLATE = reactToMessageTemplate;
 
@@ -223,12 +243,14 @@ Examples:
 - "search #general for links from last week" -> query: "links", channelIdentifier: "general", timeRange: "week"
 - "search for messages about 'spartan' in this channel" -> query: "spartan", channelIdentifier: "current"
 
-Respond with TOON only:
-query: <search keywords>
-channelIdentifier: <channel-name|channel-id|current>
-author: <username>
-timeRange: <hour|day|week|month>
-limit: <number between 1-100, default 20>`;
+Respond with JSON only, no markdown:
+{
+  "query": "search keywords",
+  "channelIdentifier": "channel-name|channel-id|current",
+  "author": "username",
+  "timeRange": "hour|day|week|month",
+  "limit": 20
+}`;
 
 export const SEARCH_MESSAGES_TEMPLATE = searchMessagesTemplate;
 
@@ -245,9 +267,11 @@ Extract the recipient identifier and the message content from their request.
 - If they provide a user ID (long number), extract that
 - Extract the complete message they want to send
 
-Respond with TOON only:
-recipientIdentifier: <username|user-id|@mention>
-messageContent: <the message to send>`;
+Respond with JSON only, no markdown:
+{
+  "recipientIdentifier": "username|user-id|@mention",
+  "messageContent": "the message to send"
+}`;
 
 export const SEND_DM_TEMPLATE = sendDmTemplate;
 
@@ -282,8 +306,10 @@ Examples:
 - "unpin john's message" -> messageRef: "john"
 - "unpin message about the meeting" -> messageRef: "meeting"
 
-Respond with TOON only:
-messageRef: <last_pinned|message-id|search-text>`;
+Respond with JSON only, no markdown:
+{
+  "messageRef": "last_pinned|message-id|search-text"
+}`;
 
 export const UNPIN_MESSAGE_TEMPLATE = unpinMessageTemplate;
 

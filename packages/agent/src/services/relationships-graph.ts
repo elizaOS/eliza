@@ -324,10 +324,6 @@ function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function asRecordOrNull(value: unknown): Record<string, unknown> | null {
-  return asRecord(value) ?? null;
-}
-
 function contentRecord(memory: Memory): Record<string, unknown> {
   return asRecord(memory.content) ?? {};
 }
@@ -527,9 +523,9 @@ function factExtractedInformationFromMetadata(
   metadata: Record<string, unknown>,
 ): RelationshipsFactExtractedInformation | undefined {
   const explicit =
-    asRecordOrNull(metadata.extractedInformation) ??
-    asRecordOrNull(metadata.extracted_information);
-  const base = asRecordOrNull(metadata.base);
+    asRecord(metadata.extractedInformation) ??
+    asRecord(metadata.extracted_information);
+  const base = asRecord(metadata.base);
   const raw = explicit ?? base;
   if (!raw) {
     return undefined;

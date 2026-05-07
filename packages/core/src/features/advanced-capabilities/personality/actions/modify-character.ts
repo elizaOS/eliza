@@ -12,7 +12,6 @@ import type {
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import { encodeToonValue } from "../../../../utils/toon";
-import { parseToonKeyValue } from "../../../../utils.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
 	MAX_PREFS_PER_USER,
@@ -721,8 +720,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseStructuredRecord(
 	response: string,
 ): Record<string, unknown> | null {
-	const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-	return isRecord(parsed) ? parsed : null;
+	try {
+		const parsed = JSON.parse(response.trim()) as unknown;
+		return isRecord(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
 }
 
 function formatPromptData(value: unknown): string {
@@ -1017,12 +1020,14 @@ Classify:
 - suggestion = a soft or indirect request for a change
 - none = not a character/personality/interaction change request
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-isModificationRequest: true
-requestType: explicit
-confidence: 0.93`;
+{
+  "isModificationRequest": true,
+  "requestType": "explicit",
+  "confidence": 0.93
+}`;
 
 	try {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -1091,35 +1096,30 @@ For requests about group chats, moderation, or only responding when mentioned, c
 Directive fragments passed through action parameters may omit phrases like "change your personality" and still be valid. If the text directly states how the agent should respond or participate, treat it as a style.chat update.
 Do not infer a name change from requests about tone, style, personality, bio, voice, or "sound like me".
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Return exactly one JSON object. No prose before or after it. No <think>.
 Set apply: false only when the request truly does not specify any change to the agent's shared character.
 
 Example:
-apply: true
-style_chat: In group conversations, avoid chiming in unless mentioned by name or directly addressed.
+{ "apply": true, "style_chat": ["In group conversations, avoid chiming in unless mentioned by name or directly addressed."] }
 
 Example:
-apply: true
-bio: Mirror the user's dry, fast, unpolished voice where appropriate.
-style_chat: Use the user's dry, fast, low-polish voice without changing the agent's name.
+{ "apply": true, "bio": ["Mirror the user's dry, fast, unpolished voice where appropriate."], "style_chat": ["Use the user's dry, fast, low-polish voice without changing the agent's name."] }
 
 Example:
-apply: true
-style_chat: Do not ask follow-up questions unless clarification is necessary.
+{ "apply": true, "style_chat": ["Do not ask follow-up questions unless clarification is necessary."] }
 
 Example:
-apply: true
-style_chat: Do not be so chatty and responsive unless directly messaged.
+{ "apply": true, "style_chat": ["Do not be so chatty and responsive unless directly messaged."] }
 
 Fields you may include:
 apply: true or false
 name: replacement agent name
 system: replacement system prompt
-bio: bio item 1 || bio item 2
-topics: topic 1 || topic 2
-style_all: style item 1 || style item 2
-style_chat: style item 1 || style item 2
-style_post: style item 1 || style item 2`;
+bio: array of bio items
+topics: array of topics
+style_all: array of style items
+style_chat: array of chat style items
+style_post: array of post style items`;
 
 	try {
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -1241,19 +1241,19 @@ DECISION FRAMEWORK:
 - Reject changes that add harmful traits or compromise core values
 - Separate acceptable from unacceptable elements if mixed
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Return exactly one JSON object. No prose before or after it. No <think>.
 
 Fields:
 isAppropriate: true or false
-concerns: concern 1 || concern 2
+concerns: array of concerns
 reasoning: detailed explanation
 acceptable_name: replacement name
 acceptable_system: replacement system prompt
-acceptable_bio: bio item 1 || bio item 2
-acceptable_topics: topic 1 || topic 2
-acceptable_style_all: style item 1 || style item 2
-acceptable_style_chat: style item 1 || style item 2
-acceptable_style_post: style item 1 || style item 2`;
+acceptable_bio: array of bio items
+acceptable_topics: array of topics
+acceptable_style_all: array of style items
+acceptable_style_chat: array of chat style items
+acceptable_style_post: array of post style items`;
 
 	try {
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -1264,7 +1264,7 @@ acceptable_style_post: style item 1 || style item 2`;
 
 		const raw = parseStructuredRecord(response as string);
 		if (!raw) {
-			throw new Error("Model did not return a structured TOON document");
+			throw new Error("Model did not return a structured JSON object");
 		}
 
 		const isAppropriate = normalizeBoolean(raw.isAppropriate) === true;
@@ -1412,22 +1412,18 @@ If setting, extract a concise preference statement (e.g., "be more formal", "avo
 
 Category options: "verbosity", "formality", "tone", "style", "content", "frequency", "other"
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Return exactly one JSON object. No prose before or after it. No <think>.
 Set action: none only if the request truly does not specify any interaction preference.
 
 Example:
 Request: "be less likely to chime into group conversations unless you're mentioned by name"
 Return:
-action: set
-text: avoid chiming into group conversations unless mentioned by name
-category: frequency
+{ "action": "set", "text": "avoid chiming into group conversations unless mentioned by name", "category": "frequency" }
 
 Example:
 Request: "not be so chatty and responsive unless you're being messaged directly"
 Return:
-action: set
-text: do not be so chatty and responsive unless directly messaged
-category: style`;
+{ "action": "set", "text": "do not be so chatty and responsive unless directly messaged", "category": "style" }`;
 
 	try {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {

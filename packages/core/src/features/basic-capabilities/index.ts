@@ -60,7 +60,7 @@ import { ChannelType, ContentType } from "../../types/primitives.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
-	parseToonKeyValue,
+	parseJSONObjectFromText,
 } from "../../utils.ts";
 import * as autonomy from "../autonomy/index.ts";
 
@@ -297,13 +297,15 @@ export async function processAttachments(
 			}
 
 			if (typeof response === "string") {
-				const parsedToon = parseToonKeyValue<ImageDescriptionToon>(response);
+				const parsedJson = parseJSONObjectFromText(
+					response,
+				) as ImageDescriptionToon | null;
 
-				if (parsedToon && (parsedToon.description || parsedToon.text)) {
-					processedAttachment.description = parsedToon.description ?? "";
-					processedAttachment.title = parsedToon.title ?? "Image";
+				if (parsedJson && (parsedJson.description || parsedJson.text)) {
+					processedAttachment.description = parsedJson.description ?? "";
+					processedAttachment.title = parsedJson.title ?? "Image";
 					processedAttachment.text =
-						parsedToon.text ?? parsedToon.description ?? "";
+						parsedJson.text ?? parsedJson.description ?? "";
 
 					runtime.logger.debug(
 						{
@@ -640,10 +642,12 @@ const postGeneratedHandler = async ({
 			prompt,
 		});
 
-		const parsedToon = parseToonKeyValue<MessageHandlerToon>(response);
-		if (parsedToon) {
-			const actionsRaw = parsedToon.actions;
-			const providersRaw = parsedToon.providers;
+		const parsedJson = parseJSONObjectFromText(
+			response,
+		) as MessageHandlerToon | null;
+		if (parsedJson) {
+			const actionsRaw = parsedJson.actions;
+			const providersRaw = parsedJson.providers;
 			const resolvedActions = Array.isArray(actionsRaw)
 				? actionsRaw
 				: actionsRaw
@@ -653,15 +657,15 @@ const postGeneratedHandler = async ({
 							.filter(Boolean)
 					: ["IGNORE"];
 			responseContent = {
-				thought: parsedToon.thought ?? "",
+				thought: parsedJson.thought ?? "",
 				actions: resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
 				providers: Array.isArray(providersRaw)
 					? providersRaw
 					: providersRaw
 						? [providersRaw]
 						: [],
-				text: parsedToon.text ?? "",
-				simple: parsedToon.simple ?? false,
+				text: parsedJson.text ?? "",
+				simple: parsedJson.simple ?? false,
 			};
 		} else {
 			responseContent = null;
@@ -676,7 +680,7 @@ const postGeneratedHandler = async ({
 					src: "basic-capabilities",
 					agentId: runtime.agentId,
 					response,
-					parsedToon,
+					parsedJson,
 					responseContent,
 				},
 				"Missing required fields, retrying",
@@ -697,9 +701,9 @@ const postGeneratedHandler = async ({
 		prompt: postPrompt,
 	});
 
-	const parsedToonResponse = parseToonKeyValue<PostCreationToon>(
+	const parsedToonResponse = parseJSONObjectFromText(
 		structuredResponseText,
-	);
+	) as PostCreationToon | null;
 
 	if (!parsedToonResponse) {
 		runtime.logger.error(

@@ -1,9 +1,9 @@
 import { Hono } from "hono";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -307,8 +307,14 @@ async function __hono_POST(
     if (created) {
       const triggerEnv = ctx?.env;
       const triggerPromise = provisioningJobService.triggerImmediate(triggerEnv);
-      if (ctx?.executionCtx) {
-        ctx.executionCtx.waitUntil(triggerPromise);
+      let executionCtx: AppContext["executionCtx"] | undefined;
+      try {
+        executionCtx = ctx?.executionCtx;
+      } catch {
+        executionCtx = undefined;
+      }
+      if (typeof executionCtx?.waitUntil === "function") {
+        executionCtx.waitUntil(triggerPromise);
       } else {
         triggerPromise.catch(() => undefined);
       }
@@ -347,10 +353,6 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(
-    c.req.raw,
-    { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
-    c,
-  ),
+  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
 );
 export default __hono_app;

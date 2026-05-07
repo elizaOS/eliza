@@ -189,9 +189,17 @@ export class ProvisioningJobService {
    * The cron endpoint is idempotent (FOR UPDATE SKIP LOCKED) so calling
    * it concurrently with the scheduled invocation is safe.
    */
-  async triggerImmediate(env?: { CRON_SECRET?: string; NEXT_PUBLIC_APP_URL?: string }): Promise<void> {
+  async triggerImmediate(env?: {
+    CRON_SECRET?: string;
+    NEXT_PUBLIC_API_URL?: string;
+    NEXT_PUBLIC_APP_URL?: string;
+  }): Promise<void> {
     const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
-    const baseUrl = env?.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+    const baseUrl =
+      env?.NEXT_PUBLIC_API_URL ??
+      env?.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_APP_URL;
     if (!cronSecret || !baseUrl) return;
     try {
       await fetch(`${baseUrl}/api/v1/cron/process-provisioning-jobs?limit=5`, {

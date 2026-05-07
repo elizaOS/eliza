@@ -11,7 +11,6 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import {
@@ -31,6 +30,7 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 import type { VoiceManager } from "../voice";
 import {
 	terminalActionInteractionSemantics,
@@ -57,8 +57,8 @@ Allowed values for "op":
 - read: read or summarize recent messages in a Discord channel
 - search: search messages in a Discord channel
 
-Respond with TOON only:
-op: <one of: join|leave|read|search>`;
+Respond with JSON only, no markdown:
+{"op":"join"}`;
 
 async function resolveOp(
 	runtime: IAgentRuntime,
@@ -66,10 +66,9 @@ async function resolveOp(
 	options: HandlerOptions | undefined,
 	messageText: string,
 ): Promise<DiscordChannelOp | null> {
+	const parameters = getActionParameters(options);
 	const optsOp =
-		typeof (options as Record<string, unknown> | undefined)?.op === "string"
-			? ((options as Record<string, unknown>).op as string).toLowerCase()
-			: undefined;
+		typeof parameters.op === "string" ? parameters.op.toLowerCase() : undefined;
 	if (optsOp && (VALID_OPS as readonly string[]).includes(optsOp)) {
 		return optsOp as DiscordChannelOp;
 	}
@@ -91,7 +90,7 @@ async function resolveOp(
 	const prompt = composePromptFromState({ state, template: opRouterTemplate });
 	for (let i = 0; i < 3; i++) {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		const op =
 			typeof parsed?.op === "string" ? parsed.op.toLowerCase() : undefined;
 		if (op && (VALID_OPS as readonly string[]).includes(op)) {
@@ -193,6 +192,7 @@ async function handleJoin(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -214,9 +214,19 @@ async function handleJoin(
 		channelIdentifier: string;
 		isVoiceChannel: boolean;
 	} | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.channelIdentifier) {
+		channelInfo = {
+			channelIdentifier: String(parameters.channelIdentifier),
+			isVoiceChannel:
+				parameters.isVoiceChannel === true ||
+				String(parameters.isVoiceChannel).toLowerCase() === "true",
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (channelInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.channelIdentifier) {
 			channelInfo = {
 				channelIdentifier: String(parsed.channelIdentifier),
@@ -361,6 +371,7 @@ async function handleLeave(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -382,9 +393,19 @@ async function handleLeave(
 		channelIdentifier: string;
 		isVoiceChannel: boolean;
 	} | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.channelIdentifier) {
+		channelInfo = {
+			channelIdentifier: String(parameters.channelIdentifier),
+			isVoiceChannel:
+				parameters.isVoiceChannel === true ||
+				String(parameters.isVoiceChannel).toLowerCase() === "true",
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (channelInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.channelIdentifier) {
 			channelInfo = {
 				channelIdentifier: String(parsed.channelIdentifier),
@@ -641,6 +662,7 @@ async function handleRead(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -664,9 +686,24 @@ async function handleRead(
 		summarize: boolean;
 		focusUser: string | null;
 	} | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.channelIdentifier) {
+		channelInfo = {
+			channelIdentifier: String(parameters.channelIdentifier),
+			messageCount: Math.min(
+				Math.max(Number(parameters.messageCount) || 10, 1),
+				50,
+			),
+			summarize:
+				parameters.summarize === true ||
+				String(parameters.summarize).toLowerCase() === "true",
+			focusUser: parameters.focusUser ? String(parameters.focusUser) : null,
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (channelInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.channelIdentifier) {
 			channelInfo = {
 				channelIdentifier: String(parsed.channelIdentifier),
@@ -879,6 +916,7 @@ async function handleSearch(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -903,9 +941,21 @@ async function handleSearch(
 		timeRange: string | null;
 		limit: number;
 	} | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.query) {
+		const cleanQuery = String(parameters.query).replace(/^["']|["']$/g, "");
+		searchParams = {
+			query: cleanQuery,
+			channelIdentifier: String(parameters.channelIdentifier || "current"),
+			author: parameters.author ? String(parameters.author) : null,
+			timeRange: parameters.timeRange ? String(parameters.timeRange) : null,
+			limit: Math.min(Math.max(Number(parameters.limit) || 20, 1), 100),
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (searchParams) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.query) {
 			const cleanQuery = String(parsed.query).replace(/^["']|["']$/g, "");
 			searchParams = {
@@ -1042,13 +1092,13 @@ export const channelOp: Action = {
 		}
 		switch (op) {
 			case "join":
-				return handleJoin(runtime, message, currentState, callback);
+				return handleJoin(runtime, message, currentState, options, callback);
 			case "leave":
-				return handleLeave(runtime, message, currentState, callback);
+				return handleLeave(runtime, message, currentState, options, callback);
 			case "read":
-				return handleRead(runtime, message, currentState, callback);
+				return handleRead(runtime, message, currentState, options, callback);
 			case "search":
-				return handleSearch(runtime, message, currentState, callback);
+				return handleSearch(runtime, message, currentState, options, callback);
 		}
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],

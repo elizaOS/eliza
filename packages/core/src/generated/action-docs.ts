@@ -2698,56 +2698,7 @@ export const allActionsSpec = {
 			name: "BLUEBUBBLES_MESSAGE_OP",
 			description:
 				"BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react).",
-			parameters: [
-				{
-					name: "op",
-					description: "TOON parameter op.",
-					required: false,
-					schema: {
-						type: "string",
-						default: "send",
-					},
-					descriptionCompressed: "TOON param op.",
-				},
-				{
-					name: "text",
-					description: "TOON parameter text.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "TOON param text.",
-				},
-				{
-					name: "emoji",
-					description: "TOON parameter emoji.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "TOON param emoji.",
-				},
-				{
-					name: "messageId",
-					description: "TOON parameter messageId.",
-					required: false,
-					schema: {
-						type: "string",
-						default: "last",
-					},
-					descriptionCompressed: "TOON param messageId.",
-				},
-				{
-					name: "remove",
-					description: "TOON parameter remove.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed: "TOON param remove.",
-				},
-			],
+			parameters: [],
 			descriptionCompressed: "Bluebubbles message ops: send, react.",
 			similes: [
 				"SEND_IMESSAGE",
@@ -2758,21 +2709,6 @@ export const allActionsSpec = {
 				"BLUEBUBBLES_REACT",
 				"BB_REACTION",
 				"IMESSAGE_REACT",
-			],
-			exampleCalls: [
-				{
-					user: "Use BLUEBUBBLES_MESSAGE_OP with the provided parameters.",
-					actions: ["BLUEBUBBLES_MESSAGE_OP"],
-					params: {
-						BLUEBUBBLES_MESSAGE_OP: {
-							op: "send",
-							text: "example",
-							emoji: "example",
-							messageId: "last",
-							remove: false,
-						},
-					},
-				},
 			],
 		},
 		{
@@ -4088,6 +4024,91 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "HEALTH",
+			description:
+				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which health query to run: today, trend, by_metric, status.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Which health query to run: today, trend, by_metric, status.",
+				},
+				{
+					name: "intent",
+					description:
+						"Free-form user intent used to infer subaction when not explicitly set.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "free-form intent infer subaction",
+				},
+				{
+					name: "metric",
+					description:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+				},
+				{
+					name: "date",
+					description: "YYYY-MM-DD for single-day queries.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
+				},
+				{
+					name: "days",
+					description: "Window size for trend and by_metric queries.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Window size for trend and by_metric queries.",
+				},
+			],
+			descriptionCompressed:
+				"health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+			similes: [
+				"FITNESS",
+				"WELLNESS",
+				"SLEEP",
+				"STEPS",
+				"HEART_RATE",
+				"WORKOUT",
+				"EXERCISE",
+				"CALORIES",
+				"ACTIVITY_METRICS",
+			],
+			exampleCalls: [
+				{
+					user: "Use HEALTH with the provided parameters.",
+					actions: ["HEALTH"],
+					params: {
+						HEALTH: {
+							subaction: "example",
+							intent: "example",
+							metric: "example",
+							date: "example",
+							days: 1,
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "IMESSAGE_SEND_MESSAGE",
 			description: "Send a text message via iMessage (macOS only)",
 			parameters: [],
@@ -4574,9 +4595,43 @@ export const allActionsSpec = {
 		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
 			description: "List and search customers in a connected Shopify store.",
-			parameters: [],
+			parameters: [
+				{
+					name: "action",
+					description: "Customer action. One of: list, search.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "search"],
+					},
+					descriptionCompressed: "Customer action. One of: list, search.",
+				},
+				{
+					name: "query",
+					description:
+						"Customer name, email, or other Shopify customer search term.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Customer name, email, or other Shopify customer search term.",
+				},
+			],
 			descriptionCompressed: "List/search Shopify customers.",
 			similes: ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"],
+			exampleCalls: [
+				{
+					user: "Use MANAGE_SHOPIFY_CUSTOMERS with the provided parameters.",
+					actions: ["MANAGE_SHOPIFY_CUSTOMERS"],
+					params: {
+						MANAGE_SHOPIFY_CUSTOMERS: {
+							action: "list",
+							query: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "MANAGE_SHOPIFY_INVENTORY",
@@ -4988,146 +5043,6 @@ export const allActionsSpec = {
 			parameters: [],
 			descriptionCompressed: "send encrypt direct message via Nostr (NIP-04)",
 			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
-		},
-		{
-			name: "OWNER_HEALTH",
-			description:
-				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"Which health query to run: today, trend, by_metric, status.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Which health query to run: today, trend, by_metric, status.",
-				},
-				{
-					name: "intent",
-					description:
-						"Free-form user intent used to infer subaction when not explicitly set.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "free-form intent infer subaction",
-				},
-				{
-					name: "metric",
-					description:
-						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-				},
-				{
-					name: "date",
-					description: "YYYY-MM-DD for single-day queries.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
-				},
-				{
-					name: "days",
-					description: "Window size for trend and by_metric queries.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Window size for trend and by_metric queries.",
-				},
-			],
-			descriptionCompressed:
-				"health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status owner",
-			similes: [
-				"FITNESS",
-				"WELLNESS",
-				"SLEEP",
-				"STEPS",
-				"HEART_RATE",
-				"WORKOUT",
-				"EXERCISE",
-				"CALORIES",
-				"ACTIVITY_METRICS",
-			],
-			exampleCalls: [
-				{
-					user: "Use OWNER_HEALTH with the provided parameters.",
-					actions: ["OWNER_HEALTH"],
-					params: {
-						OWNER_HEALTH: {
-							subaction: "example",
-							intent: "example",
-							metric: "example",
-							date: "example",
-							days: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_SCHEDULE",
-			description:
-				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. ",
-			parameters: [
-				{
-					name: "subaction",
-					description: "Optional. summary or inspect.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional. summary or inspect.",
-				},
-				{
-					name: "timezone",
-					description: "Optional IANA timezone override.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional IANA timezone override.",
-				},
-			],
-			descriptionCompressed:
-				"passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows) owner",
-			similes: [
-				"OWNER_SLEEP",
-				"OWNER_SLEEP_SCHEDULE",
-				"OWNER_MEAL_SCHEDULE",
-				"OWNER_ROUTINE",
-				"SLEEP_INFERENCE",
-				"MEAL_INFERENCE",
-			],
-			exampleCalls: [
-				{
-					user: "Use OWNER_SCHEDULE with the provided parameters.",
-					actions: ["OWNER_SCHEDULE"],
-					params: {
-						OWNER_SCHEDULE: {
-							subaction: "example",
-							timezone: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_SEND_MESSAGE",
-			description:
-				"Legacy compatibility wrapper for owner-approved cross-channel chat sends.",
-			parameters: [],
-			descriptionCompressed:
-				"send approved owner message through registered chat connector",
 		},
 		{
 			name: "PAYMENT_OP",
@@ -5998,6 +5913,46 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "SCHEDULE",
+			description:
+				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. ",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Optional. summary or inspect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional. summary or inspect.",
+				},
+				{
+					name: "timezone",
+					description: "Optional IANA timezone override.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional IANA timezone override.",
+				},
+			],
+			descriptionCompressed:
+				"passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
+			similes: ["SLEEP_INFERENCE", "MEAL_INFERENCE"],
+			exampleCalls: [
+				{
+					user: "Use SCHEDULE with the provided parameters.",
+					actions: ["SCHEDULE"],
+					params: {
+						SCHEDULE: {
+							subaction: "example",
+							timezone: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "SEARCH_LINEAR_ISSUES",
 			description: "Search for issues in Linear with various filters",
 			parameters: [
@@ -6489,93 +6444,14 @@ export const allActionsSpec = {
 				"Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
 			parameters: [
 				{
-					name: "op",
-					description: "One of: send, edit, delete, react, pin, unpin",
-					required: false,
-					schema: {
-						type: "string",
-						default: "send",
-					},
-					descriptionCompressed:
-						"One of: send, edit, delete, react, pin, unpin",
-				},
-				{
-					name: "text",
-					description:
-						"For send — the message text. For edit — the new message text.",
+					name: "data",
+					description: "The data to use.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"For send - the msg text. For edit - the new msg text.",
-				},
-				{
-					name: "messageTs",
-					description:
-						"For edit/delete/react/pin/unpin — the message timestamp (format: 1234567890.123456)",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For edit/delete/react/pin/unpin - the msg timestamp (format: 1234567890. 123456)",
-				},
-				{
-					name: "channelRef",
-					description: 'For send — the channel name/id, or "current".',
-					required: false,
-					schema: {
-						type: "string",
-						default: "current",
-					},
-					descriptionCompressed:
-						'For send - the channel name/id, or "current".',
-				},
-				{
-					name: "channelId",
-					description:
-						"For edit/delete/react/pin/unpin — the channel ID (optional, defaults to current channel)",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For edit/delete/react/pin/unpin - the channel ID (optional, defaults to current channel)",
-				},
-				{
-					name: "threadTs",
-					description:
-						"For send — optional thread timestamp to reply in a thread.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For send - optional thread timestamp to reply in a thread.",
-				},
-				{
-					name: "emoji",
-					description:
-						'For react — the emoji name (without colons, e.g. "thumbsup").',
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'For react - the emoji name (without colons, e. g. "thumbsup").',
-				},
-				{
-					name: "remove",
-					description:
-						"For react — true to remove the reaction, false (default) to add it.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"For react - true to remove the reaction, false (default) to add it.",
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
 				},
 			],
 			descriptionCompressed:
@@ -6619,14 +6495,7 @@ export const allActionsSpec = {
 					actions: ["SLACK_MESSAGE_OP"],
 					params: {
 						SLACK_MESSAGE_OP: {
-							op: "send",
-							text: "example",
-							messageTs: "example",
-							channelRef: "current",
-							channelId: "example",
-							threadTs: "example",
-							emoji: "example",
-							remove: false,
+							data: "example",
 						},
 					},
 				},
@@ -6774,10 +6643,32 @@ export const allActionsSpec = {
 			name: "START_TAILSCALE",
 			description:
 				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
-			parameters: [],
+			parameters: [
+				{
+					name: "port",
+					description: "Local port to expose through the Tailscale tunnel.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Local port to expose through the Tailscale tunnel.",
+				},
+			],
 			descriptionCompressed:
 				"start Tailscale tunnel expose local port tailnet (public internet via Funnel)",
 			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
+			exampleCalls: [
+				{
+					user: "Use START_TAILSCALE with the provided parameters.",
+					actions: ["START_TAILSCALE"],
+					params: {
+						START_TAILSCALE: {
+							port: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "STOP_AGENT",
@@ -6866,6 +6757,15 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Tunnel operation. One of: start, stop.",
 				},
+				{
+					name: "port",
+					description: "Local port to expose when op is start.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Local port to expose when op is start.",
+				},
 			],
 			descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
 			similes: [
@@ -6887,6 +6787,7 @@ export const allActionsSpec = {
 					params: {
 						TAILSCALE: {
 							op: "example",
+							port: 1,
 						},
 					},
 				},

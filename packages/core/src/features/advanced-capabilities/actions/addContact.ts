@@ -137,12 +137,11 @@ export const addContactAction: Action = {
 			: null;
 
 		if (!entityId) {
-			const currentState =
-				state ?? {
-					values: {},
-					data: {},
-					text: "",
-				};
+			const currentState = state ?? {
+				values: {},
+				data: {},
+				text: "",
+			};
 			const entity = await findEntityByName(runtime, message, currentState);
 
 			if (entity?.id) {

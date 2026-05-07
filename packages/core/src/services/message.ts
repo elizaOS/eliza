@@ -26,11 +26,10 @@ import {
 	v5MessageHandlerSchema,
 	v5MessageHandlerTemplate,
 } from "../prompts/message-handler";
+import { checkSenderRole } from "../roles";
 import { filterByContextGate } from "../runtime/context-gates";
 import { createContextObject } from "../runtime/context-object";
 import type { ContextRegistry } from "../runtime/context-registry";
-import { checkSenderRole } from "../roles";
-import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -79,6 +78,7 @@ import type {
 } from "../types/components";
 import { isActionConfirmationStatus } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
+import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
@@ -1159,7 +1159,10 @@ async function resolveStage1SenderRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<RoleGateRole> {
-	if (typeof message.entityId === "string" && message.entityId === runtime.agentId) {
+	if (
+		typeof message.entityId === "string" &&
+		message.entityId === runtime.agentId
+	) {
 		return "OWNER";
 	}
 	try {
@@ -1203,6 +1206,8 @@ interface ExecuteV5PlannedToolCallParams {
 	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
 	provider?: string;
 	tools?: ToolDefinition[];
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
 }
 
 async function executeV5PlannedToolCall(
@@ -1222,6 +1227,8 @@ async function executeV5PlannedToolCall(
 			evaluate: args.evaluate,
 			evaluatorEffects: args.evaluatorEffects,
 			provider: args.provider,
+			recorder: args.recorder,
+			trajectoryId: args.trajectoryId,
 		});
 		return subPlannerResultToPlannerToolResult(subResult);
 	}
@@ -1313,109 +1320,248 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.runtime.contexts,
 		senderRole,
 	);
-	const rawMessageHandler = (await args.runtime.useModel(
-		ModelType.RESPONSE_HANDLER,
-		{
-			prompt: renderV5MessageHandlerPrompt(context, availableContexts),
-			responseFormat: { type: "json_object" },
-			responseSchema: v5MessageHandlerSchema,
-		},
-	)) as string | GenerateTextResult;
-	const messageHandler = parseMessageHandlerOutput(
-		getV5ModelText(rawMessageHandler),
-	);
 
-	if (!messageHandler) {
-		throw new Error("v5 messageHandler returned invalid MessageHandlerResult");
-	}
-
-	const route = routeMessageHandlerOutput(messageHandler);
-	if (route.type === "ignored" || route.type === "stopped") {
-		return {
-			kind: "terminal",
-			action: route.type === "stopped" ? "STOP" : "IGNORE",
-			messageHandler,
-			state: args.state,
-		};
-	}
-
-	if (route.type === "final_reply") {
-		return {
-			kind: "direct_reply",
-			messageHandler,
-			result: createV5ReplyStrategyResult({
-				...args,
-				text: route.reply,
-				thought: messageHandler.thought,
-			}),
-		};
-	}
-
-	const selectedContexts =
-		route.type === "planning_needed" ? route.contexts : [];
-	const plannerContext = createV5MessageContextObject({
-		...args,
-		selectedContexts,
-		includeTools: true,
-	});
-	const plannerRuntime: PlannerRuntime = {
-		useModel: (modelType, modelParams, provider) =>
-			args.runtime.useModel(modelType, modelParams, provider),
-		logger: args.runtime.logger as PlannerRuntime["logger"],
-	};
-	const plannerTools = collectPlannerTools(plannerContext);
-	const evaluatorEffects: EvaluatorEffects = {
-		copyToClipboard: () => undefined,
-		messageToUser: () => undefined,
-	};
-	const plannerResult = await runPlannerLoop({
-		runtime: plannerRuntime,
-		context: plannerContext,
-		tools: plannerTools.length > 0 ? plannerTools : undefined,
-		evaluatorEffects,
-		executeToolCall: (toolCall, ctx) =>
-			executeV5PlannedToolCall({
-				runtime: args.runtime,
-				toolCall,
-				plannerContext,
-				executorCtx: {
-					message: args.message,
-					state: args.state,
-					activeContexts: selectedContexts,
-					previousResults: collectPreviousActionResults(ctx.trajectory),
+	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
+	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+	// propagate up — the recorder is observability, not load-bearing.
+	const recordingEnabled = isTrajectoryRecordingEnabled();
+	const recorder: TrajectoryRecorder | undefined = recordingEnabled
+		? createJsonFileTrajectoryRecorder({
+				logger: args.runtime.logger as {
+					warn?: (context: unknown, message?: string) => void;
 				},
-				plannerRuntime,
-				evaluatorEffects,
-			}),
-		evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
-			runEvaluator({
-				runtime: plannerRuntimeForEval,
-				context,
-				trajectory,
-				effects: evaluatorEffects,
-			}),
-	});
-	const plannedText = String(plannerResult.finalMessage ?? "").trim();
+			})
+		: undefined;
+	const trajectoryId = recorder
+		? recorder.startTrajectory({
+				agentId: String(args.runtime.agentId ?? "unknown-agent"),
+				roomId: args.message.roomId ? String(args.message.roomId) : undefined,
+				rootMessage: {
+					id: String(args.message.id ?? args.responseId),
+					text: getUserMessageText(args.message) ?? "",
+					sender: args.message.entityId
+						? String(args.message.entityId)
+						: undefined,
+				},
+			})
+		: undefined;
 
-	return {
-		kind: "planned_reply",
-		messageHandler,
-		result: plannedText
-			? createV5ReplyStrategyResult({
+	let endStatus: "finished" | "errored" = "finished";
+	try {
+		const messageHandlerStartedAt = Date.now();
+		const messageHandlerPrompt = renderV5MessageHandlerPrompt(
+			context,
+			availableContexts,
+		);
+		const rawMessageHandler = (await args.runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			{
+				prompt: messageHandlerPrompt,
+				responseFormat: { type: "json_object" },
+				responseSchema: v5MessageHandlerSchema,
+			},
+		)) as string | GenerateTextResult;
+		const messageHandlerEndedAt = Date.now();
+		const messageHandler = parseMessageHandlerOutput(
+			getV5ModelText(rawMessageHandler),
+		);
+
+		if (!messageHandler) {
+			throw new Error(
+				"v5 messageHandler returned invalid MessageHandlerResult",
+			);
+		}
+
+		if (recorder && trajectoryId) {
+			await recordMessageHandlerStage({
+				recorder,
+				trajectoryId,
+				prompt: messageHandlerPrompt,
+				raw: rawMessageHandler,
+				startedAt: messageHandlerStartedAt,
+				endedAt: messageHandlerEndedAt,
+				logger: args.runtime.logger,
+			});
+		}
+
+		const route = routeMessageHandlerOutput(messageHandler);
+		if (route.type === "ignored" || route.type === "stopped") {
+			return {
+				kind: "terminal",
+				action: route.type === "stopped" ? "STOP" : "IGNORE",
+				messageHandler,
+				state: args.state,
+			};
+		}
+
+		if (route.type === "final_reply") {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
 					...args,
-					text: plannedText,
-					thought:
-						plannerResult.evaluator?.thought ??
-						plannerResult.trajectory.steps.at(-1)?.thought ??
-						messageHandler.thought,
-				})
-			: {
-					responseContent: null,
-					responseMessages: [],
-					state: args.state,
-					mode: "none",
-				},
-	};
+					text: route.reply,
+					thought: messageHandler.thought,
+				}),
+			};
+		}
+
+		const selectedContexts =
+			route.type === "planning_needed" ? route.contexts : [];
+		const plannerContext = createV5MessageContextObject({
+			...args,
+			selectedContexts,
+			includeTools: true,
+		});
+		const plannerRuntime: PlannerRuntime = {
+			useModel: (modelType, modelParams, provider) =>
+				args.runtime.useModel(modelType, modelParams, provider),
+			logger: args.runtime.logger as PlannerRuntime["logger"],
+		};
+		const plannerTools = collectPlannerTools(plannerContext);
+		const evaluatorEffects: EvaluatorEffects = {
+			copyToClipboard: () => undefined,
+			messageToUser: () => undefined,
+		};
+		const plannerResult = await runPlannerLoop({
+			runtime: plannerRuntime,
+			context: plannerContext,
+			tools: plannerTools.length > 0 ? plannerTools : undefined,
+			evaluatorEffects,
+			recorder,
+			trajectoryId,
+			executeToolCall: (toolCall, ctx) =>
+				executeV5PlannedToolCall({
+					runtime: args.runtime,
+					toolCall,
+					plannerContext,
+					executorCtx: {
+						message: args.message,
+						state: args.state,
+						activeContexts: selectedContexts,
+						previousResults: collectPreviousActionResults(ctx.trajectory),
+					},
+					plannerRuntime,
+					evaluatorEffects,
+					recorder,
+					trajectoryId,
+				}),
+			evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+				runEvaluator({
+					runtime: plannerRuntimeForEval,
+					context,
+					trajectory,
+					effects: evaluatorEffects,
+					recorder,
+					trajectoryId,
+				}),
+		});
+		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+
+		return {
+			kind: "planned_reply",
+			messageHandler,
+			result: plannedText
+				? createV5ReplyStrategyResult({
+						...args,
+						text: plannedText,
+						thought:
+							plannerResult.evaluator?.thought ??
+							plannerResult.trajectory.steps.at(-1)?.thought ??
+							messageHandler.thought,
+					})
+				: {
+						responseContent: null,
+						responseMessages: [],
+						state: args.state,
+						mode: "none",
+					},
+		};
+	} catch (err) {
+		endStatus = "errored";
+		throw err;
+	} finally {
+		if (recorder && trajectoryId) {
+			await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
+				args.runtime.logger?.warn?.(
+					{ err: (err as Error).message, trajectoryId },
+					"[TrajectoryRecorder] endTrajectory failed",
+				);
+			});
+		}
+	}
+}
+
+async function recordMessageHandlerStage(args: {
+	recorder: TrajectoryRecorder;
+	trajectoryId: string;
+	prompt: string;
+	raw: string | GenerateTextResult;
+	startedAt: number;
+	endedAt: number;
+	logger?: IAgentRuntime["logger"];
+}): Promise<void> {
+	try {
+		const responseText =
+			typeof args.raw === "string" ? args.raw : (args.raw.text ?? "");
+		const usage =
+			typeof args.raw === "string"
+				? undefined
+				: extractMessageHandlerUsage(args.raw);
+		await args.recorder.recordStage(args.trajectoryId, {
+			stageId: `stage-msghandler-${args.startedAt}`,
+			kind: "messageHandler",
+			startedAt: args.startedAt,
+			endedAt: args.endedAt,
+			latencyMs: args.endedAt - args.startedAt,
+			model: {
+				modelType: String(ModelType.RESPONSE_HANDLER),
+				provider: "default",
+				prompt: args.prompt,
+				response: responseText,
+				usage,
+			},
+		});
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record messageHandler stage",
+		);
+	}
+}
+
+function extractMessageHandlerUsage(raw: GenerateTextResult):
+	| {
+			promptTokens: number;
+			completionTokens: number;
+			cacheReadInputTokens?: number;
+			cacheCreationInputTokens?: number;
+			totalTokens: number;
+	  }
+	| undefined {
+	const usage = raw.usage as Record<string, unknown> | undefined;
+	if (!usage) return undefined;
+	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
+	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
+	const totalTokens =
+		(usage.totalTokens as number | undefined) ??
+		promptTokens + completionTokens;
+	const out: {
+		promptTokens: number;
+		completionTokens: number;
+		cacheReadInputTokens?: number;
+		cacheCreationInputTokens?: number;
+		totalTokens: number;
+	} = { promptTokens, completionTokens, totalTokens };
+	if (typeof usage.cacheReadInputTokens === "number") {
+		out.cacheReadInputTokens = usage.cacheReadInputTokens;
+	} else if (typeof usage.cachedPromptTokens === "number") {
+		out.cacheReadInputTokens = usage.cachedPromptTokens;
+	}
+	if (typeof usage.cacheCreationInputTokens === "number") {
+		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
+	}
+	return out;
 }
 
 /**
@@ -1936,12 +2082,9 @@ actions[1]: ACTION_NAME`;
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
-	[
-		"LIFE",
-		"DEVICE_INTENT",
-		"COMPUTER_USE",
-		"SUBSCRIPTIONS",
-	].map(normalizeActionIdentifier),
+	["LIFE", "DEVICE_INTENT", "COMPUTER_USE", "SUBSCRIPTIONS"].map(
+		normalizeActionIdentifier,
+	),
 );
 
 const ACTION_OWNERSHIP_STOPWORDS = new Set([

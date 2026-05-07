@@ -203,14 +203,14 @@ export interface SkillEntry {
   skill: Skill;
   /** Raw parsed frontmatter */
   frontmatter: SkillFrontmatter;
-  /** Resolved Otto-specific metadata */
+  /** Resolved skill metadata */
   metadata: SkillMetadata;
   /** Invocation policy */
   invocation: SkillInvocationPolicy;
 }
 
 /**
- * Otto-specific skill metadata
+ * Skill runtime metadata
  */
 export interface SkillMetadata {
   /** Primary environment (node, python, etc.) */

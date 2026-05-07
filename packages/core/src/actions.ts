@@ -15,14 +15,6 @@ import {
 	getDeterministicNames,
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
-import {
-	encodeToonValue,
-	formatToonCapabilityRows,
-	parseToonActionParams,
-	tryParseToonValue,
-} from "./utils/toon";
-
-export { parseToonActionParams } from "./utils/toon";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -100,10 +92,10 @@ function formatActionCallExample(example: {
 		assistantPayload.params = paramsByAction;
 	}
 
-	return `User: ${example.user}\nAssistant:\n${encodeToonValue(assistantPayload)}`;
+	return `User: ${example.user}\nAssistant:\n${JSON.stringify(assistantPayload, null, 2)}`;
 }
 
-/** Render canonical TOON action-call examples. */
+/** Render canonical JSON action-call examples. */
 export function composeActionCallExamples(
 	actionsData: Action[],
 	maxExamples: number,
@@ -290,7 +282,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 		example: formatActionExampleSummary(action) ?? "",
 	}));
 
-	return formatToonCapabilityRows("actions", actionRows);
+	return JSON.stringify({ actions: actionRows }, null, 2);
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
@@ -342,11 +334,62 @@ function formatParameterType(schema: ActionParameterSchema): string {
 	}
 }
 
-/** Parse action parameters from the TOON action params contract. */
 export function parseActionParams(
 	paramsInput: unknown,
 ): Map<string, ActionParameters> {
-	return parseToonActionParams(paramsInput);
+	const parsed =
+		typeof paramsInput === "string"
+			? parseActionParamsJson(paramsInput)
+			: (paramsInput ?? null);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return new Map();
+	}
+
+	const record = parsed as Record<string, unknown>;
+	const candidate =
+		record.params && typeof record.params === "object" && !Array.isArray(record.params)
+			? (record.params as Record<string, unknown>)
+			: record;
+	const result = new Map<string, ActionParameters>();
+
+	for (const [actionName, paramsValue] of Object.entries(candidate)) {
+		if (!paramsValue || typeof paramsValue !== "object" || Array.isArray(paramsValue)) {
+			continue;
+		}
+
+		const params: ActionParameters = {};
+		for (const [paramName, paramValue] of Object.entries(paramsValue)) {
+			params[paramName] = toActionParameterValue(paramValue);
+		}
+
+		if (Object.keys(params).length > 0) {
+			result.set(actionName.trim().toUpperCase(), params);
+		}
+	}
+
+	return result;
+}
+
+/**
+ * Backward-compatible export name for older callers. Runtime-owned paths use
+ * JSON/native params; this alias intentionally no longer parses TOON strings.
+ */
+export const parseToonActionParams = parseActionParams;
+
+function parseActionParamsJson(input: string): Record<string, unknown> | null {
+	const trimmed = input.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(trimmed);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 function toActionParameterValue(value: unknown): ActionParameters[string] {
@@ -453,13 +496,8 @@ function coerceActionParamValue(
 				return parsed.map((entry) => toActionParameterValue(entry));
 			}
 		} catch {
-			// Fall through to the permissive toon/string coercion paths below.
+			// Fall through to the permissive string coercion path below.
 		}
-	}
-
-	const toonValue = tryParseToonValue(trimmed);
-	if (Array.isArray(toonValue)) {
-		return toonValue.map((entry) => toActionParameterValue(entry));
 	}
 
 	if (paramDef.schema.items?.type !== "string") {

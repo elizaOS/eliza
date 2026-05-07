@@ -141,9 +141,7 @@ const getDateRange = async (
 ): Promise<{ objective: string; start: number; end: number } | null> => {
 	const parameters = getActionParameters(options);
 	if (parameters.objective && parameters.start && parameters.end) {
-		const startRaw = parseTimeToTimestamp(
-			parameters.start as string | number,
-		);
+		const startRaw = parseTimeToTimestamp(parameters.start as string | number);
 		const endRaw = parseTimeToTimestamp(parameters.end as string | number);
 		if (Number.isFinite(startRaw) && Number.isFinite(endRaw)) {
 			let start = startRaw <= endRaw ? startRaw : endRaw;

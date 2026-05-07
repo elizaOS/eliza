@@ -68,7 +68,13 @@ describe("default-contexts", () => {
 
 		// `general`, `web`, `memory`, `knowledge`, and `media` are USER-or-below.
 		expect(userContexts).toEqual(
-			expect.arrayContaining(["general", "web", "memory", "knowledge", "media"]),
+			expect.arrayContaining([
+				"general",
+				"web",
+				"memory",
+				"knowledge",
+				"media",
+			]),
 		);
 	});
 

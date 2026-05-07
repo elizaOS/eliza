@@ -15,10 +15,7 @@ import {
 	type PlannerToolCall,
 	runPlannerLoop,
 } from "./planner-loop";
-import type {
-	RecordedStage,
-	TrajectoryRecorder,
-} from "./trajectory-recorder";
+import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
 
 export function actionHasSubActions(action: Action): boolean {
 	return Array.isArray(action.subActions) && action.subActions.length > 0;

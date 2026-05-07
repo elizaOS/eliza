@@ -9,8 +9,9 @@ Examples:
 - "unpin john's message" -> messageRef: "john"
 - "unpin message about the meeting" -> messageRef: "meeting"
 
-Respond with TOON only:
-messageRef: <last_pinned|message-id|search-text>
-
+Respond with JSON only, no markdown:
+{
+  "messageRef": "last_pinned|message-id|search-text"
+}
 
 

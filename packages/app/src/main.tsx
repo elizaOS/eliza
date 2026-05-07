@@ -200,13 +200,16 @@ const windowShellRoute = resolveWindowShellRoute();
 function hasRuntimePickerOverride(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const search = window.location?.search ?? "";
-    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
-    const params = new URLSearchParams(search || hashSearch);
-    return params.get("runtime") === "picker";
+    return getWindowUrlSearchParams().get("runtime") === "picker";
   } catch {
     return false;
   }
+}
+
+function getWindowUrlSearchParams(): URLSearchParams {
+  const search = window.location?.search ?? "";
+  const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+  return new URLSearchParams(search || hashSearch);
 }
 
 /**
@@ -645,10 +648,7 @@ function setupPlatformStyles(): void {
 
 function isPhoneCompanionMode(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  return params.get("mode") === "companion";
+  return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
 function resolveAppWindowSlug(): string | null {
@@ -704,10 +704,7 @@ function mountReactApp(): void {
 
 function isPopoutWindow(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  return params.has("popout");
+  return getWindowUrlSearchParams().has("popout");
 }
 
 /**
@@ -751,10 +748,7 @@ function validateAndSetApiBase(apiBase: string): void {
 }
 
 function injectPopoutApiBase(): void {
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  const apiBase = params.get("apiBase");
+  const apiBase = getWindowUrlSearchParams().get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
 }
 

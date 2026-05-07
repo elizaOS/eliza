@@ -75,6 +75,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { WarmPoolPanel } from "./warm-pool-panel";
 
 // Error boundary for tab content
 class TabErrorBoundary extends Component<
@@ -1346,6 +1347,9 @@ export function InfrastructureDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Warm Pool */}
+      <WarmPoolPanel />
 
       {/* Incidents Banner — compact & collapsible */}
       {infraSnapshot &&

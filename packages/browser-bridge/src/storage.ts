@@ -78,8 +78,7 @@ function isLikelyAgentAppTab(tab: ExtensionTab): boolean {
   const haystack = `${tab.title ?? ""} ${tab.url ?? ""}`.toLowerCase();
   return (
     haystack.includes("eliza") ||
-    haystack.includes("lifeops") ||
-    haystack.includes("eliza")
+    haystack.includes("lifeops")
   );
 }
 

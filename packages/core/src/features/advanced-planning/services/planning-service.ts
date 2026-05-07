@@ -49,7 +49,7 @@ function formatPromptData(value: unknown): string {
 function parseJsonRecord(response: string): Record<string, unknown> {
 	const trimmed = response.trim();
 	const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	const candidate = fenced ? fenced[1]!.trim() : trimmed;
+	const candidate = fenced ? fenced[1]?.trim() : trimmed;
 
 	try {
 		const parsed = JSON.parse(candidate) as unknown;

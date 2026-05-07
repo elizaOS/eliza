@@ -113,15 +113,17 @@ export function parseJsonObjectFromText(
 	return null;
 }
 
-export function getActionParameters(
-	options: unknown,
-): Record<string, unknown> {
+export function getActionParameters(options: unknown): Record<string, unknown> {
 	const optionsRecord =
 		options && typeof options === "object"
 			? (options as Record<string, unknown>)
 			: {};
 	const parameters = optionsRecord.parameters;
-	if (parameters && typeof parameters === "object" && !Array.isArray(parameters)) {
+	if (
+		parameters &&
+		typeof parameters === "object" &&
+		!Array.isArray(parameters)
+	) {
 		return parameters as Record<string, unknown>;
 	}
 	return optionsRecord;
