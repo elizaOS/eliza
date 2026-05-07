@@ -3,7 +3,7 @@
  * lifecycle actions (restart).
  *
  * Compaction is handled by core auto-compaction in the recent-messages provider.
- * Memory search/get actions are superseded by plugin-clipboard.
+ * Memory search/get actions are superseded by the todos plugin.
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";

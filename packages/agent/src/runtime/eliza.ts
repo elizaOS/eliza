@@ -167,7 +167,7 @@ import {
   type SandboxMode,
 } from "../services/sandbox-manager.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
-import { seedBundledKnowledge } from "./default-knowledge.js";
+import { seedBundledDocuments } from "./default-documents.js";
 import discordLocalPlugin from "./discord-local-plugin.js";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
@@ -3765,7 +3765,7 @@ export async function startEliza(
 
     try {
       if (runtimeKnowledgeEnabled(runtime)) {
-        await seedBundledKnowledge(runtime);
+        await seedBundledDocuments(runtime);
       } else {
         logger.info(
           "[eliza] Native knowledge disabled; skipping bundled knowledge seeding",

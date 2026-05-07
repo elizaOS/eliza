@@ -7,8 +7,6 @@ export const SANDBOX_SERVICE = "CODING_TOOLS_SANDBOX";
 export const SESSION_CWD_SERVICE = "CODING_TOOLS_SESSION_CWD";
 export const RIPGREP_SERVICE = "CODING_TOOLS_RIPGREP";
 export const SHELL_TASK_SERVICE = "CODING_TOOLS_SHELL_TASK";
-export const BASH_AST_SERVICE = "CODING_TOOLS_BASH_AST";
-export const OS_SANDBOX_SERVICE = "CODING_TOOLS_OS_SANDBOX";
 
 export const CODING_TOOLS_CONTEXTS = ["code", "terminal", "automation"] as const;
 export type CodingToolsContext = (typeof CODING_TOOLS_CONTEXTS)[number];

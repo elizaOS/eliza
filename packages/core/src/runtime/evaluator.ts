@@ -41,8 +41,8 @@ export interface EvaluatorRuntime {
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
-			prompt: string;
-			messages?: ChatMessage[];
+			prompt?: string;
+			messages: ChatMessage[];
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
@@ -73,7 +73,6 @@ export interface RunEvaluatorParams {
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
-	prompt?: string;
 	modelType?: TextGenerationModelType;
 	effects?: EvaluatorEffects;
 	provider?: string;
@@ -98,13 +97,10 @@ interface RawEvaluatorOutput {
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
-	const renderedInput = params.prompt
-		? renderModelInputFromPrompt(params.prompt)
-		: renderEvaluatorModelInput({
-				context: params.context,
-				trajectory: params.trajectory,
-			});
-	const prompt = renderedInput.prompt;
+	const renderedInput = renderEvaluatorModelInput({
+		context: params.context,
+		trajectory: params.trajectory,
+	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(
 		cachePrefixSegments(renderedInput.promptSegments),
@@ -113,7 +109,6 @@ export async function runEvaluator(
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
 	const modelInputBudget = buildModelInputBudget({
-		prompt,
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 	});
@@ -129,7 +124,7 @@ export async function runEvaluator(
 	const raw = await params.runtime.useModel(
 		modelType,
 		{
-			prompt,
+			prompt: renderedInput.prompt,
 			messages: renderedInput.messages,
 			responseSchema: v5EvaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
@@ -156,7 +151,7 @@ export async function runEvaluator(
 		iteration: params.iteration ?? 1,
 		modelType: String(modelType),
 		provider: params.provider,
-		prompt,
+		prompt: renderedInput.prompt,
 		messages: renderedInput.messages,
 		providerOptions,
 		raw,
@@ -178,7 +173,7 @@ async function recordEvaluationStage(args: {
 	iteration: number;
 	modelType: string;
 	provider?: string;
-	prompt: string;
+	prompt?: string;
 	messages?: ChatMessage[];
 	providerOptions?: Record<string, unknown>;
 	raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
@@ -285,14 +280,6 @@ function extractEvaluatorUsage(
 	return out;
 }
 
-export function renderEvaluatorPrompt(params: {
-	context: ContextObject;
-	trajectory: PlannerTrajectory;
-	template?: string;
-}): string {
-	return renderEvaluatorModelInput(params).prompt;
-}
-
 function renderEvaluatorModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -323,37 +310,6 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { prompt, messages, promptSegments };
-}
-
-function renderModelInputFromPrompt(prompt: string): {
-	prompt: string;
-	messages: ChatMessage[];
-	promptSegments: PromptSegment[];
-} {
-	return renderMessagesFromPrompt(prompt, [{ content: prompt, stable: false }]);
-}
-
-function renderMessagesFromPrompt(
-	prompt: string,
-	promptSegments: PromptSegment[],
-): {
-	prompt: string;
-	messages: ChatMessage[];
-	promptSegments: PromptSegment[];
-} {
-	const contextStart = prompt.indexOf("context_object:");
-	const systemContent =
-		contextStart > 0 ? prompt.slice(0, contextStart).trimEnd() : prompt;
-	const userContent =
-		contextStart > 0 ? prompt.slice(contextStart).trimStart() : prompt;
-	const messages: ChatMessage[] =
-		contextStart > 0
-			? [
-					{ role: "system", content: systemContent },
-					{ role: "user", content: userContent },
-				]
-			: [{ role: "user", content: prompt }];
 	return { prompt, messages, promptSegments };
 }
 

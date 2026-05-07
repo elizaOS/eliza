@@ -56,7 +56,13 @@ export interface RecordedModelCall {
 	modelType: string;
 	modelName?: string;
 	provider: string;
-	prompt: string;
+	/**
+	 * @deprecated v5 paths emit native chat messages instead of a single
+	 * concatenated prompt string. The recorder no longer requires `prompt`
+	 * on new stages; existing trajectory snapshots may still carry it.
+	 * Trajectory viewers should read `messages` directly.
+	 */
+	prompt?: string;
 	messages?: ChatMessage[] | unknown[];
 	tools?: unknown;
 	toolChoice?: ToolChoice | unknown;
@@ -385,10 +391,13 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			if (typeof stage.model.costUsd === "number") {
 				lines.push(`- cost: $${stage.model.costUsd.toFixed(6)}`);
 			}
-			lines.push("");
-			lines.push("### Prompt");
-			lines.push("");
-			lines.push(...markdownFence(stage.model.prompt));
+			if (typeof stage.model.prompt === "string") {
+				const prompt = stage.model.prompt;
+				lines.push("");
+				lines.push("### Prompt");
+				lines.push("");
+				lines.push(...markdownFence(prompt));
+			}
 			lines.push("");
 			lines.push("### Response");
 			lines.push("");

@@ -23,19 +23,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function isTrajectoryStep(value: unknown): value is TrajectoryStep {
-  return isRecord(value);
-}
-
-export function isTrajectoryLike(value: unknown): value is Trajectory {
-  return (
-    isRecord(value) &&
-    typeof value.trajectoryId === "string" &&
-    Array.isArray(value.steps) &&
-    value.steps.every(isTrajectoryStep)
-  );
-}
-
 function isElizaNativeExportRow(value: unknown): value is ElizaNativeTrajectoryRow {
   return (
     isRecord(value) &&
@@ -73,11 +60,6 @@ export function parseTrajectoryExportText(payload: string): unknown[] {
   }
 
   return [];
-}
-
-export function extractTrajectoriesFromExportText(payload: string): Trajectory[] {
-  const records = parseTrajectoryExportText(payload);
-  return records.filter(isTrajectoryLike);
 }
 
 export function extractElizaNativeRowsFromExportText(

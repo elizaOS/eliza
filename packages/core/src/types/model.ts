@@ -351,8 +351,15 @@ export interface ChatMessage {
 export interface GenerateTextParams
 	extends Omit<
 		ProtoGenerateTextParams,
-		"$typeName" | "$unknown" | "responseFormat" | "stopSequences"
+		"$typeName" | "$unknown" | "responseFormat" | "stopSequences" | "prompt"
 	> {
+	/**
+	 * Legacy concatenated prompt string. v5 paths emit `messages` instead and
+	 * leave this field undefined. Adapters that haven't migrated to native chat
+	 * messages may still consume it. Callers that pass `messages` should leave
+	 * `prompt` unset.
+	 */
+	prompt?: string;
 	responseFormat?: { type: "json_object" | "text" } | string;
 	stopSequences?: string[];
 	onStreamChunk?: StreamChunkCallback;

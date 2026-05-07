@@ -18,11 +18,6 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
-import type { BashAstService } from "../services/bash-ast-service.js";
-import type {
-  OsSandboxService,
-  WrapResult,
-} from "../services/os-sandbox-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import type {
@@ -30,10 +25,8 @@ import type {
   ShellTaskService,
 } from "../services/shell-task-service.js";
 import {
-  BASH_AST_SERVICE,
   CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
-  OS_SANDBOX_SERVICE,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
   SHELL_TASK_SERVICE,
@@ -80,12 +73,11 @@ export const bashAction: Action = {
   name: "BASH",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  roleGate: { minRole: "OWNER" },
   similes: ["SHELL", "EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd unless an explicit cwd inside the sandbox roots is supplied. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Respects the sandbox command denylist.",
+    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
   descriptionCompressed:
-    "Run a shell command (foreground or background) within sandbox roots.",
+    "Run a shell command (foreground or background).",
   parameters: [
     {
       name: "command",
@@ -109,7 +101,7 @@ export const bashAction: Action = {
     {
       name: "cwd",
       description:
-        "Absolute working directory; must resolve inside the configured workspace roots. Defaults to the session cwd.",
+        "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
       required: false,
       schema: { type: "string" },
     },
@@ -166,12 +158,6 @@ export const bashAction: Action = {
     const tasks = runtime.getService(SHELL_TASK_SERVICE) as InstanceType<
       typeof ShellTaskService
     > | null;
-    const ast = runtime.getService(BASH_AST_SERVICE) as InstanceType<
-      typeof BashAstService
-    > | null;
-    const osSandbox = runtime.getService(OS_SANDBOX_SERVICE) as InstanceType<
-      typeof OsSandboxService
-    > | null;
     if (!sandbox || !session || !tasks) {
       return failureToActionResult({
         reason: "internal",
@@ -179,45 +165,12 @@ export const bashAction: Action = {
       });
     }
 
-    const cmdCheck = sandbox.validateCommand(command);
-    if (!cmdCheck.ok) {
-      return failureToActionResult({
-        reason: "command_denied",
-        message: `${cmdCheck.message} (pattern=${cmdCheck.pattern})`,
-      });
-    }
-
-    if (ast) {
-      const astResult = await ast.analyze(command);
-      if (!astResult.ok) {
-        const blocking = astResult.findings.filter(
-          (f) => f.severity === "block",
-        );
-        const summary = blocking
-          .map(
-            (f) =>
-              `[${f.category}] ${f.message}${f.evidence ? ` — ${f.evidence}` : ""}`,
-          )
-          .join("; ");
-        return failureToActionResult(
-          {
-            reason: "command_denied",
-            message: `AST analysis blocked: ${summary}`,
-          },
-          { ast_findings: astResult.findings },
-        );
-      }
-    }
-
     let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (!v.ok) {
         return failureToActionResult({
-          reason:
-            v.reason === "outside_roots"
-              ? "path_outside_roots"
-              : "path_blocked",
+          reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
           message: v.message,
         });
       }
@@ -237,22 +190,7 @@ export const bashAction: Action = {
       }
       cwd = v.resolved;
     } else {
-      const defaultCwd = session.getCwd(conversationId);
-      const v = await sandbox.validatePath(conversationId, defaultCwd);
-      if (v.ok) {
-        cwd = v.resolved;
-      } else {
-        // Default cwd outside configured roots: fall back to first root so we
-        // never spawn into an unsealed location.
-        const roots = sandbox.rootsFor(conversationId);
-        if (roots.length === 0) {
-          return failureToActionResult({
-            reason: "internal",
-            message: "no workspace roots configured",
-          });
-        }
-        cwd = roots[0]!;
-      }
+      cwd = session.getCwd(conversationId);
     }
 
     const defaultTimeout = readPositiveIntSetting(
@@ -270,46 +208,19 @@ export const bashAction: Action = {
       defaultTimeout,
     );
 
-    const osSandboxEnabled =
-      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === true ||
-      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === "true" ||
-      runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX") === "1";
-    let wrap: WrapResult | undefined;
-    if (osSandboxEnabled && osSandbox?.isAvailable()) {
-      wrap = osSandbox.wrap({
-        command,
-        cwd,
-        roots: sandbox.rootsFor(conversationId),
-        allowNetwork:
-          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") ===
-            true ||
-          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") ===
-            "true" ||
-          runtime.getSetting?.("CODING_TOOLS_OS_SANDBOX_ALLOW_NETWORK") === "1",
-      });
-    }
-
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms sandbox=${wrap?.kind ?? "none"}`,
+      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms`,
     );
 
     const startOpts: {
       command: string;
       cwd: string;
       description?: string;
-      binaryOverride?: string;
-      argsOverride?: string[];
-      onFinalize?: () => void;
     } = {
       command,
       cwd,
     };
     if (description !== undefined) startOpts.description = description;
-    if (wrap) {
-      startOpts.binaryOverride = wrap.binary;
-      startOpts.argsOverride = wrap.args;
-      startOpts.onFinalize = wrap.cleanup;
-    }
     const rec = tasks.start_(startOpts);
 
     if (runInBackground) {
@@ -347,11 +258,8 @@ export const bashAction: Action = {
       );
     }
 
-    // Still running. If timeout <= bg_budget, the timeout fired first → kill.
-    // Otherwise the foreground budget elapsed → auto-promote.
     if (timeout <= bgBudget) {
       tasks.stop_(rec.id);
-      // Brief grace so any flushed output is captured before we report.
       await tasks.waitFor(rec.id, 500);
       const final = tasks.get(rec.id);
       const took = (final?.endedAt ?? Date.now()) - startedAt;

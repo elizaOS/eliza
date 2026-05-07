@@ -134,7 +134,9 @@ export const importDocumentFromFileAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Add this to your documents: The capital of France is Paris." },
+				content: {
+					text: "Add this to your documents: The capital of France is Paris.",
+				},
 			},
 			{
 				name: "assistant",
@@ -174,7 +176,10 @@ export const importDocumentFromFileAction: Action = {
 		};
 		try {
 			const hasLegacySignal = await __avLegacyValidate(
-				runtime, message, state, options,
+				runtime,
+				message,
+				state,
+				options,
 			);
 			return (
 				hasLegacySignal ||
@@ -374,7 +379,9 @@ export const searchDocumentsAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Search your documents for information about quantum computing" },
+				content: {
+					text: "Search your documents for information about quantum computing",
+				},
 			},
 			{
 				name: "assistant",
@@ -415,7 +422,9 @@ export const searchDocumentsAction: Action = {
 			return hasSearchKeyword;
 		};
 		try {
-			return Boolean(await __avLegacyValidate(runtime, message, state, options));
+			return Boolean(
+				await __avLegacyValidate(runtime, message, state, options),
+			);
 		} catch {
 			return false;
 		}
@@ -569,7 +578,8 @@ export const importDocumentFromUrlAction: Action = {
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as ImportDocumentFromUrlParameters;
+		const params = (options?.parameters ??
+			{}) as ImportDocumentFromUrlParameters;
 		const url = params.url?.trim();
 		const includeImageDescriptions = params.includeImageDescriptions === true;
 
@@ -592,7 +602,9 @@ export const importDocumentFromUrlAction: Action = {
 				throw new Error("Documents service not available");
 			}
 
-			const fetched = await fetchKnowledgeFromUrl(url, { includeImageDescriptions });
+			const fetched = await fetchKnowledgeFromUrl(url, {
+				includeImageDescriptions,
+			});
 			const { filename, mimeType } = fetched;
 			const isYouTube = isYouTubeUrl(url);
 			const isTextBacked = fetched.contentType !== "binary";
@@ -661,7 +673,9 @@ export const importDocumentFromUrlAction: Action = {
 			return {
 				text,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "IMPORT_DOCUMENT_FROM_URL" },
 			};
 		}
@@ -671,7 +685,9 @@ export const importDocumentFromUrlAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Add https://example.com/docs/getting-started to your documents." },
+				content: {
+					text: "Add https://example.com/docs/getting-started to your documents.",
+				},
 			},
 			{
 				name: "assistant",
@@ -684,7 +700,9 @@ export const importDocumentFromUrlAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Import the article at https://blog.example.com/post-1." },
+				content: {
+					text: "Import the article at https://blog.example.com/post-1.",
+				},
 			},
 			{
 				name: "assistant",
@@ -709,7 +727,9 @@ export const ingestKnowledgeFromUrlAction: Action = {
 type ReadDocumentParameters = { id?: string };
 
 function isUuid(value: string): value is UUID {
-	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+		value,
+	);
 }
 
 export const readDocumentAction: Action = {
@@ -786,7 +806,9 @@ export const readDocumentAction: Action = {
 			return {
 				text: errMsg,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "READ_DOCUMENT" },
 			};
 		}
@@ -796,7 +818,9 @@ export const readDocumentAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Read document 123e4567-e89b-12d3-a456-426614174000." },
+				content: {
+					text: "Read document 123e4567-e89b-12d3-a456-426614174000.",
+				},
 			},
 			{
 				name: "assistant",
@@ -934,7 +958,9 @@ export const editDocumentAction: Action = {
 			return {
 				text: errMsg,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "EDIT_DOCUMENT" },
 			};
 		}
@@ -944,7 +970,9 @@ export const editDocumentAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Edit document 123e4567-e89b-12d3-a456-426614174000 with revised text." },
+				content: {
+					text: "Edit document 123e4567-e89b-12d3-a456-426614174000 with revised text.",
+				},
 			},
 			{
 				name: "assistant",
@@ -977,7 +1005,12 @@ export const writeDocumentAction: Action = {
 	contexts: ["documents"],
 	contextGate: { anyOf: ["documents"] },
 	roleGate: { minRole: "USER" },
-	similes: ["CREATE_DOCUMENT", "SAVE_DOCUMENT", "STORE_DOCUMENT", "ADD_DOCUMENT"],
+	similes: [
+		"CREATE_DOCUMENT",
+		"SAVE_DOCUMENT",
+		"STORE_DOCUMENT",
+		"ADD_DOCUMENT",
+	],
 	description:
 		"Creates a new document in the document store from the given title and text. Use this when the user wants to save new text content as a named document.",
 	suppressPostActionContinuation: true,
@@ -1099,7 +1132,9 @@ export const writeDocumentAction: Action = {
 			return {
 				text: errMsg,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "WRITE_DOCUMENT" },
 			};
 		}
@@ -1231,7 +1266,10 @@ export const deleteDocumentAction: Action = {
 				},
 				data: {
 					actionName: "DELETE_DOCUMENT",
-					deleteData: { documentId, deletedFragments: relatedFragmentIds.length },
+					deleteData: {
+						documentId,
+						deletedFragments: relatedFragmentIds.length,
+					},
 				},
 			};
 		} catch (error) {
@@ -1244,7 +1282,9 @@ export const deleteDocumentAction: Action = {
 			return {
 				text: errMsg,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "DELETE_DOCUMENT" },
 			};
 		}
@@ -1254,7 +1294,9 @@ export const deleteDocumentAction: Action = {
 		[
 			{
 				name: "user",
-				content: { text: "Delete document 123e4567-e89b-12d3-a456-426614174000." },
+				content: {
+					text: "Delete document 123e4567-e89b-12d3-a456-426614174000.",
+				},
 			},
 			{
 				name: "assistant",
@@ -1292,11 +1334,17 @@ export const listDocumentsAction: Action = {
 			name: "limit",
 			description: "Maximum number of documents to return (default 20).",
 			required: false,
-			schema: { type: "number" as const, minimum: 1, maximum: 100, default: 20 },
+			schema: {
+				type: "number" as const,
+				minimum: 1,
+				maximum: 100,
+				default: 20,
+			},
 		},
 		{
 			name: "query",
-			description: "Optional search query to filter documents by title or content.",
+			description:
+				"Optional search query to filter documents by title or content.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -1398,7 +1446,9 @@ export const listDocumentsAction: Action = {
 			return {
 				text: errMsg,
 				success: false,
-				values: { error: error instanceof Error ? error.message : String(error) },
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 				data: { actionName: "LIST_DOCUMENTS" },
 			};
 		}

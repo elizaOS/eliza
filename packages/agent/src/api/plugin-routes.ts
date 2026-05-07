@@ -1661,7 +1661,7 @@ export async function handlePluginRoutes(
   if (method === "GET" && pathname === "/api/plugins/core") {
     // Build a set of loaded plugin names for robust matching.
     // Plugin internal names vary wildly (e.g. "local-ai" for plugin-local-embedding,
-    // "eliza-coder" for plugin-code), so we check loaded names against multiple
+    // "coding-tools" for plugin-coding-tools), so we check loaded names against multiple
     // derived forms of the npm package name.
     const loadedNames: Set<string> = state.runtime
       ? new Set(state.runtime.plugins.map((p: { name: string }) => p.name))

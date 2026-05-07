@@ -1,5 +1,5 @@
 import type { Plugin } from "../../types";
-import { documentActions, knowledgeActions } from "./actions";
+import { documentActions } from "./actions";
 import { documentsProvider } from "./documents-provider";
 import { knowledgeProvider } from "./provider";
 import { KnowledgeService } from "./service";

@@ -175,16 +175,23 @@ const pluginManagerCapability = {
 	] as ServiceClass[],
 };
 
-// ─── Knowledge & trajectories (native RAG / run logging) ──────────────────────
+// ─── Documents & trajectories (native RAG / run logging) ──────────────────────
 
 export type {
+	DocumentsPluginConfig,
 	FetchedKnowledgeUrl,
 	FetchedKnowledgeUrlKind,
 	FetchKnowledgeFromUrlOptions,
+	// Legacy alias
 	KnowledgePluginConfig,
-} from "./knowledge/index.ts";
+} from "./documents/index.ts";
 export {
+	createDocumentsPlugin,
 	createKnowledgePlugin,
+	documentActions,
+	documentsPlugin,
+	documentsPluginCore,
+	documentsPluginHeadless,
 	documentsProvider,
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
@@ -194,7 +201,7 @@ export {
 	knowledgePluginCore,
 	knowledgePluginHeadless,
 	knowledgeProvider,
-} from "./knowledge/index.ts";
+} from "./documents/index.ts";
 export type {
 	TrajectoryExportOptions,
 	TrajectoryListItem,

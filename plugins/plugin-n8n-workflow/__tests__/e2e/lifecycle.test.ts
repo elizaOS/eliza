@@ -13,9 +13,62 @@
 
 import { describe, test, expect, afterEach, mock } from "bun:test";
 import type { State } from "@elizaos/core";
-import { activateWorkflowAction } from "../../src/actions/activateWorkflow";
-import { deactivateWorkflowAction } from "../../src/actions/deactivateWorkflow";
-import { deleteWorkflowAction } from "../../src/actions/deleteWorkflow";
+import { workflowLifecycleOpAction } from "../../src/actions/workflowLifecycleOp";
+
+const activateWorkflowAction = {
+  handler: (
+    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
+    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
+    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
+    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
+    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+  ) => {
+    const merged = {
+      ...((options as Record<string, unknown> | undefined) ?? {}),
+      parameters: {
+        ...((options as { parameters?: Record<string, unknown> } | undefined)?.parameters ?? {}),
+        op: "activate",
+      },
+    };
+    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+  },
+};
+const deactivateWorkflowAction = {
+  handler: (
+    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
+    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
+    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
+    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
+    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+  ) => {
+    const merged = {
+      ...((options as Record<string, unknown> | undefined) ?? {}),
+      parameters: {
+        ...((options as { parameters?: Record<string, unknown> } | undefined)?.parameters ?? {}),
+        op: "deactivate",
+      },
+    };
+    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+  },
+};
+const deleteWorkflowAction = {
+  handler: (
+    runtime: Parameters<typeof workflowLifecycleOpAction.handler>[0],
+    message: Parameters<typeof workflowLifecycleOpAction.handler>[1],
+    state: Parameters<typeof workflowLifecycleOpAction.handler>[2],
+    options: Parameters<typeof workflowLifecycleOpAction.handler>[3],
+    callback: Parameters<typeof workflowLifecycleOpAction.handler>[4],
+  ) => {
+    const merged = {
+      ...((options as Record<string, unknown> | undefined) ?? {}),
+      parameters: {
+        ...((options as { parameters?: Record<string, unknown> } | undefined)?.parameters ?? {}),
+        op: "delete",
+      },
+    };
+    return workflowLifecycleOpAction.handler(runtime, message, state, merged, callback);
+  },
+};
 import { getExecutionsAction } from "../../src/actions/getExecutions";
 import { activeWorkflowsProvider } from "../../src/providers/activeWorkflows";
 import { createE2ERuntime, jsonResponse } from "../helpers/testRuntime";

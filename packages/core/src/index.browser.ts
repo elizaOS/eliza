@@ -22,7 +22,7 @@ export {
 	type FetchKnowledgeFromUrlOptions,
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
-} from "./features/knowledge/index";
+} from "./features/documents/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";

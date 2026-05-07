@@ -28,6 +28,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
   "@elizaos/app-companion",            // VRM companion emotes
   "@elizaos/plugin-shell",             // shell command execution
+  "@elizaos/plugin-coding-tools",      // native Read/Write/Edit/Bash/Grep/Glob (desktop; CODING_TOOLS_DISABLE)
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling
   "@elizaos/app-lifeops",             // LifeOps: tasks, goals, calendar, inbox
@@ -46,7 +47,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-pdf",                   // PDF processing
   "@elizaos/plugin-cua",                   // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian",              // Obsidian vault CLI integration
-  "@elizaos/plugin-code",                  // code writing and file operations
   "@elizaos/plugin-repoprompt",            // RepoPrompt CLI integration and workflow orchestration
   "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows for this monorepo
   "@elizaos/plugin-computeruse",           // computer use automation (requires platform-specific binaries)

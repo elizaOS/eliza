@@ -507,25 +507,23 @@ Skills, workflows, methodologies, and how-to knowledge.
 
 1. **Significance Test**: Will this matter in 3+ months?
 2. **Specificity Test**: Is this concrete and actionable?
-3. **Evidence Test**: Is there strong evidence (3+ instances OR explicit self-identification)?
-4. **Uniqueness Test**: Is this specific to THIS user (not generic)?
-5. **Confidence Test**: Confidence must be >= 0.85 (be VERY conservative)
-6. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
+3. **Uniqueness Test**: Is this specific to THIS user (not generic)?
+4. **Confidence Test**: Confidence must be >= 0.85 (be VERY conservative)
+5. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
 
 # Confidence Scoring (Be Conservative)
 
 - **0.95-1.0**: User explicitly stated as core identity/practice AND demonstrated multiple times
 - **0.85-0.94**: User explicitly stated OR consistently demonstrated 5+ times
 - **0.75-0.84**: Strong pattern (3-4 instances) with supporting context
-- **Below 0.75**: DO NOT EXTRACT (insufficient evidence)
+- **Below 0.75**: DO NOT EXTRACT
 
 # Critical Instructions
 
 1. **Default to NOT extracting** - When in doubt, skip it
-2. **Require overwhelming evidence** - One or two mentions is NOT enough
-3. **Focus on what's PERSISTENT** - Not what's temporary or situational
-4. **Verify against existing memories** - Don't duplicate or contradict
-5. **Maximum 2-3 extractions per run** - Quality over quantity
+2. **Focus on what's PERSISTENT** - Not what's temporary or situational
+3. **Verify against existing memories** - Don't duplicate or contradict
+4. **Maximum 2-3 extractions per run** - Quality over quantity
 
 **If there are no qualifying facts (which is common), return no memories entries.**
 

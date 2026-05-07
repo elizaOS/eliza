@@ -12,7 +12,7 @@ import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
   getKnowledgeService,
   type KnowledgeServiceResult,
-} from "./knowledge-service-loader.js";
+} from "./documents-service-loader.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const HASH_MEMORY_SOURCE = "hash_memory";

@@ -1684,7 +1684,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			availableContexts,
 			{ directMessage: directMessageChannel },
 		);
-		const messageHandlerPrompt = messageHandlerInput.prompt;
 		const stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -1710,7 +1709,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			}),
 			buildModelInputBudget({
-				prompt: messageHandlerPrompt,
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
@@ -1719,7 +1717,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
-				prompt: messageHandlerPrompt,
+				prompt: messageHandlerInput.prompt,
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
@@ -1740,7 +1738,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			await recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
-				prompt: messageHandlerPrompt,
+				prompt: messageHandlerInput.prompt,
 				messages: messageHandlerInput.messages,
 				tools: messageHandlerTools,
 				toolChoice: "required",

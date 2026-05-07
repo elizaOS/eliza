@@ -50,10 +50,9 @@ export interface PlannerRuntime {
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
-			prompt: string;
+			messages: ChatMessage[];
 			tools?: ToolDefinition[];
 			toolChoice?: ToolChoice;
-			messages?: ChatMessage[];
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
@@ -344,20 +343,11 @@ export async function runPlannerLoop(
 	};
 }
 
-export function renderPlannerPrompt(params: {
-	context: ContextObject;
-	trajectory: PlannerTrajectory;
-	template?: string;
-}): string {
-	return renderPlannerModelInput(params).prompt;
-}
-
 function renderPlannerModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
 }): {
-	prompt: string;
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 } {
@@ -371,7 +361,6 @@ function renderPlannerModelInput(params: {
 		...renderedContext.promptSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: false },
 	]);
-	const prompt = promptSegments.map((segment) => segment.content).join("");
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the
 	// base prefix remains byte-identical and Cerebras's prompt cache can hit.
@@ -386,7 +375,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { prompt, messages, promptSegments };
+	return { messages, promptSegments };
 }
 
 /**
@@ -597,7 +586,6 @@ async function callPlanner(params: {
 		trajectory: params.trajectory,
 	});
 	let modelInputBudget = buildModelInputBudget({
-		prompt: renderedInput.prompt,
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
@@ -621,7 +609,6 @@ async function callPlanner(params: {
 				trajectory: params.trajectory,
 			});
 			modelInputBudget = buildModelInputBudget({
-				prompt: renderedInput.prompt,
 				messages: renderedInput.messages,
 				promptSegments: renderedInput.promptSegments,
 				tools: params.tools,
@@ -630,7 +617,6 @@ async function callPlanner(params: {
 			});
 		}
 	}
-	const prompt = renderedInput.prompt;
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(
 		cachePrefixSegments(renderedInput.promptSegments),
@@ -640,7 +626,6 @@ async function callPlanner(params: {
 		"no-context-segments";
 	const hasTools = Array.isArray(params.tools) && params.tools.length > 0;
 	const modelParams: {
-		prompt: string;
 		messages: ChatMessage[];
 		responseSchema?: unknown;
 		promptSegments: PromptSegment[];
@@ -648,7 +633,6 @@ async function callPlanner(params: {
 		tools?: ToolDefinition[];
 		toolChoice?: ToolChoice;
 	} = {
-		prompt,
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		providerOptions: withModelInputBudgetProviderOptions(
@@ -684,7 +668,6 @@ async function callPlanner(params: {
 		iteration: params.iteration ?? 1,
 		modelType,
 		provider: params.provider,
-		prompt,
 		modelParams,
 		raw,
 		parsed,
@@ -799,7 +782,6 @@ async function maybeCompactBeforeNextModelCall(args: {
 		trajectory: args.trajectory,
 	});
 	const budget = buildModelInputBudget({
-		prompt: renderedInput.prompt,
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: args.tools,
@@ -927,8 +909,8 @@ async function recordPlannerStage(args: {
 	iteration: number;
 	modelType: TextGenerationModelType;
 	provider?: string;
-	prompt: string;
 	modelParams: {
+		messages?: ChatMessage[];
 		tools?: ToolDefinition[];
 		toolChoice?: ToolChoice;
 		providerOptions?: Record<string, unknown>;
@@ -961,8 +943,7 @@ async function recordPlannerStage(args: {
 				modelType: String(args.modelType),
 				modelName,
 				provider: args.provider ?? "default",
-				prompt: args.prompt,
-				messages: (args.modelParams as { messages?: ChatMessage[] }).messages,
+				messages: args.modelParams.messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,
 				providerOptions: args.modelParams.providerOptions,

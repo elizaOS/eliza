@@ -200,7 +200,7 @@ describe("planner-loop message stacking regression", () => {
 		const capturedMessages: ChatMessage[][] = [];
 		let callCount = 0;
 		const runtime = {
-			useModel: vi.fn(async (modelType, params) => {
+			useModel: vi.fn(async (_modelType, params) => {
 				callCount++;
 				const p = params as { messages?: ChatMessage[] };
 				if (p.messages) {
@@ -209,9 +209,7 @@ describe("planner-loop message stacking regression", () => {
 				if (callCount === 1) {
 					return {
 						text: "",
-						toolCalls: [
-							{ id: "tc-1", name: "LOOKUP", arguments: { q: "x" } },
-						],
+						toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { q: "x" } }],
 					};
 				}
 				return {
