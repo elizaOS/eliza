@@ -24,8 +24,6 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ENTITY");
@@ -36,54 +34,30 @@ interface ComponentExtractionResult {
 	data?: Record<string, unknown>;
 }
 
-/**
- * Component Template for Task: Extract Source and Update Component Data
- *
- * @type {string}
- */
-/**
- * Component Template for extracting source and updating component data.
- *
- * @type {string}
- */
-const componentTemplate = `# Task: Extract Source and Update Component Data
-
-{{recentMessages}}
-
-{{#if existingData}}
-# Existing Component Data:
-{{existingData}}
-{{/if}}
-
-# Instructions:
-1. Analyze the conversation to identify:
-   - The source/platform being referenced (e.g. telegram, x, discord)
-   - Any specific component data being shared
-
-2. Generate updated component data that:
-   - Is specific to the identified platform/source
-   - Preserves existing data when appropriate
-   - Includes the new information from the conversation
-   - Contains only valid data for this component type
-
-Return a TOON document with the following structure:
-source: platform-name
-data:
-  username: username_value
-  displayName: display_name_value
-
-Example outputs:
-1. For "my telegram username is @dev_guru":
-source: telegram
-data:
-  username: dev_guru
-
-2. For "update my x handle to @tech_master":
-source: x
-data:
-  username: tech_master
-
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+function readComponentInput(
+	message: Memory,
+	options?: HandlerOptions,
+): ComponentExtractionResult | null {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	const source = params.source ?? message.content.sourceType;
+	const data = params.data ?? message.content.data;
+	if (
+		typeof source !== "string" ||
+		!source.trim() ||
+		!data ||
+		typeof data !== "object" ||
+		Array.isArray(data)
+	) {
+		return null;
+	}
+	return {
+		source: source.trim(),
+		data: data as Record<string, unknown>,
+	};
+}
 
 /**
  * Action for updating contact details for a user entity.
@@ -132,9 +106,11 @@ export const updateEntityAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
+		message: Memory,
 		_state?: State,
+		options?: HandlerOptions,
 	): Promise<boolean> => {
+		if (!readComponentInput(message, options)) return false;
 		// Check if we have any registered sources or existing components that could be updated
 		// const worldId = message.roomId;
 		// const agentId = runtime.agentId;
@@ -293,22 +269,8 @@ export const updateEntityAction: Action = {
 			};
 		}
 
-		// Get existing component if it exists - we'll get this after the LLM identifies the source
 		let existingComponent: Component | null = null;
-
-		// Generate component data using the combined template
-		const prompt = composePromptFromState({
-			state,
-			template: componentTemplate,
-		});
-
-		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			stopSequences: [],
-		});
-
-		// Parse the generated data
-		const parsedResult = parseToonKeyValue<ComponentExtractionResult>(result);
+		const parsedResult = readComponentInput(message, _options);
 
 		if (!parsedResult?.source || !parsedResult.data) {
 			logger.error(
@@ -448,6 +410,24 @@ export const updateEntityAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "source",
+			description:
+				"Component source/platform to update, such as telegram, x, discord, email, or website.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "data",
+			description: "Structured component data to merge into the entity.",
+			required: true,
+			schema: {
+				type: "object" as const,
+				additionalProperties: true,
+			},
+		},
+	],
 };
 
 export default updateEntityAction;

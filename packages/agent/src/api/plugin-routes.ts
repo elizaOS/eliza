@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  asRecord,
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
@@ -244,13 +245,6 @@ function readCompatEnabledFromConfig(
   config: ElizaConfig,
   pluginId: string,
 ): boolean | null {
-  const asRecord = (value: unknown): Record<string, unknown> | null => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return null;
-    }
-    return value as Record<string, unknown>;
-  };
-
   const container =
     asRecord(config.connectors)?.[pluginId] ??
     asRecord(config.streaming)?.[pluginId];

@@ -64,6 +64,8 @@ type NormalizedUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 };
 
 type NativeGenerateTextResult = {
@@ -316,22 +318,38 @@ function buildNativeTextResult(result: {
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    cachedInputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
   };
 }): NativeGenerateTextResult {
   const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
   const outputTokens = result.usage?.outputTokens ?? result.usage?.completionTokens ?? 0;
 
+  if (!result.usage) {
+    return {
+      text: result.text,
+      toolCalls: result.toolCalls ?? [],
+      finishReason: result.finishReason,
+    };
+  }
+
+  const cacheRead = result.usage.cacheReadInputTokens ?? result.usage.cachedInputTokens;
+  const cacheCreation = result.usage.cacheCreationInputTokens;
+
+  const usage: NormalizedUsage = {
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens: result.usage.totalTokens ?? inputTokens + outputTokens,
+    ...(typeof cacheRead === "number" ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(typeof cacheCreation === "number" ? { cacheCreationInputTokens: cacheCreation } : {}),
+  };
+
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
-    usage: result.usage
-      ? {
-          promptTokens: inputTokens,
-          completionTokens: outputTokens,
-          totalTokens: result.usage.totalTokens ?? inputTokens + outputTokens,
-        }
-      : undefined,
+    usage,
   };
 }
 

@@ -37,10 +37,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/pool-drain-idle",
   ],
   "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
-  "*/10 * * * *": [
-    "/api/cron/cleanup-expired-crypto-payments",
-    "/api/v1/cron/pool-image-rollout",
-  ],
+  "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments", "/api/v1/cron/pool-image-rollout"],
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",

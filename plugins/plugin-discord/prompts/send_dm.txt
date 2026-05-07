@@ -11,9 +11,10 @@ Extract the recipient identifier and the message content from their request.
 - If they provide a user ID (long number), extract that
 - Extract the complete message they want to send
 
-Respond with TOON only:
-recipientIdentifier: <username|user-id|@mention>
-messageContent: <the message to send>
-
+Respond with JSON only, no markdown:
+{
+  "recipientIdentifier": "username|user-id|@mention",
+  "messageContent": "the message to send"
+}
 
 

@@ -42,7 +42,6 @@
     "lint:fix": "bunx @biomejs/biome check --write ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/cloud ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/middleware ./src/plugins ./src/providers ./src/runtime ./src/security ./src/server ./src/services ./src/shared ./src/testing ./src/triggers ./src/utils ./src/version-resolver.ts",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "training:cli": "bun run src/training/cli.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "test": "vitest run --config vitest.config.ts"
   },
@@ -131,7 +130,6 @@
     "./actions/restart": "./src/actions/restart.ts",
     "./actions/send-message": "./src/actions/send-message.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
-    "./activity-profile/*": "./src/activity-profile/*.ts",
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",
     "./test-utils/*": "./src/test-utils/*.ts"

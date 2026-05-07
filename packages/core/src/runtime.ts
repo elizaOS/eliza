@@ -27,8 +27,6 @@ import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
-import { ContextRegistry } from "./runtime/context-registry";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	getNativeRuntimeFeaturePlugin,
 	type NativeRuntimeFeature,
@@ -36,6 +34,8 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
+import { ContextRegistry } from "./runtime/context-registry";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -167,7 +167,6 @@ import type {
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
 	parseJSONObjectFromText,
-	parseToonKeyValue,
 	stringToUuid,
 } from "./utils";
 import {
@@ -194,7 +193,6 @@ import {
 	ActionStreamFilter,
 	ToonFieldStreamExtractor,
 } from "./utils/streaming";
-import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -289,6 +287,14 @@ function coerceOutgoingMessageText(text: unknown): string {
 	return String(text);
 }
 
+function stringifyStructuredForPrompt(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
 function resolveDynamicPromptModelType(
 	modelType?: TextGenerationModelType,
 	modelSize?: "nano" | "small" | "medium" | "large" | "mega",
@@ -314,19 +320,20 @@ function resolveDynamicPromptModelType(
 /**
  * Resolves the default structured-output format from a setting value.
  * Used by `dynamicPromptExecFromState` when no per-call preference is given.
- * Accepts `toon` or `json` (case-insensitive); anything else → TOON.
+ * Accepts legacy `toon` as an alias for JSON so old callers do not keep the
+ * runtime on the former TOON prompt contract.
  */
 export function resolveDefaultOutputFormat(
 	raw: unknown,
 ): StructuredResponseFormat {
-	if (typeof raw !== "string") return "TOON";
+	if (typeof raw !== "string") return "JSON";
 	switch (raw.trim().toLowerCase()) {
 		case "json":
 			return "JSON";
 		case "toon":
-			return "TOON";
+			return "JSON";
 		default:
-			return "TOON";
+			return "JSON";
 	}
 }
 

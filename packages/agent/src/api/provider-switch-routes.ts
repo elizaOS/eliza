@@ -1,8 +1,8 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import { normalizeOnboardingProviderId } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.js";
-import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
 import {
   defaultSecretsManager,
   type ProviderSwitchIntent,

@@ -146,6 +146,7 @@ const PROVIDER_KEY_TO_ID: Readonly<Record<string, string>> = {
   GOOGLE_GENERATIVE_AI_API_KEY: "gemini",
   GOOGLE_API_KEY: "gemini",
   GEMINI_API_KEY: "gemini",
+  PERPLEXITY_API_KEY: "perplexity",
 };
 
 const PROVIDER_EXACT_KEYS: ReadonlySet<string> = new Set(
@@ -182,6 +183,7 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   mistral: "Mistral",
   together: "Together",
   gemini: "Gemini",
+  perplexity: "Perplexity",
 };
 
 function defaultLabel(key: string, providerId: string | null): string {

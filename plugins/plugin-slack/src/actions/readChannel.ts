@@ -67,9 +67,13 @@ function normalizeReadInfo(params: Record<string, unknown>): {
   before?: string | null;
   after?: string | null;
 } | null {
-  const hasReadableField = ["channelRef", "channel", "limit", "before", "after"].some(
-    (key) => params[key] !== undefined,
-  );
+  const hasReadableField = [
+    "channelRef",
+    "channel",
+    "limit",
+    "before",
+    "after",
+  ].some((key) => params[key] !== undefined);
   if (!hasReadableField) {
     return null;
   }
@@ -77,7 +81,8 @@ function normalizeReadInfo(params: Record<string, unknown>): {
   const rawLimit = Number(params.limit);
   return {
     channelRef:
-      typeof params.channelRef === "string" && params.channelRef.trim().length > 0
+      typeof params.channelRef === "string" &&
+      params.channelRef.trim().length > 0
         ? params.channelRef
         : typeof params.channel === "string" && params.channel.trim().length > 0
           ? params.channel

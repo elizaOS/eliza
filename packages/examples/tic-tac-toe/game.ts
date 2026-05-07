@@ -20,11 +20,13 @@ import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type GenerateTextParams,
   type IAgentRuntime,
   ModelType,
   type Plugin,
   parseToonKeyValue,
   stringToUuid,
+  type TextStreamResult,
   type UUID,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -229,14 +231,16 @@ function detectAIPlayer(text: string): Player {
  */
 async function ticTacToeModelHandler(
   _runtime: IAgentRuntime,
-  params: { prompt?: string; messages?: Array<{ content: string }> },
-): Promise<string> {
+  params: GenerateTextParams,
+): Promise<string | TextStreamResult> {
   // Extract the prompt text
   let promptText = "";
   if (params.prompt) {
     promptText = params.prompt;
   } else if (params.messages && params.messages.length > 0) {
-    promptText = params.messages.map((m) => m.content).join("\n");
+    promptText = params.messages
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .join("\n");
   }
 
   if (!promptText) {

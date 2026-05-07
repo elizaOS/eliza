@@ -10,7 +10,6 @@ import {
 } from "./trajectory-context";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import type { IAgentRuntime } from "./types/runtime";
-import { encodeToonValue } from "./utils/toon";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -736,7 +735,7 @@ export async function recordLlmCall<T>(
 
 function tryStringify(value: unknown): string {
 	try {
-		return encodeToonValue({ response: value });
+		return JSON.stringify({ response: value });
 	} catch {
 		return String(value);
 	}

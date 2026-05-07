@@ -9,7 +9,6 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
-import { parseToonKeyValue } from "../../../../utils.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -30,7 +29,7 @@ export interface EvolutionAnalysis {
 	modifications: EvolutionModifications;
 }
 
-/** Character modifications extracted from a flat TOON record. */
+/** Character modifications extracted from a flat structured record. */
 export interface EvolutionModifications {
 	name?: string;
 	system?: string;
@@ -48,8 +47,12 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseStructuredRecord(
 	response: string,
 ): Record<string, unknown> | null {
-	const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-	return isRecord(parsed) ? parsed : null;
+	try {
+		const parsed = JSON.parse(response.trim()) as unknown;
+		return isRecord(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
 }
 
 export function normalizeBoolean(value: unknown): boolean | undefined {
@@ -72,6 +75,12 @@ export function normalizeNumber(value: unknown): number | undefined {
 }
 
 export function normalizeStringList(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const values = value
+			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+			.filter(Boolean);
+		return values.length > 0 ? values : undefined;
+	}
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (trimmed.length === 0) return undefined;
@@ -220,13 +229,15 @@ TRIGGER ANALYSIS - Check for:
    - User feedback about agent behavior
    - Suggestions for improvement
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-hasEvolutionTrigger: true
-triggerType: explicit_feedback
-reasoning: User explicitly asked for a personality change
-confidence: 0.85`;
+{
+  "hasEvolutionTrigger": true,
+  "triggerType": "explicit_feedback",
+  "reasoning": "User explicitly asked for a personality change",
+  "confidence": 0.85
+}`;
 
 		let hasEvolutionTriggers = false;
 		try {
@@ -367,17 +378,19 @@ MODIFICATION PRIORITIES:
 - topics: Domains where agent showed interest/competence
 - style: Communication preferences that enhance effectiveness
 
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
-Use || to separate list items within a field.
+Return exactly one JSON object. No prose before or after it. No <think>.
+Use arrays for list fields.
 
 Example:
-shouldModify: true
-confidence: 0.75
-gradualChange: true
-reasoning: User consistently asks about sustainability topics that are not in the current character definition.
-bio: Passionate about environmental sustainability || Knowledgeable about renewable energy
-topics: climate change || solar energy || sustainable living
-style_chat: Use encouraging tone when discussing environmental topics`;
+{
+  "shouldModify": true,
+  "confidence": 0.75,
+  "gradualChange": true,
+  "reasoning": "User consistently asks about sustainability topics that are not in the current character definition.",
+  "bio": ["Passionate about environmental sustainability", "Knowledgeable about renewable energy"],
+  "topics": ["climate change", "solar energy", "sustainable living"],
+  "style_chat": ["Use encouraging tone when discussing environmental topics"]
+}`;
 
 			const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: evolutionPrompt,

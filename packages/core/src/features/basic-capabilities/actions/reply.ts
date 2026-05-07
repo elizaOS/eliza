@@ -12,7 +12,10 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
+import {
+	composePromptFromState,
+	parseJSONObjectFromText,
+} from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REPLY");
@@ -101,9 +104,9 @@ export const replyAction = {
 			}
 		}
 
-		const parsedToon = parseToonKeyValue(response);
-		const thoughtValue = parsedToon?.thought;
-		const textValue = parsedToon?.text;
+		const parsedJson = parseJSONObjectFromText(response);
+		const thoughtValue = parsedJson?.thought;
+		const textValue = parsedJson?.text;
 		const thought: string =
 			typeof thoughtValue === "string" ? thoughtValue : "";
 		const parsedText = typeof textValue === "string" ? textValue.trim() : "";

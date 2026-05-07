@@ -238,8 +238,28 @@ export interface TokenUsage {
   /** Total tokens used */
   totalTokens: number;
 
-  /** Prompt tokens read from cache */
+  /**
+   * Prompt tokens read from cache.
+   *
+   * Historical name kept for back-compat with OpenAI plugin consumers. New
+   * code should also read `cacheReadInputTokens` (the canonical v5 trajectory
+   * recorder field). The text adapter populates both when the AI SDK reports
+   * cached input.
+   */
   cachedPromptTokens?: number;
+
+  /**
+   * Canonical v5 cache-read field. Mirrors `cachedPromptTokens` for the
+   * trajectory recorder + cost table, so consumers that expect either name
+   * resolve correctly.
+   */
+  cacheReadInputTokens?: number;
+
+  /**
+   * Canonical v5 cache-creation field. OpenAI does not differentiate cache
+   * write currently, so this is reserved for parity with Anthropic adapters.
+   */
+  cacheCreationInputTokens?: number;
 }
 
 /**

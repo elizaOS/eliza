@@ -13,6 +13,7 @@ import {
   writeStore,
 } from "./store.js";
 import { AuditLog } from "./audit.js";
+import { assertKey, optsCaller } from "./internal-utils.js";
 import { PgliteVaultImpl } from "./pglite-vault.js";
 import type {
   AuditRecord,
@@ -338,19 +339,6 @@ export class VaultMissError extends Error {
     super(`vault: no entry for ${JSON.stringify(key)}`);
     this.name = "VaultMissError";
   }
-}
-
-function assertKey(key: string): void {
-  if (typeof key !== "string" || key.length === 0) {
-    throw new TypeError("vault: key must be a non-empty string");
-  }
-  if (key.length > 256) {
-    throw new TypeError("vault: key must be 256 characters or fewer");
-  }
-}
-
-function optsCaller(opts: SetOptions): { caller?: string } {
-  return opts.caller ? { caller: opts.caller } : {};
 }
 
 // re-exports for ergonomic imports

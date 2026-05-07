@@ -19,7 +19,6 @@ import {
   logger,
   ModelType,
   type Plugin,
-  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   getLlama,
@@ -89,6 +88,22 @@ const wordsToPunish = [
   " Notably",
   " Therefore",
 ];
+
+function parseJsonObjectResponse(response: string): Record<string, unknown> {
+  const trimmed = response.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+  if (firstBrace < 0 || lastBrace <= firstBrace) {
+    throw new Error("No JSON object found in model response");
+  }
+  const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Model response was not a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
 
 type NormalizedUsage = {
   promptTokens: number;
@@ -870,22 +885,24 @@ export const localAiPlugin: Plugin = {
         temperature: params.temperature,
       });
 
-      // Build TOON schema hint from the provided schema
+      // Build JSON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
+        schemaHint = schemaKeys.map((key) => `"${key}": null`).join(",\n  ");
       }
 
       const structuredPrompt = `${params.prompt}
 
-Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with JSON only. ${schemaHint ? `Include these fields:\n{\n  ${schemaHint}\n}` : ""}
 
-For multiline values such as code, put the key on one line and indent the value on following lines.
+For multiline values such as code, return a JSON string with escaped newline characters.
 
 Example response format:
-thought: Your reasoning here
-text: Your response text here`;
+{
+  "thought": "Your reasoning here",
+  "text": "Your response text here"
+}`;
 
       const textResponse = await localAIManager.generateText({
         prompt: structuredPrompt,
@@ -903,24 +920,19 @@ text: Your response text here`;
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedStructured = parseToonKeyValue<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseJsonObjectResponse(textResponse);
+        logger.debug("Parsed structured result:", parsedStructured);
 
-        if (parsedStructured) {
-          logger.debug("Parsed structured result:", parsedStructured);
-
-          // Validate against schema if provided
-          if (params.schema) {
-            for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedStructured)) {
-                (parsedStructured as Record<string, unknown>)[key] = null;
-              }
+        // Validate against schema if provided
+        if (params.schema) {
+          for (const key of Object.keys(params.schema)) {
+            if (!(key in parsedStructured)) {
+              parsedStructured[key] = null;
             }
           }
-
-          return parsedStructured;
         }
 
-        throw new Error("Could not parse TOON structured response");
+        return parsedStructured;
       } catch (parseError) {
         logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);
@@ -936,22 +948,24 @@ text: Your response text here`;
         temperature: params.temperature,
       });
 
-      // Build TOON schema hint from the provided schema
+      // Build JSON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
+        schemaHint = schemaKeys.map((key) => `"${key}": null`).join(",\n  ");
       }
 
       const structuredPrompt = `${params.prompt}
 
-Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with JSON only. ${schemaHint ? `Include these fields:\n{\n  ${schemaHint}\n}` : ""}
 
-For multiline values such as code, put the key on one line and indent the value on following lines.
+For multiline values such as code, return a JSON string with escaped newline characters.
 
 Example response format:
-thought: Your reasoning here
-text: Your response text here`;
+{
+  "thought": "Your reasoning here",
+  "text": "Your response text here"
+}`;
 
       const textResponse = await localAIManager.generateText({
         prompt: structuredPrompt,
@@ -969,24 +983,19 @@ text: Your response text here`;
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedStructured = parseToonKeyValue<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseJsonObjectResponse(textResponse);
+        logger.debug("Parsed structured result:", parsedStructured);
 
-        if (parsedStructured) {
-          logger.debug("Parsed structured result:", parsedStructured);
-
-          // Validate against schema if provided
-          if (params.schema) {
-            for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedStructured)) {
-                (parsedStructured as Record<string, unknown>)[key] = null;
-              }
+        // Validate against schema if provided
+        if (params.schema) {
+          for (const key of Object.keys(params.schema)) {
+            if (!(key in parsedStructured)) {
+              parsedStructured[key] = null;
             }
           }
-
-          return parsedStructured;
         }
 
-        throw new Error("Could not parse TOON structured response");
+        return parsedStructured;
       } catch (parseError) {
         logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);

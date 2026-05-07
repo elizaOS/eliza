@@ -253,7 +253,7 @@ async function getCloudHealth(baseUrl: string, fetchImpl: typeof fetch): Promise
  */
 async function loadSidecarModule(): Promise<
   typeof import('@elizaos/app-core/services/n8n-sidecar') | null
-> {
+  > {
   if (isNativeServerPlatform()) {
     return null;
   }
@@ -845,19 +845,19 @@ function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
     const main = mainRaw.map((group) =>
       Array.isArray(group)
         ? group
-            .map((connection) => {
-              const obj = asRecord(connection);
-              const node = obj ? readOptionalString(obj, 'node') : undefined;
-              if (!obj || !node) {
-                return null;
-              }
-              const index = readOptionalNumber(obj, 'index') ?? 0;
-              return { node, type: 'main' as const, index };
-            })
-            .filter(
-              (connection): connection is { node: string; type: 'main'; index: number } =>
-                connection !== null
-            )
+          .map((connection) => {
+            const obj = asRecord(connection);
+            const node = obj ? readOptionalString(obj, 'node') : undefined;
+            if (!obj || !node) {
+              return null;
+            }
+            const index = readOptionalNumber(obj, 'index') ?? 0;
+            return { node, type: 'main' as const, index };
+          })
+          .filter(
+            (connection): connection is { node: string; type: 'main'; index: number } =>
+              connection !== null
+          )
         : []
     );
     connections[sourceName] = { main };
@@ -1083,10 +1083,10 @@ async function handleStatus(
     cloudHealth,
     ...(sidecarState
       ? {
-          errorMessage: sidecarState.errorMessage,
-          retries: sidecarState.retries,
-          recentOutput: sidecarState.recentOutput,
-        }
+        errorMessage: sidecarState.errorMessage,
+        retries: sidecarState.retries,
+        recentOutput: sidecarState.recentOutput,
+      }
       : {}),
   };
 

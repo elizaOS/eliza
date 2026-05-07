@@ -202,7 +202,12 @@ export const chatWithAttachments: Action = {
 		};
 
 		// 1. extract attachment IDs from the message
-		const attachmentData = await getAttachmentIds(runtime, message, state, options);
+		const attachmentData = await getAttachmentIds(
+			runtime,
+			message,
+			state,
+			options,
+		);
 		if (!attachmentData) {
 			runtime.logger.warn(
 				{

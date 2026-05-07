@@ -357,7 +357,11 @@ async function callPlanner(params: {
 
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
-	const raw = await params.runtime.useModel(modelType, modelParams, params.provider);
+	const raw = await params.runtime.useModel(
+		modelType,
+		modelParams,
+		params.provider,
+	);
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
@@ -442,7 +446,9 @@ async function recordPlannerStage(args: {
 	}
 }
 
-function extractUsage(raw: string | GenerateTextResult): RecordedUsage | undefined {
+function extractUsage(
+	raw: string | GenerateTextResult,
+): RecordedUsage | undefined {
 	if (typeof raw === "string") return undefined;
 	if (!raw.usage) return undefined;
 	const usage = raw.usage;
@@ -465,19 +471,24 @@ function extractUsage(raw: string | GenerateTextResult): RecordedUsage | undefin
 			out.cacheReadInputTokens = cachedPrompt;
 		}
 	}
-	const cacheCreation = (usage as Record<string, unknown>).cacheCreationInputTokens;
+	const cacheCreation = (usage as Record<string, unknown>)
+		.cacheCreationInputTokens;
 	if (typeof cacheCreation === "number") {
 		out.cacheCreationInputTokens = cacheCreation;
 	}
 	return out;
 }
 
-function extractFinishReason(raw: string | GenerateTextResult): string | undefined {
+function extractFinishReason(
+	raw: string | GenerateTextResult,
+): string | undefined {
 	if (typeof raw === "string") return undefined;
 	return raw.finishReason;
 }
 
-function extractModelName(raw: string | GenerateTextResult): string | undefined {
+function extractModelName(
+	raw: string | GenerateTextResult,
+): string | undefined {
 	if (typeof raw === "string") return undefined;
 	const meta = raw.providerMetadata;
 	if (meta && typeof meta === "object") {

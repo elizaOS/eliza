@@ -275,10 +275,7 @@ export class AgentSandboxesRepository {
       .select({ count: sql<number>`count(*)::int` })
       .from(agentSandboxes)
       .where(
-        and(
-          eq(agentSandboxes.pool_status, "unclaimed"),
-          eq(agentSandboxes.status, "running"),
-        ),
+        and(eq(agentSandboxes.pool_status, "unclaimed"), eq(agentSandboxes.status, "running")),
       );
     const [provisioning] = await dbRead
       .select({ count: sql<number>`count(*)::int` })
@@ -351,12 +348,7 @@ export class AgentSandboxesRepository {
     return dbRead
       .select()
       .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.pool_status, "unclaimed"),
-          eq(agentSandboxes.status, "running"),
-        ),
-      )
+      .where(and(eq(agentSandboxes.pool_status, "unclaimed"), eq(agentSandboxes.status, "running")))
       .orderBy(agentSandboxes.pool_ready_at);
   }
 
@@ -499,12 +491,7 @@ export class AgentSandboxesRepository {
   async deletePoolEntry(id: string): Promise<boolean> {
     const r = await dbWrite
       .delete(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          eq(agentSandboxes.pool_status, "unclaimed"),
-        ),
-      )
+      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.pool_status, "unclaimed")))
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
   }
@@ -518,12 +505,7 @@ export class AgentSandboxesRepository {
         pool_ready_at: new Date(),
         updated_at: new Date(),
       })
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          eq(agentSandboxes.pool_status, "unclaimed"),
-        ),
-      )
+      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.pool_status, "unclaimed")))
       .returning();
     return r;
   }

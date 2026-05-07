@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { promises as fs } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { decrypt, encrypt } from "./crypto.js";
+import { assertKey, optsCaller } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import { AuditLog } from "./audit.js";
@@ -460,19 +461,6 @@ export function defaultPgliteVaultDataDir(): string {
 function toMillis(value: string | number): number {
   if (typeof value === "number") return value;
   return Number.parseInt(value, 10);
-}
-
-function assertKey(key: string): void {
-  if (typeof key !== "string" || key.length === 0) {
-    throw new TypeError("vault: key must be a non-empty string");
-  }
-  if (key.length > 256) {
-    throw new TypeError("vault: key must be 256 characters or fewer");
-  }
-}
-
-function optsCaller(opts: SetOptions): { caller?: string } {
-  return opts.caller ? { caller: opts.caller } : {};
 }
 
 // Re-export emptyStore for callers that previously imported it via vault.ts.

@@ -88,9 +88,7 @@ function isPublicPath(pathname: string): boolean {
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
-  return publicPathPrefixes.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+  return publicPathPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {

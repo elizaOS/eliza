@@ -16,11 +16,7 @@ import type {
 import { asUUID, ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { encodeToonValue } from "../../../utils/toon";
-import {
-	composePrompt,
-	parseJSONObjectFromText,
-	parseToonKeyValue,
-} from "../../../utils.ts";
+import { composePrompt, parseJSONObjectFromText } from "../../../utils.ts";
 import {
 	formatTaskCompletionStatus,
 	getTaskCompletionCacheKey,
@@ -326,11 +322,6 @@ function parseReflectionResponse(response: string): {
 	}
 
 	for (const candidate of candidates) {
-		const parsed = parseToonKeyValue<ReflectionToonResult>(candidate);
-		if (parsed) {
-			return { reflection: parsed, lookedStructured: true };
-		}
-
 		const parsedJson = parseJSONObjectFromText(candidate);
 		if (parsedJson) {
 			const reflection = extractJsonReflectionRecord(parsedJson);

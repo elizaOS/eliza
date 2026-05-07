@@ -177,7 +177,8 @@
     "@orca-so/common-sdk@0.7.0": "patches/@orca-so%2Fcommon-sdk@0.7.0.patch",
     "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
-    "tsup@8.5.1": "patches/tsup@8.5.1.patch"
+    "tsup@8.5.1": "patches/tsup@8.5.1.patch",
+    "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",

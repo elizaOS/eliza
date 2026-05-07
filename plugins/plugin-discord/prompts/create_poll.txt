@@ -12,11 +12,11 @@ Examples:
 - "poll: Should we have a meeting tomorrow? Yes/No"
   -> question: "Should we have a meeting tomorrow?", options: ["Yes", "No"]
 
-Respond with TOON only:
-question: <poll question>
-options[0]: <option1>
-options[1]: <option2>
-useEmojis: true/false
-
+Respond with JSON only, no markdown:
+{
+  "question": "poll question",
+  "options": ["option1", "option2"],
+  "useEmojis": true
+}
 
 

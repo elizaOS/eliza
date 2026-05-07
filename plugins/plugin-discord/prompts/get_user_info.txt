@@ -11,9 +11,10 @@ Examples:
 - "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
 - "who am I?" -> userIdentifier: "self", detailed: false
 
-Respond with TOON only:
-userIdentifier: <username|user-id|mention|self>
-detailed: true/false
-
+Respond with JSON only, no markdown:
+{
+  "userIdentifier": "username|user-id|mention|self",
+  "detailed": false
+}
 
 

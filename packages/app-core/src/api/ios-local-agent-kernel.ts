@@ -1,4 +1,5 @@
 import { getBootConfig } from "../config/boot-config-store";
+import { asRecord } from "@elizaos/shared";
 import {
   findCatalogModel,
   MODEL_CATALOG,
@@ -212,12 +213,6 @@ function writeJson(key: string, value: unknown): void {
   } catch {
     // localStorage can be unavailable in embedded shells.
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function stringFromUnknown(value: unknown): string | null {
@@ -616,9 +611,10 @@ function normalizeCloudMarketPreviewBaseUrl(rawBaseUrl: string): string {
 }
 
 function resolveCloudWalletMarketOverviewUrl(): string {
-  const cloudApiBase =
-    typeof getBootConfig().cloudApiBase === "string"
-      ? getBootConfig().cloudApiBase
+  const rawBase = getBootConfig().cloudApiBase;
+  const cloudApiBase: string =
+    typeof rawBase === "string"
+      ? rawBase
       : DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL;
   return `${normalizeCloudMarketPreviewBaseUrl(cloudApiBase)}${CLOUD_WALLET_MARKET_OVERVIEW_PATH}`;
 }

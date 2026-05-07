@@ -94,8 +94,7 @@ function normalizeMessageOpInfo(
         ? params.text
         : undefined,
     messageTs:
-      typeof params.messageTs === "string" &&
-      params.messageTs.trim().length > 0
+      typeof params.messageTs === "string" && params.messageTs.trim().length > 0
         ? params.messageTs
         : undefined,
     channelRef:
@@ -104,8 +103,7 @@ function normalizeMessageOpInfo(
         ? params.channelRef
         : "current",
     channelId:
-      typeof params.channelId === "string" &&
-      params.channelId.trim().length > 0
+      typeof params.channelId === "string" && params.channelId.trim().length > 0
         ? params.channelId
         : null,
     threadTs:

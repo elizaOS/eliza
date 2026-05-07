@@ -4,8 +4,9 @@
 # Instructions: {{senderName}} is requesting a transcription of a specific media file (audio or video). Your goal is to determine the ID of the attachment they want transcribed.
 The "attachmentId" is the ID of the media file attachment that the user wants transcribed. If not specified, return null.
 
-Respond with TOON only:
-attachmentId: <Attachment ID>
-
+Respond with JSON only, no markdown:
+{
+  "attachmentId": "Attachment ID"
+}
 
 

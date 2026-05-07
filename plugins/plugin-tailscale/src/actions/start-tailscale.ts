@@ -4,9 +4,9 @@ import {
   type Action,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-  parseToonKeyValue,
 } from '@elizaos/core';
 import { z } from 'zod';
 import { getTunnelService } from '../types';
@@ -23,8 +23,8 @@ The user said: "{{userMessage}}"
 
 Extract the port number from their message, or use the default port 3000 if not specified.
 
-Respond with TOON only:
-port: 3000`;
+Respond with JSON only:
+{"port":3000}`;
 
 const DEFAULT_PORT = 3000;
 
@@ -32,23 +32,31 @@ function isValidPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65535;
 }
 
-function parsePort(value: string): number {
-  const toonParsed = parseToonKeyValue<Record<string, unknown>>(value);
-  const toonResult = portPayloadSchema.safeParse(toonParsed);
-  if (toonResult.success && isValidPort(toonResult.data.port)) return toonResult.data.port;
-
+function parseJsonObject(value: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(value);
-    const result = portPayloadSchema.safeParse(parsed);
-    if (result.success && isValidPort(result.data.port)) return result.data.port;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
-    // fall through
+    return null;
   }
-  const match = value.match(/\b(\d{1,5})\b/);
-  const captured = match?.[1];
-  if (!captured) return DEFAULT_PORT;
-  const num = Number.parseInt(captured, 10);
-  return isValidPort(num) ? num : DEFAULT_PORT;
+}
+
+function parsePort(value: string): number {
+  const parsed = parseJsonObject(value.trim());
+  const result = portPayloadSchema.safeParse(parsed);
+  return result.success && isValidPort(result.data.port) ? result.data.port : DEFAULT_PORT;
+}
+
+function readPort(options?: HandlerOptions): number | null {
+  const direct = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
+  const params =
+    direct.parameters && typeof direct.parameters === 'object'
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  const result = portPayloadSchema.safeParse({ port: params.port ?? direct.port });
+  return result.success && isValidPort(result.data.port) ? result.data.port : null;
 }
 
 export const startTailscaleAction: Action = {
@@ -58,6 +66,14 @@ export const startTailscaleAction: Action = {
     'Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)',
   descriptionCompressed:
     'start Tailscale tunnel expose local port tailnet (public internet via Funnel)',
+  parameters: [
+    {
+      name: 'port',
+      description: 'Local port to expose through the Tailscale tunnel.',
+      required: false,
+      schema: { type: 'number', default: DEFAULT_PORT },
+    },
+  ],
   validate: async (runtime: IAgentRuntime) => {
     const tunnelService = getTunnelService(runtime);
     if (!tunnelService) return false;
@@ -67,7 +83,7 @@ export const startTailscaleAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state,
-    _options,
+    options,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const tunnelService = getTunnelService(runtime);
@@ -92,12 +108,17 @@ export const startTailscaleAction: Action = {
     elizaLogger.info('[start-tailscale] starting tunnel');
 
     const userMessage = message.content.text ?? '';
-    const portResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: PORT_PROMPT_TEMPLATE.replace('{{userMessage}}', userMessage),
-      temperature: 0.3,
-    });
-
-    const port = parsePort(String(portResponse));
+    const directPort = readPort(options);
+    const port =
+      directPort ??
+      parsePort(
+        String(
+          await runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt: PORT_PROMPT_TEMPLATE.replace('{{userMessage}}', userMessage),
+            temperature: 0.3,
+          }),
+        ),
+      );
     const url = await tunnelService.startTunnel(port);
     const publicUrl = typeof url === 'string' ? url : tunnelService.getUrl();
 

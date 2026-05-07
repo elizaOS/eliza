@@ -4,8 +4,9 @@
 # Instructions: {{senderName}} is requesting to download a specific media file (video or audio). Your goal is to determine the URL of the media they want to download.
 The "mediaUrl" is the URL of the media file that the user wants downloaded. If not specified, return null.
 
-Respond with TOON only:
-mediaUrl: <Media URL>
-
+Respond with JSON only, no markdown:
+{
+  "mediaUrl": "Media URL"
+}
 
 

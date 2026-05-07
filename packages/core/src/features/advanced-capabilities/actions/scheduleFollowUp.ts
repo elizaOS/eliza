@@ -73,8 +73,7 @@ export const scheduleFollowUpAction: Action = {
 		if (
 			runtime.actions.some(
 				(action) =>
-					action.name === "RELATIONSHIP" ||
-					action.name === "RELATIONSHIP",
+					action.name === "RELATIONSHIP" || action.name === "RELATIONSHIP",
 			)
 		) {
 			return false;

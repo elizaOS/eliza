@@ -9,7 +9,6 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import {
@@ -27,6 +26,7 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
+import { getActionParameters, parseJsonObjectFromText } from "../utils";
 import {
 	terminalActionInteractionSemantics,
 	terminalActionResultData,
@@ -64,9 +64,8 @@ Extract the following:
 1. text: The message text to send
 2. channelRef: The channel to send to (default: "current" for the current channel)
 
-Respond with TOON only:
-text: The message to send
-channelRef: current`;
+Respond with JSON only, no markdown:
+{"text":"The message to send","channelRef":"current"}`;
 
 const editMessageTemplate = `You are helping to extract edit message parameters.
 
@@ -80,10 +79,8 @@ Extract the following:
 2. newText: The new text content for the message
 3. channelRef: The channel where the message is (default: "current")
 
-Respond with TOON only:
-messageId: 123456789
-newText: The updated message text
-channelRef: current`;
+Respond with JSON only, no markdown:
+{"messageId":"123456789","newText":"The updated message text","channelRef":"current"}`;
 
 const deleteMessageTemplate = `You are helping to extract delete message parameters.
 
@@ -96,9 +93,8 @@ Extract the following:
 1. messageId: The ID of the message to delete
 2. channelRef: The channel where the message is (default: "current")
 
-Respond with TOON only:
-messageId: 123456789
-channelRef: current`;
+Respond with JSON only, no markdown:
+{"messageId":"123456789","channelRef":"current"}`;
 
 const opRouterTemplate = `Pick the Discord message operation that matches the user's request.
 
@@ -115,8 +111,8 @@ Allowed values for "op":
 - pin: pin a message in a channel
 - unpin: unpin a message in a channel
 
-Respond with TOON only:
-op: <one of: send|reply|dm|edit|delete|react|pin|unpin>`;
+Respond with JSON only, no markdown:
+{"op":"send"}`;
 
 function extractEmojisFromText(text: string): string[] {
 	if (!text) return [];
@@ -232,10 +228,9 @@ async function resolveOp(
 	options: HandlerOptions | undefined,
 	messageText: string,
 ): Promise<DiscordMessageOp | null> {
+	const parameters = getActionParameters(options);
 	const optsOp =
-		typeof (options as Record<string, unknown> | undefined)?.op === "string"
-			? ((options as Record<string, unknown>).op as string).toLowerCase()
-			: undefined;
+		typeof parameters.op === "string" ? parameters.op.toLowerCase() : undefined;
 	if (optsOp && (VALID_OPS as readonly string[]).includes(optsOp)) {
 		return optsOp as DiscordMessageOp;
 	}
@@ -253,7 +248,7 @@ async function resolveOp(
 	const prompt = composePromptFromState({ state, template: opRouterTemplate });
 	for (let i = 0; i < 3; i++) {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		const op =
 			typeof parsed?.op === "string" ? parsed.op.toLowerCase() : undefined;
 		if (op && (VALID_OPS as readonly string[]).includes(op)) {
@@ -267,6 +262,7 @@ async function handleSend(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -286,9 +282,19 @@ async function handleSend(
 	});
 
 	let messageInfo: { text: string; channelRef?: string } | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.text) {
+		messageInfo = {
+			text: String(parameters.text),
+			channelRef: parameters.channelRef
+				? String(parameters.channelRef)
+				: "current",
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (messageInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.text) {
 			messageInfo = {
 				text: String(parsed.text),
@@ -385,6 +391,7 @@ async function handleDM(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -401,9 +408,17 @@ async function handleDM(
 	const prompt = composePromptFromState({ state, template: sendDmTemplate });
 	let dmInfo: { recipientIdentifier: string; messageContent: string } | null =
 		null;
+	const parameters = getActionParameters(options);
+	if (parameters.recipientIdentifier && parameters.messageContent) {
+		dmInfo = {
+			recipientIdentifier: String(parameters.recipientIdentifier),
+			messageContent: String(parameters.messageContent),
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (dmInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.recipientIdentifier && parsed.messageContent) {
 			dmInfo = {
 				recipientIdentifier: String(parsed.recipientIdentifier),
@@ -503,6 +518,7 @@ async function handleEdit(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -526,10 +542,25 @@ async function handleEdit(
 		newText: string;
 		channelRef?: string;
 	} | null = null;
+	const parameters = getActionParameters(options);
+	if (
+		typeof parameters.messageId === "string" &&
+		typeof parameters.newText === "string"
+	) {
+		editParams = {
+			messageId: parameters.messageId,
+			newText: parameters.newText,
+			channelRef:
+				typeof parameters.channelRef === "string"
+					? parameters.channelRef
+					: undefined,
+		};
+	}
 
 	for (let i = 0; i < 3; i++) {
+		if (editParams) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (
 			parsed &&
 			typeof parsed.messageId === "string" &&
@@ -629,6 +660,7 @@ async function handleDelete(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -648,9 +680,20 @@ async function handleDelete(
 	});
 
 	let deleteParams: { messageId: string; channelRef?: string } | null = null;
+	const parameters = getActionParameters(options);
+	if (typeof parameters.messageId === "string") {
+		deleteParams = {
+			messageId: parameters.messageId,
+			channelRef:
+				typeof parameters.channelRef === "string"
+					? parameters.channelRef
+					: undefined,
+		};
+	}
 	for (let i = 0; i < 3; i++) {
+		if (deleteParams) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed && typeof parsed.messageId === "string") {
 			deleteParams = {
 				messageId: parsed.messageId,
@@ -746,6 +789,7 @@ async function handleReact(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -760,10 +804,19 @@ async function handleReact(
 	}
 
 	let reactionInfo: { messageRef: string; emoji: string } | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.emoji) {
+		reactionInfo = {
+			messageRef: parameters.messageRef
+				? String(parameters.messageRef)
+				: "last",
+			emoji: String(parameters.emoji),
+		};
+	}
 	const userText = message.content?.text || "";
 	const needsLLM = isExplicitReactionRequest(userText);
 
-	if (!needsLLM) {
+	if (!reactionInfo && !needsLLM) {
 		const stateData = state.data as Record<string, unknown> | undefined;
 		const stateWithResponseText = state as State & { responseText?: string };
 		const responseText = String(
@@ -805,7 +858,7 @@ async function handleReact(
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt,
 			});
-			const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+			const parsed = parseJsonObjectFromText(response);
 			if (parsed?.emoji) {
 				reactionInfo = {
 					messageRef: String(parsed.messageRef || "last"),
@@ -934,6 +987,7 @@ async function handlePin(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -953,9 +1007,14 @@ async function handlePin(
 	});
 
 	let messageInfo: { messageRef: string } | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.messageRef) {
+		messageInfo = { messageRef: String(parameters.messageRef) };
+	}
 	for (let i = 0; i < 3; i++) {
+		if (messageInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.messageRef) {
 			messageInfo = { messageRef: String(parsed.messageRef) };
 			break;
@@ -1082,6 +1141,7 @@ async function handleUnpin(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult | undefined> {
 	const discordService = runtime.getService(
@@ -1101,9 +1161,14 @@ async function handleUnpin(
 	});
 
 	let messageInfo: { messageRef: string } | null = null;
+	const parameters = getActionParameters(options);
+	if (parameters.messageRef) {
+		messageInfo = { messageRef: String(parameters.messageRef) };
+	}
 	for (let i = 0; i < 3; i++) {
+		if (messageInfo) break;
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-		const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+		const parsed = parseJsonObjectFromText(response);
 		if (parsed?.messageRef) {
 			messageInfo = { messageRef: String(parsed.messageRef) };
 			break;
@@ -1269,19 +1334,19 @@ export const messageOp: Action = {
 		switch (op) {
 			case "send":
 			case "reply":
-				return handleSend(runtime, message, currentState, callback);
+				return handleSend(runtime, message, currentState, options, callback);
 			case "dm":
-				return handleDM(runtime, message, currentState, callback);
+				return handleDM(runtime, message, currentState, options, callback);
 			case "edit":
-				return handleEdit(runtime, message, currentState, callback);
+				return handleEdit(runtime, message, currentState, options, callback);
 			case "delete":
-				return handleDelete(runtime, message, currentState, callback);
+				return handleDelete(runtime, message, currentState, options, callback);
 			case "react":
-				return handleReact(runtime, message, currentState, callback);
+				return handleReact(runtime, message, currentState, options, callback);
 			case "pin":
-				return handlePin(runtime, message, currentState, callback);
+				return handlePin(runtime, message, currentState, options, callback);
 			case "unpin":
-				return handleUnpin(runtime, message, currentState, callback);
+				return handleUnpin(runtime, message, currentState, options, callback);
 		}
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],

@@ -8,7 +8,6 @@ import type {
 import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
@@ -28,6 +27,7 @@ import type {
 } from "../contracts/index.js";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -84,17 +84,17 @@ type LifeOpsModelCallArgs = {
   purpose?: string;
 };
 
-export type LifeOpsToonModelResult<
+export type LifeOpsJsonModelResult<
   T extends Record<string, unknown> = Record<string, unknown>,
 > = {
   rawResponse: string;
   parsed: T | null;
 };
 
-export function parseLifeOpsToonRecord<
+export function parseLifeOpsJsonRecord<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(rawResponse: string): T | null {
-  return parseToonKeyValue<T>(rawResponse);
+  return parseJsonModelRecord<T>(rawResponse);
 }
 
 export async function runLifeOpsTextModel(
@@ -132,9 +132,9 @@ export async function runLifeOpsTextModel(
   }
 }
 
-export async function runLifeOpsToonModel<
+export async function runLifeOpsJsonModel<
   T extends Record<string, unknown> = Record<string, unknown>,
->(args: LifeOpsModelCallArgs): Promise<LifeOpsToonModelResult<T> | null> {
+>(args: LifeOpsModelCallArgs): Promise<LifeOpsJsonModelResult<T> | null> {
   const rawResponse = await runLifeOpsTextModel(args);
   if (rawResponse === null) {
     return null;
@@ -142,7 +142,7 @@ export async function runLifeOpsToonModel<
 
   return {
     rawResponse,
-    parsed: parseLifeOpsToonRecord<T>(rawResponse),
+    parsed: parseLifeOpsJsonRecord<T>(rawResponse),
   };
 }
 

@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, ModelType } from "@elizaos/core";
 
 export const WHATSAPP_MESSAGE_OP_ACTION = "WHATSAPP_MESSAGE_OP";
 
@@ -31,18 +31,52 @@ The user wants to perform a WhatsApp message operation. Choose one of:
 Recent conversation:
 {{recentMessages}}
 
-Respond with TOON only. Examples:
-
-op: send
-to: +14155552671
-text: Hello from WhatsApp!
-
-op: react
-messageId: wamid.xxx
-emoji: 👍`;
+Respond with JSON only. Return exactly one JSON object matching one of these examples:
+{"op":"send","to":"+14155552671","text":"Hello from WhatsApp!"}
+{"op":"react","messageId":"wamid.xxx","emoji":"👍"}`;
 
 function isWhatsAppOp(value: unknown): value is WhatsAppOp {
   return value === "send" || value === "react";
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value.trim()) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readParams(options?: HandlerOptions | unknown): Record<string, unknown> {
+  const direct = options && typeof options === "object" ? (options as Record<string, unknown>) : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function normalizeParams(params: Record<string, unknown>): WhatsAppOpParams | null {
+  if (!isWhatsAppOp(params.op)) {
+    return null;
+  }
+
+  return {
+    op: params.op,
+    to: params.to ? String(params.to) : undefined,
+    text: params.text ? String(params.text) : undefined,
+    messageId: params.messageId ? String(params.messageId) : undefined,
+    emoji: params.emoji ? String(params.emoji) : undefined,
+  };
 }
 
 interface WhatsAppCredentials {
@@ -206,13 +240,16 @@ export const messageOpAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: HandlerOptions
+    options?: HandlerOptions
   ): Promise<boolean> => {
     const text = message.content?.text?.toLowerCase() ?? "";
+    const structuredParams = normalizeParams(readParams(options));
     const hasIntent =
-      ["whatsapp", "send", "message", "react", "reaction"].some((keyword) =>
+      Boolean(structuredParams) ||
+      (["whatsapp", "send", "message", "react", "reaction"].some((keyword) =>
         text.includes(keyword)
-      ) && /\b(?:whatsapp|send|message|react|reaction)\b/i.test(text);
+      ) &&
+        /\b(?:whatsapp|send|message|react|reaction)\b/i.test(text));
     return hasIntent && message.content?.source === "whatsapp";
   },
 
@@ -234,20 +271,19 @@ export const messageOpAction: Action = {
     }
 
     const currentState = state ?? (await runtime.composeState(message));
-    const prompt = composePromptFromState({ state: currentState, template: MESSAGE_OP_TEMPLATE });
 
-    let params: WhatsAppOpParams | null = null;
+    let params: WhatsAppOpParams | null = normalizeParams(readParams(_options));
     try {
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-      if (parsed && isWhatsAppOp(parsed.op)) {
-        params = {
-          op: parsed.op,
-          to: parsed.to ? String(parsed.to) : undefined,
-          text: parsed.text ? String(parsed.text) : undefined,
-          messageId: parsed.messageId ? String(parsed.messageId) : undefined,
-          emoji: parsed.emoji ? String(parsed.emoji) : undefined,
-        };
+      if (!params) {
+        const prompt = composePromptFromState({
+          state: currentState,
+          template: MESSAGE_OP_TEMPLATE,
+        });
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+        const parsed = parseJsonObject(response);
+        if (parsed) {
+          params = normalizeParams(parsed);
+        }
       }
     } catch {
       // fall through; we'll attempt to infer below

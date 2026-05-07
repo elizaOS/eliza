@@ -45,7 +45,7 @@
  */
 
 import type { IAgentRuntime, JsonValue } from "@elizaos/core";
-import { ModelType, parseToonKeyValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { TemplateValues } from "./template";
 import { resolveControlTemplates } from "./template";
 import type {
@@ -57,7 +57,7 @@ import type {
 } from "./types";
 import { getTypeHandler, parseValue, validateField } from "./validation";
 
-type ExtractionToonField = {
+type ExtractionJsonField = {
   key?: string;
   value?: JsonValue;
   confidence?: string | number;
@@ -65,44 +65,49 @@ type ExtractionToonField = {
   is_correction?: boolean | string;
 };
 
-type ExtractionToonResponse = {
+type ExtractionJsonResponse = {
   intent?: string;
-  extractions?:
-    | { field?: ExtractionToonField | ExtractionToonField[] }
-    | ExtractionToonField[];
+  extractions?: ExtractionJsonField[];
 };
 
-type SingleFieldToonResponse = {
+type SingleFieldJsonResponse = {
   found?: string | boolean;
   value?: JsonValue;
   confidence?: string | number;
   reasoning?: string;
 };
 
-type CorrectionToonField = {
+type CorrectionJsonField = {
   field?: string;
   old_value?: JsonValue;
   new_value?: JsonValue;
   confidence?: string | number;
 };
 
-type CorrectionToonResponse = {
+type CorrectionJsonResponse = {
   has_correction?: string | boolean;
-  corrections?:
-    | { correction?: CorrectionToonField | CorrectionToonField[] }
-    | CorrectionToonField[];
+  corrections?: CorrectionJsonField[];
 };
 
-function toonCell(value: unknown): string {
-  const text = String(value ?? "")
-    .replace(/\r?\n/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/,/g, ";")
-    .trim();
-  return text || "none";
+function parseJsonObjectResponse<T>(response: string): T | null {
+  try {
+    const trimmed = response.trim();
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const candidate = (fenced?.[1] ?? trimmed).trim();
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
+    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as T;
+  } catch {
+    return null;
+  }
 }
 
-function toonBoolean(value: unknown): boolean {
+function parseBoolean(value: unknown): boolean {
   return (
     String(value ?? "")
       .trim()

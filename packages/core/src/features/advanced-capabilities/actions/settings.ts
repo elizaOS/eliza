@@ -25,7 +25,7 @@ import { ChannelType, ModelType } from "../../../types/index.ts";
 import {
 	composePrompt,
 	composePromptFromState,
-	parseToonKeyValue,
+	parseJSONObjectFromText,
 } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -107,19 +107,36 @@ function extractValidSettings(
 	return extracted;
 }
 
+function responseContentFromJson(
+	response: string,
+	fallbackAction: string,
+): Content {
+	const parsed = parseJSONObjectFromText(response) as Content | null;
+	return {
+		...(parsed ?? {}),
+		text:
+			typeof parsed?.text === "string" && parsed.text.trim()
+				? parsed.text
+				: response.trim(),
+		actions: Array.isArray(parsed?.actions) ? parsed.actions : [fallbackAction],
+	};
+}
+
 const messageCompletionFooter = `\n# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
 
 
-Response format should be TOON like this:
-name: {{agentName}}
-text: Your message text here
-thought: Your thought about the response
-actions[1]: ACTION_NAME
+Response format should be JSON like this:
+{
+  "name": "{{agentName}}",
+  "text": "Your message text here",
+  "thought": "Your thought about the response",
+  "actions": ["ACTION_NAME"]
+}
 
 Do not including any thinking or internal reflection in the "text" field.
 "thought" should be a short description of what the agent is thinking about before responding, including a brief justification for the response.
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 // Template for success responses when settings are updated
 /**
@@ -463,7 +480,7 @@ async function extractSettingValues(
 		],
 		options: {
 			modelType: ModelType.TEXT_LARGE,
-			preferredEncapsulation: "toon",
+			preferredEncapsulation: "json",
 			contextCheckLevel: 0,
 			maxRetries: 1,
 		},
@@ -578,7 +595,10 @@ async function handleOnboardingComplete(
 		stopSequences: [],
 	});
 
-	const responseContent = parseToonKeyValue(response) as Content;
+	const responseContent = responseContentFromJson(
+		response,
+		"ONBOARDING_COMPLETE",
+	);
 
 	await callback({
 		text: responseContent.text,
@@ -643,7 +663,7 @@ async function generateSuccessResponse(
 		stopSequences: [],
 	});
 
-	const responseContent = parseToonKeyValue(response) as Content;
+	const responseContent = responseContentFromJson(response, "SETTING_UPDATED");
 
 	await callback({
 		text: responseContent.text,
@@ -707,7 +727,10 @@ async function generateFailureResponse(
 		stopSequences: [],
 	});
 
-	const responseContent = parseToonKeyValue(response) as Content;
+	const responseContent = responseContentFromJson(
+		response,
+		"SETTING_UPDATE_FAILED",
+	);
 
 	await callback({
 		text: responseContent.text,
@@ -749,7 +772,10 @@ async function generateErrorResponse(
 		stopSequences: [],
 	});
 
-	const responseContent = parseToonKeyValue(response) as Content;
+	const responseContent = responseContentFromJson(
+		response,
+		"SETTING_UPDATE_ERROR",
+	);
 
 	await callback({
 		text: responseContent.text,

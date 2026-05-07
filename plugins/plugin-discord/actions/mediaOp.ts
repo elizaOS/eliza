@@ -203,9 +203,7 @@ function quickResolveOp(
 ): DiscordMediaOp | null {
 	const parameters = getActionParameters(options);
 	const optsOp =
-		typeof parameters.op === "string"
-			? parameters.op.toLowerCase()
-			: undefined;
+		typeof parameters.op === "string" ? parameters.op.toLowerCase() : undefined;
 	if (optsOp && (VALID_OPS as readonly string[]).includes(optsOp)) {
 		return optsOp as DiscordMediaOp;
 	}
@@ -451,7 +449,13 @@ export const mediaOp: Action = {
 			case "download": {
 				const downloadState =
 					currentState ?? (await runtime.composeState(message));
-				return handleDownload(runtime, message, downloadState, options, callback);
+				return handleDownload(
+					runtime,
+					message,
+					downloadState,
+					options,
+					callback,
+				);
 			}
 			case "transcribe":
 				return handleTranscribe(runtime, message, callback);

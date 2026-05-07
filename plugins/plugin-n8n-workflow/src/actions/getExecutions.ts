@@ -125,29 +125,29 @@ export const getExecutionsAction: Action = {
       const context = buildConversationContext(message, state);
       const matchResult = workflowIdParam
         ? {
-            matchedWorkflowId: workflowIdParam,
+          matchedWorkflowId: workflowIdParam,
+          confidence: 'high' as const,
+          matches: workflows.map((workflow) => ({
+            id: workflow.id,
+            name: workflow.name,
+            score: workflow.id === workflowIdParam ? 1 : 0,
+          })),
+          reason: 'workflowId parameter',
+        }
+        : workflowNameParam
+          ? {
+            matchedWorkflowId:
+                workflows.find((workflow) =>
+                  workflow.name.toLowerCase().includes(workflowNameParam)
+                )?.id ?? null,
             confidence: 'high' as const,
             matches: workflows.map((workflow) => ({
               id: workflow.id,
               name: workflow.name,
-              score: workflow.id === workflowIdParam ? 1 : 0,
+              score: workflow.name.toLowerCase().includes(workflowNameParam) ? 1 : 0,
             })),
-            reason: 'workflowId parameter',
+            reason: 'workflowName parameter',
           }
-        : workflowNameParam
-          ? {
-              matchedWorkflowId:
-                workflows.find((workflow) =>
-                  workflow.name.toLowerCase().includes(workflowNameParam)
-                )?.id ?? null,
-              confidence: 'high' as const,
-              matches: workflows.map((workflow) => ({
-                id: workflow.id,
-                name: workflow.name,
-                score: workflow.name.toLowerCase().includes(workflowNameParam) ? 1 : 0,
-              })),
-              reason: 'workflowName parameter',
-            }
           : await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {

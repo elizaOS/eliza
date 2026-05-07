@@ -61,7 +61,9 @@ function deriveTriggerType(e: TriggerExtraction): TriggerType {
 	return "interval";
 }
 
-function parsePositiveInt(raw: string | number | undefined): number | undefined {
+function parsePositiveInt(
+	raw: string | number | undefined,
+): number | undefined {
 	if (typeof raw === "number") {
 		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : undefined;
 	}
@@ -157,10 +159,7 @@ export const createTaskAction: Action = {
 	): Promise<boolean> => {
 		if (!runtime.enableAutonomy) return false;
 		const params = readTriggerParameters(options);
-		if (
-			(params.instructions && params.instructions.trim()) ||
-			(params.displayName && params.displayName.trim())
-		) {
+		if (params.instructions?.trim() || params.displayName?.trim()) {
 			return true;
 		}
 		const text = message.content.text ?? "";
@@ -196,7 +195,7 @@ export const createTaskAction: Action = {
 				success: false,
 				text: "Triggers are disabled.",
 				data: { actionName: "CREATE_TASK" },
-		};
+			};
 
 		try {
 			const extracted = inputParameters;

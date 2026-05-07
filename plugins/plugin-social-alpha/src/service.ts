@@ -8,7 +8,6 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseToonKeyValue,
 	Service,
 	type Task,
 	type UUID,
@@ -72,10 +71,18 @@ type ExtractedSignal = {
 	llmReasoning?: string;
 };
 
+type NormalizedExtractedSignal = Omit<
+	ExtractedSignal,
+	"messageIndex" | "isCall"
+> & {
+	messageIndex: number;
+	isCall: boolean;
+};
+
 function parseRecommendationExtraction(response: string): {
-	recommendations: ExtractedSignal[];
+	recommendations: NormalizedExtractedSignal[];
 } | null {
-	const parsed = parseToonKeyValue<{ recommendations?: ExtractedSignal[] }>(
+	const parsed = parseJsonObject<{ recommendations?: ExtractedSignal[] }>(
 		response,
 	);
 
@@ -94,6 +101,19 @@ function parseRecommendationExtraction(response: string): {
 				rec.isCall === true || String(rec.isCall).toLowerCase() === "true",
 		})),
 	};
+}
+
+function parseJsonObject<T extends Record<string, unknown>>(
+	value: string,
+): T | null {
+	try {
+		const parsed: unknown = JSON.parse(value.trim());
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as T)
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 // Event types
@@ -3945,12 +3965,12 @@ ${report.tokenReports.join("\n")}
 • ser = sir
 
 ⚠️ CRITICAL OUTPUT REQUIREMENTS:
-- Respond with TOON only.
+- Respond with JSON only.
 - EXACTLY ${batchSize} recommendations entries (messageIndex 0 to ${batchSize - 1})
 - Every entry MUST include ALL required fields
 
-REQUIRED TOON SHAPE:
-recommendations[0]{messageIndex,isCall,tokenMentioned,nameMentioned,caMentioned,chain,sentiment,conviction,llmReasoning}: 0,true,SOL,,,solana,positive,medium,User mentioned buying $SOL with medium confidence
+REQUIRED JSON SHAPE:
+{"recommendations":[{"messageIndex":0,"isCall":true,"tokenMentioned":"SOL","nameMentioned":"","caMentioned":"","chain":"solana","sentiment":"positive","conviction":"medium","llmReasoning":"User mentioned buying $SOL with medium confidence"}]}
 
 FIELD REQUIREMENTS:
 • messageIndex: 0 to ${batchSize - 1}
@@ -3992,7 +4012,7 @@ Examples that SHOULD be extracted:
 - "most ai stuff are getting a dump" → negative sentiment on AI tokens
 - Contract addresses without context → neutral discovery
 
-RESPOND WITH TOON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
+RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 		return { systemPrompt, userPrompt };
 	}
 

@@ -1785,6 +1785,60 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  const normalizeDelete = (response: {
+    success?: boolean;
+    data?: { message?: string; status?: string };
+    error?: string;
+  }) => ({
+    success: response.success === true,
+    ...(response.error ? { error: response.error } : {}),
+    data: {
+      jobId: "",
+      status:
+        response.data?.status ??
+        (response.success === true ? "deleted" : "error"),
+      message:
+        response.data?.message ??
+        (response.success === true
+          ? "Agent delete complete"
+          : (response.error ?? "Agent delete failed")),
+    },
+  });
+
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: { message?: string; status?: string };
+    error?: string;
+  }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`, {
+    method: "DELETE",
+  });
+  if (direct) return normalizeDelete(direct);
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: {
+        jobId: "",
+        status: "auth-missing",
+        message: nativeDirectCloudAuthMissingMessage(),
+      },
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: { message?: string; status?: string };
+      error?: string;
+    }>(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
+      { method: "DELETE" },
+      { allowNonOk: true },
+    );
+    return normalizeDelete(response);
+  }
+
   return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
   });
