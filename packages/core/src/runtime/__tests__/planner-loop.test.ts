@@ -54,7 +54,31 @@ describe("v5 planner loop skeleton", () => {
 
 		const result = await runPlannerLoop({
 			runtime,
-			context: { id: "ctx" },
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: {
+						content: "agent_name: Eliza",
+						stable: true,
+					},
+				},
+				events: [
+					{
+						id: "provider:RECENT_MESSAGES",
+						type: "provider",
+						name: "RECENT_MESSAGES",
+						text: "Recent: user asked for status.",
+					},
+					{
+						id: "msg",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: "Check status." },
+						},
+					},
+				],
+			},
 			executeToolCall,
 			evaluate,
 		});
@@ -64,6 +88,21 @@ describe("v5 planner loop skeleton", () => {
 			expect.objectContaining({ prompt: expect.any(String) }),
 			undefined,
 		);
+		const plannerParams = runtime.useModel.mock.calls[0][1];
+		expect(plannerParams.messages.map((message) => message.role)).toEqual([
+			"system",
+			"user",
+		]);
+		expect(plannerParams.messages[0].content).toContain("planner_stage:");
+		expect(plannerParams.messages[0].content).toContain("agent_name: Eliza");
+		expect(plannerParams.messages[1].content).toContain(
+			"provider: RECENT_MESSAGES",
+		);
+		expect(plannerParams.messages[1].content).toContain("Check status.");
+		// After the stacking fix, trajectory steps are conveyed as assistant/tool
+		// message pairs, NOT as a JSON dump in the user message. The user message
+		// (messages[1]) should no longer contain "trajectory:\n[".
+		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
 			expect.objectContaining({ iteration: 1 }),

@@ -42,7 +42,31 @@ describe("v5 evaluator skeleton", () => {
 
 		const result = await runEvaluator({
 			runtime,
-			context: { id: "ctx" },
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: {
+						content: "agent_name: Eliza",
+						stable: true,
+					},
+				},
+				events: [
+					{
+						id: "provider:RECENT_MESSAGES",
+						type: "provider",
+						name: "RECENT_MESSAGES",
+						text: "Recent: user asked for status.",
+					},
+					{
+						id: "msg",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: "Check status." },
+						},
+					},
+				],
+			},
 			trajectory: {
 				context: { id: "ctx" },
 				steps: [],
@@ -57,6 +81,20 @@ describe("v5 evaluator skeleton", () => {
 			expect.objectContaining({ prompt: expect.any(String) }),
 			undefined,
 		);
+		const evaluatorParams = runtime.useModel.mock.calls[0][1];
+		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
+			"system",
+			"user",
+		]);
+		expect(evaluatorParams.messages[0].content).toContain("evaluator_stage:");
+		expect(evaluatorParams.messages[0].content).toContain("agent_name: Eliza");
+		expect(evaluatorParams.messages[1].content).toContain(
+			"provider: RECENT_MESSAGES",
+		);
+		expect(evaluatorParams.messages[1].content).toContain("Check status.");
+		// After the stacking fix, trajectory steps are conveyed as assistant/tool
+		// message pairs, NOT as a JSON dump in the user message.
+		expect(evaluatorParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(result.decision).toBe("FINISH");
 		expect(copyToClipboard).toHaveBeenCalledWith({
 			title: "Artifact",

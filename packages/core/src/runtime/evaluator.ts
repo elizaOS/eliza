@@ -7,6 +7,7 @@ import {
 	type PromptSegment,
 	type TextGenerationModelType,
 } from "../types/model";
+import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
 import { renderContextObject } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
@@ -16,6 +17,7 @@ import type {
 	PlannerToolCall,
 	PlannerTrajectory,
 } from "./planner-loop";
+import { trajectoryStepsToMessages } from "./planner-loop";
 import type {
 	RecordedStage,
 	RecordedUsage,
@@ -255,23 +257,29 @@ function renderEvaluatorModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const trajectory = stringifyForModel(params.trajectory);
 	const template = params.template ?? v5EvaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const trajectoryContent = `trajectory:\n${trajectory}`;
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	// Legacy prompt string still serializes as JSON for hash/segment consistency.
+	const trajectoryContent = `trajectory:\n${stringifyForModel(params.trajectory)}`;
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: false },
 		{ content: trajectoryContent, stable: false },
 	]);
 	const prompt = promptSegments.map((segment) => segment.content).join("");
-	const messages: ChatMessage[] = [
-		...toChatMessages(renderedContext.messages),
-		{ role: "system", content: `evaluator_stage:\n${instructions}` },
-		{ role: "user", content: trajectoryContent },
-	];
+	// Use proper assistant/tool message pairs so the evaluator sees the same
+	// native tool-calling format as the planner. The trajectory JSON is NOT
+	// included in dynamicBlocks — it is conveyed through stepMessages.
+	const messages = buildStageChatMessages({
+		contextSegments: renderedContext.promptSegments,
+		stageLabel: "evaluator_stage",
+		instructions,
+		dynamicBlocks: [],
+		stepMessages,
+	});
 	return { prompt, messages, promptSegments };
 }
 
@@ -319,36 +327,42 @@ function normalizePromptSegments(segments: PromptSegment[]): PromptSegment[] {
 	);
 }
 
-function toChatMessages(
-	messages: Array<{
-		role: string;
-		content?: unknown;
-		name?: string;
-		toolCallId?: string;
-	}>,
-): ChatMessage[] {
-	return messages.map((message) => {
-		const role =
-			message.role === "system" ||
-			message.role === "developer" ||
-			message.role === "user" ||
-			message.role === "assistant" ||
-			message.role === "tool"
-				? message.role
-				: "system";
-		const content =
-			typeof message.content === "string"
-				? message.content
-				: message.content == null
-					? null
-					: stringifyForModel(message.content);
-		return {
-			role,
-			content,
-			...(message.name ? { name: message.name } : {}),
-			...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-		};
-	});
+function segmentBlock(segment: PromptSegment): string {
+	const content = segment.content.trim();
+	const label = (segment as PromptSegment & { label?: unknown }).label;
+	return typeof label === "string" && label ? `${label}:\n${content}` : content;
+}
+
+function buildStageChatMessages(args: {
+	contextSegments: PromptSegment[];
+	stageLabel: string;
+	instructions: string;
+	dynamicBlocks: string[];
+	stepMessages: ChatMessage[];
+}): ChatMessage[] {
+	const stableContext = args.contextSegments
+		.filter((segment) => segment.stable)
+		.map(segmentBlock)
+		.filter(Boolean);
+	const dynamicContext = args.contextSegments
+		.filter((segment) => !segment.stable)
+		.map(segmentBlock)
+		.filter(Boolean);
+	const systemContent = [
+		...stableContext,
+		`${args.stageLabel}:\n${args.instructions}`,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+	const userContent = [...dynamicContext, ...args.dynamicBlocks]
+		.map((block) => block.trim())
+		.filter(Boolean)
+		.join("\n\n");
+	return [
+		{ role: "system", content: systemContent },
+		{ role: "user", content: userContent },
+		...args.stepMessages,
+	];
 }
 
 function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
@@ -363,7 +377,7 @@ function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
 function cacheProviderOptions(args: {
 	prefixHash: string;
 	segmentHashes?: readonly string[];
-}): Record<string, unknown> {
+}): Record<string, JsonValue | object | undefined> {
 	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
 	return {
 		eliza: {
