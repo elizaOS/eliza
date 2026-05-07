@@ -11,16 +11,17 @@ import { manageCustomersAction } from "./manage-customers.js";
 import { manageInventoryAction } from "./manage-inventory.js";
 import { manageOrdersAction } from "./manage-orders.js";
 import { manageProductsAction } from "./manage-products.js";
-import { searchStoreAction } from "./search-store.js";
 
-type ShopifyOp = "products" | "inventory" | "orders" | "customers" | "search";
+// SHOPIFY covers mutating ops only. Read-only catalog browsing lives in
+// SEARCH_SHOPIFY_STORE so the planner doesn't need to disambiguate "browse"
+// from "create / update / delete" through this single entry point.
+type ShopifyOp = "products" | "inventory" | "orders" | "customers";
 
 const ALL_OPS: readonly ShopifyOp[] = [
   "products",
   "inventory",
   "orders",
   "customers",
-  "search",
 ] as const;
 
 interface ShopifyRoute {
@@ -30,12 +31,6 @@ interface ShopifyRoute {
 }
 
 const ROUTES: ShopifyRoute[] = [
-  {
-    op: "search",
-    action: searchStoreAction,
-    match:
-      /\b(search|find|query|look up)\b.*\b(shopify|store|catalog|product|order|customer|inventory)\b/i,
-  },
   {
     op: "inventory",
     action: manageInventoryAction,
@@ -92,9 +87,9 @@ function selectRoute(
 export const shopifyAction: Action = {
   name: "SHOPIFY",
   description:
-    "Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers), search (catalog-wide search). Op is inferred from the message text when not explicitly provided.",
+    "Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided. For read-only catalog browsing use SEARCH_SHOPIFY_STORE.",
   descriptionCompressed:
-    "Shopify: products, inventory, orders, customers, search.",
+    "Shopify: products, inventory, orders, customers.",
   similes: [
     // Generic
     "STORE",
@@ -119,7 +114,7 @@ export const shopifyAction: Action = {
     {
       name: "op",
       description:
-        "Operation to perform. One of: products, inventory, orders, customers, search. Inferred from message text when omitted.",
+        "Operation to perform. One of: products, inventory, orders, customers. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
