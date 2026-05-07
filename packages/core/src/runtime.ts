@@ -35,11 +35,13 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
 import { ContextRegistry } from "./runtime/context-registry";
+import { satisfiesRoleGate } from "./runtime/context-gates";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
 import type { ToolPolicyService } from "./services/tool-policy";
+import { checkSenderRole } from "./roles";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
@@ -51,6 +53,11 @@ import {
 	getTrajectoryContext,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
+} from "./runtime/system-prompt";
 import {
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
@@ -132,6 +139,7 @@ import {
 	type UUID,
 	type World,
 } from "./types";
+import type { RoleGateRole } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
@@ -260,6 +268,8 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_MEGA,
 	ModelType.RESPONSE_HANDLER,
 	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ];
 
@@ -2757,6 +2767,35 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private async resolveProcessActionUserRoles(
+		message: Memory,
+	): Promise<RoleGateRole[]> {
+		if (
+			typeof message.entityId === "string" &&
+			message.entityId === this.agentId
+		) {
+			return ["OWNER"];
+		}
+
+		try {
+			const result = await checkSenderRole(this as IAgentRuntime, message);
+			if (result?.role) {
+				return [result.role as RoleGateRole];
+			}
+		} catch (error) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"processActions sender role lookup failed; defaulting to USER",
+			);
+		}
+
+		return ["USER"];
+	}
+
 	async processActions(
 		message: Memory,
 		responses: Memory[],
@@ -2814,6 +2853,8 @@ export class AgentRuntime implements IAgentRuntime {
 		const hasMultipleActions = allActions.length > 1 && actionPlanningEnabled;
 		const parentRunId = this.getCurrentRunId();
 		const runId = this.createRunId();
+		const processActionUserRoles =
+			await this.resolveProcessActionUserRoles(message);
 
 		// Create action plan if multiple actions
 		let actionPlan:
@@ -2964,6 +3005,47 @@ export class AgentRuntime implements IAgentRuntime {
 						});
 					}
 
+					actionIndex++;
+					continue;
+				}
+				if (
+					action.roleGate &&
+					!satisfiesRoleGate(processActionUserRoles, action.roleGate)
+				) {
+					const errorMsg = `Action ${action.name} is not allowed for the current role`;
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							roleGate: action.roleGate,
+							userRoles: processActionUserRoles,
+						},
+						"Skipping role-gated action",
+					);
+
+					if (actionPlan?.steps?.[actionIndex]) {
+						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+							status: "failed",
+							error: errorMsg,
+						});
+					}
+
+					const actionMemory: Memory = {
+						id: uuidv4() as UUID,
+						entityId: message.entityId,
+						roomId: message.roomId,
+						worldId: message.worldId,
+						content: {
+							thought: errorMsg,
+							source: "auto",
+							type: "action_result",
+							actionName: action.name,
+							actionStatus: "failed",
+							runId,
+						},
+					};
+					await this.createMemory(actionMemory, "messages");
 					actionIndex++;
 					continue;
 				}
@@ -4719,11 +4801,61 @@ export class AgentRuntime implements IAgentRuntime {
 	/**
 	 * Helper to log model calls to the database (used by both streaming and non-streaming paths)
 	 */
+	private buildRuntimeSystemPrompt(): string | undefined {
+		const prompt = buildCanonicalSystemPrompt({
+			character: this.character,
+			userRole: getTrajectoryContext()?.userRole,
+		});
+		return prompt || undefined;
+	}
+
+	private attachEffectiveSystemPrompt(
+		modelKey: string,
+		params: unknown,
+	): string | undefined {
+		if (!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) || !isPlainObject(params)) {
+			return undefined;
+		}
+		const paramsRecord = params as Record<string, JsonValue | object | undefined>;
+		const systemPrompt = resolveEffectiveSystemPrompt({
+			params,
+			fallback: this.buildRuntimeSystemPrompt(),
+		});
+		if (
+			systemPrompt !== undefined &&
+			!Object.prototype.hasOwnProperty.call(paramsRecord, "system")
+		) {
+			paramsRecord.system = systemPrompt;
+		}
+		return systemPrompt;
+	}
+
+	private getFirstUserPromptFromMessages(messages: unknown): string | undefined {
+		if (!Array.isArray(messages)) {
+			return undefined;
+		}
+		for (const message of messages) {
+			if (!message || typeof message !== "object" || Array.isArray(message)) {
+				continue;
+			}
+			const record = message as { role?: unknown; content?: unknown };
+			if (record.role !== "user") {
+				continue;
+			}
+			const content = textFromChatMessageContent(record.content);
+			if (content) {
+				return content;
+			}
+		}
+		return undefined;
+	}
+
 	private logModelCall(
 		modelType: string,
 		modelKey: string,
 		_params: unknown,
 		promptContent: string | null,
+		systemPrompt: string | undefined,
 		elapsedTime: number,
 		provider: string | undefined,
 		response: unknown,
@@ -4752,12 +4884,12 @@ export class AgentRuntime implements IAgentRuntime {
 					entityId: this.agentId,
 					roomId: this.currentRoomId ?? this.agentId,
 					body: {
-						modelType,
-						modelKey,
-						prompt: promptContent ?? undefined,
-						systemPrompt: this.character.system ?? undefined,
-						runId: this.getCurrentRunId(),
-						timestamp: Date.now(),
+							modelType,
+							modelKey,
+							prompt: promptContent ?? undefined,
+							systemPrompt,
+							runId: this.getCurrentRunId(),
+							timestamp: Date.now(),
 						executionTime: elapsedTime,
 						provider:
 							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
@@ -4956,10 +5088,12 @@ export class AgentRuntime implements IAgentRuntime {
 				requestedModelKey === ModelType.TEXT_SMALL ||
 				requestedModelKey === ModelType.TEXT_MEDIUM ||
 				requestedModelKey === ModelType.TEXT_LARGE ||
-				requestedModelKey === ModelType.TEXT_MEGA ||
-				requestedModelKey === ModelType.RESPONSE_HANDLER ||
-				requestedModelKey === ModelType.ACTION_PLANNER ||
-				requestedModelKey === ModelType.TEXT_COMPLETION;
+					requestedModelKey === ModelType.TEXT_MEGA ||
+					requestedModelKey === ModelType.RESPONSE_HANDLER ||
+					requestedModelKey === ModelType.ACTION_PLANNER ||
+					requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+					requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
+					requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
 				isPlainObject(modelParams) &&
@@ -5002,14 +5136,24 @@ export class AgentRuntime implements IAgentRuntime {
 				? false
 				: !!(paramsChunk || ctxChunk || explicitStream);
 
-		if (isPlainObject(modelParams) && paramsAsStreaming) {
-			paramsAsStreaming.stream = shouldStream;
-			delete paramsAsStreaming.onStreamChunk;
-		}
+			if (isPlainObject(modelParams) && paramsAsStreaming) {
+				paramsAsStreaming.stream = shouldStream;
+				delete paramsAsStreaming.onStreamChunk;
+			}
 
-		await this.invokePipelineHooks(
-			"pre_model",
-			preModelPipelineHookContext({
+			const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
+				String(resolvedModelKey),
+			)
+				? String(resolvedModelKey)
+				: requestedModelKey;
+			const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+				textModelKey,
+				modelParams,
+			);
+
+			await this.invokePipelineHooks(
+				"pre_model",
+				preModelPipelineHookContext({
 				requestedModelType: String(modelType),
 				resolvedModelKey,
 				provider: resolvedModel?.provider ?? provider,
@@ -5128,12 +5272,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.logModelCall(
 				String(modelType),
-				resolvedModelKey,
-				params,
-				promptContent,
-				elapsedTime,
-				resolvedModel?.provider ?? provider,
-				resultRef.current,
+					resolvedModelKey,
+					params,
+					promptContent,
+					effectiveSystemPrompt,
+					elapsedTime,
+					resolvedModel?.provider ?? provider,
+					resultRef.current,
 			);
 
 			await this.recordUseModelTrajectory({
@@ -5183,12 +5328,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.logModelCall(
 			String(modelType),
-			resolvedModelKey,
-			params,
-			promptContent,
-			elapsedTime,
-			resolvedModel?.provider ?? provider,
-			resultRef.current,
+				resolvedModelKey,
+				params,
+				promptContent,
+				effectiveSystemPrompt,
+				elapsedTime,
+				resolvedModel?.provider ?? provider,
+				resultRef.current,
 		);
 
 		await this.recordUseModelTrajectory({
@@ -5240,12 +5386,21 @@ export class AgentRuntime implements IAgentRuntime {
 			const maxTokensRaw = isPlainObject(args.modelParams)
 				? (args.modelParams as { maxTokens?: number }).maxTokens
 				: undefined;
-			const paramsRecord = isPlainObject(args.modelParams)
-				? (args.modelParams as Record<string, unknown>)
-				: {};
-			const resultRecord = isPlainObject(args.result)
-				? (args.result as Record<string, unknown>)
-				: {};
+				const paramsRecord = isPlainObject(args.modelParams)
+					? (args.modelParams as Record<string, unknown>)
+					: {};
+				const systemPrompt =
+					resolveEffectiveSystemPrompt({
+						params: args.modelParams,
+						fallback: this.buildRuntimeSystemPrompt(),
+					}) ?? "";
+				const userPrompt =
+					this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+					args.promptContent ??
+					"";
+				const resultRecord = isPlainObject(args.result)
+					? (args.result as Record<string, unknown>)
+					: {};
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -5255,17 +5410,14 @@ export class AgentRuntime implements IAgentRuntime {
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
-				modelType: args.modelType,
-				provider: args.provider,
-				systemPrompt:
-					typeof this.character.system === "string"
-						? this.character.system
-						: "",
-				userPrompt: args.promptContent ?? "",
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: (args.promptContent ?? ""),
+					modelType: args.modelType,
+					provider: args.provider,
+					systemPrompt,
+					userPrompt,
+					prompt:
+						typeof paramsRecord.prompt === "string"
+							? paramsRecord.prompt
+							: userPrompt,
 				messages: Array.isArray(paramsRecord.messages)
 					? paramsRecord.messages
 					: undefined,
@@ -5320,22 +5472,14 @@ export class AgentRuntime implements IAgentRuntime {
 		const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
 
 		let prompt = input;
+		let system: string | undefined;
 
 		// Add character context if requested
 		if (includeCharacter && this.character) {
 			const c = this.character;
 			const parts: string[] = [];
 
-			// Add bio
-			const bioText = Array.isArray(c.bio) ? c.bio.join(" ") : c.bio;
-			if (bioText) {
-				parts.push(`# About ${c.name}\n${bioText}`);
-			}
-
-			// Add system prompt
-			if (c.system) {
-				parts.push(c.system);
-			}
+			system = this.buildRuntimeSystemPrompt();
 
 			// Add style directives (all + chat)
 			const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
@@ -5358,10 +5502,11 @@ export class AgentRuntime implements IAgentRuntime {
 			topK: options?.topK,
 			minP: options?.minP,
 			seed: options?.seed,
-			repetitionPenalty: options?.repetitionPenalty,
-			frequencyPenalty: options?.frequencyPenalty,
-			presencePenalty: options?.presencePenalty,
-			stopSequences: options?.stopSequences,
+				repetitionPenalty: options?.repetitionPenalty,
+				frequencyPenalty: options?.frequencyPenalty,
+				presencePenalty: options?.presencePenalty,
+				system,
+				stopSequences: options?.stopSequences,
 			// User identifier for provider tracking/analytics - auto-populates from character name if not provided
 			// Explicitly set empty string or null will be preserved (not overridden)
 			user:
@@ -5529,8 +5674,6 @@ export class AgentRuntime implements IAgentRuntime {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json";
-			forceFormat?: "json";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -5710,11 +5853,6 @@ export class AgentRuntime implements IAgentRuntime {
 			let format: StructuredResponseFormat = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
-			const requestedFormat =
-				options.forceFormat ?? options.preferredEncapsulation;
-			if (requestedFormat) {
-				format = resolveDefaultOutputFormat(requestedFormat);
-			}
 
 			/**
 			 * Rough token count estimate for logging/debugging purposes only.

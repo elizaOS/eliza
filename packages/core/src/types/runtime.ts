@@ -578,8 +578,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json";
-			forceFormat?: "json";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
