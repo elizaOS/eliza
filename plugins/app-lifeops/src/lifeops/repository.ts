@@ -8,7 +8,7 @@ import {
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
   browserBridgeSchema,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -2128,7 +2128,7 @@ export class LifeOpsRepository {
     await adapter.runPluginMigrations(
       [
         {
-          name: "@elizaos/plugin-browser-bridge",
+          name: "@elizaos/plugin-browser",
           schema: browserBridgeSchema,
         },
         {

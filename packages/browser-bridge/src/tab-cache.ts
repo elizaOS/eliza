@@ -1,4 +1,4 @@
-import type { BrowserBridgeSettings } from "@elizaos/plugin-browser-bridge";
+import type { BrowserBridgeSettings } from "@elizaos/plugin-browser";
 import type { CompanionSyncRequest } from "./protocol";
 
 export type RememberedTab = CompanionSyncRequest["tabs"][number];

@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser/contracts";
 import {
   Button,
   ConfirmDialog,
@@ -188,9 +188,10 @@ function isBrowserBridgePlugin(plugin: {
     .map((value) => value.trim().toLowerCase());
   return identifiers.some(
     (value) =>
+      value === "browser" ||
       value === "browser-bridge" ||
-      value === "plugin-browser-bridge" ||
-      value === "@elizaos/plugin-browser-bridge",
+      value === "plugin-browser" ||
+      value === "@elizaos/plugin-browser",
   );
 }
 

@@ -102,7 +102,7 @@ const unitAliasEntries: ModuleAlias[] = [
         ]
       : [],
   ),
-  ...getWorkspacePluginAliases(repoRoot, ["plugin-browser-bridge"]),
+  ...getWorkspacePluginAliases(repoRoot, ["plugin-browser"]),
 ];
 
 export default {

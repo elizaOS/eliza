@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeHistoryPoint,

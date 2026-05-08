@@ -68,8 +68,20 @@ function isElizaOsAndroidRuntime(): boolean {
  * Legacy package names that were merged or renamed. Config allow-lists and
  * `plugins.installs` may still reference the old id.
  */
+const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
+  "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
+};
+
 export function resolvePluginPackageAlias(packageName: string): string {
-  return packageName;
+  return PLUGIN_PACKAGE_ALIASES[packageName] ?? packageName;
+}
+
+function packageNameFromPluginConfigId(pluginId: string): string {
+  if (pluginId.includes("/")) return pluginId;
+  if (pluginId.startsWith("app-") || pluginId.startsWith("plugin-")) {
+    return `@elizaos/${pluginId}`;
+  }
+  return `@elizaos/plugin-${pluginId}`;
 }
 
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
@@ -159,6 +171,13 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   evm: "@elizaos/plugin-wallet",
   solana: "@elizaos/plugin-wallet",
   wallet: "@elizaos/plugin-wallet",
+  // Coding tools — persisted user configs may carry the legacy "coding-agent"
+  // short ID (the plugin was renamed to plugin-coding-tools). Map both forms
+  // so the resolver doesn't try to load a non-existent package.
+  "coding-agent": "@elizaos/plugin-coding-tools",
+  codingAgent: "@elizaos/plugin-coding-tools",
+  "coding-tools": "@elizaos/plugin-coding-tools",
+  codingTools: "@elizaos/plugin-coding-tools",
   /** Unified wallet (canonical actions + providers — incremental migration). */
   agent_wallet: "@elizaos/plugin-wallet",
   "agent-wallet": "@elizaos/plugin-wallet",
@@ -173,8 +192,8 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   "app-polymarket": "@elizaos/app-polymarket",
   appPolymarket: "@elizaos/app-polymarket",
   /** Agent Browser Bridge: Chrome/Safari companion + packaging. Core plugin; aliased here so short IDs resolve in plugins.allow and config.features. */
-  "browser-bridge": "@elizaos/plugin-browser-bridge",
-  browserBridge: "@elizaos/plugin-browser-bridge",
+  "browser-bridge": "@elizaos/plugin-browser",
+  browserBridge: "@elizaos/plugin-browser",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/app-lifeops",
@@ -361,7 +380,7 @@ export function collectPluginNames(
       const pluginName = resolvePluginPackageAlias(
         CHANNEL_PLUGIN_MAP[item] ??
           OPTIONAL_PLUGIN_MAP[item] ??
-          (item.includes("/") ? item : `@elizaos/plugin-${item}`),
+          packageNameFromPluginConfigId(item),
       );
       pluginsToLoad.add(pluginName);
       track(pluginName, `plugins.allow[${JSON.stringify(item)}]`);
@@ -464,7 +483,7 @@ export function collectPluginNames(
       const pluginName = resolvePluginPackageAlias(
         CHANNEL_PLUGIN_MAP[key] ??
           OPTIONAL_PLUGIN_MAP[key] ??
-          (key.includes("/") ? key : `@elizaos/plugin-${key}`),
+          packageNameFromPluginConfigId(key),
       );
       const isOptionalCore = OPTIONAL_CORE_PLUGIN_NAMES.has(pluginName);
       const entryEnabled = (entry as Record<string, unknown>).enabled;

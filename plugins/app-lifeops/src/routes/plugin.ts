@@ -249,7 +249,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/workflows" },
   { type: "POST", path: "/api/lifeops/workflows" },
   // Browser companion + package routes moved to
-  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
+  // `@elizaos/plugin-browser/plugin` (under `/api/browser-bridge/*`).
   { type: "POST", path: "/api/lifeops/schedule/observations" },
   { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/schedule/inspection" },
@@ -344,7 +344,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   // /api/lifeops/workflows/:id/run
   { type: "POST", path: "/api/lifeops/workflows/:id/run" },
   // Browser session + package dynamic routes moved to
-  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
+  // `@elizaos/plugin-browser/plugin` (under `/api/browser-bridge/*`).
   // /api/lifeops/occurrences/:id/explanation
   { type: "GET", path: "/api/lifeops/occurrences/:id/explanation" },
   // /api/lifeops/occurrences/:id/complete

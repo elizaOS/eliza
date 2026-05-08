@@ -179,10 +179,10 @@ const browserBridgePluginRoutes: Route[] = [
   ),
 ];
 
-export const browserBridgePlugin: Plugin = {
-  name: "@elizaos/plugin-browser-bridge",
+export const browserPlugin: Plugin = {
+  name: "@elizaos/plugin-browser",
   description:
-    "Agent Browser Bridge: Chrome/Safari companion pairing, settings, tab + page context sync, packaging artifacts, and workflow-linked browser session endpoints.",
+    "Browser plugin: unified BROWSER and MANAGE_BROWSER_BRIDGE actions. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge — settings, pairing, tab + page-context sync, and packaging artifacts.",
   schema: browserBridgeSchema,
   routes: browserBridgePluginRoutes,
   actions: browserBridgeActions,

@@ -2,7 +2,7 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePermissionState,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 
 export const BROWSER_BRIDGE_RECENT_CONTACT_WINDOW_MS = 5 * 60_000;
 
