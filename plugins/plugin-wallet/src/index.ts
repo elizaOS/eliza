@@ -1,12 +1,13 @@
 import "./core-augmentation.js";
 
 export * from "./actions/index.js";
-export { birdeyePlugin } from "./analytics/birdeye/index.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
+export { DexScreenerService } from "./analytics/dexscreener/index.js";
 export {
-  DexScreenerService,
-  dexscreenerPlugin,
-} from "./analytics/dexscreener/index.js";
+  TOKEN_INFO_SERVICE_TYPE,
+  TokenInfoService,
+  tokenInfoAction,
+} from "./analytics/token-info/index.js";
 // Consolidated analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
 export {
   kaminoPlugin,

@@ -39,7 +39,7 @@ const STANDARD_DASHBOARD_ROUTES = [
   "/dashboard/containers",
 ] as const;
 
-const CUSTOM_DASHBOARD_ROUTES = ["/dashboard/chat", "/dashboard/build"] as const;
+const CUSTOM_DASHBOARD_ROUTES = ["/dashboard/chat"] as const;
 
 const RESPONSIVE_VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
@@ -52,7 +52,6 @@ const RESPONSIVE_DASHBOARD_ROUTES = [
   "/dashboard/api-explorer",
   "/dashboard/containers",
   "/dashboard/chat",
-  "/dashboard/build",
 ] as const;
 
 const REDIRECT_DASHBOARD_ROUTES = [

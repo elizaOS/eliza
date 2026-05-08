@@ -131,7 +131,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
 
     // Create runtime for User 1
     const userContext1 = buildUserContext(testDataUser1, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -166,7 +166,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
   it("should give each user their own settings even for same agent", async () => {
     // User 1 creates runtime
     const userContext1 = buildUserContext(testDataUser1, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -181,7 +181,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
 
     // User 2 creates runtime for same agent (different org, so cache miss)
     const userContext2 = buildUserContext(testDataUser2, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -217,7 +217,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
       const testData = i % 2 === 0 ? testDataUser1 : testDataUser2;
 
       const userContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -253,7 +253,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
     // User 1: Has Google OAuth
     const userContext1 = {
       ...buildUserContext(testDataUser1, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: [{ platform: "google" }],
@@ -276,7 +276,7 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
 
     // User 2: No OAuth
     const userContext2 = buildUserContext(testDataUser2, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     // Explicitly no oauthConnections

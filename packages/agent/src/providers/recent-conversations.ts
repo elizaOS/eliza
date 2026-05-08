@@ -19,7 +19,7 @@ import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.js";
 
 const MAX_RECENT_MESSAGES = 10;
 const MAX_ROOMS_TO_SCAN = 10;

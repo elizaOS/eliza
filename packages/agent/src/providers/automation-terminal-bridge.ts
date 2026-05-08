@@ -14,7 +14,7 @@ import { hasAdminAccess } from "../security/access.js";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.js";
 
 const MAX_TERMINAL_MESSAGES = 8;
 

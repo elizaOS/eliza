@@ -1,8 +1,4 @@
-import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
-import { cloudBillingPlugin } from "./plugin-cloud-billing";
-import { cloudBootstrapPlugin } from "./plugin-cloud-bootstrap";
 
 // messageExamples uses legacy MessageExample[][] format; createCharacter() normalizes it at
 // load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
@@ -1236,18 +1232,9 @@ ALWAYS keep the conversation going. Every response should invite them to continu
 
 const agent = {
   character,
-  plugins: [
-    elizaOSCloudPlugin,
-    elevenLabsPlugin,
-    cloudBootstrapPlugin,
-    cloudBillingPlugin,
-  ],
-  providers: [
-    ...(elevenLabsPlugin.providers || []),
-    ...(cloudBootstrapPlugin.providers || []),
-    ...(cloudBillingPlugin.providers || []),
-  ].flat(),
-  actions: [...(elevenLabsPlugin.actions || []), ...(cloudBootstrapPlugin.actions || [])].flat(),
+  plugins: [],
+  providers: [],
+  actions: [],
 };
 
 export default agent;

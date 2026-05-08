@@ -358,7 +358,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-shopify",
     "app-steward",
     "app-lifeops",
-    "app-knowledge",
+    "app-documents",
     "app-wallet",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot, {

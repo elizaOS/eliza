@@ -701,7 +701,7 @@ The Agent Creator is a visual editor for building AI agents without writing code
 
 <div className="status-badge status-stable">Stable</div>
 
-  Access the Agent Creator at [Dashboard → Agent Creator](/dashboard/build)
+  Access the Agent Creator at [Dashboard → Agent Creator](/dashboard/chat)
 
 ## Overview
 
@@ -716,7 +716,7 @@ The Agent Creator provides a streamlined interface for:
 ## Getting Started
 
 ### Open Agent Creator
-Navigate to [Dashboard → Build](/dashboard/build) to access the creator.
+Navigate to [Dashboard → Build](/dashboard/chat) to access the creator.
 
 ### Enter Basic Info
 
@@ -9300,7 +9300,7 @@ The fastest way to create an agent without writing code.
 
 ### Navigate to Agent Creator
 
-Go to [Dashboard → Agent Creator](/dashboard/build) in the elizaOS Cloud dashboard.
+Go to [Dashboard → Agent Creator](/dashboard/chat) in the elizaOS Cloud dashboard.
 
 ### Configure Your Agent
 

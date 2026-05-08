@@ -37,7 +37,7 @@ import { useApp } from "../../state/useApp";
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { getBrandIcon } from "../conversations/brand-icons";
-import { KnowledgeView } from "../pages/KnowledgeView";
+import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
@@ -75,7 +75,7 @@ type LearnedSkillsResponse = {
 const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
   overview: "/character",
   personality: "/character/personality",
-  knowledge: "/character/knowledge",
+  knowledge: "/character/documents",
   skills: "/character/skills",
   experience: "/character/experience",
   relationships: "/character/relationships",
@@ -111,11 +111,11 @@ function getSectionFromLocation(tab: string): CharacterHubSection {
   if (typeof window === "undefined") return "overview";
   const pathname = window.location.pathname.toLowerCase();
   if (pathname.endsWith("/personality")) return "personality";
-  if (pathname.endsWith("/knowledge")) return "knowledge";
+  if (pathname.endsWith("/knowledge")) return "documents";
   if (pathname.endsWith("/skills")) return "skills";
   if (pathname.endsWith("/experience")) return "experience";
   if (pathname.endsWith("/relationships")) return "relationships";
-  if (tab === "knowledge") return "knowledge";
+  if (tab === "documents") return "documents";
   return "overview";
 }
 
@@ -477,7 +477,7 @@ export function CharacterHubView({
         writeHubCache("knowledge-docs", docs);
       })
       .catch(() => {
-        /* ignored — KnowledgeView shows its own error when active */
+        /* ignored — DocumentsView shows its own error when active */
       })
       .finally(() => {
         if (!cancelled) {
@@ -761,7 +761,7 @@ export function CharacterHubView({
         isEmpty: recentRelationshipActivity.length === 0,
       },
       {
-        section: "knowledge",
+        section: "documents",
         title: "Knowledge",
         meta:
           customKnowledgeDocuments.length > 0
@@ -873,9 +873,9 @@ export function CharacterHubView({
   const navigateToSection = useCallback(
     (section: CharacterHubSection) => {
       setActiveSection(section);
-      if (section === "knowledge") {
-        if (tab !== "knowledge") {
-          setTab("knowledge");
+      if (section === "documents") {
+        if (tab !== "documents") {
+          setTab("documents");
         } else {
           updateCharacterSectionPath(section);
         }
@@ -1155,10 +1155,10 @@ export function CharacterHubView({
       );
     }
 
-    if (activeSection === "knowledge") {
+    if (activeSection === "documents") {
       return (
         <section className="rounded-2xl border border-border/40 bg-bg/70 p-0">
-          <KnowledgeView
+          <DocumentsView
             embedded
             fileInputId="character-hub-knowledge-upload"
             onDocumentsChange={(docs) => {

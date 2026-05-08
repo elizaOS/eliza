@@ -1,7 +1,7 @@
 import type {
   CloudConfigLike,
   CloudStatusRouteContext,
-} from "@elizaos/agent/api/cloud-status-routes";
+} from "./cloud-status-routes-autonomous.js";
 import type { ElizaConfig } from "@elizaos/agent/config";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import {

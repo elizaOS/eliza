@@ -54,7 +54,6 @@ import {
   normalizeOptionalConnectorMode,
 } from "./service-normalize-connector.js";
 import type { LifeOpsServiceOptions } from "./service-types.js";
-import { XManagedClient } from "./x-managed-client.js";
 
 // ---------------------------------------------------------------------------
 // Mixin helper type
@@ -155,7 +154,6 @@ export class LifeOpsServiceBase {
   public readonly explicitOwnerEntityIdValue: string | null;
   public readonly ownerEntityIdValue: string;
   public readonly googleManagedClient: GoogleManagedClient;
-  public readonly xManagedClient: XManagedClient;
   public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
   public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
@@ -177,7 +175,6 @@ export class LifeOpsServiceBase {
     this.googleManagedClient = new GoogleManagedClient(
       resolveManagedCloudConfig,
     );
-    this.xManagedClient = new XManagedClient(resolveManagedCloudConfig);
     this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;

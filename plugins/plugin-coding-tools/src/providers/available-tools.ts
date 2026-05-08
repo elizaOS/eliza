@@ -19,7 +19,6 @@ const TOOL_NAMES = [
   "GLOB",
   "LS",
   "WEB_FETCH",
-  "CODE_WEB_SEARCH",
   "TODO_WRITE",
   "ASK_USER_QUESTION",
   "ENTER_WORKTREE",

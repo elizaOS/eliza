@@ -143,7 +143,7 @@ describe.skipIf(skipLiveModelSuite)("CloudBootstrapMessageService - Web Search M
       startTimer("runtime_create");
 
       const userContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         characterId: testData.character?.id,
         webSearchEnabled: true,
         modelPreferences: {

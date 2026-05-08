@@ -20,8 +20,13 @@ import type { TwitterPostClient } from "./post";
  * settings) or a subset of {@link TwitterConfig}. We intentionally do not
  * add an index signature here: extra, unknown keys should be pushed into
  * runtime settings rather than carried on `state`.
+ *
+ * `accountId` identifies the connector account this client instance is
+ * bound to. Defaults to "default" in single-account mode.
  */
-export type TwitterClientState = Partial<TwitterConfig>;
+export type TwitterClientState = Partial<TwitterConfig> & {
+  accountId?: string;
+};
 
 /**
  * Defines a type for media data, which includes a Buffer representing the actual data

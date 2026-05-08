@@ -208,9 +208,9 @@ function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
   const acceptedNames = new Set([
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "TRIAGE_MESSAGES",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ]);
@@ -357,9 +357,9 @@ function actionMatchesChannel(
   switch (channel) {
     case "gmail":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "discord":
     case "telegram":
@@ -368,15 +368,15 @@ function actionMatchesChannel(
     case "whatsapp":
     case "sms":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "x-dm":
       return [
         "X",
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "desktop":
     case "mobile":
@@ -898,10 +898,10 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     minCount?: number;
   };
   const actionNames = actionName ?? [
-    "TRIAGE_MESSAGES",
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "DRAFT_REPLY",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ];
@@ -1072,9 +1072,9 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
-            "SEND_DRAFT",
-            "RESPOND_TO_MESSAGE",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
+            "MESSAGE",
             "GMAIL_ACTION",
             "send_email",
           ]) && request.state === "pending",

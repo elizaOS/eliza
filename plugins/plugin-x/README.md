@@ -131,7 +131,6 @@ Create or edit `.env` file in your project root:
 # Auth mode (default: env)
 # - env: legacy OAuth 1.0a keys/tokens
 # - oauth: “login + approve” OAuth 2.0 PKCE (no client secret in plugin)
-# - broker: stub (not implemented yet)
 TWITTER_AUTH_MODE=env
 
 # REQUIRED: OAuth 1.0a Credentials (from "Consumer Keys" section)

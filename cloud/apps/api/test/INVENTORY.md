@@ -324,7 +324,6 @@ Generated router is in sync with the current generator and route tree.
 - `v1/chain/nfts/[chain]/[address]/route.ts`
 - `v1/chain/tokens/[chain]/[address]/route.ts`
 - `v1/chain/transfers/[chain]/[address]/route.ts`
-- `v1/character-assistant/route.ts`
 - `v1/chat/completions/route.ts`
 - `v1/chat/route.ts`
 - `v1/connections/[platform]/route.ts`

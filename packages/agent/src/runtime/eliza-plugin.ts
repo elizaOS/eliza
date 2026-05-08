@@ -8,25 +8,15 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
-import {
-  disconnectConnectorAction,
-  listConnectorsAction,
-  saveConnectorConfigAction,
-  toggleConnectorAction,
-} from "../actions/connector-control.js";
 import { contactAction } from "../actions/contact.js";
 import { databaseAction } from "../actions/database.js";
 import { extractPageAction } from "../actions/extract-page.js";
-import { clearLogsAction, queryLogsAction } from "../actions/logs.js";
+import { logsAction } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import { memoryAction } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
-import { readChannelAction } from "../actions/read-channel.js";
-import { readMessagesAction } from "../actions/read-messages.js";
-import { readPluginConfigAction } from "../actions/read-plugin-config.js";
+import { pluginAction } from "../actions/plugin.js";
 import { runtimeAction } from "../actions/runtime.js";
-import { searchConversationsAction } from "../actions/search-conversations.js";
-import { setUserNameAction } from "../actions/set-user-name.js";
 import { settingsAction } from "../actions/settings-actions.js";
 import {
   addRegisteredSkillSlug,
@@ -218,23 +208,14 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       workflowAction,
       manageTasksAction,
       ...pageActionGroupActions,
-      setUserNameAction,
       skillCommandAction,
       webSearchAction,
       extractPageAction,
-      readChannelAction,
-      searchConversationsAction,
       contactAction,
-      readMessagesAction,
       settingsAction,
-      listConnectorsAction,
-      toggleConnectorAction,
-      saveConnectorConfigAction,
-      disconnectConnectorAction,
-      readPluginConfigAction,
+      pluginAction,
       // Observability / introspection actions
-      queryLogsAction,
-      clearLogsAction,
+      logsAction,
       runtimeAction,
       databaseAction,
       queryTrajectoriesAction,

@@ -6,8 +6,6 @@ import {
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
-import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { memoriesRepository } from "@/db/repositories/agents/memories";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { ElizaCharacter } from "@/lib/types/eliza-character";
@@ -19,6 +17,7 @@ import {
   getConditionalPlugins,
   isValidAgentMode,
 } from "./agent-mode-types";
+import { cloudModelProviderPlugin } from "./cloud-model-provider";
 import { buildElevenLabsSettings, getElizaCloudApiUrl } from "./config";
 import mcpPlugin from "./plugin-mcp";
 import { cloudN8nPlugin } from "./plugin-n8n";
@@ -26,6 +25,7 @@ import { cloudN8nPlugin } from "./plugin-n8n";
 // Plugin cache - preloaded at module init to eliminate dynamic import latency
 let _documentsPlugin: Plugin | null = null;
 let _webSearchPlugin: Plugin | null = null;
+let _elevenLabsPlugin: Plugin | null = null;
 let _pluginsPreloading = false;
 
 async function preloadPlugins(): Promise<void> {
@@ -90,14 +90,23 @@ async function getWebSearchPlugin(): Promise<Plugin> {
   return _webSearchPlugin;
 }
 
+async function getElevenLabsPlugin(): Promise<Plugin> {
+  if (_elevenLabsPlugin) return _elevenLabsPlugin;
+
+  const { elevenLabsPlugin } = await import("@elizaos/plugin-elevenlabs");
+  _elevenLabsPlugin = asPlugin(elevenLabsPlugin);
+  return _elevenLabsPlugin;
+}
+
 /** Cast external plugin to local Plugin type for cross-version compatibility. */
 function asPlugin<T extends { name: string; description: string }>(plugin: T): Plugin {
   return plugin as Plugin;
 }
 
 const AVAILABLE_PLUGINS: Record<string, Plugin> = {
-  "@elizaos/plugin-elizacloud": asPlugin(elizaOSCloudPlugin),
-  "@elizaos/plugin-elevenlabs": asPlugin(elevenLabsPlugin),
+  "@elizaos/plugin-elizacloud": cloudModelProviderPlugin,
+  elizaOSCloud: cloudModelProviderPlugin,
+  "eliza-cloud-model-provider": cloudModelProviderPlugin,
   "@elizaos/plugin-mcp": asPlugin(mcpPlugin),
   "@elizaos/plugin-n8n-workflow": cloudN8nPlugin,
 };
@@ -126,10 +135,7 @@ export class AgentLoader {
       characterSettings.webSearch = { enabled: true };
     }
 
-    const modeResolution = await resolveEffectiveMode(
-      agentMode,
-      characterId,
-    );
+    const modeResolution = await resolveEffectiveMode(agentMode, characterId);
 
     const hasDocuments = (modeResolution.documentCount ?? 0) > 0;
 
@@ -157,10 +163,7 @@ export class AgentLoader {
     if (options?.webSearchEnabled) {
       characterSettings.webSearch = { enabled: true };
     }
-    const modeResolution = await resolveEffectiveMode(
-      agentMode,
-      defaultAgent.character.id!,
-    );
+    const modeResolution = await resolveEffectiveMode(agentMode, defaultAgent.character.id!);
     const plugins = await this.resolvePlugins(modeResolution.mode, [], characterSettings);
     const character = this.buildCharacter({
       ...(defaultAgent.character as unknown as ElizaCharacter),
@@ -218,7 +221,7 @@ export class AgentLoader {
     characterSettings: Record<string, unknown>,
     options?: { hasDocuments?: boolean },
   ): Promise<Plugin[]> {
-    const plugins: Plugin[] = [];
+    const plugins: Plugin[] = [cloudModelProviderPlugin];
     const conditionalPlugins = getConditionalPlugins(characterSettings);
     const modePlugins = isValidAgentMode(agentMode)
       ? AGENT_MODE_PLUGINS[agentMode]
@@ -242,6 +245,12 @@ export class AgentLoader {
       if (pluginName === "@elizaos/plugin-web-search") {
         const webSearchPlugin = await getWebSearchPlugin();
         if (!plugins.includes(webSearchPlugin)) plugins.push(webSearchPlugin);
+        continue;
+      }
+
+      if (pluginName === "@elizaos/plugin-elevenlabs") {
+        const elevenLabsPlugin = await getElevenLabsPlugin();
+        if (!plugins.includes(elevenLabsPlugin)) plugins.push(elevenLabsPlugin);
         continue;
       }
 

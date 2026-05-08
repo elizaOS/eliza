@@ -7,15 +7,23 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { manageCustomersAction } from "./manage-customers.js";
-import { manageInventoryAction } from "./manage-inventory.js";
-import { manageOrdersAction } from "./manage-orders.js";
-import { manageProductsAction } from "./manage-products.js";
+import { manageCustomersHandler } from "./manage-customers.js";
+import { manageInventoryHandler } from "./manage-inventory.js";
+import { manageOrdersHandler } from "./manage-orders.js";
+import { manageProductsHandler } from "./manage-products.js";
 
 // SHOPIFY covers mutating ops only. Read-only catalog browsing lives in
 // SEARCH_SHOPIFY_STORE so the planner doesn't need to disambiguate "browse"
 // from "create / update / delete" through this single entry point.
 type ShopifyOp = "products" | "inventory" | "orders" | "customers";
+
+type ShopifyHandler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+) => Promise<ActionResult | undefined>;
 
 const ALL_OPS: readonly ShopifyOp[] = [
   "products",
@@ -26,29 +34,29 @@ const ALL_OPS: readonly ShopifyOp[] = [
 
 interface ShopifyRoute {
   op: ShopifyOp;
-  action: Action;
+  handler: ShopifyHandler;
   match: RegExp;
 }
 
 const ROUTES: ShopifyRoute[] = [
   {
     op: "inventory",
-    action: manageInventoryAction,
+    handler: manageInventoryHandler,
     match: /\b(inventory|stock|quantity|on hand|in stock|out of stock|restock)\b/i,
   },
   {
     op: "customers",
-    action: manageCustomersAction,
+    handler: manageCustomersHandler,
     match: /\b(customer|buyer|shopper|client)s?\b/i,
   },
   {
     op: "orders",
-    action: manageOrdersAction,
+    handler: manageOrdersHandler,
     match: /\b(order|fulfill|ship|refund|return)s?\b/i,
   },
   {
     op: "products",
-    action: manageProductsAction,
+    handler: manageProductsHandler,
     match: /\b(product|sku|variant|listing|item)s?\b/i,
   },
 ];
@@ -90,7 +98,29 @@ export const shopifyAction: Action = {
     "Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided. For read-only catalog browsing use SEARCH_SHOPIFY_STORE.",
   descriptionCompressed:
     "Shopify: products, inventory, orders, customers.",
-  similes: [],
+  similes: [
+    // Legacy per-op action names — kept as similes so older callers still resolve.
+    "MANAGE_SHOPIFY_PRODUCTS",
+    "MANAGE_SHOPIFY_INVENTORY",
+    "MANAGE_SHOPIFY_ORDERS",
+    "MANAGE_SHOPIFY_CUSTOMERS",
+    // Common shorthands the planner might emit.
+    "LIST_PRODUCTS",
+    "CREATE_PRODUCT",
+    "UPDATE_PRODUCT",
+    "SEARCH_PRODUCTS",
+    "CHECK_INVENTORY",
+    "ADJUST_INVENTORY",
+    "CHECK_STOCK",
+    "UPDATE_STOCK",
+    "LIST_ORDERS",
+    "CHECK_ORDERS",
+    "FULFILL_ORDER",
+    "ORDER_STATUS",
+    "LIST_CUSTOMERS",
+    "FIND_CUSTOMER",
+    "SEARCH_CUSTOMERS",
+  ],
   contexts: ["payments", "connectors", "automation", "knowledge"],
   contextGate: { anyOf: ["payments", "connectors", "automation", "knowledge"] },
   roleGate: { minRole: "USER" },
@@ -127,14 +157,13 @@ export const shopifyAction: Action = {
       };
     }
     const result =
-      (await route.action.handler(runtime, message, state, options, callback)) ??
+      (await route.handler(runtime, message, state, options, callback)) ??
       ({ success: true } as ActionResult);
     return {
       ...result,
       data: {
         ...(typeof result.data === "object" && result.data ? result.data : {}),
         actionName: "SHOPIFY",
-        routedActionName: route.action.name,
         op: route.op,
       },
     };

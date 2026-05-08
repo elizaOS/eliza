@@ -15,8 +15,8 @@
  */
 
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { persistConfigEnv } from "../api/config-env.js";
-import { isCloudWalletEnabled } from "../config/feature-flags.js";
+import { persistConfigEnv } from "@elizaos/agent/api/config-env";
+import { isCloudWalletEnabled } from "@elizaos/agent/config/feature-flags";
 import type {
   CloudBridgeError,
   CloudChainType,

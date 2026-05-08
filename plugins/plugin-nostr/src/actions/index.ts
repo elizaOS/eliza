@@ -1,10 +1,7 @@
 /**
  * Export all Nostr actions.
  *
- * NOSTR_SEND_DM is intentionally absent: the Nostr DM connector
- * registered by NostrService.registerSendHandlers handles DMs through
- * SEND_MESSAGE.
+ * Nostr DMs route through MESSAGE. Public notes route through POST.
  */
 
-export { publishNote } from "./publishNote.js";
 export { publishProfile } from "./publishProfile.js";

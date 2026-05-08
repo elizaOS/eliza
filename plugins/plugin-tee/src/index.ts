@@ -2,7 +2,6 @@ import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";
 
-export { remoteAttestationAction } from "./actions";
 export {
   DeriveKeyProvider,
   PhalaDeriveKeyProvider,

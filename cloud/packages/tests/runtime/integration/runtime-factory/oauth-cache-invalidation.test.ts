@@ -103,7 +103,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeCache.removeByOrganization", () => {
   it("should remove single runtime for organization", async () => {
     // Create a runtime
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const runtime = await runtimeFactory.createRuntimeForUser(userContext);
@@ -128,14 +128,14 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeCache.removeByOrganization", () => {
 
     // Create runtime without webSearch
     const userContext1 = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const runtime1 = await runtimeFactory.createRuntimeForUser(userContext1);
 
     // Create runtime with webSearch (different cache key suffix)
     const userContext2 = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: true,
     });
     const _runtime2 = await runtimeFactory.createRuntimeForUser(userContext2);
@@ -155,14 +155,14 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeCache.removeByOrganization", () => {
   it("should only remove runtimes for matching organization", async () => {
     // Create runtime for org 1
     const userContext1 = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const _runtime1 = await runtimeFactory.createRuntimeForUser(userContext1);
 
     // Create runtime for org 2
     const userContext2 = buildUserContext(testData2, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const _runtime2 = await runtimeFactory.createRuntimeForUser(userContext2);
@@ -190,7 +190,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeCache.removeByOrganization", () => {
   it("should handle concurrent invalidation calls safely", async () => {
     // Create runtime
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const _runtime = await runtimeFactory.createRuntimeForUser(userContext);
@@ -221,7 +221,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeCache.removeByOrganization", () => {
 
     // Create runtime
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     await runtimeFactory.createRuntimeForUser(userContext);
@@ -362,7 +362,7 @@ describe.skipIf(!hasDatabaseUrl)("OAuth flow cache invalidation integration", ()
     // 1. Create runtime WITHOUT OAuth (no MCP plugin)
     const userContext1: UserContext = {
       ...buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: undefined, // No OAuth
@@ -382,7 +382,7 @@ describe.skipIf(!hasDatabaseUrl)("OAuth flow cache invalidation integration", ()
     // 3. Create runtime again WITH OAuth (should get MCP plugin)
     const userContext2: UserContext = {
       ...buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: [{ platform: "google" }],
@@ -412,7 +412,7 @@ describe.skipIf(!hasDatabaseUrl)("OAuth flow cache invalidation integration", ()
       // Connect
       const connectContext: UserContext = {
         ...buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         }),
         oauthConnections: [{ platform: "google" }],
@@ -436,7 +436,7 @@ describe.skipIf(!hasDatabaseUrl)("Edge cases and error handling", () => {
 
   it("should handle invalidation of already-invalidated runtime gracefully", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
     const _runtime = await runtimeFactory.createRuntimeForUser(userContext);

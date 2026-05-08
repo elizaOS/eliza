@@ -257,80 +257,11 @@ const legacyActionSpecAliases: Readonly<
     descriptionCompressed: "Transcribe Discord audio or video attachment.",
     similes: ["DISCORD_TRANSCRIBE_MEDIA", "DISCORD_AUDIO_TO_TEXT", "DISCORD_VIDEO_TRANSCRIPT"],
   },
-  JOIN_CHANNEL: {
-    target: "DISCORD_CHANNEL_OP",
-    description: "Join a Discord voice or text channel.",
-    descriptionCompressed: "Join Discord channel.",
-    similes: ["DISCORD_JOIN_CHANNEL", "DISCORD_JOIN_VOICE"],
-  },
-  LEAVE_CHANNEL: {
-    target: "DISCORD_CHANNEL_OP",
-    description: "Leave a Discord voice or text channel.",
-    descriptionCompressed: "Leave Discord channel.",
-    similes: ["DISCORD_LEAVE_CHANNEL", "DISCORD_LEAVE_VOICE"],
-  },
-  LIST_CHANNELS: {
-    target: "DISCORD_CHANNEL_OP",
-    description: "List available Discord channels.",
-    descriptionCompressed: "List Discord channels.",
-    similes: ["DISCORD_LIST_CHANNELS", "DISCORD_SHOW_CHANNELS"],
-  },
-  READ_CHANNEL: {
-    target: "DISCORD_CHANNEL_OP",
-    description: "Read or summarize recent Discord channel messages.",
-    descriptionCompressed: "Read recent Discord channel messages.",
-    similes: ["DISCORD_READ_CHANNEL", "DISCORD_READ_MESSAGES", "DISCORD_SHOW_MESSAGES"],
-  },
-  SEARCH_MESSAGES: {
-    target: "DISCORD_CHANNEL_OP",
-    description: "Search Discord messages in a channel.",
-    descriptionCompressed: "Search Discord channel messages.",
-    similes: ["DISCORD_SEARCH_MESSAGES", "DISCORD_FIND_MESSAGES"],
-  },
-  SEND_MESSAGE: {
-    target: "DISCORD_MESSAGE_OP",
-    description: "Send a message to a Discord channel.",
-    descriptionCompressed: "Send Discord channel message.",
-    similes: ["DISCORD_SEND_MESSAGE", "DISCORD_POST_MESSAGE", "DISCORD_MESSAGE_CHANNEL"],
-  },
-  SEND_DM: {
-    target: "DISCORD_MESSAGE_OP",
-    description: "Send a direct message to a Discord user.",
-    descriptionCompressed: "Send Discord DM.",
-    similes: ["DISCORD_SEND_DM", "DISCORD_DIRECT_MESSAGE", "DISCORD_DM_USER"],
-  },
-  PIN_MESSAGE: {
-    target: "DISCORD_MESSAGE_OP",
-    description: "Pin a Discord message.",
-    descriptionCompressed: "Pin Discord message.",
-    similes: ["DISCORD_PIN_MESSAGE"],
-  },
-  UNPIN_MESSAGE: {
-    target: "DISCORD_MESSAGE_OP",
-    description: "Unpin a Discord message.",
-    descriptionCompressed: "Unpin Discord message.",
-    similes: ["DISCORD_UNPIN_MESSAGE"],
-  },
-  REACT_TO_MESSAGE: {
-    target: "DISCORD_MESSAGE_OP",
-    description: "React to a Discord message with an emoji.",
-    descriptionCompressed: "React to Discord message.",
-    similes: ["DISCORD_REACT_TO_MESSAGE", "DISCORD_ADD_REACTION"],
-  },
   SUMMARIZE_CONVERSATION: {
     target: "DISCORD_SUMMARIZE_CONVERSATION",
   },
   CREATE_POLL: {
     target: "DISCORD_CREATE_POLL",
-  },
-  GET_USER_INFO: {
-    target: "DISCORD_GET_USER_INFO",
-  },
-  SERVER_INFO: {
-    target: "DISCORD_GET_USER_INFO",
-    description: "Get Discord server or guild information.",
-    descriptionCompressed: "Get Discord server info.",
-    similes: ["DISCORD_SERVER_INFO", "DISCORD_GUILD_INFO"],
   },
 };
 const coreProviderMap = new Map<string, ProviderDoc>(

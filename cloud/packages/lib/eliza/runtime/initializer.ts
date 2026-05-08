@@ -11,6 +11,7 @@ import {
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "@/lib/cache/edge-runtime-cache";
 import "@/lib/polyfills/dom-polyfills";
 import { agentLoader } from "../agent-loader";
+import { CloudBootstrapMessageService } from "../plugin-cloud-bootstrap/services/cloud-bootstrap-message-service";
 import mcpPlugin from "../plugin-mcp";
 import type { UserContext } from "../user-context";
 import { buildRuntimeCacheKey, runtimeCache } from "./cache";
@@ -200,6 +201,7 @@ export class RuntimeFactory {
     ensureRuntimeLogger(runtime);
 
     await initializeRuntime(runtime, character, agentId);
+    runtime.messageService = new CloudBootstrapMessageService();
     await waitForMcpServiceIfNeeded(runtime, filteredPlugins);
 
     setMcpEnabledServers(context);

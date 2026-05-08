@@ -1,6 +1,7 @@
 import type { Memory } from "@elizaos/core";
+import type { DocumentVisibilityScope } from "./service-loader.js";
 
-export type KnowledgeDocumentProvenanceKind =
+export type DocumentProvenanceKind =
   | "upload"
   | "learned"
   | "character"
@@ -9,22 +10,27 @@ export type KnowledgeDocumentProvenanceKind =
   | "bundled"
   | "unknown";
 
-export interface KnowledgeDocumentProvenance {
-  kind: KnowledgeDocumentProvenanceKind;
+export interface DocumentProvenance {
+  kind: DocumentProvenanceKind;
   label: string;
   detail?: string;
 }
 
-export interface PresentedKnowledgeDocument {
+export interface PresentedDocument {
   id: string;
   filename: string;
   contentType: string;
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: KnowledgeDocumentProvenanceKind;
+  source: DocumentProvenanceKind;
+  scope: DocumentVisibilityScope;
+  scopedToEntityId?: string;
+  addedBy?: string;
+  addedByRole?: string;
+  addedFrom?: string;
   url?: string;
-  provenance: KnowledgeDocumentProvenance;
+  provenance: DocumentProvenance;
   canEditText: boolean;
   editabilityReason?: string;
   canDelete: boolean;
@@ -69,6 +75,13 @@ const BINARY_FILE_EXTENSIONS = new Set([
   "avi",
 ]);
 
+const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
+  "global",
+  "owner-private",
+  "user-private",
+  "agent-private",
+]);
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -92,7 +105,7 @@ function asNumber(value: unknown): number | undefined {
 
 function truncateLabel(value: string, maxLength = 80): string {
   return value.length > maxLength
-    ? `${value.slice(0, maxLength - 1).trimEnd()}…`
+    ? `${value.slice(0, maxLength - 1).trimEnd()}...`
     : value;
 }
 
@@ -163,20 +176,20 @@ function isBinaryLike(
 
 function isGenericFilename(
   filename: string | undefined,
-  provenanceKind: KnowledgeDocumentProvenanceKind,
+  provenanceKind: DocumentProvenanceKind,
 ): boolean {
   if (!filename) return true;
   const normalized = filename.toLowerCase();
-  if (normalized === "knowledge-note.txt") return true;
-  if (provenanceKind === "learned" && normalized === "user-knowledge.txt") {
+  if (normalized === "document-note.txt") return true;
+  if (provenanceKind === "learned" && normalized === "user-document.txt") {
     return true;
   }
   return false;
 }
 
-export function normalizeKnowledgeSource(
+export function normalizeDocumentSource(
   source: unknown,
-): KnowledgeDocumentProvenanceKind {
+): DocumentProvenanceKind {
   switch (source) {
     case "upload":
     case "rag-service-main-upload":
@@ -189,26 +202,26 @@ export function normalizeKnowledgeSource(
       return "url";
     case "youtube":
       return "youtube";
-    case "eliza-default-knowledge":
+    case "eliza-default-documents":
       return "bundled";
     default:
       return "unknown";
   }
 }
 
-export function getKnowledgeDocumentProvenance(
+export function getDocumentProvenance(
   metadata: Record<string, unknown> | undefined,
-): KnowledgeDocumentProvenance {
-  const kind = normalizeKnowledgeSource(metadata?.source);
+): DocumentProvenance {
+  const kind = normalizeDocumentSource(metadata?.source);
   switch (kind) {
     case "upload":
       return { kind, label: "Manual upload" };
     case "learned":
-      return { kind, label: "Learned knowledge" };
+      return { kind, label: "Learned document" };
     case "character":
       return {
         kind,
-        label: "Character knowledge",
+        label: "Character document",
         detail: asString(metadata?.path),
       };
     case "url":
@@ -224,13 +237,13 @@ export function getKnowledgeDocumentProvenance(
         detail: asString(metadata?.url),
       };
     case "bundled":
-      return { kind, label: "Bundled knowledge" };
+      return { kind, label: "Bundled document" };
     default:
-      return { kind, label: "Knowledge document" };
+      return { kind, label: "Document" };
   }
 }
 
-export function getKnowledgeDocumentContentType(
+export function getDocumentContentType(
   metadata: Record<string, unknown> | undefined,
 ): string {
   return (
@@ -238,11 +251,11 @@ export function getKnowledgeDocumentContentType(
   );
 }
 
-export function getKnowledgeDocumentTitleFromMetadata(
+export function getDocumentTitleFromMetadata(
   metadata: Record<string, unknown> | undefined,
   contentText?: string,
 ): string {
-  const provenance = getKnowledgeDocumentProvenance(metadata);
+  const provenance = getDocumentProvenance(metadata);
   const filename = asString(metadata?.filename);
   const title = asString(metadata?.title);
   const originalFilename = asString(metadata?.originalFilename);
@@ -262,17 +275,22 @@ export function getKnowledgeDocumentTitleFromMetadata(
   return deriveTitleFromText(contentText, "Untitled");
 }
 
-export function isKnowledgeDocumentTextBacked(memory: Memory): boolean {
+export function getDocumentVisibilityScope(
+  metadata: Record<string, unknown> | undefined,
+): DocumentVisibilityScope {
+  return DOCUMENT_SCOPE_VALUES.has(metadata?.scope as DocumentVisibilityScope)
+    ? (metadata?.scope as DocumentVisibilityScope)
+    : "global";
+}
+
+export function isDocumentTextBacked(memory: Memory): boolean {
   const metadata = asRecord(memory.metadata);
   if (typeof metadata?.textBacked === "boolean") {
     return metadata.textBacked;
   }
 
-  const filename = getKnowledgeDocumentTitleFromMetadata(
-    metadata,
-    memory.content?.text,
-  );
-  const contentType = getKnowledgeDocumentContentType(metadata);
+  const filename = getDocumentTitleFromMetadata(metadata, memory.content?.text);
+  const contentType = getDocumentContentType(metadata);
   if (isBinaryLike(contentType, filename)) {
     return false;
   }
@@ -285,9 +303,7 @@ export function isKnowledgeDocumentTextBacked(memory: Memory): boolean {
   return !looksLikeBase64(contentText);
 }
 
-export function getKnowledgeDocumentPreviewText(
-  memory: Memory,
-): string | undefined {
+export function getDocumentPreviewText(memory: Memory): string | undefined {
   const contentText = memory.content?.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();
@@ -297,85 +313,86 @@ export function getKnowledgeDocumentPreviewText(
   return trimmed;
 }
 
-export function getKnowledgeDocumentEditability(memory: Memory): {
+export function getDocumentEditability(memory: Memory): {
   canEditText: boolean;
   reason?: string;
 } {
   const metadata = asRecord(memory.metadata);
-  const provenance = getKnowledgeDocumentProvenance(metadata);
+  const provenance = getDocumentProvenance(metadata);
 
   if (provenance.kind === "bundled") {
     return {
       canEditText: false,
-      reason: "Bundled knowledge is seeded by the runtime.",
+      reason: "Bundled documents are seeded by the runtime.",
     };
   }
 
   if (provenance.kind === "character") {
     return {
       canEditText: false,
-      reason:
-        "Character knowledge comes from source files or character config.",
+      reason: "Character documents come from source files or character config.",
     };
   }
 
-  if (!isKnowledgeDocumentTextBacked(memory)) {
+  if (!isDocumentTextBacked(memory)) {
     return {
       canEditText: false,
-      reason: "Only text-backed knowledge can be edited here.",
+      reason: "Only text-backed documents can be edited here.",
     };
   }
 
   return { canEditText: true };
 }
 
-export function getKnowledgeDocumentDeleteability(memory: Memory): {
+export function getDocumentDeleteability(memory: Memory): {
   canDelete: boolean;
   reason?: string;
 } {
-  const provenance = getKnowledgeDocumentProvenance(asRecord(memory.metadata));
+  const provenance = getDocumentProvenance(asRecord(memory.metadata));
   if (provenance.kind === "bundled") {
     return {
       canDelete: false,
-      reason: "Bundled knowledge is recreated by the runtime.",
+      reason: "Bundled documents are recreated by the runtime.",
     };
   }
 
   if (provenance.kind === "character") {
     return {
       canDelete: false,
-      reason: "Character knowledge is backed by the character source.",
+      reason: "Character documents are backed by the character source.",
     };
   }
 
   return { canDelete: true };
 }
 
-export function presentKnowledgeDocument(
+export function presentDocument(
   memory: Memory,
   fragmentCount: number,
   options?: { includeContent?: boolean },
-): PresentedKnowledgeDocument {
+): PresentedDocument {
   const metadata = asRecord(memory.metadata);
-  const provenance = getKnowledgeDocumentProvenance(metadata);
-  const contentType = getKnowledgeDocumentContentType(metadata);
+  const provenance = getDocumentProvenance(metadata);
+  const contentType = getDocumentContentType(metadata);
   const previewText = options?.includeContent
-    ? getKnowledgeDocumentPreviewText(memory)
+    ? getDocumentPreviewText(memory)
     : undefined;
-  const editability = getKnowledgeDocumentEditability(memory);
-  const deleteability = getKnowledgeDocumentDeleteability(memory);
+  const editability = getDocumentEditability(memory);
+  const deleteability = getDocumentDeleteability(memory);
 
   return {
     id: String(memory.id ?? ""),
-    filename: getKnowledgeDocumentTitleFromMetadata(
-      metadata,
-      memory.content?.text,
-    ),
+    filename: getDocumentTitleFromMetadata(metadata, memory.content?.text),
     contentType,
     fileSize: asNumber(metadata?.fileSize) ?? 0,
     createdAt: asNumber(memory.createdAt) ?? 0,
     fragmentCount,
     source: provenance.kind,
+    scope: getDocumentVisibilityScope(metadata),
+    scopedToEntityId: asString(metadata?.scopedToEntityId),
+    addedBy: asString(metadata?.addedBy),
+    addedByRole: asString(metadata?.addedByRole),
+    addedFrom: asString(metadata?.addedFrom),
     url: asString(metadata?.url),
     provenance,
     canEditText: editability.canEditText,

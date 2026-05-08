@@ -1,6 +1,7 @@
 export * from "./agent.store";
 export * from "./cache.store";
 export * from "./component.store";
+export * from "./connectorAccount.store";
 export * from "./entity.store";
 export * from "./log.store";
 export * from "./memory.store";

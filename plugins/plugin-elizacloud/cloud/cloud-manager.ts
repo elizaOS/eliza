@@ -4,7 +4,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { CloudConfig } from "../config/types.eliza.js";
+import type { CloudConfig } from "@elizaos/agent/config/types.eliza";
 import { BackupScheduler } from "./backup.js";
 import { normalizeCloudSiteUrl } from "./base-url.js";
 import { ElizaCloudClient } from "./bridge-client.js";

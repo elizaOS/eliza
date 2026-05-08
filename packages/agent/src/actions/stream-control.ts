@@ -1,185 +1,196 @@
 /**
- * Stream control actions — agents can go live or go offline.
+ * STREAM — single polymorphic action consolidating live-stream lifecycle.
  *
- * All actions hit the local Eliza API (127.0.0.1:API_PORT).
+ * Ops:
+ *   go_live     — start the live stream to the active destination
+ *   go_offline  — stop the active stream and release capture/RTMP resources
+ *
+ * Dispatch is HTTP-only (POST /api/stream/{live,offline}). The local API route
+ * owns full orchestration — capture mode detection, destination credential
+ * resolution, Xvfb/avfoundation/pipe/file dispatch, browser capture lifecycle,
+ * screen-capture wiring, and destination notifications. The exported
+ * `streamManager` singleton is only one piece of that pipeline; calling it
+ * from this action would require replicating every orchestration step, so we
+ * keep HTTP as the canonical entry point.
  *
  * @module actions/stream-control
  */
 
-import type { Action, ActionExample } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
+
+const STREAM_ACTION = "STREAM";
+
+const STREAM_OPS = ["go_live", "go_offline"] as const;
+type StreamOp = (typeof STREAM_OPS)[number];
 
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 const BASE = `http://127.0.0.1:${API_PORT}`;
 
-async function apiPost(
-  path: string,
-  body?: unknown,
-): Promise<{ ok: boolean; status: number; data: unknown }> {
+interface StreamActionParameters {
+  op?: unknown;
+}
+
+interface ApiResponse {
+  ok: boolean;
+  status: number;
+  data: Record<string, unknown> | null;
+}
+
+function readOp(value: unknown): StreamOp | undefined {
+  if (typeof value !== "string") return undefined;
+  const s = value.trim().toLowerCase();
+  return (STREAM_OPS as readonly string[]).includes(s)
+    ? (s as StreamOp)
+    : undefined;
+}
+
+async function apiPost(path: string): Promise<ApiResponse> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(10_000),
   });
-  let data: unknown = null;
+  let data: Record<string, unknown> | null = null;
   try {
-    data = await res.json();
+    const parsed: unknown = await res.json();
+    if (parsed && typeof parsed === "object") {
+      data = parsed as Record<string, unknown>;
+    }
   } catch {
-    /* ignore */
+    // Empty or non-JSON body — leave data null.
   }
   return { ok: res.ok, status: res.status, data };
 }
 
-// ---------------------------------------------------------------------------
-// GO_LIVE
-// ---------------------------------------------------------------------------
+function failure(op: StreamOp, message: string): ActionResult {
+  return {
+    success: false,
+    text: message,
+    error: `STREAM_${op.toUpperCase()}_FAILED`,
+  };
+}
 
-export const goLiveAction: Action = {
-  name: "GO_LIVE",
+async function runGoLive(): Promise<ActionResult> {
+  try {
+    const result = await apiPost("/api/stream/live");
+    if (!result.ok) {
+      const detail = result.data?.error ?? `HTTP ${result.status}`;
+      return failure("go_live", `Failed to start stream: ${String(detail)}`);
+    }
+    const live = result.data?.live === true;
+    return {
+      success: true,
+      text: live
+        ? "Stream is now live."
+        : "Stream start requested but may not be live yet — check status.",
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return failure("go_live", `Failed to start stream: ${message}`);
+  }
+}
+
+async function runGoOffline(): Promise<ActionResult> {
+  try {
+    const result = await apiPost("/api/stream/offline");
+    if (!result.ok) {
+      const detail = result.data?.error ?? `HTTP ${result.status}`;
+      return failure(
+        "go_offline",
+        `Failed to stop stream: ${String(detail)}`,
+      );
+    }
+    return {
+      success: true,
+      text: "Stream stopped. Now offline.",
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return failure("go_offline", `Failed to stop stream: ${message}`);
+  }
+}
+
+export const streamAction: Action = {
+  name: STREAM_ACTION,
   contexts: ["general", "media", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
-  similes: [
-    "START_STREAM",
-    "BEGIN_STREAM",
-    "START_BROADCASTING",
-    "GO_LIVE_NOW",
-  ],
   description:
-    "Start the live stream, broadcasting to the active destination (Twitch, YouTube, etc.).",
+    "Control the live stream lifecycle. Use op='go_live' to start broadcasting " +
+    "to the active destination (Twitch, YouTube, custom RTMP). Use " +
+    "op='go_offline' to stop any active stream and release capture/RTMP " +
+    "resources.",
   descriptionCompressed:
-    "start live stream, broadcast active destination (Twitch, YouTube, etc)",
+    "control live stream: op=go_live start broadcast active destination; op=go_offline stop release capture RTMP",
+  parameters: [
+    {
+      name: "op",
+      description: `Operation: ${STREAM_OPS.join(", ")}.`,
+      required: true,
+      schema: { type: "string" as const, enum: [...STREAM_OPS] },
+    },
+  ],
   validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "stream_control");
   },
-
-  handler: async (_runtime, _message) => {
-    try {
-      const result = await apiPost("/api/stream/live");
-      if (!result.ok) {
-        const msg =
-          (result.data as Record<string, unknown>)?.error ??
-          `HTTP ${result.status}`;
-        return { text: `Failed to start stream: ${msg}`, success: false };
-      }
-      const data = result.data as Record<string, unknown>;
+  handler: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    _callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const params = (options ?? {}) as StreamActionParameters;
+    const op = readOp(params.op);
+    if (!op) {
       return {
-        text: data.live
-          ? "Stream is now live! 🔴"
-          : "Stream start requested but may not be live yet — check status.",
-        success: true,
-      };
-    } catch (err) {
-      return {
-        text: `Failed to start stream: ${err instanceof Error ? err.message : String(err)}`,
         success: false,
+        text: `Invalid stream op. Expected one of: ${STREAM_OPS.join(", ")}`,
+        error: "STREAM_INVALID_OP",
       };
     }
+    switch (op) {
+      case "go_live":
+        return runGoLive();
+      case "go_offline":
+        return runGoOffline();
+    }
   },
-  parameters: [],
   examples: [
     [
       {
         name: "{{name1}}",
-        content: {
-          text: "Let's start the stream now.",
-        },
+        content: { text: "Let's start the stream now." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Stream is now live!",
+          text: "Stream is now live.",
+          actions: [STREAM_ACTION],
+          actionParameters: { op: "go_live" },
         },
       },
     ],
     [
       {
         name: "{{name1}}",
-        content: {
-          text: "Kick off the broadcast for tonight's session.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Stream is now live!",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
-
-// ---------------------------------------------------------------------------
-// GO_OFFLINE
-// ---------------------------------------------------------------------------
-
-export const goOfflineAction: Action = {
-  name: "GO_OFFLINE",
-  contexts: ["general", "media", "automation", "settings"],
-  roleGate: { minRole: "OWNER" },
-  similes: [
-    "STOP_STREAM",
-    "END_STREAM",
-    "END_BROADCAST",
-    "STOP_BROADCASTING",
-    "SHUT_DOWN_STREAM",
-    "TAKE_OFFLINE",
-  ],
-  description:
-    "Stop any active live stream and take the agent offline. Use this when the " +
-    "owner says 'go offline', 'end the stream', 'stop streaming', or 'shut down " +
-    "the broadcast'. The paired action GO_LIVE starts a new stream; this one " +
-    "tears it down and releases the capture and RTMP resources.",
-  descriptionCompressed:
-    "stop active live stream take agent offline use owner say go offline, end stream, stop stream, shut down broadcast pair action GO_LIVE start new stream; one tear down release capture RTMP resource",
-  validate: async (_runtime, message, state) => {
-    return hasContextSignalSyncForKey(message, state, "stream_control");
-  },
-
-  handler: async (_runtime, _message) => {
-    try {
-      const result = await apiPost("/api/stream/offline");
-      if (!result.ok) {
-        const msg =
-          (result.data as Record<string, unknown>)?.error ??
-          `HTTP ${result.status}`;
-        return { text: `Failed to stop stream: ${msg}`, success: false };
-      }
-      return { text: "Stream stopped. Now offline.", success: true };
-    } catch (err) {
-      return {
-        text: `Failed to stop stream: ${err instanceof Error ? err.message : String(err)}`,
-        success: false,
-      };
-    }
-  },
-  parameters: [],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Wrap it up — we're done for today.",
-        },
+        content: { text: "Take us offline, please." },
       },
       {
         name: "{{agentName}}",
         content: {
           text: "Stream stopped. Now offline.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Take us offline, please.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Stream stopped. Now offline.",
+          actions: [STREAM_ACTION],
+          actionParameters: { op: "go_offline" },
         },
       },
     ],

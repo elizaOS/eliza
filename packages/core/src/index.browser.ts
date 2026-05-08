@@ -10,6 +10,7 @@
 export * from "./actions";
 export * from "./character";
 export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";

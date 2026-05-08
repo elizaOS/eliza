@@ -54,20 +54,20 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: ["search", "read"],
       minCount: 1,
     },
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: "manage",
       operation: "archive",
     },
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "TRIAGE_MESSAGES",
+        removeLabelIds: "MESSAGE",
       },
     },
     {

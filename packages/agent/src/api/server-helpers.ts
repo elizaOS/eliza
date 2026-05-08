@@ -40,7 +40,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import { maybeAugmentChatMessageWithKnowledge as augmentChatMessageWithKnowledge } from "./chat-augmentation.js";
+import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
 import { sendJsonError } from "./http-helpers.js";
 import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
@@ -689,11 +689,11 @@ export function maybeAugmentChatMessageWithWalletContext(
   };
 }
 
-export async function maybeAugmentChatMessageWithKnowledge(
+export async function maybeAugmentChatMessageWithDocuments(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  return augmentChatMessageWithKnowledge(runtime, message);
+  return augmentChatMessageWithDocuments(runtime, message);
 }
 
 // ---------------------------------------------------------------------------

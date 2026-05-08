@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 
-export type TwitterAuthMode = "env" | "oauth" | "broker";
+export type TwitterAuthMode = "env" | "oauth";
 
 /**
  * Primary abstraction: obtain a valid access token for Twitter/X API calls.

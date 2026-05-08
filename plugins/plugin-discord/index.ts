@@ -1,18 +1,18 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import channelOp from "./actions/channelOp";
+import {
+	getConnectorAccountManager,
+	type IAgentRuntime,
+	logger,
+	type Plugin,
+} from "@elizaos/core";
 import chatWithAttachments from "./actions/chatWithAttachments";
 import createPoll from "./actions/createPoll";
-import getUserInfo from "./actions/getUserInfo";
 import mediaOp from "./actions/mediaOp";
-import messageOp from "./actions/messageOp";
 import setupCredentials from "./actions/setup-credentials";
 import { summarize } from "./actions/summarizeConversation";
 import { printBanner } from "./banner";
+import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
-import { discordChannelsProvider } from "./providers/discordChannels";
-import { discordServerInfoProvider } from "./providers/discordServerInfo";
-import { guildInfoProvider } from "./providers/guildInfo";
 import { voiceStateProvider } from "./providers/voiceState";
 import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
@@ -26,24 +26,34 @@ const discordPlugin: Plugin = {
 	services: [DiscordService, DiscordOwnerPairingServiceImpl],
 	routes: discordSetupRoutes,
 	actions: [
-		messageOp,
-		channelOp,
 		mediaOp,
 		chatWithAttachments,
 		summarize,
 		createPoll,
-		getUserInfo,
 		setupCredentials,
 	],
-	providers: [
-		voiceStateProvider,
-		guildInfoProvider,
-		discordChannelsProvider,
-		discordServerInfoProvider,
-	],
+	providers: [voiceStateProvider],
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
 		registerDiscordSearchCategory(runtime);
+
+		// Register the Discord provider with the ConnectorAccountManager so the
+		// HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+		// can list, create, patch, delete, and start OAuth on Discord accounts.
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(
+				createDiscordConnectorAccountProvider(runtime),
+			);
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:discord",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register Discord provider with ConnectorAccountManager",
+			);
+		}
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
@@ -135,6 +145,11 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
+// ConnectorAccountManager provider exports
+export {
+	createDiscordConnectorAccountProvider,
+	DISCORD_PROVIDER_ID,
+} from "./connector-account-provider";
 // Account management exports (runtime utilities)
 export {
 	DEFAULT_ACCOUNT_ID,

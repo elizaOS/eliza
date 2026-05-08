@@ -478,7 +478,7 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "apps":
     case "browser":
     case "inventory":
-    case "knowledge":
+    case "documents":
     case "connectors":
     case "triggers":
     case "plugins":

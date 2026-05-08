@@ -17,6 +17,7 @@ export type WalletRouterMode = (typeof WALLET_ROUTER_MODES)[number];
 export interface WalletRouterParams {
   readonly subaction: WalletRouterSubaction;
   readonly chain?: string;
+  readonly toChain?: string;
   readonly fromToken?: string;
   readonly toToken?: string;
   readonly amount?: string;
@@ -133,6 +134,7 @@ const optionalPositiveAmount = optionalString.refine(
 export const WalletRouterParamsSchema = z.object({
   subaction: z.enum(WALLET_ROUTER_SUBACTIONS),
   chain: optionalString,
+  toChain: optionalString,
   fromToken: optionalString,
   toToken: optionalString,
   amount: optionalPositiveAmount,

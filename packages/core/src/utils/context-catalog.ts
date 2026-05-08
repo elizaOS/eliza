@@ -119,7 +119,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	POST: ["social_posting", "connectors"],
 	RELATIONSHIP: ["contacts", "messaging", "documents"],
 	CALENDAR: ["calendar", "automation"],
-	CHECKIN: ["tasks", "health", "automation"],
 	PROFILE: ["contacts", "settings"],
 	ADD_CONTACT: ["contacts"],
 	UPDATE_CONTACT: ["contacts"],
@@ -134,7 +133,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	VOICE_CALL: ["messaging", "phone", "connectors"],
 	LIFE: ["tasks", "health"],
 	COMPUTER_USE: ["browser", "files", "terminal", "automation", "admin"],
-	COMPUTE_TRAVEL_BUFFER: ["calendar", "tasks"],
 	BOOK_TRAVEL: ["calendar", "payments", "web"],
 	SUBSCRIPTIONS: ["subscriptions", "payments"],
 	HEALTH: ["health"],
@@ -167,7 +165,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	SAVE_CONNECTOR_CONFIG: ["connectors"],
 	DISCONNECT_CONNECTOR: ["connectors"],
 	LIST_CONNECTORS: ["connectors"],
-	OAUTH_CONNECT: ["connectors"],
 	SEARCH_ACTIONS: ["documents", "connectors"],
 	FINISH: ["general"],
 };

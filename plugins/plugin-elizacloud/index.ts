@@ -1,7 +1,5 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-// Cloud actions
-import { cloudAgentAction } from "./actions/cloud-agent";
 // Cloud providers
 import { cloudStatusProvider } from "./cloud-providers/cloud-status";
 import { containerHealthProvider } from "./cloud-providers/container-health";
@@ -123,9 +121,6 @@ export const elizaOSCloudPlugin: Plugin = {
     CloudBridgeService,
     CloudBackupService,
   ],
-
-  // ─── Cloud Actions ───────────────────────────────────────────────────
-  actions: [cloudAgentAction],
 
   // ─── Cloud Providers ─────────────────────────────────────────────────
   providers: [

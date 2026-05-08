@@ -6,8 +6,9 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { LINE_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
+import { createLineConnectorAccountProvider } from "./connector-account-provider.js";
 import { LineService } from "./service.js";
 
 // Account management exports

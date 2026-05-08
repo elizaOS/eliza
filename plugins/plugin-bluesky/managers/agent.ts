@@ -21,18 +21,25 @@ import {
 	shouldPostImmediately,
 } from "../utils/config";
 
+function cursorCacheKey(agentId: string, accountId: string): string {
+	return `bluesky:cursor:${agentId}:${accountId}`;
+}
+
 export class BlueSkyAgentManager {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private actionTimer: ReturnType<typeof setInterval> | null = null;
 	private postTimer: ReturnType<typeof setTimeout> | null = null;
 	private running = false;
 	private lastSeenAt: string | null = null;
+	public readonly accountId: string;
 
 	constructor(
 		public readonly runtime: IAgentRuntime,
-		public readonly config: BlueSkyConfig,
+		public readonly config: BlueSkyConfig & { accountId?: string },
 		public readonly client: BlueSkyClient,
-	) {}
+	) {
+		this.accountId = config.accountId ?? "default";
+	}
 
 	async start(): Promise<void> {
 		if (this.running) return;
@@ -40,18 +47,25 @@ export class BlueSkyAgentManager {
 		await this.client.authenticate();
 		this.running = true;
 
+		const cached = await this.runtime.getCache<string>(
+			cursorCacheKey(this.runtime.agentId, this.accountId),
+		);
+		if (typeof cached === "string" && cached) {
+			this.lastSeenAt = cached;
+		}
+
 		this.startNotificationPolling();
 
 		if (this.config.enableActionProcessing) {
 			this.startActionProcessing();
 		}
 
-		if (isPostingEnabled(this.runtime)) {
+		if (isPostingEnabled(this.runtime, this.accountId)) {
 			this.startAutomatedPosting();
 		}
 
 		logger.success(
-			{ agentId: this.runtime.agentId },
+			{ agentId: this.runtime.agentId, accountId: this.accountId },
 			"BlueSky agent manager started",
 		);
 	}
@@ -69,13 +83,13 @@ export class BlueSkyAgentManager {
 
 		await this.client.cleanup();
 		logger.info(
-			{ agentId: this.runtime.agentId },
+			{ agentId: this.runtime.agentId, accountId: this.accountId },
 			"BlueSky agent manager stopped",
 		);
 	}
 
 	private startNotificationPolling(): void {
-		const interval = getPollInterval(this.runtime);
+		const interval = getPollInterval(this.runtime, this.accountId);
 		this.pollNotifications();
 		this.pollTimer = setInterval(() => this.pollNotifications(), interval);
 	}
@@ -95,6 +109,10 @@ export class BlueSkyAgentManager {
 
 		if (newNotifications.length > 0) {
 			this.lastSeenAt = notifications[0].indexedAt;
+			await this.runtime.setCache(
+				cursorCacheKey(this.runtime.agentId, this.accountId),
+				this.lastSeenAt,
+			);
 
 			for (const notification of newNotifications) {
 				this.emitNotificationEvent(notification);
@@ -120,13 +138,14 @@ export class BlueSkyAgentManager {
 				runtime: this.runtime,
 				source: "bluesky",
 				notification,
+				accountId: this.accountId,
 			};
 			void this.runtime.emitEvent(event, payload);
 		}
 	}
 
 	private startActionProcessing(): void {
-		const interval = getActionInterval(this.runtime);
+		const interval = getActionInterval(this.runtime, this.accountId);
 		this.processActions();
 		this.actionTimer = setInterval(() => this.processActions(), interval);
 	}
@@ -134,7 +153,7 @@ export class BlueSkyAgentManager {
 	private async processActions(): Promise<void> {
 		if (!this.running) return;
 
-		const max = getMaxActionsProcessing(this.runtime);
+		const max = getMaxActionsProcessing(this.runtime, this.accountId);
 		const { notifications } = await this.client.getNotifications(max);
 
 		for (const notification of notifications) {
@@ -146,6 +165,7 @@ export class BlueSkyAgentManager {
 					runtime: this.runtime,
 					source: "bluesky",
 					notification,
+					accountId: this.accountId,
 				};
 				void this.runtime.emitEvent("bluesky.should_respond", payload);
 			}
@@ -153,14 +173,14 @@ export class BlueSkyAgentManager {
 	}
 
 	private startAutomatedPosting(): void {
-		if (shouldPostImmediately(this.runtime)) {
+		if (shouldPostImmediately(this.runtime, this.accountId)) {
 			void this.createAutomatedPost();
 		}
 		this.scheduleNextPost();
 	}
 
 	private scheduleNextPost(): void {
-		const { min, max } = getPostIntervalRange(this.runtime);
+		const { min, max } = getPostIntervalRange(this.runtime, this.accountId);
 		const interval = Math.random() * (max - min) + min;
 
 		this.postTimer = setTimeout(() => {
@@ -179,6 +199,7 @@ export class BlueSkyAgentManager {
 					platform: "bluesky",
 					kind: "public_post_generation",
 					automated: true,
+					accountId: this.accountId,
 				},
 			},
 			async () => {
@@ -187,6 +208,7 @@ export class BlueSkyAgentManager {
 					runtime: this.runtime,
 					source: "bluesky",
 					automated: true,
+					accountId: this.accountId,
 				};
 				await this.runtime.emitEvent("bluesky.create_post", payload);
 			},

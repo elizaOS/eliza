@@ -1657,7 +1657,7 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/\b(?:tool|function)\s+calls?\b/i,
 		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
 		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
-		/\b(?:DRAFT_REPLY|RESPOND_TO_MESSAGE|SEND_DRAFT|TRIAGE_MESSAGES|LIST_INBOX)\b/,
+		/\b(?:MESSAGE\s+operation|operation=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
 }

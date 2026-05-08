@@ -1,9 +1,8 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import {
-  createNativeRelationshipsGraphService,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-} from "../services/relationships-graph.js";
+import type {
+  RelationshipsGraphQuery,
+  RelationshipsGraphService,
+} from "@elizaos/core/services/relationships-graph-builder";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {

@@ -2520,21 +2520,19 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_PREFERENCES", "PROFILE"],
 		["SET_TRAVEL_PREFERENCES", "PROFILE"],
 		["CREATE_FOLLOWUP", "RELATIONSHIP"],
-		["GET_PENDING_ASSETS", "LIST_INBOX"],
-		["GET_PENDING_ITEMS", "LIST_INBOX"],
-		["EVENT_ASSET_CHECKLIST", "LIST_INBOX"],
-		["OUTSTANDING_EVENT_ASSETS", "LIST_INBOX"],
-		["PORTAL_ASSET_CHECKLIST", "LIST_INBOX"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "TRIAGE_MESSAGES"],
-		["GROUP_CHAT_HANDOFF_POLICY", "TRIAGE_MESSAGES"],
-		["SET_GROUP_CHAT_HANDOFF_POLICY", "TRIAGE_MESSAGES"],
-		["CREATE_GROUP_CHAT", "SEND_DRAFT"],
-		["BUMP_WITH_CONTEXT", "DRAFT_FOLLOWUP"],
-		["CONTEXTUAL_BUMP", "DRAFT_FOLLOWUP"],
-		["BUMP_UNANSWERED_DECISION", "DRAFT_FOLLOWUP"],
-		["UPDATE_MORNING_BRIEF", "CHECKIN"],
-		["GET_PENDING_DRAFTS", "LIST_INBOX"],
-		["ADD_MORNING_BRIEF_SECTION", "CHECKIN"],
+		["GET_PENDING_ASSETS", "MESSAGE"],
+		["GET_PENDING_ITEMS", "MESSAGE"],
+		["EVENT_ASSET_CHECKLIST", "MESSAGE"],
+		["OUTSTANDING_EVENT_ASSETS", "MESSAGE"],
+		["PORTAL_ASSET_CHECKLIST", "MESSAGE"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "MESSAGE"],
+		["GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
+		["SET_GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
+		["CREATE_GROUP_CHAT", "MESSAGE"],
+		["BUMP_WITH_CONTEXT", "MESSAGE"],
+		["CONTEXTUAL_BUMP", "MESSAGE"],
+		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
+		["GET_PENDING_DRAFTS", "MESSAGE"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
 		["CREATE_REMINDER_RULE", "DEVICE_INTENT"],
@@ -2608,7 +2606,7 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // says "build me X" or "implement Y", the planner correctly picks START_CODING_TASK,
 // but the user's prose contains zero START_CODING_TASK keywords. Without this entry
 // the corrector overrides START_CODING_TASK with whatever role-gated action
-// (CALENDAR, TRIAGE_MESSAGES, MANAGE_ISSUES) happens to overlap with
+// (CALENDAR, MESSAGE, MANAGE_ISSUES) happens to overlap with
 // incidental words in the prompt — e.g. a build request that mentions a date
 // keyword-rescores CALENDAR over START_CODING_TASK and the user gets
 // "Google Calendar is not connected" in response to a code request. Same
@@ -2866,11 +2864,10 @@ function _buildActionOnlyRescuePrompt(draftReply: string): string {
 Examples:
 - "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> CALENDAR
 - "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> CALENDAR
-- "repair that missed call and hold the note for approval" -> TRIAGE_MESSAGES
-- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> DRAFT_FOLLOWUP
-	- "if direct relaying gets messy, suggest a group chat handoff" -> TRIAGE_MESSAGES
-	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> LIST_INBOX
-	- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> CHECKIN
+- "repair that missed call and hold the note for approval" -> MESSAGE operation=triage
+- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> MESSAGE operation=draft_followup
+	- "if direct relaying gets messy, suggest a group chat handoff" -> MESSAGE operation=triage
+	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> MESSAGE operation=list_inbox
 	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> CALENDAR
 	- "capture my reusable flight and hotel preferences" -> PROFILE
 	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> CALENDAR
@@ -3596,7 +3593,7 @@ function hasNonPassiveAction(
  * REPLY is a deliberate signal that the LLM judged the message as
  * conversation, not a delegated task. The metadata-overlap rescue path
  * must respect this and not promote REPLY to a privileged action like
- * TRIAGE_MESSAGES or MANAGE_ISSUES based on incidental keyword overlap with
+ * MESSAGE or MANAGE_ISSUES based on incidental keyword overlap with
  * those actions' example text. Without this gate, a chitchat message
  * containing common scheduling/workflow words ("workflow", "policy",
  * "follow up", "friday", "2026") gets force-routed into a role-gated
@@ -3784,8 +3781,8 @@ function _buildOwnershipRepairPrompt(
 The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
 Re-evaluate the request and choose the single best owning action from the listed actions above.
 Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
-Generic contextual bump rules about unanswered events belong to TRIAGE_MESSAGES or LIFE, not DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
-Missing-ID or blocked-workflow prompts belong to DEVICE_INTENT, VOICE_CALL, SEND_DRAFT, or TRIAGE_MESSAGES, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
+Generic contextual bump rules about unanswered events belong to MESSAGE operation=draft_followup or LIFE, not DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
+Missing-ID or blocked-workflow prompts belong to DEVICE_INTENT, VOICE_CALL, or MESSAGE with the appropriate inbox/draft operation, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
 Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to LIFE unless the request is explicitly about personal todo/habit state.
 Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
 Flight-conflict rebooking belongs to CALENDAR even when the exact flight time or event ID still needs a follow-up.

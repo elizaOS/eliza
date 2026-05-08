@@ -61,7 +61,7 @@ export default scenario({
           const fallbackActions = [
             "HEALTH",
             "VOICE_CALL",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
             "RELATIONSHIP",
           ].filter((actionName) => actionNames.has(actionName));
           if (fallbackActions.length > 0) {
