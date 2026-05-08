@@ -24,7 +24,14 @@
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
-      "default": "./dist/node/index.node.js"
+      "import": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      }
     }
   },
   "sideEffects": false,

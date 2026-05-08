@@ -80,6 +80,11 @@ type NativeProviderOptions = NativeTextParams["providerOptions"];
 type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
 
 type AnthropicCacheControl = NonNullable<NonNullable<ProviderOptions["anthropic"]>["cacheControl"]>;
+type AnthropicCacheBreakpoint = {
+  segmentIndex?: number;
+  ttl?: "short" | "long" | "5m" | "1h";
+  cacheControl?: AnthropicCacheControl;
+};
 
 interface AnthropicUsageWithCache {
   promptTokens?: number;
@@ -160,16 +165,23 @@ function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserCo
 
 function buildSegmentedUserContent(
   params: GenerateTextParamsWithProviderOptions,
-  cacheControl?: AnthropicCacheControl
+  anthropicOptions?: ProviderOptions["anthropic"],
+  fallbackCacheControl?: AnthropicCacheControl
 ): UserContent {
   const content: AnthropicUserContentPart[] = [];
+  const segmentCacheControls = buildSegmentCacheControls(
+    params,
+    anthropicOptions,
+    fallbackCacheControl
+  );
 
-  for (const segment of params.promptSegments ?? []) {
+  for (const [index, segment] of (params.promptSegments ?? []).entries()) {
     const textPart: AnthropicTextPart = {
       type: "text",
       text: segment.content,
     };
-    if (segment.stable && cacheControl) {
+    const cacheControl = segmentCacheControls.get(index);
+    if (cacheControl) {
       textPart.providerOptions = { anthropic: { cacheControl } };
     }
     content.push(textPart);
@@ -185,6 +197,78 @@ function buildSegmentedUserContent(
   }
 
   return content;
+}
+
+function buildSegmentCacheControls(
+  params: GenerateTextParamsWithProviderOptions,
+  anthropicOptions?: ProviderOptions["anthropic"],
+  fallbackCacheControl?: AnthropicCacheControl
+): Map<number, AnthropicCacheControl> {
+  const controls = new Map<number, AnthropicCacheControl>();
+  if (!fallbackCacheControl) {
+    return controls;
+  }
+
+  const maxBreakpointsRaw = anthropicOptions?.maxBreakpoints;
+  const maxBreakpoints =
+    typeof maxBreakpointsRaw === "number" && Number.isFinite(maxBreakpointsRaw)
+      ? Math.max(0, Math.floor(maxBreakpointsRaw))
+      : 4;
+  const systemConsumesBreakpoint = anthropicOptions?.cacheSystem !== false;
+  const maxSegmentBreakpoints = Math.max(0, maxBreakpoints - (systemConsumesBreakpoint ? 1 : 0));
+  const plannedBreakpoints = Array.isArray(anthropicOptions?.cacheBreakpoints)
+    ? (anthropicOptions.cacheBreakpoints as AnthropicCacheBreakpoint[])
+    : undefined;
+
+  if (plannedBreakpoints) {
+    for (const breakpoint of plannedBreakpoints.slice(0, maxSegmentBreakpoints)) {
+      if (typeof breakpoint.segmentIndex !== "number") {
+        continue;
+      }
+      controls.set(
+        breakpoint.segmentIndex,
+        normalizeBreakpointCacheControl(breakpoint, fallbackCacheControl)
+      );
+    }
+    return controls;
+  }
+
+  let selected = 0;
+  for (const [index, segment] of (params.promptSegments ?? []).entries()) {
+    if (!segment.stable) {
+      continue;
+    }
+    controls.set(index, fallbackCacheControl);
+    selected++;
+    if (selected >= maxSegmentBreakpoints) {
+      break;
+    }
+  }
+  return controls;
+}
+
+function normalizeBreakpointCacheControl(
+  breakpoint: AnthropicCacheBreakpoint,
+  fallbackCacheControl: AnthropicCacheControl
+): AnthropicCacheControl {
+  if (isAnthropicCacheControl(breakpoint.cacheControl)) {
+    return breakpoint.cacheControl;
+  }
+  if (breakpoint.ttl === "long" || breakpoint.ttl === "1h") {
+    return { type: "ephemeral", ttl: "1h" };
+  }
+  if (breakpoint.ttl === "short" || breakpoint.ttl === "5m") {
+    return { ...fallbackCacheControl };
+  }
+  return fallbackCacheControl;
+}
+
+function isAnthropicCacheControl(value: unknown): value is AnthropicCacheControl {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "ephemeral"
+  );
 }
 
 function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
@@ -217,6 +301,24 @@ function buildCacheableSystemPrompt(
       anthropic: { cacheControl },
     },
   };
+}
+
+function stripLocalAnthropicCacheOptions(
+  anthropicOptions: ProviderOptions["anthropic"] | undefined
+): ProviderOptions["anthropic"] | undefined {
+  if (!anthropicOptions) {
+    return undefined;
+  }
+  const {
+    cacheControl: _cacheControl,
+    cacheBreakpoints: _cacheBreakpoints,
+    cacheSystem: _cacheSystem,
+    maxBreakpoints: _maxBreakpoints,
+    ...wireOptions
+  } = anthropicOptions as Record<string, unknown>;
+  return Object.keys(wireOptions).length > 0
+    ? (wireOptions as ProviderOptions["anthropic"])
+    : undefined;
 }
 
 function normalizeAnthropicUsage(
@@ -437,19 +539,17 @@ async function generateTextWithModel(
     Array.isArray(paramsWithAttachments.promptSegments) &&
     paramsWithAttachments.promptSegments.length > 0;
   const cacheControl = providerOptions.anthropic?.cacheControl;
-  const system = buildCacheableSystemPrompt(systemPrompt, cacheControl);
+  const cacheSystem = providerOptions.anthropic?.cacheSystem !== false;
+  const system = buildCacheableSystemPrompt(systemPrompt, cacheSystem ? cacheControl : undefined);
   const userContent =
     segmentedPrompt || (paramsWithAttachments.attachments?.length ?? 0) > 0
       ? segmentedPrompt
-        ? buildSegmentedUserContent(paramsWithAttachments, cacheControl)
+        ? buildSegmentedUserContent(paramsWithAttachments, providerOptions.anthropic, cacheControl)
         : buildUserContent(paramsWithAttachments)
       : undefined;
   const anthropicOptions =
     providerOptions.anthropic && (segmentedPrompt || system)
-      ? {
-          ...providerOptions.anthropic,
-          cacheControl: undefined,
-        }
+      ? stripLocalAnthropicCacheOptions(providerOptions.anthropic)
       : providerOptions.anthropic;
   const anthropicProviderOptions = anthropicOptions ? { anthropic: anthropicOptions } : undefined;
 

@@ -1,10 +1,6 @@
 {
   "compilerOptions": {
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -22,21 +18,11 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@elizaos/core": [
-        "./../../../packages/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "./../../../packages/core/dist/*"
-      ],
-      "@elizaos/shared": [
-        "./../../../packages/shared/dist/index.d.ts"
-      ],
-      "@elizaos/shared/*": [
-        "./../../../packages/shared/dist/*"
-      ]
+      "@/*": ["./*"],
+      "@elizaos/core": ["./../../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["./../../../packages/core/dist/*"],
+      "@elizaos/shared": ["./../../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["./../../../packages/shared/dist/*"]
     },
     "target": "ES2017"
   },
@@ -47,7 +33,5 @@
     "next-env.d.ts",
     ".next-build/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

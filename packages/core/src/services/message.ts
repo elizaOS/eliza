@@ -1913,7 +1913,10 @@ function shouldTreatPlannerLifeAsDeviceIntent(
 	resolvedName: string,
 	message: Memory,
 ): boolean {
-	if (normalizeActionIdentifier(resolvedName) !== normalizeActionIdentifier("LIFE")) {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("LIFE")
+	) {
 		return false;
 	}
 	return (
@@ -2039,14 +2042,13 @@ function normalizePostPlannerParams(
 			: {};
 	const rawSubaction = stringParam(params.subaction);
 	const source = stringParam(params.source);
-	const op =
-		/^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-			rawSubaction ?? "",
-		)
-			? "read"
-			: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
-				? "search"
-				: stringParam(params.op) ?? stringParam(params.operation);
+	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
+		rawSubaction ?? "",
+	)
+		? "read"
+		: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
+			? "search"
+			: (stringParam(params.op) ?? stringParam(params.operation));
 	return {
 		...(op ? { op } : {}),
 		...(source
@@ -2059,8 +2061,11 @@ function normalizePostPlannerParams(
 			: stringParam(params.searchTerm)
 				? { query: params.searchTerm }
 				: op === "search" || messageTextMatches(message, /\bsearch\b/)
-					? { query: inferPostSearchQuery(message) ?? getUserMessageText(message) }
-				: {}),
+					? {
+							query:
+								inferPostSearchQuery(message) ?? getUserMessageText(message),
+						}
+					: {}),
 		...(stringParam(params.feed) ? { feed: params.feed } : {}),
 		...(stringParam(params.target) ? { target: params.target } : {}),
 	};
@@ -2068,7 +2073,6 @@ function normalizePostPlannerParams(
 
 function normalizeMessagePlannerParams(
 	toolCall: PlannerToolCall,
-	message: Memory,
 ): Record<string, unknown> {
 	const params =
 		toolCall.params && typeof toolCall.params === "object"
@@ -2133,9 +2137,13 @@ function normalizePasswordManagerPlannerParams(
 			? (toolCall.params as Record<string, unknown>)
 			: {};
 	const rawSubaction = stringParam(params.subaction);
-	const wantsCopy = messageTextMatches(message, /\b(?:copy|clipboard|inject|fill)\b/);
+	const wantsCopy = messageTextMatches(
+		message,
+		/\b(?:copy|clipboard|inject|fill)\b/,
+	);
 	const subaction =
-		rawSubaction && /^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
+		rawSubaction &&
+		/^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
 			? rawSubaction
 			: wantsCopy
 				? "inject_password"
@@ -2150,7 +2158,9 @@ function normalizePasswordManagerPlannerParams(
 		subaction,
 		...(query ? { query, intent: query } : {}),
 		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
-		...(typeof params.confirmed === "boolean" ? { confirmed: params.confirmed } : {}),
+		...(typeof params.confirmed === "boolean"
+			? { confirmed: params.confirmed }
+			: {}),
 	};
 }
 
@@ -2171,7 +2181,12 @@ function normalizeAutofillPlannerParams(
 	return {
 		subaction: stringParam(params.subaction) ?? "fill",
 		field: stringParam(params.field) ?? "password",
-		...(domain ? { domain, url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}` } : {}),
+		...(domain
+			? {
+					domain,
+					url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}`,
+				}
+			: {}),
 	};
 }
 
@@ -2181,9 +2196,7 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	if (
-		normalizedResolvedName !== normalizeActionIdentifier("LIFE")
-	) {
+	if (normalizedResolvedName !== normalizeActionIdentifier("LIFE")) {
 		if (normalizedResolvedName === normalizeActionIdentifier("WEBSITE_BLOCK")) {
 			return {
 				...toolCall,
@@ -2202,17 +2215,21 @@ function normalizeAliasedPlannerToolCall(
 			return {
 				...toolCall,
 				name: resolvedName,
-				params: normalizeMessagePlannerParams(toolCall, message),
+				params: normalizeMessagePlannerParams(toolCall),
 			};
 		}
-		if (normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")) {
+		if (
+			normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")
+		) {
 			return {
 				...toolCall,
 				name: resolvedName,
 				params: normalizeResolveRequestPlannerParams(toolCall, message),
 			};
 		}
-		if (normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")) {
+		if (
+			normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")
+		) {
 			return {
 				...toolCall,
 				name: resolvedName,
@@ -2307,10 +2324,7 @@ async function executeV5PlannedToolCall(
 		!forceLifeToDeviceIntent &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
-		shouldTreatPlannerBrowserAsAutofill(
-			resolvedName,
-			args.executorCtx.message,
-		);
+		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&

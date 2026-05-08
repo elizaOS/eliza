@@ -63,26 +63,33 @@ export function ConnectorAccountSetupScope({
               {accounts.accounts.map((account) => {
                 const usable = canUseSetupAccount(account);
                 return (
-                <SelectItem key={account.id} value={account.id} disabled={!usable}>
-                  <div className="flex flex-col gap-0.5 py-0.5">
-                    <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-txt">
-                      <span className="truncate">{account.label}</span>
-                      <Badge variant="outline" className="text-[9px] uppercase">
-                        {account.role}
-                      </Badge>
-                    </span>
-                    {account.handle || account.externalId ? (
-                      <span className="text-xs text-muted">
-                        {account.handle ?? account.externalId}
+                  <SelectItem
+                    key={account.id}
+                    value={account.id}
+                    disabled={!usable}
+                  >
+                    <div className="flex flex-col gap-0.5 py-0.5">
+                      <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-txt">
+                        <span className="truncate">{account.label}</span>
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] uppercase"
+                        >
+                          {account.role}
+                        </Badge>
                       </span>
-                    ) : null}
-                    <span className="text-[10px] capitalize text-muted">
-                      {account.status}
-                      {usable ? "" : " unavailable"} ·{" "}
-                      {formatPrivacy(account.privacy)}
-                    </span>
-                  </div>
-                </SelectItem>
+                      {account.handle || account.externalId ? (
+                        <span className="text-xs text-muted">
+                          {account.handle ?? account.externalId}
+                        </span>
+                      ) : null}
+                      <span className="text-[10px] capitalize text-muted">
+                        {account.status}
+                        {usable ? "" : " unavailable"} ·{" "}
+                        {formatPrivacy(account.privacy)}
+                      </span>
+                    </div>
+                  </SelectItem>
                 );
               })}
             </SelectContent>

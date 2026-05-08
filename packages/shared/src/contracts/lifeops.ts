@@ -298,6 +298,7 @@ export type LifeOpsConnectorExecutionTarget =
 export const LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH = [
   "local_storage",
   "cloud_connection",
+  "connector_account",
 ] as const;
 export type LifeOpsConnectorSourceOfTruth =
   (typeof LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH)[number];

@@ -17,7 +17,7 @@ async function resolveGoogleStatus(
 ): Promise<LifeOpsGoogleConnectorStatus | null> {
   try {
     return await lifeOps.getGoogleConnectorStatus(
-      new URL("http://127.0.0.1/api/lifeops/connectors/google/status"),
+      new URL("http://127.0.0.1/api/connectors/google/accounts"),
       undefined,
       "owner",
     );

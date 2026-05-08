@@ -44,7 +44,6 @@ import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   DisconnectLifeOpsXConnectorRequest,
@@ -82,7 +81,6 @@ import type {
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
-  LifeOpsGoogleConnectorStatus,
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthSummaryResponse,
@@ -112,7 +110,6 @@ import type {
   LifeOpsXConnectorStatus,
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
-  SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
@@ -123,8 +120,6 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsGoogleConnectorRequest,
-  StartLifeOpsGoogleConnectorResponse,
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsHealthConnectorResponse,
   StartLifeOpsSignalPairingRequest,
@@ -552,23 +547,6 @@ declare module "@elizaos/app-core/api/client-base" {
       ownerType: "occurrence" | "calendar_event",
       ownerId: string,
     ): Promise<LifeOpsReminderInspection>;
-    getGoogleLifeOpsConnectorStatus(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    selectGoogleLifeOpsConnectorMode(
-      data: SelectLifeOpsGoogleConnectorPreferenceRequest,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    startGoogleLifeOpsConnector(
-      data?: StartLifeOpsGoogleConnectorRequest,
-    ): Promise<StartLifeOpsGoogleConnectorResponse>;
-    disconnectGoogleLifeOpsConnector(
-      data?: DisconnectLifeOpsGoogleConnectorRequest,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    getGoogleLifeOpsConnectorAccounts(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsGoogleConnectorStatus[]>;
     getHealthLifeOpsConnectorStatuses(
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
@@ -1901,72 +1879,6 @@ ElizaClient.prototype.inspectLifeOpsReminder = async function (
     ownerId,
   });
   return this.fetch(`/api/lifeops/reminders/inspection?${params.toString()}`);
-};
-
-ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
-  this: ElizaClient,
-  mode?: LifeOpsConnectorMode,
-  side?: LifeOpsConnectorSide,
-) {
-  const params = new URLSearchParams();
-  if (mode) {
-    params.set("mode", mode);
-  }
-  if (side) {
-    params.set("side", side);
-  }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch<LifeOpsGoogleConnectorStatus>(
-    `/api/lifeops/connectors/google/status${query}`,
-  );
-};
-
-ElizaClient.prototype.selectGoogleLifeOpsConnectorMode = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/connectors/google/preference", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.startGoogleLifeOpsConnector = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/google/start", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.disconnectGoogleLifeOpsConnector = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/google/disconnect", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
-  this: ElizaClient,
-  mode?: LifeOpsConnectorMode,
-  side?: LifeOpsConnectorSide,
-) {
-  const params = new URLSearchParams();
-  if (mode) {
-    params.set("mode", mode);
-  }
-  if (side) {
-    params.set("side", side);
-  }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch<LifeOpsGoogleConnectorStatus[]>(
-    `/api/lifeops/connectors/google/accounts${query}`,
-  );
 };
 
 ElizaClient.prototype.getHealthLifeOpsConnectorStatuses = async function (

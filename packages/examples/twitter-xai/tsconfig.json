@@ -10,16 +10,9 @@
     "resolveJsonModule": true,
     "declaration": false,
     "noEmit": true,
-    "types": [
-      "bun-types",
-      "node"
-    ]
+    "types": ["bun-types", "node"]
   },
-  "include": [
-    "*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
+  "include": ["*.ts"],
+  "exclude": ["node_modules"],
   "extends": "../../../tsconfig.workspace-paths.json"
 }

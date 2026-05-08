@@ -19,6 +19,7 @@ import {
 import { RefreshingAuthProvider, StaticAuthProvider } from "@twurple/auth";
 import { ChatClient, type ChatMessage } from "@twurple/chat";
 import {
+  listTwitchAccountIds,
   normalizeTwitchAccountId,
   readTwitchAccountId,
   resolveDefaultTwitchAccountId,
@@ -123,6 +124,7 @@ export class TwitchService extends Service implements ITwitchService {
   private client!: ChatClient;
   private connected: boolean = false;
   private joinedChannels: Set<string> = new Set();
+  private accountServices = new Map<string, TwitchService>();
 
   /**
    * Start the Twitch service.
@@ -141,42 +143,48 @@ export class TwitchService extends Service implements ITwitchService {
       return;
     }
 
-    const accountId = serviceInstance.getAccountId(runtime);
-    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
-    if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
-        source: "twitch",
-        accountId,
-        label: "Twitch",
-        description:
-          "Twitch public chat connector for sending messages to joined channels.",
-        capabilities: [...TWITCH_CONNECTOR_CAPABILITIES],
-        supportedTargetKinds: ["channel"],
-        contexts: [...TWITCH_CONNECTOR_CONTEXTS],
-        metadata: {
+    const services = serviceInstance.getAccountServiceList();
+    const registerLegacyHandler = services.length <= 1;
+    for (const accountService of services) {
+      const accountId = accountService.getAccountId(runtime);
+      const sendHandler = accountService.handleSendMessage.bind(accountService);
+      if (typeof runtime.registerMessageConnector === "function") {
+        runtime.registerMessageConnector({
+          source: "twitch",
           accountId,
-          service: TWITCH_SERVICE_NAME,
-          maxMessageLength: MAX_TWITCH_MESSAGE_LENGTH,
-        },
-        resolveTargets:
-          serviceInstance.resolveConnectorTargets.bind(serviceInstance),
-        listRecentTargets:
-          serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
-        listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
-        joinHandler: serviceInstance.handleJoinChannel.bind(serviceInstance),
-        leaveHandler: serviceInstance.handleLeaveChannel.bind(serviceInstance),
-        getChatContext:
-          serviceInstance.getConnectorChatContext.bind(serviceInstance),
-        sendHandler,
-      });
-      runtime.logger.info(
-        { src: "plugin:twitch", agentId: runtime.agentId },
-        "Registered Twitch chat connector",
-      );
-      return;
-    }
+          label: "Twitch",
+          description:
+            "Twitch public chat connector for sending messages to joined channels.",
+          capabilities: [...TWITCH_CONNECTOR_CAPABILITIES],
+          supportedTargetKinds: ["channel"],
+          contexts: [...TWITCH_CONNECTOR_CONTEXTS],
+          metadata: {
+            accountId,
+            service: TWITCH_SERVICE_NAME,
+            maxMessageLength: MAX_TWITCH_MESSAGE_LENGTH,
+          },
+          resolveTargets:
+            accountService.resolveConnectorTargets.bind(accountService),
+          listRecentTargets:
+            accountService.listRecentConnectorTargets.bind(accountService),
+          listRooms: accountService.listConnectorRooms.bind(accountService),
+          joinHandler: accountService.handleJoinChannel.bind(accountService),
+          leaveHandler: accountService.handleLeaveChannel.bind(accountService),
+          getChatContext:
+            accountService.getConnectorChatContext.bind(accountService),
+          sendHandler,
+        });
+        runtime.logger.info(
+          { src: "plugin:twitch", agentId: runtime.agentId },
+          "Registered Twitch chat connector",
+        );
+        continue;
+      }
 
-    runtime.registerSendHandler("twitch", sendHandler);
+      if (registerLegacyHandler) {
+        runtime.registerSendHandler("twitch", sendHandler);
+      }
+    }
   }
 
   /**
@@ -195,8 +203,37 @@ export class TwitchService extends Service implements ITwitchService {
   private async initialize(runtime: IAgentRuntime): Promise<void> {
     this.runtime = runtime;
 
+    const startedAccounts: string[] = [];
+    for (const accountId of listTwitchAccountIds(runtime)) {
+      const settings = resolveTwitchAccountSettings(runtime, accountId);
+      if (settings.enabled === false) {
+        continue;
+      }
+
+      const accountService = new TwitchService();
+      await accountService.initializeAccount(runtime, accountId);
+      this.accountServices.set(accountService.getAccountId(), accountService);
+      startedAccounts.push(accountService.getAccountId());
+    }
+
+    if (startedAccounts.length === 0) {
+      logger.warn("No enabled Twitch accounts configured");
+      return;
+    }
+
+    logger.info(
+      `Twitch service started ${startedAccounts.length} account(s): ${startedAccounts.join(", ")}`,
+    );
+  }
+
+  private async initializeAccount(
+    runtime: IAgentRuntime,
+    accountId?: string,
+  ): Promise<void> {
+    this.runtime = runtime;
+
     // Load configuration
-    this.settings = this.loadSettings();
+    this.settings = this.loadSettings(accountId);
 
     // Validate configuration
     this.validateSettings();
@@ -230,8 +267,8 @@ export class TwitchService extends Service implements ITwitchService {
   /**
    * Load settings from runtime.
    */
-  private loadSettings(): TwitchSettings {
-    return resolveTwitchAccountSettings(this.runtime);
+  private loadSettings(accountId?: string): TwitchSettings {
+    return resolveTwitchAccountSettings(this.runtime, accountId);
   }
 
   /**
@@ -459,6 +496,17 @@ export class TwitchService extends Service implements ITwitchService {
    * Stop the service.
    */
   async stop(): Promise<void> {
+    if (this.accountServices?.size > 0) {
+      await Promise.all(
+        Array.from(this.accountServices.values()).map((service) =>
+          service.stop(),
+        ),
+      );
+      this.accountServices.clear();
+      logger.info("Twitch service stopped");
+      return;
+    }
+
     if (this.client) {
       this.client.quit();
     }
@@ -467,19 +515,69 @@ export class TwitchService extends Service implements ITwitchService {
     logger.info("Twitch service stopped");
   }
 
+  private getAccountServiceList(): TwitchService[] {
+    return this.accountServices?.size > 0
+      ? Array.from(this.accountServices.values())
+      : [this];
+  }
+
+  private getDefaultAccountService(): TwitchService {
+    if (!this.accountServices || this.accountServices.size === 0) {
+      return this;
+    }
+
+    const defaultAccountId = normalizeTwitchAccountId(
+      resolveDefaultTwitchAccountId(this.runtime),
+    );
+    return (
+      this.accountServices.get(defaultAccountId) ??
+      Array.from(this.accountServices.values())[0]
+    );
+  }
+
+  private getAccountService(accountId: string): TwitchService {
+    if (!this.accountServices || this.accountServices.size === 0) {
+      const ownAccountId = this.getAccountId();
+      if (normalizeTwitchAccountId(accountId) !== ownAccountId) {
+        throw new Error(
+          `Twitch account '${accountId}' is not available in this service instance`,
+        );
+      }
+      return this;
+    }
+
+    const normalized = normalizeTwitchAccountId(accountId);
+    const service = this.accountServices.get(normalized);
+    if (!service) {
+      throw new Error(`Twitch account '${normalized}' is not available`);
+    }
+    return service;
+  }
+
   // ============================================================================
   // Public Interface
   // ============================================================================
 
   isConnected(): boolean {
+    if (this.accountServices?.size > 0) {
+      return Array.from(this.accountServices.values()).some((service) =>
+        service.isConnected(),
+      );
+    }
     return this.connected;
   }
 
   getBotUsername(): string {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getBotUsername();
+    }
     return this.settings.username;
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getAccountId(runtime);
+    }
     return normalizeTwitchAccountId(
       this.settings?.accountId ??
         (runtime ? resolveDefaultTwitchAccountId(runtime) : undefined),
@@ -487,10 +585,16 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   getPrimaryChannel(): string {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getPrimaryChannel();
+    }
     return this.settings.channel;
   }
 
   getJoinedChannels(): string[] {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getJoinedChannels();
+    }
     return Array.from(this.joinedChannels);
   }
 
@@ -504,6 +608,15 @@ export class TwitchService extends Service implements ITwitchService {
         readTwitchAccountId(content, target) ??
         this.getAccountId(),
     );
+    if (this.accountServices?.size > 0) {
+      await this.getAccountService(requestedAccountId).handleSendMessage(
+        runtime,
+        target,
+        content,
+      );
+      return;
+    }
+
     if (requestedAccountId !== this.getAccountId()) {
       throw new Error(
         `Twitch account '${requestedAccountId}' is not available in this service instance`,
@@ -742,6 +855,14 @@ export class TwitchService extends Service implements ITwitchService {
     text: string,
     options?: TwitchMessageSendOptions,
   ): Promise<TwitchSendResult> {
+    if (this.accountServices?.size > 0) {
+      const accountId = normalizeTwitchAccountId(
+        (options as TwitchMessageSendOptions & { accountId?: string })
+          ?.accountId ?? this.getAccountId(),
+      );
+      return this.getAccountService(accountId).sendMessage(text, options);
+    }
+
     if (!this.connected) {
       throw new TwitchNotConnectedError();
     }
@@ -795,6 +916,11 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async joinChannel(channel: string): Promise<void> {
+    if (this.accountServices?.size > 0) {
+      await this.getDefaultAccountService().joinChannel(channel);
+      return;
+    }
+
     const normalized = normalizeChannel(channel);
     await logTwurpleCall("join", { channel: normalized }, async () => {
       await this.client.join(normalized);
@@ -803,6 +929,11 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async leaveChannel(channel: string): Promise<void> {
+    if (this.accountServices?.size > 0) {
+      await this.getDefaultAccountService().leaveChannel(channel);
+      return;
+    }
+
     const normalized = normalizeChannel(channel);
     await logTwurpleCall("part", { channel: normalized }, async () => {
       await this.client.part(normalized);

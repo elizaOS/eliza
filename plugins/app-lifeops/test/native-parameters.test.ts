@@ -119,6 +119,8 @@ describe("LifeOps native options.parameters migration", () => {
       "calendar",
       "contacts",
       "tasks",
+      "connectors",
+      "web",
     ]);
     expect(
       calendarAction.subActions?.map((action) =>

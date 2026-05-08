@@ -226,6 +226,15 @@ export class FarcasterCastService implements CastServiceInterface {
     context: PostConnectorQueryContext,
     params: { query: string; limit?: number; cursor?: string }
   ): Promise<Memory[]> {
+    const requestedAccountId = normalizeFarcasterAccountId(
+      context.accountId ?? context.metadata?.accountId ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Farcaster account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
     const query = params.query.trim().toLowerCase();
     if (!query) {
       return [];

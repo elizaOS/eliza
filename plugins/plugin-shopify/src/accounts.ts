@@ -1,9 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_SHOPIFY_ACCOUNT_ID = "default";
+export const DEFAULT_SHOPIFY_ACCOUNT_ROLE = "OWNER";
 
 export interface ShopifyAccountConfig {
   accountId: string;
+  role: typeof DEFAULT_SHOPIFY_ACCOUNT_ROLE;
   storeDomain: string;
   accessToken: string;
   label?: string;
@@ -29,11 +31,21 @@ export function resolveShopifyAccountId(
   runtime: IAgentRuntime,
   options?: Record<string, unknown>,
 ): string {
-  return normalizeShopifyAccountId(
-    options?.accountId ??
-      options?.shopifyAccountId ??
-      readSetting(runtime, "SHOPIFY_DEFAULT_ACCOUNT_ID") ??
-      readSetting(runtime, "SHOPIFY_ACCOUNT_ID"),
+  const requested =
+    nonEmptyString(options?.accountId) ??
+    nonEmptyString(options?.shopifyAccountId);
+  if (requested) return requested;
+
+  const configuredDefault =
+    readSetting(runtime, "SHOPIFY_DEFAULT_ACCOUNT_ID") ??
+    readSetting(runtime, "SHOPIFY_ACCOUNT_ID");
+  const accounts = readShopifyAccounts(runtime);
+  const defaultAccount = resolveShopifyDefaultAccount(
+    accounts,
+    configuredDefault,
+  );
+  return (
+    defaultAccount?.accountId ?? normalizeShopifyAccountId(configuredDefault)
   );
 }
 
@@ -107,6 +119,7 @@ function accountFromRecord(
   if (!storeDomain || !accessToken) return null;
   return {
     accountId,
+    role: DEFAULT_SHOPIFY_ACCOUNT_ROLE,
     storeDomain,
     accessToken,
     label: nonEmptyString(record.label ?? record.displayName),
@@ -167,6 +180,7 @@ export function readShopifyAccounts(
         readSetting(runtime, "SHOPIFY_ACCOUNT_ID") ??
           readSetting(runtime, "SHOPIFY_DEFAULT_ACCOUNT_ID"),
       ),
+      role: DEFAULT_SHOPIFY_ACCOUNT_ROLE,
       storeDomain,
       accessToken,
     });
@@ -179,9 +193,18 @@ export function resolveShopifyAccount(
   accounts: readonly ShopifyAccountConfig[],
   accountId: string,
 ): ShopifyAccountConfig | null {
+  return accounts.find((account) => account.accountId === accountId) ?? null;
+}
+
+export function resolveShopifyDefaultAccount(
+  accounts: readonly ShopifyAccountConfig[],
+  accountId?: string,
+): ShopifyAccountConfig | null {
+  const normalized = normalizeShopifyAccountId(accountId);
   return (
-    accounts.find((account) => account.accountId === accountId) ??
-    accounts.find((account) => account.accountId === DEFAULT_SHOPIFY_ACCOUNT_ID) ??
+    resolveShopifyAccount(accounts, normalized) ??
+    resolveShopifyAccount(accounts, DEFAULT_SHOPIFY_ACCOUNT_ID) ??
+    accounts.find((account) => account.role === DEFAULT_SHOPIFY_ACCOUNT_ROLE) ??
     accounts[0] ??
     null
   );
@@ -192,5 +215,7 @@ export function hasShopifyAccountConfig(
   options?: Record<string, unknown>,
 ): boolean {
   const accountId = resolveShopifyAccountId(runtime, options);
-  return Boolean(resolveShopifyAccount(readShopifyAccounts(runtime), accountId));
+  return Boolean(
+    resolveShopifyAccount(readShopifyAccounts(runtime), accountId),
+  );
 }

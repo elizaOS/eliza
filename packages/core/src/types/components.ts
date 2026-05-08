@@ -142,6 +142,9 @@ export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
+	contextSlices?: string[];
+	candidateActions?: string[];
+	parentActionHints?: string[];
 	[key: string]: JsonValue | undefined;
 }
 

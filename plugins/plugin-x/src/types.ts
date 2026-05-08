@@ -115,7 +115,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
   const mentions = Array.isArray(tweet.mentions)
     ? tweet.mentions
         .filter(
-          (mention): mention is Mention =>
+          (mention): mention is Mention & { username: string } =>
             typeof mention === "object" &&
             mention !== null &&
             typeof mention.username === "string",
@@ -130,7 +130,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
           const tagObj = tag as { text?: string };
           return typeof tagObj.text === "string" ? tagObj.text : "";
         })
-        .filter((text) => text !== "")
+        .filter((text): text is string => text !== "")
     : [];
 
   const urls = Array.isArray(tweet.urls)
@@ -142,7 +142,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
             ? urlObj.expanded_url
             : "";
         })
-        .filter((url) => url !== "")
+        .filter((url): url is string => url !== "")
     : [];
 
   return {
@@ -228,10 +228,8 @@ export interface TwitterUserRef {
 /**
  * Twitter-specific message received payload
  */
-export interface TwitterMessageReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMessageReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   message: TwitterMemory;
   tweet: Tweet;
   user: TwitterUserRef;
@@ -262,10 +260,8 @@ export interface TwitterReactionReceivedPayload extends MessagePayload {
 /**
  * Twitter-specific quote tweet received payload
  */
-export interface TwitterQuoteReceivedPayload extends Omit<
-  MessagePayload,
-  "message" | "reaction"
-> {
+export interface TwitterQuoteReceivedPayload
+  extends Omit<MessagePayload, "message" | "reaction"> {
   /** The original tweet that was quoted */
   quotedTweet: Tweet;
   /** The quote tweet */
@@ -286,10 +282,8 @@ export interface TwitterQuoteReceivedPayload extends Omit<
 /**
  * Twitter-specific mention received payload
  */
-export interface TwitterMentionReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMentionReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   /** The tweet containing the mention */
   tweet: Tweet;
   /** The user who mentioned */

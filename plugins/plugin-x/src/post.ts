@@ -46,13 +46,28 @@ function formatStyleForPrompt(style: unknown): string {
     .join("; ");
 }
 
+function stateSetting(
+  state: TwitterClientState,
+  key: string,
+): string | boolean | undefined {
+  const value = (state as Record<string, unknown> | undefined)?.[key];
+  if (typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  return undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
 export class TwitterPostClient {
   client: ClientBase;
   runtime: IAgentRuntime;
-  twitterUsername: string;
+  twitterUsername = "";
   private isDryRun: boolean;
   private state: TwitterClientState;
   private isRunning: boolean = false;
@@ -150,8 +165,11 @@ export class TwitterPostClient {
 
     // Check if we should generate a tweet immediately
     const postImmediately =
-      this.state?.TWITTER_POST_IMMEDIATELY ??
-      (getSetting(this.runtime, "TWITTER_POST_IMMEDIATELY") as string);
+      stateSetting(this.state, "TWITTER_POST_IMMEDIATELY") ??
+      (getSetting(this.runtime, "TWITTER_POST_IMMEDIATELY") as
+        | string
+        | boolean
+        | undefined);
 
     if (parseBooleanFromText(postImmediately)) {
       logger.info(
@@ -234,7 +252,10 @@ export class TwitterPostClient {
           createdAt: Date.now(),
         } as Memory)
         .catch((error) => {
-          logger.warn("Error composing state, using minimal state:", error);
+          logger.warn(
+            "Error composing state, using minimal state:",
+            errorMessage(error),
+          );
           // Return minimal state if composition fails
           return {
             agentId: this.runtime.agentId,
@@ -425,14 +446,15 @@ Generate a single tweet that sounds like YOU would actually write it:`;
           await createMemorySafe(this.runtime, postedMemory, "messages");
           logger.info("Tweet posted and saved to memory successfully");
         } catch (error) {
-          logger.error("Failed to save tweet memory:", error);
+          logger.error("Failed to save tweet memory:", errorMessage(error));
           // Don't fail the tweet posting if memory creation fails
         }
 
         return true;
       }
+      return false;
     } catch (error) {
-      logger.error("Error generating tweet:", error);
+      logger.error("Error generating tweet:", errorMessage(error));
       return false;
     } finally {
       this.isPosting = false;
@@ -485,7 +507,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
             mediaIds.push(mediaId);
             logger.log(`Media uploaded successfully. Media ID: ${mediaId}`);
           } catch (error) {
-            logger.error("Error uploading media:", error);
+            logger.error("Error uploading media:", errorMessage(error));
             // Continue with other media files even if one fails
           }
         }
@@ -508,7 +530,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
 
       return result;
     } catch (error) {
-      logger.error("Error posting to Twitter:", error);
+      logger.error("Error posting to Twitter:", errorMessage(error));
       throw error;
     }
   }

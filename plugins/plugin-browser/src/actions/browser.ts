@@ -174,6 +174,8 @@ function normalizeLegacyBrowserAction(
     case "close_tab":
     case "switch_tab":
       return "tab";
+    case "autofill-login":
+      return undefined;
     case undefined:
       return undefined;
     default:

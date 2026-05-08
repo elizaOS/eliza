@@ -13,6 +13,10 @@ import {
 export class TwitterMessageService implements IMessageService {
   constructor(private client: ClientBase) {}
 
+  private errorDetail(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   private extractRestId(result: unknown): string | undefined {
     const r = result as {
       rest_id?: unknown;
@@ -76,38 +80,45 @@ export class TwitterMessageService implements IMessageService {
       );
 
       const messages: Message[] = searchResult.tweets
+        .filter((tweet) => typeof tweet.id === "string")
         .filter((tweet) => {
+          const conversationId = tweet.conversationId ?? tweet.id;
+          if (!conversationId) return false;
           // Filter by room ID if specified
           if (options.roomId) {
             const tweetRoomId = createUniqueUuid(
               this.client.runtime,
-              tweet.conversationId,
+              conversationId,
             );
             return tweetRoomId === options.roomId;
           }
           return true;
         })
-        .map((tweet) => ({
-          id: tweet.id,
-          agentId: this.client.runtime.agentId,
-          roomId: createUniqueUuid(this.client.runtime, tweet.conversationId),
-          userId: tweet.userId,
-          username: tweet.username,
-          text: tweet.text,
-          type: tweet.inReplyToStatusId
-            ? MessageType.REPLY
-            : MessageType.MENTION,
-          timestamp: getEpochMs(tweet.timestamp),
-          inReplyTo: tweet.inReplyToStatusId,
-          metadata: {
-            tweetId: tweet.id,
-            permanentUrl: tweet.permanentUrl,
-          },
-        }));
+        .map((tweet) => {
+          const tweetId = tweet.id as string;
+          const conversationId = tweet.conversationId ?? tweetId;
+          return {
+            id: tweetId,
+            agentId: this.client.runtime.agentId,
+            roomId: createUniqueUuid(this.client.runtime, conversationId),
+            userId: tweet.userId ?? "",
+            username: tweet.username ?? "",
+            text: tweet.text ?? "",
+            type: tweet.inReplyToStatusId
+              ? MessageType.REPLY
+              : MessageType.MENTION,
+            timestamp: getEpochMs(tweet.timestamp),
+            inReplyTo: tweet.inReplyToStatusId,
+            metadata: {
+              tweetId,
+              permanentUrl: tweet.permanentUrl,
+            },
+          };
+        });
 
       return messages;
     } catch (error) {
-      logger.error("Error fetching messages:", error);
+      logger.error("Error fetching messages:", this.errorDetail(error));
       return [];
     }
   }
@@ -153,7 +164,7 @@ export class TwitterMessageService implements IMessageService {
 
       return message;
     } catch (error) {
-      logger.error("Error sending message:", error);
+      logger.error("Error sending message:", this.errorDetail(error));
       throw error;
     }
   }
@@ -162,7 +173,7 @@ export class TwitterMessageService implements IMessageService {
     try {
       await this.client.twitterClient.deleteTweet(messageId);
     } catch (error) {
-      logger.error("Error deleting message:", error);
+      logger.error("Error deleting message:", this.errorDetail(error));
       throw error;
     }
   }
@@ -171,15 +182,16 @@ export class TwitterMessageService implements IMessageService {
     try {
       const tweet = await this.client.twitterClient.getTweet(messageId);
 
-      if (!tweet) return null;
+      if (!tweet?.id) return null;
+      const conversationId = tweet.conversationId ?? tweet.id;
 
       const message: Message = {
         id: tweet.id,
         agentId: agentId,
-        roomId: createUniqueUuid(this.client.runtime, tweet.conversationId),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
+        roomId: createUniqueUuid(this.client.runtime, conversationId),
+        userId: tweet.userId ?? "",
+        username: tweet.username ?? "",
+        text: tweet.text ?? "",
         type: tweet.inReplyToStatusId ? MessageType.REPLY : MessageType.POST,
         timestamp: getEpochMs(tweet.timestamp),
         inReplyTo: tweet.inReplyToStatusId,
@@ -191,7 +203,7 @@ export class TwitterMessageService implements IMessageService {
 
       return message;
     } catch (error) {
-      logger.error("Error fetching message:", error);
+      logger.error("Error fetching message:", this.errorDetail(error));
       return null;
     }
   }

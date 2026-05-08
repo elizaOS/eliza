@@ -1536,7 +1536,7 @@ export const connectorAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll start the Google OAuth flow and return the auth URL.",
+          text: "I'll start the plugin-google account OAuth flow and return the auth URL.",
         },
       },
     ],

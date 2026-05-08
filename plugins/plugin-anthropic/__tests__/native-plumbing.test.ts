@@ -78,7 +78,7 @@ describe("Anthropic native text plumbing", () => {
       content: "system prompt",
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } } },
     });
-    expect(call.providerOptions).toEqual({ anthropic: { cacheControl: undefined } });
+    expect(call.providerOptions).toBeUndefined();
     expect(result).toMatchObject({
       text: "ok",
       finishReason: "tool-calls",
@@ -124,7 +124,7 @@ describe("Anthropic native text plumbing", () => {
     expect(call.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
-  it("emits cache metadata on stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
+  it("emits cache metadata on planned stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
@@ -158,6 +158,12 @@ describe("Anthropic native text plumbing", () => {
         { content: "stable content", stable: true },
         { content: "dynamic content", stable: false },
       ],
+      providerOptions: {
+        anthropic: {
+          cacheBreakpoints: [{ segmentIndex: 0, ttl: "short" }],
+          maxBreakpoints: 4,
+        },
+      },
     } as never);
 
     const call = generateText.mock.calls[0][0] as {
@@ -177,6 +183,47 @@ describe("Anthropic native text plumbing", () => {
     // The non-stable segment must not carry cache metadata.
     const dynamicBlock = call.messages[0].content[1];
     expect(dynamicBlock.providerOptions).toBeUndefined();
+  }, 60_000);
+
+  it("caps fallback prompt segment cache markers to three plus system", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 5, outputTokens: 2 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "abcdef",
+      promptSegments: [
+        { content: "a", stable: true },
+        { content: "b", stable: true },
+        { content: "c", stable: true },
+        { content: "d", stable: true },
+        { content: "e", stable: true },
+        { content: "f", stable: false },
+      ],
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as {
+      messages: Array<{ content: Array<Record<string, unknown>> }>;
+      system?: unknown;
+    };
+    const marked = call.messages[0].content.filter((part) => part.providerOptions);
+    expect(call.system).toEqual({
+      role: "system",
+      content: "system prompt",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    });
+    expect(marked).toHaveLength(3);
+    expect(call.messages[0].content[3]?.providerOptions).toBeUndefined();
   }, 60_000);
 
   it("applies 1h TTL when ANTHROPIC_PROMPT_CACHE_TTL=1h is set", async () => {
@@ -226,4 +273,28 @@ describe("Anthropic native text plumbing", () => {
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
     });
   }, 60_000);
+});
+
+describe("Anthropic model defaults", () => {
+  it("defaults response handler to Haiku and action planner to Opus while preserving env overrides", async () => {
+    const { getActionPlannerModel, getResponseHandlerModel } = await import("../utils/config");
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+
+    expect(getResponseHandlerModel(runtime)).toBe("claude-haiku-4-5-20251001");
+    expect(getActionPlannerModel(runtime)).toBe("claude-opus-4-7");
+
+    const overrideRuntime = {
+      getSetting: vi.fn((key: string) => {
+        const settings: Record<string, string> = {
+          ANTHROPIC_RESPONSE_HANDLER_MODEL: "custom-haiku",
+          ANTHROPIC_ACTION_PLANNER_MODEL: "custom-opus",
+        };
+        return settings[key];
+      }),
+    } as unknown as IAgentRuntime;
+    expect(getResponseHandlerModel(overrideRuntime)).toBe("custom-haiku");
+    expect(getActionPlannerModel(overrideRuntime)).toBe("custom-opus");
+  });
 });

@@ -38,7 +38,68 @@ describe("Matrix message connector", () => {
 
     expect(sendMessageSpy).toHaveBeenCalledWith(
       "hello",
-      expect.objectContaining({ roomId: "!room:matrix.org" })
+      expect.objectContaining({ accountId: "work", roomId: "!room:matrix.org" })
+    );
+  });
+
+  it("registers account-scoped connectors and routes through the requested account", async () => {
+    const runtime = {
+      registerMessageConnector: vi.fn(),
+      registerSendHandler: vi.fn(),
+      getSetting: vi.fn(),
+      character: { settings: {} },
+      getRoom: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const service = Object.create(MatrixService.prototype) as MatrixService;
+    const states = new Map([
+      [
+        "work",
+        {
+          accountId: "work",
+          settings: { accountId: "work" },
+          client: {},
+          connected: true,
+          syncing: true,
+        },
+      ],
+      [
+        "personal",
+        {
+          accountId: "personal",
+          settings: { accountId: "personal" },
+          client: {},
+          connected: true,
+          syncing: true,
+        },
+      ],
+    ]);
+    (service as unknown as { states: typeof states; defaultAccountId: string }).states = states;
+    (service as unknown as { states: typeof states; defaultAccountId: string }).defaultAccountId =
+      "work";
+    const sendMessageSpy = vi
+      .spyOn(service, "sendMessage")
+      .mockResolvedValue({ success: true, roomId: "!personal:matrix.org" });
+
+    MatrixService.registerSendHandlers(runtime, service, "work");
+    MatrixService.registerSendHandlers(runtime, service, "personal");
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledTimes(2);
+    expect(
+      vi
+        .mocked(runtime.registerMessageConnector)
+        .mock.calls.map(([registration]) => registration.accountId)
+    ).toEqual(["work", "personal"]);
+
+    const personalRegistration = vi.mocked(runtime.registerMessageConnector).mock.calls[1][0];
+    await personalRegistration.sendHandler(
+      runtime,
+      { source: "matrix", accountId: "personal", channelId: "!personal:matrix.org" } as TargetInfo,
+      { text: "hi" } as Content
+    );
+
+    expect(sendMessageSpy).toHaveBeenCalledWith(
+      "hi",
+      expect.objectContaining({ accountId: "personal", roomId: "!personal:matrix.org" })
     );
   });
 });

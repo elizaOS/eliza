@@ -3,11 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -25,21 +21,10 @@
       "@elizaos/plugin-localdb": [
         "./../../../../plugins/plugin-localdb/index.browser.ts"
       ],
-      "@elizaos/*": [
-        "./../../../../packages/*",
-        "./../../../../plugins/*"
-      ]
+      "@elizaos/*": ["./../../../../packages/*", "./../../../../plugins/*"]
     },
-    "types": [
-      "chrome"
-    ]
+    "types": ["chrome"]
   },
-  "include": [
-    "src/**/*",
-    "../shared/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*", "../shared/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

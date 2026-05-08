@@ -1,9 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_LINEAR_ACCOUNT_ID = "default";
+export const DEFAULT_LINEAR_ACCOUNT_ROLE = "OWNER";
 
 export interface LinearAccountConfig {
   accountId: string;
+  role: typeof DEFAULT_LINEAR_ACCOUNT_ROLE;
   apiKey: string;
   workspaceId?: string;
   defaultTeamKey?: string;
@@ -28,12 +30,14 @@ export function resolveLinearAccountId(
   runtime: IAgentRuntime,
   options?: Record<string, unknown>
 ): string {
-  return normalizeLinearAccountId(
-    options?.accountId ??
-      options?.linearAccountId ??
-      readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID") ??
-      readSetting(runtime, "LINEAR_ACCOUNT_ID")
-  );
+  const requested = nonEmptyString(options?.accountId) ?? nonEmptyString(options?.linearAccountId);
+  if (requested) return requested;
+
+  const configuredDefault =
+    readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID") ?? readSetting(runtime, "LINEAR_ACCOUNT_ID");
+  const accounts = readLinearAccounts(runtime);
+  const defaultAccount = resolveLinearDefaultAccount(accounts, configuredDefault);
+  return defaultAccount?.accountId ?? normalizeLinearAccountId(configuredDefault);
 }
 
 function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
@@ -95,6 +99,7 @@ function accountFromRecord(record: RawAccountRecord): LinearAccountConfig | null
   if (!apiKey) return null;
   return {
     accountId,
+    role: DEFAULT_LINEAR_ACCOUNT_ROLE,
     apiKey,
     workspaceId: readRawField(record, ["LINEAR_WORKSPACE_ID", "workspaceId"]),
     defaultTeamKey: readRawField(record, ["LINEAR_DEFAULT_TEAM_KEY", "defaultTeamKey"]),
@@ -147,6 +152,7 @@ export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[
         readSetting(runtime, "LINEAR_ACCOUNT_ID") ??
           readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID")
       ),
+      role: DEFAULT_LINEAR_ACCOUNT_ROLE,
       apiKey,
       workspaceId: readSetting(runtime, "LINEAR_WORKSPACE_ID"),
       defaultTeamKey: readSetting(runtime, "LINEAR_DEFAULT_TEAM_KEY"),
@@ -160,9 +166,18 @@ export function resolveLinearAccount(
   accounts: readonly LinearAccountConfig[],
   accountId: string
 ): LinearAccountConfig | null {
+  return accounts.find((account) => account.accountId === accountId) ?? null;
+}
+
+export function resolveLinearDefaultAccount(
+  accounts: readonly LinearAccountConfig[],
+  accountId?: string
+): LinearAccountConfig | null {
+  const normalized = normalizeLinearAccountId(accountId);
   return (
-    accounts.find((account) => account.accountId === accountId) ??
-    accounts.find((account) => account.accountId === DEFAULT_LINEAR_ACCOUNT_ID) ??
+    resolveLinearAccount(accounts, normalized) ??
+    resolveLinearAccount(accounts, DEFAULT_LINEAR_ACCOUNT_ID) ??
+    accounts.find((account) => account.role === DEFAULT_LINEAR_ACCOUNT_ROLE) ??
     accounts[0] ??
     null
   );

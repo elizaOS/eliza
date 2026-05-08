@@ -25,6 +25,7 @@ import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 
 /** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
 type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
+
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
 	type LiveProviderConfig,

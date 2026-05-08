@@ -94,7 +94,7 @@
         "type": "string",
         "description": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gpt-5-mini",
+        "default": "gpt-5.4-mini",
         "sensitive": false
       },
       "OPENAI_LARGE_MODEL": {

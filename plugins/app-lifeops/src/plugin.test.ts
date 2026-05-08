@@ -54,15 +54,22 @@ describe("LifeOps Google plugin registration", () => {
     );
   });
 
-  it("keeps generic Google connector routes ahead of legacy LifeOps setup routes", () => {
+  it("registers generic Google connector routes without legacy LifeOps setup routes", () => {
     const routePaths = (lifeopsPlugin.routes ?? []).map((route) => route.path);
 
     expect(routePaths).toContain("/api/connectors/google/oauth/start");
     expect(routePaths).toContain("/api/connectors/google/oauth/callback");
-    expect(routePaths).toContain("/api/lifeops/connectors/google/start");
-    expect(
-      routePaths.indexOf("/api/connectors/google/oauth/start"),
-    ).toBeLessThan(routePaths.indexOf("/api/lifeops/connectors/google/start"));
+    expect(routePaths).toContain("/api/connectors/google/accounts");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/status");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/accounts");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/success");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/start");
+    expect(routePaths).not.toContain(
+      "/api/lifeops/connectors/google/callback",
+    );
+    expect(routePaths).not.toContain(
+      "/api/lifeops/connectors/google/disconnect",
+    );
   });
 
   it("does not register plugin-google twice", async () => {
