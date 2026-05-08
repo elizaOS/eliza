@@ -22,6 +22,12 @@ import {
 	v5MessageHandlerTemplate,
 } from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
+import {
+	buildActionCatalog,
+	type RuntimeActionLike,
+} from "../runtime/action-catalog";
+import { retrieveActions } from "../runtime/action-retrieval";
+import { tierActionResults } from "../runtime/action-tiering";
 import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -1254,6 +1260,250 @@ function appendStateProviderEvents(
 	}
 }
 
+type V5PlannerActionSurfaceSummary = {
+	mode: "full" | "tiered";
+	candidateActionCount: number;
+	catalogParentCount: number;
+	exposedActionCount: number;
+	tierAParents: string[];
+	tierBParents: string[];
+	omittedParentCount: number;
+	omittedParentNamesPreview: string[];
+	actionSurfaceHash?: string;
+	warnings: number;
+	queryTokens: string[];
+	candidateActions: string[];
+	parentActionHints: string[];
+	fallback?: string;
+};
+
+type V5PlannerActionSurface = {
+	exposedActionNames: Set<string>;
+	summary: V5PlannerActionSurfaceSummary;
+};
+
+async function collectV5PlannerCandidateActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	selectedContexts?: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): Promise<Action[]> {
+	if (!args.selectedContexts?.length) {
+		return [];
+	}
+
+	const directlyGatedActions = filterByContextGate(
+		args.runtime.actions,
+		args.selectedContexts,
+		args.userRoles,
+	);
+	const actionsByName = new Map(args.runtime.actions.map((action) => [action.name, action]));
+	const actionsByNormalizedName = new Map(
+		args.runtime.actions.map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	const selectedActions: Action[] = [];
+	const seen = new Set<string>();
+
+	const appendIfAllowed = async (
+		action: Action,
+		parentActionName?: string,
+	): Promise<boolean> => {
+		const normalizedName = normalizeActionIdentifier(action.name);
+		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		try {
+			const accountPolicy = await evaluateConnectorAccountPolicies(
+				args.runtime,
+				action,
+				{ message: args.message },
+			);
+			if (!accountPolicy.allowed) {
+				return false;
+			}
+			seen.add(normalizedName);
+			selectedActions.push(action);
+			return true;
+		} catch (error) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					action: action.name,
+					parentAction: parentActionName,
+					error,
+				},
+				"Skipping action that cannot be exposed to the v5 planner",
+			);
+			return false;
+		}
+	};
+
+	for (const action of directlyGatedActions) {
+		await appendIfAllowed(action);
+	}
+
+	for (let index = 0; index < selectedActions.length; index += 1) {
+		const parentAction = selectedActions[index];
+		for (const subAction of parentAction.subActions ?? []) {
+			const childAction =
+				typeof subAction === "string"
+					? (actionsByName.get(subAction) ??
+						actionsByNormalizedName.get(normalizeActionIdentifier(subAction)))
+					: subAction;
+			if (!childAction) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						parentAction: parentAction.name,
+						subAction,
+					},
+					"Skipping unresolved sub-action while building planner action surface",
+				);
+				continue;
+			}
+			await appendIfAllowed(childAction, parentAction.name);
+		}
+	}
+
+	return selectedActions;
+}
+
+function stringArrayProperty(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+		.filter((entry) => entry.length > 0);
+}
+
+function getMessageHandlerCandidateActions(
+	messageHandler: MessageHandlerResult,
+): string[] {
+	return stringArrayProperty(
+		(messageHandler.plan as { candidateActions?: unknown }).candidateActions,
+	);
+}
+
+function getMessageHandlerParentActionHints(
+	messageHandler: MessageHandlerResult,
+): string[] {
+	return stringArrayProperty(
+		(messageHandler.plan as { parentActionHints?: unknown }).parentActionHints,
+	);
+}
+
+function buildFullV5PlannerActionSurface(params: {
+	actions: readonly Action[];
+	candidateActions?: readonly string[];
+	parentActionHints?: readonly string[];
+}): V5PlannerActionSurface {
+	const exposedActionNames = new Set(
+		params.actions.map((action) => normalizeActionIdentifier(action.name)),
+	);
+	return {
+		exposedActionNames,
+		summary: {
+			mode: "full",
+			candidateActionCount: params.actions.length,
+			catalogParentCount: params.actions.length,
+			exposedActionCount: exposedActionNames.size,
+			tierAParents: params.actions.map((action) => action.name).sort(),
+			tierBParents: [],
+			omittedParentCount: 0,
+			omittedParentNamesPreview: [],
+			warnings: 0,
+			queryTokens: [],
+			candidateActions: [...(params.candidateActions ?? [])],
+			parentActionHints: [...(params.parentActionHints ?? [])],
+		},
+	};
+}
+
+function buildV5PlannerActionSurface(params: {
+	actions: readonly Action[];
+	message: Memory;
+	messageHandler: MessageHandlerResult;
+}): V5PlannerActionSurface {
+	const candidateActions = getMessageHandlerCandidateActions(
+		params.messageHandler,
+	);
+	const parentActionHints = getMessageHandlerParentActionHints(
+		params.messageHandler,
+	);
+
+	if (
+		params.actions.length === 0 ||
+		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+	) {
+		return buildFullV5PlannerActionSurface({
+			actions: params.actions,
+			candidateActions,
+			parentActionHints,
+		});
+	}
+
+	const catalog = buildActionCatalog(params.actions as RuntimeActionLike[]);
+	const retrieval = retrieveActions({
+		catalog,
+		messageText: getUserMessageText(params.message) ?? "",
+		candidateActions,
+		parentActionHints,
+	});
+	const tieredSurface = tierActionResults({
+		catalog,
+		results: retrieval.results,
+	});
+	const exposedActionNames = new Set(
+		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
+	);
+
+	let fallback: string | undefined;
+	if (
+		params.actions.every(
+			(action) =>
+				!exposedActionNames.has(normalizeActionIdentifier(action.name)),
+		)
+	) {
+		for (const result of retrieval.results.slice(0, 3)) {
+			if (result.score <= 0) {
+				continue;
+			}
+			exposedActionNames.add(normalizeActionIdentifier(result.name));
+		}
+		if (exposedActionNames.size > 0) {
+			fallback = "top-ranked-parent-fallback";
+		}
+	}
+
+	const exposedActionCount = params.actions.filter((action) =>
+		exposedActionNames.has(normalizeActionIdentifier(action.name)),
+	).length;
+
+	return {
+		exposedActionNames,
+		summary: {
+			mode: "tiered",
+			candidateActionCount: params.actions.length,
+			catalogParentCount: catalog.parents.length,
+			exposedActionCount,
+			tierAParents: tieredSurface.sortedTierAParentNames,
+			tierBParents: tieredSurface.sortedTierBParentNames,
+			omittedParentCount: tieredSurface.omittedParentNames.length,
+			omittedParentNamesPreview: tieredSurface.omittedParentNames.slice(0, 20),
+			actionSurfaceHash: tieredSurface.actionSurfaceHash,
+			warnings: catalog.warnings.length,
+			queryTokens: retrieval.query.tokens.slice(0, 32),
+			candidateActions,
+			parentActionHints,
+			...(fallback ? { fallback } : {}),
+		},
+	};
+}
+
 async function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1263,6 +1513,8 @@ async function createV5MessageContextObject(args: {
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 	extraProviderExclusions?: readonly string[];
+	preselectedActions?: readonly Action[];
+	actionSurface?: V5PlannerActionSurface;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
@@ -1290,21 +1542,23 @@ async function createV5MessageContextObject(args: {
 	});
 
 	if (args.includeTools && args.selectedContexts?.length) {
-		const actions = filterByContextGate(
-			args.runtime.actions,
-			args.selectedContexts,
-			args.userRoles,
-		);
-		for (const action of actions) {
+		const actions =
+			args.preselectedActions ??
+			(await collectV5PlannerCandidateActions({
+				runtime: args.runtime,
+				message: args.message,
+				selectedContexts: args.selectedContexts,
+				userRoles: args.userRoles,
+			}));
+		const displayActions = args.actionSurface
+			? actions.filter((action) =>
+					args.actionSurface?.exposedActionNames.has(
+						normalizeActionIdentifier(action.name),
+					),
+				)
+			: actions;
+		for (const action of displayActions) {
 			try {
-				const accountPolicy = await evaluateConnectorAccountPolicies(
-					args.runtime,
-					action,
-					{ message: args.message },
-				);
-				if (!accountPolicy.allowed) {
-					continue;
-				}
 				const tool = actionToTool(action);
 				events.push({
 					id: `tool:${tool.function.name}`,
@@ -1353,6 +1607,9 @@ async function createV5MessageContextObject(args: {
 			roomId: args.message.roomId,
 			messageId: args.message.id,
 			selectedContexts: [...(args.selectedContexts ?? [])],
+			...(args.actionSurface
+				? { actionSurface: args.actionSurface.summary as JsonValue }
+				: {}),
 		},
 		staticPrefix: {
 			systemPrompt: systemPrompt
@@ -2707,6 +2964,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			recomposedPlannerState,
 			args.runtime,
 		);
+		const plannerCandidateActions = await collectV5PlannerCandidateActions({
+			runtime: args.runtime,
+			message: args.message,
+			selectedContexts,
+			userRoles: [senderRole],
+		});
+		const actionSurface = buildV5PlannerActionSurface({
+			actions: plannerCandidateActions,
+			message: args.message,
+			messageHandler,
+		});
+		args.runtime.logger.debug?.(
+			{
+				src: "service:message",
+				actionSurface: actionSurface.summary,
+			},
+			"Built v5 planner action surface",
+		);
 		const plannerContext = await createV5MessageContextObject({
 			...args,
 			state: plannerState,
@@ -2714,6 +2989,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			includeTools: true,
 			userRoles: [senderRole],
 			availableContexts,
+			preselectedActions: plannerCandidateActions,
+			actionSurface,
 		});
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
@@ -2724,9 +3001,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
+					candidateActions: getMessageHandlerCandidateActions(messageHandler),
+					parentActionHints:
+						getMessageHandlerParentActionHints(messageHandler),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
+					actionSurface: actionSurface.summary,
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},

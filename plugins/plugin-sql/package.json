@@ -13,6 +13,11 @@
         "types": "./typescript/index.ts",
         "default": "./typescript/index.ts"
       },
+      "browser": {
+        "types": "./typescript/dist/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
       "node": {
         "types": "./typescript/dist/index.d.ts",
         "import": "./typescript/dist/node/index.node.js",
