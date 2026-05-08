@@ -1,5 +1,5 @@
 /**
- * OAUTH_CONNECT - Initiates OAuth flow for a platform.
+ * OAUTH_CONNECT - Starts an OAuth connection flow for a supported platform.
  */
 
 import {
@@ -12,17 +12,42 @@ import {
   type State,
 } from "@elizaos/core";
 import { oauthService } from "@/lib/services/oauth";
+import { type OAuthConnectionRole } from "@/lib/services/oauth/types";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import {
   capitalize,
+  extractParams,
   extractPlatform,
+  formatConnectionIdentifier,
   getSupportedPlatforms,
   isSupportedPlatform,
   isUserLookupError,
   lookupUser,
 } from "../utils";
 
-const OAUTH_CONNECTION_LIMIT = 10;
+function normalizeRole(value: unknown): OAuthConnectionRole | undefined {
+  return value === "agent" || value === "owner" ? value : undefined;
+}
+
+function normalizeScopes(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const scopes = value.filter((scope): scope is string => typeof scope === "string" && !!scope);
+  return scopes.length > 0 ? scopes : undefined;
+}
+
+function failureResult(
+  actionName: string,
+  text: string,
+  error: string,
+  data: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    text,
+    success: false,
+    error,
+    data: { actionName, ...data },
+  };
+}
 
 export const oauthConnectAction: ActionWithParams = {
   name: "OAUTH_CONNECT",
@@ -30,56 +55,44 @@ export const oauthConnectAction: ActionWithParams = {
   contextGate: { anyOf: ["connectors", "settings", "secrets"] },
   roleGate: { minRole: "OWNER" },
   similes: [
-    "CONNECT_PLATFORM",
+    "CONNECT_ACCOUNT",
+    "CONNECT_OAUTH",
     "LINK_ACCOUNT",
+    "LINK_INTEGRATION",
+    "ADD_CONNECTION",
+    "AUTHORIZE_APP",
     "CONNECT_GOOGLE",
-    "CONNECT_GMAIL",
-    "CONNECT_HUBSPOT",
-    "CONNECT_LINEAR",
     "CONNECT_SLACK",
     "CONNECT_GITHUB",
-    "CONNECT_NOTION",
-    "CONNECT_MICROSOFT",
-    "CONNECT_OUTLOOK",
     "CONNECT_TWITTER",
     "CONNECT_X",
-    "LINK_TWITTER",
-    "LINK_X",
-    "ADD_INTEGRATION",
-    "SETUP_CONNECTION",
-    "LINK_GOOGLE",
-    "LINK_HUBSPOT",
-    "AUTHENTICATE",
-    "LINK_LINEAR",
-    "LINK_SLACK",
-    "LINK_GITHUB",
-    "LINK_NOTION",
-    "CONNECT_ASANA",
-    "LINK_ASANA",
-    "CONNECT_DROPBOX",
-    "LINK_DROPBOX",
-    "CONNECT_SALESFORCE",
-    "LINK_SALESFORCE",
-    "CONNECT_AIRTABLE",
-    "LINK_AIRTABLE",
-    "CONNECT_ZOOM",
-    "LINK_ZOOM",
-    "CONNECT_JIRA",
-    "LINK_JIRA",
-    "CONNECT_LINKEDIN",
-    "LINK_LINKEDIN",
-    "LINK_MICROSOFT",
-    "LINK_OUTLOOK",
+    "CONNECT_MICROSOFT",
   ],
   description:
-    "Connect an OAuth platform for the user. ALWAYS execute this action when the user asks to connect — generate a fresh authorization URL every time, even if one was sent before (previous links expire). Never tell the user to 'use a previous link'. Available: google, hubspot, linear, slack, github, notion, twitter, asana, dropbox, salesforce, airtable, zoom, jira, linkedin, microsoft",
+    "Connect an OAuth platform for the user. Generate an authorization URL when the user asks to connect an account or integration.",
 
   parameters: defineActionParameters({
     platform: {
       type: "string",
       description:
-        "Platform to connect. Available: google, hubspot, linear, slack, github, notion, twitter, asana, dropbox, salesforce, airtable, zoom, jira, linkedin, microsoft",
+        "Platform to connect, such as google, linear, slack, github, notion, twitter, jira, linkedin, or microsoft.",
       required: true,
+    },
+    redirectUrl: {
+      type: "string",
+      description: "Optional URL to redirect to after OAuth completes.",
+      required: false,
+    },
+    connectionRole: {
+      type: "string",
+      description: "Connection role: owner or agent.",
+      required: false,
+      enum: ["owner", "agent"],
+    },
+    scopes: {
+      type: "array",
+      description: "Optional OAuth scopes to request.",
+      required: false,
     },
   }),
 
@@ -94,30 +107,30 @@ export const oauthConnectAction: ActionWithParams = {
     _options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const platform = extractPlatform(message, state);
     const actionName = "OAUTH_CONNECT";
-
-    logger.info(`[${actionName}] platform=${platform}, entityId=${message.entityId}`);
+    const params = extractParams(message, state);
+    const platform = extractPlatform(message, state);
 
     if (!platform) {
       const supported = getSupportedPlatforms();
-      return {
-        text: `Which platform do you want to connect? Currently available: ${supported.map(capitalize).join(", ") || "none configured"}`,
-        success: false,
-        error: "MISSING_PLATFORM",
-        data: { actionName },
-      };
+      return failureResult(
+        actionName,
+        `Which platform do you want to connect? Currently available: ${supported.map(capitalize).join(", ") || "none configured"}`,
+        "MISSING_PLATFORM",
+      );
     }
 
     if (!isSupportedPlatform(platform)) {
       const supported = getSupportedPlatforms();
-      return {
-        text: `Platform '${platform}' is not available. Supported: ${supported.length > 0 ? supported.join(", ") : "none configured"}`,
-        success: false,
-        error: "UNSUPPORTED_PLATFORM",
-        data: { actionName },
-      };
+      return failureResult(
+        actionName,
+        `Platform '${platform}' is not available. Supported: ${supported.length > 0 ? supported.join(", ") : "none configured"}`,
+        "UNSUPPORTED_PLATFORM",
+        { platform },
+      );
     }
+
+    logger.info(`[${actionName}] platform=${platform}, entityId=${message.entityId}`);
 
     const userResult = await lookupUser(message.entityId as string, actionName);
     if (isUserLookupError(userResult)) return userResult;
@@ -125,113 +138,76 @@ export const oauthConnectAction: ActionWithParams = {
     const { organizationId, user } = userResult;
     const platformName = capitalize(platform);
 
-    if (await oauthService.isPlatformConnected(organizationId, platform, user.id)) {
-      const connections = await oauthService.listConnections({
-        organizationId,
-        userId: user.id,
-        platform,
-      });
-      const email =
-        connections.slice(0, OAUTH_CONNECTION_LIMIT).find((c) => c.status === "active")?.email ||
-        "";
-      return {
-        text: `Your ${platformName} account is already connected${email ? ` (${email})` : ""}.`,
-        success: true,
-        data: { actionName, alreadyConnected: true, connectionLimit: OAUTH_CONNECTION_LIMIT },
-      };
-    }
-
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
-
-    let result;
     try {
-      result = await oauthService.initiateAuth({
+      const alreadyConnected = await oauthService.isPlatformConnected(
+        organizationId,
+        platform,
+        user.id,
+        normalizeRole(params.connectionRole),
+      );
+
+      if (alreadyConnected) {
+        const connections = await oauthService.listConnections({
+          organizationId,
+          userId: user.id,
+          platform,
+          connectionRole: normalizeRole(params.connectionRole),
+        });
+        const active = connections.find((connection) => connection.status === "active");
+        const identifier = active ? formatConnectionIdentifier(active) : "";
+        const text = `Your ${platformName} account is already connected${identifier ? ` (${identifier})` : ""}.`;
+        if (callback) await callback({ text, actions: [actionName] });
+        return {
+          text,
+          success: true,
+          data: { actionName, alreadyConnected: true, platform },
+        };
+      }
+
+      const result = await oauthService.initiateAuth({
         organizationId,
         userId: user.id,
         platform,
-        redirectUrl: `${baseUrl}/auth/success`,
+        redirectUrl: typeof params.redirectUrl === "string" ? params.redirectUrl : undefined,
+        scopes: normalizeScopes(params.scopes),
+        connectionRole: normalizeRole(params.connectionRole),
       });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      logger.error(
-        `[${actionName}] OAuth initiation failed: ${errMsg} (platform=${platform}, org=${organizationId})`,
+
+      if (!result.authUrl) {
+        return failureResult(
+          actionName,
+          "Failed to generate authorization link. Please try again.",
+          "AUTH_URL_GENERATION_FAILED",
+          { platform },
+        );
+      }
+
+      const text = `Open this link to connect ${platformName}: ${result.authUrl}`;
+      if (callback) await callback({ text, actions: [actionName] });
+      return {
+        text,
+        success: true,
+        data: { actionName, platform, authUrl: result.authUrl, state: result.state },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ platform, error: errorMessage }, `[${actionName}] failed to start OAuth`);
+      return failureResult(
+        actionName,
+        `Failed to start ${platformName} connection. Please try again later.`,
+        "OAUTH_INITIATION_FAILED",
+        { platform, errorMessage },
       );
-      return {
-        text: `Failed to start ${platformName} connection. Please try again later.`,
-        success: false,
-        error: "OAUTH_INITIATION_FAILED",
-        data: { actionName },
-      };
     }
-
-    if (!result.authUrl) {
-      logger.error(`[${actionName}] Failed to generate auth URL`);
-      return {
-        text: `Failed to generate authorization link. Please try again.`,
-        success: false,
-        error: "AUTH_URL_GENERATION_FAILED",
-        data: { actionName },
-      };
-    }
-
-    const text = `Connect ${platformName} here:\n${result.authUrl}\n\nWhen you've finished authorizing, say "done" and I'll verify the connection.`;
-
-    if (callback) await callback({ text, actions: [actionName] });
-
-    return {
-      text,
-      success: true,
-      data: { actionName, authUrl: result.authUrl },
-    };
   },
 
   examples: [
     [
-      { name: "{{name1}}", content: { text: "connect my google account" } },
+      { name: "{{name1}}", content: { text: "connect google" } },
       {
         name: "{{name2}}",
         content: {
-          text: "Connect Google here:\nhttps://accounts.google.com/...",
-          actions: ["OAUTH_CONNECT"],
-        },
-      },
-    ],
-    [
-      { name: "{{name1}}", content: { text: "link gmail" } },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Connect Google here:\nhttps://accounts.google.com/...",
-          actions: ["OAUTH_CONNECT"],
-        },
-      },
-    ],
-    [
-      { name: "{{name1}}", content: { text: "connect hubspot" } },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Connect HubSpot here:\nhttps://app.hubspot.com/oauth/...",
-          actions: ["OAUTH_CONNECT"],
-        },
-      },
-    ],
-    [
-      { name: "{{name1}}", content: { text: "connect my twitter account" } },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Connect Twitter here:\nhttps://api.twitter.com/oauth/...",
-          actions: ["OAUTH_CONNECT"],
-        },
-      },
-    ],
-    [
-      { name: "{{name1}}", content: { text: "link my x account" } },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Connect Twitter here:\nhttps://api.twitter.com/oauth/...",
+          text: "Open this link to connect Google: https://example.com/oauth",
           actions: ["OAUTH_CONNECT"],
         },
       },
