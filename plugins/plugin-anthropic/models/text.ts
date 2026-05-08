@@ -233,16 +233,18 @@ function buildSegmentCacheControls(
     return controls;
   }
 
-  let selected = 0;
-  for (const [index, segment] of (params.promptSegments ?? []).entries()) {
-    if (!segment.stable) {
-      continue;
-    }
+  // Pick the LAST N stable segments rather than the first N. A cache_control
+  // breakpoint says "everything up to here is cached"; placing breakpoints at
+  // late stable segments creates the longest matching cached prefix on
+  // subsequent calls. Earlier stable segments still ride along inside any
+  // longer matching prefix that a later breakpoint creates — we lose
+  // granularity on partial-prefix hits but not coverage.
+  const stableIndices: number[] = [];
+  (params.promptSegments ?? []).forEach((segment, index) => {
+    if (segment.stable) stableIndices.push(index);
+  });
+  for (const index of stableIndices.slice(-maxSegmentBreakpoints)) {
     controls.set(index, fallbackCacheControl);
-    selected++;
-    if (selected >= maxSegmentBreakpoints) {
-      break;
-    }
   }
   return controls;
 }
@@ -564,9 +566,31 @@ async function generateTextWithModel(
     paramsWithAttachments.messages,
     systemPrompt
   );
+  // Planner / evaluator wire path: when the runtime passes BOTH `messages`
+  // (system + user + assistant/tool trajectory built by `buildStageChatMessages`)
+  // AND `promptSegments` (the same content as labeled stable/dynamic parts),
+  // the segmented `userContent` carries cache_control on stable parts. Without
+  // this branch the segmented content is built and discarded because the
+  // messages path sends `wireMessages` directly with flat string content. We
+  // inject `userContent` as the leading user message and keep the trajectory
+  // turns verbatim. The leading user message in `wireMessages` was synthesized
+  // from dynamic context that is fully covered by `promptSegments`, so we drop
+  // it to avoid duplicating tokens. Unlike PR #7469 we keep `system` because
+  // our `buildCacheableSystemPrompt` puts cache_control on the system param
+  // itself (Anthropic's separate `system` parameter accepts cache_control via
+  // providerOptions).
+  const buildPlannerWireMessages = (
+    msgs: ModelMessage[],
+    leadingUserContent: UserContent | string
+  ): ModelMessage[] => {
+    const tail = msgs[0]?.role === "user" ? msgs.slice(1) : msgs;
+    return [{ role: "user", content: leadingUserContent }, ...tail];
+  };
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+      ? segmentedPrompt && userContent
+        ? { messages: buildPlannerWireMessages(wireMessages, userContent) }
+        : { messages: wireMessages }
       : {
           messages: [
             {
