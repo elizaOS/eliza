@@ -104,15 +104,23 @@ export type PostConnectorCapability =
 	| (string & {});
 
 export const ConnectorAccountPurpose = {
+	MESSAGING: "messaging",
+	POSTING: "posting",
+	READING: "reading",
+	ADMIN: "admin",
+	AUTOMATION: "automation",
+} as const;
+export type ConnectorAccountPurpose =
+	| (typeof ConnectorAccountPurpose)[keyof typeof ConnectorAccountPurpose]
+	| (string & {});
+
+export const ConnectorAccountRole = {
 	OWNER: "OWNER",
 	AGENT: "AGENT",
 	TEAM: "TEAM",
 } as const;
-export type ConnectorAccountPurpose =
-	(typeof ConnectorAccountPurpose)[keyof typeof ConnectorAccountPurpose];
-
-export const ConnectorAccountRole = ConnectorAccountPurpose;
-export type ConnectorAccountRole = ConnectorAccountPurpose;
+export type ConnectorAccountRole =
+	(typeof ConnectorAccountRole)[keyof typeof ConnectorAccountRole];
 
 export const ConnectorAuthMethod = {
 	OAUTH: "OAUTH",
@@ -149,8 +157,10 @@ export interface ConnectorAccountCapability {
 export interface ConnectorAccountRef {
 	source: string;
 	accountId?: string;
-	purpose?: ConnectorAccountPurpose;
+	purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
 	role?: ConnectorAccountRole;
+	/** Legacy display-name alias kept for connector registrations that have not migrated to label yet. */
+	name?: string;
 	label?: string;
 	authMethod?: ConnectorAuthMethod;
 	health?: ConnectorAccountHealth;
@@ -937,7 +947,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	unregisterMessageConnector(source: string, accountId?: string): boolean;
 	getMessageConnectors(): MessageConnector[];
 	registerPostConnector(registration: PostConnectorRegistration): void;
-	unregisterPostConnector(source: string): boolean;
+	unregisterPostConnector(source: string, accountId?: string): boolean;
 	getPostConnectors(): PostConnector[];
 	sendMessageToTarget(
 		target: TargetInfo,

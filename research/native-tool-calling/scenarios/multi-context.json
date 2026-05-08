@@ -1,9 +1,0 @@
-{
-  "message": "List my calendar events for today and then draft an email to alice@example.com with the subject 'Today's agenda' summarizing what I have scheduled.",
-  "expect": {
-    "tools": ["CALENDAR_LIST_EVENTS", "EMAIL_DRAFT"],
-    "stages": ["planner", "tool", "tool"],
-    "contexts": ["calendar", "email"],
-    "rationale": "Multi-context scenario: requires both calendar and email contexts to be activated, and sequential tool calls across two distinct domains."
-  }
-}

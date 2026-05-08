@@ -16,15 +16,58 @@
  * runCrossChannelSearch() to inject context for named persons/topics.
  */
 
-// Graph types and cluster helpers live in @elizaos/core after the
-// RelationshipsGraphService → RelationshipsService merge.
-import {
-  getMemoriesForCluster as getClusterMemories,
-  type RelationshipsGraphService,
-  type RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
+// Graph types live in @elizaos/core's relationships-graph-builder. That
+// module is internal to core and not part of its public exports map, so we
+// can't import its runtime helpers from here. We type-shape the parts we
+// touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+
+type RelationshipsPersonSummary = {
+  groupId: UUID;
+  primaryEntityId: UUID;
+  memberEntityIds: UUID[];
+  displayName: string;
+  aliases: string[];
+  platforms: string[];
+  identities: unknown[];
+  emails: string[];
+  phones: string[];
+  websites: string[];
+  preferredCommunicationChannel: string | null;
+  categories: string[];
+  tags: string[];
+  factCount: number;
+  relationshipCount: number;
+  isOwner: boolean;
+  profiles: unknown[];
+  lastInteractionAt?: string;
+};
+
+type RelationshipsGraphService = {
+  getGraphSnapshot: (query?: {
+    search?: string | null;
+    limit?: number;
+  }) => Promise<{ people: RelationshipsPersonSummary[] }>;
+  getPersonDetail: (
+    primaryEntityId: UUID,
+  ) => Promise<RelationshipsPersonSummary | null>;
+};
+
+// Local fallback used when the registered RelationshipsGraphService doesn't
+// implement getMemoriesForCluster — degrades to a single-entity query.
+async function getClusterMemories(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: { tableName: string; worldId?: UUID; count?: number },
+): Promise<Memory[]> {
+  return runtime.getMemories({
+    tableName: params.tableName,
+    worldId: params.worldId,
+    count: params.count,
+    entityId: primaryEntityId,
+  });
+}
 import type {
   LifeOpsCalendarEvent,
   LifeOpsGmailMessageSummary,

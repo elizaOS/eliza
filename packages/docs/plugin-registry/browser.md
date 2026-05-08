@@ -119,5 +119,5 @@ The browser runs in a sandboxed context. Consider:
 ## Related
 
 - [Computer Use Plugin](/plugin-registry/computeruse) — Full desktop automation
-- [Knowledge Plugin](/plugin-registry/knowledge) — Store extracted web content
+- [Knowledge Plugin](/plugin-registry/documents) — Store extracted web content
 - [Image Generation Plugin](/plugin-registry/image-generation) — Generate images

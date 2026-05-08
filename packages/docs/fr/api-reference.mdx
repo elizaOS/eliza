@@ -98,7 +98,7 @@ curl http://localhost:31337/api/conversations \
 </div>
 
 ```bash
-curl -X POST http://localhost:31337/api/knowledge/documents \
+curl -X POST http://localhost:31337/api/documents \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -458,14 +458,14 @@ La boîte de réception agrège les messages de toutes les plateformes connecté
 
 | Méthode | Chemin | Description |
 |---------|--------|-------------|
-| `GET` | `/api/knowledge/stats` | Obtenir le nombre de documents et de fragments |
-| `GET` | `/api/knowledge/documents` | Lister les documents de connaissances. Paramètres : `limit`, `offset` |
-| `GET` | `/api/knowledge/documents/:id` | Obtenir un document spécifique avec son contenu |
-| `POST` | `/api/knowledge/documents` | Télécharger un document (contenu en base64 ou texte) |
-| `POST` | `/api/knowledge/documents/url` | Télécharger depuis une URL (prend en charge la transcription automatique YouTube) |
-| `DELETE` | `/api/knowledge/documents/:id` | Supprimer un document et tous ses fragments |
-| `GET` | `/api/knowledge/search` | Recherche sémantique. Paramètres : `q` (requis), `threshold`, `limit` |
-| `GET` | `/api/knowledge/fragments/:documentId` | Lister tous les fragments d'un document |
+| `GET` | `/api/documents/stats` | Obtenir le nombre de documents et de fragments |
+| `GET` | `/api/documents` | Lister les documents de connaissances. Paramètres : `limit`, `offset` |
+| `GET` | `/api/documents/:id` | Obtenir un document spécifique avec son contenu |
+| `POST` | `/api/documents` | Télécharger un document (contenu en base64 ou texte) |
+| `POST` | `/api/documents/url` | Télécharger depuis une URL (prend en charge la transcription automatique YouTube) |
+| `DELETE` | `/api/documents/:id` | Supprimer un document et tous ses fragments |
+| `GET` | `/api/documents/search` | Recherche sémantique. Paramètres : `q` (requis), `threshold`, `limit` |
+| `GET` | `/api/documents/:documentId/fragments` | Lister tous les fragments d'un document |
 
 ---
 

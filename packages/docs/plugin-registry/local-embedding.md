@@ -18,4 +18,4 @@ This plugin is a core plugin required for the memory system and is always loaded
 
 ## Related
 
-- [Knowledge Plugin](/plugin-registry/knowledge) — Knowledge ingestion and retrieval
+- [Knowledge Plugin](/plugin-registry/documents) — Knowledge ingestion and retrieval

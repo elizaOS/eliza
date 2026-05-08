@@ -74,7 +74,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/character/documents",
     readyChecks: [
       { selector: '[data-testid="character-editor-view"]' },
-      { selector: '[data-testid="knowledge-view"]' },
+      { selector: '[data-testid="documents-view"]' },
       { text: "Knowledge" },
     ],
     timeoutMs: 60_000,

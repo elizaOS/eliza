@@ -449,16 +449,16 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           page,
           '[data-testid="companion-shell-toggle-desktop"]',
         );
-        await navigate(page, `${UI_URL}/knowledge`);
-        await page.waitForSelector('[data-testid="knowledge-view"]', {
+        await navigate(page, `${UI_URL}/character/documents`);
+        await page.waitForSelector('[data-testid="documents-view"]', {
           visible: true,
         });
         await page.waitForSelector(
-          '[data-testid="knowledge-view"] input[type="file"]',
+          '[data-testid="documents-view"] input[type="file"]',
         );
 
         const uploadInput = await page.waitForSelector(
-          '[data-testid="knowledge-view"] input[type="file"]',
+          '[data-testid="documents-view"] input[type="file"]',
         );
         expect(uploadInput).toBeTruthy();
         if (!uploadInput) {

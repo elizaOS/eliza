@@ -17,6 +17,7 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
+import { resolveDefaultLandingTab } from "./main-tab";
 
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
 export const APPS_ENABLED =
@@ -395,7 +396,10 @@ const APPS_SUB_TABS: Record<string, Tab> = {
 
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
-  if (normalized === "/") return "chat";
+  // The root path "/" lands on the discovered main-tab app. Reads the
+  // cached apps catalog synchronously and falls back to the legacy
+  // chat tab when no app declares elizaos.app.mainTab=true.
+  if (normalized === "/") return resolveDefaultLandingTab();
 
   if (
     normalized === "/node-catalog" ||
@@ -549,4 +553,9 @@ export function titleForTab(tab: Tab): string {
   }
 }
 
-export { getMainTabApp, type MainTabApp } from "./main-tab";
+export {
+  getMainTabApp,
+  MAIN_TAB_FALLBACK,
+  type MainTabApp,
+  resolveDefaultLandingTab,
+} from "./main-tab";

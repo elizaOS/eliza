@@ -59,7 +59,7 @@ export const skillsSummaryProvider: Provider = {
 
 			if (skills.length === 0) {
 				return {
-					text: "**Skills:** None installed. Use SEARCH_SKILLS to browse the catalog and INSTALL_SKILL to install one.",
+					text: "**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.",
 					values: { skillCount: 0 },
 					data: { skills: [] },
 				};
@@ -92,7 +92,7 @@ export const skillsSummaryProvider: Provider = {
 
 ${skillsJson}${scanSection}
 
-*Use TOGGLE_SKILL to enable/disable skills. Use INSTALL_SKILL to add new skills. Use UNINSTALL_SKILL to remove installed skills.*`;
+*Use SKILL op=toggle to enable/disable skills. Use SKILL op=install to add new skills. Use SKILL op=uninstall to remove installed skills.*`;
 
 			return {
 				text,
@@ -286,7 +286,7 @@ export const catalogAwarenessProvider: Provider = {
 			text: `## Available Skill Categories
 
 ${categoryText}
-Use USE_SKILL to invoke an enabled skill, or SEARCH_SKILLS to find one.`,
+Use USE_SKILL to invoke an enabled skill, or SKILL op=search to find one.`,
 			data: { categories },
 		};
 		} catch {

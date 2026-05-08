@@ -711,7 +711,7 @@
         "alerto"
       ]
     },
-    "action.processKnowledge.request": {
+    "action.processDocuments.request": {
       "base": [
         "process knowledge",
         "add to knowledge",
@@ -779,7 +779,7 @@
         "knowledge base"
       ]
     },
-    "action.searchKnowledge.request": {
+    "action.searchDocuments.request": {
       "base": [
         "search knowledge",
         "find information",

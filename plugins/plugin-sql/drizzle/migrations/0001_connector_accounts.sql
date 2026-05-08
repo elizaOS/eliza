@@ -70,8 +70,8 @@ ALTER TABLE "connector_account_audit_events" ADD CONSTRAINT "connector_account_a
 ALTER TABLE "connector_account_audit_events" ADD CONSTRAINT "connector_account_audit_events_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "oauth_flows" ADD CONSTRAINT "oauth_flows_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "oauth_flows" ADD CONSTRAINT "oauth_flows_account_id_connector_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."connector_accounts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_accounts_agent_provider_account_key_uniq" ON "connector_accounts" USING btree ("agent_id","provider","account_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_accounts_agent_provider_external_uniq" ON "connector_accounts" USING btree ("agent_id","provider","external_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_accounts_agent_provider_account_key_uniq" ON "connector_accounts" USING btree ("agent_id","provider","account_key") WHERE "deleted_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_accounts_agent_provider_external_uniq" ON "connector_accounts" USING btree ("agent_id","provider","external_id") WHERE "deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "connector_accounts_agent_provider_idx" ON "connector_accounts" USING btree ("agent_id","provider");--> statement-breakpoint
 CREATE INDEX "connector_accounts_status_idx" ON "connector_accounts" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "connector_accounts_updated_idx" ON "connector_accounts" USING btree ("updated_at");--> statement-breakpoint

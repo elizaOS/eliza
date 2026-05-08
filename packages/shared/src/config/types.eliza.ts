@@ -178,8 +178,8 @@ export type SkillsConfig = {
   entries?: Record<string, SkillConfig>;
 };
 
-export type KnowledgeConfig = {
-  /** Enable contextual knowledge enrichment for document ingestion. */
+export type DocumentsConfig = {
+  /** Enable contextual enrichment for document ingestion. */
   contextualEnrichment?: boolean;
   /** Docs directory path used for enrichment context. */
   docsPath?: string;
@@ -778,7 +778,7 @@ export type ElizaConfig = {
      */
     favoriteApps?: string[];
   };
-  knowledge?: KnowledgeConfig;
+  documents?: DocumentsConfig;
   roles?: RolesConfig;
   skills?: SkillsConfig;
   plugins?: PluginsConfig;

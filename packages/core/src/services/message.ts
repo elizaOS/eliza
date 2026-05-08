@@ -1289,15 +1289,11 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
-	// LLM sees exactly two tools — HANDLE_RESPONSE (Stage 1) and PLAN_ACTIONS
-	// (Stage 2) — both stable across every request. Per-action specs live in
+	// Stage 2 sees one stable wrapper tool: PLAN_ACTIONS. Per-action specs live in
 	// `events[type=tool]` and are rendered into the conversation's
-	// available-actions block by the available_actions provider; the LLM
-	// picks one by name and passes it back via `PLAN_ACTIONS({ action, … })`.
-	// We only expose PLAN_ACTIONS in the trajectory's expanded-tools metadata
-	// when at least one action is gated; HANDLE_RESPONSE is recorded
-	// separately on its own stage. Empty when no actions are gated so the
-	// planner can short-circuit.
+	// available-actions block by the available_actions provider; the LLM picks
+	// one by name and passes it back via `PLAN_ACTIONS({ action, ... })`.
+	// Empty when no actions are gated so the planner can short-circuit.
 	const hasAnyAction = events.some(
 		(event) =>
 			event.type === "tool" &&
@@ -1606,19 +1602,16 @@ interface ExecuteV5PlannedToolCallParams {
 /**
  * Unwrap a `PLAN_ACTIONS` tool call into its target action.
  *
- * The LLM sees the stable two-tool surface (HANDLE_RESPONSE, PLAN_ACTIONS)
- * so every Stage 2 invocation arrives wrapped: `{ name: "PLAN_ACTIONS",
+ * The LLM sees the stable Stage 2 wrapper surface, so every invocation
+ * arrives wrapped: `{ name: "PLAN_ACTIONS",
  * params: { action, subaction?, parameters, thought } }`. Returns a
  * normalized tool call where `name` is the actual action name and `params`
  * are the action-shaped parameters, ready for the rest of the dispatch
  * pipeline.
  *
- * The `subaction` hint, when present for router-style actions (e.g.
- * `LINEAR_ISSUE` with `subaction: "create"`), is preserved on
- * `params.__subaction` so the executor can short-circuit the sub-planner
- * descent and dispatch directly to the named child. The executor falls
- * back to a regular sub-planner descent when the hint is missing or
- * doesn't match a registered sub-action.
+ * The `subaction` hint, when present for router-style actions, is preserved
+ * on `params.subaction` so actions that expose a router-style schema (LIFE,
+ * MESSAGE, CALENDAR, etc.) receive the same field they documented.
  *
  * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
  * already-unwrapped action calls) so they keep their existing semantics.
@@ -1643,7 +1636,7 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
 	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, __subaction: subaction }
+		? { ...baseParameters, subaction }
 		: baseParameters;
 	return {
 		id: toolCall.id,
@@ -1652,20 +1645,257 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	};
 }
 
+function stringParam(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
+}
+
+type PlannerLifeAliasDefaults = {
+	subaction?: string;
+	kind?: "definition" | "goal";
+	definitionKind?: "task" | "habit" | "routine";
+};
+
+function normalizedPlannerAliasDefaults(
+	actionName: string,
+): PlannerLifeAliasDefaults | undefined {
+	return PLANNER_ACTION_ALIAS_DEFAULTS.get(normalizeActionIdentifier(actionName));
+}
+
+function normalizedLifeSubactionDefaults(
+	subaction: unknown,
+): PlannerLifeAliasDefaults | undefined {
+	if (typeof subaction !== "string") {
+		return undefined;
+	}
+	return PLANNER_LIFE_SUBACTION_DEFAULTS.get(normalizeActionIdentifier(subaction));
+}
+
+const LIFE_SUBACTIONS = new Set([
+	"create",
+	"update",
+	"delete",
+	"complete",
+	"skip",
+	"snooze",
+	"review",
+]);
+
+const LIFE_DEFINITION_KINDS = new Set(["task", "habit", "routine"]);
+
+function normalizedLifeSubaction(value: unknown): string | undefined {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = value.trim().toLowerCase();
+	return LIFE_SUBACTIONS.has(normalized) ? normalized : undefined;
+}
+
+function normalizedLifeDefinitionKind(
+	value: unknown,
+): "task" | "habit" | "routine" | undefined {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = value.trim().toLowerCase();
+	return LIFE_DEFINITION_KINDS.has(normalized)
+		? (normalized as "task" | "habit" | "routine")
+		: undefined;
+}
+
+function normalizedLifeTopLevelKind(
+	value: unknown,
+): "definition" | "goal" | undefined {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = value.trim().toLowerCase();
+	return normalized === "definition" || normalized === "goal"
+		? normalized
+		: undefined;
+}
+
+function firstStringParam(
+	params: Record<string, unknown>,
+	keys: readonly string[],
+): string | undefined {
+	for (const key of keys) {
+		const value = stringParam(params[key]);
+		if (value) {
+			return value;
+		}
+	}
+	return undefined;
+}
+
+function buildNormalizedLifePlannerParams(args: {
+	toolCall: PlannerToolCall;
+	defaults?: PlannerLifeAliasDefaults;
+	message: Memory;
+}): Record<string, unknown> {
+	const params =
+		args.toolCall.params && typeof args.toolCall.params === "object"
+			? { ...args.toolCall.params }
+			: {};
+	const existingDetails =
+		params.details && typeof params.details === "object" && !Array.isArray(params.details)
+			? (params.details as Record<string, unknown>)
+			: {};
+	const rawSubaction = params.subaction;
+	const rawKind = params.kind;
+	const definitionKind =
+		normalizedLifeDefinitionKind(rawKind) ??
+		normalizedLifeDefinitionKind(params.entity) ??
+		normalizedLifeDefinitionKind(params.type) ??
+		args.defaults?.definitionKind;
+	const topLevelKind =
+		normalizedLifeTopLevelKind(rawKind) ??
+		args.defaults?.kind ??
+		(definitionKind ? "definition" : undefined);
+	const subaction =
+		args.defaults?.subaction ?? normalizedLifeSubaction(rawSubaction);
+	const title = firstStringParam(params, [
+		"title",
+		"name",
+		"task",
+		"todo",
+		"todo_title",
+		"task_name",
+		"habit",
+		"habit_name",
+		"habit_title",
+		"goal",
+		"goal_name",
+		"goal_title",
+	]);
+	const intent =
+		stringParam(params.intent) ?? getUserMessageText(args.message) ?? title;
+
+	const details: Record<string, unknown> = {
+		...existingDetails,
+		originalPlannerAction: args.toolCall.name,
+	};
+	if (
+		typeof rawSubaction === "string" &&
+		rawSubaction.trim().length > 0 &&
+		rawSubaction.trim().toLowerCase() !== subaction
+	) {
+		details.originalPlannerSubaction = rawSubaction.trim();
+	}
+	if (definitionKind && typeof existingDetails.kind !== "string") {
+		details.kind = definitionKind;
+	}
+
+	for (const [key, value] of Object.entries(params)) {
+		if (
+			key !== "subaction" &&
+			key !== "kind" &&
+			key !== "intent" &&
+			key !== "title" &&
+			key !== "target" &&
+			key !== "minutes" &&
+			key !== "details" &&
+			value !== undefined
+		) {
+			details[key] = value;
+		}
+	}
+
+	return {
+		...(subaction ? { subaction } : {}),
+		...(topLevelKind ? { kind: topLevelKind } : {}),
+		...(intent ? { intent } : {}),
+		...(title ? { title } : {}),
+		...(stringParam(params.target) ? { target: stringParam(params.target) } : {}),
+		...(typeof params.minutes === "number" ? { minutes: params.minutes } : {}),
+		...(Object.keys(details).length > 0 ? { details } : {}),
+	};
+}
+
+function shouldTreatPlannerContactAliasAsLifeReminder(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): boolean {
+	if (normalizeActionIdentifier(toolCall.name) !== normalizeActionIdentifier("ADD_CONTACT")) {
+		return false;
+	}
+	const text = (getUserMessageText(message) ?? "").toLowerCase();
+	if (!text || /\bfollow\s+up\b/.test(text)) {
+		return false;
+	}
+	return (
+		/\b(?:remember|remind|reminder)\b/.test(text) &&
+		/\b(?:call|phone|text|message|email)\b/.test(text)
+	);
+}
+
+function normalizeAliasedPlannerToolCall(
+	toolCall: PlannerToolCall,
+	resolvedName: string,
+	message: Memory,
+): PlannerToolCall {
+	if (
+		normalizeActionIdentifier(resolvedName) !== normalizeActionIdentifier("LIFE")
+	) {
+		return { ...toolCall, name: resolvedName };
+	}
+
+	const defaults =
+		normalizedPlannerAliasDefaults(toolCall.name) ??
+		normalizedLifeSubactionDefaults(toolCall.params?.subaction);
+
+	return {
+		...toolCall,
+		name: resolvedName,
+		params: buildNormalizedLifePlannerParams({ toolCall, defaults, message }),
+	};
+}
+
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
-	const toolCall = unwrapPlanActionsToolCall(args.toolCall);
-	if (!toolCall.name) {
+	const unwrappedToolCall = unwrapPlanActionsToolCall(args.toolCall);
+	if (!unwrappedToolCall.name) {
 		return {
 			success: false,
 			error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action`,
 		};
 	}
 
-	const action = (args.executorOptions?.actions ?? args.runtime.actions).find(
-		(candidate) => candidate.name === toolCall.name,
+	const actions = args.executorOptions?.actions ?? args.runtime.actions;
+	const actionLookup = buildRuntimeActionLookup({ actions });
+	const resolvedNames = resolvePlannerActionName(
+		args.runtime,
+		actionLookup,
+		unwrappedToolCall.name,
 	);
+	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
+	const forceContactReminderToLife = shouldTreatPlannerContactAliasAsLifeReminder(
+		unwrappedToolCall,
+		args.executorCtx.message,
+	);
+	const effectiveResolvedName = forceContactReminderToLife ? "LIFE" : resolvedName;
+	const toolCallForNormalization = forceContactReminderToLife
+		? {
+				...unwrappedToolCall,
+				params: {
+					intent: getUserMessageText(args.executorCtx.message),
+					details: {
+						contactName: stringParam(unwrappedToolCall.params?.name),
+						relationship: stringParam(unwrappedToolCall.params?.relationship),
+						originalPlannerAction: unwrappedToolCall.name,
+					},
+				},
+			}
+		: unwrappedToolCall;
+	const toolCall = normalizeAliasedPlannerToolCall(
+		toolCallForNormalization,
+		effectiveResolvedName,
+		args.executorCtx.message,
+	);
+
+	const action = actions.find((candidate) => candidate.name === toolCall.name);
 
 	if (action && actionHasSubActions(action)) {
 		const subResult = await runSubPlanner({
@@ -1709,11 +1939,11 @@ function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. We always expose the same fixed two-tool list
- * — HANDLE_RESPONSE and PLAN_ACTIONS — so the prompt-cache key stays stable
- * across requests no matter which actions are gated this turn. Action
- * names + parameter schemas live in the conversation's available-actions
- * block; the LLM picks one and passes it through PLAN_ACTIONS({ action, … }).
+ * Planner-loop tool surface. We always expose the same fixed Stage 2 wrapper
+ * list so the prompt-cache key stays stable across requests no matter which
+ * actions are gated this turn. Action names + parameter schemas live in the
+ * conversation's available-actions block; the LLM picks one and passes it
+ * through PLAN_ACTIONS({ action, ... }).
  *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
@@ -2109,6 +2339,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			{ selectedContexts },
 		);
 
+		const actionResults = collectPreviousActionResults(plannerResult.trajectory);
+		const finalPlannerState =
+			actionResults.length > 0
+				? withActionResultsForPrompt(plannerState, actionResults)
+				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
 
 		return {
@@ -2117,7 +2352,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			result: plannedText
 				? createV5ReplyStrategyResult({
 						...args,
-						state: plannerState,
+						state: finalPlannerState,
 						text: plannedText,
 						thought:
 							plannerResult.evaluator?.thought ??
@@ -2127,7 +2362,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				: {
 						responseContent: null,
 						responseMessages: [],
-						state: plannerState,
+						state: finalPlannerState,
 						mode: "none",
 					},
 		};
@@ -2546,6 +2781,17 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CONTEXTUAL_BUMP", "MESSAGE"],
 		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
 		["GET_PENDING_DRAFTS", "MESSAGE"],
+			["ADD_TODO", "LIFE"],
+			["CREATE_TODO", "LIFE"],
+			["LIST_TODOS", "LIFE"],
+			["GET_TODOS", "LIFE"],
+			["LIFE_GET_TODOS", "LIFE"],
+			["LIFE_TODO", "LIFE"],
+			["ADD_HABIT", "LIFE"],
+			["CREATE_HABIT", "LIFE"],
+			["LIST_HABITS", "LIFE"],
+		["ADD_GOAL", "LIFE"],
+		["CREATE_GOAL", "LIFE"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
 		["CREATE_PREFERENCE_PROFILE", "PROFILE"],
@@ -2558,6 +2804,87 @@ const PLANNER_ACTION_ALIASES = new Map(
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
+	]),
+);
+
+const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
+	[
+		[
+			"ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"ADD_HABIT",
+			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+		],
+		[
+			"CREATE_HABIT",
+			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+		],
+		["ADD_GOAL", { subaction: "create", kind: "goal" }],
+		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["CREATE_REMINDER", { subaction: "create", kind: "definition", definitionKind: "task" }],
+		["SET_REMINDER_RULE", { subaction: "create", kind: "definition", definitionKind: "task" }],
+		["LIST_TODOS", { subaction: "review" }],
+		["GET_TODOS", { subaction: "review" }],
+		["LIFE_GET_TODOS", { subaction: "review" }],
+		["LIFE_TODO", {}],
+		["LIST_HABITS", { subaction: "review" }],
+	].map(([from, defaults]) => [
+		normalizeActionIdentifier(from as string),
+		defaults as PlannerLifeAliasDefaults,
+	]),
+);
+
+const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
+	[
+		[
+			"ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"ADD_TASK",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"CREATE_TASK",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"ADD_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"ADD_HABIT",
+			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+		],
+		[
+			"CREATE_HABIT",
+			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+		],
+		["ADD_GOAL", { subaction: "create", kind: "goal" }],
+		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["LIST_TODOS", { subaction: "review" }],
+		["GET_TODOS", { subaction: "review" }],
+		["LIFE_GET_TODOS", { subaction: "review" }],
+		["LIFE_TODO", {}],
+		["LIST_TASKS", { subaction: "review" }],
+		["LIST_HABITS", { subaction: "review" }],
+	].map(([from, defaults]) => [
+		normalizeActionIdentifier(from as string),
+		defaults as PlannerLifeAliasDefaults,
 	]),
 );
 
@@ -4105,7 +4432,7 @@ async function shouldUseDocumentProviders(
 }
 
 function buildRuntimeActionLookup(
-	runtime: Pick<IAgentRuntime, "actions">,
+	runtime: { actions?: readonly Action[] },
 ): Map<string, Action> {
 	const actionMap = new Map<string, Action>();
 
@@ -4286,7 +4613,7 @@ export function shouldEmitPlannerPreamble(
 // alongside explicit delegation produces duplicate user-visible noise:
 // "Created task X" message followed by the actual delegated result.
 const PASSIVE_TURN_ACTIONS = new Set(
-	["REPLY", "RESPOND", "MANAGE_TASKS"].map(normalizeActionIdentifier),
+	["REPLY", "RESPOND", "TASK"].map(normalizeActionIdentifier),
 );
 
 export function stripReplyWhenActionOwnsTurn(

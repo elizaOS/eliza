@@ -233,7 +233,7 @@ function extractAdhdAction(prompt: string): string {
     return "REPLY";
   }
   if (/send a message|tell alice|message to/.test(message))
-    return "SEND_MESSAGE";
+    return "MESSAGE";
   if (/mute this|too noisy/.test(message)) return "MUTE_ROOM";
   if (/unmute/.test(message)) return "UNMUTE_ROOM";
   if (/follow the/.test(message)) return "FOLLOW_ROOM";

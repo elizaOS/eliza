@@ -22,18 +22,18 @@ import {
 } from "react";
 import { client } from "../../api/client";
 import type {
-  DocumentScope,
   DocumentRecord,
+  DocumentScope,
   DocumentSearchResult,
 } from "../../api/client-types-chat";
 import { useApp } from "../../state/useApp";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
-import { formatByteSize } from "../../utils/format";
 import {
   isDocumentImageFile,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
+import { formatByteSize } from "../../utils/format";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import {
   DocumentViewer,
@@ -42,12 +42,12 @@ import {
 } from "./documents-detail";
 import {
   BULK_UPLOAD_TARGET_BYTES,
-  getDocumentUploadFilename,
-  isSupportedDocumentFile,
   DEFAULT_DOCUMENT_UPLOAD_SCOPE,
   DOCUMENT_UPLOAD_ACCEPT,
   type DocumentUploadFile,
   type DocumentUploadOptions,
+  getDocumentUploadFilename,
+  isSupportedDocumentFile,
   LARGE_FILE_WARNING_BYTES,
   MAX_BULK_REQUEST_DOCUMENTS,
   MAX_UPLOAD_REQUEST_BYTES,
@@ -57,14 +57,12 @@ import {
 
 // Re-export public API used by tests and other modules
 export {
-  getDocumentUploadFilename,
   type DocumentUploadFile,
+  getDocumentUploadFilename,
   shouldReadDocumentFileAsText,
 } from "./documents-upload";
 
-type DocumentScopeFilter =
-  | "all"
-  | DocumentScope;
+type DocumentScopeFilter = "all" | DocumentScope;
 
 const SCOPE_FILTER_OPTIONS: ReadonlyArray<{
   value: DocumentScopeFilter;
@@ -72,7 +70,12 @@ const SCOPE_FILTER_OPTIONS: ReadonlyArray<{
   defaultLabel: string;
   Icon: typeof Globe2;
 }> = [
-  { value: "all", labelKey: "documentsview.ScopeAll", defaultLabel: "All", Icon: Layers },
+  {
+    value: "all",
+    labelKey: "documentsview.ScopeAll",
+    defaultLabel: "All",
+    Icon: Layers,
+  },
   {
     value: "global",
     labelKey: "documentsview.ScopeGlobal",
@@ -134,10 +137,10 @@ function SearchResultListItem({
         <div className="flex min-w-0 items-center gap-1.5">
           <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
           <div className="truncate text-sm font-semibold text-txt">
-          {result.documentTitle ||
-            t("documentsview.UnknownDocument", {
-              defaultValue: "Unknown Document",
-            })}
+            {result.documentTitle ||
+              t("documentsview.UnknownDocument", {
+                defaultValue: "Unknown Document",
+              })}
           </div>
         </div>
         <div className="mt-1 line-clamp-2 text-xs text-muted">
@@ -304,7 +307,7 @@ export function DocumentsView({
     },
     [onSelectedDocumentIdChange, selectedDocumentId],
   );
-  const shouldRenderSelectorRail = showSelectorRail !== false || embedded;
+  const shouldRenderSelectorRail = showSelectorRail !== false;
   const useCompactSelectorRail = embedded;
 
   const loadData = useCallback(async () => {
@@ -1153,6 +1156,78 @@ export function DocumentsView({
     </div>
   );
 
+  const compactDocumentStrip = !shouldRenderSelectorRail ? (
+    <PagePanel
+      variant="inset"
+      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+    >
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
+        <div className="min-w-0 flex-1">{searchInput}</div>
+        {fileInputId ? (
+          <label
+            htmlFor={fileInputId}
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-3 text-xs font-semibold text-accent-fg transition hover:bg-accent/16 ${
+              uploading ? "pointer-events-none opacity-60" : ""
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" aria-hidden />
+            {uploading
+              ? t("documentsview.Uploading", { defaultValue: "Uploading" })
+              : t("documentsview.AddKnowledge", {
+                  defaultValue: "Add Knowledge",
+                })}
+          </label>
+        ) : null}
+      </div>
+      <div>{scopeFilterStrip}</div>
+      <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-1">
+        {isShowingSearchResults
+          ? visibleSearchResults.map((result) => {
+              const id = result.documentId || result.id;
+              const active = selectedDocId === id;
+              return (
+                <button
+                  key={result.id}
+                  type="button"
+                  onClick={() => setSelectedDocId(id)}
+                  className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? "border-accent/45 bg-accent/12 text-accent-fg"
+                      : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+                  }`}
+                >
+                  <FileSearch className="h-3.5 w-3.5" aria-hidden />
+                  <span className="truncate">
+                    {result.documentTitle ||
+                      t("documentsview.UnknownDocument", {
+                        defaultValue: "Unknown Document",
+                      })}
+                  </span>
+                </button>
+              );
+            })
+          : filteredDocuments.map((doc) => {
+              const active = selectedDocId === doc.id;
+              return (
+                <button
+                  key={doc.id}
+                  type="button"
+                  onClick={() => setSelectedDocId(doc.id)}
+                  className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? "border-accent/45 bg-accent/12 text-accent-fg"
+                      : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+                  }`}
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden />
+                  <span className="truncate">{doc.filename}</span>
+                </button>
+              );
+            })}
+      </div>
+    </PagePanel>
+  ) : null;
+
   return (
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
@@ -1196,6 +1271,8 @@ export function DocumentsView({
           {loadError}
         </PagePanel.Notice>
       )}
+
+      {compactDocumentStrip}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {documentContent}

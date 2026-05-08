@@ -37,6 +37,7 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsProfile,
 } from "../../../api/client-types-relationships";
+import { shouldUseHashNavigation } from "../../../navigation";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { RelationshipsIdentityCluster } from "../RelationshipsIdentityCluster";
 import {
@@ -966,30 +967,52 @@ export function RelationshipsDocumentsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const memberEntityIds = person.memberEntityIds;
+  const memberEntityKey = person.memberEntityIds.join("\0");
+
+  const openDocumentsPage = () => {
+    if (typeof window === "undefined") return;
+    const path = "/character/documents";
+    if (shouldUseHashNavigation()) {
+      window.location.hash = path;
+    } else {
+      window.history.pushState(null, "", path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    const memberSet = new Set(memberEntityIds);
+    const entityIds = Array.from(
+      new Set(memberEntityKey.split("\0").filter((id) => id.trim().length > 0)),
+    );
 
     async function load() {
       try {
-        const response = await client.listDocuments({
-          scope: "user-private",
-          limit: 100,
-        });
+        const responses = await Promise.all(
+          entityIds.map((entityId) =>
+            client.listDocuments({
+              scope: "user-private",
+              scopedToEntityId: entityId,
+              limit: 100,
+            }),
+          ),
+        );
         if (cancelled) return;
-        const matched = response.documents.filter((doc) => {
-          if (doc.scopedToEntityId && memberSet.has(doc.scopedToEntityId)) {
-            return true;
+        const byId = new Map<string, DocumentRecord>();
+        for (const response of responses) {
+          for (const doc of response.documents) {
+            byId.set(doc.id, doc);
           }
-          if (doc.addedBy && memberSet.has(doc.addedBy)) return true;
-          return false;
-        });
-        setDocuments(matched);
+        }
+        setDocuments(
+          Array.from(byId.values()).sort(
+            (left, right) =>
+              Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
+          ),
+        );
       } catch (loadError) {
         if (cancelled) return;
         setError(
@@ -1003,11 +1026,16 @@ export function RelationshipsDocumentsPanel({
       }
     }
 
-    load();
+    if (entityIds.length === 0) {
+      setDocuments([]);
+      setLoading(false);
+    } else {
+      load();
+    }
     return () => {
       cancelled = true;
     };
-  }, [memberEntityIds]);
+  }, [memberEntityKey]);
 
   const shownDocuments = visibleItems(documents);
   const hiddenDocuments = documents.slice(PANEL_PREVIEW_LIMIT);
@@ -1048,6 +1076,14 @@ export function RelationshipsDocumentsPanel({
             {cleanPreviewText(doc.content.text)}
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={openDocumentsPage}
+          className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
+        >
+          <Link2 className="h-3 w-3" />
+          Open
+        </button>
       </div>
     );
   };

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
 export const connectorAccountsTable = pgTable(
@@ -41,12 +41,12 @@ export const connectorAccountsTable = pgTable(
       table.agentId,
       table.provider,
       table.accountKey
-    ),
+    ).where(sql`${table.deletedAt} IS NULL`),
     uniqueIndex("connector_accounts_agent_provider_external_uniq").on(
       table.agentId,
       table.provider,
       table.externalId
-    ),
+    ).where(sql`${table.deletedAt} IS NULL`),
     index("connector_accounts_agent_provider_idx").on(table.agentId, table.provider),
     index("connector_accounts_status_idx").on(table.status),
     index("connector_accounts_updated_idx").on(table.updatedAt),
@@ -123,7 +123,7 @@ export const oauthFlowsTable = pgTable(
   "oauth_flows",
   {
     /** SHA-256 hex of the plaintext OAuth state. Plaintext state is never stored. */
-    stateHash: text("state_hash").primaryKey(),
+    stateHash: text("state_hash").notNull(),
     agentId: uuid("agent_id")
       .notNull()
       .references(() => agentTable.id, { onDelete: "cascade" }),
@@ -145,6 +145,10 @@ export const oauthFlowsTable = pgTable(
     consumedBy: text("consumed_by"),
   },
   (table) => [
+    primaryKey({
+      name: "oauth_flows_agent_provider_state_pk",
+      columns: [table.agentId, table.provider, table.stateHash],
+    }),
     index("oauth_flows_agent_provider_idx").on(table.agentId, table.provider),
     index("oauth_flows_account_idx").on(table.accountId),
     index("oauth_flows_expires_idx").on(table.expiresAt),

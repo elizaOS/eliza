@@ -6,11 +6,9 @@ export {
   type DocumentAddedFrom,
   type DocumentsLoadFailReason,
   type DocumentsServiceLike,
-  type DocumentServiceLike,
   type DocumentsServiceResult,
   type DocumentSearchMode,
   type DocumentVisibilityScope,
   getDocumentsService,
   getDocumentsServiceTimeoutMs,
-  getDocumentsTimeoutMs,
 } from "@elizaos/agent/api/documents-service-loader";

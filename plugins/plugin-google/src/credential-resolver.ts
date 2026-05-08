@@ -12,6 +12,9 @@ import type {
   GoogleAuthResolutionRequest,
   GoogleCredentialResolver,
 } from "./types.js";
+import {
+  credentialRefRecordsFromMetadata,
+} from "./connector-credential-refs.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
@@ -157,7 +160,14 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
 
     const clientConfig = this.resolveOAuthClientConfig(account);
     const storage = this.resolveStorage();
-    const records = storage ? await this.loadCredentialRecords(storage, account.id) : [];
+    const metadataRecords = credentialRefRecordsFromMetadata(
+      account.metadata
+    ) as ConnectorCredentialRefRecord[];
+    const records: ConnectorCredentialRefRecord[] = [
+      ...metadataRecords,
+      ...(storage ? await this.loadCredentialRecords(storage, account.id) : []),
+      ...(await this.loadRuntimeAdapterCredentialRecords(account.id)),
+    ];
     const version = credentialVersion(account, records);
     const cacheKey = version
       ? this.cacheKey(request.accountId, version, request.scopes, clientConfig)
@@ -255,8 +265,6 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       await this.mergeCredentialRecord(credentials, record);
     }
 
-    mergeCredentialsFromMetadata(credentials, account.metadata);
-
     if (!credentials.access_token && !credentials.refresh_token) {
       const foundRefs = records
         .filter((record) => record.vaultRef)
@@ -266,7 +274,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
         : "";
       throw new Error(
         `Google OAuth credentials for account ${request.accountId} were not available in the connector OAuth store.` +
-          `${refText} Expected oauth.tokens or oauth.access_token/oauth.refresh_token.`
+          `${refText} Expected oauth.tokens or oauth.access_token/oauth.refresh_token credential refs.`
       );
     }
 
@@ -326,6 +334,36 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       }
     }
 
+    return records;
+  }
+
+  private async loadRuntimeAdapterCredentialRecords(
+    accountId: string
+  ): Promise<ConnectorCredentialRefRecord[]> {
+    const adapter = (this.runtime as unknown as { adapter?: unknown } | undefined)?.adapter;
+    if (!adapter) return [];
+    if (!isConnectorCredentialRefStorageLike(adapter)) return [];
+    if (typeof adapter.listConnectorAccountCredentialRefs === "function") {
+      return adapter.listConnectorAccountCredentialRefs({ accountId });
+    }
+    const records: ConnectorCredentialRefRecord[] = [];
+    if (typeof adapter.getConnectorAccountCredentialRef === "function") {
+      for (const credentialType of [
+        ...TOKEN_SET_CREDENTIAL_TYPES,
+        ...ACCESS_TOKEN_CREDENTIAL_TYPES,
+        ...REFRESH_TOKEN_CREDENTIAL_TYPES,
+        ...ID_TOKEN_CREDENTIAL_TYPES,
+        ...EXPIRY_CREDENTIAL_TYPES,
+      ]) {
+        const record = await adapter.getConnectorAccountCredentialRef({
+          accountId,
+          credentialType,
+        });
+        if (record) {
+          records.push(record);
+        }
+      }
+    }
     return records;
   }
 
@@ -461,6 +499,17 @@ function isConnectorAccountStorageLike(value: unknown): value is ConnectorAccoun
   );
 }
 
+function isConnectorCredentialRefStorageLike(
+  value: unknown
+): value is ConnectorCredentialRefStorage {
+  const candidate = value as Partial<ConnectorCredentialRefStorage> | undefined;
+  return (
+    Boolean(candidate) &&
+    (typeof candidate?.listConnectorAccountCredentialRefs === "function" ||
+      typeof candidate?.getConnectorAccountCredentialRef === "function")
+  );
+}
+
 function safelyGetService(runtime: IAgentRuntime, serviceType: string): unknown {
   try {
     return runtime.getService(serviceType);
@@ -558,21 +607,6 @@ function mergeCredentialValue(
   }
 
   applyRecordExpiry(credentials, record);
-}
-
-function mergeCredentialsFromMetadata(credentials: Credentials, metadata: unknown): void {
-  const record = asRecord(metadata);
-  if (!record) return;
-
-  for (const candidate of [
-    record.oauth,
-    record.oauthTokens,
-    record.tokens,
-    record.credentials,
-    record.googleOAuth,
-  ]) {
-    mergeCredentialObject(credentials, candidate);
-  }
 }
 
 function mergeCredentialObject(credentials: Credentials, value: unknown): void {

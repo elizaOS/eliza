@@ -20,12 +20,12 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 const INSTALLED_SKILL_MATCH_LIMIT = 100;
 
-export const uninstallSkillAction: Action = {
-	name: "UNINSTALL_SKILL",
+export const uninstallSkillAction = {
+	name: "SKILL",
 	contexts: ["automation", "settings"],
 	contextGate: { anyOf: ["automation", "settings"] },
 	roleGate: { minRole: "USER" },
-	similes: ["REMOVE_SKILL", "DELETE_SKILL"],
+	similes: [],
 	description:
 		"Uninstall a non-bundled skill. Bundled skills cannot be removed. " +
 		'Provide the skill slug, e.g. "uninstall weather".',
@@ -100,7 +100,7 @@ export const uninstallSkillAction: Action = {
 		const decision = await requireConfirmation({
 			runtime,
 			message,
-			actionName: "UNINSTALL_SKILL",
+			actionName: "SKILL",
 			pendingKey: `uninstall:${match.slug}`,
 			prompt: `Uninstall skill **${match.name}** (\`${match.slug}\`)? This removes its files. Reply "yes" to confirm.`,
 			callback,
@@ -143,11 +143,11 @@ export const uninstallSkillAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill **Weather** (`weather`) has been uninstalled.",
-					actions: ["UNINSTALL_SKILL"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default uninstallSkillAction;

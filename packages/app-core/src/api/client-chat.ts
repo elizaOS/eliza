@@ -19,16 +19,16 @@ import type {
   CreateConversationOptions,
   DatabaseConfigResponse,
   DatabaseStatus,
-  ImageAttachment,
   DocumentBulkUploadResult,
   DocumentDetail,
   DocumentFragmentsResponse,
-  DocumentsResponse,
   DocumentScope,
   DocumentSearchResponse,
   DocumentStats,
+  DocumentsResponse,
   DocumentUpdateResult,
   DocumentUploadResult,
+  ImageAttachment,
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
@@ -66,6 +66,7 @@ type DocumentListOptions = {
   query?: string;
   timeRangeStart?: string;
   timeRangeEnd?: string;
+  tags?: string[];
 };
 
 type DocumentUploadRequest = {
@@ -73,6 +74,7 @@ type DocumentUploadRequest = {
   filename: string;
   contentType?: string;
   metadata?: Record<string, unknown>;
+  entityId?: string;
   scope?: DocumentScope;
   scopedToEntityId?: string;
 };
@@ -80,6 +82,7 @@ type DocumentUploadRequest = {
 type DocumentUrlUploadOptions = {
   includeImageDescriptions?: boolean;
   metadata?: Record<string, unknown>;
+  entityId?: string;
   scope?: DocumentScope;
   scopedToEntityId?: string;
 };
@@ -89,6 +92,11 @@ type DocumentSearchOptions = {
   limit?: number;
   scope?: DocumentScope;
   scopedToEntityId?: string;
+  addedBy?: string;
+  query?: string;
+  timeRangeStart?: string;
+  timeRangeEnd?: string;
+  tags?: string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -860,6 +868,9 @@ ElizaClient.prototype.listDocuments = async function (
     params.set("timeRangeStart", options.timeRangeStart);
   }
   if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
+  if (options?.tags) {
+    for (const tag of options.tags) params.append("tag", tag);
+  }
   const query = params.toString();
   return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
 };
@@ -927,6 +938,7 @@ ElizaClient.prototype.uploadDocumentFromUrl = async function (
     body: JSON.stringify({
       url,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...(options?.entityId ? { entityId: options.entityId } : {}),
       ...(options?.scope ? { scope: options.scope } : {}),
       ...(options?.scopedToEntityId
         ? { scopedToEntityId: options.scopedToEntityId }
@@ -948,6 +960,15 @@ ElizaClient.prototype.searchDocuments = async function (
   if (options?.scopedToEntityId) {
     params.set("scopedToEntityId", options.scopedToEntityId);
   }
+  if (options?.addedBy) params.set("addedBy", options.addedBy);
+  if (options?.query) params.set("query", options.query);
+  if (options?.timeRangeStart) {
+    params.set("timeRangeStart", options.timeRangeStart);
+  }
+  if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
+  if (options?.tags) {
+    for (const tag of options.tags) params.append("tag", tag);
+  }
   return this.fetch(`/api/documents/search?${params}`);
 };
 
@@ -955,7 +976,9 @@ ElizaClient.prototype.getDocumentFragments = async function (
   this: ElizaClient,
   documentId,
 ) {
-  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/fragments`);
+  return this.fetch(
+    `/api/documents/${encodeURIComponent(documentId)}/fragments`,
+  );
 };
 
 ElizaClient.prototype.rememberMemory = async function (
@@ -985,13 +1008,7 @@ ElizaClient.prototype.quickContext = async function (
 ) {
   const params = new URLSearchParams({ q: query });
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  const response = await this.fetch<
-    QuickContextResponse & { knowledge?: QuickContextResponse["documents"] }
-  >(`/api/context/quick?${params}`);
-  return {
-    ...response,
-    documents: response.documents ?? response.knowledge ?? [],
-  };
+  return this.fetch(`/api/context/quick?${params}`);
 };
 
 ElizaClient.prototype.getMemoryFeed = async function (

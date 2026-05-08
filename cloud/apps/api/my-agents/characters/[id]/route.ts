@@ -38,11 +38,16 @@ app.put("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
     const elizaCharacter = (await c.req.json()) as ElizaCharacter;
+    const documentSources = [
+      ...(elizaCharacter.documents ?? []),
+      ...(elizaCharacter.knowledge ?? []),
+    ];
 
     const characterDataRecord: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(elizaCharacter)) {
       characterDataRecord[key] = value;
     }
+    characterDataRecord.documents = documentSources;
 
     const updates: Partial<NewUserCharacter> = {
       name: elizaCharacter.name,
@@ -53,7 +58,7 @@ app.put("/", async (c) => {
       post_examples: elizaCharacter.postExamples ?? [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
-      knowledge: elizaCharacter.knowledge ?? [],
+      knowledge: documentSources,
       plugins: elizaCharacter.plugins ?? [],
       settings: elizaCharacter.settings ?? {},
       secrets: elizaCharacter.secrets ?? {},

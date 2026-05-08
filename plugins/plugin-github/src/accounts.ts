@@ -1,5 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type { GitHubIdentity } from "./types.js";
+import {
+  listConnectorAccounts,
+  loadConnectorOAuthAccessToken,
+} from "./connector-credential-refs.js";
+import { GITHUB_SERVICE_TYPE, type GitHubIdentity } from "./types.js";
 
 export const DEFAULT_GITHUB_USER_ACCOUNT_ID = "user";
 export const DEFAULT_GITHUB_AGENT_ACCOUNT_ID = "agent";
@@ -89,16 +93,12 @@ function readRawField(
     record.credentials && typeof record.credentials === "object"
       ? (record.credentials as RawAccountRecord)
       : {};
-  const metadata =
-    record.metadata && typeof record.metadata === "object"
-      ? (record.metadata as RawAccountRecord)
-      : {};
   const settings =
     record.settings && typeof record.settings === "object"
       ? (record.settings as RawAccountRecord)
       : {};
 
-  for (const source of [record, credentials, metadata, settings]) {
+  for (const source of [record, credentials, settings]) {
     for (const key of keys) {
       const value = nonEmptyString(source[key]);
       if (value) return value;
@@ -205,6 +205,35 @@ export function readGitHubAccounts(runtime: IAgentRuntime): GitHubAccountConfig[
   return Array.from(accounts.values());
 }
 
+export async function readGitHubAccountsWithConnectorCredentials(
+  runtime: IAgentRuntime,
+): Promise<GitHubAccountConfig[]> {
+  const accounts = new Map<string, GitHubAccountConfig>();
+  for (const account of readGitHubAccounts(runtime)) {
+    accounts.set(account.accountId, account);
+  }
+
+  const connectorAccounts = await listConnectorAccounts(runtime, GITHUB_SERVICE_TYPE);
+  for (const account of connectorAccounts) {
+    if (account.status !== "connected") continue;
+    const token = await loadConnectorOAuthAccessToken({
+      runtime,
+      provider: GITHUB_SERVICE_TYPE,
+      accountId: account.id,
+      caller: "plugin-github",
+    });
+    if (!token) continue;
+    accounts.set(account.id, {
+      accountId: account.id,
+      role: connectorRoleToIdentity(account.role),
+      token,
+      label: account.label ?? account.displayHandle,
+    });
+  }
+
+  return Array.from(accounts.values());
+}
+
 function legacyAccount(
   runtime: IAgentRuntime,
   role: GitHubIdentity,
@@ -215,6 +244,10 @@ function legacyAccount(
   const token = readSetting(runtime, primaryKey) ?? readSetting(runtime, fallbackKey);
   if (!token) return null;
   return { accountId, role, token };
+}
+
+function connectorRoleToIdentity(role: unknown): GitHubIdentity {
+  return typeof role === "string" && role.toUpperCase() === "AGENT" ? "agent" : "user";
 }
 
 export function resolveGitHubAccount(

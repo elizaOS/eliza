@@ -44,7 +44,7 @@ const meta = {
   agents: {
     title: "Agents",
   },
-  knowledge: {
+  documents: {
     title: "Knowledge",
   },
   apps: {

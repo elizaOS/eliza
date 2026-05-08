@@ -78,8 +78,8 @@ export const FEATURE_ROUTE_MAP: Record<FeatureFlag, { frontend: string[]; api: s
     api: ["/api/v1/gallery"],
   },
   memories: {
-    frontend: ["/dashboard/knowledge"],
-    api: ["/api/v1/knowledge", "/api/v1/memories"],
+    frontend: ["/dashboard/documents"],
+    api: ["/api/v1/documents", "/api/v1/memories"],
   },
   voiceCloning: {
     frontend: ["/dashboard/voices"],

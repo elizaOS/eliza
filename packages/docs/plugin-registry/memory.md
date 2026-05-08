@@ -38,6 +38,6 @@ No environment variables or configuration parameters are required. The plugin us
 
 ## Related
 
-- [Knowledge Plugin](/plugin-registry/knowledge) — Structured knowledge ingestion and retrieval
+- [Knowledge Plugin](/plugin-registry/documents) — Structured knowledge ingestion and retrieval
 - [Clipboard Plugin](/plugin-registry/clipboard) — File-based notes and persistent clipboard
 - [Rolodex Plugin](/plugin-registry/rolodex) — Entity and relationship management

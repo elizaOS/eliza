@@ -12,7 +12,6 @@ import { createIMessageConnectorAccountProvider } from "./connector-account-prov
 // path. The connector registered by IMessageService.registerSendHandlers is
 // now the canonical delivery path through MESSAGE operation=send. This plugin
 // no longer registers its own send action.
-import { chatContextProvider, contactsProvider } from "./providers/index.js";
 import {
   chatDbMessageToPublicShape,
   IMessageService,
@@ -90,9 +89,7 @@ export {
 // Re-export types and service
 export * from "./types.js";
 export {
-  chatContextProvider,
   chatDbMessageToPublicShape,
-  contactsProvider,
   IMessageService,
   parseChatsFromAppleScript,
   parseMessagesFromAppleScript,
@@ -107,7 +104,7 @@ const imessagePlugin: Plugin = {
 
   services: [IMessageService],
   actions: [],
-  providers: [chatContextProvider, contactsProvider],
+  providers: [],
   routes: imessageSetupRoutes,
   tests: [],
 

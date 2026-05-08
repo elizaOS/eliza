@@ -240,7 +240,7 @@ def validate_model_support(model_name: str, api_key: str = None, temperature: fl
         temperature: Optional temperature parameter for testing
         top_p: Optional top_p parameter for testing
         no_thinking: Disable thinking mode (matches AnthropicAgent)
-        use_isp: Use interleaved scratchpad mode (matches AnthropicAgent)
+        use_isp: Use interleaved working notes mode (matches AnthropicAgent)
         
     Returns:
         True if model is supported and API call succeeds, False otherwise

@@ -26,6 +26,7 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
   getWindowNavigationPath,
+  resolveDefaultLandingTab,
   resolveInitialTabForPath,
   type Tab,
 } from "../navigation";
@@ -152,8 +153,16 @@ export {
 } from "./internal";
 export { AGENT_READY_TIMEOUT_MS } from "./types";
 
-/** RuntimeGate and bare `completeOnboarding()` land on chat; the wizard opens the companion overlay separately. */
-const DEFAULT_LANDING_TAB: Tab = "chat";
+/**
+ * RuntimeGate and bare `completeOnboarding()` land on the discovered
+ * main-tab app; the wizard opens the companion overlay separately.
+ *
+ * Resolved synchronously from the cached apps catalog at module load.
+ * Falls back to "chat" when no installed app declares
+ * `elizaos.app.mainTab=true`, preserving pre-Phase-1 behavior. Phase 5
+ * lands `app-chat` to claim the seam and drops the chat fallback.
+ */
+const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
 
 // ── Provider ───────────────────────────────────────────────────────────
 

@@ -49,6 +49,41 @@ import {
   type World,
 } from "@elizaos/core";
 
+interface GetOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  includeConsumed?: boolean;
+  includeExpired?: boolean;
+  now?: number | Date;
+}
+
+interface UpdateOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  accountId?: string | null;
+  redirectUri?: string | null;
+  codeVerifierRef?: string | null;
+  scopes?: string[];
+  metadata?: Record<string, JsonValue>;
+  expiresAt?: number | Date;
+  consumedAt?: number | Date | null;
+  consumedBy?: string | null;
+}
+
+interface DeleteOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+}
+
 function asRawMessage(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -5250,6 +5285,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ConsumeOAuthFlowStateParams
   ): Promise<OAuthFlowRecord | null> {
     return this.getConnectorAccountStore().consumeOAuthFlowState(params);
+  }
+
+  async getOAuthFlowState(params: GetOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
+    return this.getConnectorAccountStore().getOAuthFlowState(params);
+  }
+
+  async updateOAuthFlowState(
+    params: UpdateOAuthFlowStateParams
+  ): Promise<OAuthFlowRecord | null> {
+    return this.getConnectorAccountStore().updateOAuthFlowState(params);
+  }
+
+  async deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean> {
+    return this.getConnectorAccountStore().deleteOAuthFlowState(params);
   }
 }
 

@@ -282,7 +282,7 @@ export function resolveEffectiveVoiceConfig(
     cloudConnected &&
     (provider === "edge" ||
       hasLegacyOpenAiProvider ||
-      provider === "simple-voice")
+      provider === "robot-voice")
   ) {
     ttsDebug("voiceConfig:upgrade_provider_for_cloud", {
       fromProvider: hasLegacyOpenAiProvider ? "openai" : provider,

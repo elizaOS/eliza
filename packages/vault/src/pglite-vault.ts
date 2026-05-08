@@ -1,23 +1,22 @@
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promises as fs } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
 import { assertKey, optsCaller } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
-import { AuditLog } from "./audit.js";
 import { emptyStore, readStore, type StoreData } from "./store.js";
-import type { Vault, SetOptions } from "./vault.js";
-import { VaultMissError } from "./vault.js";
 import type {
-  AuditRecord,
   PasswordManagerReference,
   StoredEntry,
   VaultDescriptor,
   VaultLogger,
   VaultStats,
 } from "./types.js";
+import type { SetOptions, Vault } from "./vault-types.js";
+import { VaultMissError } from "./vault-types.js";
 
 /**
  * PGlite-backed Vault implementation.

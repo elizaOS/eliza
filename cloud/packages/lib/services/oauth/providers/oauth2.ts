@@ -21,9 +21,11 @@ import {
   getNestedValue,
   resolveRequestedScopes,
 } from "../provider-registry";
-import type { OAuthConnectionRole } from "../types";
+import { normalizeOAuthConnectionRole } from "../types";
+import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
+type PlatformCredentialSourceContext = (typeof platformCredentials.$inferSelect)["source_context"];
 
 /**
  * OAuth state stored in cache during authorization flow.
@@ -82,15 +84,21 @@ interface ExtractedUserInfo {
   raw: Record<string, unknown>;
 }
 
-function getStoredConnectionRole(sourceContext: unknown): OAuthConnectionRole {
-  if (
-    sourceContext &&
-    typeof sourceContext === "object" &&
-    (sourceContext as Record<string, unknown>).agentGoogleSide === "agent"
-  ) {
-    return "agent";
+function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectionRole {
+  if (!sourceContext || typeof sourceContext !== "object") {
+    return "OWNER";
   }
-  return "owner";
+  const context = sourceContext as Record<string, unknown>;
+  return normalizeOAuthConnectionRole(context.connectionRole ?? context.agentGoogleSide);
+}
+
+function connectionSourceContext(
+  connectionRole: OAuthStandardConnectionRole,
+): PlatformCredentialSourceContext {
+  return {
+    agentGoogleSide: connectionRole,
+    connectionRole,
+  } as unknown as PlatformCredentialSourceContext;
 }
 
 function oauthSecretName(
@@ -171,7 +179,7 @@ export async function initiateOAuth2(
     providerId: provider.id,
     redirectUrl,
     scopes,
-    connectionRole: params.connectionRole,
+    connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
   };
@@ -241,7 +249,7 @@ export async function handleOAuth2Callback(
   await cache.del(stateKey);
 
   const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
-  const connectionRole = stateData.connectionRole ?? "owner";
+  const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
 
   // Exchange code for tokens
   const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
@@ -603,12 +611,12 @@ async function storeConnection(
   provider: OAuthProviderConfig,
   organizationId: string,
   userId: string,
-  connectionRole: OAuthConnectionRole,
+  connectionRole: OAuthStandardConnectionRole,
   tokens: TokenResponse,
   userInfo: ExtractedUserInfo,
   scopes: string[],
 ): Promise<string> {
-  const connectionUserId = connectionRole === "agent" ? null : userId;
+  const connectionUserId = connectionRole === "OWNER" ? userId : null;
   const audit = {
     actorType: "user" as const,
     actorId: userId,
@@ -841,9 +849,7 @@ async function storeConnection(
           scopes,
           profile_data: userInfo.raw,
           source_type: "web",
-          source_context: {
-            agentGoogleSide: connectionRole,
-          },
+          source_context: connectionSourceContext(connectionRole),
           linked_at: new Date(),
         })
         .onConflictDoUpdate({
@@ -854,7 +860,11 @@ async function storeConnection(
           ],
           setWhere: sql`
             (${platformCredentials.user_id} IS NULL OR ${platformCredentials.user_id} = ${userId})
-            AND COALESCE(${platformCredentials.source_context}->>'agentGoogleSide', 'owner') = ${connectionRole}
+            AND UPPER(COALESCE(
+              ${platformCredentials.source_context}->>'connectionRole',
+              ${platformCredentials.source_context}->>'agentGoogleSide',
+              'OWNER'
+            )) = ${connectionRole}
           `,
           set: {
             user_id: connectionUserId,
@@ -868,9 +878,7 @@ async function storeConnection(
             token_expires_at: tokenExpiresAt,
             scopes,
             profile_data: userInfo.raw,
-            source_context: {
-              agentGoogleSide: connectionRole,
-            },
+            source_context: connectionSourceContext(connectionRole),
             linked_at: new Date(),
             updated_at: new Date(),
           },

@@ -1,6 +1,6 @@
 import type {
   ConnectorAccountPrivacy,
-  ConnectorAccountPurpose,
+  ConnectorAccountRole,
 } from "../../api/client-agent";
 
 export interface ConnectorAccountOption<T extends string> {
@@ -14,7 +14,7 @@ export type ConnectorPrivacyConfirmationRequirement =
   | "typed"
   | "public";
 
-export const CONNECTOR_ACCOUNT_PURPOSE_OPTIONS: readonly ConnectorAccountOption<ConnectorAccountPurpose>[] =
+export const CONNECTOR_ACCOUNT_PURPOSE_OPTIONS: readonly ConnectorAccountOption<ConnectorAccountRole>[] =
   [
     {
       value: "OWNER",
@@ -60,9 +60,16 @@ export const CONNECTOR_ACCOUNT_PRIVACY_OPTIONS: readonly ConnectorAccountOption<
 export const CONNECTOR_PRIVACY_TYPED_CONFIRMATION = "SHARE";
 export const CONNECTOR_PRIVACY_PUBLIC_CONFIRMATION = "PUBLIC";
 
+const CONNECTOR_PRIVACY_RANK: Record<ConnectorAccountPrivacy, number> = {
+  owner_only: 0,
+  team_visible: 1,
+  semi_public: 2,
+  public: 3,
+};
+
 export function getConnectorPurposeOption(
-  value: ConnectorAccountPurpose | undefined,
-): ConnectorAccountOption<ConnectorAccountPurpose> {
+  value: ConnectorAccountRole | undefined,
+): ConnectorAccountOption<ConnectorAccountRole> {
   return (
     CONNECTOR_ACCOUNT_PURPOSE_OPTIONS.find(
       (option) => option.value === value,
@@ -87,7 +94,7 @@ export function getConnectorPrivacyConfirmationRequirement(
   const resolvedCurrent = current ?? "owner_only";
   if (next === resolvedCurrent) return "none";
   if (next === "public" && resolvedCurrent !== "public") return "public";
-  if (resolvedCurrent === "owner_only" && next !== "owner_only") {
+  if (CONNECTOR_PRIVACY_RANK[next] > CONNECTOR_PRIVACY_RANK[resolvedCurrent]) {
     return "typed";
   }
   return "none";

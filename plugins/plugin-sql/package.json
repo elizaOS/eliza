@@ -9,6 +9,15 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./typescript/dist/index.d.ts",
+      "bun": {
+        "types": "./typescript/index.ts",
+        "default": "./typescript/index.ts"
+      },
+      "node": {
+        "types": "./typescript/dist/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "default": "./typescript/dist/node/index.node.js"
+      },
       "import": "./typescript/dist/index.js",
       "default": "./typescript/dist/index.js"
     },

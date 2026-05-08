@@ -13,7 +13,7 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
   applyCanonicalOnboardingConfig,

@@ -6,8 +6,8 @@
 
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { dbWrite } from "@/db/helpers";
 import { users } from "@/db/schemas/users";
-import { getDb } from "@/db/worker-neon-http";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -76,8 +76,7 @@ app.post("/", async (c) => {
       },
     });
 
-    const db = getDb(c);
-    await db.update(users).set({ avatar: url }).where(eq(users.id, authed.id));
+    await dbWrite.update(users).set({ avatar: url }).where(eq(users.id, authed.id));
 
     return c.json({
       success: true,

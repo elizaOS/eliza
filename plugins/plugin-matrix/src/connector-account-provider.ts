@@ -64,30 +64,21 @@ function toConnectorAccount(settings: MatrixSettings): ConnectorAccount {
 }
 
 export function createMatrixConnectorAccountProvider(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): ConnectorAccountProvider {
   return {
     provider: MATRIX_PROVIDER_ID,
     label: "Matrix",
-    listAccounts: async (
-      _manager: ConnectorAccountManager,
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const ids = listMatrixAccountIds(runtime);
       if (ids.length === 0) {
         return [
-          toConnectorAccount(
-            resolveMatrixAccountSettings(runtime, DEFAULT_MATRIX_ACCOUNT_ID),
-          ),
+          toConnectorAccount(resolveMatrixAccountSettings(runtime, DEFAULT_MATRIX_ACCOUNT_ID)),
         ];
       }
-      return ids.map((id) =>
-        toConnectorAccount(resolveMatrixAccountSettings(runtime, id)),
-      );
+      return ids.map((id) => toConnectorAccount(resolveMatrixAccountSettings(runtime, id)));
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: MATRIX_PROVIDER_ID,
@@ -100,14 +91,11 @@ export function createMatrixConnectorAccountProvider(
     patchAccount: async (
       _accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ) => {
       return { ...patch, provider: MATRIX_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // No-op at provider layer — runtime credentials live in character
       // settings; deletion of those is out of band.
     },

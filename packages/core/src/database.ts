@@ -7,10 +7,12 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
+	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
 	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
@@ -32,6 +34,7 @@ import type {
 	OAuthFlowRecord,
 	SetConnectorAccountCredentialRefParams,
 	Task,
+	UpdateOAuthFlowStateParams,
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
@@ -635,6 +638,22 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	consumeOAuthFlowState(
 		_params: ConsumeOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	getOAuthFlowState(
+		_params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	updateOAuthFlowState(
+		_params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	deleteOAuthFlowState(_params: DeleteOAuthFlowStateParams): Promise<boolean> {
 		this.unsupportedConnectorAccountStorage();
 	}
 }

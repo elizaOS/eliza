@@ -24,9 +24,8 @@ import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
  * helper in services/message.ts — duplicated here to keep the sub-planner
  * import surface tight (no cycle through services).
  *
- * Preserves the optional `subaction` hint on `params.__subaction` so the
- * executor can short-circuit a nested sub-planner descent for router-style
- * actions.
+ * Preserves the optional `subaction` hint on `params.subaction` for
+ * router-style actions.
  */
 function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
@@ -48,7 +47,7 @@ function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
 	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, __subaction: subaction }
+		? { ...baseParameters, subaction }
 		: baseParameters;
 	return {
 		id: toolCall.id,

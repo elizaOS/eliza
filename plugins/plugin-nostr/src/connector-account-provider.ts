@@ -62,30 +62,19 @@ function toConnectorAccount(settings: NostrSettings): ConnectorAccount {
 }
 
 export function createNostrConnectorAccountProvider(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): ConnectorAccountProvider {
   return {
     provider: NOSTR_PROVIDER_ID,
     label: "Nostr",
-    listAccounts: async (
-      _manager: ConnectorAccountManager,
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const ids = listNostrAccountIds(runtime);
       if (ids.length === 0) {
-        return [
-          toConnectorAccount(
-            resolveNostrAccountSettings(runtime, DEFAULT_NOSTR_ACCOUNT_ID),
-          ),
-        ];
+        return [toConnectorAccount(resolveNostrAccountSettings(runtime, DEFAULT_NOSTR_ACCOUNT_ID))];
       }
-      return ids.map((id) =>
-        toConnectorAccount(resolveNostrAccountSettings(runtime, id)),
-      );
+      return ids.map((id) => toConnectorAccount(resolveNostrAccountSettings(runtime, id)));
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: NOSTR_PROVIDER_ID,
@@ -98,14 +87,11 @@ export function createNostrConnectorAccountProvider(
     patchAccount: async (
       _accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ) => {
       return { ...patch, provider: NOSTR_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // No-op at provider layer — runtime credentials live in character
       // settings; deletion of those is out of band.
     },

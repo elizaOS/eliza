@@ -13,7 +13,6 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import type { XFeedTweet } from "../actions/x-feed-helpers.js";
 import { ClientBase } from "../base";
 import {
   normalizeXAccountId,
@@ -38,6 +37,17 @@ const X_CONNECTOR_CAPABILITIES = [
   "resolve_targets",
   "user_context",
 ];
+
+type XFeedTweet = {
+  id: string;
+  authorId?: string | null;
+  username?: string | null;
+  text: string;
+  createdAt?: string | null;
+  likeCount: number;
+  retweetCount: number;
+  replyCount: number;
+};
 const X_USER_ID_PATTERN = /^\d+$/;
 const X_MAX_POST_LENGTH = 280;
 
@@ -172,7 +182,13 @@ function capabilitiesForXAuthState(state: TwitterClientState): {
   if (mode === "env") {
     return {
       capabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
-      scopes: ["tweet.read", "tweet.write", "users.read", "dm.read", "dm.write"],
+      scopes: [
+        "tweet.read",
+        "tweet.write",
+        "users.read",
+        "dm.read",
+        "dm.write",
+      ],
     };
   }
 
@@ -742,7 +758,9 @@ export class XService extends Service {
       runtime,
       {
         text: params.text,
-        ...(params.replyToTweetId ? { replyToTweetId: params.replyToTweetId } : {}),
+        ...(params.replyToTweetId
+          ? { replyToTweetId: params.replyToTweetId }
+          : {}),
         metadata: { accountId },
       } as Content,
       {
@@ -837,9 +855,7 @@ export class XService extends Service {
     conversationId: string | null;
     messageId: string | null;
   }> {
-    throw new Error(
-      "X group DM creation is not exposed by plugin-x yet.",
-    );
+    throw new Error("X group DM creation is not exposed by plugin-x yet.");
   }
 
   async fetchConnectorFeed(

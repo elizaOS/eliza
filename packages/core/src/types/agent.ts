@@ -38,7 +38,7 @@ export interface MessageExampleGroup
 
 export type CharacterSettings = Omit<
 	ProtoCharacterSettingsType,
-	"$typeName" | "$unknown" | "secrets" | "enableKnowledge"
+	"$typeName" | "$unknown" | "secrets" | "enableDocuments"
 > & {
 	ENABLE_AUTONOMY?: boolean | string;
 	DISABLE_BASIC_CAPABILITIES?: boolean | string;

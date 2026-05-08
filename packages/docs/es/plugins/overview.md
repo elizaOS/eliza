@@ -27,7 +27,7 @@ Un plugin es un módulo autónomo que registra uno o más de los siguientes:
 
 <CardGroup cols={2}>
 
-<Card title="Plugins principales" icon="cube" href="/es/plugin-registry/knowledge">
+<Card title="Plugins principales" icon="cube" href="/es/plugin-registry/documents">
   Plugins esenciales que se incluyen con cada instalación de Eliza — knowledge, database, form, cron, shell, agent-skills, trajectories y agent-orchestrator.
 </Card>
 

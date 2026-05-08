@@ -18,7 +18,6 @@ import twitchPlugin, {
   TwitchService,
   TwitchServiceNotInitializedError,
   type TwitchUserInfo,
-  userContextProvider,
 } from "../src/index.ts";
 
 // ---------------------------------------------------------------------------
@@ -89,10 +88,8 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.actions).toHaveLength(0);
   });
 
-  test("registers user context provider only", () => {
-    expect(twitchPlugin.providers).toHaveLength(1);
-    const names = twitchPlugin.providers!.map((p) => p.name);
-    expect(names).toContain("twitchUserContext");
+  test("does not register platform-specific context providers", () => {
+    expect(twitchPlugin.providers).toHaveLength(0);
   });
 
   test("registers exactly 1 service", () => {
@@ -365,153 +362,10 @@ describe("Twitch message connector accounts", () => {
 // ===========================================================================
 // 7. sendMessage path
 // ===========================================================================
-// TWITCH_SEND_MESSAGE used to be a standalone action; now the Twitch
+// Twitch send used to be a standalone action; now the Twitch
 // MessageConnector (registered by TwitchService.registerSendHandlers) is the
 // canonical send path through MESSAGE operation=send. Action-shape and handler
 // tests retired with the action.
-
-// ===========================================================================
-// 10. userContextProvider
-// ===========================================================================
-
-describe("userContextProvider", () => {
-  test("has correct metadata", () => {
-    expect(userContextProvider.name).toBe("twitchUserContext");
-    expect(userContextProvider.description).toContain("Twitch user");
-  });
-
-  test("returns empty for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    const memory = makeMemory("discord");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-    expect(result.data).toEqual({});
-  });
-
-  test("returns empty when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-    expect(result.data).toEqual({});
-  });
-
-  test("returns empty when no user info in metadata", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = makeMemory("twitch");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-  });
-
-  test("returns user context for broadcaster", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hello",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "12345",
-            username: "streamer_dude",
-            displayName: "Streamer_Dude",
-            isModerator: false,
-            isBroadcaster: true,
-            isVip: false,
-            isSubscriber: true,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-    const state = makeState({ agentName: "MyBot" });
-
-    const result = await userContextProvider.get(runtime, memory, state);
-
-    expect(result.data.userId).toBe("12345");
-    expect(result.data.username).toBe("streamer_dude");
-    expect(result.data.displayName).toBe("Streamer_Dude");
-    expect(result.data.isBroadcaster).toBe(true);
-    expect(result.data.isSubscriber).toBe(true);
-    expect(result.data.roles).toContain("broadcaster");
-    expect(result.data.roles).toContain("subscriber");
-    expect(result.values.roleText).toContain("broadcaster");
-    expect(result.text).toContain("MyBot");
-    expect(result.text).toContain("Streamer_Dude");
-    expect(result.text).toContain("broadcaster");
-    expect(result.text).toContain("channel owner/broadcaster");
-  });
-
-  test("returns viewer role when user has no special roles", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hi",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "99",
-            username: "viewer99",
-            displayName: "Viewer99",
-            isModerator: false,
-            isBroadcaster: false,
-            isVip: false,
-            isSubscriber: false,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-
-    const result = await userContextProvider.get(runtime, memory, makeState());
-
-    expect(result.values.roleText).toBe("viewer");
-    expect(result.data.roles).toEqual([]);
-  });
-
-  test("returns moderator context text for moderator", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hi",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "55",
-            username: "modperson",
-            displayName: "ModPerson",
-            isModerator: true,
-            isBroadcaster: false,
-            isVip: false,
-            isSubscriber: false,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-
-    const result = await userContextProvider.get(runtime, memory, makeState());
-
-    expect(result.data.isModerator).toBe(true);
-    expect(result.text).toContain("channel moderator");
-    expect(result.text).not.toContain("broadcaster");
-  });
-});
 
 // ===========================================================================
 // 12. Type Construction

@@ -81,6 +81,18 @@ export interface ActionBenchmarkTagStats {
   accuracy: number;
 }
 
+export interface ActionBenchmarkCacheStats {
+  llmCalls: number;
+  llmCallsWithUsage: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputRatio: number;
+  cacheCreationInputRatio: number;
+}
+
 export interface CaseReliability {
   caseId: string;
   expectedAction: string | null;
@@ -98,6 +110,7 @@ export interface ActionBenchmarkReport {
   accuracy: number;
   byTag: Record<string, ActionBenchmarkTagStats>;
   latency: ActionBenchmarkLatencyStats;
+  cache?: ActionBenchmarkCacheStats;
   /** Per-case reliability when runsPerCase > 1. */
   reliability?: CaseReliability[];
   /** Number of independent runs scheduled per case. */
@@ -154,9 +167,17 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["PROPOSE_MEETING_TIMES", "CALENDAR"],
   ["CHECK_AVAILABILITY", "CALENDAR"],
   ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
+  ["ADD_TODO", "LIFE"],
+  ["CREATE_TODO", "LIFE"],
+  ["LIST_TODOS", "LIFE"],
+  ["ADD_HABIT", "LIFE"],
+  ["CREATE_HABIT", "LIFE"],
+  ["LIST_HABITS", "LIFE"],
+  ["ADD_GOAL", "LIFE"],
+  ["CREATE_GOAL", "LIFE"],
   ["SEND_MESSAGE", "MESSAGE"],
-  ["DISPATCH_DRAFT", "SEND_DRAFT"],
-  ["CONFIRM_AND_SEND", "SEND_DRAFT"],
+  ["DISPATCH_DRAFT", "MESSAGE"],
+  ["CONFIRM_AND_SEND", "MESSAGE"],
   ["FILE_ACTION", "COMPUTER_USE"],
   ["TERMINAL_ACTION", "COMPUTER_USE"],
   ["BROWSER_ACTION", "COMPUTER_USE"],
@@ -213,17 +234,13 @@ async function _ensureBenchmarkConversation(args: {
   await runtime.ensureParticipantInRoom(entityId, roomId);
 }
 
-export function normalizeActionName(name: string | null | undefined): string | null {
+export function normalizeActionName(
+  name: string | null | undefined,
+): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
   const normalized = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
-  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
-}
-
-function canonicalActionName(name: string | null | undefined): string | null {
-  const normalized = normalizeActionName(name);
-  if (normalized === null) return null;
   return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 
@@ -452,6 +469,67 @@ export function determineFailureMode(args: {
   return "llm_chose_other_action";
 }
 
+function finiteToken(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function summarizeCacheStats(
+  results: readonly ActionBenchmarkResult[],
+): ActionBenchmarkCacheStats | undefined {
+  let llmCalls = 0;
+  let llmCallsWithUsage = 0;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheCreationInputTokens = 0;
+
+  for (const result of results) {
+    for (const call of result.trajectory?.agentTrajectory.llmCalls ?? []) {
+      llmCalls += 1;
+      const callPromptTokens = finiteToken(call.promptTokens);
+      const callCompletionTokens = finiteToken(call.completionTokens);
+      const callTotalTokens = finiteToken(call.totalTokens);
+      const callCacheReadInputTokens = finiteToken(call.cacheReadInputTokens);
+      const callCacheCreationInputTokens = finiteToken(
+        call.cacheCreationInputTokens,
+      );
+      if (
+        callPromptTokens > 0 ||
+        callCompletionTokens > 0 ||
+        callTotalTokens > 0 ||
+        callCacheReadInputTokens > 0 ||
+        callCacheCreationInputTokens > 0
+      ) {
+        llmCallsWithUsage += 1;
+      }
+      promptTokens += callPromptTokens;
+      completionTokens += callCompletionTokens;
+      totalTokens +=
+        callTotalTokens > 0
+          ? callTotalTokens
+          : callPromptTokens + callCompletionTokens;
+      cacheReadInputTokens += callCacheReadInputTokens;
+      cacheCreationInputTokens += callCacheCreationInputTokens;
+    }
+  }
+
+  if (llmCalls === 0) return undefined;
+  return {
+    llmCalls,
+    llmCallsWithUsage,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputRatio:
+      promptTokens === 0 ? 0 : cacheReadInputTokens / promptTokens,
+    cacheCreationInputRatio:
+      promptTokens === 0 ? 0 : cacheCreationInputTokens / promptTokens,
+  };
+}
+
 interface PlannerDecision {
   availableActions: string[];
   plannedActions: string[];
@@ -459,9 +537,9 @@ interface PlannerDecision {
 }
 
 function parseAvailableActionsFromPrompt(prompt: string): string[] {
-	try {
-		const parsed = JSON.parse(prompt) as { tools?: unknown };
-		if (Array.isArray(parsed.tools)) {
+  try {
+    const parsed = JSON.parse(prompt) as { tools?: unknown };
+    if (Array.isArray(parsed.tools)) {
       return parsed.tools
         .flatMap((tool) => {
           if (!tool || typeof tool !== "object") return [];
@@ -498,6 +576,32 @@ function parseAvailableActionsFromPrompt(prompt: string): string[] {
   return available;
 }
 
+function parseRecordValue(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function isPlannerWrapperAction(name: string | null): boolean {
+  return name === "CALL_ACTION" || name === "PLAN_ACTIONS";
+}
+
+function isPlannerProtocolAction(name: string | null): boolean {
+  const canonical = canonicalActionName(name);
+  return canonical === "HANDLE_RESPONSE" || isPlannerWrapperAction(canonical);
+}
+
 export function parsePlannedActionsFromResponse(response: string): string[] {
   const parsed = parseJSONObjectFromText(response);
   if (!parsed) {
@@ -518,11 +622,11 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
       }
       if (action && typeof action === "object") {
         const record = action as Record<string, unknown>;
-        const rawFunction = record.function as Record<string, unknown> | undefined;
+        const rawFunction = parseRecordValue(record.function);
         const input =
-          record.input && typeof record.input === "object"
-            ? (record.input as Record<string, unknown>)
-            : undefined;
+          parseRecordValue(record.input) ??
+          parseRecordValue(record.arguments) ??
+          parseRecordValue(rawFunction?.arguments);
         const rawName =
           record.name ??
           record.action ??
@@ -531,14 +635,14 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
           rawFunction?.name;
         const canonicalRawName =
           typeof rawName === "string" ? canonicalActionName(rawName) : null;
-        if (canonicalRawName === "CALL_ACTION") {
+        if (isPlannerWrapperAction(canonicalRawName)) {
+          const actionParameters = parseRecordValue(record.actionParameters);
           const nestedName =
+            input?.action ??
             input?.actionName ??
             input?.name ??
-            (record.actionParameters &&
-            typeof record.actionParameters === "object"
-              ? (record.actionParameters as Record<string, unknown>).actionName
-              : undefined);
+            actionParameters?.action ??
+            actionParameters?.actionName;
           return typeof nestedName === "string" ? [nestedName] : [];
         }
         return typeof rawName === "string" ? [rawName] : [];
@@ -546,39 +650,63 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
       return [];
     })
     .map((name) => canonicalActionName(name))
-    .filter((name): name is string => name !== null);
+    .filter(
+      (name): name is string => name !== null && !isPlannerProtocolAction(name),
+    );
   return [...new Set(names)];
 }
 
 function extractPlannerDecision(
-	trajectory: TrajectoryRecord | undefined,
-	registeredActions: readonly string[] = [],
+  trajectory: TrajectoryRecord | undefined,
+  registeredActions: readonly string[] = [],
 ): PlannerDecision {
-	const plannerCall = trajectory?.agentTrajectory.llmCalls.find(
-		(call) => call.purpose === "action_planner",
-	);
-  if (!plannerCall) {
+  const plannerCalls =
+    trajectory?.agentTrajectory.llmCalls.filter(
+      (call) => call.purpose === "action_planner",
+    ) ?? [];
+  if (plannerCalls.length === 0) {
     return {
       availableActions: [],
       plannedActions: [],
       plannedAction: null,
     };
-	}
-	const rawAvailableActions = parseAvailableActionsFromPrompt(plannerCall.prompt);
-	const availableActions =
-		rawAvailableActions.length === 1 &&
-		canonicalActionName(rawAvailableActions[0]) === "CALL_ACTION" &&
-		registeredActions.length > 0
-			? registeredActions
-					.map((name) => normalizeActionName(name))
-					.filter((name): name is string => name !== null)
-			: rawAvailableActions;
-	const plannedActions = parsePlannedActionsFromResponse(plannerCall.response);
-	return {
-    availableActions,
-    plannedActions,
-    plannedAction: plannedActions[0] ?? null,
-  };
+  }
+  let fallback: PlannerDecision | null = null;
+  for (const plannerCall of plannerCalls) {
+    const rawAvailableActions = parseAvailableActionsFromPrompt(
+      plannerCall.prompt,
+    );
+    const visibleActionsAreWrappers =
+      rawAvailableActions.length > 0 &&
+      rawAvailableActions.every((name) =>
+        isPlannerProtocolAction(canonicalActionName(name)),
+      );
+    const availableActions =
+      visibleActionsAreWrappers && registeredActions.length > 0
+        ? registeredActions
+            .map((name) => normalizeActionName(name))
+            .filter((name): name is string => name !== null)
+        : rawAvailableActions;
+    const plannedActions = parsePlannedActionsFromResponse(
+      plannerCall.response,
+    );
+    const decision = {
+      availableActions,
+      plannedActions,
+      plannedAction: plannedActions[0] ?? null,
+    };
+    fallback ??= decision;
+    if (plannedActions.length > 0) {
+      return decision;
+    }
+  }
+  return (
+    fallback ?? {
+      availableActions: [],
+      plannedActions: [],
+      plannedAction: null,
+    }
+  );
 }
 
 /**
@@ -719,7 +847,11 @@ async function seedBenchmarkCaseFixtures(
           { name: "David", email: "david@example.com", category: "colleague" },
           { name: "Marco", email: "marco@example.com", category: "colleague" },
           { name: "Sarah", email: "sarah@example.com", category: "colleague" },
-          { name: "design team", email: "design@example.com", category: "team" },
+          {
+            name: "design team",
+            email: "design@example.com",
+            category: "team",
+          },
         ]) {
           const entityId = stringToUuid(
             `benchmark-contact-${contact.name}-${runtime.agentId}`,
@@ -858,7 +990,9 @@ async function seedBenchmarkCaseFixtures(
             }
           ).default?.createApprovalQueue;
         const createQueue =
-          typeof createApprovalQueue === "function" ? createApprovalQueue : null;
+          typeof createApprovalQueue === "function"
+            ? createApprovalQueue
+            : null;
         const fallbackModule =
           createQueue === null
             ? await import(
@@ -873,7 +1007,9 @@ async function seedBenchmarkCaseFixtures(
         if (typeof createApprovalQueueFinal !== "function") {
           throw new TypeError("createApprovalQueue export is unavailable");
         }
-        const queue = createApprovalQueueFinal(runtime, { agentId: runtime.agentId });
+        const queue = createApprovalQueueFinal(runtime, {
+          agentId: runtime.agentId,
+        });
         const existing = await queue.list({
           subjectUserId: userEntityId,
           state: "pending",
@@ -897,7 +1033,8 @@ async function seedBenchmarkCaseFixtures(
               },
             },
             channel: "internal",
-            reason: "Pending travel booking request for benchmark approval flow.",
+            reason:
+              "Pending travel booking request for benchmark approval flow.",
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           });
         }
@@ -974,7 +1111,7 @@ async function runSingleCaseWithRecording(
         ? turn.responseText.slice(0, 200)
         : undefined;
     const trajectory = harness.dumpTrajectory();
-		const planner = extractPlannerDecision(trajectory, registeredActions);
+    const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
         ? computeFilteredActions(registeredActions, planner.availableActions)
@@ -1044,7 +1181,7 @@ async function runSingleCaseWithRecording(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const trajectory = harness.dumpTrajectory();
-		const planner = extractPlannerDecision(trajectory, registeredActions);
+    const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
         ? computeFilteredActions(registeredActions, planner.availableActions)
@@ -1352,6 +1489,7 @@ export async function runActionSelectionBenchmark(
       p50: percentile(latencies, 50),
       p95: percentile(latencies, 95),
     },
+    cache: summarizeCacheStats(results),
     reliability,
     runsPerCase: runsPerCase > 1 ? runsPerCase : undefined,
     failures: results.filter((r) => !r.pass),
@@ -1443,6 +1581,17 @@ export function formatBenchmarkReportMarkdown(
   lines.push(
     `**Execution Accuracy:** ${(report.total === 0 ? 0 : (executionPassed / report.total) * 100).toFixed(1)}% (${executionPassed}/${report.total})`,
   );
+  if (report.cache) {
+    lines.push(
+      `**LLM Token Usage:** input ${report.cache.promptTokens} · output ${report.cache.completionTokens} · total ${report.cache.totalTokens} (${report.cache.llmCallsWithUsage}/${report.cache.llmCalls} calls reported usage)`,
+    );
+    lines.push(
+      `**Cache Read:** ${(report.cache.cacheReadInputRatio * 100).toFixed(1)}% (${report.cache.cacheReadInputTokens}/${report.cache.promptTokens} input tokens)`,
+    );
+    lines.push(
+      `**Cache Write:** ${(report.cache.cacheCreationInputRatio * 100).toFixed(1)}% (${report.cache.cacheCreationInputTokens}/${report.cache.promptTokens} input tokens)`,
+    );
+  }
   lines.push("");
 
   if (report.reliability && report.runsPerCase && report.runsPerCase > 1) {

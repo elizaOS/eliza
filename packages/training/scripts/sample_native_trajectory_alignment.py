@@ -514,7 +514,7 @@ def infer_features(value: Any) -> set[str]:
         features.add("context_labels")
     if lower_keys & {"shouldrespond", "action", "simple", "reply"}:
         features.add("response_decision")
-    if lower_keys & {"thought", "reasoning", "scratchpad", "chain_of_thought"} or "<think>" in text:
+    if lower_keys & {"thought", "reasoning", "chain_of_thought"} or "<think>" in text:
         features.add("internal_thought")
     if lower_keys & {"decision", "task_completed", "taskcompleted", "quality_score"}:
         features.add("evaluator_decision")

@@ -38,7 +38,7 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
 - Image Generation — Generate images from text prompts using elizaOS Cloud.
   https://elizacloud.ai/docs/api/images
 - Knowledge — Upload and query documents for RAG on elizaOS Cloud.
-  https://elizacloud.ai/docs/api/knowledge
+  https://elizacloud.ai/docs/api/documents
 - MCPs — Model Context Protocol servers on elizaOS Cloud.
   https://elizacloud.ai/docs/api/mcps
 - Messages — Anthropic Messages API-compatible endpoint for Claude Code and Anthropic SDK clients.
@@ -80,7 +80,7 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
 - Installation — Install the elizaOS SDK and CLI tools for local development.
   https://elizacloud.ai/docs/installation
 - Knowledge Base — Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
-  https://elizacloud.ai/docs/knowledge
+  https://elizacloud.ai/docs/documents
 - MCP Protocol — Model Context Protocol implementation on elizaOS Cloud. Connect tools and resources to AI models.
   https://elizacloud.ai/docs/mcp
 - MCP Integration — Connect Model Context Protocol (MCP) servers to your agents on elizaOS Cloud for extended capabilities.

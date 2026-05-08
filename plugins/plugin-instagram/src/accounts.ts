@@ -107,7 +107,10 @@ export function readInstagramAccountId(...sources: unknown[]): string | undefine
       record.parameters && typeof record.parameters === "object"
         ? (record.parameters as Record<string, unknown>)
         : {};
-    const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : {};
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
     const metadata =
       record.metadata && typeof record.metadata === "object"
         ? (record.metadata as Record<string, unknown>)
@@ -154,7 +157,10 @@ export function resolveInstagramAccountConfig(
       account.verificationCode ??
       base.verificationCode ??
       (allowEnv ? stringSetting(runtime, "INSTAGRAM_VERIFICATION_CODE") : undefined),
-    proxy: account.proxy ?? base.proxy ?? (allowEnv ? stringSetting(runtime, "INSTAGRAM_PROXY") : undefined),
+    proxy:
+      account.proxy ??
+      base.proxy ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_PROXY") : undefined),
     autoRespondToDms: boolValue(
       account.autoRespondToDms ??
         base.autoRespondToDms ??

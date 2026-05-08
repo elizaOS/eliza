@@ -178,9 +178,7 @@ export class AgentLoader {
 
   private buildCharacter(elizaCharacter: ElizaCharacter): Character {
     const characterId = elizaCharacter.id || "b850bc30-45f8-0041-a00a-83df46d8555d";
-    const documents =
-      (elizaCharacter as ElizaCharacter & { documents?: ElizaCharacter["knowledge"] }).documents ??
-      elizaCharacter.knowledge;
+    const documents = [...(elizaCharacter.documents ?? []), ...(elizaCharacter.knowledge ?? [])];
     const charSettings = (elizaCharacter.settings || {}) as Record<
       string,
       string | boolean | number | Record<string, unknown>

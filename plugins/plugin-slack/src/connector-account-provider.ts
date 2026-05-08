@@ -14,6 +14,7 @@ import {
   type ConnectorAccount,
   type ConnectorAccountManager,
   type ConnectorAccountPatch,
+  type ConnectorAccountPurpose,
   type ConnectorAccountProvider,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
@@ -25,6 +26,7 @@ import {
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledSlackAccounts,
+  resolveDefaultSlackAccountId,
   resolveSlackAccount,
 } from "./accounts";
 import { SLACK_SERVICE_NAME } from "./types";
@@ -47,6 +49,12 @@ const DEFAULT_BOT_SCOPES = [
   "reactions:read",
   "reactions:write",
   "users:read",
+];
+
+const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
+  "messaging",
+  "posting",
+  "reading",
 ];
 
 interface SlackOAuthV2Response {
@@ -106,21 +114,64 @@ function readClientConfig(runtime: IAgentRuntime): {
 function synthesizeAccount(
   accountId: string,
   name: string | undefined,
+  isDefault: boolean,
+  source: string,
 ): ConnectorAccount {
   return {
     id: accountId,
     provider: SLACK_SERVICE_NAME,
     label: name ?? `Slack (${accountId})`,
     role: "OWNER",
-    purpose: ["messaging"],
+    purpose: DEFAULT_PURPOSES,
     accessGate: "open",
     status: "connected",
     createdAt: nowMs(),
     updatedAt: nowMs(),
     metadata: {
       synthesized: true,
-      source: "env",
+      source,
+      isDefault,
     },
+  };
+}
+
+function normalizePurposes(
+  purpose: ConnectorAccountPatch["purpose"] | undefined,
+  fallback: ConnectorAccountPurpose[],
+): ConnectorAccountPurpose[] {
+  if (Array.isArray(purpose)) return purpose;
+  if (typeof purpose === "string" && purpose.trim()) return [purpose];
+  return fallback;
+}
+
+function mergeStoredAccountPatch(
+  account: ConnectorAccount,
+  patch: ConnectorAccountPatch,
+): ConnectorAccount {
+  return {
+    ...account,
+    ...patch,
+    provider: SLACK_SERVICE_NAME,
+    id: account.id,
+    purpose: normalizePurposes(patch.purpose, account.purpose),
+    externalId:
+      patch.externalId === undefined
+        ? account.externalId
+        : (patch.externalId ?? undefined),
+    displayHandle:
+      patch.displayHandle === undefined
+        ? account.displayHandle
+        : (patch.displayHandle ?? undefined),
+    ownerBindingId:
+      patch.ownerBindingId === undefined
+        ? account.ownerBindingId
+        : (patch.ownerBindingId ?? undefined),
+    ownerIdentityId:
+      patch.ownerIdentityId === undefined
+        ? account.ownerIdentityId
+        : (patch.ownerIdentityId ?? undefined),
+    metadata: patch.metadata ?? account.metadata,
+    createdAt: account.createdAt,
   };
 }
 
@@ -140,15 +191,28 @@ export function createSlackConnectorAccountProvider(
       const persistedById = new Map(persisted.map((a) => [a.id, a]));
 
       const enabled = listEnabledSlackAccounts(runtime);
+      const defaultAccountId = resolveDefaultSlackAccountId(runtime);
       const synthesized: ConnectorAccount[] = enabled
         .filter((account) => !persistedById.has(account.accountId))
-        .map((account) => synthesizeAccount(account.accountId, account.name));
+        .map((account) =>
+          synthesizeAccount(
+            account.accountId,
+            account.name,
+            account.accountId === defaultAccountId,
+            account.botTokenSource,
+          ),
+        );
 
       if (synthesized.length === 0 && persisted.length === 0) {
         const fallback = resolveSlackAccount(runtime, DEFAULT_ACCOUNT_ID);
         if (fallback.botToken) {
           synthesized.push(
-            synthesizeAccount(DEFAULT_ACCOUNT_ID, fallback.name),
+            synthesizeAccount(
+              DEFAULT_ACCOUNT_ID,
+              fallback.name,
+              true,
+              fallback.botTokenSource,
+            ),
           );
         }
       }
@@ -161,13 +225,23 @@ export function createSlackConnectorAccountProvider(
         ...input,
         provider: SLACK_SERVICE_NAME,
         role: input.role ?? "OWNER",
-        purpose: input.purpose ?? ["messaging"],
+        purpose: input.purpose ?? DEFAULT_PURPOSES,
         accessGate: input.accessGate ?? "open",
         status: input.status ?? "pending",
       };
     },
 
-    patchAccount: async (_accountId: string, patch: ConnectorAccountPatch) => {
+    patchAccount: async (
+      accountId: string,
+      patch: ConnectorAccountPatch,
+      manager: ConnectorAccountManager,
+    ) => {
+      const existing = await manager
+        .getStorage()
+        .getAccount(SLACK_SERVICE_NAME, accountId);
+      if (existing) {
+        return mergeStoredAccountPatch(existing, patch);
+      }
       return { ...patch, provider: SLACK_SERVICE_NAME };
     },
 
@@ -257,7 +331,7 @@ export function createSlackConnectorAccountProvider(
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: SLACK_SERVICE_NAME,
         role: "OWNER",
-        purpose: ["messaging"],
+        purpose: DEFAULT_PURPOSES,
         accessGate: "open",
         status: "connected",
         externalId: teamId,

@@ -16,7 +16,6 @@ import {
 import type { BlueSkyPost, CreatePostRequest } from "../types";
 import { BLUESKY_MAX_POST_LENGTH } from "../types";
 import {
-	DEFAULT_BLUESKY_ACCOUNT_ID,
 	normalizeBlueSkyAccountId,
 	readBlueSkyAccountId,
 } from "../utils/config";

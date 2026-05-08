@@ -86,7 +86,7 @@ const MyAgentsPage = lazyWithPreload(() => import("./dashboard/my-agents/Page"))
 const ApiKeysPage = lazyWithPreload(() => import("./dashboard/api-keys/Page"));
 const McpsPage = lazyWithPreload(() => import("./dashboard/mcps/Page"));
 const VoicesPage = lazyWithPreload(() => import("./dashboard/voices/Page"));
-const KnowledgePage = lazyWithPreload(() => import("./dashboard/knowledge/Page"));
+const DocumentsPage = lazyWithPreload(() => import("./dashboard/documents/Page"));
 
 const AnalyticsPage = lazyWithPreload(() => import("./dashboard/analytics/Page"));
 const EarningsPage = lazyWithPreload(() => import("./dashboard/earnings/Page"));
@@ -210,8 +210,8 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, InvoiceDetailPage.preload),
   },
   {
-    path: "/dashboard/knowledge",
-    preload: preloadAll(DashboardLayout.preload, KnowledgePage.preload),
+    path: "/dashboard/documents",
+    preload: preloadAll(DashboardLayout.preload, DocumentsPage.preload),
   },
   { path: "/dashboard/mcps", preload: preloadAll(DashboardLayout.preload, McpsPage.preload) },
   {
@@ -586,7 +586,7 @@ function App() {
           <Route path="api-keys" element={<ApiKeysPage />} />
           <Route path="mcps" element={<McpsPage />} />
           <Route path="voices" element={<VoicesPage />} />
-          <Route path="knowledge" element={<KnowledgePage />} />
+          <Route path="documents" element={<DocumentsPage />} />
 
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="earnings" element={<EarningsPage />} />

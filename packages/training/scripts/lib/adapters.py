@@ -75,7 +75,7 @@ ROLE_MAP = {
     # We tag it explicitly here so `_split_history` can attach it as the
     # `thought` of the next assistant turn rather than dropping it.
     "reasoning": "reasoning", "thought": "reasoning",
-    "scratchpad": "reasoning", "analysis": "reasoning",
+    "analysis": "reasoning",
 }
 
 
@@ -377,7 +377,6 @@ def _extract_tool_calls(
 
 _THINK_RE = re.compile(r"<think>([\s\S]*?)</think>\s*", re.M)
 _THINKING_RE = re.compile(r"<thinking>([\s\S]*?)</thinking>\s*", re.M)
-_SCRATCHPAD_RE = re.compile(r"<scratchpad>([\s\S]*?)</scratchpad>\s*", re.M)
 _THOUGHT_PREFIX_RE = re.compile(
     r"^\s*THOUGHT:\s*([\s\S]*?)(?=\n\s*```|\Z)", re.M
 )
@@ -388,8 +387,8 @@ def _split_think_response(text: str) -> tuple[str, str]:
     blob. If no <think> block is present, reasoning="" and the whole text
     is the response.
 
-    Also recognizes `<thinking>...</thinking>`, `<scratchpad>...</scratchpad>`,
-    and the swebench-style `THOUGHT: ...` prefix that precedes a fenced
+    Also recognizes `<thinking>...</thinking>` and the swebench-style
+    `THOUGHT: ...` prefix that precedes a fenced
     bash block.
     """
     if not text:
@@ -398,9 +397,6 @@ def _split_think_response(text: str) -> tuple[str, str]:
     if m:
         return m.group(1).strip(), text[m.end():].strip()
     m = _THINKING_RE.match(text)
-    if m:
-        return m.group(1).strip(), text[m.end():].strip()
-    m = _SCRATCHPAD_RE.match(text)
     if m:
         return m.group(1).strip(), text[m.end():].strip()
     m = _THOUGHT_PREFIX_RE.match(text)
@@ -476,7 +472,7 @@ def _cot_to_expected(
     """Wrap a raw chain-of-thought reply as the configured target format.
 
     Produces `{thought, text}` when a reasoning block can be extracted from
-    `<think>` / `<thinking>` / `<scratchpad>` / `THOUGHT:` markers in the body,
+    `<think>` / `<thinking>` / `THOUGHT:` markers in the body,
     OR when `extra_thought` is supplied. Native v5 encodes that object as JSON;
     legacy compatibility rebuilds can still pass a TOON encoder.
     """

@@ -186,20 +186,8 @@ Instructions here...
 ### USE_SKILL
 Canonical entry point for invoking an enabled skill. Dispatches to the skill's bundled script or returns its SKILL.md guidance based on `mode`. Listed similes (`RUN_SKILL`, `INVOKE_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`) absorb older inbound callers.
 
-### SEARCH_SKILLS
-Search the registry for available skills.
-
-### GET_SKILL_DETAILS
-Get detailed information about a specific skill.
-
-### INSTALL_SKILL / UNINSTALL_SKILL
-Add a skill from the registry or remove a non-bundled installed skill.
-
-### TOGGLE_SKILL
-Enable or disable an installed skill.
-
-### SYNC_SKILL_CATALOG
-Refresh the skill catalog from the registry.
+### SKILL
+Catalog management parent action. Use `op=search`, `op=details`, `op=sync`, `op=toggle`, `op=install`, or `op=uninstall`.
 
 ## Providers
 

@@ -82,7 +82,10 @@ function accountConfig(runtime: IAgentRuntime, accountId: string): RawFarcasterA
   return accounts[accountId] ?? accounts[normalizeFarcasterAccountId(accountId)] ?? {};
 }
 
-function rawField(record: RawFarcasterAccountConfig | undefined, keys: string[]): string | undefined {
+function rawField(
+  record: RawFarcasterAccountConfig | undefined,
+  keys: string[]
+): string | undefined {
   if (!record) return undefined;
   for (const key of keys) {
     const value = record[key];
@@ -132,7 +135,10 @@ export function readFarcasterAccountId(...sources: unknown[]): string | undefine
       record.parameters && typeof record.parameters === "object"
         ? (record.parameters as Record<string, unknown>)
         : {};
-    const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : {};
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
     const metadata =
       record.metadata && typeof record.metadata === "object"
         ? (record.metadata as Record<string, unknown>)
@@ -244,7 +250,10 @@ export function validateFarcasterConfig(
         field(["ENABLE_ACTION_PROCESSING", "enableActionProcessing"], "ENABLE_ACTION_PROCESSING") ||
         parseBooleanFromText(env.ENABLE_ACTION_PROCESSING || "false"),
 
-      ACTION_INTERVAL: safeParseInt(field(["ACTION_INTERVAL", "actionInterval"], "ACTION_INTERVAL"), 5),
+      ACTION_INTERVAL: safeParseInt(
+        field(["ACTION_INTERVAL", "actionInterval"], "ACTION_INTERVAL"),
+        5
+      ),
 
       CAST_IMMEDIATELY:
         field(["CAST_IMMEDIATELY", "castImmediately"], "CAST_IMMEDIATELY") ||

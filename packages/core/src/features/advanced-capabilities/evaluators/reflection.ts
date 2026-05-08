@@ -480,7 +480,15 @@ function formatActionResults(actionResults: ActionResult[]): string {
 			}
 			return lines.join("\n");
 		})
-		.join("\n\n");
+			.join("\n\n");
+}
+
+function actionResultsFromState(state: State | undefined): ActionResult[] {
+	const raw = state?.data?.actionResults;
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+	return raw.filter((entry): entry is ActionResult => isRecord(entry));
 }
 
 function normalizeTaskCompletion(
@@ -595,7 +603,11 @@ async function handler(
 		return undefined;
 	}
 
-	const actionResults = message.id ? runtime.getActionResults(message.id) : [];
+	const cachedActionResults = message.id ? runtime.getActionResults(message.id) : [];
+	const actionResults =
+		cachedActionResults.length > 0
+			? cachedActionResults
+			: actionResultsFromState(state);
 
 	// Run all queries in parallel. Facts are owned by `factExtractorEvaluator`
 	// now, so we no longer fetch the existing fact list here.
@@ -904,4 +916,3 @@ export const reflectionAction: Action = {
 	validate: reflectionValidate as Action["validate"],
 	handler: handler as Action["handler"],
 };
-

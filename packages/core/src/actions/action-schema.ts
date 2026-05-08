@@ -233,7 +233,16 @@ export function actionParameterSchemaToJsonSchema(
 
 		jsonSchema.properties = properties;
 		jsonSchema.required = required;
-		jsonSchema.additionalProperties = false;
+		if (schema.additionalProperties !== undefined) {
+			jsonSchema.additionalProperties =
+				typeof schema.additionalProperties === "boolean"
+					? schema.additionalProperties
+					: actionParameterSchemaToJsonSchema(schema.additionalProperties, {
+							path: `${path}.*`,
+						});
+		} else {
+			jsonSchema.additionalProperties = false;
+		}
 	}
 
 	if (schema.type === "array") {

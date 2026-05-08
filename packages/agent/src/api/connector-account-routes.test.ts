@@ -198,7 +198,14 @@ const coreMocks = vi.hoisted(() => {
     return manager;
   }
 
-  return { getConnectorAccountManager, InMemoryConnectorAccountStorage };
+  return {
+    DEFAULT_PRIVACY_LEVEL: "owner_only",
+    getConnectorAccountManager,
+    InMemoryConnectorAccountStorage,
+    isPrivacyLevel: (value: unknown) =>
+      typeof value === "string" &&
+      ["owner_only", "team_visible", "semi_public", "public"].includes(value),
+  };
 });
 
 vi.mock("@elizaos/core", () => coreMocks);

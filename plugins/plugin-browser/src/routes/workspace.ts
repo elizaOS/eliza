@@ -7,6 +7,7 @@
  */
 
 import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   type BrowserWorkspaceCommand,
   closeBrowserWorkspaceTab,
@@ -21,6 +22,10 @@ import {
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } from "@elizaos/plugin-browser/workspace";
+import {
+  assertBrowserWorkspaceCommandConnectorAccountGate,
+  assertBrowserWorkspaceConnectorAccountGate,
+} from "./workspace-account-gate.js";
 
 type OpenBrowserWorkspaceBody = {
   url?: string;
@@ -36,15 +41,84 @@ type OpenBrowserWorkspaceBody = {
 
 type NavigateBrowserWorkspaceBody = {
   url?: string;
+  partition?: string;
+  connectorProvider?: string;
+  connectorAccountId?: string;
 };
 
 type EvaluateBrowserWorkspaceBody = {
   script?: string;
+  partition?: string;
+  connectorProvider?: string;
+  connectorAccountId?: string;
 };
 
 type BrowserWorkspaceCommandBody = BrowserWorkspaceCommand;
+type BrowserWorkspaceConnectorReference = {
+  partition?: string | null;
+  connectorProvider?: string | null;
+  connectorAccountId?: string | null;
+};
 
-export interface BrowserWorkspaceRouteContext extends RouteRequestContext {}
+export interface BrowserWorkspaceRouteContext extends RouteRequestContext {
+  url?: URL;
+  state?: {
+    runtime?: IAgentRuntime | null;
+  };
+}
+
+function statusFromBrowserWorkspaceError(
+  error: unknown,
+  message: string,
+): number {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  if (message.includes(getBrowserWorkspaceUnavailableMessage())) {
+    return 503;
+  }
+  if (message.includes("only available in the desktop app")) {
+    return 409;
+  }
+  if (message.includes("failed (404)")) {
+    return 404;
+  }
+  if (message.includes("failed (409)")) {
+    return 409;
+  }
+  return 500;
+}
+
+function connectorReferenceFromSearchParams(
+  url: URL | undefined,
+): BrowserWorkspaceConnectorReference {
+  return {
+    connectorProvider: url?.searchParams.get("connectorProvider"),
+    connectorAccountId: url?.searchParams.get("connectorAccountId"),
+    partition: url?.searchParams.get("partition"),
+  };
+}
+
+async function assertBrowserWorkspaceTabConnectorAccountGate(
+  ctx: BrowserWorkspaceRouteContext,
+  tabId: string,
+  reference: BrowserWorkspaceConnectorReference,
+  operation: string,
+): Promise<void> {
+  const tabs = await listBrowserWorkspaceTabs();
+  const tab = tabs.find((entry) => entry.id === tabId) ?? null;
+  await assertBrowserWorkspaceConnectorAccountGate({
+    runtime: ctx.state?.runtime ?? null,
+    connectorProvider: reference.connectorProvider,
+    connectorAccountId: reference.connectorAccountId,
+    partition: tab?.partition ?? reference.partition,
+    operation,
+  });
+}
 
 export async function handleBrowserWorkspaceRoutes(
   ctx: BrowserWorkspaceRouteContext,
@@ -73,6 +147,11 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "subaction is required" }, 400);
         return true;
       }
+      await assertBrowserWorkspaceCommandConnectorAccountGate({
+        runtime: ctx.state?.runtime ?? null,
+        command: body,
+        operation: "browser workspace command",
+      });
       json(res, await executeBrowserWorkspaceCommand(body));
       return true;
     }
@@ -85,7 +164,19 @@ export async function handleBrowserWorkspaceRoutes(
     if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
       const body =
         (await readJsonBody<OpenBrowserWorkspaceBody>(req, res)) ?? {};
-      json(res, { tab: await openBrowserWorkspaceTab(body) });
+      const connectorGate = await assertBrowserWorkspaceConnectorAccountGate({
+        runtime: ctx.state?.runtime ?? null,
+        connectorProvider: body.connectorProvider,
+        connectorAccountId: body.connectorAccountId,
+        partition: body.partition,
+        operation: "open browser workspace tab",
+      });
+      json(res, {
+        tab: await openBrowserWorkspaceTab({
+          ...body,
+          partition: connectorGate?.expectedPartition ?? body.partition,
+        }),
+      });
       return true;
     }
 
@@ -100,6 +191,12 @@ export async function handleBrowserWorkspaceRoutes(
     const action = match[2] ?? null;
 
     if (!action && method === "DELETE") {
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "close browser workspace tab",
+      );
       const closed = await closeBrowserWorkspaceTab(tabId);
       json(
         res,
@@ -110,16 +207,34 @@ export async function handleBrowserWorkspaceRoutes(
     }
 
     if (action === "show" && method === "POST") {
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "show browser workspace tab",
+      );
       json(res, { tab: await showBrowserWorkspaceTab(tabId) });
       return true;
     }
 
     if (action === "hide" && method === "POST") {
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "hide browser workspace tab",
+      );
       json(res, { tab: await hideBrowserWorkspaceTab(tabId) });
       return true;
     }
 
     if (action === "snapshot" && method === "GET") {
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "snapshot browser workspace tab",
+      );
       json(res, await snapshotBrowserWorkspaceTab(tabId));
       return true;
     }
@@ -130,6 +245,12 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "url is required" }, 400);
         return true;
       }
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        body,
+        "navigate browser workspace tab",
+      );
       json(res, {
         tab: await navigateBrowserWorkspaceTab({
           id: tabId,
@@ -145,6 +266,12 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "script is required" }, 400);
         return true;
       }
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        body,
+        "evaluate browser workspace tab",
+      );
       json(res, {
         result: await evaluateBrowserWorkspaceTab({
           id: tabId,
@@ -157,15 +284,7 @@ export async function handleBrowserWorkspaceRoutes(
     return false;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message.includes(getBrowserWorkspaceUnavailableMessage())
-      ? 503
-      : message.includes("only available in the desktop app")
-        ? 409
-        : message.includes("failed (404)")
-          ? 404
-          : message.includes("failed (409)")
-            ? 409
-            : 500;
+    const status = statusFromBrowserWorkspaceError(error, message);
     json(res, { error: message }, status);
     return true;
   }

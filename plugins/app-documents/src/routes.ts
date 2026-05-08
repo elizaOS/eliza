@@ -21,10 +21,11 @@ import {
   presentDocument,
 } from "./document-presenter.js";
 import {
-  getDocumentsService,
+  type DocumentAddedByRole,
   type DocumentSearchMode,
-  type DocumentServiceLike,
+  type DocumentsServiceLike,
   type DocumentVisibilityScope,
+  getDocumentsService,
 } from "./service-loader.js";
 
 export type DocumentRouteHelpers = RouteHelpers;
@@ -39,16 +40,6 @@ const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
-const DOCUMENT_SCOPES = new Set([
-  "global",
-  "owner-private",
-  "user-private",
-  "agent-private",
-]);
-const DOCUMENT_ID_ROUTE_PATTERN =
-  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-const DOCUMENT_FRAGMENTS_ROUTE_PATTERN =
-  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/fragments$/i;
 
 const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
   "global",
@@ -60,6 +51,11 @@ const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
 type DocumentFilter = {
   scope?: DocumentVisibilityScope;
   scopedToEntityId?: UUID;
+  query?: string;
+  addedBy?: UUID;
+  timeRangeStart?: number;
+  timeRangeEnd?: number;
+  tags?: string[];
 };
 
 type DocumentUploadBody = {
@@ -72,6 +68,14 @@ type DocumentUploadBody = {
   entityId?: string;
   scope?: string;
   scopedToEntityId?: string;
+};
+
+type RouteActorRole = "OWNER" | "USER" | "AGENT" | "RUNTIME";
+
+type RouteActor = {
+  entityId: UUID;
+  role: RouteActorRole;
+  ownerEntityId?: UUID;
 };
 
 function isTextBackedContentType(
@@ -117,6 +121,51 @@ function asUuid(value: unknown): UUID | undefined {
   return trimmed ? (trimmed as UUID) : undefined;
 }
 
+function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
+  if (!runtime || typeof runtime.getSetting !== "function") return undefined;
+  return asUuid(runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"));
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return firstHeaderValue(value[0]);
+  if (typeof value !== "string") return null;
+  const normalized = value.split(",")[0]?.trim();
+  return normalized ? normalized : null;
+}
+
+function resolveRouteActor(
+  req: DocumentRouteContext["req"],
+  agentId: UUID,
+  ownerEntityId?: UUID,
+): RouteActor {
+  const headerEntityId =
+    asUuid(firstHeaderValue(req.headers["x-eliza-entity-id"])) ??
+    asUuid(firstHeaderValue(req.headers["x-eliza-actor-entity-id"]));
+
+  const entityId = headerEntityId ?? ownerEntityId ?? agentId;
+  if (headerEntityId === agentId) {
+    return { entityId, role: "AGENT", ownerEntityId };
+  }
+  if (!headerEntityId || (ownerEntityId && headerEntityId === ownerEntityId)) {
+    return { entityId, role: "OWNER", ownerEntityId };
+  }
+  return { entityId, role: "USER", ownerEntityId };
+}
+
+function routeActorAddedByRole(actor: RouteActor): DocumentAddedByRole {
+  return actor.role;
+}
+
+function actorCanManageOwnerDocuments(actor: RouteActor): boolean {
+  return actor.role === "OWNER" || actor.role === "RUNTIME";
+}
+
+function actorCanManageAgentDocuments(actor: RouteActor): boolean {
+  return (
+    actor.role === "OWNER" || actor.role === "AGENT" || actor.role === "RUNTIME"
+  );
+}
+
 function parseDocumentScope(
   value: unknown,
 ): DocumentVisibilityScope | undefined {
@@ -131,31 +180,115 @@ function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
     : undefined;
 }
 
-function filtersFromSearchParams(url: URL): DocumentFilter {
+function parseTimestampParam(value: unknown): number | undefined {
+  const trimmed = trimString(value);
+  if (!trimmed) return undefined;
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) return numeric;
+
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseTagsFromSearchParams(searchParams: URLSearchParams): string[] {
+  const values = [
+    ...searchParams.getAll("tag"),
+    ...searchParams.getAll("tags"),
+  ];
+  return values
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value): value is string => value.length > 0);
+}
+
+function filtersFromSearchParams(
+  url: URL,
+  options: { includeTextQuery?: boolean } = {},
+): DocumentFilter {
   const scope = parseDocumentScope(url.searchParams.get("scope"));
   const scopedToEntityId = asUuid(url.searchParams.get("scopedToEntityId"));
+  const query = options.includeTextQuery
+    ? (trimString(url.searchParams.get("q")) ??
+      trimString(url.searchParams.get("query")) ??
+      trimString(url.searchParams.get("text")))
+    : (trimString(url.searchParams.get("query")) ??
+      trimString(url.searchParams.get("text")));
+  const addedBy = asUuid(url.searchParams.get("addedBy"));
+  const timeRangeStart = parseTimestampParam(
+    url.searchParams.get("timeRangeStart") ??
+      url.searchParams.get("from") ??
+      url.searchParams.get("start"),
+  );
+  const timeRangeEnd = parseTimestampParam(
+    url.searchParams.get("timeRangeEnd") ??
+      url.searchParams.get("to") ??
+      url.searchParams.get("end"),
+  );
+  const tags = parseTagsFromSearchParams(url.searchParams);
   return {
     ...(scope ? { scope } : {}),
     ...(scopedToEntityId ? { scopedToEntityId } : {}),
+    ...(query ? { query } : {}),
+    ...(addedBy ? { addedBy } : {}),
+    ...(typeof timeRangeStart === "number" ? { timeRangeStart } : {}),
+    ...(typeof timeRangeEnd === "number" ? { timeRangeEnd } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
   };
 }
 
-function filtersFromUploadBody(body: {
-  metadata?: Record<string, unknown>;
-  scope?: string;
-  scopedToEntityId?: string;
-}): Required<DocumentFilter> {
+function filtersFromUploadBody(
+  body: {
+    metadata?: Record<string, unknown>;
+    scope?: string;
+    scopedToEntityId?: string;
+  },
+  actor: RouteActor,
+): { scope: DocumentVisibilityScope; scopedToEntityId?: UUID; error?: string } {
   const metadata = asRecord(body.metadata);
   const scope =
     parseDocumentScope(body.scope) ??
     parseDocumentScope(metadata?.scope) ??
-    "global";
+    (actor.role === "USER"
+      ? "user-private"
+      : actor.role === "AGENT"
+        ? "agent-private"
+        : "global");
+
   const scopedToEntityId =
     asUuid(body.scopedToEntityId) ?? asUuid(metadata?.scopedToEntityId);
-  return {
-    scope,
-    scopedToEntityId: scopedToEntityId ?? ("" as UUID),
-  };
+
+  if (scope === "global" || scope === "owner-private") {
+    if (!actorCanManageOwnerDocuments(actor)) {
+      return {
+        scope,
+        error: "Only the owner can write global or owner-private documents.",
+      };
+    }
+    return { scope };
+  }
+
+  if (scope === "agent-private") {
+    if (!actorCanManageAgentDocuments(actor)) {
+      return {
+        scope,
+        error:
+          "Only the owner or agent runtime can write agent-private documents.",
+      };
+    }
+    return { scope, scopedToEntityId: scopedToEntityId ?? actor.entityId };
+  }
+
+  const targetEntityId = scopedToEntityId ?? actor.entityId;
+  if (actor.role === "USER" && targetEntityId !== actor.entityId) {
+    return {
+      scope,
+      scopedToEntityId: targetEntityId,
+      error: "Users can only write documents to their own private scope.",
+    };
+  }
+
+  return { scope, scopedToEntityId: targetEntityId };
 }
 
 function hasUuidId(memory: Memory): memory is Memory & { id: UUID } {
@@ -174,7 +307,8 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
   return (
     metadata?.type === "document" ||
     metadata?.type === "custom" ||
-    (typeof metadata?.documentId === "string" && metadata.documentId === memory.id)
+    (typeof metadata?.documentId === "string" &&
+      metadata.documentId === memory.id)
   );
 }
 
@@ -188,26 +322,128 @@ function matchesDocumentFilter(
   }
   if (
     filters.scopedToEntityId &&
-    metadata?.scopedToEntityId !== filters.scopedToEntityId
+    documentScopedEntityId(memory) !== filters.scopedToEntityId
   ) {
     return false;
   }
+  if (filters.addedBy && metadata?.addedBy !== filters.addedBy) {
+    return false;
+  }
+  if (filters.tags && filters.tags.length > 0) {
+    const documentTags = Array.isArray(metadata?.tags)
+      ? metadata.tags.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+    if (!filters.tags.every((tag) => documentTags.includes(tag))) {
+      return false;
+    }
+  }
+
+  const timestamp =
+    typeof metadata?.timestamp === "number"
+      ? metadata.timestamp
+      : typeof metadata?.addedAt === "number"
+        ? metadata.addedAt
+        : typeof memory.createdAt === "number"
+          ? memory.createdAt
+          : undefined;
+  if (
+    typeof filters.timeRangeStart === "number" &&
+    (typeof timestamp !== "number" || timestamp < filters.timeRangeStart)
+  ) {
+    return false;
+  }
+  if (
+    typeof filters.timeRangeEnd === "number" &&
+    (typeof timestamp !== "number" || timestamp > filters.timeRangeEnd)
+  ) {
+    return false;
+  }
+  if (filters.query) {
+    const query = filters.query.toLowerCase();
+    const haystack = [
+      memory.content?.text,
+      getDocumentTitleFromMetadata(metadata, memory.content?.text),
+      metadata?.title,
+      metadata?.filename,
+      metadata?.originalFilename,
+      metadata?.source,
+      metadata?.url,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n")
+      .toLowerCase();
+    if (!haystack.includes(query)) return false;
+  }
   return true;
+}
+
+function documentScopedEntityId(memory: Memory): UUID | undefined {
+  const metadata = asRecord(memory.metadata);
+  return (
+    asUuid(metadata?.scopedToEntityId) ??
+    asUuid(metadata?.addedBy) ??
+    asUuid(memory.entityId)
+  );
+}
+
+function canReadDocumentMemory(
+  memory: Memory,
+  actor: RouteActor,
+  filters: DocumentFilter = {},
+): boolean {
+  const metadata = asRecord(memory.metadata);
+  const scope = getDocumentVisibilityScope(metadata);
+
+  if (scope === "global") return true;
+  if (scope === "owner-private") return actorCanManageOwnerDocuments(actor);
+  if (scope === "agent-private") return actorCanManageAgentDocuments(actor);
+
+  const scopedEntityId = documentScopedEntityId(memory);
+  if (!scopedEntityId) return false;
+
+  if (actor.role === "AGENT" || actor.role === "RUNTIME") return true;
+  if (actor.role === "OWNER") {
+    return filters.scopedToEntityId
+      ? scopedEntityId === filters.scopedToEntityId
+      : scopedEntityId === actor.entityId;
+  }
+  return scopedEntityId === actor.entityId;
+}
+
+function canMutateDocumentMemory(memory: Memory, actor: RouteActor): boolean {
+  const metadata = asRecord(memory.metadata);
+  const scope = getDocumentVisibilityScope(metadata);
+
+  if (scope === "global" || scope === "owner-private") {
+    return actorCanManageOwnerDocuments(actor);
+  }
+  if (scope === "agent-private") {
+    return actorCanManageAgentDocuments(actor);
+  }
+
+  const scopedEntityId = documentScopedEntityId(memory);
+  return (
+    actorCanManageAgentDocuments(actor) ||
+    (Boolean(scopedEntityId) && scopedEntityId === actor.entityId)
+  );
 }
 
 function buildRouteMessage({
   agentId,
   text,
   filters,
+  actor,
 }: {
   agentId: UUID;
   text: string;
   filters?: DocumentFilter;
+  actor: RouteActor;
 }): Memory {
-  const entityId = filters?.scopedToEntityId ?? agentId;
   return {
     id: crypto.randomUUID() as UUID,
-    entityId,
+    entityId: actor.entityId,
     agentId,
     roomId: agentId,
     worldId: agentId,
@@ -231,7 +467,7 @@ function serviceSearchScope(
 }
 
 async function countDocumentFragmentsForDocument(
-  documentsService: DocumentServiceLike,
+  documentsService: DocumentsServiceLike,
   roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<number> {
@@ -261,7 +497,7 @@ async function countDocumentFragmentsForDocument(
 }
 
 async function mapDocumentFragmentsByDocumentId(
-  documentsService: DocumentServiceLike,
+  documentsService: DocumentsServiceLike,
   roomId: UUID | undefined,
   documentIds: readonly UUID[],
 ): Promise<Map<UUID, number>> {
@@ -304,7 +540,7 @@ async function mapDocumentFragmentsByDocumentId(
 }
 
 async function listDocumentFragmentsForDocument(
-  documentsService: DocumentServiceLike,
+  documentsService: DocumentsServiceLike,
   roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<UUID[]> {
@@ -336,12 +572,14 @@ async function listDocumentFragmentsForDocument(
 async function listDocumentMemories({
   documentsService,
   agentId,
+  actor,
   filters,
   limit,
   offset,
 }: {
-  documentsService: DocumentServiceLike;
+  documentsService: DocumentsServiceLike;
   agentId: UUID;
+  actor: RouteActor;
   filters: DocumentFilter;
   limit: number;
   offset: number;
@@ -362,7 +600,8 @@ async function listDocumentMemories({
     for (const memory of batch) {
       if (
         !isDocumentMemory(memory, agentId) ||
-        !matchesDocumentFilter(memory, filters)
+        !matchesDocumentFilter(memory, filters) ||
+        !canReadDocumentMemory(memory, actor, filters)
       ) {
         continue;
       }
@@ -380,8 +619,7 @@ async function listDocumentMemories({
   return { documents, total };
 }
 
-export const __setDocumentFetchImplForTests =
-  __setDocumentUrlFetchImplForTests;
+export const __setDocumentFetchImplForTests = __setDocumentUrlFetchImplForTests;
 
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
@@ -425,6 +663,8 @@ export async function handleDocumentsRoutes(
     return true;
   }
   const agentId = runtime.agentId as UUID;
+  const ownerEntityId = getOwnerEntityId(runtime);
+  const routeActor = resolveRouteActor(req, agentId, ownerEntityId);
 
   if (method === "GET" && pathname === "/api/documents/stats") {
     const documentCount = await documentsService.countMemories({
@@ -447,11 +687,12 @@ export async function handleDocumentsRoutes(
   if (method === "GET" && pathname === "/api/documents") {
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 100);
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
-    const filters = filtersFromSearchParams(url);
+    const filters = filtersFromSearchParams(url, { includeTextQuery: true });
 
     const { documents, total } = await listDocumentMemories({
       documentsService,
       agentId,
+      actor: routeActor,
       filters,
       limit,
       offset,
@@ -500,6 +741,7 @@ export async function handleDocumentsRoutes(
       agentId,
       text: query.trim(),
       filters,
+      actor: routeActor,
     });
 
     const results = await documentsService.searchDocuments(
@@ -512,6 +754,9 @@ export async function handleDocumentsRoutes(
       .filter((result) => (result.similarity ?? 0) >= threshold)
       .filter((result) =>
         matchesDocumentFilter(result as unknown as Memory, filters),
+      )
+      .filter((result) =>
+        canReadDocumentMemory(result as unknown as Memory, routeActor, filters),
       )
       .slice(0, limit)
       .map((result) => {
@@ -544,6 +789,17 @@ export async function handleDocumentsRoutes(
   );
   if (method === "GET" && fragmentsMatch) {
     const documentId = decodeURIComponent(fragmentsMatch[1]) as UUID;
+    const document = await runtime.getMemoryById(documentId);
+    if (
+      !document ||
+      !isDocumentMemory(document, agentId) ||
+      !canReadDocumentMemory(document, routeActor, {
+        scopedToEntityId: documentScopedEntityId(document),
+      })
+    ) {
+      error(res, "Document not found", 404);
+      return true;
+    }
 
     const allFragments: Array<{
       id: UUID;
@@ -603,7 +859,13 @@ export async function handleDocumentsRoutes(
   if (method === "GET" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const document = await runtime.getMemoryById(documentId);
-    if (!document || !isDocumentMemory(document, agentId)) {
+    if (
+      !document ||
+      !isDocumentMemory(document, agentId) ||
+      !canReadDocumentMemory(document, routeActor, {
+        scopedToEntityId: documentScopedEntityId(document),
+      })
+    ) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -625,18 +887,18 @@ export async function handleDocumentsRoutes(
   if (method === "PATCH" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const document = await runtime.getMemoryById(documentId);
-    if (!document || !isDocumentMemory(document, agentId)) {
+    if (
+      !document ||
+      !isDocumentMemory(document, agentId) ||
+      !canMutateDocumentMemory(document, routeActor)
+    ) {
       error(res, "Document not found", 404);
       return true;
     }
 
     const editability = getDocumentEditability(document);
     if (!editability.canEditText) {
-      error(
-        res,
-        editability.reason || "This document cannot be edited.",
-        400,
-      );
+      error(res, editability.reason || "This document cannot be edited.", 400);
       return true;
     }
 
@@ -653,7 +915,11 @@ export async function handleDocumentsRoutes(
     const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
-      message: buildRouteMessage({ agentId, text: body.content }),
+      message: buildRouteMessage({
+        agentId,
+        text: body.content,
+        actor: routeActor,
+      }),
     });
 
     json(res, {
@@ -667,7 +933,11 @@ export async function handleDocumentsRoutes(
   if (method === "DELETE" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const existingDocument = await runtime.getMemoryById(documentId);
-    if (!existingDocument || !isDocumentMemory(existingDocument, agentId)) {
+    if (
+      !existingDocument ||
+      !isDocumentMemory(existingDocument, agentId) ||
+      !canMutateDocumentMemory(existingDocument, routeActor)
+    ) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -701,8 +971,9 @@ export async function handleDocumentsRoutes(
   }
 
   async function addDocument(
-    service: DocumentServiceLike,
+    service: DocumentsServiceLike,
     document: DocumentUploadBody,
+    actor: RouteActor,
   ): Promise<{
     documentId: UUID;
     fragmentCount: number;
@@ -753,14 +1024,17 @@ export async function handleDocumentsRoutes(
       contentType = "text/markdown";
     }
 
-    const uploadFilters = filtersFromUploadBody(document);
-    const scopedToEntityId =
-      uploadFilters.scopedToEntityId.length > 0
-        ? uploadFilters.scopedToEntityId
-        : undefined;
+    const uploadFilters = filtersFromUploadBody(document, actor);
+    if (uploadFilters.error) {
+      throw new Error(uploadFilters.error);
+    }
+    const scopedToEntityId = uploadFilters.scopedToEntityId;
     const roomId = asUuid(document.roomId) ?? agentId;
     const worldId = asUuid(document.worldId) ?? agentId;
-    const entityId = asUuid(document.entityId) ?? scopedToEntityId ?? agentId;
+    const entityId =
+      uploadFilters.scope === "user-private"
+        ? (scopedToEntityId ?? actor.entityId)
+        : actor.entityId;
     const metadata = asRecord(document.metadata);
 
     const result = await service.addDocument({
@@ -774,14 +1048,12 @@ export async function handleDocumentsRoutes(
       content,
       scope: uploadFilters.scope,
       scopedToEntityId,
-      addedBy: entityId,
-      addedByRole: entityId === agentId ? "AGENT" : "USER",
+      addedBy: actor.entityId,
+      addedByRole: routeActorAddedByRole(actor),
       addedFrom: "upload",
       metadata: {
         ...metadata,
         source: "upload",
-        scope,
-        scopedToEntityId,
         filename: document.filename,
         originalFilename: document.filename,
         fileType: originalContentType,
@@ -789,6 +1061,8 @@ export async function handleDocumentsRoutes(
         textBacked,
         scope: uploadFilters.scope,
         ...(scopedToEntityId ? { scopedToEntityId } : {}),
+        addedBy: actor.entityId,
+        addedByRole: routeActorAddedByRole(actor),
       },
     });
 
@@ -823,9 +1097,14 @@ export async function handleDocumentsRoutes(
       warnings?: string[];
     };
     try {
-      result = await addDocument(documentsService, body);
+      result = await addDocument(documentsService, body, routeActor);
     } catch (err) {
-      error(res, `Failed to add document: ${String(err)}`, 500);
+      const message = err instanceof Error ? err.message : String(err);
+      error(
+        res,
+        `Failed to add document: ${message}`,
+        /Only the owner|Users can only/i.test(message) ? 403 : 500,
+      );
       return true;
     }
 
@@ -900,6 +1179,7 @@ export async function handleDocumentsRoutes(
         const uploadResult = await addDocument(
           documentsService,
           normalizedDocument,
+          routeActor,
         );
         results.push({
           index,
@@ -963,14 +1243,18 @@ export async function handleDocumentsRoutes(
 
     const { content, mimeType, filename } = fetchedContent;
     const contentType = mimeType;
-    const uploadFilters = filtersFromUploadBody(body);
-    const scopedToEntityId =
-      uploadFilters.scopedToEntityId.length > 0
-        ? uploadFilters.scopedToEntityId
-        : undefined;
+    const uploadFilters = filtersFromUploadBody(body, routeActor);
+    if (uploadFilters.error) {
+      error(res, uploadFilters.error, 403);
+      return true;
+    }
+    const scopedToEntityId = uploadFilters.scopedToEntityId;
     const roomId = asUuid(body.roomId) ?? agentId;
     const worldId = asUuid(body.worldId) ?? agentId;
-    const entityId = asUuid(body.entityId) ?? scopedToEntityId ?? agentId;
+    const entityId =
+      uploadFilters.scope === "user-private"
+        ? (scopedToEntityId ?? routeActor.entityId)
+        : routeActor.entityId;
     const isYouTubeTranscript = isYouTubeUrl(urlToFetch);
 
     const result = await documentsService.addDocument({
@@ -984,8 +1268,8 @@ export async function handleDocumentsRoutes(
       content,
       scope: uploadFilters.scope,
       scopedToEntityId,
-      addedBy: entityId,
-      addedByRole: entityId === agentId ? "AGENT" : "USER",
+      addedBy: routeActor.entityId,
+      addedByRole: routeActorAddedByRole(routeActor),
       addedFrom: "url",
       metadata: {
         ...body.metadata,
@@ -998,6 +1282,8 @@ export async function handleDocumentsRoutes(
         textBacked: fetchedContent.contentType !== "binary",
         scope: uploadFilters.scope,
         ...(scopedToEntityId ? { scopedToEntityId } : {}),
+        addedBy: routeActor.entityId,
+        addedByRole: routeActorAddedByRole(routeActor),
       },
     });
 

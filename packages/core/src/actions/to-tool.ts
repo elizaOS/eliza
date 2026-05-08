@@ -213,12 +213,11 @@ export const PLAN_ACTIONS_TOOL: ToolDefinition = {
 };
 
 /**
- * The fixed two-tool array sent to the LLM on every planner request.
+ * The fixed Stage 2 wrapper tool array sent to the LLM on every planner request.
  * Reference this directly when constructing a request — never build a
  * per-turn tool list, which would defeat tool-block caching.
  */
 export const STABLE_PLANNER_TOOLS: ReadonlyArray<ToolDefinition> = [
-	HANDLE_RESPONSE_TOOL,
 	PLAN_ACTIONS_TOOL,
 ];
 

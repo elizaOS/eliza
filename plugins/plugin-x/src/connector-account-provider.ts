@@ -20,8 +20,10 @@
 
 import {
   type ConnectorAccount,
+  type ConnectorAccountManager,
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
+  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -35,6 +37,7 @@ import {
   createCodeVerifier,
   createState,
 } from "./client/auth-providers/pkce";
+import { persistConnectorCredentialRefs } from "./connector-credential-refs";
 import { getSetting } from "./utils/settings";
 
 const TWITTER_AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
@@ -185,6 +188,33 @@ function buildAuthorizeUrl(args: {
   return url.toString();
 }
 
+function readFlowMetadataString(metadata: unknown, key: string): string | undefined {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  const raw =
+    typeof record.role === "string"
+      ? record.role
+      : typeof record.accountRole === "string"
+        ? record.accountRole
+        : undefined;
+  const normalized = raw?.trim().toUpperCase();
+  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+    return normalized;
+  }
+  return "OWNER";
+}
+
 export function createXConnectorAccountProvider(
   runtime: IAgentRuntime,
 ): ConnectorAccountProvider {
@@ -197,11 +227,12 @@ export function createXConnectorAccountProvider(
     ): Promise<ConnectorOAuthStartResult> {
       const { clientId, redirectUri } = readClientConfig(runtime);
       const scopes = readScopes(runtime, request.scopes);
+      const resolvedRedirectUri = request.redirectUri ?? redirectUri;
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
       const authUrl = buildAuthorizeUrl({
         clientId,
-        redirectUri: request.redirectUri ?? redirectUri,
+        redirectUri: resolvedRedirectUri,
         scopes,
         state: request.flow.state,
         codeChallenge,
@@ -212,14 +243,20 @@ export function createXConnectorAccountProvider(
         metadata: {
           ...request.metadata,
           scopes,
+          redirectUri: resolvedRedirectUri,
         },
       };
     },
 
     async completeOAuth(
       request: ConnectorOAuthCallbackRequest,
+      manager?: ConnectorAccountManager,
     ): Promise<ConnectorOAuthCallbackResult> {
-      const { clientId, redirectUri } = readClientConfig(runtime);
+      const config = readClientConfig(runtime);
+      const redirectUri =
+        request.flow.redirectUri ??
+        readFlowMetadataString(request.flow.metadata, "redirectUri") ??
+        config.redirectUri;
       const code = request.code ?? request.query.code;
       if (!code) {
         throw new Error("Twitter OAuth callback is missing authorization code");
@@ -231,30 +268,64 @@ export function createXConnectorAccountProvider(
         );
       }
       const token = await exchangeCodeForToken({
-        clientId,
+        clientId: config.clientId,
         redirectUri,
         code,
         codeVerifier,
       });
       const me = await fetchAuthenticatedUser(token.access_token!);
+      const expiresAt =
+        typeof token.expires_in === "number"
+          ? Date.now() + token.expires_in * 1000
+          : undefined;
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: X_PROVIDER,
+        accountIdForRef: request.flow.accountId ?? me.id,
+        storageAccountId: request.flow.accountId,
+        caller: "plugin-x",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: token.access_token,
+              ...(token.refresh_token ? { refresh_token: token.refresh_token } : {}),
+              ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+              ...(token.scope ? { scope: token.scope } : {}),
+              ...(token.token_type ? { token_type: token.token_type } : {}),
+            }),
+            ...(expiresAt !== undefined ? { expiresAt } : {}),
+            metadata: {
+              provider: X_PROVIDER,
+              hasRefreshToken: Boolean(token.refresh_token),
+            },
+          },
+        ],
+      });
 
       const account: ConnectorAccountPatch = {
         externalId: me.id,
         displayHandle: me.username ?? me.id,
         label: me.name ?? me.username ?? me.id,
-        role: "OWNER",
+        role: roleFromMetadata(request.flow.metadata),
         purpose: [...DEFAULT_PURPOSES],
         accessGate: "open",
         status: "connected",
         metadata: {
+          authMethod: "oauth",
           username: me.username,
           name: me.name,
           scope: token.scope,
           tokenType: token.token_type,
-          expiresAt:
-            typeof token.expires_in === "number"
-              ? Date.now() + token.expires_in * 1000
-              : undefined,
+          expiresAt,
+          hasRefreshToken: Boolean(token.refresh_token),
+          credentialRefs: credentialPersist.refs,
+          credentialRefStorage: {
+            vaultAvailable: credentialPersist.vaultAvailable,
+            storageAvailable: credentialPersist.storageAvailable,
+          },
+          oauthCredentialVersion: String(Date.now()),
         },
       };
 

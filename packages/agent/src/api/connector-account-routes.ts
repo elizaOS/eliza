@@ -226,7 +226,7 @@ function accountPatchFromBody(
   const nextMetadata =
     metadata || body.privacy
       ? ({
-          ...(baseMetadata ?? {}),
+          ...(cleanMetadata(baseMetadata) ?? {}),
           ...(metadata ?? {}),
           ...(body.privacy ? { privacy: body.privacy } : {}),
         } as Metadata)

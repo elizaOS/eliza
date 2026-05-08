@@ -573,11 +573,73 @@ function applyMetricsForStage(
 	}
 }
 
+function sanitizeForRecord(
+	value: unknown,
+	seen = new WeakSet<object>(),
+	depth = 0,
+): unknown {
+	if (depth > 40) {
+		return "[MaxDepth]";
+	}
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	if (typeof value === "bigint") {
+		return value.toString();
+	}
+	if (typeof value === "undefined") {
+		return undefined;
+	}
+	if (typeof value === "function") {
+		return `[Function ${(value as Function).name || "anonymous"}]`;
+	}
+	if (typeof value === "symbol") {
+		return value.toString();
+	}
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+	if (value instanceof Error) {
+		return {
+			name: value.name,
+			message: value.message,
+			stack: value.stack,
+		};
+	}
+	if (Array.isArray(value)) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		return value.map((entry) => sanitizeForRecord(entry, seen, depth + 1));
+	}
+	if (typeof value === "object") {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
+			if (sanitized !== undefined) {
+				output[key] = sanitized;
+			}
+		}
+		return output;
+	}
+	return String(value);
+}
+
 function cloneForRecord<T>(value: T): T {
 	if (typeof structuredClone === "function") {
-		return structuredClone(value);
+		try {
+			return structuredClone(value);
+		} catch {
+			return sanitizeForRecord(value) as T;
+		}
 	}
-	return JSON.parse(JSON.stringify(value)) as T;
+	return sanitizeForRecord(value) as T;
 }
 
 /**

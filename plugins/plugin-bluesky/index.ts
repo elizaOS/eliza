@@ -10,6 +10,12 @@ import { createBlueSkyConnectorAccountProvider } from "./connector-account-provi
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
 
+export { BlueSkyClient } from "./client";
+export {
+	BLUESKY_PROVIDER_ID,
+	createBlueSkyConnectorAccountProvider,
+} from "./connector-account-provider";
+export { BlueSkyService } from "./services/bluesky";
 export {
 	DEFAULT_BLUESKY_ACCOUNT_ID,
 	listBlueSkyAccountIds,
@@ -17,12 +23,6 @@ export {
 	readBlueSkyAccountId,
 	resolveDefaultBlueSkyAccountId,
 } from "./utils/config";
-export { BlueSkyClient } from "./client";
-export {
-	BLUESKY_PROVIDER_ID,
-	createBlueSkyConnectorAccountProvider,
-} from "./connector-account-provider";
-export { BlueSkyService } from "./services/bluesky";
 
 export interface PluginConfig {
 	readonly BLUESKY_HANDLE?: string;

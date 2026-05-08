@@ -23,7 +23,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import localEmbeddingPlugin from "@elizaos/plugin-local-embedding";
 import { v4 as uuidv4 } from "uuid";
 
@@ -186,8 +186,8 @@ const character: Character = createCharacter({
 const runtime: IAgentRuntime = new AgentRuntime({
   character,
   plugins: [
-    sqlPlugin as unknown as Plugin,
-    localEmbeddingPlugin as unknown as Plugin,
+    sqlPlugin,
+    localEmbeddingPlugin,
     openaiPlugin,
   ],
   logLevel: "warn",

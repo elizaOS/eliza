@@ -68,6 +68,7 @@ import {
 	type ControlMessage,
 	type CreateOAuthFlowStateParams,
 	type DeleteConnectorAccountParams,
+	type DeleteOAuthFlowStateParams,
 	type Entity,
 	type Evaluator,
 	type EventHandler,
@@ -79,6 +80,7 @@ import {
 	type GenerateTextResult,
 	type GetConnectorAccountCredentialRefParams,
 	type GetConnectorAccountParams,
+	type GetOAuthFlowStateParams,
 	getModelFallbackChain,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -137,6 +139,7 @@ import {
 	type TaskWorker,
 	type TextGenerationModelType,
 	type TextStreamResult,
+	type UpdateOAuthFlowStateParams,
 	type UpsertConnectorAccountParams,
 	type UUID,
 	type World,
@@ -8123,29 +8126,53 @@ ${section_end}`;
 		if (!source) {
 			throw new Error("Post connector registration requires a source");
 		}
-		if (this.postConnectors.has(source)) {
+		const accountId =
+			normalizeConnectorAccountId(registration.accountId) ??
+			normalizeConnectorAccountId(registration.account?.accountId);
+		const routeKey = connectorRouteKey(source, accountId);
+		if (this.postConnectors.has(routeKey)) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				{ src: "agent", agentId: this.agentId, handlerSource: source, accountId },
 				"Post connector already registered, overwriting",
 			);
 		}
 		this.postConnectors.set(
-			source,
-			normalizePostConnector(source, registration),
+			routeKey,
+			normalizePostConnector(source, {
+				...registration,
+				accountId,
+			}),
 		);
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, handlerSource: source },
+			{ src: "agent", agentId: this.agentId, handlerSource: source, accountId },
 			"Post connector registered",
 		);
 	}
 
-	unregisterPostConnector(source: string): boolean {
+	unregisterPostConnector(source: string, accountId?: string): boolean {
 		const normalized = typeof source === "string" ? source.trim() : "";
 		if (!normalized) return false;
-		const removed = this.postConnectors.delete(normalized);
+		const normalizedAccountId = normalizeConnectorAccountId(accountId);
+		let removed = false;
+		if (normalizedAccountId) {
+			removed = this.postConnectors.delete(
+				connectorRouteKey(normalized, normalizedAccountId),
+			);
+		} else {
+			for (const [routeKey, connector] of this.postConnectors) {
+				if (connector.source === normalized) {
+					removed = this.postConnectors.delete(routeKey) || removed;
+				}
+			}
+		}
 		if (removed) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, handlerSource: normalized },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+					accountId: normalizedAccountId,
+				},
 				"Post connector unregistered",
 			);
 		}
@@ -8155,7 +8182,11 @@ ${section_end}`;
 	getPostConnectors(): PostConnector[] {
 		return Array.from(this.postConnectors.values())
 			.map(clonePostConnector)
-			.sort((a, b) => a.source.localeCompare(b.source));
+			.sort(
+				(a, b) =>
+					a.source.localeCompare(b.source) ||
+					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
+			);
 	}
 
 	async sendMessageToTarget(
@@ -8381,6 +8412,33 @@ ${section_end}`;
 		params: ConsumeOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
 		return await this.adapter.consumeOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.getOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.updateOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async deleteOAuthFlowState(
+		params: DeleteOAuthFlowStateParams,
+	): Promise<boolean> {
+		return await this.adapter.deleteOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});

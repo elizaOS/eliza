@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { getMessageConnectorsWithHook } from "../../features/advanced-capabilities/actions/connectorActionUtils";
+import {
+	getMessageConnectorsWithHook,
+	selectConnector,
+} from "../../features/advanced-capabilities/actions/connectorActionUtils";
 import { AgentRuntime } from "../../runtime";
 import type { Character, Content, Memory, TargetInfo } from "../../types";
 
@@ -204,5 +207,71 @@ describe("message and post connector registries", () => {
 
 		expect(runtime.getPostConnectors()[0].capabilities).toEqual(["read_feed"]);
 		expect(runtime.getPostConnectors()[0].contexts).toEqual(["social_posting"]);
+	});
+
+	it("keeps post connectors distinct by source and accountId", () => {
+		const runtime = makeRuntime();
+
+		runtime.registerPostConnector({
+			source: "social",
+			accountId: "owner-account",
+			label: "Social Owner",
+			postHandler: async () => undefined,
+		});
+		runtime.registerPostConnector({
+			source: "social",
+			accountId: "team-account",
+			label: "Social Team",
+			postHandler: async () => undefined,
+		});
+
+		expect(
+			runtime
+				.getPostConnectors()
+				.map((connector) => [connector.source, connector.accountId]),
+		).toEqual([
+			["social", "owner-account"],
+			["social", "team-account"],
+		]);
+		expect(runtime.unregisterPostConnector("social", "owner-account")).toBe(
+			true,
+		);
+		expect(
+			runtime
+				.getPostConnectors()
+				.map((connector) => [connector.source, connector.accountId]),
+		).toEqual([["social", "team-account"]]);
+		expect(runtime.unregisterPostConnector("social")).toBe(true);
+		expect(runtime.getPostConnectors()).toEqual([]);
+	});
+
+	it("selects account-scoped connectors without falling back to another account", () => {
+		const connectors = [
+			{
+				source: "social",
+				label: "Social Owner",
+				accountId: "owner-account",
+			},
+			{
+				source: "social",
+				label: "Social Team",
+				accountId: "team-account",
+			},
+		];
+
+		expect(
+			selectConnector("POST", connectors, "social", undefined, "team-account"),
+		).toMatchObject({
+			connector: {
+				source: "social",
+				accountId: "team-account",
+			},
+		});
+		expect(selectConnector("POST", connectors, "social")).toMatchObject({
+			result: {
+				success: false,
+				values: { error: "SOURCE_AMBIGUOUS" },
+			},
+		});
 	});
 });

@@ -20,6 +20,7 @@ import {
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
   type ConnectorAccountPurpose,
+  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -28,6 +29,7 @@ import {
   logger,
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
+import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
@@ -156,6 +158,20 @@ function parseScopeString(value: string | undefined): string[] {
     .split(/\s+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+}
+
+function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  const raw = nonEmptyString(record.role ?? record.accountRole);
+  if (!raw) return "OWNER";
+  const normalized = raw.toUpperCase();
+  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+    return normalized;
+  }
+  return "OWNER";
 }
 
 function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
@@ -301,7 +317,7 @@ export function createGoogleConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
@@ -343,12 +359,42 @@ export function createGoogleConnectorAccountProvider(
       if (!externalId) {
         throw new Error("Google identity payload did not include sub or email.");
       }
+      const expiresAt = Date.now() + tokens.expires_in * 1000;
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: GOOGLE_SERVICE_NAME,
+        accountIdForRef: request.flow.accountId ?? externalId,
+        storageAccountId: request.flow.accountId,
+        caller: "plugin-google",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: tokens.access_token,
+              ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+              ...(tokens.id_token ? { id_token: tokens.id_token } : {}),
+              token_type: tokens.token_type ?? "Bearer",
+              scope:
+                grantedScopes.length > 0
+                  ? grantedScopes.join(" ")
+                  : scopesForGoogleCapabilities(grantedCapabilities).join(" "),
+              expiry_date: expiresAt,
+            }),
+            expiresAt,
+            metadata: {
+              provider: GOOGLE_SERVICE_NAME,
+              hasRefreshToken: Boolean(tokens.refresh_token),
+            },
+          },
+        ],
+      });
 
       const accountPatch: ConnectorAccountPatch & {
         provider: string;
       } = {
         provider: GOOGLE_SERVICE_NAME,
-        role: "OWNER",
+        role: roleFromMetadata(request.flow.metadata),
         purpose: purposes,
         accessGate: "open",
         status: "connected",
@@ -372,7 +418,13 @@ export function createGoogleConnectorAccountProvider(
           identityScopes: [...GOOGLE_IDENTITY_SCOPES],
           tokenType: tokens.token_type ?? "Bearer",
           hasRefreshToken: Boolean(tokens.refresh_token),
-          expiresAt: Date.now() + tokens.expires_in * 1000,
+          expiresAt,
+          credentialRefs: credentialPersist.refs,
+          credentialRefStorage: {
+            vaultAvailable: credentialPersist.vaultAvailable,
+            storageAvailable: credentialPersist.storageAvailable,
+          },
+          oauthCredentialVersion: String(Date.now()),
         },
       };
 

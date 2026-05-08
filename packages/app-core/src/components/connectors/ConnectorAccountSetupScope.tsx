@@ -11,7 +11,7 @@ import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 export interface ConnectorAccountSetupScopeProps {
   provider: string;
   connectorId?: string;
-  children: (accountId: string) => ReactNode;
+  children: (accountId: string | null) => ReactNode;
 }
 
 export function ConnectorAccountSetupScope({
@@ -29,7 +29,7 @@ export function ConnectorAccountSetupScope({
             Setup account
           </span>
           <Select
-            value={accounts.effectiveAccountId}
+            value={accounts.effectiveAccountId ?? undefined}
             onValueChange={(accountId) =>
               accounts.setSelectedAccountId(accountId)
             }

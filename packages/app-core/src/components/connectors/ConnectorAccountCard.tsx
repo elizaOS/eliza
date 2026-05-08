@@ -240,10 +240,10 @@ export function ConnectorAccountCard({
 
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorAccountPurposeSelector
-          value={account.role ?? account.purpose}
+          value={account.role}
           disabled={saving}
-          onChange={(purpose) => {
-            void onUpdate({ role: purpose });
+          onChange={(role) => {
+            void onUpdate({ role });
           }}
         />
         <ConnectorAccountPrivacySelector

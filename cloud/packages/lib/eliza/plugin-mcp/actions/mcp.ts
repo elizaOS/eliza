@@ -16,7 +16,7 @@ import {
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
-import { MCP_SERVICE_NAME, type McpServer, type McpServerInfo } from "../types";
+import { MCP_SERVICE_NAME, type McpServerInfo } from "../types";
 import { handleMcpError } from "../utils/error";
 import { checkMcpOAuthAccess } from "../utils/mcp";
 import {
@@ -34,7 +34,7 @@ import { createMcpToolAction } from "./dynamic-tool-actions";
 
 export type CloudMcpOp = "read_resource" | "search_actions" | "list_connections";
 
-const MCP_CONTEXTS = ["connectors", "automation", "knowledge", "documents", "files", "settings"];
+const MCP_CONTEXTS = ["connectors", "automation", "documents", "files", "settings"];
 
 function readParams(message: Memory, state?: State): Record<string, unknown> {
   const content = message.content as Record<string, unknown>;

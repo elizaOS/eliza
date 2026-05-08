@@ -395,7 +395,7 @@ export class CharactersService {
       postExamples: character.post_examples as string[] | undefined,
       topics: character.topics as string[] | undefined,
       adjectives: character.adjectives as string[] | undefined,
-      knowledge: character.knowledge as (string | { path: string; shared?: boolean })[] | undefined,
+      documents: character.knowledge as (string | { path: string; shared?: boolean })[] | undefined,
       plugins: character.plugins as string[] | undefined,
       settings: mergedSettings as
         | Record<string, string | number | boolean | Record<string, unknown>>

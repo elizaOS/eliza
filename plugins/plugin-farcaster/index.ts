@@ -1,9 +1,14 @@
-import type { Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger, type Plugin } from "@elizaos/core";
+import { createFarcasterConnectorAccountProvider } from "./connector-account-provider";
 import { farcasterProviders } from "./providers";
 import { farcasterWebhookRoutes } from "./routes/webhook";
 import { FarcasterService } from "./services/FarcasterService";
 
 export { FarcasterClient } from "./client/FarcasterClient";
+export {
+  createFarcasterConnectorAccountProvider,
+  FARCASTER_PROVIDER_ID,
+} from "./connector-account-provider";
 export {
   EmbedManager,
   isEmbedCast,
@@ -21,6 +26,13 @@ export type {
   FidRequest,
   Profile,
 } from "./types";
+export {
+  DEFAULT_FARCASTER_ACCOUNT_ID,
+  listFarcasterAccountIds,
+  normalizeFarcasterAccountId,
+  readFarcasterAccountId,
+  resolveDefaultFarcasterAccountId,
+} from "./utils/config";
 
 export const farcasterPlugin: Plugin = {
   name: "farcaster",
@@ -29,6 +41,20 @@ export const farcasterPlugin: Plugin = {
   actions: [],
   providers: farcasterProviders,
   routes: farcasterWebhookRoutes,
+  async init(_config, runtime) {
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createFarcasterConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:farcaster",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Farcaster provider with ConnectorAccountManager"
+      );
+    }
+  },
 };
 
 export default farcasterPlugin;

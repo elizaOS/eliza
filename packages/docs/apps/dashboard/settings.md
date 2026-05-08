@@ -100,7 +100,7 @@ Configures text-to-speech output and speech-to-text input for Talk Mode.
 
 | Field | Options / Notes |
 |---|---|
-| Voice provider | `elevenlabs` (default), `edge`, `simple-voice` |
+| Voice provider | `elevenlabs` (default), `edge`, `robot-voice` |
 | Mode | `cloud` (managed), `own-key` |
 | ElevenLabs API key | Required when mode is `own-key` |
 | Model ID | Default: `eleven_flash_v2_5` |

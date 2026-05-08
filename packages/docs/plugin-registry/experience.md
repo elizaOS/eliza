@@ -23,4 +23,4 @@ This capability has no standalone plugin configuration parameters.
 ## Related
 
 - [Personality and behavior](/agents/personality-and-behavior) — Character fields, system prompt, and evolution
-- [Knowledge Plugin](/plugin-registry/knowledge) - Knowledge management and retrieval
+- [Knowledge Plugin](/plugin-registry/documents) - Knowledge management and retrieval

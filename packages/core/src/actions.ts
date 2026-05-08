@@ -90,7 +90,7 @@ export const composeActionExamples = (
 function formatActionCallExample(example: {
 	user: string;
 	actions: readonly string[];
-	params?: Record<string, Record<string, string | number | boolean | null>>;
+	params?: Record<string, Record<string, unknown>>;
 }): string {
 	const paramsByAction = example.params ?? {};
 	const assistantPayload: Record<string, unknown> = {

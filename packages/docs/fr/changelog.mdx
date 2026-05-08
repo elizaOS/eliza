@@ -42,7 +42,7 @@ Un nouveau [connecteur BlueBubbles](/fr/connectors/bluebubbles) permet à votre 
 - **Finition du chat et des pages** — Le contexte de chat avec portée de page, l'en-tête du widget de chat, le titre du chat et la barre latérale du chat ont tous été affinés pour des mises en page plus propres et un contexte plus fiable lors du changement entre les pages.
 - **Modernisation de la barre latérale et de la vue des apps** — Les contrôles de la barre latérale du tableau de bord, le catalogue de la [vue des apps](/fr/dashboard/apps) et la barre latérale des apps ont été nettoyés avec des contrôles repliés et une densité plus serrée. L'éditeur de personnages, la mise en page des [personnages](/fr/agents/character-interface), le panneau des personnages et la barre latérale des personnages ont également été polis pour une expérience de navigation plus cohérente.
 - **Nettoyage de la barre latérale des connecteurs** — La barre latérale de configuration des connecteurs a été nettoyée et polie, avec des bascules plus claires et des interrupteurs de connecteurs pour activer/désactiver les plateformes individuelles.
-- **Téléchargements de connaissances embarqués** — Le système de [connaissances](/fr/guides/knowledge) prend désormais en charge les téléchargements embarqués directement depuis l'éditeur de personnages, afin que vous puissiez joindre du matériel de référence tout en configurant la personnalité de votre agent.
+- **Téléchargements de connaissances embarqués** — Le système de [connaissances](/fr/guides/documents) prend désormais en charge les téléchargements embarqués directement depuis l'éditeur de personnages, afin que vous puissiez joindre du matériel de référence tout en configurant la personnalité de votre agent.
 - **Facturation et statut X (Twitter)** — La facturation du connecteur X est désormais présentée aux côtés des autres utilisations cloud, et les rapports de statut ont été renforcés avec une nouvelle couverture de tests.
 - **Correctif de migration cloud** — Un problème de migration affectant les agents déployés en cloud a été résolu afin que les mises à niveau s'appliquent proprement au premier démarrage.
 - **Modes d'onboarding de runtime iOS** — L'application iOS prend désormais en charge des modes de build de runtime et d'onboarding distincts, offrant aux utilisateurs mobiles une expérience de première exécution plus fluide.
@@ -210,7 +210,7 @@ Lorsque le backend de votre agent devient inaccessible, le tableau de bord affic
 - **Regroupement de scénarios dans les trajectoires** — La [vue trajectoires](/fr/advanced/trajectories) regroupe désormais les appels LLM liés en scénarios nommés avec des filtres d'historique, facilitant la révision et la comparaison du comportement de l'agent entre les sessions.
 - **Stockage mémoire avancé** — Votre agent peut désormais persister des mémoires structurées au-delà de l'historique de conversation par défaut. Cela permet un meilleur rappel de contexte entre les sessions et est disponible via la configuration de l'agent.
 - **Support vocal cloud renforcé** — Les conteneurs cloud incluent désormais les dépendances natives d'encodage audio, de sorte que la voix Discord et le TTS fonctionnent de manière fiable sans configuration supplémentaire. Lorsque les dépendances vocales sont manquantes, le système dégrade gracieusement avec une erreur claire au lieu de planter.
-- **Auto-configuration du plugin de connaissances** — Le plugin de connaissances s'active désormais automatiquement lorsque des clés API ou un fournisseur cloud sont disponibles, et détecte automatiquement votre fournisseur de texte et votre modèle à partir de votre configuration existante. Aucune configuration manuelle nécessaire pour commencer à utiliser les [connaissances](/fr/guides/knowledge).
+- **Auto-configuration du plugin de connaissances** — Le plugin de connaissances s'active désormais automatiquement lorsque des clés API ou un fournisseur cloud sont disponibles, et détecte automatiquement votre fournisseur de texte et votre modèle à partir de votre configuration existante. Aucune configuration manuelle nécessaire pour commencer à utiliser les [connaissances](/fr/guides/documents).
 
 <div id="bug-fixes">
 ## Corrections de bugs
@@ -721,7 +721,7 @@ Une nouvelle fenêtre de Paramètres autonome vous donne un accès rapide aux on
 ## Refonte du menu de l'application
 </div>
 
-La barre de menus a été réorganisée avec un nouveau menu Agent qui vous donne un accès en un clic aux [Connaissances](/fr/guides/knowledge), [Compétences](/fr/plugins/skills), [Plugins](/fr/plugins/overview) et [Connecteurs sociaux](/fr/guides/connectors). Les menus Fichier, Affichage et Fenêtre ont également été enrichis pour une navigation plus rapide.
+La barre de menus a été réorganisée avec un nouveau menu Agent qui vous donne un accès en un clic aux [Connaissances](/fr/guides/documents), [Compétences](/fr/plugins/skills), [Plugins](/fr/plugins/overview) et [Connecteurs sociaux](/fr/guides/connectors). Les menus Fichier, Affichage et Fenêtre ont également été enrichis pour une navigation plus rapide.
 
 <div id="interactive-tray-provider-management">
 ## Gestion interactive des fournisseurs depuis la barre système
@@ -989,7 +989,7 @@ Le nouveau plugin Blooio ajoute iMessage et SMS comme connecteur de messagerie d
 ## Import en masse de connaissances
 </div>
 
-Vous pouvez désormais téléverser plusieurs fichiers et des dossiers entiers dans la [base de connaissances](/fr/guides/knowledge) en une seule fois. Les imports volumineux sont traités en lots de streaming afin que vous n'ayez pas à téléverser les fichiers un par un.
+Vous pouvez désormais téléverser plusieurs fichiers et des dossiers entiers dans la [base de connaissances](/fr/guides/documents) en une seule fois. Les imports volumineux sont traités en lots de streaming afin que vous n'ayez pas à téléverser les fichiers un par un.
 
 <div id="in-app-bug-reports">
 ## Rapports de bugs intégrés

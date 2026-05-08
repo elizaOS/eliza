@@ -1028,7 +1028,7 @@ export const VALIDATION_KEYWORD_DOCS = {
         },
       },
     },
-    processKnowledge: {
+    processDocuments: {
       request: {
         base: "process knowledge\nadd to knowledge\nupload document\nadd document\nlearn this\nremember this\nstore this\ningest file\nknowledge base",
         locales: {
@@ -1041,7 +1041,7 @@ export const VALIDATION_KEYWORD_DOCS = {
         },
       },
     },
-    searchKnowledge: {
+    searchDocuments: {
       request: {
         base: "search knowledge\nfind information\nlook up\nquery knowledge base\nsearch documents\nfind in knowledge\nwhat do you know about",
         locales: {

@@ -2,8 +2,8 @@ import type { Content, HandlerCallback, IAgentRuntime, Memory, UUID } from "@eli
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client";
 import type { CastId, FarcasterConfig } from "../types";
-import { createCastMemory, neynarCastToCast } from "./index";
 import { DEFAULT_FARCASTER_ACCOUNT_ID, normalizeFarcasterAccountId } from "./config";
+import { createCastMemory, neynarCastToCast } from "./index";
 
 export function standardCastHandlerCallback({
   client,

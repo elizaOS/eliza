@@ -123,7 +123,6 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-n8n-workflow": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-web-search": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fal-ai/client": "^1.10.0",
     "@fal-ai/server-proxy": "^1.2.1",

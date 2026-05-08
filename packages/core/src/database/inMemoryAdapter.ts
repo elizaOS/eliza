@@ -10,11 +10,13 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
+	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
 	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
@@ -39,6 +41,7 @@ import type {
 	OAuthFlowRecord,
 	SetConnectorAccountCredentialRefParams,
 	Task,
+	UpdateOAuthFlowStateParams,
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
@@ -1951,5 +1954,100 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			scopes: [...record.scopes],
 			metadata: cloneConnectorJsonObject(record.metadata),
 		};
+	}
+
+	private async findOAuthFlowState(
+		params: GetOAuthFlowStateParams | UpdateOAuthFlowStateParams | DeleteOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		let stateHash = params.stateHash;
+		if (!stateHash && params.state) {
+			stateHash = await sha256Hex(params.state);
+		}
+		let existing = stateHash
+			? this.oauthFlowsByStateHash.get(stateHash)
+			: undefined;
+		if (!existing && params.flowId) {
+			existing = Array.from(this.oauthFlowsByStateHash.values()).find(
+				(flow) => flow.metadata.flowId === params.flowId,
+			);
+		}
+		if (!existing) return null;
+		const now = connectorDateToMillis(
+			(params as GetOAuthFlowStateParams).now,
+		) ?? Date.now();
+		const query = params as GetOAuthFlowStateParams;
+		if (params.agentId && existing.agentId !== params.agentId) return null;
+		if (params.provider && existing.provider !== params.provider) return null;
+		if (!query.includeConsumed && existing.consumedAt != null) return null;
+		if (!query.includeExpired && existing.expiresAt <= now) return null;
+		return {
+			...existing,
+			scopes: [...existing.scopes],
+			metadata: cloneConnectorJsonObject(existing.metadata),
+		};
+	}
+
+	async getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return this.findOAuthFlowState(params);
+	}
+
+	async updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		const existing = await this.findOAuthFlowState({
+			...params,
+			includeConsumed: true,
+			includeExpired: true,
+		});
+		if (!existing) return null;
+		const expiresAt = connectorDateToMillis(params.expiresAt);
+		const consumedAt = connectorDateToMillis(params.consumedAt);
+		const record: OAuthFlowRecord = {
+			...existing,
+			accountId:
+				params.accountId !== undefined ? params.accountId : existing.accountId,
+			redirectUri:
+				params.redirectUri !== undefined
+					? params.redirectUri
+					: existing.redirectUri,
+			codeVerifierRef:
+				params.codeVerifierRef !== undefined
+					? params.codeVerifierRef
+					: existing.codeVerifierRef,
+			scopes: params.scopes ? [...params.scopes] : [...existing.scopes],
+			metadata: {
+				...cloneConnectorJsonObject(existing.metadata),
+				...(params.metadata ? cloneConnectorJsonObject(params.metadata) : {}),
+			},
+			expiresAt: expiresAt ?? existing.expiresAt,
+			consumedAt:
+				params.consumedAt !== undefined
+					? consumedAt
+					: existing.consumedAt,
+			consumedBy:
+				params.consumedBy !== undefined
+					? params.consumedBy
+					: existing.consumedBy,
+		};
+		this.oauthFlowsByStateHash.set(record.stateHash, record);
+		return {
+			...record,
+			scopes: [...record.scopes],
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	async deleteOAuthFlowState(
+		params: DeleteOAuthFlowStateParams,
+	): Promise<boolean> {
+		const existing = await this.findOAuthFlowState({
+			...params,
+			includeConsumed: true,
+			includeExpired: true,
+		});
+		if (!existing) return false;
+		return this.oauthFlowsByStateHash.delete(existing.stateHash);
 	}
 }

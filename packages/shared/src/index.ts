@@ -94,7 +94,7 @@ export type {
   InboxTriageRules as AgentDefaultsInboxTriageRules,
   InternalHookHandlerConfig,
   InternalHooksConfig,
-  KnowledgeConfig,
+  DocumentsConfig,
   LinkModelConfig,
   LinkToolsConfig,
   LoggingConfig,

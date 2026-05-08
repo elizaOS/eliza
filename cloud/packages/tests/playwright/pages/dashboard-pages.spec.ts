@@ -29,7 +29,7 @@ const STANDARD_DASHBOARD_ROUTES = [
   "/dashboard/api-explorer",
   "/dashboard/mcps",
   "/dashboard/voices",
-  "/dashboard/knowledge",
+  "/dashboard/documents",
   "/dashboard/analytics",
   "/dashboard/earnings",
   "/dashboard/affiliates",

@@ -129,7 +129,10 @@ export function normalizeCharacterInput(
 				? bioValue
 				: [bioValue];
 
-	const documentInput = input.documents ?? input.knowledge ?? [];
+	const documentInput = [
+		...(input.documents ?? []),
+		...(input.knowledge ?? []),
+	];
 	const normalizedDocuments = documentInput
 		.map((item) => normalizeDocumentItem(item))
 		.filter((item): item is DocumentSourceItem => item !== null);

@@ -205,7 +205,7 @@ A new [BlueBubbles connector](/connectors/bluebubbles) lets your agent bridge to
 - **Chat and page polish** — Page-scoped chat context, chat widget heading, chat title, and chat sidebar have all been refined for cleaner layouts and more reliable context when switching between pages.
 - **Sidebar and apps view modernization** — The dashboard sidebar controls, [apps view](/dashboard/apps) catalog, and apps sidebar have been cleaned up with collapsed controls and tighter density. The character editor, [character](/agents/character-interface) layout, character panel, and character sidebar have also been polished for a more consistent navigation experience.
 - **Connector sidebar cleanup** — The connector configuration sidebar has been cleaned up and polished, with clearer toggles and connector switches for enabling/disabling individual platforms.
-- **Embedded knowledge uploads** — The [knowledge](/guides/knowledge) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
+- **Embedded knowledge uploads** — The [knowledge](/guides/documents) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
 - **X (Twitter) billing and status** — X connector billing is now surfaced alongside other cloud usage, and status reporting has been hardened with new test coverage.
 - **Cloud migration fix** — A migration issue affecting cloud-deployed agents has been resolved so upgrades apply cleanly on first boot.
 - **iOS runtime onboarding modes** — The iOS app now supports distinct runtime build and onboarding modes, giving mobile users a smoother first-run experience.
@@ -427,7 +427,7 @@ Google Calendar actions now support updating and deleting events through convers
 - **Onboarding streamlined** — Unused onboarding steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
 - **Action context deduplication** — Your agent's LLM context no longer includes duplicate action results. Action state is now the sole source with a generous token budget, which means faster responses and more room for conversation history.
 - **Music player stream reliability** — The [music player](/rest/apps) audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
-- **Knowledge view improvements** — The [knowledge](/guides/knowledge) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
+- **Knowledge view improvements** — The [knowledge](/guides/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
 - **Cloud deployment improvements** — Cloud Docker images now build with all runtime patches applied in a single pipeline, making cloud container provisioning faster and more reliable.
 
 ## Bug fixes
@@ -550,7 +550,7 @@ When your agent's backend becomes unreachable, the dashboard now shows a clear f
 - **Trajectory scenario grouping** — The [trajectory view](/advanced/trajectories) now groups related LLM calls into named scenarios with history filters, making it easier to review and compare agent behavior across sessions.
 - **Advanced memory storage** — Your agent can now persist structured memories beyond the default conversation history. This enables richer context recall across sessions and is available through the agent configuration.
 - **Cloud voice support hardened** — Cloud containers now ship with native audio encoding dependencies, so Discord voice and TTS work reliably without additional setup. When voice dependencies are missing, the system degrades gracefully with a clear error instead of crashing.
-- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/guides/knowledge).
+- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/guides/documents).
 
 ## Bug fixes
 
@@ -816,7 +816,7 @@ Wallet transactions can now route through [Steward](https://steward.fi) for poli
 
 ## Knowledge view redesign
 
-The [knowledge](/guides/knowledge) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
+The [knowledge](/guides/documents) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
 
 ## Updates
 
@@ -1259,7 +1259,7 @@ The cloud [dashboard](/apps/dashboard) now discovers and manages both local and 
 
 ## Knowledge image and MDX uploads
 
-The [knowledge base](/guides/knowledge) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
+The [knowledge base](/guides/documents) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
 
 ## Homepage redesign
 
@@ -1582,7 +1582,7 @@ The `POST /api/character/generate` endpoint now returns `chatExamples` in the `m
 ## Updates
 
 - **Credit exhaustion errors surfaced clearly** — Cloud provider billing errors (HTTP 402 and 429) are now detected and shown in the dashboard with actionable guidance instead of generic failure messages.
-- **Knowledge service retry** — When the knowledge service is still loading, requests return a `Retry-After` header and the client auto-retries with exponential backoff, preventing failed queries during startup.
+- **Documents service retry** — When the documents service is still loading, requests return a `Retry-After` header and the client auto-retries with exponential backoff, preventing failed queries during startup.
 - **System warning banners** — Connector failures and coordinator wiring issues now surface directly in the dashboard as dismissible warning banners so you can act on problems immediately.
 </Update>
 
@@ -1640,7 +1640,7 @@ A new standalone Settings window gives you quick access to General, Providers, A
 
 ## Application menu overhaul
 
-The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/guides/knowledge), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/guides/connectors). File, View, and Window menus have also been expanded for quicker navigation.
+The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/guides/documents), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/guides/connectors). File, View, and Window menus have also been expanded for quicker navigation.
 
 ## Interactive tray provider management
 
@@ -1838,7 +1838,7 @@ The new Blooio plugin adds iMessage and SMS as a first-class messaging connector
 
 ## Bulk knowledge import
 
-You can now upload multiple files and entire folders to the [knowledge base](/guides/knowledge) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
+You can now upload multiple files and entire folders to the [knowledge base](/guides/documents) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
 
 ## In-app bug reports
 

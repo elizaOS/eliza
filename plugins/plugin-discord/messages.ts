@@ -6,8 +6,8 @@ import {
 	checkPairingAllowed,
 	createUniqueUuid,
 	EventType,
-	type FetchedKnowledgeUrl,
-	fetchKnowledgeFromUrl,
+	type FetchedDocumentUrl as FetchedKnowledgeUrl,
+	fetchDocumentFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -1312,7 +1312,7 @@ export class MessageManager {
 				}
 			} else {
 				try {
-					const fetched = await fetchKnowledgeFromUrl(url);
+					const fetched = await fetchDocumentFromUrl(url);
 					attachments.push(fetchedUrlToAttachment(url, fetched));
 					continue;
 				} catch (error) {
