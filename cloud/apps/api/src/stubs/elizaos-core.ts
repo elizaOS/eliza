@@ -232,6 +232,7 @@ export const ServiceType = {
   BROWSER: "BROWSER",
   PDF: "PDF",
   REMOTE_FILES: "REMOTE_FILES",
+  MEDIA_GENERATION: "MEDIA_GENERATION",
 } as const;
 
 export const VECTOR_DIMS = {
@@ -273,6 +274,7 @@ export const formatPosts = throwingExport("formatPosts");
 export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
+export const executePlannedToolCall = throwingExport("executePlannedToolCall");
 
 function renderSystemPromptBio(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -367,12 +369,25 @@ export function getRequestContext(): undefined {
 }
 
 export class Service {
-  constructor(..._args: unknown[]) {
-    unavailable("Service");
+  protected runtime: unknown;
+
+  constructor(runtime?: unknown) {
+    this.runtime = runtime;
   }
 
   static start(..._args: unknown[]): never {
     unavailable("Service.start");
+  }
+
+  async stop(): Promise<void> {}
+}
+
+export class IMediaGenerationService extends Service {
+  static readonly serviceType = ServiceType.MEDIA_GENERATION;
+  readonly capabilityDescription = "Generates media from prompts.";
+
+  async generateMedia(..._args: unknown[]): Promise<never> {
+    unavailable("IMediaGenerationService.generateMedia");
   }
 }
 
@@ -425,6 +440,13 @@ export type Component = unknown;
 export type Task = unknown;
 export type ActionExample = unknown;
 export type Content = unknown;
+export type ImageGenerationResult = unknown;
+export type MediaGenerationRequest = {
+  mediaType: string;
+  prompt: string;
+  size?: string;
+};
+export type MediaGenerationResponse = Record<string, unknown>;
 
 export default {
   logger,
@@ -460,11 +482,13 @@ export default {
   asUUID,
   splitChunks,
   createMessageMemory,
+  executePlannedToolCall,
   buildCanonicalSystemPrompt,
   resolveEffectiveSystemPrompt,
   renderChatMessagesForPrompt,
   getRequestContext,
   Service,
+  IMediaGenerationService,
   AgentRuntime,
   Semaphore,
   BM25,

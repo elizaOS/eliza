@@ -15,6 +15,10 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
+function isPlausiblePairingToken(token: string): boolean {
+  return /^[A-Za-z0-9_-]{43}$/.test(token);
+}
+
 app.post("/", async (c) => {
   try {
     const body = (await c.req.json().catch(() => null)) as { token?: string } | null;
@@ -27,6 +31,10 @@ app.post("/", async (c) => {
     const origin = c.req.header("origin") ?? null;
     if (!origin) {
       return c.json({ error: "Origin header required" }, 400);
+    }
+
+    if (!isPlausiblePairingToken(token)) {
+      return c.json({ error: "Invalid or expired pairing code" }, 401);
     }
 
     const tokenService = getPairingTokenService();
