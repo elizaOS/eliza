@@ -298,11 +298,26 @@ describe("SignalN8nCredentialProvider", () => {
 // BlueBubbles
 // ---------------------------------------------------------------------------
 describe("BlueBubblesN8nCredentialProvider", () => {
-  test("returns httpQueryAuth credential when both env vars are set", async () => {
+  test("returns httpQueryAuth credential including serverUrl when both env vars are set", async () => {
     const runtime = makeRuntime({ BLUEBUBBLES_PASSWORD: "secret", BLUEBUBBLES_SERVER_URL: "http://localhost:1234" });
     const provider = await BlueBubblesN8nCredentialProvider.start(runtime as never);
     const result = await provider.resolve("user1", "httpQueryAuth");
     expect(result?.status).toBe("credential_data");
+    const data = (result as { data: { name: string; value: string; serverUrl: string } }).data;
+    expect(data.value).toBe("secret");
+    expect(data.serverUrl).toBe("http://localhost:1234");
+  });
+
+  test("returns null when only password is set", async () => {
+    const runtime = makeRuntime({ BLUEBUBBLES_PASSWORD: "secret" });
+    const provider = await BlueBubblesN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "httpQueryAuth")).toBeNull();
+  });
+
+  test("returns null when only serverUrl is set", async () => {
+    const runtime = makeRuntime({ BLUEBUBBLES_SERVER_URL: "http://localhost:1234" });
+    const provider = await BlueBubblesN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "httpQueryAuth")).toBeNull();
   });
 
   test("returns null when env vars are absent", async () => {

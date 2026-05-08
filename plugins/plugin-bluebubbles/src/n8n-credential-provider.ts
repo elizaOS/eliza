@@ -29,7 +29,7 @@ export class BlueBubblesN8nCredentialProvider extends Service {
     if (!password?.trim() || !serverUrl?.trim()) return null;
     return {
       status: 'credential_data',
-      data: { name: 'password', value: password.trim() },
+      data: { name: 'password', value: password.trim(), serverUrl: serverUrl.trim() },
     };
   }
 
