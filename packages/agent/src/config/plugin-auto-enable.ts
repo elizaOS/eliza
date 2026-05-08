@@ -67,6 +67,7 @@ const PROVIDER_PLUGINS: Record<string, string> = {
   "google-antigravity": "@elizaos/plugin-google-antigravity",
   "google-genai": "@elizaos/plugin-google-genai",
   "vercel-ai-gateway": "@elizaos/plugin-vercel-ai-gateway",
+  "codex-cli": "@elizaos/plugin-codex-cli",
   openai: "@elizaos/plugin-openai",
   anthropic: "@elizaos/plugin-anthropic",
   qwen: "@elizaos/plugin-qwen",
