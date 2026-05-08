@@ -10,8 +10,7 @@ import {
   type RunEventPayload,
   Service,
 } from "@elizaos/core";
-import { oauthGetAction } from "../plugin-oauth/actions/oauth-get";
-import { oauthListAction } from "../plugin-oauth/actions/oauth-list";
+import { oauthAction } from "../plugin-oauth/actions/oauth";
 import { userAuthStatusProvider } from "../plugin-oauth/providers/user-auth-status";
 import { appConfigProvider } from "../shared/providers/app-config";
 import { recentMessagesProvider } from "../shared/providers/recent-messages";
@@ -165,8 +164,7 @@ export const cloudBootstrapPlugin: Plugin = {
   actions: [
     generateMediaAction,
     finishAction,
-    oauthListAction,
-    oauthGetAction,
+    oauthAction,
   ] as Plugin["actions"],
   providers: [
     actionStateProvider,

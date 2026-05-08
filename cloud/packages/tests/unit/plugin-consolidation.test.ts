@@ -14,8 +14,7 @@ describe("plugin consolidation", () => {
     expect(oauthPlugin).toBe(namedOauthPlugin);
     expect(oauthPlugin.name).toBe("eliza-cloud-oauth");
     expect(oauthPlugin.actions?.map((action) => action.name).sort()).toEqual([
-      "OAUTH_GET",
-      "OAUTH_LIST",
+      "OAUTH",
     ]);
     expect(oauthPlugin.providers?.map((provider) => provider.name)).toContain("USER_AUTH_STATUS");
   });

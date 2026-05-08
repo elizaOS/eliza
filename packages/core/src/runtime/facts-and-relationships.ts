@@ -100,6 +100,7 @@ export interface FactsAndRelationshipsRunResult {
 	parsed: FactsAndRelationshipsResult;
 	messages: ChatMessage[];
 	tools: ToolDefinition[];
+	rawResponse?: unknown;
 	written: { facts: number; relationships: number };
 }
 
@@ -147,7 +148,7 @@ export async function runFactsAndRelationshipsStage(
 		parsed,
 	});
 
-	return { parsed, messages, tools, written };
+	return { parsed, messages, tools, rawResponse: raw, written };
 }
 
 interface BuildMessagesArgs {
