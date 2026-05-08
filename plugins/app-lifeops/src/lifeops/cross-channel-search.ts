@@ -16,15 +16,13 @@
  * runCrossChannelSearch() to inject context for named persons/topics.
  */
 
-// WS3 dependency — types may not yet be exported from agent index when this
-// file is first compiled. Importing from the source path so type-only
-// resolution succeeds even before the public re-export lands.
+// Graph types and cluster helpers live in @elizaos/core after the
+// RelationshipsGraphService → RelationshipsService merge.
 import {
   getMemoriesForCluster as getClusterMemories,
   type RelationshipsGraphService,
   type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-} from "@elizaos/agent/services/relationships-graph";
+} from "@elizaos/core/services/relationships-graph-builder";
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import type {
@@ -942,9 +940,9 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService = (await resolveRelationshipsGraphService(
-    runtime,
-  )) as RelationshipsGraphServiceWithCluster | null;
+  const baseService = (runtime.getService(
+    "relationships",
+  ) as unknown as RelationshipsGraphServiceWithCluster | null) ?? null;
   const service = baseService
     ? ({
         ...baseService,

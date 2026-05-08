@@ -12,13 +12,6 @@
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
-  type ActivityCollectorEvent,
-  type ActivityCollectorHandle,
-  type ActivityCollectorIdleSample,
-  isSupportedPlatform,
-  startActivityCollector,
-} from "@elizaos/native-activity-tracker";
-import {
   createLifeOpsActivitySignal,
   LifeOpsRepository,
 } from "../lifeops/repository.js";
@@ -31,6 +24,44 @@ export type ActivityTrackerMode =
   | "disabled-non-darwin"
   | "stopped"
   | "failed";
+
+interface ActivityCollectorEvent {
+  ts: number;
+  bundleId?: string;
+  appName?: string;
+  windowTitle?: string | null;
+  event: "activate" | "deactivate" | string;
+}
+
+interface ActivityCollectorIdleSample {
+  ts: number;
+  idleSeconds: number;
+}
+
+interface ActivityCollectorHandle {
+  pid?: number;
+  stop: () => Promise<void> | void;
+}
+
+type ActivityTrackerModule = {
+  isSupportedPlatform: () => boolean;
+  startActivityCollector: (opts: {
+    onEvent: (event: ActivityCollectorEvent) => void;
+    onIdleSample: (sample: ActivityCollectorIdleSample) => void;
+    onExit: (exit: { reason?: string }) => void;
+    onFatal: (reason: string) => void;
+  }) => ActivityCollectorHandle;
+};
+
+async function loadActivityTrackerModule(): Promise<ActivityTrackerModule | null> {
+  try {
+    return (await import(
+      "@elizaos/native-activity-tracker"
+    )) as ActivityTrackerModule;
+  } catch {
+    return null;
+  }
+}
 
 export class ActivityTrackerService extends Service {
   static override readonly serviceType = "activity_tracker";
@@ -72,7 +103,16 @@ export class ActivityTrackerService extends Service {
       return;
     }
 
-    if (!isSupportedPlatform()) {
+    const tracker = await loadActivityTrackerModule();
+    if (!tracker) {
+      this.mode = "disabled-config";
+      logger.info(
+        "[activity-tracker] Native collector package unavailable; reports will use seeded data only.",
+      );
+      return;
+    }
+
+    if (!tracker.isSupportedPlatform()) {
       this.mode = "disabled-non-darwin";
       logger.info(
         { platform: process.platform },
@@ -83,7 +123,7 @@ export class ActivityTrackerService extends Service {
 
     try {
       await LifeOpsRepository.bootstrapSchema(this.runtime);
-      this.handle = startActivityCollector({
+      this.handle = tracker.startActivityCollector({
         onEvent: (event) => {
           this.enqueueEvent(event);
         },

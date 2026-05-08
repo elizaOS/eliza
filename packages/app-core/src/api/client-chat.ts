@@ -985,13 +985,7 @@ ElizaClient.prototype.quickContext = async function (
 ) {
   const params = new URLSearchParams({ q: query });
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  const response = await this.fetch<
-    QuickContextResponse & { knowledge?: QuickContextResponse["documents"] }
-  >(`/api/context/quick?${params}`);
-  return {
-    ...response,
-    documents: response.documents ?? response.knowledge ?? [],
-  };
+  return this.fetch(`/api/context/quick?${params}`);
 };
 
 ElizaClient.prototype.getMemoryFeed = async function (

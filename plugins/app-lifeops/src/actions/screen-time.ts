@@ -19,7 +19,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isSupportedPlatform } from "@elizaos/native-activity-tracker";
 import {
   getActivityReport,
   getTimeOnApp,
@@ -43,6 +42,10 @@ const ACTION_NAME = "SCREEN_TIME";
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_WINDOW_HOURS = 24 * 30;
+
+function isSupportedPlatform(): boolean {
+  return process.platform === "darwin";
+}
 
 type Subaction =
   | "summary"

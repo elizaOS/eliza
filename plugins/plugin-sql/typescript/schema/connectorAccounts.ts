@@ -22,7 +22,7 @@ export const connectorAccountsTable = pgTable(
     role: text("role").notNull().default("OWNER"),
     purpose: jsonb("purpose").$type<string[]>().default(sql`'["messaging"]'::jsonb`).notNull(),
     accessGate: text("access_gate").notNull().default("open"),
-    status: text("status").notNull().default("active"),
+    status: text("status").notNull().default("connected"),
     scopes: jsonb("scopes").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
     capabilities: jsonb("capabilities").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
     profile: jsonb("profile").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),

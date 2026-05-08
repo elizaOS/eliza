@@ -1,20 +1,59 @@
-import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import {
-	listBlueSkyAccountIds,
-	resolveDefaultBlueSkyAccountId,
-} from "../accounts";
+	ChannelType,
+	type Content,
+	type IAgentRuntime,
+	logger,
+	type Memory,
+	Service,
+	type UUID,
+} from "@elizaos/core";
 import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
 import { BLUESKY_SERVICE_NAME } from "../types";
 import {
 	DEFAULT_BLUESKY_ACCOUNT_ID,
+	hasBlueSkyEnabled,
+	listBlueSkyAccountIds,
 	normalizeBlueSkyAccountId,
 	resolveDefaultBlueSkyAccountId,
-	hasBlueSkyEnabled,
 	validateBlueSkyConfig,
 } from "../utils/config";
 import { BlueSkyMessageService } from "./message";
 import { BlueSkyPostService } from "./post";
+
+type BlueSkyMessageConnectorRegistration = Parameters<
+	IAgentRuntime["registerMessageConnector"]
+>[0] & {
+	fetchMessages?: BlueSkyMessageService["fetchConnectorMessages"];
+	contentShaping?: {
+		systemPromptFragment?: string;
+		constraints?: Record<string, unknown>;
+	};
+	accountId?: string;
+};
+
+type BlueSkyPostConnectorRegistration = {
+	source: string;
+	label?: string;
+	description?: string;
+	capabilities?: string[];
+	contexts?: string[];
+	metadata?: Record<string, unknown>;
+	postHandler: (runtime: IAgentRuntime, content: Content) => Promise<Memory>;
+	fetchFeed?: BlueSkyPostService["fetchFeed"];
+	searchPosts?: BlueSkyPostService["searchPosts"];
+	contentShaping?: {
+		systemPromptFragment?: string;
+		constraints?: Record<string, unknown>;
+	};
+	accountId?: string;
+};
+
+type RuntimeWithPostConnector = IAgentRuntime & {
+	registerPostConnector?: (
+		registration: BlueSkyPostConnectorRegistration,
+	) => void;
+};
 
 interface AgentAccounts {
 	defaultAccountId: string;
@@ -46,7 +85,9 @@ export class BlueSkyService extends Service {
 		}
 
 		const accountIds = listBlueSkyAccountIds(runtime);
-		const defaultAccountId = resolveDefaultBlueSkyAccountId(runtime);
+		const defaultAccountId = normalizeBlueSkyAccountId(
+			resolveDefaultBlueSkyAccountId(runtime),
+		);
 		const accounts: AgentAccounts = {
 			defaultAccountId,
 			managers: new Map(),
@@ -56,6 +97,9 @@ export class BlueSkyService extends Service {
 		service.agents.set(runtime.agentId, accounts);
 
 		for (const accountId of accountIds) {
+			if (!hasBlueSkyEnabled(runtime, accountId)) {
+				continue;
+			}
 			const config = validateBlueSkyConfig(runtime, accountId);
 			if (!config.handle || !config.password) {
 				logger.warn(
@@ -110,10 +154,10 @@ export class BlueSkyService extends Service {
 		serviceInstance: BlueSkyService,
 	): void {
 		const accounts = serviceInstance?.agents.get(runtime.agentId);
-		const defaultAccountId = accounts?.defaultAccountId;
-		const messageService = defaultAccountId
-			? accounts?.messageServices.get(defaultAccountId)
-			: undefined;
+		const defaultAccountId = accounts?.defaultAccountId
+			? normalizeBlueSkyAccountId(accounts.defaultAccountId)
+			: normalizeBlueSkyAccountId(resolveDefaultBlueSkyAccountId(runtime));
+		const messageService = accounts?.messageServices.get(defaultAccountId);
 		if (!messageService) {
 			runtime.logger.warn(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
@@ -122,7 +166,7 @@ export class BlueSkyService extends Service {
 			return;
 		}
 
-		const postService = serviceInstance?.getPostService(runtime.agentId);
+		const postService = accounts?.postServices.get(defaultAccountId);
 		if (postService) {
 			BlueSkyService.registerPostConnector(runtime, postService);
 		}
@@ -131,7 +175,7 @@ export class BlueSkyService extends Service {
 		if (typeof runtime.registerMessageConnector === "function") {
 			const registration: BlueSkyMessageConnectorRegistration = {
 				source: "bluesky",
-				accountId,
+				accountId: defaultAccountId,
 				label: "BlueSky",
 				description:
 					"BlueSky DM connector for sending private messages to conversations.",
@@ -146,7 +190,7 @@ export class BlueSkyService extends Service {
 				supportedTargetKinds: ["thread", "user"],
 				contexts: ["social", "connectors"],
 				metadata: {
-					accountId,
+					accountId: defaultAccountId,
 					service: BLUESKY_SERVICE_NAME,
 				},
 				resolveTargets:
@@ -239,7 +283,9 @@ export class BlueSkyService extends Service {
 	): BlueSkyMessageService | undefined {
 		const accounts = this.agents.get(agentId);
 		if (!accounts) return undefined;
-		const id = accountId ?? accounts.defaultAccountId;
+		const id = accountId
+			? normalizeBlueSkyAccountId(accountId)
+			: accounts.defaultAccountId;
 		return accounts.messageServices.get(id);
 	}
 
@@ -249,7 +295,9 @@ export class BlueSkyService extends Service {
 	): BlueSkyPostService | undefined {
 		const accounts = this.agents.get(agentId);
 		if (!accounts) return undefined;
-		const id = accountId ?? accounts.defaultAccountId;
+		const id = accountId
+			? normalizeBlueSkyAccountId(accountId)
+			: accounts.defaultAccountId;
 		return accounts.postServices.get(id);
 	}
 

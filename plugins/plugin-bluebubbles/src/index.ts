@@ -5,14 +5,37 @@
  * supporting text messages, reactions, effects, and more.
  */
 
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+	getConnectorAccountManager,
+	type IAgentRuntime,
+	logger,
+	type Plugin,
+} from "@elizaos/core";
+import { createBlueBubblesConnectorAccountProvider } from "./connector-account-provider.js";
 import { BlueBubblesService } from "./service.js";
 import {
 	blueBubblesSetupRoutes,
 	resolveBlueBubblesWebhookPath,
 } from "./setup-routes.js";
 
+// Account management exports
+export {
+	type BlueBubblesAccountConfig,
+	type BlueBubblesMultiAccountConfig,
+	DEFAULT_ACCOUNT_ID,
+	isMultiAccountEnabled,
+	listBlueBubblesAccountIds,
+	listEnabledBlueBubblesAccounts,
+	normalizeAccountId,
+	type ResolvedBlueBubblesAccount,
+	resolveBlueBubblesAccount,
+	resolveDefaultBlueBubblesAccountId,
+} from "./accounts.js";
+// ConnectorAccountManager provider exports
+export {
+	BLUEBUBBLES_PROVIDER_ID,
+	createBlueBubblesConnectorAccountProvider,
+} from "./connector-account-provider.js";
 export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
@@ -37,9 +60,27 @@ const blueBubblesPlugin: Plugin = {
 
 	init: async (
 		config: Record<string, string>,
-		_runtime: IAgentRuntime,
+		runtime: IAgentRuntime,
 	): Promise<void> => {
 		logger.info("Initializing BlueBubbles plugin...");
+
+		// Register the BlueBubbles provider with the ConnectorAccountManager so
+		// the HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+		// can list, create, patch, and delete BlueBubbles accounts.
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(
+				createBlueBubblesConnectorAccountProvider(runtime),
+			);
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:bluebubbles",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register BlueBubbles provider with ConnectorAccountManager",
+			);
+		}
 
 		const hasServerUrl = Boolean(
 			config.BLUEBUBBLES_SERVER_URL || process.env.BLUEBUBBLES_SERVER_URL,

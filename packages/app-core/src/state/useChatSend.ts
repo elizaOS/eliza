@@ -376,7 +376,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           const lines = [
             formatSearchBullet("Saved / commands", savedCommandNames),
             formatSearchBullet("Custom action / commands", customCommandNames),
-            "Use #remember ... to save memory notes. Use #memory or #knowledge to target retrieval.",
+            "Use #remember ... to save memory notes. Use #memory or #documents to target retrieval.",
             "Use $query for a quick, non-persistent context answer.",
           ];
           appendLocalCommandTurn(rawText, lines.join("\n\n"));

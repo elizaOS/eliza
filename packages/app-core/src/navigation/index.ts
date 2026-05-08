@@ -304,7 +304,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   automations: "/automations",
   triggers: "/automations",
   inventory: "/wallet",
-  knowledge: "/character/documents",
+  documents: "/character/documents",
   connectors: "/connectors",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
