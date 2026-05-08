@@ -1,9 +1,4 @@
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createSignalConnectorAccountProvider } from "./connector-account-provider";
 
 // Service
@@ -102,11 +97,6 @@ const signalPlugin: Plugin = {
 
 export default signalPlugin;
 
-// ConnectorAccountManager provider exports
-export {
-  createSignalConnectorAccountProvider,
-  SIGNAL_PROVIDER_ID,
-} from "./connector-account-provider";
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,
@@ -129,6 +119,11 @@ export type {
   SignalConfig,
   SignalReactionLevel,
 } from "./config";
+// ConnectorAccountManager provider exports
+export {
+  createSignalConnectorAccountProvider,
+  SIGNAL_PROVIDER_ID,
+} from "./connector-account-provider";
 // Pairing service (device linking via QR code / signal-cli)
 export {
   type SignalPairingEvent,
