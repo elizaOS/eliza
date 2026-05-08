@@ -1,5 +1,5 @@
 /**
- * Agent Browser Bridge plugin export.
+ * @elizaos/plugin-browser plugin export.
  *
  * plugin-collector discovers `routes` and `schema` at runtime. Eliza loads
  * this as a core plugin so the Browser Workspace UI and browser companion
@@ -15,7 +15,9 @@ import {
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { browserBridgeActions } from "./actions.js";
+import { browserBridgeActions } from "./actions/bridge.js";
+import { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
+import { browserSessionAction } from "./actions/browser-session.js";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
@@ -182,8 +184,12 @@ const browserBridgePluginRoutes: Route[] = [
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
-    "Browser plugin: unified BROWSER and MANAGE_BROWSER_BRIDGE actions. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge — settings, pairing, tab + page-context sync, and packaging artifacts.",
+    "Browser plugin: BROWSER + MANAGE_BROWSER_BRIDGE actions. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge — settings, pairing, tab + page-context sync, and packaging artifacts.",
   schema: browserBridgeSchema,
   routes: browserBridgePluginRoutes,
-  actions: browserBridgeActions,
+  actions: [
+    browserSessionAction,
+    browserAutofillLoginAction,
+    ...browserBridgeActions,
+  ],
 };

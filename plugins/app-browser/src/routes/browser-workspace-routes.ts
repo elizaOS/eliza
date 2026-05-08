@@ -1,14 +1,9 @@
 /**
  * Browser workspace HTTP routes.
  *
- * Migrated from `packages/agent/src/api/browser-workspace-routes.ts`. The
- * runtime mounts these via `Plugin.routes` with `rawPath: true` so the
- * legacy `/api/browser-workspace/*` paths are preserved.
- *
- * The handler depends on the browser-workspace service helpers exported
- * from `@elizaos/agent/services/browser-workspace`. We keep the dependency
- * direction app-browser → agent (app-browser already lists agent in its
- * dependencies for `gatePluginSessionForHostedApp`).
+ * The runtime mounts these via `Plugin.routes` with `rawPath: true` so the
+ * legacy `/api/browser-workspace/*` paths are preserved. Implementation
+ * lives in `@elizaos/plugin-browser/workspace`; this is the HTTP edge.
  */
 
 import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
@@ -25,7 +20,7 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/plugin-browser/workspace";
 
 type OpenBrowserWorkspaceBody = {
   url?: string;

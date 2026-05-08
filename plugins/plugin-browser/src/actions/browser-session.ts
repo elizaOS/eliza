@@ -9,7 +9,7 @@ import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
-} from "../services/browser-workspace.js";
+} from "../workspace/browser-workspace.js";
 
 type BrowserSessionParameters = {
   id?: string;

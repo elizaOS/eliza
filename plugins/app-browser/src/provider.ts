@@ -1,7 +1,7 @@
 import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-browser/workspace";
 import {
   getStewardPendingApprovals,
   getStewardWalletStatus,

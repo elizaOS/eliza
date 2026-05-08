@@ -43,7 +43,7 @@ import {
   evaluateBrowserWorkspaceTab,
   isBrowserWorkspaceBridgeConfigured,
   listBrowserWorkspaceTabs,
-} from "../services/browser-workspace.js";
+} from "../workspace/browser-workspace.js";
 
 interface BrowserAutofillLoginParameters {
   domain?: string;

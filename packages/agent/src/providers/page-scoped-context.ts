@@ -40,7 +40,7 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-character":
     "The user is in the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Name, voice, and system prompt live in Settings > Identity; Personality focuses on bio, style rules, message examples, and evolution history; Knowledge holds uploaded and learned knowledge; Experience surfaces durable learnings the agent recorded; Relationships shows the full relationship graph, facts, memories, and user-scoped personality preferences. When the user asks what to do, explain the relevant hub section, recommend the next improvement from live state, and offer to draft exact copy. Guide the user to the relevant section rather than fabricate a generic setter action.",
   "page-automations":
-    "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, updateTriggerTaskAction, deleteTriggerTaskAction, runTriggerNowAction, createWorkflowAction, deleteWorkflowAction, toggleWorkflowActiveAction, promoteTaskToWorkflowAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
+    "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: WORKFLOW (op-based dispatch — create/modify/activate/deactivate/toggle_active/delete/executions/promote_task for n8n workflows; create_trigger/update_trigger/delete_trigger/run_trigger for scheduled triggers) and manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":
     "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: APP with mode launch, relaunch, list, load_from_directory, or create. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
   "page-connectors":
@@ -57,7 +57,7 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, native Hyperliquid and Polymarket readiness, and Vincent delegated trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking any available action. If the user asks about Hyperliquid or Polymarket, prefer native app surfaces for reads/status and only surface Vincent for delegated automated trading. Never invent balances, positions, fills, markets, odds, or execution support.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
-    '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
+    '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → WORKFLOW with op="create_trigger" and a clear displayName, instructions, and schedule.\n' +
     '- Goal to work toward until done (e.g. "figure out the onboarding refactor") → START_CODING_TASK with name and description.\n' +
     '- Deterministic pipeline of integration steps (e.g. "when a Slack message matches X, post to Discord") → create an n8n workflow via the n8n actions.\n' +
     "Ask one short clarifying question only if the shape is genuinely ambiguous; otherwise create immediately. After creation, briefly confirm what you made and how to run it.",
@@ -220,7 +220,7 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
     const { getBrowserWorkspaceSnapshot } = await import(
-      "../services/browser-workspace.js"
+      "@elizaos/plugin-browser/workspace"
     );
     const snapshot = await getBrowserWorkspaceSnapshot();
     const lines: string[] = [
