@@ -167,10 +167,7 @@ export function createSlackConnectorAccountProvider(
       };
     },
 
-    patchAccount: async (
-      _accountId: string,
-      patch: ConnectorAccountPatch,
-    ) => {
+    patchAccount: async (_accountId: string, patch: ConnectorAccountPatch) => {
       return { ...patch, provider: SLACK_SERVICE_NAME };
     },
 
@@ -211,7 +208,9 @@ export function createSlackConnectorAccountProvider(
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
-        throw new Error("Slack OAuth callback is missing an authorization code.");
+        throw new Error(
+          "Slack OAuth callback is missing an authorization code.",
+        );
       }
 
       const config = readClientConfig(runtime);
@@ -237,7 +236,9 @@ export function createSlackConnectorAccountProvider(
       });
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Slack token exchange failed with ${response.status}: ${body}`);
+        throw new Error(
+          `Slack token exchange failed with ${response.status}: ${body}`,
+        );
       }
       const parsed = (await response.json()) as SlackOAuthV2Response;
       if (!parsed.ok || !parsed.access_token) {

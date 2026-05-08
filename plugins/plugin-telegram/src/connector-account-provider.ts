@@ -11,12 +11,12 @@
  * see a uniform list. Multi-account configs declared on character.settings.telegram
  * are surfaced verbatim from manager-owned storage.
  */
-import {
-  type ConnectorAccount,
-  type ConnectorAccountManager,
-  type ConnectorAccountPatch,
-  type ConnectorAccountProvider,
-  type IAgentRuntime,
+import type {
+  ConnectorAccount,
+  ConnectorAccountManager,
+  ConnectorAccountPatch,
+  ConnectorAccountProvider,
+  IAgentRuntime,
 } from '@elizaos/core';
 import {
   DEFAULT_ACCOUNT_ID,
@@ -111,10 +111,7 @@ export function createTelegramConnectorAccountProvider(
       };
     },
 
-    patchAccount: async (
-      _accountId: string,
-      patch: ConnectorAccountPatch,
-    ) => {
+    patchAccount: async (_accountId: string, patch: ConnectorAccountPatch) => {
       return { ...patch, provider: TELEGRAM_SERVICE_NAME };
     },
 
