@@ -1,4 +1,6 @@
 import {
+  getAccountPrivacy,
+  getConnectorAccountManager,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -16,6 +18,10 @@ import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
+import {
+  canSurfaceForAudience,
+  type LifeOpsAudience,
+} from "../lifeops/privacy.js";
 import {
   canSurfaceConnectorAccountData,
   connectorAccountPrivacyKey,
@@ -188,7 +194,7 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner and agent only. Provides LifeOps overview plus live calendar and Gmail context. Route executable personal follow-through like todos, habits, goals, reminders, alarms, and live todo-status questions to LIFE; all owner calendar, scheduling, availability, and Calendly work to CALENDAR; all owner inbox and Gmail/email work to TRIAGE_MESSAGES; morning/night self-review flows to CHECKIN; stable owner profile or travel preferences only to PROFILE; subscription audits, cancellations, and cancellation-status checks to SUBSCRIPTIONS; meeting-prep and person-background briefs to RELATIONSHIP; travel booking to BOOK_TRAVEL; X/Twitter reads and search to X; fixed-duration or generic focus blocks to WEBSITE_BLOCK; task-gated focus blocks only to BLOCK_UNTIL_TASK_COMPLETE; browser-companion management to MANAGE_BROWSER_BRIDGE; browser tab control to BROWSER; password-manager field fill on a trusted site to AUTOFILL; pending approval decisions to RESOLVE_REQUEST. Available in private owner conversations, including Discord.",
+    "Owner and agent only. Provides LifeOps overview plus live calendar and Gmail context. Route executable personal follow-through like todos, habits, goals, reminders, alarms, and live todo-status questions to LIFE; all owner calendar, scheduling, availability, and Calendly work to CALENDAR; all owner inbox, Gmail/email, draft, reply, and message-management work to MESSAGE with the appropriate operation; stable owner profile or travel preferences only to PROFILE; subscription audits, cancellations, and cancellation-status checks to SUBSCRIPTIONS; meeting-prep and person-background briefs to RELATIONSHIP; travel booking to BOOK_TRAVEL; X/Twitter reads and search to X; fixed-duration or generic focus blocks to WEBSITE_BLOCK; task-gated focus blocks only to BLOCK_UNTIL_TASK_COMPLETE; browser-companion management to MANAGE_BROWSER_BRIDGE; browser tab control to BROWSER; password-manager field fill on a trusted site to AUTOFILL; pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
   descriptionCompressed:
     "LifeOps overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
@@ -228,9 +234,11 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
+    const isOwner = await hasLifeOpsAccess(runtime, message);
+    if (!isOwner) {
       return { text: "", values: {}, data: {} };
     }
+    const audience: LifeOpsAudience = "owner";
 
     try {
       const service = new LifeOpsService(runtime);
@@ -241,6 +249,47 @@ export const lifeOpsProvider: Provider = {
         agentId: runtime.agentId,
         entityId: message.entityId,
       });
+      const accountManager = getConnectorAccountManager(runtime);
+      const connectorAccounts = await accountManager
+        .listAccounts("google")
+        .catch(() => []);
+      const privacyByAccountKey = new Map<
+        string,
+        ReturnType<typeof getAccountPrivacy>
+      >();
+      for (const account of connectorAccounts) {
+        const privacy = getAccountPrivacy(account);
+        privacyByAccountKey.set(account.id, privacy);
+        if (account.externalId) {
+          privacyByAccountKey.set(account.externalId, privacy);
+        }
+        const email =
+          typeof account.metadata?.email === "string"
+            ? account.metadata.email.toLowerCase()
+            : null;
+        if (email) {
+          privacyByAccountKey.set(`email:${email}`, privacy);
+        }
+      }
+
+      const resolveAccountPrivacy = (
+        connectorAccountId: string | null,
+        identityEmail: string | null,
+      ): ReturnType<typeof getAccountPrivacy> => {
+        if (connectorAccountId) {
+          const direct = privacyByAccountKey.get(connectorAccountId);
+          if (direct) return direct;
+        }
+        if (identityEmail) {
+          const byEmail = privacyByAccountKey.get(
+            `email:${identityEmail.toLowerCase()}`,
+          );
+          if (byEmail) return byEmail;
+        }
+        return "owner_only";
+      };
+
+      let privacyFilteredCount = 0;
       let privacyPolicies = mapConnectorAccountPrivacyPolicies([]);
       try {
         privacyPolicies = mapConnectorAccountPrivacyPolicies(
@@ -282,6 +331,20 @@ export const lifeOpsProvider: Provider = {
               ? (account.grant.connectorAccountId ??
                 deriveConnectorAccountIdFromGrant(account.grant))
               : null;
+            const identityEmail =
+              typeof (account.identity as Record<string, unknown> | null)
+                ?.email === "string"
+                ? String((account.identity as Record<string, unknown>).email)
+                : null;
+            const accountPrivacy = resolveAccountPrivacy(
+              connectorAccountId,
+              identityEmail,
+            );
+            if (!canSurfaceForAudience(accountPrivacy, audience)) {
+              privacyFilteredCount += 1;
+              accountLines.push("- Google account [redacted: owner_only]");
+              continue;
+            }
             const policy = connectorAccountId
               ? (privacyPolicies.get(
                   connectorAccountPrivacyKey("google", connectorAccountId),
@@ -318,6 +381,22 @@ export const lifeOpsProvider: Provider = {
             ? (status.grant.connectorAccountId ??
               deriveConnectorAccountIdFromGrant(status.grant))
             : null;
+          const statusIdentityEmail =
+            typeof (status.identity as Record<string, unknown> | null)
+              ?.email === "string"
+              ? String((status.identity as Record<string, unknown>).email)
+              : null;
+          const statusPrivacy = resolveAccountPrivacy(
+            connectorAccountId,
+            statusIdentityEmail,
+          );
+          const statusAllowedByMetadataPrivacy = canSurfaceForAudience(
+            statusPrivacy,
+            audience,
+          );
+          if (!statusAllowedByMetadataPrivacy) {
+            privacyFilteredCount += 1;
+          }
           const policy = connectorAccountId
             ? (privacyPolicies.get(
                 connectorAccountPrivacyKey("google", connectorAccountId),
@@ -332,7 +411,9 @@ export const lifeOpsProvider: Provider = {
           );
 
           if (hasCalendar) {
-            if (
+            if (!statusAllowedByMetadataPrivacy) {
+              calendarLines.push("Calendar context [redacted: owner_only]");
+            } else if (
               !canSurfaceConnectorAccountData({
                 context: egressContext,
                 provider: "google",
@@ -360,7 +441,9 @@ export const lifeOpsProvider: Provider = {
           }
 
           if (hasGmail) {
-            if (
+            if (!statusAllowedByMetadataPrivacy) {
+              emailLines.push("Gmail context [redacted: owner_only]");
+            } else if (
               !canSurfaceConnectorAccountData({
                 context: egressContext,
                 provider: "google",
@@ -399,32 +482,38 @@ export const lifeOpsProvider: Provider = {
         );
       }
 
+      if (privacyFilteredCount > 0) {
+        logger.debug(
+          `[LifeOpsPrivacy] filtered ${privacyFilteredCount} accounts of provider google for audience ${audience}`,
+        );
+      }
+
       return {
         text: [
           "## Life Ops",
           "Use LIFE for executable personal follow-through: todos, habits, goals, reminders, alarms, escalation, and live status questions like 'what's on my todo list today?'. Examples: 'add a todo', 'remember to call mom on Sunday', 'track my gym sessions three times a week', 'set a goal to save $5,000'. Do not use REPLY, UPDATE_ENTITY, or PROFILE for these.",
           "Use CALENDAR for live calendar reads, calendar writes, availability, proposed meeting times, scheduling preferences, and scheduling negotiation. Examples: 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', 'schedule a dentist appointment next Tuesday at 3pm', 'find meeting options with Alice', or 'protect my sleep window from calls'. Do not answer these from provider context alone.",
-          "Use TRIAGE_MESSAGES for Gmail, email, and cross-channel inbox review: 'triage my Gmail inbox', 'summarize my unread emails', 'triage my inbox', 'give me my inbox digest', daily briefs, missed-call repair, and group-chat handoff. Use DRAFT_REPLY when the owner asks to draft a reply to an existing message, RESPOND_TO_MESSAGE when the owner asks to send/respond to an existing message, and MANAGE_MESSAGE for unsubscribe, block, archive, trash, spam, label, or mark-read requests. Do not use TRIAGE_MESSAGES just because the user mentioned email or messages while venting.",
-          "Use SEND_DRAFT for owner-scoped outbound messages and drafts on the owner's behalf. Examples: 'send a Telegram message to Jane saying I am running late', 'send a Signal message to Priya saying thanks', 'email alice@example.com the notes', 'DM Bob on Discord', or 'text Sam that I am outside'. Always prefer SEND_DRAFT over CALENDAR for relaying a message, even if the message text mentions a meeting.",
+          "Use MESSAGE operation=triage/list_inbox/search_inbox for Gmail, email, and cross-channel inbox review: 'triage my Gmail inbox', 'summarize my unread emails', 'triage my inbox', 'give me my inbox digest', daily briefs, missed-call repair, and group-chat handoff. Use MESSAGE operation=draft_reply when the owner asks to draft a reply to an existing message, MESSAGE operation=respond when the owner asks to send/respond to an existing message, and MESSAGE operation=manage for unsubscribe, block, archive, trash, spam, label, or mark-read requests. Do not use MESSAGE just because the user mentioned email or messages while venting.",
+          "Use MESSAGE operation=send_draft for owner-scoped outbound messages and drafts on the owner's behalf. Examples: 'send a Telegram message to Jane saying I am running late', 'send a Signal message to Priya saying thanks', 'email alice@example.com the notes', 'DM Bob on Discord', or 'text Sam that I am outside'. Always prefer MESSAGE operation=send_draft over CALENDAR for relaying a message, even if the message text mentions a meeting.",
           "Use PASSWORD_MANAGER for credential lookup and saved-login requests. Examples: 'look up my GitHub password', 'show me my saved logins for github.com', 'copy my AWS password to clipboard'. Do not surface raw secrets in chat.",
           "Use RELATIONSHIP for Rolodex contacts, follow-ups, and days-since-contact questions. Examples: 'who are my closest contacts?', 'remind me to follow up with David next week', 'how long has it been since I talked to David?'.",
           "Use SCREEN_TIME for quantitative device/app/website usage questions. Examples: 'how much screen time have I used today?', 'break down my screen time by app this week', 'what websites did I spend the most time on?'. If the owner is only reflecting or venting like 'I spend too much time on my phone', stay in chat instead of calling SCREEN_TIME.",
           "Use APP_BLOCK for phone app blocking requests. Examples: 'block all games on my phone until 6pm', 'block the Slack app while I focus on deep work'. Use WEBSITE_BLOCK for websites like reddit.com or youtube.com, not phone apps.",
-          "Use SUBSCRIPTIONS for subscription audits, recurring membership reviews, cancellation requests, and cancellation-status checks. Examples: 'audit my subscriptions', 'cancel my Google Play subscription', 'unsubscribe from Netflix', 'what happened with that subscription cancellation?', 'cancel this subscription even if it needs sign-in first'. Use this instead of generic browser automation when the user is asking for subscription-specific work, and do not switch to TRIAGE_MESSAGES or SEND_DRAFT just because the cancellation flow needs login, MFA, or a human handoff.",
+          "Use SUBSCRIPTIONS for subscription audits, recurring membership reviews, cancellation requests, and cancellation-status checks. Examples: 'audit my subscriptions', 'cancel my Google Play subscription', 'unsubscribe from Netflix', 'what happened with that subscription cancellation?', 'cancel this subscription even if it needs sign-in first'. Use this instead of generic browser automation when the user is asking for subscription-specific work, and do not switch to MESSAGE just because the cancellation flow needs login, MFA, or a human handoff.",
           "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
           "Use PROFILE only for stable owner-only profile details and reusable travel-preference checklists. Do not use it for goals, todos, reminders, temporary plans, or live task state.",
           "Use X for X/Twitter reads and search: DMs, timeline, mentions, and topic search. Do not reply that X/Twitter access is unavailable when this action is available.",
           "Use WEBSITE_BLOCK for fixed-duration or generic focus blocks like 'block twitter and reddit for 2 hours' or 'turn on a focus block for all social media sites'. Use BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task, workout, or todo, like 'block x.com until I finish my workout'.",
-          "Use CHAT_THREAD for targeted connector chat mute/unmute when the owner names a Telegram/Discord/etc. room that is not the current chat, especially temporary mutes like 'mute the crypto signals Telegram group for 24 hours'. Do not fall back to generic MUTE_ROOM for named off-thread chat controls.",
-          "Use DEVICE_INTENT for multi-device reminders, push ladders, document-signing nudges, updated-ID interventions, and device-level warnings. Examples: 'for important meetings, remind me an hour before, ten minutes before, and right when they start on both my Mac and my phone', 'if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now', or 'if the only ID on file is expired, ask me for an updated copy so the workflow can continue'. Do not stay in REPLY just because the exact reservation, workflow item, or upload is still unspecified. Use COMPUTER_USE for portal uploads, Finder/Desktop work like taking screenshots or creating folders, browser workflows, and file-handling tasks on the owner's machine, including future instructions like 'when I send over the deck, upload it to the portal for me.'",
+          "Use ROOM_OP for targeted connector chat mute/unmute when the owner names a Telegram/Discord/etc. room that is not the current chat, especially temporary mutes like 'mute the crypto signals Telegram group for 24 hours'. Pass platform + chatName + durationMinutes; ROOM_OP also handles current-room follow/unfollow/mute/unmute when those parameters are omitted.",
+          "Use COMPUTER_USE for portal uploads, Finder/Desktop work like taking screenshots or creating folders, browser workflows, and file-handling tasks on the owner's machine, including future instructions like 'when I send over the deck, upload it to the portal for me.'",
           "Use MANAGE_BROWSER_BRIDGE for installing/refreshing the Chrome/Safari companion extension and managing companion connection state ('open chrome extensions', 'reveal the bridge folder', 'refresh browser bridge'). Use BROWSER for tab control, navigation, clicks, typing, screenshots, and DOM reads — including LifeOps browser sessions like 'list my browser tabs' or 'navigate the work tab to gmail'.",
           "Use REMOTE_DESKTOP to start, list, check, end, or revoke a remote desktop session so the owner can connect from a phone. Requests like 'start a remote desktop session' or 'let me connect from my phone' belong here even if the action needs confirmation or a pairing step.",
           "Use RESOLVE_REQUEST when the owner is resolving a pending approval item. Examples: 'approve the pending travel booking request' or 'reject that pending approval request and say it needs changes'.",
-          "Use VOICE_CALL for phone-call escalation or booking calls. These actions can draft or request confirmation first; they do not require the dial to happen on the first turn. Requests like 'if you get stuck in the browser or on my computer, call me and let me jump in to unblock it' belong here. Requests like 'call the dentist and reschedule my appointment' or 'phone my cable company about the outage' also belong to VOICE_CALL, not CALENDAR, LIFE, or SEND_DRAFT.",
+          "Use VOICE_CALL for phone-call escalation or booking calls. These actions can draft or request confirmation first; they do not require the dial to happen on the first turn. Requests like 'if you get stuck in the browser or on my computer, call me and let me jump in to unblock it' belong here. Requests like 'call the dentist and reschedule my appointment' or 'phone my cable company about the outage' also belong to VOICE_CALL, not CALENDAR, LIFE, or MESSAGE operation=send_draft.",
           "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
           "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
           "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
-          "Route examples: sleep/no-call windows -> CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> TRIAGE_MESSAGES; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> TRIAGE_MESSAGES; outbound Telegram/Signal/email/Discord/SMS drafts -> SEND_DRAFT; subscription audits or cancellations -> SUBSCRIPTIONS; travel preference memory -> PROFILE; clinic-doc reminders or multi-device meeting ladders -> DEVICE_INTENT; portal upload or browser filing -> COMPUTER_USE; if the agent gets stuck and should phone the owner -> VOICE_CALL.",
+          "Route examples: sleep/no-call windows -> CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> MESSAGE operation=triage; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> MESSAGE operation=triage; outbound Telegram/Signal/email/Discord/SMS drafts -> MESSAGE operation=send_draft; subscription audits or cancellations -> SUBSCRIPTIONS; travel preference memory -> PROFILE; portal upload or browser filing -> COMPUTER_USE; if the agent gets stuck and should phone the owner -> VOICE_CALL.",
           "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
           "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
           ...summarizeOwnerProfile(ownerProfile),

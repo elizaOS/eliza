@@ -2,6 +2,7 @@ import { Button, MetaPill, PagePanel } from "@elizaos/ui";
 import {
   AtSign,
   BadgeCheck,
+  Bot,
   Brain,
   CalendarClock,
   Crown,
@@ -16,8 +17,10 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  Shield,
   Smile,
   Sparkles,
+  User,
 } from "lucide-react";
 import {
   type ComponentType,
@@ -28,6 +31,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../../api/client";
+import type { DocumentRecord } from "../../../api/client-types-chat";
 import type {
   RelationshipsGraphEdge,
   RelationshipsPersonDetail,
@@ -946,6 +950,121 @@ export function RelationshipsUserPreferencesPanel({
           {shownPreferences.map(renderPreference)}
           <MoreItems count={overflowCount(person.userPersonalityPreferences)}>
             {hiddenPreferences.map(renderPreference)}
+          </MoreItems>
+        </div>
+      )}
+    </DataPanel>
+  );
+}
+
+export function RelationshipsDocumentsPanel({
+  person,
+}: {
+  person: RelationshipsDisplayPerson;
+}) {
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const memberEntityIds = person.memberEntityIds;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    const memberSet = new Set(memberEntityIds);
+
+    async function load() {
+      try {
+        const response = await client.listDocuments({
+          scope: "user-private",
+          limit: 100,
+        });
+        if (cancelled) return;
+        const matched = response.documents.filter((doc) => {
+          if (doc.scopedToEntityId && memberSet.has(doc.scopedToEntityId)) {
+            return true;
+          }
+          if (doc.addedBy && memberSet.has(doc.addedBy)) return true;
+          return false;
+        });
+        setDocuments(matched);
+      } catch (loadError) {
+        if (cancelled) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load documents.",
+        );
+        setDocuments([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [memberEntityIds]);
+
+  const shownDocuments = visibleItems(documents);
+  const hiddenDocuments = documents.slice(PANEL_PREVIEW_LIMIT);
+
+  const renderDocument = (doc: DocumentRecord) => {
+    const ScopeIcon =
+      doc.scope === "owner-private"
+        ? Shield
+        : doc.scope === "agent-private"
+          ? Bot
+          : doc.scope === "global"
+            ? Globe2
+            : User;
+    return (
+      <div
+        key={doc.id}
+        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <IconPill icon={FileText} ariaLabel="Document">
+            {doc.filename}
+          </IconPill>
+          <IconPill icon={ScopeIcon} ariaLabel="Scope">
+            {doc.scope ?? "global"}
+          </IconPill>
+          {doc.createdAt ? (
+            <span
+              className="ml-auto inline-flex items-center gap-1 text-2xs text-muted"
+              title={formatDateTime(doc.createdAt, { fallback: "No date" })}
+            >
+              <CalendarClock className="h-3 w-3" />
+              {formatCompactDate(doc.createdAt)}
+            </span>
+          ) : null}
+        </div>
+        {doc.content?.text ? (
+          <div className="mt-2 text-sm leading-6 text-txt">
+            {cleanPreviewText(doc.content.text)}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <DataPanel label="Documents" icon={FileText} count={documents.length}>
+      {loading ? (
+        <PanelEmpty icon={FileText}>Loading documents...</PanelEmpty>
+      ) : error ? (
+        <PanelEmpty icon={FileText}>{error}</PanelEmpty>
+      ) : documents.length === 0 ? (
+        <PanelEmpty icon={FileText}>No documents.</PanelEmpty>
+      ) : (
+        <div className="space-y-2">
+          {shownDocuments.map(renderDocument)}
+          <MoreItems count={overflowCount(documents)}>
+            {hiddenDocuments.map(renderDocument)}
           </MoreItems>
         </div>
       )}

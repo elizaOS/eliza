@@ -2,8 +2,6 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
-export { chatThreadAction } from "./actions/chat-thread.js";
-export { checkinAction } from "./actions/checkin.js";
 export { connectorAction } from "./actions/connector.js";
 export { healthAction } from "./actions/health.js";
 export { lifeAction } from "./actions/life.js";

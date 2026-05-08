@@ -6,7 +6,8 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
+import { createGoogleChatConnectorAccountProvider } from "./connector-account-provider.js";
 import { GoogleChatService } from "./service.js";
 
 export * from "./accounts.js";
@@ -14,6 +15,7 @@ export * from "./accounts.js";
 // the MessageConnector registered by GoogleChatService.
 // Export types
 export * from "./types.js";
+// Export service
 export { GoogleChatService };
 
 /**
@@ -34,8 +36,21 @@ const googleChatPlugin: Plugin = {
   /**
    * Plugin initialization hook
    */
-  init: async (config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing Google Chat plugin...");
+
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createGoogleChatConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:google-chat",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Google Chat provider with ConnectorAccountManager"
+      );
+    }
 
     // Log configuration status
     const serviceAccount =

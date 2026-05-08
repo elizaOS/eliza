@@ -20,7 +20,7 @@ export default buildConnectorCertificationScenario({
       name: "signal-session-revoked",
       text: "Read the Signal thread and send the reply, but if the linked Signal session was revoked, say that clearly and ask for re-linking instead of claiming the reply was delivered.",
       responseIncludesAny: ["signal", "revoked", "relink", "reply"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["signal", "revoked", "relink", "reply"],
     },
   ],

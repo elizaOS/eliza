@@ -3,7 +3,7 @@
  *
  * Two invariants the agent relies on:
  *
- *   1. LifeOps umbrella actions (TRIAGE_MESSAGES, CALENDAR, etc.) are visible to the LLM in any
+ *   1. LifeOps umbrella actions (MESSAGE, CALENDAR, etc.) are visible to the LLM in any
  *      channel — no `gatePluginSessionForHostedApp` wrapper that hides them
  *      when the LifeOps UI isn't foregrounded. Previously the plugin wrapped
  *      every action's validate() to return false unless an AppManager run or
@@ -73,12 +73,12 @@ function findAction(name: string) {
 }
 
 describe("LifeOps plugin action gating", () => {
-  it("registers TRIAGE_MESSAGES so the LLM can see owner inbox/email work without a LifeOps UI session", async () => {
+  it("registers MESSAGE so the LLM can see owner inbox/email work without a LifeOps UI session", async () => {
     // The previous `gatePluginSessionForHostedApp` wrapper made every action's
     // validate() return false unless an AppManager run or overlay heartbeat
     // existed for @elizaos/app-lifeops. Neither is set up in this test, so if
     // the wrapper were still in place validate() would return false here.
-    const ownerInbox = findAction("TRIAGE_MESSAGES");
+    const ownerInbox = findAction("MESSAGE");
     const message = ownerMessage(
       "what emails do i have that i need to respond to",
     );
@@ -92,13 +92,12 @@ describe("LifeOps plugin action gating", () => {
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
     // Spot-check a mix of categories: email, calendar, inbox, scheduling, followups.
     for (const expected of [
-      "TRIAGE_MESSAGES",
+      "MESSAGE",
       "CALENDAR",
       "LIFE",
       "RELATIONSHIP",
-      "SEND_DRAFT",
+      "MESSAGE",
       "BOOK_TRAVEL",
-      "DEVICE_INTENT",
       "RESOLVE_REQUEST",
     ]) {
       expect(actionNames).toContain(expected);
@@ -116,6 +115,7 @@ describe("LifeOps plugin action gating", () => {
       "COMPUTE_TRAVEL_BUFFER",
       "REGISTER_BROWSER_SESSION",
       "FETCH_BROWSER_ACTIVITY",
+      "CHECKIN",
     ]) {
       expect(actionNames).not.toContain(removed);
     }

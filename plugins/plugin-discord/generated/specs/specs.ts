@@ -44,7 +44,7 @@ export const coreActionsSpec = {
       "parameters": []
     },
     {
-      "name": "DISCORD_MEDIA",
+      "name": "DISCORD_MEDIA_OP",
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
@@ -60,7 +60,7 @@ export const coreActionsSpec = {
     },
     {
       "name": "DISCORD_SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read instead.",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
         "SUMMARIZE_HISTORY",
@@ -74,9 +74,8 @@ export const coreActionsSpec = {
       "description": "Create a Discord poll when the user asks for a poll or vote.",
       "descriptionCompressed": "Create Discord poll.",
       "similes": [
-        "CREATE_POLL",
-        "MAKE_POLL",
-        "START_VOTE"
+        "DISCORD_MAKE_POLL",
+        "DISCORD_START_VOTE"
       ],
       "parameters": []
     },
@@ -108,7 +107,7 @@ export const allActionsSpec = {
       "parameters": []
     },
     {
-      "name": "DISCORD_MEDIA",
+      "name": "DISCORD_MEDIA_OP",
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
@@ -124,7 +123,7 @@ export const allActionsSpec = {
     },
     {
       "name": "DISCORD_SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read instead.",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
         "SUMMARIZE_HISTORY",
@@ -138,9 +137,8 @@ export const allActionsSpec = {
       "description": "Create a Discord poll when the user asks for a poll or vote.",
       "descriptionCompressed": "Create Discord poll.",
       "similes": [
-        "CREATE_POLL",
-        "MAKE_POLL",
-        "START_VOTE"
+        "DISCORD_MAKE_POLL",
+        "DISCORD_START_VOTE"
       ],
       "parameters": []
     },

@@ -12,22 +12,46 @@ import type {
 } from "@elizaos/core";
 import {
   logger,
+  messageAction,
   SearchCategoryRegistryError,
   ServiceType,
 } from "@elizaos/core";
 import {
+  databaseAction,
   registerVectorSearchCategory,
-  searchVectorsAction,
 } from "./database.js";
 import {
+  contactAction,
   registerEntitySearchCategory,
-  searchEntityAction,
-} from "./entity-actions.js";
+} from "./contact.js";
 import { extractActionParamsViaLlm } from "./extract-params.js";
-import {
-  registerConversationSearchCategory,
-  searchConversationsAction,
-} from "./search-conversations.js";
+
+const CONVERSATIONS_CATEGORY: SearchCategoryRegistration = {
+  category: "conversations",
+  label: "Conversations",
+  description:
+    "Search stored conversation messages across connected platforms.",
+  contexts: ["social_posting", "documents"],
+  filters: [
+    {
+      name: "source",
+      label: "Source",
+      description:
+        'Optional platform source, e.g. "discord" or "slack".',
+      type: "string",
+    },
+    {
+      name: "entityId",
+      label: "Entity ID",
+      description: "Optional participant entity ID.",
+      type: "string",
+    },
+  ],
+  resultSchemaSummary:
+    "Message results with line, id, roomId, entityId, text, and createdAt.",
+  capabilities: ["semantic", "messages", "cross-platform"],
+  source: "core:conversations",
+};
 
 type SearchFilters = Record<string, JsonValue | undefined>;
 
@@ -97,8 +121,6 @@ const CATEGORY_ALIASES: Record<string, string> = {
   entity: "entities",
   entities: "entities",
   internet: "web",
-  document_store: "documents",
-  knowledge: "documents",
   knowledge_base: "documents",
   message: "conversations",
   messages: "conversations",
@@ -111,8 +133,8 @@ const CATEGORY_ALIASES: Record<string, string> = {
 
 const DOCUMENTS_CATEGORY: SearchCategoryRegistration = {
   category: "documents",
-  label: "Documents",
-  description: "Search stored document and fragments.",
+  label: "Knowledge",
+  description: "Search stored documents and fragments.",
   contexts: ["documents"],
   filters: [
     {
@@ -195,7 +217,7 @@ function registerCategoryIfMissing(
 function ensureBuiltInSearchCategories(runtime: IAgentRuntime): void {
   registerCategoryIfMissing(runtime, DOCUMENTS_CATEGORY);
   registerCategoryIfMissing(runtime, PLUGIN_CATEGORY);
-  registerConversationSearchCategory(runtime);
+  registerCategoryIfMissing(runtime, CONVERSATIONS_CATEGORY);
   registerEntitySearchCategory(runtime);
   registerVectorSearchCategory(runtime);
 }
@@ -611,42 +633,33 @@ async function runCategorySearch(
       return runPluginSearch(runtime, query, filters, limit);
     case "vectors":
       return resultWithActionName(
-        await dispatchLegacyAction(
-          searchVectorsAction,
-          runtime,
-          message,
-          state,
-          {
-            query,
-            limit,
-            ...filters,
-          },
-        ),
+        await dispatchLegacyAction(databaseAction, runtime, message, state, {
+          op: "search_vectors",
+          query,
+          limit,
+          ...filters,
+        }),
         category,
       );
     case "conversations":
       return resultWithActionName(
-        await dispatchLegacyAction(
-          searchConversationsAction,
-          runtime,
-          message,
-          state,
-          {
-            query,
-            limit,
-            ...filters,
-          },
-        ),
+        await dispatchLegacyAction(messageAction, runtime, message, state, {
+          operation: "search",
+          query,
+          limit,
+          ...filters,
+        }),
         category,
       );
     case "entities":
       return resultWithActionName(
         await dispatchLegacyAction(
-          searchEntityAction,
+          contactAction,
           runtime,
           message,
           state,
           {
+            op: "search",
             query,
             limit,
             ...filters,

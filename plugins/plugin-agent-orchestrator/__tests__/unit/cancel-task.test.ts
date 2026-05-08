@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { cancelTaskAction } from "../../src/actions/cancel-task.js";
+// Post-consolidation: CANCEL_TASK is `TASKS { op: "cancel" }`.
+import { cancelTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,
   memory,
@@ -8,20 +9,10 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("CANCEL_TASK", () => {
-  it("validates with sessions", async () => {
-    expect(
-      await cancelTaskAction.validate(
-        runtimeWith(serviceMock()),
-        memory(),
-        state,
-      ),
-    ).toBe(true);
-    expect(
-      await cancelTaskAction.validate(runtimeWith(undefined), memory(), state),
-    ).toBe(false);
-  });
-  it("cancels a session and all sessions", async () => {
+const cancelOptions = { parameters: { op: "cancel" } };
+
+describe("TASKS:cancel (legacy CANCEL_TASK)", () => {
+  it("cancels a session by id", async () => {
     const svc = serviceMock();
     expect(
       (
@@ -29,7 +20,7 @@ describe("CANCEL_TASK", () => {
           runtimeWith(svc),
           memory({ sessionId: "abcdef123456" }),
           state,
-          {},
+          cancelOptions,
           callback(),
         )
       )?.data,
@@ -38,41 +29,48 @@ describe("CANCEL_TASK", () => {
       stoppedSessions: ["abcdef123456"],
       status: "canceled",
     });
+  });
+  it("cancels all sessions when all=true", async () => {
+    const svc = serviceMock();
     expect(
       (
         await cancelTaskAction.handler(
           runtimeWith(svc),
           memory({ all: true }),
           state,
-          {},
+          cancelOptions,
           callback(),
         )
       )?.data,
     ).toEqual({ canceledCount: 1, stoppedSessions: ["abcdef123456"] });
   });
-  it("handles service, missing session, and failure", async () => {
+  it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(
       (
         await cancelTaskAction.handler(
           runtimeWith(undefined),
           memory(),
           state,
-          {},
+          cancelOptions,
           callback(),
         )
       )?.error,
     ).toBe("SERVICE_UNAVAILABLE");
+  });
+  it("reports SESSION_NOT_FOUND when target missing", async () => {
     expect(
       (
         await cancelTaskAction.handler(
           runtimeWith(serviceMock({ getSession: vi.fn(() => undefined) })),
           memory({ sessionId: "x" }),
           state,
-          {},
+          cancelOptions,
           callback(),
         )
       )?.error,
     ).toBe("SESSION_NOT_FOUND");
+  });
+  it("propagates underlying cancel failure", async () => {
     expect(
       (
         await cancelTaskAction.handler(
@@ -85,7 +83,7 @@ describe("CANCEL_TASK", () => {
           ),
           memory({ sessionId: "abcdef123456" }),
           state,
-          {},
+          cancelOptions,
           callback(),
         )
       )?.error,

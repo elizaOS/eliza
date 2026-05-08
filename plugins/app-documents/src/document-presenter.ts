@@ -1,4 +1,5 @@
 import type { Memory } from "@elizaos/core";
+import type { DocumentVisibilityScope } from "./service-loader.js";
 
 export type DocumentProvenanceKind =
   | "upload"
@@ -22,12 +23,12 @@ export interface PresentedDocument {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  scope?: "global" | "owner-private" | "user-private" | "agent-private";
+  source: DocumentProvenanceKind;
+  scope: DocumentVisibilityScope;
   scopedToEntityId?: string;
   addedBy?: string;
   addedByRole?: string;
   addedFrom?: string;
-  source: DocumentProvenanceKind;
   url?: string;
   provenance: DocumentProvenance;
   canEditText: boolean;
@@ -74,6 +75,13 @@ const BINARY_FILE_EXTENSIONS = new Set([
   "avi",
 ]);
 
+const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
+  "global",
+  "owner-private",
+  "user-private",
+  "agent-private",
+]);
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -97,7 +105,7 @@ function asNumber(value: unknown): number | undefined {
 
 function truncateLabel(value: string, maxLength = 80): string {
   return value.length > maxLength
-    ? `${value.slice(0, maxLength - 1).trimEnd()}…`
+    ? `${value.slice(0, maxLength - 1).trimEnd()}...`
     : value;
 }
 
@@ -172,8 +180,8 @@ function isGenericFilename(
 ): boolean {
   if (!filename) return true;
   const normalized = filename.toLowerCase();
-  if (normalized === "knowledge-note.txt") return true;
-  if (provenanceKind === "learned" && normalized === "user-knowledge.txt") {
+  if (normalized === "document-note.txt") return true;
+  if (provenanceKind === "learned" && normalized === "user-document.txt") {
     return true;
   }
   return false;
@@ -194,7 +202,6 @@ export function normalizeDocumentSource(
       return "url";
     case "youtube":
       return "youtube";
-    case "eliza-default-knowledge":
     case "eliza-default-documents":
       return "bundled";
     default:
@@ -210,11 +217,11 @@ export function getDocumentProvenance(
     case "upload":
       return { kind, label: "Manual upload" };
     case "learned":
-      return { kind, label: "Learned knowledge" };
+      return { kind, label: "Learned document" };
     case "character":
       return {
         kind,
-        label: "Character knowledge",
+        label: "Character document",
         detail: asString(metadata?.path),
       };
     case "url":
@@ -230,9 +237,9 @@ export function getDocumentProvenance(
         detail: asString(metadata?.url),
       };
     case "bundled":
-      return { kind, label: "Bundled knowledge" };
+      return { kind, label: "Bundled document" };
     default:
-      return { kind, label: "Knowledge document" };
+      return { kind, label: "Document" };
   }
 }
 
@@ -268,16 +275,21 @@ export function getDocumentTitleFromMetadata(
   return deriveTitleFromText(contentText, "Untitled");
 }
 
+export function getDocumentVisibilityScope(
+  metadata: Record<string, unknown> | undefined,
+): DocumentVisibilityScope {
+  return DOCUMENT_SCOPE_VALUES.has(metadata?.scope as DocumentVisibilityScope)
+    ? (metadata?.scope as DocumentVisibilityScope)
+    : "global";
+}
+
 export function isDocumentTextBacked(memory: Memory): boolean {
   const metadata = asRecord(memory.metadata);
   if (typeof metadata?.textBacked === "boolean") {
     return metadata.textBacked;
   }
 
-  const filename = getDocumentTitleFromMetadata(
-    metadata,
-    memory.content?.text,
-  );
+  const filename = getDocumentTitleFromMetadata(metadata, memory.content?.text);
   const contentType = getDocumentContentType(metadata);
   if (isBinaryLike(contentType, filename)) {
     return false;
@@ -291,9 +303,7 @@ export function isDocumentTextBacked(memory: Memory): boolean {
   return !looksLikeBase64(contentText);
 }
 
-export function getDocumentPreviewText(
-  memory: Memory,
-): string | undefined {
+export function getDocumentPreviewText(memory: Memory): string | undefined {
   const contentText = memory.content?.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();
@@ -313,22 +323,21 @@ export function getDocumentEditability(memory: Memory): {
   if (provenance.kind === "bundled") {
     return {
       canEditText: false,
-      reason: "Bundled knowledge is seeded by the runtime.",
+      reason: "Bundled documents are seeded by the runtime.",
     };
   }
 
   if (provenance.kind === "character") {
     return {
       canEditText: false,
-      reason:
-        "Character knowledge comes from source files or character config.",
+      reason: "Character documents come from source files or character config.",
     };
   }
 
   if (!isDocumentTextBacked(memory)) {
     return {
       canEditText: false,
-      reason: "Only text-backed knowledge can be edited here.",
+      reason: "Only text-backed documents can be edited here.",
     };
   }
 
@@ -343,14 +352,14 @@ export function getDocumentDeleteability(memory: Memory): {
   if (provenance.kind === "bundled") {
     return {
       canDelete: false,
-      reason: "Bundled knowledge is recreated by the runtime.",
+      reason: "Bundled documents are recreated by the runtime.",
     };
   }
 
   if (provenance.kind === "character") {
     return {
       canDelete: false,
-      reason: "Character knowledge is backed by the character source.",
+      reason: "Character documents are backed by the character source.",
     };
   }
 
@@ -373,10 +382,7 @@ export function presentDocument(
 
   return {
     id: String(memory.id ?? ""),
-    filename: getDocumentTitleFromMetadata(
-      metadata,
-      memory.content?.text,
-    ),
+    filename: getDocumentTitleFromMetadata(metadata, memory.content?.text),
     contentType,
     fileSize: asNumber(metadata?.fileSize) ?? 0,
     createdAt: asNumber(memory.createdAt) ?? 0,
@@ -393,6 +399,11 @@ export function presentDocument(
     addedByRole: asString(metadata?.addedByRole),
     addedFrom: asString(metadata?.addedFrom),
     source: provenance.kind,
+    scope: getDocumentVisibilityScope(metadata),
+    scopedToEntityId: asString(metadata?.scopedToEntityId),
+    addedBy: asString(metadata?.addedBy),
+    addedByRole: asString(metadata?.addedByRole),
+    addedFrom: asString(metadata?.addedFrom),
     url: asString(metadata?.url),
     provenance,
     canEditText: editability.canEditText,

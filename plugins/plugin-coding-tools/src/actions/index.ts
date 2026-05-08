@@ -6,7 +6,6 @@ export { grepAction } from "./grep.js";
 export { globAction } from "./glob.js";
 export { lsAction } from "./ls.js";
 export { webFetchAction } from "./web-fetch.js";
-export { webSearchAction } from "./web-search.js";
 export { askUserQuestionAction } from "./ask-user-question.js";
 export { enterWorktreeAction } from "./enter-worktree.js";
 export { exitWorktreeAction } from "./exit-worktree.js";

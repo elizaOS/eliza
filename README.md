@@ -54,7 +54,7 @@ packages/        ← framework and shared packages
   benchmarks/    # evaluation suites (gaia, swe_bench, tau-bench, ...)
 
 plugins/         ← runtime plugins and app plugins
-  app-companion/ app-browser/ app-knowledge/ app-phone/
+  app-companion/ app-browser/ app-documents/ app-phone/
   app-task-coordinator/ app-training/ plugin-form/ ...
   plugin-discord/ plugin-openai/ plugin-sql/ ...
 
@@ -132,7 +132,7 @@ For first-party app plugin references, browse [`plugins/app-*`](plugins). A few 
 
 - [`app-companion`](plugins/app-companion) — chat-first companion with a custom React UI.
 - [`app-browser`](plugins/app-browser) — agent-driven browser automation.
-- [`app-knowledge`](plugins/app-knowledge) — RAG over user documents.
+- [`app-documents`](plugins/app-documents) — RAG over user documents (scoped global / owner-private / user-private / agent-private).
 - [`app-phone`](plugins/app-phone) — voice + telephony surface.
 - [`plugin-form`](plugins/plugin-form) — form-driven data collection.
 - [`app-task-coordinator`](plugins/app-task-coordinator) — multi-agent orchestration.

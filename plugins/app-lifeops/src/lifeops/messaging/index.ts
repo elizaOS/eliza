@@ -9,5 +9,4 @@ export { createOwnerSendPolicy } from "./owner-send-policy.js";
  * - Register XDmAdapter, CalendlyAdapter, BrowserBridgeAdapter via the triage service's adapter registry
  *   (find the registration pattern in @elizaos/core/features/messaging/triage/triage-service.ts).
  * - Remove any imports of the deleted action files from plugin.ts/index.ts.
- * - Add CHECKIN to the action exports.
  */

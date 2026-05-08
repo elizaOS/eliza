@@ -129,12 +129,18 @@ export interface ChatTokenUsage {
 
 export type ConversationMode = "simple" | "power";
 
-// Document types
+// Document / Character Knowledge types
 export interface DocumentStats {
   documentCount: number;
   fragmentCount: number;
   agentId: string;
 }
+
+export type DocumentScope =
+  | "global"
+  | "owner-private"
+  | "user-private"
+  | "agent-private";
 
 export type DocumentProvenanceKind =
   | "upload"
@@ -158,7 +164,7 @@ export interface DocumentRecord {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  scope?: "global" | "owner-private" | "user-private" | "agent-private";
+  scope?: DocumentScope;
   scopedToEntityId?: string;
   addedBy?: string;
   addedByRole?: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";

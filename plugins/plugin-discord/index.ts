@@ -1,10 +1,15 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import chatWithAttachments from "./actions/chatWithAttachments";
+import {
+	getConnectorAccountManager,
+	type IAgentRuntime,
+	logger,
+	type Plugin,
+} from "@elizaos/core";
 import createPoll from "./actions/createPoll";
 import mediaOp from "./actions/mediaOp";
 import setupCredentials from "./actions/setup-credentials";
 import { summarize } from "./actions/summarizeConversation";
 import { printBanner } from "./banner";
+import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { voiceStateProvider } from "./providers/voiceState";
@@ -12,16 +17,20 @@ import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
+import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
 
 const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
-	services: [DiscordService, DiscordOwnerPairingServiceImpl],
+	services: [
+		DiscordService,
+		DiscordOwnerPairingServiceImpl,
+		DiscordUserAccountScraperImpl,
+	],
 	routes: discordSetupRoutes,
 	actions: [
 		mediaOp,
-		chatWithAttachments,
 		summarize,
 		createPoll,
 		setupCredentials,
@@ -30,6 +39,24 @@ const discordPlugin: Plugin = {
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
 		registerDiscordSearchCategory(runtime);
+
+		// Register the Discord provider with the ConnectorAccountManager so the
+		// HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+		// can list, create, patch, delete, and start OAuth on Discord accounts.
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(
+				createDiscordConnectorAccountProvider(runtime),
+			);
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:discord",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register Discord provider with ConnectorAccountManager",
+			);
+		}
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
@@ -121,6 +148,40 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
+// ConnectorAccountManager provider exports
+export {
+	createDiscordConnectorAccountProvider,
+	DISCORD_PROVIDER_ID,
+} from "./connector-account-provider";
+// Discord user-account scraper (browser-workspace driven; per-account
+// partitions). Used by lifeops and any other consumer that needs to read
+// state from a logged-in Discord user account.
+export {
+	captureDiscordDeliveryStatus,
+	closeDiscordTab,
+	DISCORD_APP_URL,
+	type DiscordDmInboxProbe,
+	type DiscordMessageSearchResult,
+	type DiscordTabIdentity,
+	type DiscordTabProbe,
+	type DiscordVisibleDmPreview,
+	discordBrowserWorkspaceAvailable,
+	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+	type DiscordUserAccountScraper,
+	DiscordUserAccountScraperImpl,
+	discordUserAccountPartitionFor,
+	emptyDiscordDmInboxProbe,
+	ensureDiscordTab,
+	navigateDiscordTabToHome,
+	probeDiscordCapturedPage,
+	probeDiscordDocumentState,
+	probeDiscordTab,
+	searchDiscordMessages,
+	type DiscordDesktopCdpStatus,
+	getDiscordDesktopCdpStatus,
+	relaunchDiscordDesktopForCdp,
+	sendDiscordViaDesktopCdp,
+} from "./user-account-scraper";
 // Account management exports (runtime utilities)
 export {
 	DEFAULT_ACCOUNT_ID,

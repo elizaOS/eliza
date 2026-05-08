@@ -27,7 +27,7 @@ export const specializedLiveE2EPaths = [
   "eliza/plugins/app-lifeops/test/selfcontrol-chat.live.e2e.test.ts",
   "eliza/plugins/app-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
   "eliza/plugins/app-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
-  "eliza/plugins/app-documents/test/documents-live.e2e.test.ts",
+  "eliza/plugins/app-documents/test/documents-api.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/agent-runtime.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/cloud-auth.live.e2e.test.ts",

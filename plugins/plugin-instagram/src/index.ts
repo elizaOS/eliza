@@ -11,7 +11,7 @@ const instagramPlugin: Plugin = {
   services: [InstagramService],
 };
 
-export * from "./accounts";
+export * from "./actions";
 export * from "./constants";
 export { userStateProvider } from "./providers";
 export * from "./types";

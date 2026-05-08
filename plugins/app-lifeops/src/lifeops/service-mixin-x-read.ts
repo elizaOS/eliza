@@ -1,17 +1,14 @@
 // @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
+// methods belonging to sibling mixins. Real type safety is enforced at the
+// composed-service level.
 import crypto from "node:crypto";
+import type { Memory } from "@elizaos/core";
 import type {
+  LifeOpsConnectorGrant,
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
 } from "@elizaos/shared";
-import type { Memory } from "@elizaos/core";
 import {
   fetchXDirectMessagesWithRuntimeService,
   fetchXFeedWithRuntimeService,
@@ -60,10 +57,7 @@ function isoFromMemory(memory: Memory, fallback: string): string {
 
 function lifeOpsReadDelegationFailed(
   operation: string,
-  result: {
-    reason: string;
-    error?: unknown;
-  },
+  result: { reason: string; error?: unknown },
 ): never {
   const detail =
     result.error instanceof Error
@@ -320,9 +314,7 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
           ...(await this.repository.listXFeedItems(
             this.agentId(),
             "home_timeline",
-            {
-              limit: searchLimit,
-            },
+            { limit: searchLimit },
           )),
           ...(await this.repository.listXFeedItems(this.agentId(), "mentions", {
             limit: searchLimit,
@@ -361,14 +353,6 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
       return this.repository.listXFeedItems(this.agentId(), feedType, opts);
     }
 
-    /**
-     * Pull and return only inbound X DMs (messages the authenticated user received,
-     * not sent). Performs a live sync against the X API, persists the results, and
-     * then returns the inbound subset from the local store.
-     *
-     * Callers that want the full conversation including outbound messages should
-     * call `syncXDms()` followed by `getXDms()` directly.
-     */
     async readXInboundDms(
       opts: { limit?: number } = {},
     ): Promise<LifeOpsXDm[]> {

@@ -122,7 +122,7 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Creation Performance", () => {
     const times: number[] = [];
 
     for (let i = 0; i < runs; i++) {
-      const timer = new HRTimer(`assistantRuntime-${i}`);
+      const timer = new HRTimer(`chatRuntime-${i}`);
       const runtime = await createTestRuntime({
         testData,
         agentMode: AgentMode.CHAT,

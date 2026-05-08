@@ -135,7 +135,6 @@ export class XDmAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     draftId: string,
   ): Promise<{ externalId: string }> {
-    // draftId format: "twitter:{participantId}:{ts}". Recipient is encoded.
     const parts = draftId.split(":");
     const participantId = parts[1] ? decodeURIComponent(parts[1]) : "";
     const text = parts[3] ? decodeDraftBody(parts[3]) : "";
@@ -145,7 +144,9 @@ export class XDmAdapter extends BaseMessageAdapter {
       );
     }
     if (!text) {
-      throw new Error(`[XDmAdapter] cannot resolve body from draftId ${draftId}`);
+      throw new Error(
+        `[XDmAdapter] cannot resolve body from draftId ${draftId}`,
+      );
     }
     const result = await sendXDirectMessageWithRuntimeService({
       runtime,

@@ -1,5 +1,1 @@
-/**
- * LINE plugin actions are provided by connector hooks.
- */
-
-export {};
+// LINE messaging routes through MESSAGE connector hooks.

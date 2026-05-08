@@ -3,6 +3,8 @@
  *
  * Tests the production RuntimeFactory with CHAT mode:
  * - CHAT: Basic conversation mode
+ * - CHAT: Full capabilities with MCP, web search
+ * - CHAT: Character building mode
  *
  * These tests run the EXACT production code path against the local database.
  * Make sure your local server is running before running these tests.
@@ -169,7 +171,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
   afterAll(cleanupEnvironment);
 
   it("should create runtime in CHAT mode with MCP", async () => {
-    startTimer("assistant_runtime_create");
+    startTimer("chat_runtime_create");
 
     const userContext = buildUserContext(testData, {
       agentMode: AgentMode.CHAT,
@@ -179,11 +181,11 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
 
     runtime = await runtimeFactory.createRuntimeForUser(userContext);
 
-    allTimings.assistantRuntimeCreate = endTimer("assistant_runtime_create");
+    allTimings.chatRuntimeCreate = endTimer("chat_runtime_create");
 
     expect(runtime).toBeDefined();
     expect(runtime.character?.name).toBe("Mira");
-    console.log(`\n✅ CHAT runtime created in ${allTimings.assistantRuntimeCreate}ms`);
+    console.log(`\n✅ CHAT runtime created in ${allTimings.chatRuntimeCreate}ms`);
   }, 60000);
 
   it("should have MCP service initialized", async () => {
@@ -202,9 +204,9 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
   }, 30000);
 
   it("should process message with MCP tools available", async () => {
-    testUser = await createTestUser(runtime, "AssistantTestUser");
+    testUser = await createTestUser(runtime, "ChatTestUser");
 
-    startTimer("assistant_message");
+    startTimer("chat_message");
     const result = await sendTestMessage(
       runtime,
       testUser,
@@ -212,7 +214,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
       testData,
       { timeoutMs: 120000 },
     );
-    allTimings.assistantMessage = endTimer("assistant_message");
+    allTimings.assistantMessage = endTimer("chat_message");
 
     expect(result.didRespond).toBe(true);
     console.log(`\n✅ CHAT message in ${allTimings.assistantMessage}ms`);
@@ -285,7 +287,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
   afterAll(cleanupEnvironment);
 
   it("should create runtime in CHAT mode", async () => {
-    startTimer("build_runtime_create");
+    startTimer("chat_runtime_create");
 
     const userContext = buildUserContext(testData, {
       agentMode: AgentMode.CHAT,
@@ -295,16 +297,16 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
 
     runtime = await runtimeFactory.createRuntimeForUser(userContext);
 
-    allTimings.buildRuntimeCreate = endTimer("build_runtime_create");
+    allTimings.buildRuntimeCreate = endTimer("chat_runtime_create");
 
     expect(runtime).toBeDefined();
     console.log(`\n✅ CHAT runtime created in ${allTimings.buildRuntimeCreate}ms`);
   }, 60000);
 
   it("should process CHAT mode message", async () => {
-    testUser = await createTestUser(runtime, "BuildTestUser");
+    testUser = await createTestUser(runtime, "ChatTestUser");
 
-    startTimer("build_message");
+    startTimer("chat_message");
     const result = await sendTestMessage(
       runtime,
       testUser,
@@ -312,7 +314,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
       testData,
       { timeoutMs: 120000 },
     );
-    allTimings.buildMessage = endTimer("build_message");
+    allTimings.buildMessage = endTimer("chat_message");
 
     expect(result.didRespond).toBe(true);
     console.log(`\n✅ CHAT message in ${allTimings.buildMessage}ms`);
@@ -415,22 +417,18 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
   afterAll(cleanupEnvironment);
 
   it("should benchmark runtime creation times", async () => {
-    const modes = [AgentMode.CHAT];
     const benchmarks: Record<string, number> = {};
 
-    for (const mode of modes) {
-      // Ensure clean state
-      const userContext = buildUserContext(testData, {
-        agentMode: mode,
-        webSearchEnabled: false,
-      });
+    const userContext = buildUserContext(testData, {
+      agentMode: AgentMode.CHAT,
+      webSearchEnabled: false,
+    });
 
-      startTimer(`bench_${mode}`);
-      const runtime = await runtimeFactory.createRuntimeForUser(userContext);
-      benchmarks[mode] = endTimer(`bench_${mode}`);
+    startTimer("bench_chat");
+    const runtime = await runtimeFactory.createRuntimeForUser(userContext);
+    benchmarks[AgentMode.CHAT] = endTimer("bench_chat");
 
-      await invalidateRuntime(runtime.agentId as string);
-    }
+    await invalidateRuntime(runtime.agentId as string);
 
     console.log("\n📊 Runtime Creation Benchmarks:");
     for (const [mode, time] of Object.entries(benchmarks)) {
@@ -438,7 +436,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       allTimings[`benchmark_${mode}`] = time;
     }
 
-    // Chat runtime should create in under 10 seconds
+    // The single chat mode should create in under 10 seconds.
     expect(benchmarks[AgentMode.CHAT]).toBeLessThan(10000);
   }, 180000);
 });

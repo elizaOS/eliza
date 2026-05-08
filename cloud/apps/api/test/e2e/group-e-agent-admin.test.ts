@@ -231,7 +231,7 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
     expect([
       "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
       "CONTAINER_CONTROL_PLANE_UNREACHABLE",
-    ]).toContain(body.code);
+    ]).toContain(body.code ?? "");
   });
 
   test("POST /api/v1/admin/infrastructure/containers/actions is a 501 stub; rejects unauthenticated", async () => {

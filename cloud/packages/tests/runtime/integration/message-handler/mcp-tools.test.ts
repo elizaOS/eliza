@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mcpTestCharacter } from "../../../fixtures/mcp-test-character";
 import {
+  AgentMode,
   cleanupTestData,
   // Test data
   createTestDataSet,
@@ -108,7 +109,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Plugin Loading - Production Flow", () =
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "chat" as any,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -204,10 +205,10 @@ describe.skipIf(skipLiveModelSuite)("MCP Plugin Loading - Production Flow", () =
 });
 
 // ============================================================================
-// MCP Assistant Trending Tokens Tests
+// MCP Chat Trending Tokens Tests
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuite)("MCP Assistant - Trending Tokens Query", () => {
+describe.skipIf(skipLiveModelSuite)("MCP Chat - Trending Tokens Query", () => {
   // Local test state (isolated to this describe block)
   let connectionString: string;
   let testData: TestDataSet;
@@ -273,7 +274,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Assistant - Trending Tokens Query", () 
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "chat" as any,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 

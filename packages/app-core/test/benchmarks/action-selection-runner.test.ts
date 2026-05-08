@@ -1,0 +1,110 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  caseMatches,
+  parsePlannedActionsFromResponse,
+  pickObservedAction,
+} from "./action-selection-runner.ts";
+
+describe("action selection benchmark scoring helpers", () => {
+  it("matches provider-specific calendar action names to CALENDAR", () => {
+    expect(caseMatches("GOOGLE_CALENDAR", "CALENDAR", undefined)).toBe(true);
+    expect(caseMatches("CALENDLY", "CALENDAR", undefined)).toBe(true);
+  });
+
+  it("matches the core send action to legacy MESSAGE benchmark cases", () => {
+    expect(caseMatches("SEND_MESSAGE", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("SEND_MESSAGE", "MESSAGE", ["MESSAGE"])).toBe(true);
+  });
+
+  it("matches specialized computer-use tools to COMPUTER_USE", () => {
+    expect(caseMatches("FILE_ACTION", "COMPUTER_USE", undefined)).toBe(true);
+    expect(caseMatches("TERMINAL_ACTION", "COMPUTER_USE", undefined)).toBe(true);
+  });
+
+  it("ignores background evaluator actions when picking the observed action", () => {
+    const observed = pickObservedAction(
+      [
+        { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
+        { phase: "completed", actionName: "GOOGLE_CALENDAR", actionStatus: "failed" },
+        { phase: "completed", actionName: "FACT_EXTRACTOR" },
+      ],
+      "completed",
+      "CALENDAR",
+      undefined,
+    );
+
+    expect(observed).toBe("GOOGLE_CALENDAR");
+  });
+
+  it("counts failed actions with pending human input as completed for execution scoring", () => {
+    const observed = pickObservedAction(
+      [
+        {
+          phase: "completed",
+          actionName: "APP_BLOCK",
+          actionStatus: "failed",
+          actionConfirmationPending: true,
+        },
+      ],
+      "completed",
+      "APP_BLOCK",
+      undefined,
+      { requireSuccessfulCompletion: true },
+    );
+
+    expect(observed).toBe("APP_BLOCK");
+  });
+
+  it("does not count evaluator-only turns as real actions", () => {
+    const observed = pickObservedAction(
+      [
+        { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
+        { phase: "completed", actionName: "FACT_EXTRACTOR" },
+        { phase: "completed", actionName: "REFLECTION" },
+      ],
+      "completed",
+      null,
+      undefined,
+    );
+
+    expect(observed).toBeNull();
+  });
+
+  it("extracts AI SDK toolCalls from recorded native responses", () => {
+    const planned = parsePlannedActionsFromResponse(
+      JSON.stringify({
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "call-1",
+            toolName: "GOOGLE_CALENDAR",
+            input: { subaction: "next_event" },
+          },
+        ],
+      }),
+    );
+
+    expect(planned).toEqual(["CALENDAR"]);
+  });
+
+  it("unwraps native call_action tool calls to the selected action", () => {
+    const planned = parsePlannedActionsFromResponse(
+      JSON.stringify({
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "call-1",
+            toolName: "call_action",
+            input: {
+              actionName: "MESSAGE",
+              actionParameters: {},
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(planned).toEqual(["MESSAGE"]);
+  });
+});

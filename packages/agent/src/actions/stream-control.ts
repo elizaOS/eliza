@@ -93,7 +93,6 @@ async function runGoLive(): Promise<ActionResult> {
       text: live
         ? "Stream is now live."
         : "Stream start requested but may not be live yet — check status.",
-      data: result.data ?? undefined,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -114,7 +113,6 @@ async function runGoOffline(): Promise<ActionResult> {
     return {
       success: true,
       text: "Stream stopped. Now offline.",
-      data: result.data ?? undefined,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -136,9 +134,9 @@ export const streamAction: Action = {
   parameters: [
     {
       name: "op",
-      type: "string",
+      description: `Operation: ${STREAM_OPS.join(", ")}.`,
       required: true,
-      description: `One of: ${STREAM_OPS.join(", ")}`,
+      schema: { type: "string" as const, enum: [...STREAM_OPS] },
     },
   ],
   validate: async (_runtime, message, state) => {

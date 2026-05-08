@@ -1,10 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-import {
-  type MacosAlarmActionDeps,
-  createCancelAlarmAction,
-  createListAlarmsAction,
-  createSetAlarmAction,
-} from "./actions";
+import { type MacosAlarmActionDeps, createAlarmAction } from "./actions";
 
 export function createMacosAlarmPlugin(
   deps: MacosAlarmActionDeps = {},
@@ -13,11 +8,7 @@ export function createMacosAlarmPlugin(
     name: "macosalarm",
     description:
       "macOS native alarm scheduling via UNUserNotificationCenter. Auto-enabled on darwin only.",
-    actions: [
-      createSetAlarmAction(deps),
-      createCancelAlarmAction(deps),
-      createListAlarmsAction(deps),
-    ],
+    actions: [createAlarmAction(deps)],
   };
 }
 

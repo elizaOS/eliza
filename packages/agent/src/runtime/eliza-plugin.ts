@@ -8,65 +8,23 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
-import {
-  disconnectConnectorAction,
-  listConnectorsAction,
-  saveConnectorConfigAction,
-  toggleConnectorAction,
-} from "../actions/connector-control.js";
-import {
-  executeDatabaseQueryAction,
-  getTableDataAction,
-  listDatabaseTablesAction,
-  searchVectorsAction,
-} from "../actions/database.js";
-import {
-  createContactAction,
-  deleteContactAction,
-  getRelationshipActivityAction,
-  linkEntityAction,
-  readEntityAction,
-  resolveMergeCandidateAction,
-  searchEntityAction,
-} from "../actions/entity-actions.js";
+import { contactAction } from "../actions/contact.js";
+import { databaseAction } from "../actions/database.js";
 import { extractPageAction } from "../actions/extract-page.js";
-import { clearLogsAction, queryLogsAction } from "../actions/logs.js";
-import { manageTasksAction } from "../actions/manage-tasks.js";
-import {
-  createMemoryAction,
-  editMemoryAction,
-  forgetMemoryAction,
-  recallMemoryFilteredAction,
-} from "../actions/memories.js";
+import { logsAction } from "../actions/logs.js";
+import { memoryAction } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
-import { readPluginConfigAction } from "../actions/read-plugin-config.js";
-import { restartAction } from "../actions/restart.js";
-import {
-  describeRegisteredActionsAction,
-  getRuntimeStatusAction,
-  reloadRuntimeConfigAction,
-  restartRuntimeAction,
-} from "../actions/runtime.js";
-import { searchConversationsAction } from "../actions/search-conversations.js";
-import { setUserNameAction } from "../actions/set-user-name.js";
-import {
-  toggleAutoTrainingAction,
-  toggleCapabilityAction,
-  updateAiProviderAction,
-  updateIdentityAction,
-} from "../actions/settings-actions.js";
+import { pluginAction } from "../actions/plugin.js";
+import { runtimeAction } from "../actions/runtime.js";
+import { scheduleAction } from "../actions/schedule.js";
+import { settingsAction } from "../actions/settings-actions.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
-import {
-  archiveCodingTaskAction,
-  reopenCodingTaskAction,
-} from "../actions/tasks-coding.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
-import { updateOwnerNameAction } from "../actions/update-owner-name.js";
 import { webSearchAction } from "../actions/web-search.js";
 import { workflowAction } from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
@@ -242,51 +200,24 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     evaluators: [lateJoinWhitelistEvaluator],
 
     actions: [
-      restartAction,
       terminalAction,
       workflowAction,
-      manageTasksAction,
+      scheduleAction,
       ...pageActionGroupActions,
-      setUserNameAction,
       skillCommandAction,
       webSearchAction,
       extractPageAction,
-      searchConversationsAction,
-      searchEntityAction,
-      linkEntityAction,
-      readEntityAction,
-      resolveMergeCandidateAction,
-      getRelationshipActivityAction,
-      createContactAction,
-      deleteContactAction,
-      updateOwnerNameAction,
-      updateIdentityAction,
-      updateAiProviderAction,
-      toggleCapabilityAction,
-      toggleAutoTrainingAction,
-      listConnectorsAction,
-      toggleConnectorAction,
-      saveConnectorConfigAction,
-      disconnectConnectorAction,
-      readPluginConfigAction,
+      contactAction,
+      settingsAction,
+      pluginAction,
       // Observability / introspection actions
-      queryLogsAction,
-      clearLogsAction,
-      getRuntimeStatusAction,
-      describeRegisteredActionsAction,
-      reloadRuntimeConfigAction,
-      restartRuntimeAction,
-      listDatabaseTablesAction,
-      getTableDataAction,
-      executeDatabaseQueryAction,
-      searchVectorsAction,
+      logsAction,
+      runtimeAction,
+      databaseAction,
       queryTrajectoriesAction,
-      createMemoryAction,
-      recallMemoryFilteredAction,
-      forgetMemoryAction,
-      editMemoryAction,
-      archiveCodingTaskAction,
-      reopenCodingTaskAction,
+      memoryAction,
+      // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK now live as ops on the
+      // TASKS parent in @elizaos/plugin-agent-orchestrator.
     ],
   };
 

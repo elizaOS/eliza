@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mcpTestCharacter } from "../../../fixtures/mcp-test-character";
 import {
+  AgentMode,
   cleanupTestData,
   // Test data
   createTestDataSet,
@@ -94,7 +95,7 @@ describe.skipIf(skipLiveModelSuite)("Message Handler - Basic Message Processing"
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "chat" as any,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 

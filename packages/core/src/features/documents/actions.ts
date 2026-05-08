@@ -26,12 +26,12 @@ import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
 
 type DocumentSubAction =
+	| "list"
 	| "search"
 	| "read"
 	| "write"
 	| "edit"
 	| "delete"
-	| "list"
 	| "import_file"
 	| "import_url";
 
@@ -58,12 +58,12 @@ type DocumentActionParameters = {
 };
 
 const DOCUMENT_SUB_ACTIONS = new Set<DocumentSubAction>([
+	"list",
 	"search",
 	"read",
 	"write",
 	"edit",
 	"delete",
-	"list",
 	"import_file",
 	"import_url",
 ]);
@@ -910,15 +910,15 @@ export const documentAction: Action = {
 	contextGate: { anyOf: ["documents"] },
 	roleGate: { minRole: "USER" },
 	description:
-		"Search, read, write, edit, delete, list, and import stored documents. Select one subAction and provide the fields needed for that operation.",
+		"List, search, read, write, edit, delete, and import stored documents. Select one subAction and provide the fields needed for that operation.",
 	descriptionCompressed:
-		"Dispatches document operations using subAction: search, read, write, edit, delete, list, import_file, import_url.",
+		"Dispatches document operations using subAction: list, search, read, write, edit, delete, import_file, import_url.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
 			name: "subAction",
 			description:
-				"Document operation to perform: search, read, write, edit, delete, list, import_file, or import_url.",
+				"Document operation to perform: list, search, read, write, edit, delete, import_file, or import_url.",
 			required: true,
 			schema: {
 				type: "string",

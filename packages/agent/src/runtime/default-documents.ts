@@ -10,6 +10,8 @@ import {
 
 const DOCUMENT_BATCH_SIZE = 100;
 const DEFAULT_DOCUMENTS_SOURCE = "eliza-default-documents";
+const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 type SeededMemory = Memory & { id: UUID };
 
@@ -156,13 +158,14 @@ function buildDocumentMetadata(
     fileType: document.contentType,
     contentType: document.contentType,
     fileSize: Buffer.byteLength(document.text, "utf8"),
-	    source: DEFAULT_DOCUMENTS_SOURCE,
-	    scope: "global",
-	    addedBy: agentId,
-	    addedByRole: "RUNTIME",
-	    addedFrom: "default-seed",
-	    addedAt: timestamp,
-	    timestamp,
+    source: DEFAULT_DOCUMENTS_SOURCE,
+    timestamp,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
     bundledDocument: true,
     bundledDocumentKey: document.key,
     bundledDocumentVersion: document.version,
@@ -173,21 +176,23 @@ function buildDocumentMetadata(
 function buildFragmentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
-  agentId: UUID,
+  _documentAgentId: UUID,
   index: number,
+  agentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
   return {
     type: MemoryType.FRAGMENT,
     documentId,
     position: index,
-	    source: DEFAULT_DOCUMENTS_SOURCE,
-	    scope: "global",
-	    addedBy: agentId,
-	    addedByRole: "RUNTIME",
-	    addedFrom: "default-seed",
-	    addedAt: timestamp,
-	    timestamp,
+    source: DEFAULT_DOCUMENTS_SOURCE,
+    timestamp,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
     bundledDocument: true,
     bundledDocumentKey: document.key,
     bundledDocumentVersion: document.version,
@@ -258,7 +263,7 @@ async function listFragmentIdsForDocument(
 
   while (true) {
     const batch = await runtime.getMemories({
-      tableName: "document_fragments",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId: runtime.agentId,
       limit: DOCUMENT_BATCH_SIZE,
       start: offset,
@@ -305,7 +310,7 @@ async function seedBundledDocument(
     metadata: buildDocumentMetadata(
       document,
       documentId,
-      runtime.agentId as UUID,
+      runtime.agentId,
       documentTimestamp,
     ),
     createdAt: documentCreatedAt,
@@ -317,7 +322,7 @@ async function seedBundledDocument(
     if (existingDocument) {
       await runtime.updateMemory(documentMemory);
     } else {
-      await runtime.createMemory(documentMemory, "documents");
+      await runtime.createMemory(documentMemory, DOCUMENTS_TABLE);
     }
     changed = true;
   }
@@ -360,6 +365,7 @@ async function seedBundledDocument(
         documentId,
         runtime.agentId as UUID,
         index,
+        runtime.agentId,
         fragmentTimestamp,
       ),
       ...(fragmentEmbedding ? { embedding: fragmentEmbedding } : {}),
@@ -383,7 +389,7 @@ async function seedBundledDocument(
       if (existingFragment) {
         await runtime.updateMemory(fragmentMemory);
       } else {
-        await runtime.createMemory(fragmentMemory, "document_fragments");
+        await runtime.createMemory(fragmentMemory, DOCUMENT_FRAGMENTS_TABLE);
       }
       changed = true;
     }
@@ -398,7 +404,7 @@ async function seedBundledDocument(
 
   if (changed) {
     logger.info(
-      `[eliza] Seeded bundled document document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
+      `[eliza] Seeded bundled document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
     );
   }
 }

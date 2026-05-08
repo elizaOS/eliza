@@ -27,7 +27,8 @@ export async function handleNoToolAvailable(
       fallbackToDirectAssistance: true,
     },
     data: {
-      actionName: "CALL_MCP_TOOL",
+      actionName: "MCP",
+      op: "call_tool",
       noToolAvailable: true,
       reason: toolSelection?.reasoning ?? "No appropriate tool available",
     },

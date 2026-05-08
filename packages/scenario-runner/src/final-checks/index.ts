@@ -208,9 +208,9 @@ function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
   const acceptedNames = new Set([
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "TRIAGE_MESSAGES",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ]);
@@ -357,9 +357,9 @@ function actionMatchesChannel(
   switch (channel) {
     case "gmail":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "discord":
     case "telegram":
@@ -368,23 +368,20 @@ function actionMatchesChannel(
     case "whatsapp":
     case "sms":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "x-dm":
       return [
         "X",
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":
-      return [
-        "DEVICE_INTENT",
-        "VOICE_CALL",
-      ].includes(action.actionName);
+      return ["VOICE_CALL"].includes(action.actionName);
     default:
       return false;
   }
@@ -630,10 +627,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
-    return (
-      action.actionName === "DEVICE_INTENT" ||
-      (/acknowledge/.test(blob) && /sync/.test(blob))
-    );
+    return /acknowledge/.test(blob) && /sync/.test(blob);
   });
   const want = expected ?? true;
   if (any === want) {
@@ -898,10 +892,10 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     minCount?: number;
   };
   const actionNames = actionName ?? [
-    "TRIAGE_MESSAGES",
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "DRAFT_REPLY",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ];
@@ -1072,9 +1066,9 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
-            "SEND_DRAFT",
-            "RESPOND_TO_MESSAGE",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
+            "MESSAGE",
             "GMAIL_ACTION",
             "send_email",
           ]) && request.state === "pending",

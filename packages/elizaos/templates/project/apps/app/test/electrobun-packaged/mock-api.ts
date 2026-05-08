@@ -1330,7 +1330,7 @@ export async function startMockApiServer(
       return;
     }
 
-    if (method === "GET" && pathname === "/api/knowledge/stats") {
+    if (method === "GET" && pathname === "/api/documents/stats") {
       json(res, 200, {
         documentCount: 0,
         fragmentCount: 0,
@@ -1338,7 +1338,7 @@ export async function startMockApiServer(
       });
       return;
     }
-    if (method === "GET" && pathname === "/api/knowledge/documents") {
+    if (method === "GET" && pathname === "/api/documents") {
       json(res, 200, { documents: [], total: 0, limit: 100, offset: 0 });
       return;
     }

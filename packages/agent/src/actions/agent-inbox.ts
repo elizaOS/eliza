@@ -1,8 +1,8 @@
 /**
  * AGENT_INBOX — the agent's own mailbox / channel inbox.
  *
- * Distinct from the OWNER's inbox (covered by core's TRIAGE_MESSAGES /
- * LIST_INBOX / SEARCH_MESSAGES). AGENT_INBOX is scoped to the agent's OWN
+ * Distinct from the OWNER's inbox (covered by core's MESSAGE /
+ * MESSAGE / MESSAGE). AGENT_INBOX is scoped to the agent's OWN
  * accounts — the mailbox the agent itself holds for autonomous outbound
  * and inbound.
  *
@@ -42,7 +42,7 @@ function notConfigured(subaction: string | undefined): ActionResult {
     text:
       "The agent's own inbox is not configured. Wire an agent-scoped " +
       "mailbox (e.g. an Eliza Cloud inbox or a dedicated IMAP/SMTP account) " +
-      "before using AGENT_INBOX. For the OWNER's inbox, use TRIAGE_MESSAGES.",
+      "before using AGENT_INBOX. For the OWNER's inbox, use MESSAGE.",
     values: {
       success: false,
       actionName: "AGENT_INBOX",
@@ -75,10 +75,10 @@ export const agentInboxAction: Action = {
     "draft_reply | send_reply. " +
     "Do NOT use this for the OWNER's inbox — any 'my inbox', 'my Gmail', " +
     "'my email', 'inbox digest', 'daily brief' request from the owner " +
-    "belongs to TRIAGE_MESSAGES. AGENT_INBOX only applies when the subject " +
+    "belongs to MESSAGE. AGENT_INBOX only applies when the subject " +
     "being triaged is the AGENT's own account.",
   descriptionCompressed:
-    "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong TRIAGE_MESSAGES AGENT_INBOX apply subject be triage AGENT's account",
+    "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong MESSAGE AGENT_INBOX apply subject be triage AGENT's account",
 
   validate: async () => true,
 

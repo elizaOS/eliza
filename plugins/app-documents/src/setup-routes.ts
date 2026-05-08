@@ -1,10 +1,8 @@
 /**
- * Documents HTTP routes for the app-documents plugin.
+ * Document HTTP routes for the app-documents plugin.
  *
- * These routes were previously dispatched from
- * `packages/agent/src/api/server.ts`. They are now registered through the
- * plugin route registry with `rawPath: true` so that the agent server
- * dispatches them via the standard runtime.routes path.
+ * These routes are registered through the plugin route registry with
+ * `rawPath: true` so the agent server dispatches them via runtime routes.
  */
 
 import type http from "node:http";
@@ -52,7 +50,7 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 
 type PluginRouteHandler = NonNullable<Route["handler"]>;
 
-function documentsRouteHandler(): PluginRouteHandler {
+function documentRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -77,31 +75,31 @@ function documentsRouteHandler(): PluginRouteHandler {
   };
 }
 
-const DOCUMENTS_ROUTES: Array<{ type: string; path: string }> = [
+const DOCUMENT_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/documents" },
-  { type: "POST", path: "/api/documents" },
   { type: "GET", path: "/api/documents/stats" },
-  { type: "GET", path: "/api/documents/search" },
+  { type: "POST", path: "/api/documents" },
   { type: "POST", path: "/api/documents/bulk" },
   { type: "POST", path: "/api/documents/url" },
+  { type: "GET", path: "/api/documents/search" },
   { type: "GET", path: "/api/documents/:id" },
   { type: "PATCH", path: "/api/documents/:id" },
   { type: "DELETE", path: "/api/documents/:id" },
   { type: "GET", path: "/api/documents/:id/fragments" },
 ];
 
-export const documentsRoutes: Route[] = DOCUMENTS_ROUTES.map(
-  (r) =>
+export const documentsRoutes: Route[] = DOCUMENT_ROUTES.map(
+  (route) =>
     ({
-      type: r.type as Route["type"],
-      path: r.path,
+      type: route.type as Route["type"],
+      path: route.path,
       rawPath: true as const,
-      handler: documentsRouteHandler(),
+      handler: documentRouteHandler(),
     }) as Route,
 );
 
 export const documentsPlugin: Plugin = {
   name: "@elizaos/app-documents-routes",
-  description: "Document storage, fragments, and search routes",
+  description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
 };

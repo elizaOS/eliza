@@ -17,11 +17,14 @@ import {
   getDocumentEditability,
   getDocumentProvenance,
   getDocumentTitleFromMetadata,
+  getDocumentVisibilityScope,
   presentDocument,
 } from "./document-presenter.js";
 import {
   getDocumentsService,
+  type DocumentSearchMode,
   type DocumentServiceLike,
+  type DocumentVisibilityScope,
 } from "./service-loader.js";
 
 export type DocumentRouteHelpers = RouteHelpers;
@@ -31,7 +34,9 @@ export interface DocumentRouteContext extends RouteRequestContext {
   runtime: AgentRuntime | null;
 }
 
-const FRAGMENT_COUNT_BATCH_SIZE = 500;
+const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
+const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
 const DOCUMENT_SCOPES = new Set([
@@ -44,6 +49,30 @@ const DOCUMENT_ID_ROUTE_PATTERN =
   /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const DOCUMENT_FRAGMENTS_ROUTE_PATTERN =
   /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/fragments$/i;
+
+const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
+  "global",
+  "owner-private",
+  "user-private",
+  "agent-private",
+]);
+
+type DocumentFilter = {
+  scope?: DocumentVisibilityScope;
+  scopedToEntityId?: UUID;
+};
+
+type DocumentUploadBody = {
+  content: string;
+  filename: string;
+  contentType?: string;
+  metadata?: Record<string, unknown>;
+  roomId?: string;
+  worldId?: string;
+  entityId?: string;
+  scope?: string;
+  scopedToEntityId?: string;
+};
 
 function isTextBackedContentType(
   contentType: string,
@@ -71,6 +100,64 @@ function isTextBackedContentType(
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function trimString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function asUuid(value: unknown): UUID | undefined {
+  const trimmed = trimString(value);
+  return trimmed ? (trimmed as UUID) : undefined;
+}
+
+function parseDocumentScope(
+  value: unknown,
+): DocumentVisibilityScope | undefined {
+  return DOCUMENT_SCOPE_VALUES.has(value as DocumentVisibilityScope)
+    ? (value as DocumentVisibilityScope)
+    : undefined;
+}
+
+function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
+  return value === "hybrid" || value === "vector" || value === "keyword"
+    ? value
+    : undefined;
+}
+
+function filtersFromSearchParams(url: URL): DocumentFilter {
+  const scope = parseDocumentScope(url.searchParams.get("scope"));
+  const scopedToEntityId = asUuid(url.searchParams.get("scopedToEntityId"));
+  return {
+    ...(scope ? { scope } : {}),
+    ...(scopedToEntityId ? { scopedToEntityId } : {}),
+  };
+}
+
+function filtersFromUploadBody(body: {
+  metadata?: Record<string, unknown>;
+  scope?: string;
+  scopedToEntityId?: string;
+}): Required<DocumentFilter> {
+  const metadata = asRecord(body.metadata);
+  const scope =
+    parseDocumentScope(body.scope) ??
+    parseDocumentScope(metadata?.scope) ??
+    "global";
+  const scopedToEntityId =
+    asUuid(body.scopedToEntityId) ?? asUuid(metadata?.scopedToEntityId);
+  return {
+    scope,
+    scopedToEntityId: scopedToEntityId ?? ("" as UUID),
+  };
+}
+
 function hasUuidId(memory: Memory): memory is Memory & { id: UUID } {
   return typeof memory.id === "string" && memory.id.length > 0;
 }
@@ -81,78 +168,66 @@ function hasUuidIdAndCreatedAt(
   return hasUuidId(memory) && typeof memory.createdAt === "number";
 }
 
-function normalizeScope(value: unknown):
-  | "global"
-  | "owner-private"
-  | "user-private"
-  | "agent-private"
-  | undefined {
-  return typeof value === "string" && DOCUMENT_SCOPES.has(value)
-    ? (value as
-        | "global"
-        | "owner-private"
-        | "user-private"
-        | "agent-private")
-    : undefined;
-}
-
-function getDocumentTimestamp(memory: Memory): number {
-  const metadata = memory.metadata as Record<string, unknown> | undefined;
-  const metadataTimestamp = metadata?.timestamp;
-  if (typeof metadataTimestamp === "number") return metadataTimestamp;
-  return typeof memory.createdAt === "number" ? memory.createdAt : 0;
-}
-
-function memoryMatchesDocumentFilters(memory: Memory, url: URL): boolean {
-  const metadata = memory.metadata as Record<string, unknown> | undefined;
-  const scope = url.searchParams.get("scope");
-  if (scope && metadata?.scope !== scope) return false;
-
-  const scopedToEntityId = url.searchParams.get("scopedToEntityId");
-  if (scopedToEntityId && metadata?.scopedToEntityId !== scopedToEntityId) {
-    return false;
-  }
-
-  const addedBy = url.searchParams.get("addedBy");
-  if (addedBy && metadata?.addedBy !== addedBy) return false;
-
-  const query = (url.searchParams.get("q") ?? url.searchParams.get("query"))
-    ?.trim()
-    .toLowerCase();
-  if (query) {
-    const haystack = [
-      memory.content?.text,
-      metadata?.title,
-      metadata?.filename,
-      metadata?.originalFilename,
-      metadata?.source,
-      metadata?.url,
-    ]
-      .filter((value): value is string => typeof value === "string")
-      .join("\n")
-      .toLowerCase();
-    if (!haystack.includes(query)) return false;
-  }
-
-  const timeRangeStart = Date.parse(
-    url.searchParams.get("timeRangeStart") ?? "",
+function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
+  if (memory.agentId && memory.agentId !== agentId) return false;
+  const metadata = asRecord(memory.metadata);
+  return (
+    metadata?.type === "document" ||
+    metadata?.type === "custom" ||
+    (typeof metadata?.documentId === "string" && metadata.documentId === memory.id)
   );
+}
+
+function matchesDocumentFilter(
+  memory: Memory,
+  filters: DocumentFilter,
+): boolean {
+  const metadata = asRecord(memory.metadata);
+  if (filters.scope && getDocumentVisibilityScope(metadata) !== filters.scope) {
+    return false;
+  }
   if (
-    Number.isFinite(timeRangeStart) &&
-    getDocumentTimestamp(memory) < timeRangeStart
+    filters.scopedToEntityId &&
+    metadata?.scopedToEntityId !== filters.scopedToEntityId
   ) {
     return false;
   }
-
-  const timeRangeEnd = Date.parse(url.searchParams.get("timeRangeEnd") ?? "");
-  if (
-    Number.isFinite(timeRangeEnd) &&
-    getDocumentTimestamp(memory) > timeRangeEnd
-  ) {
-    return false;
-  }
-
   return true;
+}
+
+function buildRouteMessage({
+  agentId,
+  text,
+  filters,
+}: {
+  agentId: UUID;
+  text: string;
+  filters?: DocumentFilter;
+}): Memory {
+  const entityId = filters?.scopedToEntityId ?? agentId;
+  return {
+    id: crypto.randomUUID() as UUID,
+    entityId,
+    agentId,
+    roomId: agentId,
+    worldId: agentId,
+    content: { text },
+    metadata: {
+      ...(filters?.scope ? { scope: filters.scope } : {}),
+      ...(filters?.scopedToEntityId
+        ? { scopedToEntityId: filters.scopedToEntityId }
+        : {}),
+    },
+    createdAt: Date.now(),
+  };
+}
+
+function serviceSearchScope(
+  filters: DocumentFilter,
+): { entityId?: UUID } | undefined {
+  return filters.scopedToEntityId
+    ? { entityId: filters.scopedToEntityId }
+    : undefined;
 }
 
 async function countDocumentFragmentsForDocument(
@@ -165,26 +240,21 @@ async function countDocumentFragmentsForDocument(
 
   while (true) {
     const fragmentBatch = await documentsService.getMemories({
-      tableName: "document_fragments",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId,
-      count: FRAGMENT_COUNT_BATCH_SIZE,
+      count: FRAGMENT_BATCH_SIZE,
       offset,
     });
 
-    if (fragmentBatch.length === 0) {
-      break;
-    }
+    if (fragmentBatch.length === 0) break;
 
     fragmentCount += fragmentBatch.filter((memory) => {
-      const metadata = memory.metadata as Record<string, unknown> | undefined;
+      const metadata = asRecord(memory.metadata);
       return metadata?.documentId === documentId;
     }).length;
 
-    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
-      break;
-    }
-
-    offset += FRAGMENT_COUNT_BATCH_SIZE;
+    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
+    offset += FRAGMENT_BATCH_SIZE;
   }
 
   return fragmentCount;
@@ -206,18 +276,16 @@ async function mapDocumentFragmentsByDocumentId(
   let offset = 0;
   while (true) {
     const fragmentBatch = await documentsService.getMemories({
-      tableName: "document_fragments",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId,
-      count: FRAGMENT_COUNT_BATCH_SIZE,
+      count: FRAGMENT_BATCH_SIZE,
       offset,
     });
 
-    if (fragmentBatch.length === 0) {
-      break;
-    }
+    if (fragmentBatch.length === 0) break;
 
     for (const memory of fragmentBatch) {
-      const metadata = memory.metadata as Record<string, unknown> | undefined;
+      const metadata = asRecord(memory.metadata);
       const documentId = metadata?.documentId;
       if (
         typeof documentId === "string" &&
@@ -228,10 +296,8 @@ async function mapDocumentFragmentsByDocumentId(
       }
     }
 
-    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
-      break;
-    }
-    offset += FRAGMENT_COUNT_BATCH_SIZE;
+    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
+    offset += FRAGMENT_BATCH_SIZE;
   }
 
   return fragmentCounts;
@@ -247,32 +313,75 @@ async function listDocumentFragmentsForDocument(
 
   while (true) {
     const fragmentBatch = await documentsService.getMemories({
-      tableName: "document_fragments",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId,
-      count: FRAGMENT_COUNT_BATCH_SIZE,
+      count: FRAGMENT_BATCH_SIZE,
       offset,
     });
 
     for (const memory of fragmentBatch) {
-      const metadata = memory.metadata as Record<string, unknown> | undefined;
+      const metadata = asRecord(memory.metadata);
       if (metadata?.documentId === documentId && hasUuidId(memory)) {
         fragmentIds.push(memory.id);
       }
     }
 
-    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
-      break;
-    }
-
-    offset += FRAGMENT_COUNT_BATCH_SIZE;
+    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
+    offset += FRAGMENT_BATCH_SIZE;
   }
 
   return fragmentIds;
 }
 
-// Re-export the URL fetch test hook for backwards compatibility with previous
-// callers that imported it from this module.
-export const __setPinnedFetchImplForTests = __setDocumentUrlFetchImplForTests;
+async function listDocumentMemories({
+  documentsService,
+  agentId,
+  filters,
+  limit,
+  offset,
+}: {
+  documentsService: DocumentServiceLike;
+  agentId: UUID;
+  filters: DocumentFilter;
+  limit: number;
+  offset: number;
+}): Promise<{ documents: Memory[]; total: number }> {
+  let scanOffset = 0;
+  let total = 0;
+  const documents: Memory[] = [];
+
+  while (true) {
+    const batch = await documentsService.getMemories({
+      tableName: DOCUMENTS_TABLE,
+      count: FRAGMENT_BATCH_SIZE,
+      offset: scanOffset,
+    });
+
+    if (batch.length === 0) break;
+
+    for (const memory of batch) {
+      if (
+        !isDocumentMemory(memory, agentId) ||
+        !matchesDocumentFilter(memory, filters)
+      ) {
+        continue;
+      }
+
+      if (total >= offset && documents.length < limit) {
+        documents.push(memory);
+      }
+      total += 1;
+    }
+
+    if (batch.length < FRAGMENT_BATCH_SIZE) break;
+    scanOffset += FRAGMENT_BATCH_SIZE;
+  }
+
+  return { documents, total };
+}
+
+export const __setDocumentFetchImplForTests =
+  __setDocumentUrlFetchImplForTests;
 
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
@@ -317,15 +426,13 @@ export async function handleDocumentsRoutes(
   }
   const agentId = runtime.agentId as UUID;
 
-  // ── GET /api/documents/stats ────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/documents/stats") {
     const documentCount = await documentsService.countMemories({
-      tableName: "documents",
+      tableName: DOCUMENTS_TABLE,
       unique: false,
     });
-
     const fragmentCount = await documentsService.countMemories({
-      tableName: "document_fragments",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       unique: false,
     });
 
@@ -337,28 +444,24 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  // ── GET /api/documents ────────────────────────────────────────
   if (method === "GET" && pathname === "/api/documents") {
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 100);
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
+    const filters = filtersFromSearchParams(url);
 
-    const rawDocuments = await documentsService.getMemories({
-      tableName: "documents",
-      count: Math.max(limit + offset, limit, 100),
+    const { documents, total } = await listDocumentMemories({
+      documentsService,
+      agentId,
+      filters,
+      limit,
+      offset,
     });
-    const filteredDocuments = rawDocuments.filter((memory) =>
-      memoryMatchesDocumentFilters(memory, url),
-    );
-    const documents = filteredDocuments.slice(offset, offset + limit);
-    const total = filteredDocuments.length;
-
     const documentIds = documents.filter(hasUuidId).map((doc) => doc.id);
     const fragmentCounts = await mapDocumentFragmentsByDocumentId(
       documentsService,
       undefined,
       documentIds,
     );
-
     const cleanedDocuments = documents.map((doc) =>
       presentDocument(
         doc,
@@ -367,6 +470,9 @@ export async function handleDocumentsRoutes(
     );
 
     json(res, {
+      ok: true,
+      available: true,
+      agentId,
       documents: cleanedDocuments,
       total,
       limit,
@@ -375,21 +481,129 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  // ── GET /api/documents/:id ────────────────────────────────────
-  const docIdMatch = DOCUMENT_ID_ROUTE_PATTERN.exec(pathname);
+  if (method === "GET" && pathname === "/api/documents/search") {
+    const query = url.searchParams.get("q");
+    if (!query?.trim()) {
+      error(res, "Search query (q) is required");
+      return true;
+    }
+
+    const threshold = parseClampedFloat(url.searchParams.get("threshold"), {
+      fallback: 0.3,
+      min: 0,
+      max: 1,
+    });
+    const limit = parsePositiveInteger(url.searchParams.get("limit"), 20);
+    const filters = filtersFromSearchParams(url);
+    const searchMode = parseSearchMode(url.searchParams.get("searchMode"));
+    const searchMessage = buildRouteMessage({
+      agentId,
+      text: query.trim(),
+      filters,
+    });
+
+    const results = await documentsService.searchDocuments(
+      searchMessage,
+      serviceSearchScope(filters),
+      searchMode,
+    );
+
+    const filteredResults = results
+      .filter((result) => (result.similarity ?? 0) >= threshold)
+      .filter((result) =>
+        matchesDocumentFilter(result as unknown as Memory, filters),
+      )
+      .slice(0, limit)
+      .map((result) => {
+        const meta = asRecord(result.metadata);
+        return {
+          id: result.id,
+          text: result.content?.text || "",
+          similarity: result.similarity,
+          documentId: meta?.documentId,
+          documentTitle: getDocumentTitleFromMetadata(
+            meta,
+            result.content?.text,
+          ),
+          documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
+          position: meta?.position,
+        };
+      });
+
+    json(res, {
+      query: query.trim(),
+      threshold,
+      results: filteredResults,
+      count: filteredResults.length,
+    });
+    return true;
+  }
+
+  const fragmentsMatch = /^\/api\/documents\/([^/]+)\/fragments$/.exec(
+    pathname,
+  );
+  if (method === "GET" && fragmentsMatch) {
+    const documentId = decodeURIComponent(fragmentsMatch[1]) as UUID;
+
+    const allFragments: Array<{
+      id: UUID;
+      text: string;
+      position: unknown;
+      createdAt: number;
+    }> = [];
+    let fragmentOffset = 0;
+
+    while (true) {
+      const fragmentBatch = await documentsService.getMemories({
+        tableName: DOCUMENT_FRAGMENTS_TABLE,
+        count: FRAGMENT_BATCH_SIZE,
+        offset: fragmentOffset,
+      });
+
+      if (fragmentBatch.length === 0) break;
+
+      for (const fragment of fragmentBatch) {
+        const metadata = asRecord(fragment.metadata);
+        if (metadata?.documentId !== documentId) continue;
+        if (!hasUuidIdAndCreatedAt(fragment)) continue;
+        allFragments.push({
+          id: fragment.id,
+          text: (fragment.content as { text?: string })?.text || "",
+          position: metadata?.position,
+          createdAt: fragment.createdAt,
+        });
+      }
+
+      if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
+      fragmentOffset += FRAGMENT_BATCH_SIZE;
+    }
+
+    const documentFragments = allFragments
+      .sort((a, b) => {
+        const posA = typeof a.position === "number" ? a.position : 0;
+        const posB = typeof b.position === "number" ? b.position : 0;
+        return posA - posB;
+      })
+      .map((fragment) => ({
+        id: fragment.id,
+        text: fragment.text,
+        position: fragment.position,
+        createdAt: fragment.createdAt,
+      }));
+
+    json(res, {
+      documentId,
+      fragments: documentFragments,
+      count: documentFragments.length,
+    });
+    return true;
+  }
+
+  const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
   if (method === "GET" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
-
     const document = await runtime.getMemoryById(documentId);
-    const documentMetadata = document?.metadata as
-      | Record<string, unknown>
-      | undefined;
-    const isDocument =
-      document?.agentId === agentId &&
-      (documentMetadata?.documentId === documentId ||
-        documentMetadata?.type === "document" ||
-        documentMetadata?.type === "custom");
-    if (!document || !isDocument) {
+    if (!document || !isDocumentMemory(document, agentId)) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -411,7 +625,7 @@ export async function handleDocumentsRoutes(
   if (method === "PATCH" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const document = await runtime.getMemoryById(documentId);
-    if (!document || document.agentId !== agentId) {
+    if (!document || !isDocumentMemory(document, agentId)) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -436,14 +650,10 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
-    if (typeof documentsService.updateDocument !== "function") {
-      error(res, "Document editing is unavailable", 503);
-      return true;
-    }
-
     const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
+      message: buildRouteMessage({ agentId, text: body.content }),
     });
 
     json(res, {
@@ -454,11 +664,10 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  // ── DELETE /api/documents/:id ─────────────────────────────────
   if (method === "DELETE" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const existingDocument = await runtime.getMemoryById(documentId);
-    if (!existingDocument || existingDocument.agentId !== agentId) {
+    if (!existingDocument || !isDocumentMemory(existingDocument, agentId)) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -482,8 +691,6 @@ export async function handleDocumentsRoutes(
     for (const fragmentId of fragmentIds) {
       await documentsService.deleteMemory(fragmentId);
     }
-
-    // Then delete the document itself
     await documentsService.deleteMemory(documentId);
 
     json(res, {
@@ -493,18 +700,7 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  type DocumentUploadBody = {
-    content: string;
-    filename: string;
-    contentType?: string;
-    metadata?: Record<string, unknown>;
-    roomId?: string;
-    entityId?: string;
-    scope?: string;
-    scopedToEntityId?: string;
-  };
-
-  async function addDocumentFromBody(
+  async function addDocument(
     service: DocumentServiceLike,
     document: DocumentUploadBody,
   ): Promise<{
@@ -521,12 +717,9 @@ export async function handleDocumentsRoutes(
       document.filename,
     );
 
-    // Image files: the content is base64-encoded binary which can't be
-    // text-extracted. Convert to a text description for embedding.
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
-        (document.metadata as Record<string, unknown>)
-          ?.includeImageDescriptions === true;
+        asRecord(document.metadata)?.includeImageDescriptions === true;
       if (includeDescriptions && runtime) {
         try {
           const { ModelType } = await import("@elizaos/core");
@@ -547,58 +740,45 @@ export async function handleDocumentsRoutes(
           contentType = "text/plain";
         } catch (modelErr) {
           warnings.push(`Image description failed: ${String(modelErr)}`);
-          content = `[Image: ${document.filename}] — Image description unavailable (model error).`;
+          content = `[Image: ${document.filename}] - Image description unavailable (model error).`;
           contentType = "text/plain";
         }
       } else {
-        // No vision requested — store as a reference entry
-        content = `[Image: ${document.filename}] — Image uploaded without text extraction.`;
+        content = `[Image: ${document.filename}] - Image uploaded without text extraction.`;
         contentType = "text/plain";
       }
     }
 
-    // MDX files: treat as markdown
     if (document.filename?.endsWith(".mdx")) {
       contentType = "text/markdown";
     }
 
-    const scope = normalizeScope(document.scope ?? document.metadata?.scope);
+    const uploadFilters = filtersFromUploadBody(document);
     const scopedToEntityId =
-      typeof document.scopedToEntityId === "string" &&
-      document.scopedToEntityId.trim().length > 0
-        ? (document.scopedToEntityId.trim() as UUID)
-        : typeof document.metadata?.scopedToEntityId === "string" &&
-            document.metadata.scopedToEntityId.trim().length > 0
-          ? (document.metadata.scopedToEntityId.trim() as UUID)
-          : undefined;
-    const ownerEntityId =
-      scope === "user-private"
-        ? (scopedToEntityId ??
-          (typeof document.entityId === "string" &&
-          document.entityId.trim().length > 0
-            ? (document.entityId.trim() as UUID)
-            : agentId))
-        : agentId;
+      uploadFilters.scopedToEntityId.length > 0
+        ? uploadFilters.scopedToEntityId
+        : undefined;
+    const roomId = asUuid(document.roomId) ?? agentId;
+    const worldId = asUuid(document.worldId) ?? agentId;
+    const entityId = asUuid(document.entityId) ?? scopedToEntityId ?? agentId;
+    const metadata = asRecord(document.metadata);
 
     const result = await service.addDocument({
       agentId,
-      worldId: agentId,
-      roomId:
-        typeof document.roomId === "string" && document.roomId.trim().length > 0
-          ? (document.roomId.trim() as UUID)
-          : agentId,
-      entityId: ownerEntityId,
-      clientDocumentId: "" as UUID, // Will be generated
+      worldId,
+      roomId,
+      entityId,
+      clientDocumentId: "" as UUID,
       contentType,
       originalFilename: document.filename,
       content,
-      scope,
+      scope: uploadFilters.scope,
       scopedToEntityId,
-      addedBy: ownerEntityId,
-      addedByRole: "USER",
+      addedBy: entityId,
+      addedByRole: entityId === agentId ? "AGENT" : "USER",
       addedFrom: "upload",
       metadata: {
-        ...document.metadata,
+        ...metadata,
         source: "upload",
         scope,
         scopedToEntityId,
@@ -607,25 +787,25 @@ export async function handleDocumentsRoutes(
         fileType: originalContentType,
         contentType,
         textBacked,
+        scope: uploadFilters.scope,
+        ...(scopedToEntityId ? { scopedToEntityId } : {}),
       },
     });
 
     const warningsValue = (result as { warnings?: unknown }).warnings;
     if (Array.isArray(warningsValue)) {
-      for (const w of warningsValue) {
-        if (typeof w === "string") warnings.push(w);
+      for (const warning of warningsValue) {
+        if (typeof warning === "string") warnings.push(warning);
       }
     }
 
     return {
-      documentId: result.clientDocumentId,
+      documentId: result.clientDocumentId as UUID,
       fragmentCount: result.fragmentCount,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
 
-  // ── POST /api/documents ───────────────────────────────────────
-  // Upload document from base64 content or text
   if (method === "POST" && pathname === "/api/documents") {
     const body = await readJsonBody<DocumentUploadBody>(req, res, {
       maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
@@ -643,7 +823,7 @@ export async function handleDocumentsRoutes(
       warnings?: string[];
     };
     try {
-      result = await addDocumentFromBody(documentsService, body);
+      result = await addDocument(documentsService, body);
     } catch (err) {
       error(res, `Failed to add document: ${String(err)}`, 500);
       return true;
@@ -658,10 +838,11 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  // ── POST /api/documents/bulk ──────────────────────────────────
   if (method === "POST" && pathname === "/api/documents/bulk") {
     const body = await readJsonBody<{
       documents?: DocumentUploadBody[];
+      scope?: string;
+      scopedToEntityId?: string;
     }>(req, res, {
       maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
@@ -711,10 +892,12 @@ export async function handleDocumentsRoutes(
         ...document,
         content: document.content,
         filename: document.filename.trim(),
+        scope: document.scope ?? body.scope,
+        scopedToEntityId: document.scopedToEntityId ?? body.scopedToEntityId,
       };
 
       try {
-        const uploadResult = await addDocumentFromBody(
+        const uploadResult = await addDocument(
           documentsService,
           normalizedDocument,
         );
@@ -749,14 +932,16 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
-  // ── POST /api/documents/url ───────────────────────────────────
-  // Upload document from URL (including YouTube auto-transcription)
   if (method === "POST" && pathname === "/api/documents/url") {
     const body = await readJsonBody<{
       url: string;
       metadata?: Record<string, unknown>;
+      roomId?: string;
+      worldId?: string;
+      entityId?: string;
       scope?: string;
       scopedToEntityId?: string;
+      includeImageDescriptions?: boolean;
     }>(req, res);
     if (!body) return true;
 
@@ -766,13 +951,11 @@ export async function handleDocumentsRoutes(
     }
 
     const urlToFetch = body.url.trim();
-
-    // Fetch and process the URL content using the shared helper from
-    // @elizaos/core, which handles YouTube transcripts, filename derivation,
-    // and binary-vs-text disambiguation.
     let fetchedContent: Awaited<ReturnType<typeof fetchDocumentFromUrl>>;
     try {
-      fetchedContent = await fetchDocumentFromUrl(urlToFetch);
+      fetchedContent = await fetchDocumentFromUrl(urlToFetch, {
+        includeImageDescriptions: body.includeImageDescriptions === true,
+      });
     } catch (fetchErr) {
       error(res, `Failed to fetch URL content: ${String(fetchErr)}`, 400);
       return true;
@@ -780,44 +963,41 @@ export async function handleDocumentsRoutes(
 
     const { content, mimeType, filename } = fetchedContent;
     const contentType = mimeType;
-
-    const scope = normalizeScope(body.scope ?? body.metadata?.scope);
+    const uploadFilters = filtersFromUploadBody(body);
     const scopedToEntityId =
-      typeof body.scopedToEntityId === "string" &&
-      body.scopedToEntityId.trim().length > 0
-        ? (body.scopedToEntityId.trim() as UUID)
-        : typeof body.metadata?.scopedToEntityId === "string" &&
-            body.metadata.scopedToEntityId.trim().length > 0
-          ? (body.metadata.scopedToEntityId.trim() as UUID)
-          : undefined;
-    const ownerEntityId =
-      scope === "user-private" ? (scopedToEntityId ?? agentId) : agentId;
+      uploadFilters.scopedToEntityId.length > 0
+        ? uploadFilters.scopedToEntityId
+        : undefined;
+    const roomId = asUuid(body.roomId) ?? agentId;
+    const worldId = asUuid(body.worldId) ?? agentId;
+    const entityId = asUuid(body.entityId) ?? scopedToEntityId ?? agentId;
+    const isYouTubeTranscript = isYouTubeUrl(urlToFetch);
 
     const result = await documentsService.addDocument({
       agentId,
-      worldId: agentId,
-      roomId: agentId,
-      entityId: ownerEntityId,
+      worldId,
+      roomId,
+      entityId,
       clientDocumentId: "" as UUID,
       contentType,
       originalFilename: filename,
       content,
-      scope,
+      scope: uploadFilters.scope,
       scopedToEntityId,
-      addedBy: ownerEntityId,
-      addedByRole: "USER",
+      addedBy: entityId,
+      addedByRole: entityId === agentId ? "AGENT" : "USER",
       addedFrom: "url",
       metadata: {
         ...body.metadata,
         url: urlToFetch,
-        source: isYouTubeUrl(urlToFetch) ? "youtube" : "url",
-        scope,
-        scopedToEntityId,
+        source: isYouTubeTranscript ? "youtube" : "url",
         filename,
         originalFilename: filename,
         fileType: contentType,
         contentType,
-        textBacked: true,
+        textBacked: fetchedContent.contentType !== "binary",
+        scope: uploadFilters.scope,
+        ...(scopedToEntityId ? { scopedToEntityId } : {}),
       },
     });
 
@@ -827,152 +1007,10 @@ export async function handleDocumentsRoutes(
       fragmentCount: result.fragmentCount,
       filename,
       contentType,
-      isYouTubeTranscript: isYouTubeUrl(urlToFetch),
+      isYouTubeTranscript,
     });
     return true;
   }
 
-  // ── GET /api/documents/search ───────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/documents/search") {
-    const query = url.searchParams.get("q");
-    if (!query?.trim()) {
-      error(res, "Search query (q) is required");
-      return true;
-    }
-
-    const threshold = parseClampedFloat(url.searchParams.get("threshold"), {
-      fallback: 0.3,
-      min: 0,
-      max: 1,
-    });
-    const limit = parsePositiveInteger(url.searchParams.get("limit"), 20);
-
-    // Create a mock message for the search
-    const searchMessage: Memory = {
-      id: crypto.randomUUID() as UUID,
-      entityId: agentId,
-      agentId,
-      roomId: agentId,
-      content: { text: query.trim() },
-      createdAt: Date.now(),
-    };
-
-    const results = await documentsService.searchDocuments(searchMessage);
-
-    // Filter by threshold and limit
-    const filteredResults = results
-      .filter((result) => {
-        const memory: Memory = {
-          id: result.id,
-          agentId,
-          roomId: agentId,
-          content: result.content,
-          metadata: result.metadata,
-        };
-        return memoryMatchesDocumentFilters(memory, url);
-      })
-      .filter((r) => (r.similarity ?? 0) >= threshold)
-      .slice(0, limit)
-      .map((r) => {
-        const meta = r.metadata as Record<string, unknown> | undefined;
-        return {
-          id: r.id,
-          text: r.content?.text || "",
-          similarity: r.similarity,
-          documentId: meta?.documentId,
-          documentTitle: getDocumentTitleFromMetadata(
-            meta,
-            r.content?.text,
-          ),
-          documentProvenance: meta
-            ? getDocumentProvenance(meta)
-            : undefined,
-          position: meta?.position,
-        };
-      });
-
-    json(res, {
-      query: query.trim(),
-      threshold,
-      results: filteredResults,
-      count: filteredResults.length,
-    });
-    return true;
-  }
-
-  // ── GET /api/documents/:documentId ────────────────────────────
-  const fragmentsMatch = DOCUMENT_FRAGMENTS_ROUTE_PATTERN.exec(pathname);
-  if (method === "GET" && fragmentsMatch) {
-    const documentId = decodeURIComponent(fragmentsMatch[1]) as UUID;
-
-    const allFragments: Array<{
-      id: UUID;
-      text: string;
-      position: unknown;
-      createdAt: number;
-    }> = [];
-    let fragmentOffset = 0;
-
-    while (true) {
-      const fragmentBatch = await documentsService.getMemories({
-        tableName: "document_fragments",
-        count: FRAGMENT_COUNT_BATCH_SIZE,
-        offset: fragmentOffset,
-      });
-
-      if (fragmentBatch.length === 0) {
-        break;
-      }
-
-      const matchingFragments = fragmentBatch.filter((fragment) => {
-        const metadata = fragment.metadata as
-          | Record<string, unknown>
-          | undefined;
-        return metadata?.documentId === documentId;
-      });
-
-      for (const fragment of matchingFragments) {
-        if (!hasUuidIdAndCreatedAt(fragment)) {
-          continue;
-        }
-        const meta = fragment.metadata as Record<string, unknown> | undefined;
-        allFragments.push({
-          id: fragment.id,
-          text: (fragment.content as { text?: string })?.text || "",
-          position: meta?.position,
-          createdAt: fragment.createdAt,
-        });
-      }
-
-      if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
-        break;
-      }
-      fragmentOffset += FRAGMENT_COUNT_BATCH_SIZE;
-    }
-
-    const documentFragments = allFragments
-      .sort((a, b) => {
-        const posA = typeof a.position === "number" ? a.position : 0;
-        const posB = typeof b.position === "number" ? b.position : 0;
-        return posA - posB;
-      })
-      .map((f) => {
-        return {
-          id: f.id,
-          text: f.text,
-          position: f.position,
-          createdAt: f.createdAt,
-        };
-      });
-
-    json(res, {
-      documentId,
-      fragments: documentFragments,
-      count: documentFragments.length,
-    });
-    return true;
-  }
-
-  // Route not matched within /api/documents prefix
   return false;
 }

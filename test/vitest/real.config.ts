@@ -315,7 +315,7 @@ const realResolveAlias: ModuleAlias[] = [
     find: "@elizaos/app-documents/routes",
     replacement: path.join(
       elizaWorkspaceRoot,
-      "apps",
+      "plugins",
       "app-documents",
       "src",
       "routes.ts",
@@ -325,7 +325,7 @@ const realResolveAlias: ModuleAlias[] = [
     find: "@elizaos/app-documents/service-loader",
     replacement: path.join(
       elizaWorkspaceRoot,
-      "apps",
+      "plugins",
       "app-documents",
       "src",
       "service-loader.ts",
@@ -335,7 +335,7 @@ const realResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/app-documents\/(.*)/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "apps",
+      "plugins",
       "app-documents",
       "src",
       "$1",
@@ -345,7 +345,7 @@ const realResolveAlias: ModuleAlias[] = [
     find: "@elizaos/app-documents",
     replacement: path.join(
       elizaWorkspaceRoot,
-      "apps",
+      "plugins",
       "app-documents",
       "src",
       "index.ts",

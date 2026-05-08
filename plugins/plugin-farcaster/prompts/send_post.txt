@@ -1,0 +1,1 @@
+Based on this request: "{{request}}", generate a concise Farcaster public post (cast, max 320 characters). Be engaging and use appropriate hashtags if relevant.

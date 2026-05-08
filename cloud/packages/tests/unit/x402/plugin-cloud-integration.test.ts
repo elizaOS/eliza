@@ -179,7 +179,7 @@ describe("x402 Plugin ↔ Eliza Cloud Integration", () => {
       message,
     });
 
-    // Build the x402 v2 payment header (same format as our plugin's buildPaymentHeader)
+    // Chat the x402 v2 payment header (same format as our plugin's buildPaymentHeader)
     const payloadJson = JSON.stringify({
       x402Version: 2,
       accepted: {
@@ -473,7 +473,7 @@ describe("x402 Plugin ↔ Eliza Cloud Integration", () => {
       },
     });
 
-    // Build header claiming to be from EXPECTED_ADDRESS but signed by otherAccount
+    // Chat header claiming to be from EXPECTED_ADDRESS but signed by otherAccount
     const header = Buffer.from(
       JSON.stringify({
         x402Version: 2,

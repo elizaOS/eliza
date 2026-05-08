@@ -376,7 +376,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           const lines = [
             formatSearchBullet("Saved / commands", savedCommandNames),
             formatSearchBullet("Custom action / commands", customCommandNames),
-            "Use #remember ... to save memory notes. Use #memory or #knowledge to target retrieval.",
+            "Use #remember ... to save memory notes. Use #memory or #documents to target retrieval.",
             "Use $query for a quick, non-persistent context answer.",
           ];
           appendLocalCommandTurn(rawText, lines.join("\n\n"));
@@ -435,7 +435,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (!commandBody) {
           appendLocalCommandTurn(
             rawText,
-            "Usage: #remember <text>, #memory <query>, #knowledge <query>, or #<query>.",
+            "Usage: #remember <text>, #memory <query>, #documents <query>, or #<query>.",
           );
           return { handled: true };
         }
@@ -463,9 +463,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (lower.startsWith("memory ")) {
           scope = "memory";
           query = commandBody.slice("memory ".length).trim();
-        } else if (lower.startsWith("knowledge ")) {
+        } else if (lower.startsWith("documents ")) {
           scope = "documents";
-          query = commandBody.slice("knowledge ".length).trim();
+          query = commandBody.slice("documents ".length).trim();
         } else if (lower.startsWith("all ")) {
           scope = "all";
           query = commandBody.slice("all ".length).trim();
@@ -476,7 +476,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           return { handled: true };
         }
 
-        const [memoryResult, documentsResult] = await Promise.all([
+        const [memoryResult, documentResult] = await Promise.all([
           scope === "documents"
             ? Promise.resolve(null)
             : client.searchMemory(query, { limit: 6 }),
@@ -491,7 +491,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()}`,
           ) ?? [];
         const documentLines =
-          documentsResult?.results.map(
+          documentResult?.results.map(
             (item, index) =>
               `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()} (sim ${item.similarity.toFixed(2)})`,
           ) ?? [];

@@ -33,11 +33,11 @@ async function resolveTargetMessageId(
 }
 
 export const draftReplyAction: Action = {
-	name: "DRAFT_REPLY",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Compose a draft reply to an existing message. Use this when the user asks to draft a reply, including natural-language targets like latest email from Sarah; pass messageId when known, otherwise pass sender/content hints. Never sends — produces a preview that must be confirmed via SEND_DRAFT.",
+		"Compose a draft reply to an existing message. Use this when the user asks to draft a reply, including natural-language targets like latest email from Sarah; pass messageId when known, otherwise pass sender/content hints. Never sends — produces a preview that must be confirmed via MESSAGE.",
 	descriptionCompressed:
 		"draft reply only; can target by messageId or latest/from sender/content hints; never sends",
 	similes: ["COMPOSE_REPLY", "DRAFT_MESSAGE_REPLY"],
@@ -69,7 +69,7 @@ export const draftReplyAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Drafting a reply — here's the preview.",
-					action: "DRAFT_REPLY",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -112,7 +112,7 @@ export const draftReplyAction: Action = {
 			`[DraftReply] draftId=${record.draftId} source=${record.source}`,
 		);
 		if (callback) {
-			await callback({ text, action: "DRAFT_REPLY" });
+			await callback({ text, action: "MESSAGE" });
 		}
 
 		return {

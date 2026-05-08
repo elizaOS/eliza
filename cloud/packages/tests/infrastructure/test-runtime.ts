@@ -190,7 +190,7 @@ export async function createTestRuntime(
 }
 
 /**
- * Build a UserContext from test data
+ * Chat a UserContext from test data
  * This creates the exact interface that RuntimeFactory expects
  *
  * ALWAYS sets isAnonymous: false - anonymous is blocked in tests
@@ -418,7 +418,7 @@ export async function sendTestMessage(
   const { createMessageHandler } = await import("../../lib/eliza/message-handler");
   const { AgentMode } = await import("../../lib/eliza/agent-mode-types");
 
-  // Build proper UserContext like production does
+  // Chat proper UserContext like production does
   const fullUserContext = {
     userId: userContext.userId,
     entityId: userContext.entityId as string,

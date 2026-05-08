@@ -20,11 +20,11 @@ import {
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { extractCompatTextContent } from "./compat-utils.js";
 import {
-	getDocumentsService,
-	type DocumentsServiceLike,
+  getDocumentsService,
+  type DocumentsServiceLike,
 } from "./documents-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
@@ -91,10 +91,10 @@ const AGENT_AWARENESS_INTENT_RE =
 
 const AGENT_AWARENESS_CLOUD_CREDITS_TIMEOUT_MS = 1_500;
 const MAX_EXPOSED_PLUGIN_NAMES = 12;
-const CHAT_DOCUMENT_THRESHOLD = 0.2;
-const CHAT_DOCUMENT_LIMIT = 4;
-const CHAT_DOCUMENT_SNIPPET_MAX_CHARS = 700;
-const CHAT_DOCUMENT_RECOVERY_QUERY_LIMIT = 3;
+const CHAT_DOCUMENTS_THRESHOLD = 0.2;
+const CHAT_DOCUMENTS_LIMIT = 4;
+const CHAT_DOCUMENTS_SNIPPET_MAX_CHARS = 700;
+const CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT = 3;
 
 interface CloudAuthAwarenessService {
   isAuthenticated?: () => boolean;
@@ -279,10 +279,7 @@ export async function maybeAugmentChatMessageWithDocuments(
     createdAt: Date.now(),
   };
 
-  const loadMatches = async (
-    scopeRoomId: UUID,
-    queryText: string,
-  ): Promise<DocumentMatches> =>
+  const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
     documents.service?.searchDocuments(
       {
         ...searchMessage,
@@ -312,13 +309,13 @@ export async function maybeAugmentChatMessageWithDocuments(
       return (
         typeof text === "string" &&
         text.length > 0 &&
-        (match.similarity ?? 0) >= CHAT_DOCUMENT_THRESHOLD
+        (match.similarity ?? 0) >= CHAT_DOCUMENTS_THRESHOLD
       );
     });
 
   const recoverDocumentSearchQueriesWithLlm = async (): Promise<string[]> => {
     const prompt = [
-      "Extract up to 3 short semantic-search queries for retrieving documents that answers the user's request.",
+      "Extract up to 3 short semantic-search queries for retrieving documents that answer the user's request.",
       "Return only JSON with this shape:",
       '  {"queries":["query one","query two"]}',
       "",
@@ -357,7 +354,7 @@ export async function maybeAugmentChatMessageWithDocuments(
             .filter((value): value is string => typeof value === "string")
             .map((value) => value.trim())
             .filter((value) => value.length > 0)
-            .slice(0, CHAT_DOCUMENT_RECOVERY_QUERY_LIMIT),
+            .slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT),
         ),
       ];
     } catch (error) {
@@ -366,7 +363,7 @@ export async function maybeAugmentChatMessageWithDocuments(
           src: "api:chat-augmentation",
           error: error instanceof Error ? error.message : String(error),
         },
-        "Documents query recovery model call failed",
+        "Document query recovery model call failed",
       );
       return [];
     }
@@ -378,7 +375,7 @@ export async function maybeAugmentChatMessageWithDocuments(
       await loadMatchesAcrossScopes(userPrompt),
     )
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-      .slice(0, CHAT_DOCUMENT_LIMIT);
+      .slice(0, CHAT_DOCUMENTS_LIMIT);
 
     if (relevantMatches.length === 0) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
@@ -389,7 +386,7 @@ export async function maybeAugmentChatMessageWithDocuments(
           .sort(
             (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
           )
-          .slice(0, CHAT_DOCUMENT_LIMIT);
+          .slice(0, CHAT_DOCUMENTS_LIMIT);
         if (recoveredMatches.length > 0) {
           relevantMatches = recoveredMatches;
           break;
@@ -404,7 +401,7 @@ export async function maybeAugmentChatMessageWithDocuments(
         roomId,
         error: getErrorMessage(error, "document lookup failed"),
       },
-      "Documents augmentation skipped after retrieval failure",
+      "Document augmentation skipped after retrieval failure",
     );
     return message;
   }
@@ -424,8 +421,8 @@ export async function maybeAugmentChatMessageWithDocuments(
             : `source-${index + 1}`;
       const text = (match.content?.text ?? "").trim();
       const snippet =
-        text.length > CHAT_DOCUMENT_SNIPPET_MAX_CHARS
-          ? `${text.slice(0, CHAT_DOCUMENT_SNIPPET_MAX_CHARS)}...`
+        text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
+          ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS)}...`
           : text;
       return [
         `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(
@@ -442,9 +439,9 @@ export async function maybeAugmentChatMessageWithDocuments(
     content: {
       ...(message.content as Content),
       text: [
-        "Answer the user request using the contextual documents below as the source of truth when it contains the answer.",
+        "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
         "If the answer appears verbatim in the contextual documents, repeat it exactly.",
-        "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answers the request.",
+        "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
         "",
         "<contextual_documents>",
         contextualDocuments,

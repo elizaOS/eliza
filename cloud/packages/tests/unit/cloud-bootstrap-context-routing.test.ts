@@ -12,7 +12,7 @@ describe("cloud bootstrap context routing", () => {
   test("parses routing metadata with shared contexts only", () => {
     const parsed = parseContextRoutingMetadata({
       primaryContext: "wallet",
-      secondaryContexts: "wallet, knowledge, wallet",
+      secondaryContexts: "wallet, documents, wallet",
     });
 
     expect(parsed).toEqual({
@@ -65,7 +65,7 @@ describe("cloud bootstrap context routing", () => {
 
   test("parses mixed context list inputs and ignores invalid entries", () => {
     expect(
-      parseContextList(["wallet;automation", "Knowledge", "wallet", "not-a-context", 123]),
+      parseContextList(["wallet;automation", "Documents", "wallet", "not-a-context", 123]),
     ).toEqual(["wallet", "automation", "documents"]);
   });
 
@@ -107,6 +107,6 @@ describe("cloud bootstrap context routing", () => {
     );
 
     expect(nextState.values.retained).toBe("yes");
-    expect(nextState.values.availableContexts).toBe("browser, general, knowledge, wallet");
+    expect(nextState.values.availableContexts).toBe("browser, documents, general, wallet");
   });
 });

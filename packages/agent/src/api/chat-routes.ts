@@ -398,7 +398,7 @@ async function resolveExactDocumentValueForChat(
       )
       .filter((text) => text.length > 0)
       .join("\n\n");
-		return extractExactGroundedValueFromText(messageText, documentsText);
+    return extractExactGroundedValueFromText(messageText, documentsText);
   } catch {
     return null;
   }

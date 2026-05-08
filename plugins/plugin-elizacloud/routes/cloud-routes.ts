@@ -2,13 +2,13 @@ import type http from "node:http";
 import {
   type CloudRouteState as AutonomousCloudRouteState,
   handleCloudRoute as handleAutonomousCloudRoute,
-} from "@elizaos/agent/api/cloud-routes";
+} from "./cloud-routes-autonomous.js";
 import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
 import {
   normalizeCloudSiteUrl,
-} from "@elizaos/agent/cloud/base-url";
-import type { CloudManager } from "@elizaos/agent/cloud/cloud-manager";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
+} from "../cloud/base-url.js";
+import type { CloudManager } from "../cloud/cloud-manager.js";
+import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger } from "@elizaos/core";

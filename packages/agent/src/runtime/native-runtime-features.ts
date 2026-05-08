@@ -21,4 +21,3 @@ export function runtimeDocumentsEnabled(runtime: AgentRuntime): boolean {
     runtimeWithFlags.isDocumentsEnabled()
   );
 }
-

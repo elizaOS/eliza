@@ -8,6 +8,13 @@
       "when": 1777101370172,
       "tag": "0000_lively_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0001_connector_accounts",
+      "breakpoints": true
     }
   ]
 }

@@ -231,6 +231,39 @@ const coreActionMap = new Map<string, ActionDoc>(
 const allActionMap = new Map<string, ActionDoc>(
   allActionDocs.map((doc) => [doc.name, doc])
 );
+const legacyActionSpecAliases: Readonly<
+  Record<
+    string,
+    {
+      target: string;
+      description?: string;
+      descriptionCompressed?: string;
+      similes?: readonly string[];
+    }
+  >
+> = {
+  CHAT_WITH_ATTACHMENTS: {
+    target: "DISCORD_CHAT_WITH_ATTACHMENTS",
+  },
+  DOWNLOAD_MEDIA: {
+    target: "DISCORD_MEDIA_OP",
+    description: "Download a media attachment or URL from Discord.",
+    descriptionCompressed: "Download Discord media attachment or URL.",
+    similes: ["DISCORD_DOWNLOAD_MEDIA", "DISCORD_FETCH_MEDIA", "DISCORD_SAVE_ATTACHMENT"],
+  },
+  TRANSCRIBE_MEDIA: {
+    target: "DISCORD_MEDIA_OP",
+    description: "Transcribe an audio or video attachment from Discord.",
+    descriptionCompressed: "Transcribe Discord audio or video attachment.",
+    similes: ["DISCORD_TRANSCRIBE_MEDIA", "DISCORD_AUDIO_TO_TEXT", "DISCORD_VIDEO_TRANSCRIPT"],
+  },
+  SUMMARIZE_CONVERSATION: {
+    target: "DISCORD_SUMMARIZE_CONVERSATION",
+  },
+  CREATE_POLL: {
+    target: "DISCORD_CREATE_POLL",
+  },
+};
 const coreProviderMap = new Map<string, ProviderDoc>(
   coreProviderDocs.map((doc) => [doc.name, doc])
 );

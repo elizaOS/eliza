@@ -13,6 +13,14 @@ import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
 import { UnionFind } from "../utils/union-find";
+import {
+	createNativeRelationshipsGraphService,
+	type GraphResolvers,
+	type RelationshipsGraphQuery,
+	type RelationshipsGraphService,
+	type RelationshipsGraphSnapshot,
+	type RelationshipsPersonDetail,
+} from "./relationships-graph-builder";
 
 /**
  * Handles on these platforms are enrichment (phone/email/website) — they
@@ -576,6 +584,12 @@ export class RelationshipsService extends Service {
 	private categoriesCache: ContactCategory[] = [];
 	private static readonly CONTACT_CACHE_LIMIT = 2000;
 	private static readonly ANALYTICS_CACHE_LIMIT = 2000;
+
+	private graphResolvers: GraphResolvers = {
+		resolveOwnerEntityId: async () => null,
+		fetchConfiguredOwnerName: async () => null,
+	};
+	private graphServiceInstance: RelationshipsGraphService | null = null;
 
 	private setCacheWithLimit<K, V>(
 		cache: Map<K, V>,
@@ -2264,6 +2278,43 @@ export class RelationshipsService extends Service {
 			}
 		}
 		return ids;
+	}
+
+	// ───────────────────────────────────────────────────────────────────────
+	// Graph snapshot / person detail (merged from former RelationshipsGraphService)
+	// ───────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Inject runtime resolvers used while building graph snapshots. Owner
+	 * resolution and configured-owner-name lookup live outside core (they
+	 * depend on agent-level config), so the agent package wires them in.
+	 */
+	setGraphResolvers(resolvers: GraphResolvers): void {
+		this.graphResolvers = resolvers;
+		this.graphServiceInstance = null;
+	}
+
+	private getGraphServiceInstance(): RelationshipsGraphService {
+		if (!this.graphServiceInstance) {
+			this.graphServiceInstance = createNativeRelationshipsGraphService(
+				this.runtime,
+				this,
+				this.graphResolvers,
+			);
+		}
+		return this.graphServiceInstance;
+	}
+
+	async getGraphSnapshot(
+		query: RelationshipsGraphQuery = {},
+	): Promise<RelationshipsGraphSnapshot> {
+		return this.getGraphServiceInstance().getGraphSnapshot(query);
+	}
+
+	async getPersonDetail(
+		primaryEntityId: UUID,
+	): Promise<RelationshipsPersonDetail | null> {
+		return this.getGraphServiceInstance().getPersonDetail(primaryEntityId);
 	}
 }
 

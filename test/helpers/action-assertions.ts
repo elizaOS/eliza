@@ -216,7 +216,7 @@ export function expectActionOrder(
  * Assert that at least one of the given action names was called.
  *
  * Useful when multiple actions could satisfy a user request (e.g. the
- * agent might choose SEND_DRAFT or RESPOND_TO_MESSAGE for an email task).
+ * agent might choose MESSAGE or MESSAGE for an email task).
  */
 export function expectAnyActionCalled(
   invocations: ActionInvocation[],

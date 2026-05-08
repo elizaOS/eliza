@@ -159,7 +159,7 @@ export interface ToolPolicyResult {
  *
  * IMPORTANT: this only normalizes plugin-tool names (e.g. `web_search`,
  * `read_file`) used by the tool-policy engine. Action names (e.g.
- * `SEND_MESSAGE`) are matched verbatim by the planner — the action name
+ * `MESSAGE`) are matched verbatim by the planner — the action name
  * shown in the system prompt's available-actions list is the exact string
  * the LLM must pass back as `actionName` in `call_action`. There is no
  * alias mapping for actions; the displayed name IS the invocation key.

@@ -187,8 +187,8 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
@@ -711,7 +711,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-// Documents + wallet context augmentation moved to server-helpers.ts;
+  // Documents + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
@@ -1580,7 +1580,8 @@ async function handleRequest(
   // (/api/trajectories/*) are now provided by the @elizaos/app-training
   // plugin via the runtime route registry.
 
-  // Documents routes (/api/documents/*) are provided by the /app-documents plugin via the runtime route registry.
+  // Document routes (/api/documents/*) are now provided by the
+  // @elizaos/app-documents plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||

@@ -3792,12 +3792,12 @@ export async function startEliza(
         await seedBundledDocuments(runtime);
       } else {
         logger.info(
-          "[eliza] Native knowledge disabled; skipping bundled knowledge seeding",
+          "[eliza] Native documents disabled; skipping bundled document seeding",
         );
       }
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to seed bundled knowledge: ${formatError(err)}`,
+        `[eliza] Failed to seed bundled documents: ${formatError(err)}`,
       );
     }
 
@@ -4483,7 +4483,9 @@ export async function startInCloudMode(
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
-  const { CloudManager } = await import("../cloud/cloud-manager.js");
+  const { CloudManager } = await import(
+    "@elizaos/plugin-elizacloud/cloud/cloud-manager"
+  );
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {
@@ -4496,7 +4498,7 @@ export async function startInCloudMode(
   );
 
   const manager = new CloudManager(cloudConfig, {
-    onStatusChange: (status) => {
+    onStatusChange: (status: string) => {
       logger.info(`[eliza] Cloud connection: ${status}`);
     },
   });

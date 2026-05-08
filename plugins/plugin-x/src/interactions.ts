@@ -853,6 +853,20 @@ Response (YES/NO):`;
           },
         } as unknown as Memory["metadata"],
         createdAt: Date.now(),
+        metadata: {
+          type: "message",
+          source: "twitter",
+          accountId: this.client.accountId,
+          provider: "twitter",
+          fromId: interaction.userId,
+          messageIdFull: interaction.targetTweetId,
+          twitter: {
+            accountId: this.client.accountId,
+            tweetId: interaction.targetTweetId,
+            userId: interaction.userId,
+            username: interaction.username,
+          },
+        } as unknown as Memory["metadata"],
       };
 
       // Emit specific event for each type of interaction
@@ -971,6 +985,9 @@ Response (YES/NO):`;
         provider: "twitter",
       } as unknown as Memory["metadata"],
       createdAt: Date.now(),
+      metadata: {
+        accountId: this.client.accountId,
+      },
     };
   }
 

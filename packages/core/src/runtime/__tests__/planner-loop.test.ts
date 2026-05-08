@@ -44,8 +44,9 @@ describe("v5 planner loop skeleton", () => {
 
 	it("parses function-prefixed action records with parameters from text", () => {
 		const output = parsePlannerOutput(`{
-  "action": "functions.DRAFT_REPLY",
+  "action": "functions.MESSAGE",
   "parameters": {
+    "operation": "draft_reply",
     "messageId": "gmail:1",
     "body": "Thanks."
   }
@@ -53,8 +54,12 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(output.toolCalls).toEqual([
 			{
-				name: "DRAFT_REPLY",
-				params: { messageId: "gmail:1", body: "Thanks." },
+				name: "MESSAGE",
+				params: {
+					operation: "draft_reply",
+					messageId: "gmail:1",
+					body: "Thanks.",
+				},
 			},
 		]);
 	});

@@ -1,8 +1,8 @@
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent/cloud/base-url";
-import { resolveCloudApiKey } from "@elizaos/agent/cloud/cloud-api-key";
+} from "@elizaos/plugin-elizacloud/cloud/base-url";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type {
   CreateLifeOpsCalendarEventAttendee,

@@ -197,12 +197,12 @@ function saveLocalOutboundDraft(args: {
 }
 
 /**
- * SAFETY INVARIANT: SEND_DRAFT must never send without an explicit
+ * SAFETY INVARIANT: MESSAGE must never send without an explicit
  * `confirmed: true` parameter. When confirmation is missing the handler
  * returns the preview and asks the user to confirm.
  */
 export const sendDraftAction: Action = {
-	name: "SEND_DRAFT",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
@@ -210,7 +210,6 @@ export const sendDraftAction: Action = {
 	descriptionCompressed:
 		"owner outbound message draft/send confirmation-gated; use for Telegram Signal Discord email SMS/iMessage/DM send requests; never sends without confirmed=true",
 	similes: [
-		"SEND_MESSAGE",
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",
 		"COMPOSE_MESSAGE",
@@ -236,7 +235,7 @@ export const sendDraftAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Sent.",
-					action: "SEND_DRAFT",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -270,7 +269,7 @@ export const sendDraftAction: Action = {
 					error: draftParsed.error,
 					continueChain: false,
 					data: {
-						actionName: "SEND_DRAFT",
+						actionName: "MESSAGE",
 						error: "MISSING_DRAFT_DETAILS",
 						requiresInput: true,
 					},
@@ -312,7 +311,7 @@ export const sendDraftAction: Action = {
 				`[SendDraft] created outbound draft draftId=${record.draftId} source=${record.source}`,
 			);
 			if (callback) {
-				await callback({ text, action: "SEND_DRAFT" });
+				await callback({ text, action: "MESSAGE" });
 			}
 			return {
 				success: false,
@@ -339,7 +338,7 @@ export const sendDraftAction: Action = {
 			const text = `Confirmation required before sending draft ${parsed.draftId}. Preview: ${existing.preview}`;
 			logger.info(`[SendDraft] confirmation gate: draftId=${parsed.draftId}`);
 			if (callback) {
-				await callback({ text, action: "SEND_DRAFT" });
+				await callback({ text, action: "MESSAGE" });
 			}
 			return {
 				success: false,
@@ -383,7 +382,7 @@ export const sendDraftAction: Action = {
 					`[SendDraft] policy hold: draftId=${parsed.draftId} requestId=${enq.requestId}`,
 				);
 				if (callback) {
-					await callback({ text, action: "SEND_DRAFT" });
+					await callback({ text, action: "MESSAGE" });
 				}
 				return {
 					success: false,
@@ -407,7 +406,7 @@ export const sendDraftAction: Action = {
 			`[SendDraft] sent draftId=${parsed.draftId} externalId=${sent.sentExternalId ?? "unknown"}`,
 		);
 		if (callback) {
-			await callback({ text, action: "SEND_DRAFT" });
+			await callback({ text, action: "MESSAGE" });
 		}
 		return {
 			success: true,

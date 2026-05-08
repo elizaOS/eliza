@@ -6,6 +6,10 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  BROWSER_SERVICE_TYPE,
+  type BrowserService,
+} from "../browser-service.js";
+import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
@@ -245,7 +249,7 @@ export const browserAction: Action = {
   descriptionCompressed:
     "Browser tab/page control only: open/navigate/click/type/screenshot/state. For LifeOps Browser Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
   validate: async () => true,
-  handler: async (_runtime, message, _state, options) => {
+  handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserActionParameters
       | undefined;
@@ -272,11 +276,17 @@ export const browserAction: Action = {
       y: params?.y,
     };
 
+    const browserService = runtime.getService<BrowserService>(
+      BROWSER_SERVICE_TYPE,
+    );
+
     try {
       logger.info(
-        `[BROWSER] ${command.subaction} via ${getBrowserWorkspaceMode(process.env)}`,
+        `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
-      const result = await executeBrowserWorkspaceCommand(command);
+      const result = browserService
+        ? await browserService.execute(command, params?.target)
+        : await executeBrowserWorkspaceCommand(command);
 
       return {
         text: formatBrowserSessionResult(command, result),

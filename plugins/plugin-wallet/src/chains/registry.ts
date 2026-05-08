@@ -28,6 +28,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../types/wallet-router.js";
+import { routeEvmBridge } from "./evm/bridge-router";
 import { buildSendTxParams } from "./evm/actions/helpers";
 import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
@@ -325,7 +326,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     chain: key,
     name: chain.name,
     aliases,
-    supportedActions: ["transfer", "swap", "gov"],
+    supportedActions: ["transfer", "swap", "bridge"],
     tokens: [
       {
         symbol: chain.nativeCurrency.symbol,
@@ -342,7 +343,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     },
     dryRun: {
       supported: true,
-      supportedActions: ["transfer", "swap", "gov"],
+      supportedActions: ["transfer", "swap", "bridge"],
       description:
         "Prepare mode and dry-run return route metadata without signing.",
     },
@@ -353,8 +354,8 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
       if (params.subaction === "swap") {
         return executeEvmSwap(params, context, key, chain);
       }
-      if (params.subaction === "gov") {
-        return routeEvmGovernance(params, context, key, chain);
+      if (params.subaction === "bridge") {
+        return routeEvmBridge(params, context, key, chain);
       }
       throw new Error(`${chain.name} does not support ${params.subaction}.`);
     },

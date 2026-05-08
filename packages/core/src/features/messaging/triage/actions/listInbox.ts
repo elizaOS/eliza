@@ -15,11 +15,11 @@ import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import { parseListInboxParams, validateMessageAction } from "./_shared.ts";
 
 export const listInboxAction: Action = {
-	name: "LIST_INBOX",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "connectors"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Read-only list of unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use TRIAGE_MESSAGES so reply-worthy messages are identified before drafting.",
+		"Read-only list of unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use MESSAGE so reply-worthy messages are identified before drafting.",
 	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
 	parameters: [
 		{
@@ -55,7 +55,7 @@ export const listInboxAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Here's your inbox.",
-					action: "LIST_INBOX",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -107,7 +107,7 @@ export const listInboxAction: Action = {
 					: `You have ${unread.length} unread across ${new Set(unread.map((m) => m.source)).size} platform(s).`;
 
 			if (callback) {
-				await callback({ text, action: "LIST_INBOX" });
+				await callback({ text, action: "MESSAGE" });
 			}
 
 			return {
@@ -133,7 +133,7 @@ export const listInboxAction: Action = {
 				success: false,
 				text: `Failed to list inbox: ${message}`,
 				error: message,
-				data: { actionName: "LIST_INBOX" },
+				data: { actionName: "MESSAGE" },
 			};
 		}
 	},

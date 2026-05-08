@@ -1,7 +1,7 @@
 import type {
   CharacterHistoryEntry,
-  ExperienceRecord,
   DocumentRecord,
+  ExperienceRecord,
   RelationshipsActivityItem,
 } from "../../api";
 import type {

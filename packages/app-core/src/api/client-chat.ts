@@ -23,11 +23,12 @@ import type {
   DocumentBulkUploadResult,
   DocumentDetail,
   DocumentFragmentsResponse,
+  DocumentsResponse,
+  DocumentScope,
   DocumentSearchResponse,
   DocumentStats,
   DocumentUpdateResult,
   DocumentUploadResult,
-  DocumentsResponse,
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
@@ -55,6 +56,40 @@ import type {
   WorkbenchTask,
   WorkbenchTodo,
 } from "./client-types";
+
+type DocumentListOptions = {
+  limit?: number;
+  offset?: number;
+  scope?: DocumentScope;
+  scopedToEntityId?: string;
+  addedBy?: string;
+  query?: string;
+  timeRangeStart?: string;
+  timeRangeEnd?: string;
+};
+
+type DocumentUploadRequest = {
+  content: string;
+  filename: string;
+  contentType?: string;
+  metadata?: Record<string, unknown>;
+  scope?: DocumentScope;
+  scopedToEntityId?: string;
+};
+
+type DocumentUrlUploadOptions = {
+  includeImageDescriptions?: boolean;
+  metadata?: Record<string, unknown>;
+  scope?: DocumentScope;
+  scopedToEntityId?: string;
+};
+
+type DocumentSearchOptions = {
+  threshold?: number;
+  limit?: number;
+  scope?: DocumentScope;
+  scopedToEntityId?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Declaration merging
@@ -236,16 +271,7 @@ declare module "./client-base" {
       keepId?: string;
     }): Promise<{ deleted: string[] }>;
     getDocumentStats(): Promise<DocumentStats>;
-    listDocuments(options?: {
-      limit?: number;
-      offset?: number;
-      scope?: string;
-      scopedToEntityId?: string;
-      addedBy?: string;
-      query?: string;
-      timeRangeStart?: string;
-      timeRangeEnd?: string;
-    }): Promise<DocumentsResponse>;
+    listDocuments(options?: DocumentListOptions): Promise<DocumentsResponse>;
     getDocument(documentId: string): Promise<{ document: DocumentDetail }>;
     updateDocument(
       documentId: string,
@@ -254,32 +280,17 @@ declare module "./client-base" {
     deleteDocument(
       documentId: string,
     ): Promise<{ ok: boolean; deletedFragments: number }>;
-    uploadDocument(data: {
-      content: string;
-      filename: string;
-      contentType?: string;
-      metadata?: Record<string, unknown>;
-      scope?: string;
-      scopedToEntityId?: string;
-    }): Promise<DocumentUploadResult>;
+    uploadDocument(data: DocumentUploadRequest): Promise<DocumentUploadResult>;
     uploadDocumentsBulk(data: {
-      documents: Array<{
-        content: string;
-        filename: string;
-        contentType?: string;
-        metadata?: Record<string, unknown>;
-        scope?: string;
-        scopedToEntityId?: string;
-      }>;
+      documents: DocumentUploadRequest[];
     }): Promise<DocumentBulkUploadResult>;
     uploadDocumentFromUrl(
       url: string,
-      metadata?: Record<string, unknown>,
-      options?: { scope?: string; scopedToEntityId?: string },
+      options?: DocumentUrlUploadOptions,
     ): Promise<DocumentUploadResult>;
     searchDocuments(
       query: string,
-      options?: { threshold?: number; limit?: number; scope?: string; scopedToEntityId?: string },
+      options?: DocumentSearchOptions,
     ): Promise<DocumentSearchResponse>;
     getDocumentFragments(
       documentId: string,
@@ -845,7 +856,9 @@ ElizaClient.prototype.listDocuments = async function (
   }
   if (options?.addedBy) params.set("addedBy", options.addedBy);
   if (options?.query) params.set("q", options.query);
-  if (options?.timeRangeStart) params.set("timeRangeStart", options.timeRangeStart);
+  if (options?.timeRangeStart) {
+    params.set("timeRangeStart", options.timeRangeStart);
+  }
   if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
   const query = params.toString();
   return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
@@ -901,12 +914,24 @@ ElizaClient.prototype.uploadDocumentsBulk = async function (
 ElizaClient.prototype.uploadDocumentFromUrl = async function (
   this: ElizaClient,
   url,
-  metadata?,
   options?,
 ) {
+  const metadata = {
+    ...(options?.metadata ?? {}),
+    ...(typeof options?.includeImageDescriptions === "boolean"
+      ? { includeImageDescriptions: options.includeImageDescriptions }
+      : {}),
+  };
   return this.fetch("/api/documents/url", {
     method: "POST",
-    body: JSON.stringify({ url, metadata, ...options }),
+    body: JSON.stringify({
+      url,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...(options?.scope ? { scope: options.scope } : {}),
+      ...(options?.scopedToEntityId
+        ? { scopedToEntityId: options.scopedToEntityId }
+        : {}),
+    }),
   });
 };
 

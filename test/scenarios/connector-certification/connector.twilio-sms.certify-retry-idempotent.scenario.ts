@@ -21,7 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "twilio-sms-retry-safe",
       text: "Send an SMS to +15555550101 saying 'Running 10 minutes late for lunch.' If Twilio fails once transiently, retry safely but do not deliver duplicates.",
       responseIncludesAny: ["sms", "retry", "twilio", "late"],
-      acceptedActions: ["SEND_DRAFT"],
+      acceptedActions: ["MESSAGE"],
       includesAny: ["sms", "retry", "twilio", "15555550101"],
     },
   ],

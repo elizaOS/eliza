@@ -39,8 +39,8 @@ export default scenario({
           acceptedActions: [
             "DEVICE_INTENT",
             "VOICE_CALL",
-            "SEND_DRAFT",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
           ],
           description: "expired ID workflow escalation",
           includesAny: ["id", "expired", "workflow", "copy"],
@@ -51,8 +51,8 @@ export default scenario({
           actionName: [
             "DEVICE_INTENT",
             "VOICE_CALL",
-            "SEND_DRAFT",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
           ],
           includesAny: ["updated copy", "expired", "workflow", "dashboard"],
         })(turn),
@@ -71,8 +71,8 @@ export default scenario({
       actionName: [
         "DEVICE_INTENT",
         "VOICE_CALL",
-        "SEND_DRAFT",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
       ],
     },
     {
@@ -86,8 +86,8 @@ export default scenario({
         acceptedActions: [
           "DEVICE_INTENT",
           "VOICE_CALL",
-          "SEND_DRAFT",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
         ],
         description: "expired ID workflow escalation",
         includesAny: ["id", "expired", "workflow", "copy"],
@@ -102,8 +102,8 @@ export default scenario({
         actionName: [
           "DEVICE_INTENT",
           "VOICE_CALL",
-          "SEND_DRAFT",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
         ],
         includesAny: ["updated copy", "expired", "workflow", "dashboard"],
       }),

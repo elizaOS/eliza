@@ -298,7 +298,27 @@ export const memoryAction: Action = {
   name: "MEMORY",
   contexts: ["memory", "documents", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: [],
+  similes: [
+    // Old leaf action names
+    "CREATE_MEMORY",
+    "SEARCH_MEMORIES",
+    "UPDATE_MEMORY",
+    "DELETE_MEMORY",
+    "RECALL_MEMORY_FILTERED",
+    "FORGET_MEMORY",
+    "EDIT_MEMORY",
+    // Common aliases
+    "MEMORIZE",
+    "REMEMBER_THIS",
+    "STORE_MEMORY",
+    "WRITE_MEMORY",
+    "SAVE_MEMORY",
+    "BROWSE_MEMORIES",
+    "FILTER_MEMORIES",
+    "FIND_MEMORIES",
+    "REMOVE_MEMORY",
+    "MODIFY_MEMORY",
+  ],
   description:
     "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory (requires confirm:true).",
   descriptionCompressed:

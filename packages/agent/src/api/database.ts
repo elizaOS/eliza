@@ -1286,7 +1286,7 @@ const VECTOR_SEARCH_ALLOWED_TABLES = new Set<string>([
   "memories",
   "facts",
   "documents",
-  "documents",
+  "document_fragments",
 ]);
 
 /**

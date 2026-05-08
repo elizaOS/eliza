@@ -1,5 +1,1 @@
-/**
- * Google Chat plugin actions are provided by connector hooks.
- */
-
-export {};
+// Google Chat messaging routes through MESSAGE connector hooks.

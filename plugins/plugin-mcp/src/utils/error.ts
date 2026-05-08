@@ -62,7 +62,8 @@ export async function handleMcpError(
       errorType: type,
     },
     data: {
-      actionName: type === "tool" ? "CALL_MCP_TOOL" : "READ_MCP_RESOURCE",
+      actionName: "MCP",
+      op: type === "tool" ? "call_tool" : "read_resource",
       error: errorMessage,
       mcpType: type,
     },
