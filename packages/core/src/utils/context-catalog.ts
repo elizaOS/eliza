@@ -142,7 +142,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	RESOLVE_REQUEST: ["tasks", "automation", "admin", "general"],
 	AUTOFILL: ["browser", "settings", "secrets"],
 	PASSWORD_MANAGER: ["settings", "secrets"],
-	DEVICE_INTENT: ["automation", "tasks", "connectors"],
 	CHAT_THREAD: ["messaging"],
 	PAYMENTS: ["payments"],
 	X: ["social_posting", "messaging"],

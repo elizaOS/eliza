@@ -1,7 +1,4 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { messageOp } from "./actions/messageOp";
-import readRecentMessages from "./actions/readRecentMessages";
-import { signalContactsProvider, signalGroupsProvider } from "./providers";
 
 // Service
 import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
@@ -16,8 +13,8 @@ const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
   services: [SignalService],
-  actions: [messageOp, readRecentMessages],
-  providers: [signalContactsProvider, signalGroupsProvider],
+  actions: [],
+  providers: [],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;

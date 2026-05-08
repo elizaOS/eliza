@@ -45,6 +45,7 @@
 		"@discordjs/rest": "^2.6.1",
 		"@discordjs/voice": "^0.19.2",
 		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-browser": "workspace:*",
 		"discord-api-types": "^0.38.0",
 		"discord.js": "^14.26.4",
 		"fast-levenshtein": "^3.0.0",

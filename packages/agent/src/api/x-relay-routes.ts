@@ -9,9 +9,9 @@
 
 import type http from "node:http";
 import type { Service } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
-import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
+import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud/cloud/validate-url";
 import type { ElizaConfig } from "../config/config.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "./http-helpers.js";

@@ -12,21 +12,17 @@ import { contactAction } from "../actions/contact.js";
 import { databaseAction } from "../actions/database.js";
 import { extractPageAction } from "../actions/extract-page.js";
 import { logsAction } from "../actions/logs.js";
-import { manageTasksAction } from "../actions/manage-tasks.js";
 import { memoryAction } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { pluginAction } from "../actions/plugin.js";
 import { runtimeAction } from "../actions/runtime.js";
+import { scheduleAction } from "../actions/schedule.js";
 import { settingsAction } from "../actions/settings-actions.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
-import {
-  archiveCodingTaskAction,
-  reopenCodingTaskAction,
-} from "../actions/tasks-coding.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { webSearchAction } from "../actions/web-search.js";
@@ -206,7 +202,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     actions: [
       terminalAction,
       workflowAction,
-      manageTasksAction,
+      scheduleAction,
       ...pageActionGroupActions,
       skillCommandAction,
       webSearchAction,
@@ -220,8 +216,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       databaseAction,
       queryTrajectoriesAction,
       memoryAction,
-      archiveCodingTaskAction,
-      reopenCodingTaskAction,
+      // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK now live as ops on the
+      // TASKS parent in @elizaos/plugin-agent-orchestrator.
     ],
   };
 

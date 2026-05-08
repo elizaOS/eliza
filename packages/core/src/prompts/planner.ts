@@ -18,7 +18,6 @@ rules:
 - if the user explicitly asks to call, phone, or dial a person/business and VOICE_CALL is available, call VOICE_CALL first and do not search calendar/email first; calendar/email details are secondary
 - named-person follow-up reminders and "how long since I talked to X" requests belong to RELATIONSHIP when available; do not call ADD_CONTACT, SCHEDULE_FOLLOW_UP, LIFE, or memory replies first
 - owner-scoped outbound Telegram/Signal/Discord/email/SMS/iMessage/DM requests belong to MESSAGE operation=send_draft when available; do not use MESSAGE operation=send for direct sends unless the draft workflow is unavailable
-- broadcast, mobile, phone, or all-device reminder delivery belongs to DEVICE_INTENT when available, not LIFE
 - filling a login/password/form field on a site belongs to AUTOFILL when available; use PASSWORD_MANAGER only for credential search/list/copy/inject requests
 - LifeOps browser settings, browser bridge settings, and companion connection state belong to MANAGE_BROWSER_BRIDGE refresh when available; browser extension setup/open chrome extensions belongs to MANAGE_BROWSER_BRIDGE install/open_manager; use BROWSER for tab/page operations, not bridge configuration
 - screenshots or control of the desktop/computer/native apps belong to COMPUTER_USE when available; do not invent helper names such as takeScreenshot

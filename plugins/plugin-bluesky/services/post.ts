@@ -13,6 +13,7 @@ export class BlueSkyPostService {
 	constructor(
 		private readonly client: BlueSkyClient,
 		private readonly runtime: IAgentRuntime,
+		public readonly accountId: string = "default",
 	) {}
 
 	async getPosts(limit = 50, cursor?: string): Promise<BlueSkyPost[]> {
