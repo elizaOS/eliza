@@ -13,7 +13,7 @@ export type DashboardShellProps = {
   authReady: boolean;
   /** When set, renders `<Navigate replace />` */
   loginRedirectTo?: string;
-  /** Chat/build — onboarding + outlet only */
+  /** Chat — onboarding + outlet only */
   minimalOutletChrome: boolean;
   headerAnonymous: boolean;
   headerAuthGraceActive: boolean;

@@ -150,7 +150,6 @@ export function CharacterEditor({
                   ? "bg-[#FF5800]/40 text-white hover:bg-[#FF5800]/55 border-[#FF5800]/50 hover:border-[#FF5800]/90"
                   : "bg-red-900/60 text-white hover:bg-red-800/80 border-red-500/50 hover:border-red-400/70"
               }`}
-              data-onboarding="build-save"
             >
               {isSaving
                 ? "Saving"

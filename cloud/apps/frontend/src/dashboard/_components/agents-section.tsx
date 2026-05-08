@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@elizaos/cloud-ui";
-import { Info, Plus } from "lucide-react";
+import { Info, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardAgentStats as AgentStats } from "@/lib/types/dashboard-agent-stats";
 import { cn } from "@/lib/utils";
@@ -114,9 +114,9 @@ function AgentsEmptyState() {
           asChild
           className="h-9 md:h-10 bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
         >
-          <Link to="/dashboard/build">
-            <Plus className="h-4 w-4" />
-            Create Agent
+          <Link to="/dashboard/chat">
+            <MessageSquare className="h-4 w-4" />
+            Open Chat
           </Link>
         </BrandButton>
       }

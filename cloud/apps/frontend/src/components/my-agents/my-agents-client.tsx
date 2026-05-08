@@ -64,7 +64,7 @@ export function MyAgentsClient({ initialCharacters }: MyAgentsClientProps) {
   }));
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/build");
+    navigate("/dashboard/chat");
   }, [navigate]);
 
   useSetPageHeader(

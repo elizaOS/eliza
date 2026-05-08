@@ -25,7 +25,6 @@ import {
   Link as LinkIcon,
   Lock,
   MoreHorizontal,
-  Pencil,
   Trash2,
   Upload,
   X,
@@ -115,8 +114,8 @@ export function AgentCard({
         if (response.ok) {
           const data = await response.json();
           toast.success(`Created "${data.data.character.name}"`);
-          window.location.reload();
-          navigate(`/dashboard/build?characterId=${data.data.character.id}`);
+          window.dispatchEvent(new Event("characters-updated"));
+          navigate(`/dashboard/chat?characterId=${data.data.character.id}`);
         } else {
           const error = await response.json();
           toast.error(error.error || "Failed to duplicate agent");
@@ -374,16 +373,6 @@ export function AgentCard({
               <DropdownMenuContent align="end" className="w-40">
                 {isOwned ? (
                   <>
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/dashboard/build?characterId=${agent.id}`);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer">
                       <Copy className="h-4 w-4 mr-2" />
                       Duplicate
@@ -548,16 +537,6 @@ export function AgentCard({
           <DropdownMenuContent align="start" className="w-40">
             {isOwned ? (
               <>
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/dashboard/build?characterId=${agent.id}`);
-                  }}
-                >
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer">
                   <Copy className="h-4 w-4 mr-2" />
                   Duplicate
