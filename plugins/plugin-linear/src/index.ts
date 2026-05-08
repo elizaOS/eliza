@@ -24,3 +24,4 @@ export const linearPlugin: Plugin = {
 };
 
 export { LinearService } from "./services/linear";
+export * from "./accounts";

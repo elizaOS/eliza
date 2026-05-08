@@ -40,7 +40,7 @@ function notConfigured(subaction: string | undefined): ActionResult {
   return {
     success: false,
     text:
-      "The agent's own inbox is not configured yet. Wire an agent-scoped " +
+      "The agent's own inbox is not configured. Wire an agent-scoped " +
       "mailbox (e.g. an Eliza Cloud inbox or a dedicated IMAP/SMTP account) " +
       "before using AGENT_INBOX. For the OWNER's inbox, use MESSAGE.",
     values: {
@@ -151,7 +151,7 @@ export const agentInboxAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "The agent's own inbox is not configured yet.",
+          text: "The agent's own inbox is not configured.",
           actions: ["AGENT_INBOX"],
         },
       },
@@ -166,7 +166,7 @@ export const agentInboxAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "The agent's own inbox is not configured yet.",
+          text: "The agent's own inbox is not configured.",
           actions: ["AGENT_INBOX"],
         },
       },

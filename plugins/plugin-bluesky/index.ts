@@ -15,9 +15,8 @@ export {
 	listBlueSkyAccountIds,
 	normalizeBlueSkyAccountId,
 	readBlueSkyAccountId,
-	resolveBlueSkyAccountConfig,
 	resolveDefaultBlueSkyAccountId,
-} from "./accounts";
+} from "./utils/config";
 export { BlueSkyClient } from "./client";
 export {
 	BLUESKY_PROVIDER_ID,

@@ -1,11 +1,11 @@
 {
   "id": "todos",
   "name": "Todos",
-  "description": "TODO_WRITE action and currentTodosProvider. Per-conversation in-memory todo list, mirroring Claude Code's TodoWrite tool. The provider keeps the list in the planner's context each turn.",
+  "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action with op-based dispatch (write/create/update/complete/cancel/delete/list/clear). The currentTodosProvider surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos'); requires plugin-sql.",
   "npmName": "@elizaos/plugin-todos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "source": "bundled",
-  "tags": ["todos", "tasks", "agent", "claude-code"],
+  "tags": ["todos", "tasks", "agent", "claude-code", "crud"],
   "config": {},
   "render": {
     "visible": true,
@@ -20,7 +20,7 @@
     "homepage": "https://github.com/elizaos/eliza#readme",
     "repository": "https://github.com/elizaos/eliza"
   },
-  "dependsOn": [],
+  "dependsOn": ["sql"],
   "kind": "plugin",
   "subtype": "devtools"
 }

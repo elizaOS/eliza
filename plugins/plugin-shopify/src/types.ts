@@ -3,9 +3,20 @@
  */
 export interface ShopifyPluginConfig {
   /** Shopify store domain, e.g. "mystore.myshopify.com" */
-  storeDomain: string;
+  storeDomain?: string;
   /** Shopify Admin API access token */
-  accessToken: string;
+  accessToken?: string;
+  /** Optional default account id for multi-account config */
+  accountId?: string;
+  /** Optional per-store account records keyed by account id */
+  accounts?: Record<
+    string,
+    {
+      storeDomain?: string;
+      accessToken?: string;
+      label?: string;
+    }
+  >;
 }
 
 // ---------------------------------------------------------------------------

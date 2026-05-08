@@ -234,6 +234,35 @@ function markdownFence(value: string, language = ""): string[] {
   return [language ? `${fence}${language}` : fence, value, fence];
 }
 
+function summarizeEmbeddingResponse(response: string): string | null {
+  const trimmed = response.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((value) => typeof value === "number")
+    ) {
+      return null;
+    }
+    const preview = parsed
+      .slice(0, 8)
+      .map((value) => Number(value).toFixed(4))
+      .join(", ");
+    return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
+  } catch {
+    return null;
+  }
+}
+
+function llmResponseForMarkdown(call: TrajectoryLlmCall): string {
+  if (call.purpose === "embedding" || call.modelType === "TEXT_EMBEDDING") {
+    const summary = summarizeEmbeddingResponse(call.response);
+    if (summary) return summary;
+  }
+  return call.response;
+}
+
 function markdownTableCell(value: unknown): string {
   return String(value ?? "")
     .replace(/\\/g, "\\\\")
@@ -305,7 +334,7 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
       lines.push("");
       lines.push("#### Response");
       lines.push("");
-      lines.push(...markdownFence(call.response));
+      lines.push(...markdownFence(llmResponseForMarkdown(call)));
     }
   }
 
@@ -381,6 +410,8 @@ function classifyLlmPurpose(
     head.includes("actions:") ||
     head.includes("available actions") ||
     head.includes("action planner") ||
+    head.includes("planner_stage") ||
+    head.includes("plan the next native tool calls") ||
     /(^|\n)\s*action\s*:/i.test(response.slice(0, 200))
   ) {
     return "action_planner";

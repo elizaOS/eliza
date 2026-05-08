@@ -23,8 +23,8 @@ export function lifeOpsErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function fail(status: number, message: string): never {
-  throw new LifeOpsServiceError(status, message);
+export function fail(status: number, message: string, code?: string): never {
+  throw new LifeOpsServiceError(status, message, code);
 }
 
 export function defaultOwnerEntityId(runtime: IAgentRuntime): string {

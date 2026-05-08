@@ -7,6 +7,7 @@ import {
 } from "@elizaos/core";
 import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
 import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
+import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import type {
   WalletChainHandler,
   WalletChainHandlerMetadata,

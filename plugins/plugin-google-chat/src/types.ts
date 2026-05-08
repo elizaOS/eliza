@@ -27,6 +27,8 @@ export type GoogleChatAudienceType = "app-url" | "project-number";
 
 /** Configuration settings for the Google Chat plugin */
 export interface GoogleChatSettings {
+  /** Connector account identifier for this Google Chat bot instance */
+  accountId?: string;
   /** Service account JSON credentials */
   serviceAccount?: string;
   /** Path to service account JSON file */

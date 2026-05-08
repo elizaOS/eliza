@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Canonical WhatsApp messaging should go
+// through @elizaos/plugin-whatsapp runtime services; this Cloud API client
+// remains for legacy env-token fallback and webhook buffering.
 import { logger } from "@elizaos/core";
 
 export interface WhatsAppCredentials {

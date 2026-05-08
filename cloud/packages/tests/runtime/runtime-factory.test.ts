@@ -1,7 +1,7 @@
 /**
  * RuntimeFactory Integration Tests
  *
- * Tests the production RuntimeFactory with all modes:
+ * Tests the production RuntimeFactory with CHAT mode:
  * - CHAT: Basic conversation mode
  * - CHAT: Full capabilities with MCP, web search
  * - CHAT: Character building mode

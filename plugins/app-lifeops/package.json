@@ -151,6 +151,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-discord": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",

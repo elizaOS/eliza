@@ -2,8 +2,8 @@
  * BlueSky ConnectorAccountManager provider.
  *
  * BlueSky uses AT Protocol with username + password (app password) per handle.
- * The `accountKey` is the BlueSky handle (e.g. `alice.bsky.social`). Multi-handle
- * deployments configure additional accounts via `BLUESKY_ACCOUNTS` env JSON or
+ * The `accountKey` is the BlueSky handle. Multi-handle deployments configure
+ * additional accounts via `BLUESKY_ACCOUNTS` env JSON or
  * `character.settings.bluesky.accounts`.
  *
  * Persistence of new accounts is owned by the manager's storage; the provider
@@ -20,8 +20,8 @@ import type {
 import {
 	listBlueSkyAccountIds,
 	normalizeBlueSkyAccountId,
-	resolveBlueSkyAccountConfig,
-} from "./accounts";
+	validateBlueSkyConfig,
+} from "./utils/config";
 
 export const BLUESKY_PROVIDER_ID = "bluesky";
 
@@ -29,23 +29,32 @@ function toConnectorAccount(
 	runtime: IAgentRuntime,
 	accountId: string,
 ): ConnectorAccount {
-	const resolved = resolveBlueSkyAccountConfig(runtime, accountId);
+	let connected = false;
+	let handle = "";
+	let service = "";
+	try {
+		const config = validateBlueSkyConfig(runtime, accountId);
+		connected = Boolean(config.handle && config.password);
+		handle = config.handle;
+		service = config.service;
+	} catch {
+		connected = false;
+	}
 	const now = Date.now();
-	const connected = Boolean(resolved.handle && resolved.password);
 	return {
 		id: accountId,
 		provider: BLUESKY_PROVIDER_ID,
-		label: resolved.handle || accountId,
+		label: handle || accountId,
 		role: "OWNER",
 		purpose: ["posting", "reading"],
 		accessGate: "open",
 		status: connected ? "connected" : "disabled",
-		externalId: resolved.handle || undefined,
-		displayHandle: resolved.handle || undefined,
+		externalId: handle || undefined,
+		displayHandle: handle || undefined,
 		createdAt: now,
 		updatedAt: now,
 		metadata: {
-			service: resolved.service,
+			service,
 		},
 	};
 }
@@ -86,7 +95,7 @@ export function createBlueSkyConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// Credential deletion lives in character settings or env; out of band.
+			// Credentials live in character settings or env; out of band.
 		},
 	};
 }

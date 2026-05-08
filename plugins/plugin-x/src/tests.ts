@@ -35,6 +35,9 @@ export class ClientBaseTestSuite implements TestSuite {
     // Create test config with only API v2 credentials
     this.mockConfig = {
       TWITTER_AUTH_MODE: "env",
+      TWITTER_ACCOUNT_ID: "default",
+      TWITTER_DEFAULT_ACCOUNT_ID: "default",
+      TWITTER_ACCOUNTS: "",
       TWITTER_API_KEY: "test-api-key",
       TWITTER_API_SECRET_KEY: "test-api-secret",
       TWITTER_ACCESS_TOKEN: "test-access-token",

@@ -1,4 +1,11 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  DEFAULT_SHOPIFY_ACCOUNT_ID,
+  normalizeShopifyAccountId,
+  readShopifyAccounts,
+  resolveShopifyAccount,
+  type ShopifyAccountConfig,
+} from "../accounts.js";
 import { ShopifyClient } from "../shopify-client.js";
 import type {
   Customer,
@@ -29,6 +36,12 @@ import type {
 } from "../types.js";
 
 export const SHOPIFY_SERVICE_TYPE = "shopify" as const;
+
+interface ShopifyClientState {
+  accountId: string;
+  config: ShopifyAccountConfig;
+  client: ShopifyClient;
+}
 
 // ---------------------------------------------------------------------------
 // GraphQL fragments + queries
@@ -87,43 +100,54 @@ export class ShopifyService extends Service {
   capabilityDescription =
     "Connects the agent to a Shopify store for managing products, orders, inventory, and customers through the Admin GraphQL API.";
 
-  private client: ShopifyClient | null = null;
+  private clients = new Map<string, ShopifyClientState>();
+  private defaultAccountId = DEFAULT_SHOPIFY_ACCOUNT_ID;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 
   async stop(): Promise<void> {
-    this.client = null;
+    this.clients.clear();
   }
 
   static override async start(runtime: IAgentRuntime): Promise<ShopifyService> {
     const svc = new ShopifyService(runtime);
-    const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-    const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
+    const accounts = readShopifyAccounts(runtime);
+    const requestedDefault = normalizeShopifyAccountId(
+      runtime.getSetting("SHOPIFY_DEFAULT_ACCOUNT_ID") ??
+        runtime.getSetting("SHOPIFY_ACCOUNT_ID"),
+    );
+    const defaultAccount =
+      resolveShopifyAccount(accounts, requestedDefault) ?? accounts[0] ?? null;
 
-    if (typeof domain !== "string" || !domain.trim()) {
+    if (!defaultAccount) {
       logger.warn(
         { src: "plugin:shopify", agentId: runtime.agentId },
-        "SHOPIFY_STORE_DOMAIN not set -- Shopify service inactive",
-      );
-      return svc;
-    }
-    if (typeof token !== "string" || !token.trim()) {
-      logger.warn(
-        { src: "plugin:shopify", agentId: runtime.agentId },
-        "SHOPIFY_ACCESS_TOKEN not set -- Shopify service inactive",
+        "No Shopify account configured -- Shopify service inactive",
       );
       return svc;
     }
 
-    svc.client = new ShopifyClient(domain.trim(), token.trim());
+    svc.defaultAccountId = defaultAccount.accountId;
+    for (const account of accounts) {
+      svc.clients.set(account.accountId, {
+        accountId: account.accountId,
+        config: account,
+        client: new ShopifyClient(account.storeDomain, account.accessToken),
+      });
+    }
 
     // Verify connectivity
     try {
       const shop = await svc.getShop();
       logger.info(
-        { src: "plugin:shopify", agentId: runtime.agentId, store: shop.name },
+        {
+          src: "plugin:shopify",
+          agentId: runtime.agentId,
+          accountId: defaultAccount.accountId,
+          store: shop.name,
+        },
         `Shopify connected to "${shop.name}" (${shop.myshopifyDomain})`,
       );
     } catch (err) {
@@ -135,7 +159,7 @@ export class ShopifyService extends Service {
         },
         "Failed to connect to Shopify store",
       );
-      svc.client = null;
+      svc.clients.delete(defaultAccount.accountId);
     }
 
     return svc;
@@ -145,25 +169,38 @@ export class ShopifyService extends Service {
   // Helpers
   // -----------------------------------------------------------------------
 
-  isConnected(): boolean {
-    return this.client !== null;
+  isConnected(accountId?: string): boolean {
+    return Boolean(this.getClientState(accountId, false));
   }
 
-  private requireClient(): ShopifyClient {
-    if (!this.client) {
+  private getClientState(
+    accountId?: string,
+    throwOnMissing = true,
+  ): ShopifyClientState | null {
+    const normalized = normalizeShopifyAccountId(accountId);
+    const state =
+      this.clients.get(normalized) ??
+      this.clients.get(this.defaultAccountId) ??
+      Array.from(this.clients.values())[0] ??
+      null;
+    if (!state && throwOnMissing) {
       throw new Error(
         "Shopify client is not initialised. Check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       );
     }
-    return this.client;
+    return state;
+  }
+
+  private requireClient(accountId?: string): ShopifyClient {
+    return this.getClientState(accountId)?.client as ShopifyClient;
   }
 
   // -----------------------------------------------------------------------
   // Shop
   // -----------------------------------------------------------------------
 
-  async getShop(): Promise<ShopInfo> {
-    const data = await this.requireClient().query<ShopInfoResponse>(`{
+  async getShop(accountId?: string): Promise<ShopInfo> {
+    const data = await this.requireClient(accountId).query<ShopInfoResponse>(`{
       shop {
         name
         email
@@ -182,6 +219,7 @@ export class ShopifyService extends Service {
 
   async listProducts(
     opts: { first?: number; after?: string | null; query?: string | null } = {},
+    accountId?: string,
   ): Promise<{
     products: Product[];
     hasNextPage: boolean;
@@ -199,7 +237,7 @@ export class ShopifyService extends Service {
       }
     }`;
 
-    const data = await this.requireClient().query<ProductsResponse>(
+    const data = await this.requireClient(accountId).query<ProductsResponse>(
       gql,
       variables,
     );
@@ -216,22 +254,25 @@ export class ShopifyService extends Service {
     productType?: string;
     vendor?: string;
     status?: string;
-  }): Promise<Product> {
+  }, accountId?: string): Promise<Product> {
     const gql = `mutation CreateProduct($input: ProductInput!) {
       productCreate(input: $input) {
         product { ${PRODUCT_FIELDS} }
         userErrors { field message }
       }
     }`;
-    const data = await this.requireClient().query<ProductCreateResponse>(gql, {
-      input: {
-        title: input.title,
-        descriptionHtml: input.descriptionHtml ?? "",
-        productType: input.productType ?? "",
-        vendor: input.vendor ?? "",
-        status: (input.status ?? "DRAFT").toUpperCase(),
+    const data = await this.requireClient(accountId).query<ProductCreateResponse>(
+      gql,
+      {
+        input: {
+          title: input.title,
+          descriptionHtml: input.descriptionHtml ?? "",
+          productType: input.productType ?? "",
+          vendor: input.vendor ?? "",
+          status: (input.status ?? "DRAFT").toUpperCase(),
+        },
       },
-    });
+    );
     if (data.productCreate.userErrors.length > 0) {
       throw new Error(
         `Product create failed: ${formatUserErrors(data.productCreate.userErrors)}`,
@@ -252,6 +293,7 @@ export class ShopifyService extends Service {
       vendor?: string;
       status?: string;
     },
+    accountId?: string,
   ): Promise<Product> {
     const gql = `mutation UpdateProduct($input: ProductInput!) {
       productUpdate(input: $input) {
@@ -259,7 +301,7 @@ export class ShopifyService extends Service {
         userErrors { field message }
       }
     }`;
-    const data = await this.requireClient().query<ProductUpdateResponse>(gql, {
+    const data = await this.requireClient(accountId).query<ProductUpdateResponse>(gql, {
       input: { id, ...input },
     });
     if (data.productUpdate.userErrors.length > 0) {
@@ -279,6 +321,7 @@ export class ShopifyService extends Service {
 
   async listOrders(
     opts: { first?: number; after?: string | null; query?: string | null } = {},
+    accountId?: string,
   ): Promise<{
     orders: Order[];
     hasNextPage: boolean;
@@ -296,7 +339,7 @@ export class ShopifyService extends Service {
       }
     }`;
 
-    const data = await this.requireClient().query<OrdersResponse>(
+    const data = await this.requireClient(accountId).query<OrdersResponse>(
       gql,
       variables,
     );
@@ -307,15 +350,18 @@ export class ShopifyService extends Service {
     };
   }
 
-  async getOrder(id: string): Promise<Order | null> {
+  async getOrder(id: string, accountId?: string): Promise<Order | null> {
     const gql = `query GetOrder($id: ID!) {
       order(id: $id) { ${ORDER_FIELDS} }
     }`;
-    const data = await this.requireClient().query<OrderResponse>(gql, { id });
+    const data = await this.requireClient(accountId).query<OrderResponse>(gql, { id });
     return data.order;
   }
 
-  async fulfillOrder(orderId: string): Promise<{ id: string; status: string }> {
+  async fulfillOrder(
+    orderId: string,
+    accountId?: string,
+  ): Promise<{ id: string; status: string }> {
     // Step 1: get open fulfillment orders for this order
     const foGql = `query FulfillmentOrders($id: ID!) {
       order(id: $id) {
@@ -332,7 +378,7 @@ export class ShopifyService extends Service {
         }
       }
     }`;
-    const foData = await this.requireClient().query<FulfillmentOrdersResponse>(
+    const foData = await this.requireClient(accountId).query<FulfillmentOrdersResponse>(
       foGql,
       { id: orderId },
     );
@@ -361,7 +407,7 @@ export class ShopifyService extends Service {
       quantity: e.node.totalQuantity,
     }));
 
-    const data = await this.requireClient().query<FulfillmentCreateResponse>(
+    const data = await this.requireClient(accountId).query<FulfillmentCreateResponse>(
       fulfillGql,
       {
         fulfillment: {
@@ -393,6 +439,7 @@ export class ShopifyService extends Service {
 
   async listCustomers(
     opts: { first?: number; after?: string | null; query?: string | null } = {},
+    accountId?: string,
   ): Promise<{
     customers: Customer[];
     hasNextPage: boolean;
@@ -410,7 +457,7 @@ export class ShopifyService extends Service {
       }
     }`;
 
-    const data = await this.requireClient().query<CustomersResponse>(
+    const data = await this.requireClient(accountId).query<CustomersResponse>(
       gql,
       variables,
     );
@@ -425,7 +472,10 @@ export class ShopifyService extends Service {
   // Inventory
   // -----------------------------------------------------------------------
 
-  async checkInventory(inventoryItemId: string): Promise<InventoryLevel[]> {
+  async checkInventory(
+    inventoryItemId: string,
+    accountId?: string,
+  ): Promise<InventoryLevel[]> {
     const gql = `query CheckInventory($id: ID!) {
       inventoryItem(id: $id) {
         id
@@ -435,9 +485,10 @@ export class ShopifyService extends Service {
         }
       }
     }`;
-    const data = await this.requireClient().query<InventoryItemResponse>(gql, {
-      id: inventoryItemId,
-    });
+    const data = await this.requireClient(accountId).query<InventoryItemResponse>(
+      gql,
+      { id: inventoryItemId },
+    );
     if (!data.inventoryItem) {
       throw new Error(`Inventory item ${inventoryItemId} not found`);
     }
@@ -449,14 +500,14 @@ export class ShopifyService extends Service {
     locationId: string;
     delta: number;
     reason?: string;
-  }): Promise<void> {
+  }, accountId?: string): Promise<void> {
     const gql = `mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
       inventoryAdjustQuantities(input: $input) {
         inventoryAdjustmentGroup { reason }
         userErrors { field message }
       }
     }`;
-    const data = await this.requireClient().query<InventoryAdjustResponse>(
+    const data = await this.requireClient(accountId).query<InventoryAdjustResponse>(
       gql,
       {
         input: {
@@ -479,13 +530,13 @@ export class ShopifyService extends Service {
     }
   }
 
-  async listLocations(): Promise<Location[]> {
+  async listLocations(accountId?: string): Promise<Location[]> {
     const gql = `{
       locations(first: 20) {
         edges { node { id name isActive } }
       }
     }`;
-    const data = await this.requireClient().query<LocationsResponse>(gql);
+    const data = await this.requireClient(accountId).query<LocationsResponse>(gql);
     return data.locations.edges.map((e: LocationEdge) => e.node);
   }
 
@@ -493,15 +544,15 @@ export class ShopifyService extends Service {
   // Counts (for provider context)
   // -----------------------------------------------------------------------
 
-  async getProductCount(): Promise<number> {
-    const data = await this.requireClient().query<ProductCountResponse>(`{
+  async getProductCount(accountId?: string): Promise<number> {
+    const data = await this.requireClient(accountId).query<ProductCountResponse>(`{
       productsCount { count }
     }`);
     return data.productsCount.count;
   }
 
-  async getOrderCount(): Promise<number> {
-    const data = await this.requireClient().query<OrderCountResponse>(`{
+  async getOrderCount(accountId?: string): Promise<number> {
+    const data = await this.requireClient(accountId).query<OrderCountResponse>(`{
       ordersCount { count }
     }`);
     return data.ordersCount.count;

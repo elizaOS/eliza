@@ -36,6 +36,8 @@ export const browserBridgeCompanions = pgTable(
     connectionState: text("connection_state").notNull().default("disconnected"),
     permissionsJson: text("permissions_json").notNull().default("{}"),
     pairingTokenHash: text("pairing_token_hash"),
+    pairingTokenExpiresAt: text("pairing_token_expires_at"),
+    pairingTokenRevokedAt: text("pairing_token_revoked_at"),
     pendingPairingTokenHashesJson: text("pending_pairing_token_hashes_json")
       .notNull()
       .default("[]"),

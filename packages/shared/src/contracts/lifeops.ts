@@ -1025,6 +1025,8 @@ export interface LifeOpsConnectorGrant {
   id: string;
   agentId: string;
   provider: LifeOpsConnectorProvider;
+  /** LifeOps-owned stable account key; grant id remains legacy credential state. */
+  connectorAccountId?: string | null;
   side: LifeOpsConnectorSide;
   identity: Record<string, unknown>;
   identityEmail?: string | null;
@@ -1906,6 +1908,8 @@ export interface LifeOpsCalendarEvent {
   updatedAt: string;
   /** Set on merged feeds so the UI can show which calendar an event came from. */
   calendarSummary?: string;
+  /** LifeOps-owned account key for privacy egress; legacy cache rows may omit it until purge/resync. */
+  connectorAccountId?: string;
   /** Google grant that owns this Gmail message cache row. */
   grantId?: string;
   /** Email address for the owning Google account when known. */
@@ -2009,6 +2013,8 @@ export interface LifeOpsGmailMessageSummary {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** LifeOps-owned account key for privacy egress; legacy cache rows may omit it until purge/resync. */
+  connectorAccountId?: string;
   /** Set when aggregating across multiple Google accounts. */
   grantId?: string;
   /** Set when aggregating across multiple Google accounts. */
@@ -2624,6 +2630,8 @@ export interface LifeOpsInboxMessage {
   threadId?: string;
   /** Present on Gmail messages when multiple accounts exist; identifies which Google grant the message came from. */
   gmailAccountId?: string;
+  /** LifeOps-owned account key for privacy egress. */
+  connectorAccountId?: string;
   /** Display label for the Gmail account (e.g., `work@example.com`). */
   gmailAccountEmail?: string;
   /** ISO timestamp of when the user last viewed this thread (UI updates on open). */

@@ -37,3 +37,8 @@ export {
   relaunchDiscordDesktopForCdp,
   sendDiscordViaDesktopCdp,
 } from "./discord-desktop-cdp";
+export {
+  DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+  type DiscordUserAccountScraper,
+  DiscordUserAccountScraperImpl,
+} from "./service";

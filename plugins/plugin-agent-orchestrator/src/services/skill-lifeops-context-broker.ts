@@ -20,9 +20,9 @@ export const LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY = {
   slug: LIFEOPS_CONTEXT_BROKER_SLUG,
   name: "LifeOps Context Broker",
   description:
-    "Task-scoped parent broker for owner LifeOps context. Supports email, calendar, inbox/priority, contacts, scratchpad when available, and generic cross-channel search/context.",
+    "Task-scoped parent broker for owner LifeOps context. Supports email, calendar, inbox/priority, contacts, documents, and generic cross-channel search/context.",
   guidance:
-    'Use only when task-relevant personal context is needed. Example: `USE_SKILL lifeops-context {"category":"email","query":"contract from Alex","limit":5}`. Categories: email, calendar, inbox, priority, contacts, scratchpad, search, context.',
+    'Use only when task-relevant personal context is needed. Example: `USE_SKILL lifeops-context {"category":"email","query":"contract from Alex","limit":5}`. Categories: email, calendar, inbox, priority, contacts, documents, search, context.',
 } as const;
 
 type LifeOpsBrokerCategory =
@@ -31,7 +31,7 @@ type LifeOpsBrokerCategory =
   | "inbox"
   | "priority"
   | "contacts"
-  | "scratchpad"
+  | "documents"
   | "search"
   | "context";
 
@@ -156,9 +156,11 @@ function normalizeCategory(value: unknown): LifeOpsBrokerCategory | undefined {
     case "relationships":
     case "rolodex":
       return "contacts";
-    case "scratchpad":
     case "notes":
-      return "scratchpad";
+    case "note":
+    case "documents":
+    case "document":
+      return "documents";
     case "search":
     case "generic-search":
     case "cross-channel-search":
@@ -186,7 +188,7 @@ function inferCategory(args: LifeOpsContextBrokerArgs): LifeOpsBrokerCategory {
   if (/\b(contact|contacts|rolodex|relationship)\b/.test(haystack)) {
     return "contacts";
   }
-  if (/\b(scratchpad|note|notes)\b/.test(haystack)) return "scratchpad";
+  if (/\b(document|documents|note|notes)\b/.test(haystack)) return "documents";
   return args.query ? "search" : "context";
 }
 
@@ -251,16 +253,13 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
           name: args.person ?? args.query,
         }),
       };
-    case "scratchpad":
+    case "documents":
       return {
         category,
-        actionNames: [
-          "SCRATCHPAD_SEARCH",
-          "KNOWLEDGE_SCRATCHPAD",
-          "SCRATCHPAD",
-        ],
+        actionNames: ["DOCUMENT"],
         intent,
         parameters: compactParameters({
+          subAction: "search",
           query: args.query ?? intent,
           limit: args.limit,
         }),
@@ -378,12 +377,6 @@ function formatContextData(value: unknown, indent = 0): string {
 }
 
 function unsupportedText(plan: BrokerPlan): string {
-  if (plan.category === "scratchpad") {
-    return (
-      "Scratchpad context is not available in this parent runtime. " +
-      "Remaining app-level broker endpoint needed: expose a read-only parent action for `/api/knowledge/scratchpad/search?query=<query>&limit=<n>` or register an equivalent SCRATCHPAD_SEARCH action."
-    );
-  }
   return (
     `LifeOps context category \`${plan.category}\` is not available in this parent runtime. ` +
     `Expected one of these parent actions: ${plan.actionNames.join(", ")}.`
@@ -552,9 +545,9 @@ export async function runLifeOpsContextBroker(
 const EXPLICIT_BROKER_RE =
   /\b(lifeops-context|lifeops context broker|parent lifeops|use_skill\s+lifeops-context|ask the parent for lifeops|personal context broker)\b/i;
 const PERSONAL_CONTEXT_RE =
-  /\b(my|owner'?s|user'?s|personal)\s+(email|gmail|calendar|schedule|inbox|messages|contacts|rolodex|scratchpad|notes|day|lifeops)\b/i;
+  /\b(my|owner'?s|user'?s|personal)\s+(email|gmail|calendar|schedule|inbox|messages|contacts|rolodex|documents|notes|day|lifeops)\b/i;
 const LIFEOPS_CONTEXT_RE =
-  /\blifeops\b.{0,80}\b(context|email|gmail|calendar|schedule|inbox|priority|contacts|rolodex|scratchpad|search)\b/i;
+  /\blifeops\b.{0,80}\b(context|email|gmail|calendar|schedule|inbox|priority|contacts|rolodex|documents|search)\b/i;
 const CODING_TASK_RE =
   /\b(implement|fix|refactor|test|typecheck|lint|build|code|repo|repository|pull request|workstream|typescript|tsx|api route|endpoint|plugin|service)\b/i;
 

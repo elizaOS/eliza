@@ -132,6 +132,11 @@ const FEATURE_PLUGINS: Record<string, string> = {
   tts: "@elizaos/plugin-edge-tts",
   stt: "@elizaos/plugin-stt",
   agentSkills: "@elizaos/plugin-agent-skills",
+  // Legacy alias: persisted user configs may have an `entries["coding-agent"]`
+  // entry (the plugin was renamed). Map it to the actual package name so the
+  // resolver doesn't try to load a non-existent `@elizaos/plugin-coding-agent`.
+  "coding-agent": "@elizaos/plugin-coding-tools",
+  codingTools: "@elizaos/plugin-coding-tools",
   commands: "@elizaos/plugin-commands",
   diagnosticsOtel: "@elizaos/plugin-diagnostics-otel",
   webhooks: "@elizaos/plugin-webhooks",
@@ -156,6 +161,22 @@ const WALLET_PLUGIN_SHORT_ID = "wallet";
 
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
+
+const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
+  "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
+};
+
+function resolvePluginPackageAlias(pluginName: string): string {
+  return PLUGIN_PACKAGE_ALIASES[pluginName] ?? pluginName;
+}
+
+function packageNameFromPluginConfigId(pluginId: string): string {
+  if (pluginId.includes("/")) return pluginId;
+  if (pluginId.startsWith("app-") || pluginId.startsWith("plugin-")) {
+    return `@elizaos/${pluginId}`;
+  }
+  return `@elizaos/plugin-${pluginId}`;
+}
 
 // Delegates to resolveEvmSigningCapability so wallet auto-enable and the
 // wallet-capability UI agree on whether a signing path exists. A cloud address
@@ -293,6 +314,7 @@ function addToAllowlist(
   changes: string[],
   reason: string,
 ): void {
+  pluginName = resolvePluginPackageAlias(pluginName);
   let added = false;
   if (!allow.includes(shortId)) {
     allow.push(shortId);
@@ -557,7 +579,9 @@ export function applyPluginAutoEnable(
     const connectorPackage = CONNECTOR_PLUGINS[entryId];
     const featurePackage = FEATURE_PLUGINS[entryId];
     const pluginName =
-      connectorPackage ?? featurePackage ?? `@elizaos/plugin-${entryId}`;
+      connectorPackage ??
+      featurePackage ??
+      packageNameFromPluginConfigId(entryId);
     addToAllowlist(
       pluginsConfig.allow,
       pluginName,

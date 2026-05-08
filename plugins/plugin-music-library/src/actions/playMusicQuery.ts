@@ -1,5 +1,4 @@
 import {
-  type Action,
   type ActionExample,
   type ActionResult,
   type HandlerCallback,
@@ -11,7 +10,11 @@ import {
 } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 import { parseJsonObjectResponse } from "../utils/json";
-import { confirmationRequired, isConfirmed } from "./confirmation";
+import {
+  confirmationRequired,
+  isConfirmed,
+  mergedOptions,
+} from "./confirmation";
 
 interface MusicQueryIntent {
   needsResearch: boolean;
@@ -127,6 +130,18 @@ function formatPromptValue(value: unknown, depth = 0): string {
       .join("\n");
   }
   return String(value);
+}
+
+function readMusicQueryText(
+  message: Memory,
+  options?: Record<string, unknown>,
+): string {
+  const merged = mergedOptions(options);
+  const direct = merged.query ?? merged.searchQuery;
+  if (typeof direct === "string" && direct.trim().length >= 3) {
+    return direct.trim();
+  }
+  return message.content.text || "";
 }
 
 /**
@@ -501,407 +516,398 @@ Respond with ONLY the album name, nothing else.`;
 /**
  * Smart music query action that can research and play complex queries
  */
-export const playMusicQuery: Action = {
-  name: "PLAY_MUSIC_QUERY",
-  contexts: ["media", "knowledge"],
-  contextGate: { anyOf: ["media", "knowledge"] },
-  roleGate: { minRole: "USER" },
-  similes: [
-    "SMART_PLAY",
-    "RESEARCH_AND_PLAY",
-    "FIND_AND_PLAY",
-    "INTELLIGENT_MUSIC_SEARCH",
-  ],
-  description:
-    "Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
-  descriptionCompressed:
-    "Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases.",
-  parameters: [
+export const playMusicQuerySimiles = [
+  "PLAY_MUSIC_QUERY",
+  "SMART_PLAY",
+  "RESEARCH_AND_PLAY",
+  "FIND_AND_PLAY",
+  "INTELLIGENT_MUSIC_SEARCH",
+];
+
+export async function validatePlayMusicQuery(
+  _runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+): Promise<boolean> {
+  if (message.content.source !== "discord") {
+    return false;
+  }
+
+  const messageText = (message.content.text || "").toLowerCase();
+
+  // PERFORMANCE: Skip if this is a direct YouTube URL - let playYouTubeAudio handle it (much faster)
+  if (
+    messageText.includes("youtube.com/") ||
+    messageText.includes("youtu.be/")
+  ) {
+    return false;
+  }
+
+  // Check if this is a complex query that needs research
+  const researchKeywords = [
+    // Artist-specific
+    "first single",
+    "debut single",
+    "first song",
+    "debut album",
+    "first album",
+    "latest song",
+    "newest song",
+    "recent song",
+    "new song",
+    "new music",
+    "something like",
+    "similar to",
+    "sounds like",
+    "reminds me of",
+    "in the style of",
+    "most popular",
+    "biggest hit",
+    "best song",
+    "top song",
+    "second album",
+    "third album",
+    "2nd album",
+    "3rd album",
+    "nth album",
+
+    // Temporal
+    "80s",
+    "90s",
+    "2000s",
+    "70s",
+    "60s",
+    "from the",
+
+    // Genre/Mood
+    "genre:",
+    "chill",
+    "vibes",
+    "mood",
+    "upbeat",
+    "sad",
+    "happy",
+    "energetic",
+
+    // Activity
+    "workout",
+    "gym",
+    "study",
+    "focus",
+    "party",
+    "driving",
+    "sleep",
+
+    // Charts
+    "top",
+    "chart",
+    "billboard",
+    "trending",
+    "viral",
+    "popular now",
+
+    // Media
+    "soundtrack",
+    "theme song",
+    "theme from",
+    "from the movie",
+    "from the game",
+    "from the show",
+    "tv show",
+
+    // Lyrics/Topic
+    "songs about",
+    "with lyrics",
+    "that mentions",
+
+    // Versions
+    "cover of",
+    "remix of",
+    "acoustic version",
+    "live version",
+    "live at",
+    "instrumental",
+
+    // Album
+    "from the album",
+    "track",
+    "entire album",
+    "full album",
+    "whole album",
+  ];
+
+  const needsResearch = researchKeywords.some((keyword) =>
+    messageText.includes(keyword),
+  );
+
+  // Also check for pattern "play [genre/mood] music"
+  const simplePatterns = [
+    /play\s+(some\s+)?(jazz|rock|pop|hip hop|rap|metal|electronic|indie|folk|country|classical|blues)/i,
+    /play\s+(something\s+)?(chill|upbeat|sad|happy|energetic|mellow|intense)/i,
+  ];
+
+  return (
+    needsResearch || simplePatterns.some((pattern) => pattern.test(messageText))
+  );
+}
+
+export async function handlePlayMusicQuery(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: Record<string, unknown> | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult | undefined> {
+  if (!callback) return { success: false, error: "Missing callback" };
+
+  const messageText = readMusicQueryText(message, options);
+  const preview = `Confirmation required before resolving and queueing music for: "${messageText}".`;
+  if (!isConfirmed(options)) {
+    await callback({
+      text: preview,
+      source: message.content.source,
+    });
+    return confirmationRequired(preview, {
+      op: "play-query",
+      query: messageText,
+    });
+  }
+
+  try {
+    // Step 1: Analyze the query intent
+    await callback({
+      text: "🔍 Let me figure out what you want...",
+      source: message.content.source,
+    });
+
+    const intent = await analyzeMusicQuery(runtime, messageText);
+    if (!intent) {
+      await callback({
+        text: "I couldn't understand your music request. Try being more specific?",
+        source: message.content.source,
+      });
+      return;
+    }
+
+    logger.info(`Music query intent: ${JSON.stringify(intent)}`);
+
+    let finalSearchQuery: string | null = null;
+
+    // Step 2: Research if needed
+    if (intent.needsResearch && intent.queryType !== "direct_search") {
+      const researchResult = await researchMusicInfo(runtime, intent);
+
+      if (!researchResult) {
+        await callback({
+          text: "I couldn't resolve that music query from the available research services. Try a more direct song, artist, or album request.",
+          source: message.content.source,
+        });
+        return;
+      }
+
+      finalSearchQuery = researchResult;
+    } else {
+      // For direct searches, construct query from intent
+      if (intent.searchQuery) {
+        finalSearchQuery = intent.searchQuery;
+      } else {
+        const parts = [
+          intent.artist,
+          intent.song,
+          intent.album,
+          intent.genre,
+          intent.mood,
+          intent.keywords,
+        ].filter(Boolean);
+        finalSearchQuery = parts.length > 0 ? parts.join(" ") : messageText;
+
+        if (intent.modifier) {
+          finalSearchQuery = `${finalSearchQuery} ${intent.modifier}`;
+        }
+      }
+    }
+
+    if (!finalSearchQuery) {
+      await callback({
+        text: "I couldn't figure out what to search for. Can you rephrase your request?",
+        source: message.content.source,
+      });
+      return;
+    }
+
+    logger.info(`Final search query: ${finalSearchQuery}`);
+
+    // Step 3: Search YouTube for the track
+    const musicLibrary = runtime.getService(
+      "musicLibrary",
+    ) as MusicLibraryService | null;
+    if (!musicLibrary) {
+      await callback({
+        text: "YouTube search service is not available.",
+        source: message.content.source,
+      });
+      return;
+    }
+
+    const results = await musicLibrary.searchYouTube(finalSearchQuery, {
+      limit: 1,
+    });
+    if (!results || results.length === 0) {
+      await callback({
+        text: `I couldn't find anything matching "${finalSearchQuery}". Try being more specific?`,
+        source: message.content.source,
+      });
+      return;
+    }
+
+    const topResult = results[0];
+    logger.info(`Found: ${topResult.title} (${topResult.url})`);
+
+    // Step 4: Queue the track via music service
+    const musicService = runtime.getService(
+      "music",
+    ) as MusicQueueService | null;
+    if (!musicService) {
+      await callback({
+        text: "Music service is not available.",
+        source: message.content.source,
+      });
+      return;
+    }
+
+    // Get Discord guild ID from room - same pattern as playAudio action
+    const room = state?.data?.room || (await runtime.getRoom(message.roomId));
+    const guildId = room?.serverId;
+    if (!guildId) {
+      await callback({
+        text: "Could not determine Discord server. Make sure you're messaging from a server channel.",
+        source: message.content.source,
+      });
+      return;
+    }
+
+    // Use entityId (UUID) not fromId (Discord snowflake) for requestedBy
+    // WHY: fromId in metadata is the raw Discord snowflake ID for security reference
+    // entityId is the proper UUID created by createUniqueUuid(runtime, discordId)
+    const requestEntityId = message.entityId;
+
+    await musicService.addTrack(guildId, {
+      url: topResult.url,
+      title: topResult.title,
+      duration: topResult.duration,
+      requestedBy: requestEntityId,
+    });
+
+    await callback({
+      text: `🎵 Queued: **${topResult.title}**`,
+      source: message.content.source,
+    });
+    return { success: true, text: `Queued: ${topResult.title}` };
+  } catch (error) {
+    logger.error(
+      "Error in playMusicQuery:",
+      error instanceof Error ? error.message : String(error),
+    );
+    await callback({
+      text: "I ran into an issue trying to find that music.",
+      source: message.content.source,
+    });
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export const playMusicQueryExamples: ActionExample[][] = [
+  [
     {
-      name: "confirmed",
-      description:
-        "Must be true to resolve the music query and add the result to the queue.",
-      required: false,
-      schema: { type: "boolean", default: false },
+      name: "{{name1}}",
+      content: {
+        text: "Play the strokes first single",
+      },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "Let me look that up!",
+        actions: ["MUSIC_LIBRARY"],
+      },
     },
   ],
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    if (message.content.source !== "discord") {
-      return false;
-    }
-
-    const messageText = (message.content.text || "").toLowerCase();
-
-    // PERFORMANCE: Skip if this is a direct YouTube URL - let playYouTubeAudio handle it (much faster)
-    if (
-      messageText.includes("youtube.com/") ||
-      messageText.includes("youtu.be/")
-    ) {
-      return false;
-    }
-
-    // Check if this is a complex query that needs research
-    const researchKeywords = [
-      // Artist-specific
-      "first single",
-      "debut single",
-      "first song",
-      "debut album",
-      "first album",
-      "latest song",
-      "newest song",
-      "recent song",
-      "new song",
-      "new music",
-      "something like",
-      "similar to",
-      "sounds like",
-      "reminds me of",
-      "in the style of",
-      "most popular",
-      "biggest hit",
-      "best song",
-      "top song",
-      "second album",
-      "third album",
-      "2nd album",
-      "3rd album",
-      "nth album",
-
-      // Temporal
-      "80s",
-      "90s",
-      "2000s",
-      "70s",
-      "60s",
-      "from the",
-
-      // Genre/Mood
-      "genre:",
-      "chill",
-      "vibes",
-      "mood",
-      "upbeat",
-      "sad",
-      "happy",
-      "energetic",
-
-      // Activity
-      "workout",
-      "gym",
-      "study",
-      "focus",
-      "party",
-      "driving",
-      "sleep",
-
-      // Charts
-      "top",
-      "chart",
-      "billboard",
-      "trending",
-      "viral",
-      "popular now",
-
-      // Media
-      "soundtrack",
-      "theme song",
-      "theme from",
-      "from the movie",
-      "from the game",
-      "from the show",
-      "tv show",
-
-      // Lyrics/Topic
-      "songs about",
-      "with lyrics",
-      "that mentions",
-
-      // Versions
-      "cover of",
-      "remix of",
-      "acoustic version",
-      "live version",
-      "live at",
-      "instrumental",
-
-      // Album
-      "from the album",
-      "track",
-      "entire album",
-      "full album",
-      "whole album",
-    ];
-
-    const needsResearch = researchKeywords.some((keyword) =>
-      messageText.includes(keyword),
-    );
-
-    // Also check for pattern "play [genre/mood] music"
-    const simplePatterns = [
-      /play\s+(some\s+)?(jazz|rock|pop|hip hop|rap|metal|electronic|indie|folk|country|classical|blues)/i,
-      /play\s+(something\s+)?(chill|upbeat|sad|happy|energetic|mellow|intense)/i,
-    ];
-
-    return (
-      needsResearch ||
-      simplePatterns.some((pattern) => pattern.test(messageText))
-    );
-  },
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    options: Record<string, unknown> | undefined,
-    callback: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
-    const messageText = message.content.text || "";
-    const preview = `Confirmation required before resolving and queueing music for: "${messageText}".`;
-    if (!isConfirmed(options)) {
-      await callback({
-        text: preview,
-        source: message.content.source,
-      });
-      return confirmationRequired(preview, { query: messageText });
-    }
-
-    try {
-      // Step 1: Analyze the query intent
-      await callback({
-        text: "🔍 Let me figure out what you want...",
-        source: message.content.source,
-      });
-
-      const intent = await analyzeMusicQuery(runtime, messageText);
-      if (!intent) {
-        await callback({
-          text: "I couldn't understand your music request. Try being more specific?",
-          source: message.content.source,
-        });
-        return;
-      }
-
-      logger.info(`Music query intent: ${JSON.stringify(intent)}`);
-
-      let finalSearchQuery: string | null = null;
-
-      // Step 2: Research if needed
-      if (intent.needsResearch && intent.queryType !== "direct_search") {
-        const researchResult = await researchMusicInfo(runtime, intent);
-
-        if (!researchResult) {
-          await callback({
-            text: "I couldn't resolve that music query from the available research services. Try a more direct song, artist, or album request.",
-            source: message.content.source,
-          });
-          return;
-        }
-
-        finalSearchQuery = researchResult;
-      } else {
-        // For direct searches, construct query from intent
-        if (intent.searchQuery) {
-          finalSearchQuery = intent.searchQuery;
-        } else {
-          const parts = [
-            intent.artist,
-            intent.song,
-            intent.album,
-            intent.genre,
-            intent.mood,
-            intent.keywords,
-          ].filter(Boolean);
-          finalSearchQuery = parts.length > 0 ? parts.join(" ") : messageText;
-
-          if (intent.modifier) {
-            finalSearchQuery = `${finalSearchQuery} ${intent.modifier}`;
-          }
-        }
-      }
-
-      if (!finalSearchQuery) {
-        await callback({
-          text: "I couldn't figure out what to search for. Can you rephrase your request?",
-          source: message.content.source,
-        });
-        return;
-      }
-
-      logger.info(`Final search query: ${finalSearchQuery}`);
-
-      // Step 3: Search YouTube for the track
-      const musicLibrary = runtime.getService(
-        "musicLibrary",
-      ) as MusicLibraryService | null;
-      if (!musicLibrary) {
-        await callback({
-          text: "YouTube search service is not available.",
-          source: message.content.source,
-        });
-        return;
-      }
-
-      const results = await musicLibrary.searchYouTube(finalSearchQuery, {
-        limit: 1,
-      });
-      if (!results || results.length === 0) {
-        await callback({
-          text: `I couldn't find anything matching "${finalSearchQuery}". Try being more specific?`,
-          source: message.content.source,
-        });
-        return;
-      }
-
-      const topResult = results[0];
-      logger.info(`Found: ${topResult.title} (${topResult.url})`);
-
-      // Step 4: Queue the track via music service
-      const musicService = runtime.getService(
-        "music",
-      ) as MusicQueueService | null;
-      if (!musicService) {
-        await callback({
-          text: "Music service is not available.",
-          source: message.content.source,
-        });
-        return;
-      }
-
-      // Get Discord guild ID from room - same pattern as playAudio action
-      const room = state.data?.room || (await runtime.getRoom(message.roomId));
-      const guildId = room?.serverId;
-      if (!guildId) {
-        await callback({
-          text: "Could not determine Discord server. Make sure you're messaging from a server channel.",
-          source: message.content.source,
-        });
-        return;
-      }
-
-      // Use entityId (UUID) not fromId (Discord snowflake) for requestedBy
-      // WHY: fromId in metadata is the raw Discord snowflake ID for security reference
-      // entityId is the proper UUID created by createUniqueUuid(runtime, discordId)
-      const requestEntityId = message.entityId;
-
-      await musicService.addTrack(guildId, {
-        url: topResult.url,
-        title: topResult.title,
-        duration: topResult.duration,
-        requestedBy: requestEntityId,
-      });
-
-      await callback({
-        text: `🎵 Queued: **${topResult.title}**`,
-        source: message.content.source,
-      });
-      return { success: true, text: `Queued: ${topResult.title}` };
-    } catch (error) {
-      logger.error(
-        "Error in playMusicQuery:",
-        error instanceof Error ? error.message : String(error),
-      );
-      await callback({
-        text: "I ran into an issue trying to find that music.",
-        source: message.content.source,
-      });
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play the strokes first single",
-        },
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Play something like radiohead",
       },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me look that up!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "I'll find a similar artist!",
+        actions: ["MUSIC_LIBRARY"],
       },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play something like radiohead",
-        },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Play some 80s synth pop",
       },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll find a similar artist!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "Finding 80s synth pop for you!",
+        actions: ["MUSIC_LIBRARY"],
       },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play some 80s synth pop",
-        },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Play workout music",
       },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Finding 80s synth pop for you!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "Let's get you pumped up!",
+        actions: ["MUSIC_LIBRARY"],
       },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play workout music",
-        },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Play a cover of wonderwall",
       },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let's get you pumped up!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "Looking for a cover version!",
+        actions: ["MUSIC_LIBRARY"],
       },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play a cover of wonderwall",
-        },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Play the Inception soundtrack",
       },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Looking for a cover version!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
+    },
+    {
+      name: "{{name2}}",
+      content: {
+        text: "Finding that soundtrack!",
+        actions: ["MUSIC_LIBRARY"],
       },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Play the Inception soundtrack",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Finding that soundtrack!",
-          actions: ["PLAY_MUSIC_QUERY"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
-} as Action;
-
-export default playMusicQuery;
+    },
+  ],
+];

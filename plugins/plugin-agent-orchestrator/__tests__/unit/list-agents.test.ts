@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { listAgentsAction } from "../../src/actions/list-agents.js";
+// Post-consolidation: LIST_AGENTS is `TASKS { op: "list_agents" }`.
+import { listAgentsAction } from "../../src/actions/tasks.js";
 import {
   callback,
   memory,
@@ -8,25 +9,15 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("LIST_AGENTS", () => {
-  it("validates service presence", async () => {
-    expect(
-      await listAgentsAction.validate(
-        runtimeWith(serviceMock()),
-        memory(),
-        state,
-      ),
-    ).toBe(true);
-    expect(
-      await listAgentsAction.validate(runtimeWith(undefined), memory(), state),
-    ).toBe(false);
-  });
+const listOptions = { parameters: { op: "list_agents" } };
+
+describe("TASKS:list_agents (legacy LIST_AGENTS)", () => {
   it("lists sessions with exact public fields", async () => {
     const result = await listAgentsAction.handler(
       runtimeWith(serviceMock()),
       memory(),
       state,
-      {},
+      listOptions,
       callback(),
     );
     expect(result?.success).toBe(true);
@@ -42,14 +33,14 @@ describe("LIST_AGENTS", () => {
       },
     ]);
   });
-  it("handles missing service", async () => {
+  it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(
       (
         await listAgentsAction.handler(
           runtimeWith(undefined),
           memory(),
           state,
-          {},
+          listOptions,
           callback(),
         )
       )?.error,

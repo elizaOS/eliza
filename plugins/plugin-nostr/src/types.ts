@@ -45,6 +45,8 @@ export interface NostrProfile {
 
 /** Configuration settings for the Nostr plugin */
 export interface NostrSettings {
+  /** Connector account identifier for this Nostr bot instance */
+  accountId?: string;
   /** Private key in hex or nsec format */
   privateKey: string;
   /** Public key (derived from private key) */

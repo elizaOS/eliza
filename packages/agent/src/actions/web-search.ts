@@ -682,7 +682,7 @@ export const searchAction: Action = {
   similes: [
     "SEARCH_WEB",
     "WEB_SEARCH",
-    "SEARCH_DOCUMENTS",
+    "DOCUMENT",
     "SEARCH_PLUGINS",
     "SEARCH_VECTORS",
     "SEARCH_CONVERSATIONS",

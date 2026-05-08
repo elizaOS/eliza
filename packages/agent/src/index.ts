@@ -4,7 +4,7 @@ export {
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
 export * from "./actions/index.js";
-export type { CloudConfigLike } from "./api/cloud-status-routes.js";
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 export * from "./api/config-env.js";
 export * from "./api/conversation-metadata.js";
 export * from "./api/index.js";
@@ -140,7 +140,6 @@ export {
 } from "./services/relationships-graph.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
-export * from "./triggers/action.js";
 export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";

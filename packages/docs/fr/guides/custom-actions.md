@@ -86,9 +86,7 @@ Similaire à l'éjection de plugins mais pour le framework noyau elizaOS lui-mê
 
 | Action | Description | Paramètres Requis |
 |--------|-------------|------------------|
-| `GENERATE_IMAGE` | Génère une image à partir d'un prompt textuel. Supporte la taille, la qualité (`standard`/`hd`), le style (`natural`/`vivid`), et les prompts négatifs. | `prompt` |
-| `GENERATE_VIDEO` | Génère une vidéo à partir d'un prompt textuel. Supporte la durée, le ratio d'aspect, et l'image-vers-vidéo via `imageUrl`. | `prompt` |
-| `GENERATE_AUDIO` | Génère de l'audio/musique à partir d'un prompt textuel. Supporte la durée, le mode instrumental et le genre. | `prompt` |
+| `GENERATE_MEDIA` | Génère une image, une vidéo ou de l'audio à partir d'un prompt textuel. Supporte les options d'image, de vidéo et d'audio; utilisez `mediaType` pour forcer `image`, `video` ou `audio`. | `prompt` |
 | `ANALYZE_IMAGE` | Analyse une image en utilisant la vision IA. Accepte `imageUrl` ou `imageBase64` avec un `prompt` d'analyse optionnel. | `imageUrl` ou `imageBase64` |
 
 Toutes les actions de médias utilisent le fournisseur configuré (Eliza Cloud par défaut, ou FAL/OpenAI/Google/Anthropic).

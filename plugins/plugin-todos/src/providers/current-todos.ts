@@ -1,6 +1,17 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { getTodos } from "../store.js";
-import { type Todo, TODOS_CONTEXTS } from "../types.js";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
+
+import { TodosService } from "../service.js";
+import {
+  type Todo,
+  TODOS_CONTEXTS,
+  TODOS_SERVICE_TYPE,
+} from "../types.js";
 
 function checkboxFor(status: Todo["status"]): string {
   switch (status) {
@@ -8,33 +19,42 @@ function checkboxFor(status: Todo["status"]): string {
       return "[x]";
     case "in_progress":
       return "[→]";
+    case "cancelled":
+      return "[-]";
     default:
       return "[ ]";
   }
 }
 
 /**
- * Surface the conversation's current todo list to the planner each turn.
+ * Surface the user's current todo list to the planner each turn.
  * Mirrors how Claude Code keeps the TodoWrite list in the model's context.
- * No-ops (returns empty text) if the conversation has no todos.
+ * Returns empty text when the user has no active todos.
+ *
+ * Scoping: by `entityId` (user) — todos persist across rooms for the same user.
+ * Pending + in_progress are always shown; completed/cancelled are excluded.
  */
 export const currentTodosProvider: Provider = {
   name: "CURRENT_TODOS",
-  description:
-    "The conversation's current todo list, written by TODO_WRITE.",
+  description: "The user's current pending and in-progress todos.",
   position: -5,
   contexts: [...TODOS_CONTEXTS],
   contextGate: { anyOf: [...TODOS_CONTEXTS] },
   get: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    if (!message.roomId) return { text: "", data: { todos: [] } };
-    const conversationId = String(message.roomId);
-    const todos = getTodos(conversationId);
+    const entityId = message.entityId;
+    if (!entityId) return { text: "", data: { todos: [] } };
+    const service = runtime.getService<TodosService>(TODOS_SERVICE_TYPE);
+    if (!service) return { text: "", data: { todos: [] } };
+    const todos = await service.list({
+      entityId: String(entityId),
+      agentId: String(runtime.agentId),
+      includeCompleted: false,
+    });
     if (todos.length === 0) return { text: "", data: { todos: [] } };
-
     const lines = [
       "# Current todos",
       "",

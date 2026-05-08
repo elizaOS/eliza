@@ -1,6 +1,5 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
-import { SEND_MESSAGE_ACTION, sendMessageAction } from "./actions";
 import { createFeishuConnectorAccountProvider } from "./connector-account-provider";
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
@@ -79,8 +78,6 @@ export {
 	FEISHU_SERVICE_NAME,
 	FeishuService,
 	MessageManager,
-	SEND_MESSAGE_ACTION,
-	sendMessageAction,
 };
 
 export default feishuPlugin;

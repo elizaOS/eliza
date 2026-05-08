@@ -27,6 +27,7 @@ import type {
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -36,7 +37,15 @@ import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
+import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
+import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
+import {
+  connectorAccountDisplayName,
+  connectorWriteConfirmationKey,
+  isLikelyAccountRequiredError,
+  mergeConnectorSendAsMetadata,
+} from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
 import {
   useChatVoiceController,
@@ -899,10 +908,125 @@ function InboxChatPanel({
     ? activeInboxChat.source.charAt(0).toUpperCase() +
       activeInboxChat.source.slice(1)
     : t("common.channel", { defaultValue: "Channel" });
+  const sendAsContext = useMemo(
+    () =>
+      activeInboxChat.canSend === false
+        ? null
+        : {
+            provider: transportSource,
+            connectorId: transportSource,
+            source: transportSource,
+            channel: activeInboxChat.id,
+            channelLabel: activeInboxChat.title,
+            writeCapable: true,
+          },
+    [
+      activeInboxChat.canSend,
+      activeInboxChat.id,
+      activeInboxChat.title,
+      transportSource,
+    ],
+  );
+  const connectorSendAs = useConnectorSendAsAccount(sendAsContext, {
+    setActionNotice: app?.setActionNotice,
+  });
+  const {
+    accountRequired,
+    accountRequiredReason: connectorAccountRequiredReason,
+    accounts: sendAsAccounts,
+    connectAccount,
+    context: normalizedSendAsContext,
+    loading: sendAsLoading,
+    reconnectAccount,
+    saving: sendAsSaving,
+    selectAccount,
+    selectedAccount: sendAsSelectedAccount,
+    sendAsMetadata,
+    showPicker: showSendAsPicker,
+  } = connectorSendAs;
+  const [accountRequiredReason, setAccountRequiredReason] = useState<
+    string | null
+  >(null);
+  const [pendingWriteConfirmationKey, setPendingWriteConfirmationKey] =
+    useState<string | null>(null);
+  const [confirmedWriteAccountKeys, setConfirmedWriteAccountKeys] = useState<
+    Set<string>
+  >(() => new Set());
+
+  const currentWriteConfirmationKey = connectorWriteConfirmationKey(
+    sendAsContext,
+    sendAsSelectedAccount,
+  );
+  const showWriteConfirmation =
+    Boolean(pendingWriteConfirmationKey) &&
+    pendingWriteConfirmationKey === currentWriteConfirmationKey;
+  const sendAsConnectBusy = normalizedSendAsContext
+    ? sendAsSaving.has(
+        `add:${normalizedSendAsContext.provider}:${normalizedSendAsContext.connectorId}`,
+      )
+    : false;
+  const blockingAccountReason =
+    accountRequiredReason ??
+    (accountRequired ? connectorAccountRequiredReason : null);
+
+  const handleSelectSendAsAccount = useCallback(
+    (accountId: string) => {
+      const account = sendAsAccounts.find((item) => item.id === accountId);
+      selectAccount(accountId);
+      setAccountRequiredReason(null);
+      const key = connectorWriteConfirmationKey(sendAsContext, account);
+      if (key && !confirmedWriteAccountKeys.has(key)) {
+        setPendingWriteConfirmationKey(key);
+      }
+    },
+    [confirmedWriteAccountKeys, selectAccount, sendAsAccounts, sendAsContext],
+  );
+
+  const handleConfirmWriteAccount = useCallback(() => {
+    if (!currentWriteConfirmationKey) return;
+    setConfirmedWriteAccountKeys((prev) => {
+      const next = new Set(prev);
+      next.add(currentWriteConfirmationKey);
+      return next;
+    });
+    setPendingWriteConfirmationKey(null);
+    setReplyError(null);
+  }, [currentWriteConfirmationKey]);
+
+  const handleConnectSendAsAccount = useCallback(() => {
+    setAccountRequiredReason(null);
+    void connectAccount().catch((error) => {
+      setReplyError(
+        error instanceof Error ? error.message : "Failed to connect account.",
+      );
+    });
+  }, [connectAccount]);
+
+  const handleReconnectSendAsAccount = useCallback(
+    (accountId: string) => {
+      setAccountRequiredReason(null);
+      void reconnectAccount(accountId).catch((error) => {
+        setReplyError(
+          error instanceof Error
+            ? error.message
+            : "Failed to reconnect account.",
+        );
+      });
+    },
+    [reconnectAccount],
+  );
 
   const handleReplySend = useCallback(async () => {
     const text = replyText.trim();
     if (!text || sending || activeInboxChat.canSend === false) {
+      return;
+    }
+    if (blockingAccountReason) {
+      setReplyError(blockingAccountReason);
+      return;
+    }
+    if (showWriteConfirmation) {
+      setReplyError("Confirm the send-as account before sending.");
       return;
     }
 
@@ -910,6 +1034,11 @@ function InboxChatPanel({
     setReplyError(null);
     try {
       const response = await client.sendInboxMessage({
+        ...(sendAsSelectedAccount?.id
+          ? { accountId: sendAsSelectedAccount.id }
+          : {}),
+        channel: activeInboxChat.id,
+        metadata: mergeConnectorSendAsMetadata(undefined, sendAsMetadata),
         roomId: activeInboxChat.id,
         source: transportSource,
         text,
@@ -923,7 +1052,15 @@ function InboxChatPanel({
       }
 
       setReplyText("");
+      setAccountRequiredReason(null);
     } catch (error) {
+      if (isLikelyAccountRequiredError(error)) {
+        setAccountRequiredReason(
+          error instanceof Error
+            ? error.message
+            : "Choose a connector account before sending.",
+        );
+      }
       setReplyError(
         error instanceof Error
           ? error.message
@@ -937,8 +1074,12 @@ function InboxChatPanel({
   }, [
     activeInboxChat.canSend,
     activeInboxChat.id,
+    blockingAccountReason,
     replyText,
+    sendAsMetadata,
+    sendAsSelectedAccount,
     sending,
+    showWriteConfirmation,
     t,
     transportSource,
   ]);
@@ -1018,6 +1159,45 @@ function InboxChatPanel({
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-3 pb-3">
+          <ConnectorAccountPicker
+            accounts={sendAsAccounts}
+            connectBusy={sendAsConnectBusy}
+            loading={sendAsLoading}
+            selectedAccount={sendAsSelectedAccount}
+            sourceLabel={sourceLabel}
+            show={showSendAsPicker}
+            onConnectAccount={handleConnectSendAsAccount}
+            onReconnectAccount={handleReconnectSendAsAccount}
+            onSelectAccount={handleSelectSendAsAccount}
+          />
+          {blockingAccountReason ? (
+            <AccountRequiredCard
+              accounts={sendAsAccounts}
+              connectBusy={sendAsConnectBusy}
+              description={blockingAccountReason}
+              loading={sendAsLoading}
+              selectedAccount={sendAsSelectedAccount}
+              sourceLabel={sourceLabel}
+              onConnectAccount={handleConnectSendAsAccount}
+              onReconnectAccount={handleReconnectSendAsAccount}
+              onSelectAccount={handleSelectSendAsAccount}
+            />
+          ) : showWriteConfirmation ? (
+            <AccountRequiredCard
+              accounts={sendAsAccounts}
+              connectBusy={sendAsConnectBusy}
+              confirmLabel="Confirm send-as"
+              description={`First send with ${sendAsSelectedAccount ? connectorAccountDisplayName(sendAsSelectedAccount) : "this account"} in ${sourceLabel}. Confirm before Eliza writes through it.`}
+              loading={sendAsLoading}
+              selectedAccount={sendAsSelectedAccount}
+              sourceLabel={sourceLabel}
+              title="Confirm send-as account"
+              onConfirm={handleConfirmWriteAccount}
+              onConnectAccount={handleConnectSendAsAccount}
+              onReconnectAccount={handleReconnectSendAsAccount}
+              onSelectAccount={handleSelectSendAsAccount}
+            />
+          ) : null}
           <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
             {t("inboxview.AgentSendWarning", {
               defaultValue:

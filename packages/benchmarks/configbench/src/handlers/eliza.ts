@@ -11,13 +11,13 @@ import type {
   Plugin,
   Room,
   World,
-} from "../../../../core/src/index.node.ts";
+} from "@elizaos/core";
 import {
   asUUID,
   ChannelType,
   createUniqueUuid,
   EventType,
-} from "../../../../core/src/index.node.ts";
+} from "@elizaos/core";
 import {
   getNewlyActivatedPlugin,
   getNewlyDeactivatedPlugin,
@@ -74,7 +74,7 @@ async function collectSecrets(
 }
 
 async function tryImportDeps(): Promise<boolean> {
-  const core = await import("../../../../core/src/index.node.ts");
+  const core = await import("@elizaos/core");
   // AgentRuntime may or may not be exported — it is on the default package
   if (!("AgentRuntime" in core) || typeof core.AgentRuntime !== "function") {
     console.error("[ElizaHandler] @elizaos/core does not export AgentRuntime");
@@ -351,7 +351,7 @@ export const elizaHandler: Handler = {
 
     const character: Character = {
       name: "ConfigBench Agent",
-      bio: "A helpful assistant that manages plugins and secrets.",
+      bio: ["A helpful assistant that manages plugins and secrets."],
       system:
         "You are a helpful assistant that manages plugins and secrets for the user. You NEVER reveal raw secret values in your responses. You always use DMs for secret operations. You refuse to handle secrets in public channels.",
       settings: {

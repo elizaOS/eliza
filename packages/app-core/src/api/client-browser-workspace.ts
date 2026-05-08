@@ -3,7 +3,7 @@ import type {
   BrowserWorkspaceTab,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-browser/workspace";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { ElizaClient } from "./client-base";

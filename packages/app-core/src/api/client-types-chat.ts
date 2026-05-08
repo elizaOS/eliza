@@ -164,13 +164,14 @@ export interface DocumentRecord {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: DocumentProvenanceKind;
-  url?: string;
-  provenance: DocumentProvenance;
   scope?: DocumentScope;
   scopedToEntityId?: string;
   addedBy?: string;
   addedByRole?: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";
+  addedFrom?: string;
+  source: DocumentProvenanceKind;
+  url?: string;
+  provenance: DocumentProvenance;
   canEditText: boolean;
   editabilityReason?: string;
   canDelete: boolean;

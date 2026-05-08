@@ -213,7 +213,7 @@ The `eliza_harness.py` module implements the canonical ElizaOS integration:
 │  • Build prompt with messageHandlerTemplate                     │
 │  • use_model() → generate response                              │
 │  • Parse XML actions from response                              │
-│  • process_actions() → run BENCHMARK_ACTION handler             │
+│  • planned tool execution → run BENCHMARK_ACTION handler        │
 │  • BENCHMARK_ACTION queues command to BenchmarkContext          │
 │  • evaluate() → run evaluators                                  │
 │  • Save response to memory                                      │

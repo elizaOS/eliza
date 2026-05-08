@@ -131,7 +131,10 @@ export function useChatVoiceController(options: {
   conversationMessages: ConversationMessage[];
   activeConversationId: string | null;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
-  handleChatSend: (channelType?: ConversationChannelType) => Promise<void>;
+  handleChatSend: (
+    channelType?: ConversationChannelType,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   isComposerLocked: boolean;
   isGameModal: boolean;
   setState: ReturnType<typeof useApp>["setState"];

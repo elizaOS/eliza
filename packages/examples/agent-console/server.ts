@@ -3,7 +3,8 @@
 // wraps useModel and subscribes to EventType.* so the UI sees every stage,
 // every prompt, every action, every evaluator, every model token.
 
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { scanRepoActions, type ActionScanSort } from "./action-scanner";
 import {
   AgentRuntime,
   ChannelType,
@@ -451,6 +452,7 @@ function extractActionName(p: ActionEventPayload): string {
 // ---------- HTTP server ----------
 
 const PORT = Number(process.env.PORT || 7777);
+const REPO_ROOT = resolve(import.meta.dir, "../../..");
 
 let initState: "pending" | "ready" | "error" = "pending";
 let initError: string | null = null;
@@ -586,6 +588,25 @@ const server = Bun.serve({
       return new Response(Bun.file(join(import.meta.dir, "public", "index.html")), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
+    }
+
+    if (url.pathname === "/actions" || url.pathname === "/actions.html") {
+      return new Response(Bun.file(join(import.meta.dir, "public", "actions.html")), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/action-scan") {
+      const sort: ActionScanSort =
+        url.searchParams.get("sort") === "filepath" ? "filepath" : "name";
+      try {
+        return Response.json(scanRepoActions({ repoRoot: REPO_ROOT, sort }));
+      } catch (err: any) {
+        return Response.json(
+          { error: err?.message ?? String(err), stack: err?.stack },
+          { status: 500 },
+        );
+      }
     }
 
     if (url.pathname === "/runtime") {

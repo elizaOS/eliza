@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Telegram account auth is implemented by
+// @elizaos/plugin-telegram; LifeOps keeps only legacy owner-session storage
+// wrappers until those setup routes are fully delegated.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

@@ -703,7 +703,7 @@ async def main():
 - **Bootstrap is enabled** (default) - loads `REPLY`, `IGNORE`, `NONE` actions
 - **12 bootstrap providers** - `CHARACTER`, `ACTIONS`, `RECENT_MESSAGES`, etc.
 - **Full message processing** - `message_service.handle_message()` orchestrates everything
-- **Action execution** - The agent chooses and executes actions via `process_actions()`
+- **Action execution** - The agent chooses and executes actions via planned tool execution
 - **Evaluator pipeline** - Runs after response via `runtime.evaluate()`
 
 ---

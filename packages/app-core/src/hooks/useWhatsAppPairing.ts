@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "./useConnectorAccounts";
 
 export type { WhatsAppPairingStatus } from "@elizaos/agent";
 
@@ -12,7 +13,7 @@ interface WhatsAppPairingState {
   error: string | null;
 }
 
-export function useWhatsAppPairing(accountId = "default") {
+export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
   const [state, setState] = useState<WhatsAppPairingState>({
     status: "idle",
     qrDataUrl: null,

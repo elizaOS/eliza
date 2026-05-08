@@ -14,6 +14,10 @@ export interface RelationshipsRouteContext extends RouteRequestContext {
   runtime?: IAgentRuntime | null;
 }
 
+// The merged RelationshipsService (in @elizaos/core) implements the
+// RelationshipsGraphService surface directly.
+type RelationshipsServiceWithGraph = RelationshipsGraphService;
+
 function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
   const parseInteger = (
@@ -47,16 +51,9 @@ function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
 
 async function getRelationshipsGraphService(
   runtime?: IAgentRuntime | null,
-): Promise<RelationshipsGraphService | null> {
+): Promise<RelationshipsServiceWithGraph | null> {
   if (!runtime) {
     return null;
-  }
-
-  const graphService = runtime.getService(
-    "relationships_graph",
-  ) as unknown as RelationshipsGraphService | null;
-  if (graphService) {
-    return graphService;
   }
 
   const runtimeWithFeatures = runtime as RelationshipsFeatureRuntime;
@@ -68,17 +65,9 @@ async function getRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  const relationshipsService = runtime.getService("relationships");
-  if (!relationshipsService) {
-    return null;
-  }
-
-  return createNativeRelationshipsGraphService(
-    runtime,
-    relationshipsService as Parameters<
-      typeof createNativeRelationshipsGraphService
-    >[1],
-  );
+  return (runtime.getService(
+    "relationships",
+  ) as unknown as RelationshipsServiceWithGraph | null) ?? null;
 }
 
 type LinkRequestBody = {

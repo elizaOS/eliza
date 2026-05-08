@@ -1,3 +1,8 @@
+// Discord Desktop CDP fallback. Used when the Eliza browser-workspace tab
+// path isn't available but a local Discord Desktop is running with the
+// Chrome DevTools Protocol port exposed (e.g. relaunched by Eliza). Sends
+// and probes go through the same scraper primitives but over CDP rather
+// than the workspace bridge.
 import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -5,7 +10,7 @@ import {
   type DiscordDmInboxProbe,
   type DiscordTabProbe,
   type DiscordVisibleDmPreview,
-} from "./discord-browser-scraper.js";
+} from "./discord-browser-scraper";
 
 const DEFAULT_DISCORD_DESKTOP_CDP_PORT = 9224;
 const DISCORD_DESKTOP_CDP_HOST = "127.0.0.1";

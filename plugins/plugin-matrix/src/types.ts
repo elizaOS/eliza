@@ -38,6 +38,8 @@ export enum MatrixEventTypes {
 
 /** Configuration settings for the Matrix plugin */
 export interface MatrixSettings {
+  /** Connector account identifier for this Matrix bot instance */
+  accountId?: string;
   /** Matrix homeserver URL */
   homeserver: string;
   /** Matrix user ID (@user:homeserver) */

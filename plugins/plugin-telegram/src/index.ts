@@ -39,4 +39,5 @@ export {
   type TelegramOwnerPairingService,
 };
 export * from './account-auth-service';
+export * from './accounts';
 export default telegramPlugin;

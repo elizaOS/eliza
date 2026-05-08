@@ -185,8 +185,8 @@ class DiscordService extends Service {
       // Convert Discord message to Memory format
       const memory = await this.convertToMemory(message);
 
-      // Process through runtime
-      await this.runtime.processActions(memory, []);
+      // Process through the message service
+      await this.runtime.messageService?.handleMessage(this.runtime, memory);
     });
   }
 

@@ -157,6 +157,7 @@ import {
 } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
+import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
 // ---------------------------------------------------------------------------
@@ -200,9 +201,14 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
     if (typeof raw === "string" && raw.trim()) {
       process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+      return;
     }
   } catch {
     // Best effort only; upstream startup will still load config normally.
+  }
+
+  if (isNodePlatformSecureStoreDefaultAvailable()) {
+    process.env.ELIZA_WALLET_OS_STORE = "1";
   }
 }
 

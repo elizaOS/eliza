@@ -66,7 +66,7 @@ browser secrets. The workspace helper
 named connector account to either:
 
 - an internal browser partition named
-  `persist:connector-{provider}-{accountId}`; or
+  `persist:connector-{provider}-{accountId}-{hash}`; or
 - a Browser Bridge companion profile handle when a companion/profile reference
   is supplied.
 

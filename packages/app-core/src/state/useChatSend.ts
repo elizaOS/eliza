@@ -81,7 +81,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
         view: "character",
         primaryContext: "character",
         secondaryContexts: ["documents", "admin"],
-        capabilities: ["modify-character", "edit-character-knowledge"],
+        capabilities: ["modify-character", "edit-character-documents"],
       };
     case "documents":
       return {
@@ -136,10 +136,10 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
     case "relationships":
     case "memories":
       return {
-        view: "knowledge",
+        view: "documents",
         primaryContext: "documents",
         secondaryContexts: ["admin", "social_posting"],
-        capabilities: ["knowledge", "memory", "relationships"],
+        capabilities: ["documents", "memory", "relationships"],
       };
     default:
       return {
@@ -930,7 +930,12 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
 
   const handleChatSend = useCallback(
-    async (channelType: ConversationChannelType = "DM") => {
+    async (
+      channelType: ConversationChannelType = "DM",
+      options?: {
+        metadata?: Record<string, unknown>;
+      },
+    ) => {
       const claimedInput = chatInputRef.current;
       const imagesToSend = chatPendingImagesRef.current.length
         ? [...chatPendingImagesRef.current]
@@ -949,6 +954,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         channelType,
         conversationId: activeConversationIdRef.current,
         images: imagesToSend,
+        metadata: options?.metadata,
       });
     },
     [

@@ -77,6 +77,11 @@ export class BrowserService extends Service {
   /** Registration order — used as the default preference order. */
   private readonly targetOrder: string[] = [];
 
+  async stop(): Promise<void> {
+    this.targets.clear();
+    this.targetOrder.length = 0;
+  }
+
   static override async start(runtime: IAgentRuntime): Promise<BrowserService> {
     const service = new BrowserService(runtime);
     service.registerTarget(createWorkspaceTarget());

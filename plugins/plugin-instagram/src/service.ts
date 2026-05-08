@@ -1,14 +1,26 @@
 import {
+  ChannelType,
   type Content,
+  createUniqueUuid,
+  type Entity,
   type IAgentRuntime,
+  type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   Service,
+  stringToUuid,
   type TargetInfo,
+  type UUID,
 } from "@elizaos/core";
-import { INSTAGRAM_SERVICE_NAME, MAX_DM_LENGTH } from "./constants";
+import {
+  normalizeInstagramAccountId,
+  readInstagramAccountId,
+  resolveDefaultInstagramAccountId,
+  resolveInstagramAccountConfig,
+} from "./accounts";
+import { INSTAGRAM_SERVICE_NAME, MAX_COMMENT_LENGTH, MAX_DM_LENGTH } from "./constants";
 import type {
   InstagramConfig,
   InstagramMedia,
@@ -25,9 +37,56 @@ const INSTAGRAM_CONNECTOR_CAPABILITIES = [
   "chat_context",
   "user_context",
 ];
+const INSTAGRAM_POST_CONNECTOR_CONTEXTS = ["social_posting", "connectors"];
+
+type InstagramConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params?: InstagramConnectorReadParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: InstagramConnectorReadParams & { query: string }
+  ) => Promise<Memory[]>;
+  getUser?: (
+    runtime: IAgentRuntime,
+    params: { entityId?: UUID | string; userId?: string; username?: string; handle?: string }
+  ) => Promise<Entity | null>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0] &
+  AdditiveMessageConnectorHooks;
 
 function normalizeInstagramQuery(value: string): string {
   return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(limit), 200);
+}
+
+function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
 }
 
 function scoreInstagramMatch(
@@ -66,6 +125,28 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
     : undefined;
 }
 
+function truncateInstagramComment(text: string): string {
+  return text.length > MAX_COMMENT_LENGTH ? `${text.slice(0, MAX_COMMENT_LENGTH - 3)}...` : text;
+}
+
+function getInstagramPostMetadata(content: Content): Record<string, unknown> {
+  const metadata = content.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+function normalizeInstagramMediaId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Instagram Service for elizaOS
  *
@@ -95,29 +176,114 @@ export class InstagramService extends Service {
       return;
     }
 
-    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+    const accountId = serviceInstance.getAccountId(runtime);
+    const sendHandler = async (
+      handlerRuntime: IAgentRuntime,
+      target: TargetInfo,
+      content: Content
+    ): Promise<Memory | undefined> => {
+      await serviceInstance.handleSendMessage(handlerRuntime, target, content);
+      return undefined;
+    };
     if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
+      const registration = {
         source: "instagram",
+        accountId,
         label: "Instagram",
         description: "Instagram DM connector for sending private messages to existing DM threads.",
         capabilities: [...INSTAGRAM_CONNECTOR_CAPABILITIES],
         supportedTargetKinds: ["thread"],
         contexts: [...INSTAGRAM_CONNECTOR_CONTEXTS],
         metadata: {
+          accountId,
           service: INSTAGRAM_SERVICE_NAME,
           maxMessageLength: MAX_DM_LENGTH,
         },
         resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
         listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
         listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+        fetchMessages: serviceInstance.fetchConnectorMessages.bind(serviceInstance),
+        searchMessages: serviceInstance.searchConnectorMessages.bind(serviceInstance),
         getChatContext: serviceInstance.getConnectorChatContext.bind(serviceInstance),
         getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
+        getUser: async (handlerRuntime, params) => {
+          if (params.username || params.handle) {
+            const user = await serviceInstance
+              .getUserByUsername(String(params.username ?? params.handle))
+              .catch(() => null);
+            if (!user) {
+              return null;
+            }
+            return {
+              id: createUniqueUuid(handlerRuntime, `instagram:user:${user.pk}`) as UUID,
+              names: [user.fullName, user.username].filter((value): value is string =>
+                Boolean(value)
+              ),
+              agentId: handlerRuntime.agentId,
+              metadata: {
+                accountId,
+                instagramUserId: user.pk,
+                username: user.username,
+                isPrivate: user.isPrivate,
+                isVerified: user.isVerified,
+              },
+            } satisfies Entity;
+          }
+          const lookupParams = params as { entityId?: UUID | string; userId?: UUID | string };
+          const entityId = String(lookupParams.entityId ?? lookupParams.userId ?? "").trim();
+          if (!entityId) {
+            return null;
+          }
+          const entity =
+            typeof handlerRuntime.getEntityById === "function"
+              ? await handlerRuntime.getEntityById(entityId as UUID).catch(() => null)
+              : null;
+          if (entity) {
+            return entity;
+          }
+          const context = await serviceInstance.getConnectorUserContext(entityId, {
+            runtime: handlerRuntime,
+          });
+          return context
+            ? ({
+                id: createUniqueUuid(handlerRuntime, `instagram:user:${entityId}`) as UUID,
+                names: context.aliases?.length ? context.aliases : [context.label ?? entityId],
+                agentId: handlerRuntime.agentId,
+                metadata: { accountId, ...context.metadata },
+              } satisfies Entity)
+            : null;
+        },
         sendHandler,
-      });
+      } as ExtendedMessageConnectorRegistration;
+      runtime.registerMessageConnector(registration);
+      if (typeof runtime.registerPostConnector === "function") {
+        runtime.registerPostConnector({
+          source: "instagram",
+          accountId,
+          label: "Instagram",
+          description:
+            "Instagram public comment connector. Use POST operation=send with mediaId, target, or replyTo to comment on media.",
+          capabilities: ["post", "comment"],
+          contexts: [...INSTAGRAM_POST_CONNECTOR_CONTEXTS],
+          metadata: {
+            accountId,
+            service: INSTAGRAM_SERVICE_NAME,
+            maxMessageLength: MAX_COMMENT_LENGTH,
+            requiresMediaTarget: true,
+          },
+          postHandler: serviceInstance.handleSendPost.bind(serviceInstance),
+          contentShaping: {
+            constraints: {
+              maxLength: MAX_COMMENT_LENGTH,
+              supportsMarkdown: false,
+            },
+            postProcess: truncateInstagramComment,
+          },
+        });
+      }
       runtime.logger.info(
         { src: "plugin:instagram", agentId: runtime.agentId },
-        "Registered Instagram DM connector"
+        "Registered Instagram DM and comment connectors"
       );
       return;
     }
@@ -129,30 +295,14 @@ export class InstagramService extends Service {
    * Initialize the service
    */
   async initialize(): Promise<void> {
-    // Load config from runtime settings
-    const username = this.runtime.getSetting("INSTAGRAM_USERNAME");
-    const password = this.runtime.getSetting("INSTAGRAM_PASSWORD");
+    this.instagramConfig = resolveInstagramAccountConfig(this.runtime);
 
-    if (!username || !password) {
+    if (!this.instagramConfig.username || !this.instagramConfig.password) {
       console.warn("Instagram credentials not configured. Service will not be available.");
       return;
     }
 
-    const verificationCode = this.runtime.getSetting("INSTAGRAM_VERIFICATION_CODE");
-    const proxy = this.runtime.getSetting("INSTAGRAM_PROXY");
-    const pollingIntervalStr = this.runtime.getSetting("INSTAGRAM_POLLING_INTERVAL");
-
-    this.instagramConfig = {
-      username: String(username),
-      password: String(password),
-      verificationCode: verificationCode != null ? String(verificationCode) : undefined,
-      proxy: proxy != null ? String(proxy) : undefined,
-      autoRespondToDms: this.runtime.getSetting("INSTAGRAM_AUTO_RESPOND_DMS") === "true",
-      autoRespondToComments: this.runtime.getSetting("INSTAGRAM_AUTO_RESPOND_COMMENTS") === "true",
-      pollingInterval: Number.parseInt(String(pollingIntervalStr ?? "60"), 10),
-    };
-
-    console.log(`Instagram service initialized for @${username}`);
+    console.log(`Instagram service initialized for @${this.instagramConfig.username}`);
   }
 
   /**
@@ -206,6 +356,13 @@ export class InstagramService extends Service {
     return this.loggedInUser;
   }
 
+  getAccountId(runtime?: IAgentRuntime): string {
+    return normalizeInstagramAccountId(
+      this.instagramConfig?.accountId ??
+        (runtime ? resolveDefaultInstagramAccountId(runtime) : undefined)
+    );
+  }
+
   /**
    * Send a direct message
    */
@@ -250,6 +407,62 @@ export class InstagramService extends Service {
     const commentId = Date.now();
 
     return commentId;
+  }
+
+  async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
+    const text = truncateInstagramComment(
+      typeof content.text === "string" ? content.text.trim() : ""
+    );
+    if (!text) {
+      throw new Error("Instagram POST operation=send requires non-empty text.");
+    }
+
+    const metadata = getInstagramPostMetadata(content);
+    const mediaId =
+      normalizeInstagramMediaId(metadata.mediaId) ??
+      normalizeInstagramMediaId(metadata.target) ??
+      normalizeInstagramMediaId(metadata.replyTo) ??
+      normalizeInstagramMediaId((content as Record<string, unknown>).mediaId);
+    if (!mediaId) {
+      throw new Error("Instagram POST operation=send requires mediaId, target, or replyTo.");
+    }
+
+    const commentId = await this.postComment(mediaId, text);
+    const roomId = stringToUuid(`${runtime.agentId}:instagram:feed-room`) as UUID;
+    const worldId = stringToUuid(`${runtime.agentId}:instagram:feed-world`) as UUID;
+    return {
+      id: createUniqueUuid(
+        runtime,
+        `instagram:comment:${this.getAccountId(runtime)}:${commentId}`
+      ) as UUID,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId,
+      worldId,
+      content: {
+        text,
+        source: INSTAGRAM_SERVICE_NAME,
+        channelType: ChannelType.FEED,
+        metadata: {
+          ...metadata,
+          accountId: this.getAccountId(runtime),
+          instagramMediaId: mediaId,
+          instagramCommentId: commentId,
+        },
+      },
+      metadata: {
+        type: "message",
+        source: INSTAGRAM_SERVICE_NAME,
+        provider: INSTAGRAM_SERVICE_NAME,
+        accountId: this.getAccountId(runtime),
+        messageIdFull: `instagram:comment:${commentId}`,
+        instagram: {
+          mediaId,
+          commentId,
+        },
+      },
+      createdAt: Date.now(),
+    } as Memory;
   }
 
   /**
@@ -367,6 +580,15 @@ export class InstagramService extends Service {
     target: TargetInfo,
     content: Content
   ): Promise<void> {
+    const requestedAccountId = normalizeInstagramAccountId(
+      target.accountId ?? readInstagramAccountId(content, target) ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Instagram account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
@@ -432,16 +654,96 @@ export class InstagramService extends Service {
       targets.push({
         target: {
           source: "instagram",
+          accountId: this.getAccountId(),
           channelId: context.target.channelId ?? context.target.threadId,
           threadId: context.target.threadId ?? context.target.channelId,
         } as TargetInfo,
         kind: "thread",
         label: `Instagram thread ${context.target.channelId ?? context.target.threadId}`,
         score: 0.95,
+        contexts: [...INSTAGRAM_CONNECTOR_CONTEXTS],
+        metadata: {
+          accountId: this.getAccountId(),
+          instagramThreadId: context.target.channelId ?? context.target.threadId,
+        },
       });
     }
     targets.push(...(await this.listConnectorRooms(context)));
     return targets.slice(0, 25);
+  }
+
+  async fetchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: InstagramConnectorReadParams = {}
+  ): Promise<Memory[]> {
+    const limit = normalizeConnectorLimit(params.limit);
+    const target = params.target ?? context.target;
+    let threadId = target?.threadId ?? target?.channelId;
+    if (!threadId && target?.roomId) {
+      const room = await context.runtime.getRoom(target.roomId);
+      threadId = room?.channelId;
+    }
+
+    if (!threadId) {
+      const targets = (await this.listRecentConnectorTargets(context)).slice(0, 10);
+      const roomIds = Array.from(
+        new Set(
+          targets
+            .map((candidate) => candidate.target.roomId)
+            .filter((roomId): roomId is UUID => Boolean(roomId))
+        )
+      );
+      const chunks = await Promise.all(
+        roomIds.map((roomId) =>
+          context.runtime.getMemories({
+            tableName: "messages",
+            roomId,
+            limit,
+            orderBy: "createdAt",
+            orderDirection: "desc",
+          })
+        )
+      );
+      return chunks
+        .flat()
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+        .slice(0, limit);
+    }
+
+    const platformMessages = await this.getThreadMessages(threadId).catch(() => []);
+    if (platformMessages.length > 0) {
+      const roomId =
+        target?.roomId ??
+        (createUniqueUuid(context.runtime, `instagram:thread:${threadId}`) as UUID);
+      return platformMessages
+        .map((message) => this.instagramMessageToMemory(context.runtime, message, roomId))
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+        .slice(0, limit);
+    }
+
+    if (target?.roomId) {
+      return context.runtime.getMemories({
+        tableName: "messages",
+        roomId: target.roomId,
+        limit,
+        orderBy: "createdAt",
+        orderDirection: "desc",
+      });
+    }
+
+    return [];
+  }
+
+  async searchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: InstagramConnectorReadParams & { query: string }
+  ): Promise<Memory[]> {
+    const limit = normalizeConnectorLimit(params.limit);
+    const messages = await this.fetchConnectorMessages(context, {
+      target: params.target ?? context.target,
+      limit: Math.max(limit, 100),
+    });
+    return filterMemoriesByQuery(messages, params.query, limit);
   }
 
   async getConnectorChatContext(
@@ -461,6 +763,7 @@ export class InstagramService extends Service {
     return {
       target: {
         source: "instagram",
+        accountId: this.getAccountId(),
         channelId: threadId,
         threadId,
       } as TargetInfo,
@@ -472,9 +775,11 @@ export class InstagramService extends Service {
         metadata: {
           instagramMessageId: message.id,
           instagramUserId: message.user.pk,
+          accountId: this.getAccountId(),
         },
       })),
       metadata: {
+        accountId: this.getAccountId(),
         instagramThreadId: threadId,
       },
     };
@@ -497,6 +802,7 @@ export class InstagramService extends Service {
         instagram: user.username,
       },
       metadata: {
+        accountId: this.getAccountId(),
         instagramUserId: user.pk,
         isPrivate: user.isPrivate,
         isVerified: user.isVerified,
@@ -512,6 +818,7 @@ export class InstagramService extends Service {
     return {
       target: {
         source: "instagram",
+        accountId: this.getAccountId(),
         channelId: thread.id,
         threadId: thread.id,
       } as TargetInfo,
@@ -521,6 +828,7 @@ export class InstagramService extends Service {
       score,
       contexts: [...INSTAGRAM_CONNECTOR_CONTEXTS],
       metadata: {
+        accountId: this.getAccountId(),
         instagramThreadId: thread.id,
         isGroup: thread.isGroup,
         users: thread.users.map((user) => ({
@@ -530,6 +838,65 @@ export class InstagramService extends Service {
         })),
       },
     };
+  }
+
+  private instagramMessageToMemory(
+    runtime: IAgentRuntime,
+    message: InstagramMessage,
+    roomId: UUID
+  ): Memory {
+    const entityId = createUniqueUuid(runtime, `instagram:user:${message.user.pk}`) as UUID;
+    return {
+      id: createUniqueUuid(runtime, `instagram:message:${message.id}`) as UUID,
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      createdAt: message.timestamp.getTime(),
+      content: {
+        text: message.text ?? "",
+        source: "instagram",
+        channelType: ChannelType.DM,
+        ...(message.media?.url
+          ? {
+              attachments: [
+                {
+                  id: String(message.media.pk),
+                  url: message.media.url,
+                  title: message.media.caption,
+                  source: "instagram",
+                  description: message.media.mediaType,
+                },
+              ],
+            }
+          : {}),
+      },
+      metadata: {
+        type: "message",
+        source: "instagram",
+        accountId: this.getAccountId(runtime),
+        provider: "instagram",
+        timestamp: message.timestamp.getTime(),
+        entityName: message.user.fullName ?? message.user.username,
+        entityUserName: message.user.username,
+        fromId: String(message.user.pk),
+        sourceId: entityId,
+        chatType: ChannelType.DM,
+        messageIdFull: message.id,
+        sender: {
+          id: String(message.user.pk),
+          name: message.user.fullName ?? message.user.username,
+          username: message.user.username,
+        },
+        instagram: {
+          accountId: this.getAccountId(runtime),
+          messageId: message.id,
+          threadId: message.threadId,
+          userId: message.user.pk,
+          username: message.user.username,
+          isSeen: message.isSeen,
+        },
+      },
+    } as Memory;
   }
 
   /**

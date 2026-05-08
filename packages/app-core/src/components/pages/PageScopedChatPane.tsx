@@ -18,8 +18,18 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types";
+import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useApp } from "../../state";
+import { AccountRequiredCard } from "../chat/AccountRequiredCard";
+import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
+import {
+  type ConnectorSendAsContext,
+  connectorAccountDisplayName,
+  connectorWriteConfirmationKey,
+  isLikelyAccountRequiredError,
+  mergeConnectorSendAsMetadata,
+} from "../chat/connector-send-as";
 import {
   buildPageScopedConversationMetadata,
   buildPageScopedRoutingMetadata,
@@ -110,6 +120,8 @@ export interface PageScopedChatPaneProps {
   persistentIntro?: boolean;
   /** Optional footer actions rendered inline with the Clear control. */
   footerActions?: ReactNode;
+  /** Optional connector account context for page chat surfaces that can write through a connector. */
+  connectorContext?: ConnectorSendAsContext | null;
   /**
    * Optional conversation adapter for surfaces that want to reuse the shared
    * sidebar chat UI but resolve a non-page-scoped conversation under the hood.
@@ -146,6 +158,7 @@ export function PageScopedChatPane({
   placeholderOverride,
   persistentIntro = false,
   footerActions,
+  connectorContext,
   conversationAdapter,
 }: PageScopedChatPaneProps) {
   const copy = PAGE_SCOPE_COPY[scope];
@@ -172,8 +185,52 @@ export function PageScopedChatPane({
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [accountRequiredReason, setAccountRequiredReason] = useState<
+    string | null
+  >(null);
+  const [pendingWriteConfirmationKey, setPendingWriteConfirmationKey] =
+    useState<string | null>(null);
+  const [confirmedWriteAccountKeys, setConfirmedWriteAccountKeys] = useState<
+    Set<string>
+  >(() => new Set());
   const conversationAdapterIdentityKey = conversationAdapter?.identityKey;
   const hasConversationAdapter = Boolean(conversationAdapter);
+  const connectorSendAs = useConnectorSendAsAccount(connectorContext, {
+    setActionNotice: app.setActionNotice,
+  });
+  const {
+    accountRequired,
+    accountRequiredReason: connectorAccountRequiredReason,
+    accounts: sendAsAccounts,
+    connectAccount,
+    context: normalizedSendAsContext,
+    loading: sendAsLoading,
+    reconnectAccount,
+    saving: sendAsSaving,
+    selectAccount,
+    selectedAccount: sendAsSelectedAccount,
+    sendAsMetadata,
+    showPicker: showSendAsPicker,
+  } = connectorSendAs;
+  const sourceLabel =
+    normalizedSendAsContext?.source ??
+    normalizedSendAsContext?.provider ??
+    "Connector";
+  const currentWriteConfirmationKey = connectorWriteConfirmationKey(
+    connectorContext,
+    sendAsSelectedAccount,
+  );
+  const showWriteConfirmation =
+    Boolean(pendingWriteConfirmationKey) &&
+    pendingWriteConfirmationKey === currentWriteConfirmationKey;
+  const sendAsConnectBusy = normalizedSendAsContext
+    ? sendAsSaving.has(
+        `add:${normalizedSendAsContext.provider}:${normalizedSendAsContext.connectorId}`,
+      )
+    : false;
+  const blockingAccountReason =
+    accountRequiredReason ??
+    (accountRequired ? connectorAccountRequiredReason : null);
 
   useEffect(() => {
     conversationAdapterRef.current = conversationAdapter;
@@ -208,6 +265,8 @@ export function PageScopedChatPane({
     setSending(false);
     setFirstTokenReceived(false);
     setLoadError(null);
+    setAccountRequiredReason(null);
+    setPendingWriteConfirmationKey(null);
 
     void (async () => {
       try {
@@ -305,6 +364,58 @@ export function PageScopedChatPane({
     el.scrollTop = el.scrollHeight;
   }, [scrollVersion]);
 
+  const handleSelectSendAsAccount = useCallback(
+    (accountId: string) => {
+      const account = sendAsAccounts.find((item) => item.id === accountId);
+      selectAccount(accountId);
+      setAccountRequiredReason(null);
+      const key = connectorWriteConfirmationKey(connectorContext, account);
+      if (key && !confirmedWriteAccountKeys.has(key)) {
+        setPendingWriteConfirmationKey(key);
+      }
+    },
+    [
+      confirmedWriteAccountKeys,
+      connectorContext,
+      selectAccount,
+      sendAsAccounts,
+    ],
+  );
+
+  const handleConfirmWriteAccount = useCallback(() => {
+    if (!currentWriteConfirmationKey) return;
+    setConfirmedWriteAccountKeys((prev) => {
+      const next = new Set(prev);
+      next.add(currentWriteConfirmationKey);
+      return next;
+    });
+    setPendingWriteConfirmationKey(null);
+    setLoadError(null);
+  }, [currentWriteConfirmationKey]);
+
+  const handleConnectSendAsAccount = useCallback(() => {
+    setAccountRequiredReason(null);
+    void connectAccount().catch((error) => {
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to connect account.",
+      );
+    });
+  }, [connectAccount]);
+
+  const handleReconnectSendAsAccount = useCallback(
+    (accountId: string) => {
+      setAccountRequiredReason(null);
+      void reconnectAccount(accountId).catch((error) => {
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Failed to reconnect account.",
+        );
+      });
+    },
+    [reconnectAccount],
+  );
+
   const handleSend = useCallback(
     async (options?: {
       channelType?: ConversationChannelType;
@@ -314,6 +425,14 @@ export function PageScopedChatPane({
       const raw = (options?.text ?? input).trim();
       const images = options?.images ?? pendingImages;
       if ((!raw && images.length === 0) || !conversation || sending) return;
+      if (blockingAccountReason) {
+        setLoadError(blockingAccountReason);
+        return;
+      }
+      if (showWriteConfirmation) {
+        setLoadError("Confirm the send-as account before sending.");
+        return;
+      }
 
       const isFirstTurn = messages.length === 0;
       const textToSend = isFirstTurn
@@ -325,6 +444,10 @@ export function PageScopedChatPane({
           pageId,
           sourceConversationId,
         });
+      const metadata = mergeConnectorSendAsMetadata(
+        routingMetadata,
+        sendAsMetadata,
+      );
 
       const now = Date.now();
       const userId = `page-${scope}-user-${now}`;
@@ -371,7 +494,7 @@ export function PageScopedChatPane({
           controller.signal,
           images.length > 0 ? images : undefined,
           undefined,
-          routingMetadata,
+          metadata,
         );
         if (response.text && response.text !== streamed) {
           setMessages((prev) =>
@@ -381,8 +504,16 @@ export function PageScopedChatPane({
           );
         }
         conversationAdapter?.onAfterSend?.();
+        setAccountRequiredReason(null);
       } catch (error) {
         if ((error as { name?: string }).name === "AbortError") return;
+        if (isLikelyAccountRequiredError(error)) {
+          setAccountRequiredReason(
+            error instanceof Error
+              ? error.message
+              : "Choose a connector account before sending.",
+          );
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -398,6 +529,7 @@ export function PageScopedChatPane({
     },
     [
       conversation,
+      blockingAccountReason,
       effectiveSystemAddendum,
       input,
       messages.length,
@@ -405,7 +537,9 @@ export function PageScopedChatPane({
       pendingImages,
       conversationAdapter,
       scope,
+      sendAsMetadata,
       sending,
+      showWriteConfirmation,
       sourceConversationId,
     ],
   );
@@ -578,6 +712,8 @@ export function PageScopedChatPane({
       setSending(false);
       setFirstTokenReceived(false);
       setLoadError(null);
+      setAccountRequiredReason(null);
+      setPendingWriteConfirmationKey(null);
       window.requestAnimationFrame(() => {
         composerRef.current?.focus();
       });
@@ -756,6 +892,48 @@ export function PageScopedChatPane({
           }))}
           onRemove={(_id, index) => removeImage(index)}
         />
+        <ConnectorAccountPicker
+          accounts={sendAsAccounts}
+          className="mb-1"
+          connectBusy={sendAsConnectBusy}
+          loading={sendAsLoading}
+          selectedAccount={sendAsSelectedAccount}
+          sourceLabel={sourceLabel}
+          show={showSendAsPicker}
+          onConnectAccount={handleConnectSendAsAccount}
+          onReconnectAccount={handleReconnectSendAsAccount}
+          onSelectAccount={handleSelectSendAsAccount}
+        />
+        {blockingAccountReason ? (
+          <AccountRequiredCard
+            accounts={sendAsAccounts}
+            className="mb-1"
+            connectBusy={sendAsConnectBusy}
+            description={blockingAccountReason}
+            loading={sendAsLoading}
+            selectedAccount={sendAsSelectedAccount}
+            sourceLabel={sourceLabel}
+            onConnectAccount={handleConnectSendAsAccount}
+            onReconnectAccount={handleReconnectSendAsAccount}
+            onSelectAccount={handleSelectSendAsAccount}
+          />
+        ) : showWriteConfirmation ? (
+          <AccountRequiredCard
+            accounts={sendAsAccounts}
+            className="mb-1"
+            connectBusy={sendAsConnectBusy}
+            confirmLabel="Confirm send-as"
+            description={`First send with ${sendAsSelectedAccount ? connectorAccountDisplayName(sendAsSelectedAccount) : "this account"} in ${sourceLabel}. Confirm before Eliza writes through it.`}
+            loading={sendAsLoading}
+            selectedAccount={sendAsSelectedAccount}
+            sourceLabel={sourceLabel}
+            title="Confirm send-as account"
+            onConfirm={handleConfirmWriteAccount}
+            onConnectAccount={handleConnectSendAsAccount}
+            onReconnectAccount={handleReconnectSendAsAccount}
+            onSelectAccount={handleSelectSendAsAccount}
+          />
+        ) : null}
         <div data-testid={`page-scoped-chat-composer-${scope}`}>
           <ChatComposer
             variant="default"

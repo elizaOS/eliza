@@ -79,7 +79,7 @@ async function run(
 	return { callback, result, runtime: testRuntime };
 }
 
-describe("DISCORD_MEDIA_OP transcribe", () => {
+describe("DISCORD_MEDIA transcribe", () => {
 	it("owns the media turn after emitting a transcript or fallback", () => {
 		expect(mediaOp.suppressPostActionContinuation).toBe(true);
 	});
@@ -104,7 +104,7 @@ describe("DISCORD_MEDIA_OP transcribe", () => {
 
 		expect(callback).toHaveBeenCalledWith({
 			text: expect.stringContaining("hello from the recording"),
-			actions: ["DISCORD_MEDIA_OP_RESPONSE"],
+			actions: ["DISCORD_MEDIA_RESPONSE"],
 			source: "discord",
 			attachments: [],
 		});
@@ -121,7 +121,7 @@ describe("DISCORD_MEDIA_OP transcribe", () => {
 
 		expect(callback).toHaveBeenCalledWith({
 			text: "I don't have a transcript for that audio attachment yet.",
-			actions: ["DISCORD_MEDIA_OP_FAILED"],
+			actions: ["DISCORD_MEDIA_FAILED"],
 			source: "discord",
 		});
 		expect(result).toEqual({

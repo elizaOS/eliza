@@ -31,5 +31,4 @@ export {
   PROTOCOL_FEE_BPS,
   PROTOCOL_FEE_COLLECTOR,
   UNISWAP_V3_ADDRESSES,
-  UNISWAP_V3_BASE,
 } from "./types.js";

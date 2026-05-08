@@ -1,42 +1,21 @@
 /**
- * Swarm Coordinator: event bridge and autonomous coordination loop.
+ * Swarm Coordinator: legacy autonomous coordination loop bound to PTYService.
  *
- * Bridges PTY session events to:
- * 1. SSE clients (frontend dashboard) for real-time status
- * 2. LLM coordination decisions for unhandled blocking prompts
+ * Subscribes to PTY session events and routes unhandled blocking prompts
+ * through an autonomous LLM decision pipeline. Heavy logic is extracted into
+ * swarm-decision-loop.ts (blocked / turn-complete / LLM decisions) and
+ * swarm-idle-watchdog.ts (idle session scanning).
  *
- * The coordinator subscribes to PTYService session events and:
- * - Skips events already handled by auto-response rules (autoResponded=true)
- * - Routes unhandled blocking prompts through supervision levels:
- *   - autonomous: LLM decides immediately
- *   - confirm: queued for human approval
- *   - notify: broadcast only (no action)
- *
- * Heavy logic is extracted into:
- * - swarm-decision-loop.ts  (blocked, turn-complete, LLM decisions)
- * - swarm-idle-watchdog.ts  (idle session scanning)
- *
- * ## Status (2026-05-07): legacy autonomous-coordinator path
- *
- * This coordinator is the LEGACY orchestration path. It is bound only to
- * `PTYService` and is naturally dormant for sessions spawned via
- * `@elizaos/plugin-agent-orchestrator`. The canonical path is now:
- *
+ * **This is the legacy path.** It is bound only to PTYService and is dormant
+ * for sessions spawned via AcpService (the canonical path). The new flow is:
  *   AcpService session events → SubAgentRouter
  *     → synthetic Memory posted to runtime.messageService.handleMessage
- *     → main agent's planner decides REPLY / SEND_TO_AGENT / both
- *     → activeSubAgentsProvider supplies cache-stable session context
+ *     → main agent's planner decides REPLY / SEND_TO_AGENT / both.
  *
- * Prefer the runtime-driven path. New work should not extend this
- * coordinator. The blocking-prompt and turn-complete logic here will be
- * retired once all PTY-spawned call sites migrate to AcpService.
- *
- * See `plugins/plugin-acpx/docs/sub-agent-routing.md` for the new design.
+ * See `docs/sub-agent-routing.md`. Prefer that path; this coordinator is
+ * retained only for callers that still depend on PTYService directly.
  *
  * @module services/swarm-coordinator
- * @deprecated New sessions should use plugin-acpx's SubAgentRouter; this
- *   coordinator remains only for back-compat with PTY-spawned sessions
- *   that have not yet migrated.
  */
 
 import { promises as fs } from "node:fs";

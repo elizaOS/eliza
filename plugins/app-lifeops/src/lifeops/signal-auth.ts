@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Signal pairing should live in
+// @elizaos/plugin-signal; LifeOps keeps only legacy owner-device storage
+// wrappers until setup routes are fully delegated.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

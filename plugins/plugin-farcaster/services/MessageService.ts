@@ -2,7 +2,11 @@ import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE, FarcasterEventTypes, FarcasterMessageType } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
-import { getFarcasterFid } from "../utils/config";
+import {
+  DEFAULT_FARCASTER_ACCOUNT_ID,
+  getFarcasterFid,
+  normalizeFarcasterAccountId,
+} from "../utils/config";
 
 type MessageMetadata = Record<string, string | number | boolean | null | undefined>;
 
@@ -43,8 +47,13 @@ interface IMessageService {
 export class FarcasterMessageService implements IMessageService {
   constructor(
     private client: FarcasterClient,
-    private runtime: IAgentRuntime
+    private runtime: IAgentRuntime,
+    private accountId: string = DEFAULT_FARCASTER_ACCOUNT_ID
   ) {}
+
+  getAccountId(): string {
+    return normalizeFarcasterAccountId(this.accountId);
+  }
 
   private castToMessage(cast: Cast, agentId: UUID, extraMetadata?: MessageMetadata): Message {
     return {
@@ -59,6 +68,7 @@ export class FarcasterMessageService implements IMessageService {
       inReplyTo: cast.inReplyTo ? castUuid({ hash: cast.inReplyTo.hash, agentId }) : undefined,
       metadata: {
         source: FARCASTER_SOURCE,
+        accountId: this.getAccountId(),
         castHash: cast.hash,
         threadId: cast.threadId,
         authorFid: cast.authorFid,
@@ -71,7 +81,7 @@ export class FarcasterMessageService implements IMessageService {
     try {
       const { agentId, roomId, limit = 20 } = options;
 
-      const fid = getFarcasterFid(this.runtime);
+      const fid = getFarcasterFid(this.runtime, this.getAccountId());
       if (!fid) {
         this.runtime.logger.error("[Farcaster] FARCASTER_FID is not configured");
         return [];
@@ -109,7 +119,7 @@ export class FarcasterMessageService implements IMessageService {
           typeof options.metadata?.parentHash === "string"
             ? options.metadata.parentHash
             : replyToId;
-        const fid = getFarcasterFid(this.runtime);
+        const fid = getFarcasterFid(this.runtime, this.getAccountId());
         if (!fid) {
           throw new Error("FARCASTER_FID is not configured");
         }
@@ -133,17 +143,18 @@ export class FarcasterMessageService implements IMessageService {
       message.roomId = roomId;
       message.type = type as FarcasterMessageType;
 
-      const castGeneratedPayload = {
+      const postGeneratedPayload = {
         runtime: this.runtime,
         source: FARCASTER_SOURCE,
         castHash: cast.hash,
         ...(cast.threadId ? { threadId: cast.threadId } : {}),
         messageId: message.id,
         roomId,
+        accountId: this.getAccountId(),
       };
       await this.runtime.emitEvent(
-        FarcasterEventTypes.CAST_GENERATED as string,
-        castGeneratedPayload
+        FarcasterEventTypes.POST_GENERATED as string,
+        postGeneratedPayload
       );
 
       return message;

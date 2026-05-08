@@ -10568,4 +10568,3 @@ Wallet headers (`X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`) are all
 
 - [Authentication](/docs/authentication) — API key, session, wallet, x402 overview.
 - Repo doc `docs/wallet-api.md` — full WHYs, nonce lifecycle, shared signup behavior, file list.
-

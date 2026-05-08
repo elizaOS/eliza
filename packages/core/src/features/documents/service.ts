@@ -489,7 +489,7 @@ export class DocumentService extends Service {
 
 	private buildScopedMetadata(
 		memory: Memory,
-		type: MemoryType.DOCUMENT | MemoryType.FRAGMENT,
+		type: MemoryType,
 	): Record<string, unknown> {
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 		if (typeof metadata.scope === "string") {

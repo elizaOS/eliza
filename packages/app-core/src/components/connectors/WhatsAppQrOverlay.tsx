@@ -1,6 +1,7 @@
 import { Button } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
 import { useWhatsAppPairing } from "../../hooks";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
 import { useApp } from "../../state";
 
 interface WhatsAppQrOverlayProps {
@@ -11,7 +12,7 @@ interface WhatsAppQrOverlayProps {
 }
 
 export function WhatsAppQrOverlay({
-  accountId = "default",
+  accountId = DEFAULT_CONNECTOR_ACCOUNT_ID,
   onConnected,
   connectedMessage,
 }: WhatsAppQrOverlayProps) {

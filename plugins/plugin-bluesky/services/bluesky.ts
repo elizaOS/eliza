@@ -6,7 +6,13 @@ import {
 import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
 import { BLUESKY_SERVICE_NAME } from "../types";
-import { hasBlueSkyEnabled, validateBlueSkyConfig } from "../utils/config";
+import {
+	DEFAULT_BLUESKY_ACCOUNT_ID,
+	normalizeBlueSkyAccountId,
+	resolveDefaultBlueSkyAccountId,
+	hasBlueSkyEnabled,
+	validateBlueSkyConfig,
+} from "../utils/config";
 import { BlueSkyMessageService } from "./message";
 import { BlueSkyPostService } from "./post";
 
@@ -116,15 +122,22 @@ export class BlueSkyService extends Service {
 			return;
 		}
 
+		const postService = serviceInstance?.getPostService(runtime.agentId);
+		if (postService) {
+			BlueSkyService.registerPostConnector(runtime, postService);
+		}
+
 		const sendHandler = messageService.handleSendMessage.bind(messageService);
 		if (typeof runtime.registerMessageConnector === "function") {
-			runtime.registerMessageConnector({
+			const registration: BlueSkyMessageConnectorRegistration = {
 				source: "bluesky",
+				accountId,
 				label: "BlueSky",
 				description:
 					"BlueSky DM connector for sending private messages to conversations.",
 				capabilities: [
 					"send_message",
+					"fetch_messages",
 					"resolve_targets",
 					"list_rooms",
 					"chat_context",
@@ -133,6 +146,7 @@ export class BlueSkyService extends Service {
 				supportedTargetKinds: ["thread", "user"],
 				contexts: ["social", "connectors"],
 				metadata: {
+					accountId,
 					service: BLUESKY_SERVICE_NAME,
 				},
 				resolveTargets:
@@ -144,8 +158,19 @@ export class BlueSkyService extends Service {
 					messageService.getConnectorChatContext.bind(messageService),
 				getUserContext:
 					messageService.getConnectorUserContext.bind(messageService),
+				fetchMessages:
+					messageService.fetchConnectorMessages.bind(messageService),
+				contentShaping: {
+					systemPromptFragment:
+						"For BlueSky DMs, keep messages direct and conversational. Avoid public-feed conventions like hashtags unless the user asked.",
+					constraints: {
+						supportsMarkdown: false,
+						channelType: ChannelType.DM,
+					},
+				},
 				sendHandler,
-			});
+			};
+			runtime.registerMessageConnector(registration);
 			runtime.logger.info(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
 				"Registered BlueSky DM connector",
@@ -154,6 +179,49 @@ export class BlueSkyService extends Service {
 		}
 
 		runtime.registerSendHandler("bluesky", sendHandler);
+	}
+
+	private static registerPostConnector(
+		runtime: IAgentRuntime,
+		postService: BlueSkyPostService,
+	): void {
+		const withPostConnector = runtime as RuntimeWithPostConnector;
+		if (typeof withPostConnector.registerPostConnector !== "function") {
+			return;
+		}
+		const accountId =
+			postService.getAccountId?.() ?? DEFAULT_BLUESKY_ACCOUNT_ID;
+
+		withPostConnector.registerPostConnector({
+			source: "bluesky",
+			accountId,
+			label: "BlueSky",
+			description:
+				"BlueSky public feed connector for publishing posts, reading the timeline, and searching posts.",
+			capabilities: ["post", "fetch_feed", "search_posts"],
+			contexts: ["social", "social_posting", "connectors"],
+			metadata: {
+				accountId,
+				service: BLUESKY_SERVICE_NAME,
+			},
+			postHandler: postService.handleSendPost.bind(postService),
+			fetchFeed: postService.fetchFeed.bind(postService),
+			searchPosts: postService.searchPosts.bind(postService),
+			contentShaping: {
+				systemPromptFragment:
+					"For BlueSky posts, write a public post under 300 characters. Handles, links, and facets are supported by the connector; do not exceed the platform limit.",
+				constraints: {
+					maxLength: 300,
+					supportsMarkdown: false,
+					channelType: ChannelType.FEED,
+				},
+			},
+		});
+
+		runtime.logger.info(
+			{ src: "plugin:bluesky", agentId: runtime.agentId },
+			"Registered BlueSky post connector",
+		);
 	}
 
 	async stop(): Promise<void> {

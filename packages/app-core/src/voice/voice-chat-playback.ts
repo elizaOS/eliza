@@ -36,7 +36,7 @@ export function capSpeechLength(input: string): string {
  * into the voice output.  We handle it here before sanitization.
  */
 const HIDDEN_VOICE_BLOCK_RE =
-  /<(think|thought|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+  /<(think|thought|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
 function parseJsonObject(input: string): Record<string, unknown> | null {
   try {

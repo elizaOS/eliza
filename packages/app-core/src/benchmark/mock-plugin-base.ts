@@ -277,7 +277,7 @@ function createBenchmarkActionJson(prompt: string): string {
     else if (/phone number|contact info/.test(currentMessage))
       action = "UPDATE_CONTACT_INFO";
     else if (/generate .*picture|image/.test(currentMessage))
-      action = "GENERATE_IMAGE";
+      action = "GENERATE_MEDIA";
     else if (/ignore that last/.test(currentMessage)) action = "IGNORE";
     else if (/create .*plan/.test(currentMessage)) action = "CREATE_PLAN";
     if (["REPLY", "IGNORE", "NONE"].includes(action)) {

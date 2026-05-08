@@ -2861,9 +2861,6 @@ Examples:
 	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> CALENDAR
 	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
 	- "when I'm done with the PPT, upload it to the speaker portal for me" -> COMPUTER_USE
-	- "if the only ID on file is expired, ask me for an updated copy" -> DEVICE_INTENT
-	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> DEVICE_INTENT
-	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> DEVICE_INTENT
 	- "if you get stuck in the browser or on my computer, call me" -> VOICE_CALL
 	- "check disk space on this VPS with df -h" -> SHELL_COMMAND
 	- "what is the current BTC price in USD?" -> SEARCH
@@ -2876,9 +2873,7 @@ ${draftSection}Return JSON only:
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
-	["LIFE", "DEVICE_INTENT", "COMPUTER_USE", "SUBSCRIPTIONS"].map(
-		normalizeActionIdentifier,
-	),
+	["LIFE", "COMPUTER_USE", "SUBSCRIPTIONS"].map(normalizeActionIdentifier),
 );
 
 const ACTION_OWNERSHIP_STOPWORDS = new Set([

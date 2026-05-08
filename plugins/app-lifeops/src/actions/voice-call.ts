@@ -805,7 +805,7 @@ export const voiceCallAction: Action & {
     "Owner-only. Place an outbound voice call via Twilio. Subactions: place (generic call to a phone number with confirmation), call_owner (call the owner — escalation when agent is blocked), call_external (call a third party — name resolved via relationships, allow-list checked). All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
   descriptionCompressed:
     "Twilio voice: place(number) call_owner(escalation policy) call_external(name→phone via relationships allowlist-check) draft-confirm approval-queue",
-  contexts: ["contacts", "messaging", "tasks", "automation"],
+  contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
   validate: async () => true,

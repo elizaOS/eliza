@@ -286,7 +286,7 @@ async function handleDownload(
 				content: {
 					source: "discord",
 					thought: "I couldn't find the media URL in the message",
-					actions: ["DISCORD_MEDIA_OP_FAILED"],
+					actions: ["DISCORD_MEDIA_FAILED"],
 				},
 				metadata: { type: MemoryType.CUSTOM },
 			},
@@ -299,7 +299,7 @@ async function handleDownload(
 	const mediaPath = await videoService.downloadVideo(videoInfo);
 	const response: Content = {
 		text: `I downloaded the video "${videoInfo.title}" and attached it below.`,
-		actions: ["DISCORD_MEDIA_OP_RESPONSE"],
+		actions: ["DISCORD_MEDIA_RESPONSE"],
 		source: message.content.source,
 		attachments: [
 			{
@@ -353,7 +353,7 @@ async function handleTranscribe(
 		);
 		await callback?.({
 			text,
-			actions: ["DISCORD_MEDIA_OP_FAILED"],
+			actions: ["DISCORD_MEDIA_FAILED"],
 			source: message.content.source,
 		});
 		return { success: false, text };
@@ -364,7 +364,7 @@ async function handleTranscribe(
 		const text = missingTranscriptMessage(selectedAttachments);
 		await callback?.({
 			text,
-			actions: ["DISCORD_MEDIA_OP_FAILED"],
+			actions: ["DISCORD_MEDIA_FAILED"],
 			source: message.content.source,
 		});
 		return { success: false, text };
@@ -381,7 +381,7 @@ ${transcript}
 `;
 		await callback?.({
 			text,
-			actions: ["DISCORD_MEDIA_OP_RESPONSE"],
+			actions: ["DISCORD_MEDIA_RESPONSE"],
 			source: message.content.source,
 			attachments: [],
 		});
@@ -393,7 +393,7 @@ ${transcript}
 	const text = "I've attached the transcript as a text file.";
 	await callback?.({
 		text,
-		actions: ["DISCORD_MEDIA_OP_RESPONSE"],
+		actions: ["DISCORD_MEDIA_RESPONSE"],
 		source: message.content.source,
 		attachments: [
 			{
@@ -408,7 +408,7 @@ ${transcript}
 	return { success: true, text };
 }
 
-const spec = requireActionSpec("DISCORD_MEDIA_OP");
+const spec = requireActionSpec("DISCORD_MEDIA");
 
 export const mediaOp: Action = {
 	name: spec.name,

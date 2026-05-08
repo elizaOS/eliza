@@ -101,10 +101,16 @@ async function handleWebhookVerify(
   const mode = url.searchParams.get("hub.mode") ?? "";
   const token = url.searchParams.get("hub.verify_token") ?? "";
   const challenge = url.searchParams.get("hub.challenge") ?? "";
+  const accountId = url.searchParams.get("accountId") ?? undefined;
 
   const service = runtime.getService("whatsapp") as
     | {
-        verifyWebhook?: (mode: string, token: string, challenge: string) => string | null;
+        verifyWebhook?: (
+          mode: string,
+          token: string,
+          challenge: string,
+          accountId?: string
+        ) => string | null;
       }
     | null
     | undefined;
@@ -114,7 +120,7 @@ async function handleWebhookVerify(
     return;
   }
 
-  const verifiedChallenge = service.verifyWebhook(mode, token, challenge);
+  const verifiedChallenge = service.verifyWebhook(mode, token, challenge, accountId);
   if (!verifiedChallenge) {
     res.status(403).json({ error: "Webhook verification failed" });
     return;
@@ -200,9 +206,29 @@ async function handlePair(
           setupService.updateConfig((config) => {
             if (!config.connectors) config.connectors = {};
             const connectors = config.connectors as Record<string, Record<string, unknown>>;
-            connectors.whatsapp = {
-              ...(connectors.whatsapp ?? {}),
+            const previousConfig = connectors.whatsapp ?? {};
+            if (accountId === "default") {
+              connectors.whatsapp = {
+                ...previousConfig,
+                authDir,
+                transport: "baileys",
+                enabled: true,
+              };
+              return;
+            }
+            const accounts =
+              typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
+                ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
+                : {};
+            accounts[accountId] = {
+              ...(accounts[accountId] ?? {}),
               authDir,
+              transport: "baileys",
+              enabled: true,
+            };
+            connectors.whatsapp = {
+              ...previousConfig,
+              accounts,
               enabled: true,
             };
           });
@@ -354,7 +380,19 @@ async function handleDisconnect(
     setupService.updateConfig((config) => {
       const connectors = config.connectors as Record<string, unknown> | undefined;
       if (connectors) {
-        delete connectors.whatsapp;
+        if (accountId === "default") {
+          delete connectors.whatsapp;
+          return;
+        }
+        const whatsappConfig = connectors.whatsapp as Record<string, unknown> | undefined;
+        const accounts = whatsappConfig?.accounts as Record<string, unknown> | undefined;
+        if (accounts) {
+          delete accounts[accountId];
+        }
+        connectors.whatsapp = {
+          ...(whatsappConfig ?? {}),
+          ...(accounts ? { accounts } : {}),
+        };
       }
     });
   }

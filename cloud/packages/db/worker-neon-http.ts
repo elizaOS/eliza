@@ -125,9 +125,3 @@ export function getWorkerNeonDb(c: { env: WorkerNeonEnvSlice }): WorkerNeonDb {
 }
 
 export { schema };
-
-/** @deprecated Prefer `getWorkerNeonDb` — alias kept for migrated Worker routes. */
-export const getDb = getWorkerNeonDb;
-
-/** @deprecated Use `WorkerNeonDb` */
-export type Db = WorkerNeonDb;

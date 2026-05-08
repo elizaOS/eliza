@@ -1,6 +1,7 @@
 import type React from "react";
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
+import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -90,9 +91,17 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
   }
   switch (normalized) {
     case "whatsapp":
-      return <WhatsAppQrOverlay accountId="default" />;
+      return (
+        <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
+          {(accountId) => <WhatsAppQrOverlay accountId={accountId} />}
+        </ConnectorAccountSetupScope>
+      );
     case "signal":
-      return <SignalQrOverlay accountId="default" />;
+      return (
+        <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
+          {(accountId) => <SignalQrOverlay accountId={accountId} />}
+        </ConnectorAccountSetupScope>
+      );
     case "discordlocal":
       return <DiscordLocalConnectorPanel />;
     case "bluebubbles":

@@ -9,6 +9,7 @@ import {
   type EventPayload,
   type IAgentRuntime,
   logger,
+  type MessageConnectorChannelOpParams,
   type MessageConnectorChatContext,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
@@ -18,8 +19,14 @@ import {
 import { RefreshingAuthProvider, StaticAuthProvider } from "@twurple/auth";
 import { ChatClient, type ChatMessage } from "@twurple/chat";
 import {
-  type ITwitchService,
+  normalizeTwitchAccountId,
+  readTwitchAccountId,
+  resolveDefaultTwitchAccountId,
+  resolveTwitchAccountSettings,
+} from "./accounts.js";
+import {
   formatChannelForDisplay,
+  type ITwitchService,
   MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
   splitMessageForTwitch,
@@ -30,7 +37,6 @@ import {
   type TwitchMessage,
   type TwitchMessageSendOptions,
   TwitchNotConnectedError,
-  type TwitchRole,
   type TwitchSendResult,
   type TwitchSettings,
   type TwitchUserInfo,
@@ -41,6 +47,8 @@ const TWITCH_CONNECTOR_CAPABILITIES = [
   "send_message",
   "resolve_targets",
   "list_rooms",
+  "join",
+  "leave",
   "chat_context",
 ];
 
@@ -133,10 +141,12 @@ export class TwitchService extends Service implements ITwitchService {
       return;
     }
 
+    const accountId = serviceInstance.getAccountId(runtime);
     const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
     if (typeof runtime.registerMessageConnector === "function") {
       runtime.registerMessageConnector({
         source: "twitch",
+        accountId,
         label: "Twitch",
         description:
           "Twitch public chat connector for sending messages to joined channels.",
@@ -144,6 +154,7 @@ export class TwitchService extends Service implements ITwitchService {
         supportedTargetKinds: ["channel"],
         contexts: [...TWITCH_CONNECTOR_CONTEXTS],
         metadata: {
+          accountId,
           service: TWITCH_SERVICE_NAME,
           maxMessageLength: MAX_TWITCH_MESSAGE_LENGTH,
         },
@@ -152,6 +163,8 @@ export class TwitchService extends Service implements ITwitchService {
         listRecentTargets:
           serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
         listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+        joinHandler: serviceInstance.handleJoinChannel.bind(serviceInstance),
+        leaveHandler: serviceInstance.handleLeaveChannel.bind(serviceInstance),
         getChatContext:
           serviceInstance.getConnectorChatContext.bind(serviceInstance),
         sendHandler,
@@ -218,44 +231,7 @@ export class TwitchService extends Service implements ITwitchService {
    * Load settings from runtime.
    */
   private loadSettings(): TwitchSettings {
-    const username = this.runtime.getSetting("TWITCH_USERNAME");
-    const clientId = this.runtime.getSetting("TWITCH_CLIENT_ID");
-    const accessToken = this.runtime.getSetting("TWITCH_ACCESS_TOKEN");
-    const clientSecret = this.runtime.getSetting("TWITCH_CLIENT_SECRET");
-    const refreshToken = this.runtime.getSetting("TWITCH_REFRESH_TOKEN");
-    const channel = this.runtime.getSetting("TWITCH_CHANNEL");
-    const additionalChannelsStr = this.runtime.getSetting("TWITCH_CHANNELS");
-    const requireMentionStr = this.runtime.getSetting("TWITCH_REQUIRE_MENTION");
-    const allowedRolesStr = this.runtime.getSetting("TWITCH_ALLOWED_ROLES");
-
-    const additionalChannels =
-      typeof additionalChannelsStr === "string" && additionalChannelsStr
-        ? additionalChannelsStr
-            .split(",")
-            .map((c: string) => c.trim())
-            .filter(Boolean)
-        : [];
-
-    const allowedRoles: TwitchRole[] =
-      typeof allowedRolesStr === "string" && allowedRolesStr
-        ? (allowedRolesStr
-            .split(",")
-            .map((r: string) => r.trim().toLowerCase()) as TwitchRole[])
-        : ["all"];
-
-    return {
-      username: typeof username === "string" ? username : "",
-      clientId: typeof clientId === "string" ? clientId : "",
-      accessToken: typeof accessToken === "string" ? accessToken : "",
-      clientSecret: typeof clientSecret === "string" ? clientSecret : undefined,
-      refreshToken: typeof refreshToken === "string" ? refreshToken : undefined,
-      channel: typeof channel === "string" ? channel : "",
-      additionalChannels,
-      requireMention: requireMentionStr === "true",
-      allowedRoles,
-      allowedUserIds: [],
-      enabled: true,
-    };
+    return resolveTwitchAccountSettings(this.runtime);
   }
 
   /**
@@ -349,6 +325,7 @@ export class TwitchService extends Service implements ITwitchService {
       logger.info("Twitch chat connected");
       this.runtime.emitEvent(TwitchEventTypes.CONNECTION_READY, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
       } as EventPayload);
     });
 
@@ -357,6 +334,7 @@ export class TwitchService extends Service implements ITwitchService {
       logger.warn(`Twitch chat disconnected: ${reason || "unknown reason"}`);
       this.runtime.emitEvent(TwitchEventTypes.CONNECTION_LOST, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         reason,
       } as EventPayload);
     });
@@ -369,6 +347,7 @@ export class TwitchService extends Service implements ITwitchService {
         logger.info(`Joined Twitch channel: ${normalized}`);
         this.runtime.emitEvent(TwitchEventTypes.JOIN_CHANNEL, {
           runtime: this.runtime,
+          accountId: this.getAccountId(),
           channel: normalized,
         } as EventPayload);
       }
@@ -381,6 +360,7 @@ export class TwitchService extends Service implements ITwitchService {
         logger.info(`Left Twitch channel: ${normalized}`);
         this.runtime.emitEvent(TwitchEventTypes.LEAVE_CHANNEL, {
           runtime: this.runtime,
+          accountId: this.getAccountId(),
           channel: normalized,
         } as EventPayload);
       }
@@ -462,6 +442,7 @@ export class TwitchService extends Service implements ITwitchService {
 
     this.runtime.emitEvent(TwitchEventTypes.MESSAGE_RECEIVED, {
       runtime: this.runtime,
+      accountId: this.getAccountId(),
       message,
     } as EventPayload);
   }
@@ -498,6 +479,13 @@ export class TwitchService extends Service implements ITwitchService {
     return this.settings.username;
   }
 
+  getAccountId(runtime?: IAgentRuntime): string {
+    return normalizeTwitchAccountId(
+      this.settings?.accountId ??
+        (runtime ? resolveDefaultTwitchAccountId(runtime) : undefined),
+    );
+  }
+
   getPrimaryChannel(): string {
     return this.settings.channel;
   }
@@ -511,6 +499,17 @@ export class TwitchService extends Service implements ITwitchService {
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
+    const requestedAccountId = normalizeTwitchAccountId(
+      target.accountId ??
+        readTwitchAccountId(content, target) ??
+        this.getAccountId(),
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Twitch account '${requestedAccountId}' is not available in this service instance`,
+      );
+    }
+
     const text = typeof content.text === "string" ? content.text.trim() : "";
     if (!text) {
       throw new Error("Twitch connector requires non-empty text content.");
@@ -585,6 +584,41 @@ export class TwitchService extends Service implements ITwitchService {
       .slice(0, 25);
   }
 
+  async handleJoinChannel(
+    _runtime: IAgentRuntime,
+    params: MessageConnectorChannelOpParams,
+  ): Promise<void> {
+    const channel = this.resolveChannelOpTarget(params);
+    if (!channel) {
+      throw new Error(
+        "Twitch MESSAGE operation=join requires channelId, alias, or target channel.",
+      );
+    }
+    if (this.joinedChannels.has(channel)) {
+      return;
+    }
+    await this.joinChannel(channel);
+  }
+
+  async handleLeaveChannel(
+    _runtime: IAgentRuntime,
+    params: MessageConnectorChannelOpParams,
+  ): Promise<void> {
+    const channel = this.resolveChannelOpTarget(params);
+    if (!channel) {
+      throw new Error(
+        "Twitch MESSAGE operation=leave requires channelId, alias, or target channel.",
+      );
+    }
+    if (channel === normalizeChannel(this.getPrimaryChannel())) {
+      throw new Error(`Cannot leave the primary Twitch channel #${channel}.`);
+    }
+    if (!this.joinedChannels.has(channel)) {
+      throw new Error(`Not currently in Twitch channel #${channel}.`);
+    }
+    await this.leaveChannel(channel);
+  }
+
   async getConnectorChatContext(
     target: TargetInfo,
     context: MessageConnectorQueryContext,
@@ -599,12 +633,14 @@ export class TwitchService extends Service implements ITwitchService {
     return {
       target: {
         source: "twitch",
+        accountId: this.getAccountId(),
         channelId: channel,
       } as TargetInfo,
       label: formatChannelForDisplay(channel),
       summary:
         "Twitch chat messages are public and visible to viewers in the channel.",
       metadata: {
+        accountId: this.getAccountId(),
         twitchChannel: channel,
         botUsername: this.getBotUsername(),
         joined: this.joinedChannels.has(channel),
@@ -626,6 +662,21 @@ export class TwitchService extends Service implements ITwitchService {
     return Array.from(channels);
   }
 
+  private resolveChannelOpTarget(
+    params: MessageConnectorChannelOpParams,
+  ): string | null {
+    const targetRecord = params.target as Record<string, unknown> | undefined;
+    const raw =
+      params.target?.channelId ??
+      params.channelId ??
+      params.alias ??
+      targetRecord?.alias ??
+      targetRecord?.name;
+    return typeof raw === "string" && raw.trim()
+      ? normalizeChannel(raw.trim())
+      : null;
+  }
+
   private buildChannelTarget(
     channel: string,
     score: number,
@@ -634,6 +685,7 @@ export class TwitchService extends Service implements ITwitchService {
     return {
       target: {
         source: "twitch",
+        accountId: this.getAccountId(),
         channelId: normalized,
       } as TargetInfo,
       label: formatChannelForDisplay(normalized),
@@ -642,6 +694,7 @@ export class TwitchService extends Service implements ITwitchService {
       score,
       contexts: [...TWITCH_CONNECTOR_CONTEXTS],
       metadata: {
+        accountId: this.getAccountId(),
         twitchChannel: normalized,
         joined: this.joinedChannels.has(normalized),
         primary: normalized === this.getPrimaryChannel(),
@@ -732,6 +785,7 @@ export class TwitchService extends Service implements ITwitchService {
 
     this.runtime.emitEvent(TwitchEventTypes.MESSAGE_SENT, {
       runtime: this.runtime,
+      accountId: this.getAccountId(),
       channel,
       text: cleanedText,
       messageId: lastMessageId,

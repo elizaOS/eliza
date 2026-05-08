@@ -11,26 +11,26 @@ Eliza includes a media generation abstraction layer that provides a unified inte
 The media system is organized into three components:
 
 1. **Provider abstraction** (`src/providers/media-provider.ts`) -- Defines unified interfaces (`ImageGenerationProvider`, `VideoGenerationProvider`, `AudioGenerationProvider`, `VisionAnalysisProvider`) and concrete implementations for each backend. A factory function for each media type selects the appropriate provider based on your configuration.
-2. **Actions** (`src/actions/media.ts`) -- Four built-in agent actions (`GENERATE_IMAGE`, `GENERATE_VIDEO`, `GENERATE_AUDIO`, `ANALYZE_IMAGE`) that expose media capabilities to the agent during conversations. Each action reads the current `eliza.json` configuration, instantiates the correct provider, and returns results as message attachments.
+2. **Actions** (`src/actions/media.ts`) -- Two built-in agent actions (`GENERATE_MEDIA`, `ANALYZE_IMAGE`) that expose media capabilities to the agent during conversations. `GENERATE_MEDIA` handles image, video, and audio generation; `ANALYZE_IMAGE` handles vision analysis. Each action reads the current `eliza.json` configuration, instantiates the correct provider, and returns results as message attachments.
 3. **Configuration** (`eliza.json`) -- The `media` section controls which provider is used for each media type, whether to use Eliza Cloud or your own API keys, and provider-specific settings like model names and base URLs.
 
 ```
 User message: "Draw me a sunset over mountains"
        |
        v
-  Agent selects GENERATE_IMAGE action
+  Agent selects GENERATE_MEDIA action
        |
        v
-  loadElizaConfig() → reads media.image settings
+  loadElizaConfig() -> reads media.image settings
        |
        v
-  createImageProvider() → selects provider (e.g., FAL, OpenAI, or Cloud)
+  createImageProvider() -> selects provider (e.g., FAL, OpenAI, or Cloud)
        |
        v
   provider.generate({ prompt: "a sunset over mountains" })
        |
        v
-  Returns image URL or base64 → attached to agent response
+  Returns image URL or base64 -> attached to agent response
 ```
 
 ## Media Capabilities
@@ -149,13 +149,15 @@ The Ollama provider runs entirely locally, requiring no API key. It includes aut
 
 ## Actions
 
-Four built-in actions expose media generation to the agent. Each action validates its parameters, instantiates the appropriate provider from the current configuration, and returns results with message attachments.
+Two built-in actions expose media generation and analysis to the agent. Each action validates its parameters, instantiates the appropriate provider from the current configuration, and returns results with message attachments.
 
-### GENERATE_IMAGE
+### GENERATE_MEDIA
 
-**Triggers:** `CREATE_IMAGE`, `MAKE_IMAGE`, `DRAW`, `PAINT`, `ILLUSTRATE`, `RENDER_IMAGE`, `IMAGE_GEN`, `TEXT_TO_IMAGE`
+**Triggers:** `CREATE_IMAGE`, `MAKE_IMAGE`, `DRAW`, `PAINT`, `ILLUSTRATE`, `RENDER_IMAGE`, `IMAGE_GEN`, `TEXT_TO_IMAGE`, `CREATE_VIDEO`, `MAKE_VIDEO`, `ANIMATE`, `RENDER_VIDEO`, `VIDEO_GEN`, `TEXT_TO_VIDEO`, `FILM`, `CREATE_AUDIO`, `MAKE_MUSIC`, `COMPOSE`, `GENERATE_MUSIC`, `CREATE_SONG`, `MAKE_SOUND`, `AUDIO_GEN`, `TEXT_TO_MUSIC`
 
-Generates an image from a text prompt. If a `revisedPrompt` is returned by the provider (OpenAI and xAI do this), the response text includes it. The generated image is returned as an attachment with MIME type `image/png`.
+Generates image, video, or audio media from a text prompt. Set `mediaType` to `image`, `video`, or `audio` when providing explicit parameters; otherwise the agent infers the media type from the user request.
+
+For image generation, if a `revisedPrompt` is returned by the provider (OpenAI and xAI do this), the response text includes it. The generated image is returned as an attachment with MIME type `image/png`.
 
 **Example conversation:**
 
@@ -164,17 +166,9 @@ Generates an image from a text prompt. If a `revisedPrompt` is returned by the p
 > Agent: "Here's the generated image based on: 'A detailed cyberpunk cityscape at night with neon lights...'"
 > [image attachment]
 
-### GENERATE_VIDEO
+For video generation, optionally provide an `imageUrl` parameter for image-to-video generation, where the provided image becomes the first frame. The video is returned as an attachment with MIME type `video/mp4`.
 
-**Triggers:** `CREATE_VIDEO`, `MAKE_VIDEO`, `ANIMATE`, `RENDER_VIDEO`, `VIDEO_GEN`, `TEXT_TO_VIDEO`, `FILM`
-
-Generates a video from a text prompt. Optionally accepts an `imageUrl` parameter for image-to-video generation, where the provided image becomes the first frame. The video is returned as an attachment with MIME type `video/mp4`.
-
-### GENERATE_AUDIO
-
-**Triggers:** `CREATE_AUDIO`, `MAKE_MUSIC`, `COMPOSE`, `GENERATE_MUSIC`, `CREATE_SONG`, `MAKE_SOUND`, `AUDIO_GEN`, `TEXT_TO_MUSIC`
-
-Generates audio or music from a text prompt. Supports creating songs with lyrics, instrumental tracks, or sound effects. The response includes the generated title. The audio is returned as an attachment with MIME type `audio/mpeg`.
+For audio generation, `GENERATE_MEDIA` supports creating songs with lyrics, instrumental tracks, or sound effects. The response includes the generated title when available. The audio is returned as an attachment with MIME type `audio/mpeg`.
 
 ### ANALYZE_IMAGE
 

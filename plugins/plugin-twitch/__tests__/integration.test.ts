@@ -1,27 +1,24 @@
-import { describe, expect, test, beforeEach, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import twitchPlugin, {
-  TwitchService,
-  twitchChannelAction,
-  twitchChannelsProvider,
-  userContextProvider,
-  normalizeChannel,
   formatChannelForDisplay,
   getTwitchUserDisplayName,
-  stripMarkdownForTwitch,
-  splitMessageForTwitch,
   MAX_TWITCH_MESSAGE_LENGTH,
+  normalizeChannel,
+  splitMessageForTwitch,
+  stripMarkdownForTwitch,
   TWITCH_SERVICE_NAME,
-  TwitchEventTypes,
-  TwitchPluginError,
-  TwitchServiceNotInitializedError,
-  TwitchNotConnectedError,
-  TwitchConfigurationError,
   TwitchApiError,
-  type TwitchSettings,
-  type TwitchUserInfo,
+  TwitchConfigurationError,
+  TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
+  TwitchNotConnectedError,
+  TwitchPluginError,
   type TwitchSendResult,
+  TwitchService,
+  TwitchServiceNotInitializedError,
+  type TwitchUserInfo,
+  userContextProvider,
 } from "../src/index.ts";
 
 // ---------------------------------------------------------------------------
@@ -88,17 +85,14 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.description).toContain("Twitch");
   });
 
-  test("registers the channel router action (sends route through SEND_MESSAGE connector)", () => {
-    expect(twitchPlugin.actions).toHaveLength(1);
-    const names = twitchPlugin.actions!.map((a) => a.name);
-    expect(names).toContain("TWITCH_CHANNEL_OP");
+  test("does not register platform-specific chat actions", () => {
+    expect(twitchPlugin.actions).toHaveLength(0);
   });
 
-  test("registers the user context and channels providers", () => {
-    expect(twitchPlugin.providers).toHaveLength(2);
+  test("registers user context provider only", () => {
+    expect(twitchPlugin.providers).toHaveLength(1);
     const names = twitchPlugin.providers!.map((p) => p.name);
     expect(names).toContain("twitchUserContext");
-    expect(names).toContain("twitchChannels");
   });
 
   test("registers exactly 1 service", () => {
@@ -242,7 +236,7 @@ describe("splitMessageForTwitch", () => {
     // lastIndexOf(". ", maxLength) returns the index of the ".", so the
     // split point is at that index — everything before goes to chunk 0.
     const prefix = "A".repeat(300);
-    const text = prefix + ". " + "B".repeat(250); // total 552
+    const text = `${prefix}. ${"B".repeat(250)}`; // total 552
     const result = splitMessageForTwitch(text, 500);
     expect(result.length).toBe(2);
     expect(result[0]).toBe(prefix);
@@ -319,16 +313,52 @@ describe("Custom Errors", () => {
   });
 });
 
-// ===========================================================================
-// 6. twitchChannelAction Router
-// ===========================================================================
+describe("Twitch message connector accounts", () => {
+  test("registers accountId and routes sends through that account", async () => {
+    const runtime = makeMockRuntime({
+      registerMessageConnector: vi.fn(),
+      registerSendHandler: vi.fn(),
+      getRoom: vi.fn(),
+      logger: { info: vi.fn() },
+      TWITCH_DEFAULT_ACCOUNT_ID: "streamer",
+    });
+    const service = Object.create(TwitchService.prototype) as TwitchService;
+    (service as any).settings = {
+      accountId: "streamer",
+      username: "testbot",
+      channel: "mainchannel",
+    };
+    const sendMessage = vi
+      .spyOn(service, "sendMessage")
+      .mockResolvedValue({ success: true, messageId: "msg-1" });
 
-describe("twitchChannelAction", () => {
-  test("has router metadata", () => {
-    expect(twitchChannelAction.name).toBe("TWITCH_CHANNEL_OP");
-    expect(twitchChannelAction.similes).toContain("TWITCH_CHANNEL");
-    expect(twitchChannelAction.similes).toContain("TWITCH_JOIN_CHANNEL");
-    expect(twitchChannelAction.similes).toContain("TWITCH_LEAVE_CHANNEL");
+    TwitchService.registerSendHandlers(runtime, service);
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "twitch",
+        accountId: "streamer",
+        joinHandler: expect.any(Function),
+        leaveHandler: expect.any(Function),
+      }),
+    );
+
+    const registration = (runtime.registerMessageConnector as any).mock
+      .calls[0][0];
+    await registration.sendHandler!(
+      runtime,
+      {
+        source: "twitch",
+        accountId: "streamer",
+        channelId: "mainchannel",
+      } as any,
+      { text: "hello" } as any,
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "hello",
+      expect.objectContaining({ channel: "mainchannel" }),
+    );
   });
 });
 
@@ -337,71 +367,8 @@ describe("twitchChannelAction", () => {
 // ===========================================================================
 // TWITCH_SEND_MESSAGE used to be a standalone action; now the Twitch
 // MessageConnector (registered by TwitchService.registerSendHandlers) is the
-// canonical send path through SEND_MESSAGE. Action-shape and handler tests
-// retired with the action.
-
-// ===========================================================================
-// 7. twitchChannelsProvider
-// ===========================================================================
-
-describe("twitchChannelsProvider", () => {
-  test("has correct metadata", () => {
-    expect(twitchChannelsProvider.name).toBe("twitchChannels");
-    expect(twitchChannelsProvider.description).toContain("Twitch");
-    expect(twitchChannelsProvider.dynamic).toBe(true);
-  });
-
-  test("returns not_connected when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-    expect(String(result.text)).toContain("not_connected");
-  });
-
-  test("returns channel list when service connected", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      primaryChannel: "mainchannel",
-      joinedChannels: ["mainchannel", "otherchannel"],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-
-    expect(result.data!.channelCount).toBe(2);
-    expect(result.data!.channels).toEqual(["mainchannel", "otherchannel"]);
-    expect(result.data!.primaryChannel).toBe("mainchannel");
-    expect(String(result.text)).toContain("ready");
-    expect(String(result.text)).toContain("mainchannel");
-  });
-
-  test("returns empty list when no channels", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      primaryChannel: "main",
-      joinedChannels: [],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-    expect(result.data!.channelCount).toBe(0);
-  });
-});
+// canonical send path through MESSAGE operation=send. Action-shape and handler
+// tests retired with the action.
 
 // ===========================================================================
 // 10. userContextProvider

@@ -20,6 +20,7 @@ import {
   type Memory,
 } from '@elizaos/core';
 import { z } from 'zod';
+import { resolveTailscaleAccountId } from '../accounts';
 import { getTunnelService } from '../types';
 
 type TailscaleOp = 'start' | 'stop';
@@ -90,6 +91,15 @@ function readOp(options: unknown): TailscaleOp | null {
   return null;
 }
 
+function readOptions(options?: HandlerOptions): Record<string, unknown> {
+  const direct = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
+  const params =
+    direct.parameters && typeof direct.parameters === 'object'
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...params };
+}
+
 async function handleStart(
   runtime: IAgentRuntime,
   message: Memory,
@@ -97,6 +107,7 @@ async function handleStart(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
       await callback({
@@ -129,7 +140,7 @@ async function handleStart(
         }),
       ),
     );
-  const url = await tunnelService.startTunnel(port);
+  const url = await tunnelService.startTunnel(port, { accountId });
   const publicUrl = typeof url === 'string' ? url : tunnelService.getUrl();
 
   if (callback) {
@@ -145,15 +156,18 @@ async function handleStart(
       action: 'tunnel_started',
       tunnelUrl: publicUrl ?? '',
       port,
+      accountId,
     },
   };
 }
 
 async function handleStop(
   runtime: IAgentRuntime,
+  options?: HandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
       await callback({ text: 'Tunnel service is not available.' });
@@ -169,7 +183,7 @@ async function handleStop(
     return {
       success: true,
       text: 'no active tunnel',
-      data: { action: 'tunnel_not_active' },
+      data: { action: 'tunnel_not_active', accountId },
     };
   }
 
@@ -177,7 +191,7 @@ async function handleStop(
   const previousUrl = status.url;
   const previousPort = status.port;
 
-  await tunnelService.stopTunnel();
+  await tunnelService.stopTunnel({ accountId });
 
   if (callback) {
     await callback({
@@ -191,6 +205,7 @@ async function handleStop(
       action: 'tunnel_stopped',
       previousUrl: previousUrl ?? '',
       previousPort: previousPort ?? 0,
+      accountId,
     },
   };
 }
@@ -217,6 +232,13 @@ export const tailscaleAction: Action = {
       required: false,
       schema: { type: 'number', default: DEFAULT_PORT },
     },
+    {
+      name: 'accountId',
+      description:
+        'Optional Tailscale account id from TAILSCALE_ACCOUNTS. Defaults to TAILSCALE_DEFAULT_ACCOUNT_ID or legacy settings.',
+      required: false,
+      schema: { type: 'string' },
+    },
   ],
   validate: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)),
   handler: async (
@@ -239,7 +261,7 @@ export const tailscaleAction: Action = {
       case 'start':
         return handleStart(runtime, message, options, callback);
       case 'stop':
-        return handleStop(runtime, callback);
+        return handleStop(runtime, options, callback);
     }
   },
   examples: [

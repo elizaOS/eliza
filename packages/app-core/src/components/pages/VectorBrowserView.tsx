@@ -870,7 +870,7 @@ export function VectorBrowserView({
           n.includes("memor") ||
           n.includes("embed") ||
           n.includes("vector") ||
-          n.includes("knowledge")
+          n.includes("document")
         );
       });
       const available = vectorTables.length > 0 ? vectorTables : allTables;

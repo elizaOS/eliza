@@ -176,6 +176,7 @@ function buildDocumentMetadata(
 function buildFragmentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
+  agentId: UUID,
   index: number,
   agentId: UUID,
   timestamp: number,
@@ -362,6 +363,7 @@ async function seedBundledDocument(
       metadata: buildFragmentMetadata(
         document,
         documentId,
+        runtime.agentId as UUID,
         index,
         runtime.agentId,
         fragmentTimestamp,

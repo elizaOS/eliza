@@ -7,9 +7,16 @@ describe("Google Chat message connector", () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "GOOGLE_CHAT_DEFAULT_ACCOUNT_ID" ? "workspace" : null
+      ),
+      character: { settings: {} },
       getRoom: vi.fn(),
     } as unknown as IAgentRuntime;
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
+    (service as unknown as { settings: { accountId: string } }).settings = {
+      accountId: "workspace",
+    };
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, space: "spaces/AAA" });
@@ -19,6 +26,7 @@ describe("Google Chat message connector", () => {
     expect(runtime.registerMessageConnector).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "google-chat",
+        accountId: "workspace",
         label: "Google Chat",
         capabilities: expect.arrayContaining(["send_message", "send_thread_reply"]),
         supportedTargetKinds: expect.arrayContaining(["room", "thread", "user"]),
@@ -30,6 +38,7 @@ describe("Google Chat message connector", () => {
       runtime,
       {
         source: "google-chat",
+        accountId: "workspace",
         channelId: "spaces/AAA",
         threadId: "spaces/AAA/threads/T1",
       } as TargetInfo,

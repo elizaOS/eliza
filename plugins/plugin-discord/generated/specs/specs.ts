@@ -37,9 +37,9 @@ export const coreActionsSpec = {
       "description": "Legacy Discord attachment summarization for explicitly selected attachment IDs. Prefer READ_ATTACHMENT for normal current or recent files, images, media, links, and documents.",
       "descriptionCompressed": "Legacy Discord attachment-ID summarization.",
       "similes": [
-        "DISCORD_ANALYZE_ATTACHMENTS",
-        "DISCORD_SUMMARIZE_ATTACHMENTS",
-        "DISCORD_ANSWER_WITH_ATTACHMENTS"
+        "ANALYZE_ATTACHMENTS",
+        "SUMMARIZE_ATTACHMENTS",
+        "ANSWER_WITH_ATTACHMENTS"
       ],
       "parameters": []
     },
@@ -48,13 +48,13 @@ export const coreActionsSpec = {
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
-        "DISCORD_DOWNLOAD_MEDIA",
-        "DISCORD_FETCH_MEDIA",
-        "DISCORD_SAVE_ATTACHMENT",
-        "DISCORD_TRANSCRIBE_MEDIA",
-        "DISCORD_TRANSCRIBE_ATTACHMENT",
-        "DISCORD_AUDIO_TO_TEXT",
-        "DISCORD_VIDEO_TRANSCRIPT"
+        "DOWNLOAD_MEDIA",
+        "FETCH_MEDIA",
+        "SAVE_ATTACHMENT",
+        "TRANSCRIBE_MEDIA",
+        "TRANSCRIBE_ATTACHMENT",
+        "AUDIO_TO_TEXT",
+        "VIDEO_TRANSCRIPT"
       ],
       "parameters": []
     },
@@ -63,9 +63,9 @@ export const coreActionsSpec = {
       "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
-        "DISCORD_SUMMARIZE_HISTORY",
-        "DISCORD_CONVERSATION_SUMMARY",
-        "DISCORD_RECAP_CONVERSATION"
+        "SUMMARIZE_HISTORY",
+        "CONVERSATION_SUMMARY",
+        "RECAP_CONVERSATION"
       ],
       "parameters": []
     },
@@ -84,9 +84,9 @@ export const coreActionsSpec = {
       "description": "Start Discord credential setup or account pairing when the user requests setup.",
       "descriptionCompressed": "Set up Discord credentials.",
       "similes": [
-        "DISCORD_SETUP",
-        "DISCORD_PAIR",
-        "DISCORD_CONNECT"
+        "SETUP_CREDENTIALS",
+        "PAIR_CONNECTOR",
+        "CONNECT_ACCOUNT"
       ],
       "parameters": []
     }
@@ -100,9 +100,9 @@ export const allActionsSpec = {
       "description": "Legacy Discord attachment summarization for explicitly selected attachment IDs. Prefer READ_ATTACHMENT for normal current or recent files, images, media, links, and documents.",
       "descriptionCompressed": "Legacy Discord attachment-ID summarization.",
       "similes": [
-        "DISCORD_ANALYZE_ATTACHMENTS",
-        "DISCORD_SUMMARIZE_ATTACHMENTS",
-        "DISCORD_ANSWER_WITH_ATTACHMENTS"
+        "ANALYZE_ATTACHMENTS",
+        "SUMMARIZE_ATTACHMENTS",
+        "ANSWER_WITH_ATTACHMENTS"
       ],
       "parameters": []
     },
@@ -111,13 +111,13 @@ export const allActionsSpec = {
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
-        "DISCORD_DOWNLOAD_MEDIA",
-        "DISCORD_FETCH_MEDIA",
-        "DISCORD_SAVE_ATTACHMENT",
-        "DISCORD_TRANSCRIBE_MEDIA",
-        "DISCORD_TRANSCRIBE_ATTACHMENT",
-        "DISCORD_AUDIO_TO_TEXT",
-        "DISCORD_VIDEO_TRANSCRIPT"
+        "DOWNLOAD_MEDIA",
+        "FETCH_MEDIA",
+        "SAVE_ATTACHMENT",
+        "TRANSCRIBE_MEDIA",
+        "TRANSCRIBE_ATTACHMENT",
+        "AUDIO_TO_TEXT",
+        "VIDEO_TRANSCRIPT"
       ],
       "parameters": []
     },
@@ -126,9 +126,9 @@ export const allActionsSpec = {
       "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
-        "DISCORD_SUMMARIZE_HISTORY",
-        "DISCORD_CONVERSATION_SUMMARY",
-        "DISCORD_RECAP_CONVERSATION"
+        "SUMMARIZE_HISTORY",
+        "CONVERSATION_SUMMARY",
+        "RECAP_CONVERSATION"
       ],
       "parameters": []
     },
@@ -147,9 +147,9 @@ export const allActionsSpec = {
       "description": "Start Discord credential setup or account pairing when the user requests setup.",
       "descriptionCompressed": "Set up Discord credentials.",
       "similes": [
-        "DISCORD_SETUP",
-        "DISCORD_PAIR",
-        "DISCORD_CONNECT"
+        "SETUP_CREDENTIALS",
+        "PAIR_CONNECTOR",
+        "CONNECT_ACCOUNT"
       ],
       "parameters": []
     }

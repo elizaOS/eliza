@@ -73,7 +73,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (MCP)", () => {
     testData = await createTestDataSet(connectionString, {
       organizationName: "CHAT MCP Test Org",
       userName: "CHAT MCP Test User",
+<<<<<<< Updated upstream:cloud/packages/tests/runtime/integration/runtime-factory/chat-tools.test.ts
       userEmail: `chat-mcp-test-${Date.now()}@eliza.test`,
+=======
+      userEmail: `assistant-mcp-test-${Date.now()}@eliza.test`,
+>>>>>>> Stashed changes:cloud/packages/tests/runtime/integration/runtime-factory/assistant-mode.test.ts
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
@@ -102,7 +106,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (MCP)", () => {
   });
 
   it("should create runtime in CHAT mode with MCP", async () => {
+<<<<<<< Updated upstream:cloud/packages/tests/runtime/integration/runtime-factory/chat-tools.test.ts
     startTimer("chat_tools_runtime_create");
+=======
+    startTimer("assistant_runtime_create");
+>>>>>>> Stashed changes:cloud/packages/tests/runtime/integration/runtime-factory/assistant-mode.test.ts
 
     const userContext = buildUserContext(testData, {
       agentMode: AgentMode.CHAT,
@@ -116,7 +124,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (MCP)", () => {
 
     expect(runtime).toBeDefined();
     expect(runtime.character?.name).toBe("Mira");
+<<<<<<< Updated upstream:cloud/packages/tests/runtime/integration/runtime-factory/chat-tools.test.ts
     console.log(`\nCHAT runtime created in ${timings.chatToolsRuntimeCreate}ms`);
+=======
+    console.log(`\nCHAT runtime created in ${timings.assistantRuntimeCreate}ms`);
+>>>>>>> Stashed changes:cloud/packages/tests/runtime/integration/runtime-factory/assistant-mode.test.ts
   }, 60000);
 
   it("should have MCP service initialized", async () => {
@@ -148,7 +160,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (MCP)", () => {
     timings.chatToolsMessage = endTimer("chat_tools_message");
 
     expect(result.didRespond).toBe(true);
+<<<<<<< Updated upstream:cloud/packages/tests/runtime/integration/runtime-factory/chat-tools.test.ts
     console.log(`\nCHAT message processed in ${timings.chatToolsMessage}ms`);
+=======
+    console.log(`\nCHAT message processed in ${timings.assistantMessage}ms`);
+>>>>>>> Stashed changes:cloud/packages/tests/runtime/integration/runtime-factory/assistant-mode.test.ts
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
@@ -187,7 +203,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (Web Search)", (
     localTestData = await createTestDataSet(localConnectionString, {
       organizationName: "CHAT WebSearch Test Org",
       userName: "CHAT WebSearch Test User",
+<<<<<<< Updated upstream:cloud/packages/tests/runtime/integration/runtime-factory/chat-tools.test.ts
       userEmail: `chat-websearch-test-${Date.now()}@eliza.test`,
+=======
+      userEmail: `assistant-websearch-test-${Date.now()}@eliza.test`,
+>>>>>>> Stashed changes:cloud/packages/tests/runtime/integration/runtime-factory/assistant-mode.test.ts
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",

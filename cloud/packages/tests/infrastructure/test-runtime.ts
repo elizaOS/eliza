@@ -387,8 +387,7 @@ export interface SendTestMessageOptions {
 /**
  * Send a test message through the production MessageHandler.
  *
- * This uses createMessageHandler which emits MESSAGE_RECEIVED events,
- * properly triggering plugin-assistant's handler.
+ * This uses createMessageHandler and the runtime message service.
  */
 export async function sendTestMessage(
   runtime: TestRuntime,
@@ -447,8 +446,7 @@ export async function sendTestMessage(
         (timeout as { unref?: () => void }).unref?.();
       });
 
-      // Process message through handler - this emits MESSAGE_RECEIVED event
-      // which triggers plugin-assistant's handleMessage()
+      // Process message through the production handler.
       const result = await Promise.race([
         handler.process({
           roomId: userContext.roomId as string,

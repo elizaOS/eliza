@@ -766,7 +766,10 @@ export interface AppActions {
   dismissSystemWarning: (message: string) => void;
 
   // Chat
-  handleChatSend: (channelType?: ConversationChannelType) => Promise<void>;
+  handleChatSend: (
+    channelType?: ConversationChannelType,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   handleChatStop: () => void;
   handleChatRetry: (assistantMsgId: string) => void;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;

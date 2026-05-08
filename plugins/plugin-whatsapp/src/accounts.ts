@@ -35,6 +35,10 @@ export interface WhatsAppAccountRuntimeConfig {
   name?: string;
   /** If false, do not start this WhatsApp account */
   enabled?: boolean;
+  /** Transport implementation for this account */
+  transport?: "cloudapi" | "baileys";
+  /** Baileys auth/session directory */
+  authDir?: string;
   /** WhatsApp Cloud API access token */
   accessToken?: string;
   /** Phone number ID from WhatsApp Business */
@@ -67,6 +71,8 @@ export interface WhatsAppAccountRuntimeConfig {
 export interface WhatsAppMultiAccountConfig {
   /** Default/base configuration applied to all accounts */
   enabled?: boolean;
+  transport?: "cloudapi" | "baileys";
+  authDir?: string;
   accessToken?: string;
   phoneNumberId?: string;
   businessAccountId?: string;
@@ -129,6 +135,8 @@ export function getMultiAccountConfig(runtime: IAgentRuntime): WhatsAppMultiAcco
 
   return {
     enabled: characterWhatsApp?.enabled,
+    transport: characterWhatsApp?.transport,
+    authDir: characterWhatsApp?.authDir,
     accessToken: characterWhatsApp?.accessToken,
     phoneNumberId: characterWhatsApp?.phoneNumberId,
     businessAccountId: characterWhatsApp?.businessAccountId,
@@ -154,11 +162,15 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
   // Check if default account is configured
   const envToken = runtime.getSetting("WHATSAPP_ACCESS_TOKEN") as string | undefined;
   const envPhoneId = runtime.getSetting("WHATSAPP_PHONE_NUMBER_ID") as string | undefined;
+  const envAuthDir =
+    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
+    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
 
   const baseConfigured = Boolean(config.accessToken?.trim() && config.phoneNumberId?.trim());
   const envConfigured = Boolean(envToken?.trim() && envPhoneId?.trim());
+  const baileysConfigured = Boolean(config.authDir?.trim() || envAuthDir?.trim());
 
-  if (baseConfigured || envConfigured) {
+  if (baseConfigured || envConfigured || baileysConfigured) {
     ids.add(DEFAULT_ACCOUNT_ID);
   }
 
@@ -272,8 +284,14 @@ function mergeWhatsAppAccountConfig(
   const envWebhookToken = runtime.getSetting("WHATSAPP_WEBHOOK_VERIFY_TOKEN") as string | undefined;
   const envDmPolicy = runtime.getSetting("WHATSAPP_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("WHATSAPP_GROUP_POLICY") as string | undefined;
+  const envAuthDir =
+    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
+    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envTransport = runtime.getSetting("WHATSAPP_AUTH_METHOD") as string | undefined;
 
   const envConfig: WhatsAppAccountRuntimeConfig = {
+    transport: envTransport as WhatsAppAccountRuntimeConfig["transport"] | undefined,
+    authDir: envAuthDir || undefined,
     accessToken: envToken || undefined,
     phoneNumberId: envPhoneId || undefined,
     businessAccountId: envBusinessId || undefined,

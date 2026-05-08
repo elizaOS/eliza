@@ -7,6 +7,9 @@ import {
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
   getEmbeddingModel,
+  getSetting,
+  isBrowser,
+  isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -33,6 +36,58 @@ function extractText(params: TextEmbeddingParams | string | null): string | null
     return params.text;
   }
   throw new Error("Invalid embedding params: expected string, { text: string }, or null");
+}
+
+function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
+  const key = isBrowser() ? "OPENAI_BROWSER_EMBEDDING_URL" : "OPENAI_EMBEDDING_URL";
+  const value = getSetting(runtime, key);
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function shouldUseLocalEmbeddingFallback(runtime: IAgentRuntime): boolean {
+  return isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime);
+}
+
+function hashFeature(feature: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < feature.length; i += 1) {
+    hash ^= feature.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createDeterministicEmbedding(text: string, dimension: VectorDimension): number[] {
+  const vector = new Array(dimension).fill(0);
+  const normalized = text.toLowerCase();
+  const tokens = normalized.match(/[a-z0-9]+(?:[_-][a-z0-9]+)*/g) ?? [normalized];
+
+  const addFeature = (feature: string, weight: number): void => {
+    const hash = hashFeature(feature);
+    const idx = hash % dimension;
+    const sign = (hash & 1) === 0 ? 1 : -1;
+    vector[idx] += sign * weight;
+
+    const secondHash = hashFeature(`b:${feature}`);
+    const secondIdx = secondHash % dimension;
+    const secondSign = (secondHash & 1) === 0 ? 1 : -1;
+    vector[secondIdx] += secondSign * weight * 0.5;
+  };
+
+  tokens.forEach((token, index) => {
+    addFeature(token, 1);
+    if (index > 0) {
+      addFeature(`${tokens[index - 1]} ${token}`, 0.35);
+    }
+  });
+  addFeature(normalized.slice(0, 512), 0.15);
+
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (norm === 0) {
+    vector[0] = 1;
+    return vector;
+  }
+  return vector.map((value) => value / norm);
 }
 
 export async function handleTextEmbedding(
@@ -64,6 +119,11 @@ export async function handleTextEmbedding(
       `[OpenAI] Embedding input too long (~${Math.ceil(trimmedText.length / 4)} tokens), truncating to ~8000 tokens`
     );
     trimmedText = trimmedText.slice(0, maxChars);
+  }
+
+  if (shouldUseLocalEmbeddingFallback(runtime)) {
+    logger.debug("[OpenAI] Using deterministic local embedding fallback for Cerebras mode");
+    return createDeterministicEmbedding(trimmedText, embeddingDimension);
   }
 
   const baseURL = getEmbeddingBaseURL(runtime);

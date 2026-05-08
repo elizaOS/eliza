@@ -5,7 +5,6 @@ import { playAudio } from "./actions/playAudio";
 import { playbackOp } from "./actions/playbackOp";
 import { musicQueueProvider } from "./providers/musicQueueProvider";
 import { musicPlayerRoutes } from "./routes";
-import { installProcessActionsTransportPatch } from "./runtime/processActionsTransportPatch";
 import { MusicService } from "./service";
 
 // Export audio broadcast contracts
@@ -50,8 +49,6 @@ const musicPlayerPlugin: Plugin = {
   providers: [musicQueueProvider],
   routes: musicPlayerRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    installProcessActionsTransportPatch(runtime);
-
     // Don't block init - set up services after initialization completes
     runtime
       .getServiceLoadPromise("discord" as any)

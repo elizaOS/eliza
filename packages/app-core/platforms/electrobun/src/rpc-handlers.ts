@@ -456,6 +456,8 @@ export function registerRpcHandlers(
 				title?: string;
 				show?: boolean;
 				partition?: string;
+				connectorProvider?: string;
+				connectorAccountId?: string;
 				kind?: "internal" | "standard";
 				width?: number;
 				height?: number;
@@ -466,6 +468,8 @@ export function registerRpcHandlers(
 				title: params?.title,
 				show: params?.show,
 				partition: params?.partition,
+				connectorProvider: params?.connectorProvider,
+				connectorAccountId: params?.connectorAccountId,
 				kind: params?.kind,
 				width: params?.width,
 				height: params?.height,

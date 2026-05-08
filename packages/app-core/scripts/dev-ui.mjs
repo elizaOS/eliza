@@ -216,6 +216,13 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
+// Opt out of `bun --watch` for the API server. Useful when concurrent builds
+// (turbo / tsup / tsc) are rewriting workspace `dist/` files — bun --watch
+// follows imports into those dist files and hot-reloads on every write,
+// preventing the agent from finishing initialization. The supervisor still
+// restarts the API on `process.exit()` so the RESTART action and /api/restart
+// endpoint continue to work; only auto-reload-on-save is disabled.
+const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -589,6 +596,43 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
+// Concurrent build detection — bun --watch follows imports into workspace
+// `dist/` files. If a turbo/tsup/tsc build is rewriting those files, --watch
+// hot-reloads on every write and prevents the agent from finishing
+// initialization. We detect that case here and auto-disable --watch.
+// ---------------------------------------------------------------------------
+
+function detectConcurrentBuilds() {
+  if (process.platform === "win32") return null;
+  let psOut;
+  try {
+    psOut = execSync("ps axo pid=,command=", {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  const buildSignatures = [
+    /\bturbo\s+run\s+build\b/i,
+    /\bbun\s+run\s+build\b/i,
+    /\btsup\b.*\bbuild\b/i,
+    /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i,
+  ];
+  for (const line of psOut.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (buildSignatures.some((re) => re.test(trimmed))) {
+      const sp = trimmed.indexOf(" ");
+      const pidStr = sp > 0 ? trimmed.slice(0, sp).trim() : trimmed;
+      return Number.parseInt(pidStr, 10) || null;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Port cleanup — force-kill zombie processes on our dev ports
 // ---------------------------------------------------------------------------
 
@@ -626,7 +670,7 @@ function killPort(port) {
 // Wait for a TCP port to accept connections
 // ---------------------------------------------------------------------------
 
-function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
+function waitForPort(port, { timeout = 300_000, interval = 500 } = {}) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
     let activeSocket = null;
@@ -669,7 +713,7 @@ function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
 
 async function waitForAgentReady(
   port,
-  { timeout = 120_000, interval = 1000 } = {},
+  { timeout = 300_000, interval = 1000 } = {},
 ) {
   const deadline = Date.now() + timeout;
   const url = `http://127.0.0.1:${port}/api/health`;
@@ -962,12 +1006,25 @@ if (uiOnly) {
 
   const devServerEntry = resolveDevServerEntryRelativePath(cwd);
 
+  let useWatch = !skipBunWatch;
+  if (useWatch) {
+    const buildPid = detectConcurrentBuilds();
+    if (buildPid) {
+      console.log(
+        `  ${green(logPrefix)} ${dim(
+          `Concurrent build detected (PID ${buildPid}) — disabling --watch to avoid hot-reload loop on dist/ writes. Set ELIZA_DEV_NO_WATCH=1 to silence this notice.`,
+        )}`,
+      );
+      useWatch = false;
+    }
+  }
+
   const apiCmd = hasBun
     ? [
         "bun",
         "--no-install",
         ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ]
     : [
@@ -975,7 +1032,7 @@ if (uiOnly) {
         "--import",
         "tsx",
         ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ];
   const childEnv = createDevChildEnv(process.env);

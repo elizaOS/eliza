@@ -28,6 +28,14 @@ import type {
 import { TELEGRAM_SERVICE_NAME } from './constants';
 import { MessageManager } from './messageManager';
 import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledTelegramAccounts,
+  normalizeTelegramAccountId,
+  resolveDefaultTelegramAccountId,
+  resolveTelegramAccount,
+  type ResolvedTelegramAccount,
+} from './accounts';
+import {
   TelegramEventTypes,
   type TelegramEntityPayload,
   type TelegramWorldPayload,
@@ -45,18 +53,74 @@ const TELEGRAM_CONNECTOR_CAPABILITIES = [
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
 
+type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
+type AccountScopedConnectorContext = MessageConnectorQueryContext & {
+  accountId?: string;
+  account?: { accountId?: string };
+};
+
+type TelegramConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params?: TelegramConnectorReadParams,
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: TelegramConnectorReadParams & { query: string },
+  ) => Promise<Memory[]>;
+  getUser?: (
+    runtime: IAgentRuntime,
+    params: {
+      entityId?: UUID | string;
+      userId?: string;
+      username?: string;
+      handle?: string;
+    },
+  ) => Promise<Entity | null>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+  IAgentRuntime['registerMessageConnector']
+>[0] &
+  AdditiveMessageConnectorHooks;
+
 type TelegramTargetParts = {
   chatId: number | string;
   threadId?: number;
 };
 
-function resolveTelegramBotToken(runtime: IAgentRuntime): string | null {
-  const fromRuntime = runtime.getSetting('TELEGRAM_BOT_TOKEN');
-  if (typeof fromRuntime === 'string' && fromRuntime.trim()) {
-    return fromRuntime.trim();
+function normalizeConnectorLimit(
+  limit: number | undefined,
+  fallback = 50,
+): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
   }
-  const fromEnv = process.env.TELEGRAM_BOT_TOKEN;
-  return typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null;
+  return Math.min(Math.floor(limit), 200);
+}
+
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit: number,
+): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text =
+        typeof memory.content?.text === 'string' ? memory.content.text : '';
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
 }
 
 type MiddlewareNext = () => Promise<void>;
@@ -64,6 +128,14 @@ type MiddlewareNext = () => Promise<void>;
 type ActiveTelegramPoller = {
   bot: Telegraf<Context>;
   agentId: UUID;
+  accountId: string;
+};
+
+type TelegramAccountRuntime = {
+  accountId: string;
+  account: ResolvedTelegramAccount;
+  bot: Telegraf<Context>;
+  messageManager: MessageManager;
 };
 
 const ACTIVE_TELEGRAM_POLLERS = new Map<string, ActiveTelegramPoller>();
@@ -190,12 +262,13 @@ export class TelegramService extends Service {
   static serviceType = TELEGRAM_SERVICE_NAME;
   capabilityDescription =
     'The agent is able to send and receive messages on telegram';
-  private bot: Telegraf<Context> | null;
-  public messageManager: MessageManager | null;
-  private options;
+  private bot: Telegraf<Context> | null = null;
+  public messageManager: MessageManager | null = null;
   private knownChats: Map<string, Chat> = new Map();
   private syncedEntityIds: Set<string> = new Set<string>();
-  private readonly botToken: string | null;
+  private botToken: string | null;
+  private defaultAccountId = DEFAULT_ACCOUNT_ID;
+  private accountStates: Map<string, TelegramAccountRuntime> = new Map();
 
   /**
    * Constructor for TelegramService class.
@@ -214,13 +287,16 @@ export class TelegramService extends Service {
       'Constructing TelegramService',
     );
 
-    // Prefer runtime settings (character / DB merge); fall back to process.env
-    // so connector hydration matches plugins that only sync TELEGRAM_BOT_TOKEN into env.
-    const botToken = resolveTelegramBotToken(runtime);
-    this.botToken = botToken;
-    if (!botToken) {
+    this.defaultAccountId = resolveDefaultTelegramAccountId(runtime);
+    const account = resolveTelegramAccount(runtime, this.defaultAccountId);
+    this.botToken = account.botToken ?? null;
+    if (!account.botToken) {
       logger.warn(
-        { src: 'plugin:telegram', agentId: runtime.agentId },
+        {
+          src: 'plugin:telegram',
+          agentId: runtime.agentId,
+          accountId: account.accountId,
+        },
         'Bot token not provided, Telegram functionality unavailable',
       );
       this.bot = null;
@@ -228,21 +304,15 @@ export class TelegramService extends Service {
       return;
     }
 
-    const configuredApiRoot = runtime.getSetting('TELEGRAM_API_ROOT');
-    const apiRoot =
-      typeof configuredApiRoot === 'string' && configuredApiRoot.length > 0
-        ? configuredApiRoot
-        : process.env.TELEGRAM_API_ROOT || 'https://api.telegram.org';
-
-    this.options = {
-      telegram: { apiRoot },
-    };
-
     try {
-      this.bot = new Telegraf(botToken, this.options);
-      this.messageManager = new MessageManager(this.bot, this.runtime);
+      const state = this.createAccountRuntime(account);
+      this.setDefaultAccountState(state);
       logger.debug(
-        { src: 'plugin:telegram', agentId: runtime.agentId },
+        {
+          src: 'plugin:telegram',
+          agentId: runtime.agentId,
+          accountId: account.accountId,
+        },
         'TelegramService constructor completed',
       );
     } catch (error) {
@@ -257,6 +327,138 @@ export class TelegramService extends Service {
       this.bot = null;
       this.messageManager = null;
     }
+  }
+
+  private createAccountRuntime(
+    account: ResolvedTelegramAccount,
+  ): TelegramAccountRuntime {
+    if (!account.botToken) {
+      throw new Error(`Telegram account ${account.accountId} has no bot token`);
+    }
+    const bot = new Telegraf(account.botToken, {
+      telegram: { apiRoot: account.apiRoot },
+    });
+    const messageManager = new MessageManager(
+      bot,
+      this.runtime,
+      account.accountId,
+    );
+    return {
+      accountId: account.accountId,
+      account,
+      bot,
+      messageManager,
+    };
+  }
+
+  private setDefaultAccountState(state: TelegramAccountRuntime): void {
+    this.accountStates.set(state.accountId, state);
+    if (state.accountId === this.defaultAccountId || !this.bot) {
+      this.bot = state.bot;
+      this.messageManager = state.messageManager;
+      this.botToken = state.account.botToken ?? null;
+    }
+  }
+
+  private getDefaultAccountState(): TelegramAccountRuntime | null {
+    if (!(this.accountStates instanceof Map) || this.accountStates.size === 0) {
+      return null;
+    }
+    return (
+      this.accountStates.get(this.defaultAccountId) ??
+      this.accountStates.values().next().value ??
+      null
+    );
+  }
+
+  private getAccountState(
+    accountId?: string | null,
+  ): TelegramAccountRuntime | null {
+    if (!(this.accountStates instanceof Map) || this.accountStates.size === 0) {
+      return null;
+    }
+    if (accountId) {
+      return (
+        this.accountStates.get(normalizeTelegramAccountId(accountId)) ?? null
+      );
+    }
+    return this.getDefaultAccountState();
+  }
+
+  private getAccountIds(): string[] {
+    if (this.accountStates instanceof Map && this.accountStates.size > 0) {
+      return Array.from(this.accountStates.keys());
+    }
+    return [normalizeTelegramAccountId(this.defaultAccountId)];
+  }
+
+  private resolveAccountIdFromContext(
+    context?: MessageConnectorQueryContext | null,
+    target?: TargetInfo | null,
+  ): string | undefined {
+    const scopedTarget = target as AccountScopedTargetInfo | null | undefined;
+    const scopedContext = context as
+      | AccountScopedConnectorContext
+      | null
+      | undefined;
+    return (
+      scopedTarget?.accountId ??
+      (scopedContext?.target as AccountScopedTargetInfo | undefined)
+        ?.accountId ??
+      scopedContext?.accountId ??
+      scopedContext?.account?.accountId ??
+      undefined
+    );
+  }
+
+  private async resolveAccountIdForTarget(
+    runtime: IAgentRuntime,
+    target?: TargetInfo | null,
+    fallback?: { accountId?: string; roomId?: UUID } | null,
+  ): Promise<string> {
+    const direct =
+      (target as AccountScopedTargetInfo | null | undefined)?.accountId ??
+      fallback?.accountId;
+    if (direct) {
+      return normalizeTelegramAccountId(direct);
+    }
+    const roomId = target?.roomId ?? fallback?.roomId;
+    if (roomId && typeof runtime.getRoom === 'function') {
+      const room = await runtime.getRoom(roomId);
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      if (
+        typeof metadata?.accountId === 'string' &&
+        metadata.accountId.trim()
+      ) {
+        return normalizeTelegramAccountId(metadata.accountId);
+      }
+      const telegram =
+        metadata?.telegram && typeof metadata.telegram === 'object'
+          ? (metadata.telegram as Record<string, unknown>)
+          : undefined;
+      if (
+        typeof telegram?.accountId === 'string' &&
+        telegram.accountId.trim()
+      ) {
+        return normalizeTelegramAccountId(telegram.accountId);
+      }
+    }
+    return normalizeTelegramAccountId(this.defaultAccountId);
+  }
+
+  private scopedTelegramKey(key: string, accountId?: string | null): string {
+    const normalized = normalizeTelegramAccountId(
+      accountId ?? this.defaultAccountId,
+    );
+    return normalized === DEFAULT_ACCOUNT_ID ? key : `${normalized}:${key}`;
+  }
+
+  private knownChatKeyMatchesAccount(
+    key: string,
+    chat: Chat,
+    accountId: string,
+  ): boolean {
+    return key === this.scopedTelegramKey(chat.id.toString(), accountId);
   }
 
   /**
@@ -279,84 +481,87 @@ export class TelegramService extends Service {
       return service;
     }
 
+    for (const account of listEnabledTelegramAccounts(runtime)) {
+      if (!service.getAccountState(account.accountId)) {
+        service.setDefaultAccountState(service.createAccountRuntime(account));
+      }
+    }
+
     const maxRetries = 5;
-    let retryCount = 0;
-    let lastError: Error | null = null;
+    for (const state of service.accountStates.values()) {
+      let retryCount = 0;
+      let lastError: Error | null = null;
 
-    while (retryCount < maxRetries) {
-      try {
-        logger.info(
-          {
-            src: 'plugin:telegram',
-            agentId: runtime.agentId,
-            agentName: runtime.character.name,
-          },
-          'Starting Telegram bot',
-        );
-        await service.initializeBot();
-
-        // Set up middlewares before message handlers to ensure proper preprocessing
-        service.setupMiddlewares();
-
-        // Set up message handlers after middlewares
-        service.setupMessageHandlers();
-
-        const bot = service.bot;
-        if (!bot) {
-          throw new Error('Telegram bot was not initialized');
-        }
-
-        // Wait for bot to be ready by testing getMe()
-        await bot.telegram.getMe();
-
-        logger.success(
-          {
-            src: 'plugin:telegram',
-            agentId: runtime.agentId,
-            agentName: runtime.character.name,
-          },
-          'Telegram bot started successfully',
-        );
-        return service;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        logger.error(
-          {
-            src: 'plugin:telegram',
-            agentId: runtime.agentId,
-            attempt: retryCount + 1,
-            error: lastError.message,
-          },
-          'Initialization attempt failed',
-        );
-        retryCount++;
-
-        if (retryCount < maxRetries) {
-          const delay = 2 ** retryCount * 1000; // Exponential backoff
+      while (retryCount < maxRetries) {
+        try {
           logger.info(
             {
               src: 'plugin:telegram',
               agentId: runtime.agentId,
-              delaySeconds: delay / 1000,
+              agentName: runtime.character.name,
+              accountId: state.accountId,
             },
-            'Retrying initialization',
+            'Starting Telegram bot',
           );
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await service.initializeBot(state);
+          service.setupMiddlewares(state);
+          service.setupMessageHandlers(state);
+          await state.bot.telegram.getMe();
+
+          logger.success(
+            {
+              src: 'plugin:telegram',
+              agentId: runtime.agentId,
+              agentName: runtime.character.name,
+              accountId: state.accountId,
+            },
+            'Telegram bot started successfully',
+          );
+          break;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          logger.error(
+            {
+              src: 'plugin:telegram',
+              agentId: runtime.agentId,
+              accountId: state.accountId,
+              attempt: retryCount + 1,
+              error: lastError.message,
+            },
+            'Initialization attempt failed',
+          );
+          retryCount++;
+
+          if (retryCount < maxRetries) {
+            const delay = 2 ** retryCount * 1000;
+            logger.info(
+              {
+                src: 'plugin:telegram',
+                agentId: runtime.agentId,
+                accountId: state.accountId,
+                delaySeconds: delay / 1000,
+              },
+              'Retrying initialization',
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
         }
+      }
+
+      if (retryCount >= maxRetries) {
+        logger.error(
+          {
+            src: 'plugin:telegram',
+            agentId: runtime.agentId,
+            accountId: state.accountId,
+            maxRetries,
+            error: lastError?.message,
+          },
+          'Initialization failed after all attempts',
+        );
       }
     }
 
-    logger.error(
-      {
-        src: 'plugin:telegram',
-        agentId: runtime.agentId,
-        maxRetries,
-        error: lastError?.message,
-      },
-      'Initialization failed after all attempts',
-    );
-
-    // Return the service even if initialization failed, to prevent server crash
     return service;
   }
 
@@ -378,15 +583,32 @@ export class TelegramService extends Service {
    * @returns A Promise that resolves once the bot has stopped.
    */
   async stop(): Promise<void> {
-    const bot = this.bot;
-    if (!bot) {
+    const states =
+      this.accountStates instanceof Map
+        ? Array.from(this.accountStates.values())
+        : [];
+    if (states.length > 0) {
+      for (const state of states) {
+        state.bot.stop('service-stop');
+        const token = state.account.botToken;
+        if (token) {
+          const active = ACTIVE_TELEGRAM_POLLERS.get(token);
+          if (active?.bot === state.bot) {
+            ACTIVE_TELEGRAM_POLLERS.delete(token);
+          }
+        }
+      }
       return;
     }
-    bot.stop('service-stop');
-    if (this.botToken) {
-      const active = ACTIVE_TELEGRAM_POLLERS.get(this.botToken);
-      if (active?.bot === bot) {
-        ACTIVE_TELEGRAM_POLLERS.delete(this.botToken);
+
+    const bot = this.bot;
+    if (bot) {
+      bot.stop('service-stop');
+      if (this.botToken) {
+        const active = ACTIVE_TELEGRAM_POLLERS.get(this.botToken);
+        if (active?.bot === bot) {
+          ACTIVE_TELEGRAM_POLLERS.delete(this.botToken);
+        }
       }
     }
   }
@@ -395,12 +617,14 @@ export class TelegramService extends Service {
    * Initializes the Telegram bot by launching it, getting bot info, and setting up message manager.
    * @returns {Promise<void>} A Promise that resolves when the initialization is complete.
    */
-  private async initializeBot(): Promise<void> {
-    const bot = this.bot;
+  private async initializeBot(state?: TelegramAccountRuntime): Promise<void> {
+    const activeState = state ?? this.getDefaultAccountState();
+    const bot = activeState?.bot ?? this.bot;
     if (!bot) {
       throw new Error('Telegram bot is not initialized');
     }
-    const botToken = this.botToken;
+    const botToken = activeState?.account.botToken ?? this.botToken;
+    const accountId = activeState?.accountId ?? this.defaultAccountId;
 
     if (botToken) {
       const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
@@ -409,6 +633,7 @@ export class TelegramService extends Service {
           {
             src: 'plugin:telegram',
             agentId: this.runtime.agentId,
+            accountId,
             previousAgentId: active.agentId,
           },
           'Stopping existing Telegram poller before launching a new one',
@@ -420,6 +645,7 @@ export class TelegramService extends Service {
             {
               src: 'plugin:telegram',
               agentId: this.runtime.agentId,
+              accountId,
               error: error instanceof Error ? error.message : String(error),
             },
             'Failed to stop previous Telegram poller cleanly',
@@ -436,6 +662,8 @@ export class TelegramService extends Service {
         ctx,
         runtime: this.runtime,
         source: 'telegram',
+        accountId,
+        metadata: { accountId },
       };
       this.runtime.emitEvent(
         TelegramEventTypes.SLASH_START as string,
@@ -450,6 +678,7 @@ export class TelegramService extends Service {
       ACTIVE_TELEGRAM_POLLERS.set(botToken, {
         bot,
         agentId: this.runtime.agentId,
+        accountId,
       });
     }
 
@@ -459,6 +688,7 @@ export class TelegramService extends Service {
       {
         src: 'plugin:telegram',
         agentId: this.runtime.agentId,
+        accountId,
         botId: botInfo.id,
         botUsername: botInfo.username,
       },
@@ -485,12 +715,14 @@ export class TelegramService extends Service {
    *
    * @private
    */
-  private setupMiddlewares(): void {
+  private setupMiddlewares(state?: TelegramAccountRuntime): void {
+    const bot = state?.bot ?? this.bot;
+    const accountId = state?.accountId ?? this.defaultAccountId;
     // Register the authorization middleware
-    this.bot?.use(this.authorizationMiddleware.bind(this));
+    bot?.use((ctx, next) => this.authorizationMiddleware(ctx, next, accountId));
 
     // Register the chat and entity management middleware
-    this.bot?.use(this.chatAndEntityMiddleware.bind(this));
+    bot?.use((ctx, next) => this.chatAndEntityMiddleware(ctx, next, accountId));
   }
 
   /**
@@ -505,13 +737,15 @@ export class TelegramService extends Service {
   private async authorizationMiddleware(
     ctx: Context,
     next: MiddlewareNext,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
-    if (!(await this.isGroupAuthorized(ctx))) {
+    if (!(await this.isGroupAuthorized(ctx, accountId))) {
       // Skip further processing if chat is not authorized
       logger.debug(
         {
           src: 'plugin:telegram',
           agentId: this.runtime.agentId,
+          accountId,
           chatId: ctx.chat?.id,
         },
         'Chat not authorized, skipping',
@@ -534,6 +768,7 @@ export class TelegramService extends Service {
   private async chatAndEntityMiddleware(
     ctx: Context,
     next: MiddlewareNext,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     if (!ctx.chat) {
       return next();
@@ -542,15 +777,15 @@ export class TelegramService extends Service {
     const chatId = ctx.chat.id.toString();
 
     // If we haven't seen this chat before, process it as a new chat
-    if (!this.knownChats.has(chatId)) {
+    if (!this.knownChats.has(this.scopedTelegramKey(chatId, accountId))) {
       // Process the new chat - creates world, room, topic room (if applicable) and entities
-      await this.handleNewChat(ctx);
+      await this.handleNewChat(ctx, accountId);
       // Skip entity synchronization for new chats and proceed to the next middleware
       return next();
     }
 
     // For existing chats, determine the required operations based on chat type
-    await this.processExistingChat(ctx);
+    await this.processExistingChat(ctx, accountId);
 
     await next();
   }
@@ -563,7 +798,10 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    * @private
    */
-  private async processExistingChat(ctx: Context): Promise<void> {
+  private async processExistingChat(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     if (!ctx.chat) {
       return;
     }
@@ -577,12 +815,13 @@ export class TelegramService extends Service {
       ctx.message?.message_thread_id
     ) {
       try {
-        await this.handleForumTopic(ctx);
+        await this.handleForumTopic(ctx, accountId);
       } catch (error) {
         logger.error(
           {
             src: 'plugin:telegram',
             agentId: this.runtime.agentId,
+            accountId,
             chatId: chat.id,
             error: error instanceof Error ? error.message : String(error),
           },
@@ -593,7 +832,7 @@ export class TelegramService extends Service {
 
     // For non-private chats, synchronize entity information
     if (ctx.from && ctx.chat.type !== 'private') {
-      await this.syncEntity(ctx);
+      await this.syncEntity(ctx, accountId);
     }
   }
 
@@ -603,17 +842,21 @@ export class TelegramService extends Service {
    *
    * @private
    */
-  private setupMessageHandlers(): void {
+  private setupMessageHandlers(state?: TelegramAccountRuntime): void {
+    const bot = state?.bot ?? this.bot;
+    const messageManager = state?.messageManager ?? this.messageManager;
+    const accountId = state?.accountId ?? this.defaultAccountId;
     // Regular message handler
-    this.bot?.on('message', async (ctx) => {
+    bot?.on('message', async (ctx) => {
       try {
         // Message handling is now simplified since all preprocessing is done by middleware
-        await this.messageManager?.handleMessage(ctx);
+        await messageManager?.handleMessage(ctx);
       } catch (error) {
         logger.error(
           {
             src: 'plugin:telegram',
             agentId: this.runtime.agentId,
+            accountId,
             error: error instanceof Error ? error.message : String(error),
           },
           'Error handling message',
@@ -622,14 +865,15 @@ export class TelegramService extends Service {
     });
 
     // Reaction handler
-    this.bot?.on('message_reaction', async (ctx) => {
+    bot?.on('message_reaction', async (ctx) => {
       try {
-        await this.messageManager?.handleReaction(ctx);
+        await messageManager?.handleReaction(ctx);
       } catch (error) {
         logger.error(
           {
             src: 'plugin:telegram',
             agentId: this.runtime.agentId,
+            accountId,
             error: error instanceof Error ? error.message : String(error),
           },
           'Error handling reaction',
@@ -643,10 +887,19 @@ export class TelegramService extends Service {
    * @param {Context} ctx - The context of the incoming update.
    * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
    */
-  private async isGroupAuthorized(ctx: Context): Promise<boolean> {
+  private async isGroupAuthorized(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<boolean> {
     const chatId = ctx.chat?.id.toString();
     if (!chatId) {
       return false;
+    }
+
+    const accountAllowedChats =
+      this.getAccountState(accountId)?.account.config.allowedChats;
+    if (accountAllowedChats?.length) {
+      return accountAllowedChats.includes(chatId);
     }
 
     const allowedChats = this.runtime.getSetting('TELEGRAM_ALLOWED_CHATS');
@@ -662,6 +915,7 @@ export class TelegramService extends Service {
         {
           src: 'plugin:telegram',
           agentId: this.runtime.agentId,
+          accountId,
           error: error instanceof Error ? error.message : String(error),
         },
         'Error parsing TELEGRAM_ALLOWED_CHATS',
@@ -681,25 +935,34 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    * @private
    */
-  private async syncEntity(ctx: Context): Promise<void> {
+  private async syncEntity(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     if (!ctx.chat) {
       return;
     }
 
     const chat = ctx.chat;
     const chatId = chat.id.toString();
-    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const worldId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(chatId, accountId),
+    ) as UUID;
     const roomId = createUniqueUuid(
       this.runtime,
-      ctx.message?.message_thread_id
-        ? `${ctx.chat.id}-${ctx.message.message_thread_id}`
-        : ctx.chat.id.toString(),
+      this.scopedTelegramKey(
+        ctx.message?.message_thread_id
+          ? `${ctx.chat.id}-${ctx.message.message_thread_id}`
+          : ctx.chat.id.toString(),
+        accountId,
+      ),
     ) as UUID;
 
     // Handle all three entity sync cases separately for clarity
-    await this.syncMessageSender(ctx, worldId, roomId, chatId);
-    await this.syncNewChatMember(ctx, worldId, roomId, chatId);
-    await this.syncLeftChatMember(ctx);
+    await this.syncMessageSender(ctx, worldId, roomId, chatId, accountId);
+    await this.syncNewChatMember(ctx, worldId, roomId, chatId, accountId);
+    await this.syncLeftChatMember(ctx, accountId);
   }
 
   /**
@@ -718,10 +981,14 @@ export class TelegramService extends Service {
     worldId: UUID,
     roomId: UUID,
     chatId: string,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     if (ctx.from) {
       const telegramId = ctx.from.id.toString();
-      const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+      const entityId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramId, accountId),
+      ) as UUID;
 
       if (this.syncedEntityIds.has(entityId)) {
         return;
@@ -760,12 +1027,16 @@ export class TelegramService extends Service {
     worldId: UUID,
     roomId: UUID,
     chatId: string,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     // Handle new chat member
     if (ctx.message && 'new_chat_members' in ctx.message) {
       for (const newMember of ctx.message.new_chat_members) {
         const telegramId = newMember.id.toString();
-        const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+        const entityId = createUniqueUuid(
+          this.runtime,
+          this.scopedTelegramKey(telegramId, accountId),
+        ) as UUID;
 
         if (this.syncedEntityIds.has(entityId)) {
           continue;
@@ -786,16 +1057,21 @@ export class TelegramService extends Service {
 
         this.syncedEntityIds.add(entityId);
 
-        const entityJoinedPayload: TelegramEntityPayload = {
+        const entityJoinedPayload = {
           runtime: this.runtime,
           entityId,
           worldId,
           source: 'telegram',
+          accountId,
+          metadata: { accountId },
           telegramUser: {
             id: newMember.id,
             username: newMember.username,
             first_name: newMember.first_name,
           },
+        } as TelegramEntityPayload & {
+          accountId: string;
+          metadata: { accountId: string };
         };
         this.runtime.emitEvent(
           TelegramEventTypes.ENTITY_JOINED,
@@ -812,17 +1088,24 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    * @private
    */
-  private async syncLeftChatMember(ctx: Context): Promise<void> {
+  private async syncLeftChatMember(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     // Handle left chat member
     if (ctx.message && 'left_chat_member' in ctx.message) {
       const leftMember = ctx.message.left_chat_member;
       const telegramId = leftMember.id.toString();
-      const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+      const entityId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramId, accountId),
+      ) as UUID;
 
       const existingEntity = await this.runtime.getEntityById(entityId);
       if (existingEntity) {
         existingEntity.metadata = {
           ...existingEntity.metadata,
+          accountId,
           status: 'INACTIVE',
           leftAt: Date.now(),
         };
@@ -839,16 +1122,22 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    * @private
    */
-  private async handleForumTopic(ctx: Context): Promise<void> {
+  private async handleForumTopic(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     if (!ctx.chat || !ctx.message?.message_thread_id) {
       return;
     }
 
     const chat = ctx.chat;
     const chatId = chat.id.toString();
-    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const worldId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(chatId, accountId),
+    ) as UUID;
 
-    const room = await this.buildForumTopicRoom(ctx, worldId);
+    const room = await this.buildForumTopicRoom(ctx, worldId, accountId);
     if (!room) {
       return;
     }
@@ -859,12 +1148,18 @@ export class TelegramService extends Service {
   /**
    * Builds entity for message sender
    */
-  private buildMsgSenderEntity(from: User): Entity | null {
+  private buildMsgSenderEntity(
+    from: User,
+    accountId = this.defaultAccountId,
+  ): Entity | null {
     if (!from) {
       return null;
     }
 
-    const userId = createUniqueUuid(this.runtime, from.id.toString()) as UUID;
+    const userId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(from.id.toString(), accountId),
+    ) as UUID;
     const telegramId = from.id.toString();
 
     return {
@@ -872,7 +1167,10 @@ export class TelegramService extends Service {
       agentId: this.runtime.agentId,
       names: [from.first_name || from.username || 'Unknown User'],
       metadata: {
+        source: 'telegram',
+        accountId,
         telegram: {
+          accountId,
           id: telegramId,
           username: from.username,
           name: from.first_name || from.username || 'Unknown User',
@@ -890,7 +1188,10 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    * @private
    */
-  private async handleNewChat(ctx: Context): Promise<void> {
+  private async handleNewChat(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     if (!ctx.chat) {
       return;
     }
@@ -899,12 +1200,15 @@ export class TelegramService extends Service {
     const chatId = chat.id.toString();
 
     // Mark this chat as known
-    this.knownChats.set(chatId, chat);
+    this.knownChats.set(this.scopedTelegramKey(chatId, accountId), chat);
 
     // Get chat title and channel type
     const { chatTitle, channelType } = this.getChatTypeInfo(chat);
 
-    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const worldId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(chatId, accountId),
+    ) as UUID;
 
     const existingWorld = await this.runtime.getWorld(worldId);
     if (existingWorld) {
@@ -912,7 +1216,10 @@ export class TelegramService extends Service {
     }
 
     const userId = ctx.from
-      ? (createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID)
+      ? (createUniqueUuid(
+          this.runtime,
+          this.scopedTelegramKey(ctx.from.id.toString(), accountId),
+        ) as UUID)
       : null;
 
     // Fetch admin information for proper role assignment
@@ -947,7 +1254,10 @@ export class TelegramService extends Service {
     let ownerId = canonicalOwnerId ?? userId;
 
     if (!canonicalOwnerId && owner) {
-      ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
+      ownerId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(String(owner.user.id), accountId),
+      ) as UUID;
     }
 
     // Build world representation
@@ -958,6 +1268,7 @@ export class TelegramService extends Service {
       messageServerId: chatId,
       metadata: {
         source: 'telegram',
+        accountId,
         ...(ownerId && { ownership: { ownerId } }),
         roles: ownerId
           ? {
@@ -974,13 +1285,21 @@ export class TelegramService extends Service {
 
     // Create the main room for the chat
     const generalRoom: Room = {
-      id: createUniqueUuid(this.runtime, chatId) as UUID,
+      id: createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(chatId, accountId),
+      ) as UUID,
       name: chatTitle,
       source: 'telegram',
       type: channelType,
       channelId: chatId,
       serverId: chatId,
       worldId,
+      metadata: {
+        source: 'telegram',
+        accountId,
+        telegram: { accountId, chatId },
+      },
     };
 
     // Directly ensure room exists instead of using syncTelegram
@@ -995,7 +1314,7 @@ export class TelegramService extends Service {
       chat.is_forum &&
       ctx.message?.message_thread_id
     ) {
-      const topicRoom = await this.buildForumTopicRoom(ctx, worldId);
+      const topicRoom = await this.buildForumTopicRoom(ctx, worldId, accountId);
       if (topicRoom) {
         rooms.push(topicRoom);
         await this.runtime.ensureRoomExists(topicRoom);
@@ -1003,11 +1322,11 @@ export class TelegramService extends Service {
     }
 
     // Build entities from chat
-    const entities = await this.buildStandardizedEntities(chat);
+    const entities = await this.buildStandardizedEntities(chat, accountId);
 
     // Add sender if not already in entities
     if (ctx.from) {
-      const senderEntity = this.buildMsgSenderEntity(ctx.from);
+      const senderEntity = this.buildMsgSenderEntity(ctx.from, accountId);
       if (senderEntity?.id && !entities.some((e) => e.id === senderEntity.id)) {
         entities.push(senderEntity);
         this.syncedEntityIds.add(senderEntity.id);
@@ -1022,17 +1341,23 @@ export class TelegramService extends Service {
       generalRoom.channelId || chatId,
       generalRoom.type,
       worldId,
+      accountId,
     );
 
     // Create payload for world events
-    const telegramWorldPayload: TelegramWorldPayload = {
+    const telegramWorldPayload = {
       runtime: this.runtime,
       world,
       rooms,
       entities,
       source: 'telegram',
+      accountId,
+      metadata: { accountId },
       chat,
       botUsername: this.bot?.botInfo?.username,
+    } as TelegramWorldPayload & {
+      accountId: string;
+      metadata: { accountId: string };
     };
 
     // Emit telegram-specific world joined event
@@ -1050,7 +1375,9 @@ export class TelegramService extends Service {
       rooms,
       entities,
       source: 'telegram',
-    });
+      accountId,
+      metadata: { accountId },
+    } as any);
   }
 
   /**
@@ -1071,6 +1398,7 @@ export class TelegramService extends Service {
     channelId: string,
     roomType: ChannelType,
     worldId: UUID,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     const batchSize = 50;
 
@@ -1087,6 +1415,7 @@ export class TelegramService extends Service {
                     username?: string;
                     name?: string;
                     id?: string;
+                    accountId?: string;
                   }
                 | undefined;
 
@@ -1107,6 +1436,7 @@ export class TelegramService extends Service {
                 {
                   src: 'plugin:telegram',
                   agentId: this.runtime.agentId,
+                  accountId,
                   entityNames: entity.names,
                 },
                 'Skipping entity sync due to missing ID',
@@ -1122,6 +1452,7 @@ export class TelegramService extends Service {
               {
                 src: 'plugin:telegram',
                 agentId: this.runtime.agentId,
+                accountId,
                 username: telegramMetadata?.username,
                 error: err instanceof Error ? err.message : String(err),
               },
@@ -1186,7 +1517,10 @@ export class TelegramService extends Service {
    * @returns {Promise<Entity[]>} Array of standardized Entity objects
    * @private
    */
-  private async buildStandardizedEntities(chat: Chat): Promise<Entity[]> {
+  private async buildStandardizedEntities(
+    chat: Chat,
+    accountId = this.defaultAccountId,
+  ): Promise<Entity[]> {
     const entities: Entity[] = [];
 
     try {
@@ -1194,7 +1528,7 @@ export class TelegramService extends Service {
       if (chat.type === 'private' && chat.id) {
         const userId = createUniqueUuid(
           this.runtime,
-          chat.id.toString(),
+          this.scopedTelegramKey(chat.id.toString(), accountId),
         ) as UUID;
         entities.push({
           id: userId,
@@ -1202,11 +1536,13 @@ export class TelegramService extends Service {
           agentId: this.runtime.agentId,
           metadata: {
             telegram: {
+              accountId,
               id: chat.id.toString(),
               username: chat.username || 'unknown',
               name: chat.first_name || 'Unknown User',
             },
             source: 'telegram',
+            accountId,
           },
         });
         this.syncedEntityIds.add(userId);
@@ -1222,7 +1558,7 @@ export class TelegramService extends Service {
             for (const admin of admins) {
               const userId = createUniqueUuid(
                 this.runtime,
-                admin.user.id.toString(),
+                this.scopedTelegramKey(admin.user.id.toString(), accountId),
               ) as UUID;
               entities.push({
                 id: userId,
@@ -1234,6 +1570,7 @@ export class TelegramService extends Service {
                 agentId: this.runtime.agentId,
                 metadata: {
                   telegram: {
+                    accountId,
                     id: admin.user.id.toString(),
                     username: admin.user.username || 'unknown',
                     name: admin.user.first_name || 'Unknown Admin',
@@ -1243,6 +1580,7 @@ export class TelegramService extends Service {
                       (admin.status === 'creator' ? 'Owner' : 'Admin'),
                   },
                   source: 'telegram',
+                  accountId,
                   roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN],
                 },
               });
@@ -1287,6 +1625,7 @@ export class TelegramService extends Service {
   private async buildForumTopicRoom(
     ctx: Context,
     worldId: UUID,
+    accountId = this.defaultAccountId,
   ): Promise<Room | null> {
     if (!ctx.chat || !ctx.message?.message_thread_id) {
       return null;
@@ -1300,7 +1639,7 @@ export class TelegramService extends Service {
     const threadId = ctx.message.message_thread_id.toString();
     const roomId = createUniqueUuid(
       this.runtime,
-      `${chatId}-${threadId}`,
+      this.scopedTelegramKey(`${chatId}-${threadId}`, accountId),
     ) as UUID;
 
     try {
@@ -1356,9 +1695,16 @@ export class TelegramService extends Service {
         serverId: chatId,
         worldId,
         metadata: {
+          source: 'telegram',
+          accountId,
           threadId,
           isForumTopic: true,
           parentChatId: chatId,
+          telegram: {
+            accountId,
+            chatId,
+            threadId,
+          },
         },
       };
 
@@ -1368,6 +1714,7 @@ export class TelegramService extends Service {
         {
           src: 'plugin:telegram',
           agentId: this.runtime.agentId,
+          accountId,
           chatId,
           threadId,
           error: error instanceof Error ? error.message : String(error),
@@ -1382,15 +1729,20 @@ export class TelegramService extends Service {
     chat: Chat,
     score = 0.5,
     threadId?: number,
+    accountId = this.defaultAccountId,
   ): MessageConnectorTarget {
     const chatId = chat.id.toString();
     const roomKey = threadId ? `${chatId}-${threadId}` : chatId;
-    const roomId = createUniqueUuid(this.runtime, roomKey) as UUID;
+    const roomId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(roomKey, accountId),
+    ) as UUID;
     const label = getTelegramChatDisplayName(chat, chatId);
 
     return {
       target: {
         source: 'telegram',
+        accountId,
         roomId,
         channelId: roomKey,
         threadId: threadId?.toString(),
@@ -1404,6 +1756,7 @@ export class TelegramService extends Service {
       score,
       contexts: ['social', 'connectors'],
       metadata: {
+        accountId,
         telegramChatId: chatId,
         telegramThreadId: threadId,
         telegramChatType: chat.type,
@@ -1422,6 +1775,10 @@ export class TelegramService extends Service {
     }
 
     const metadata = room.metadata as Record<string, unknown> | undefined;
+    const accountId =
+      typeof metadata?.accountId === 'string' && metadata.accountId.trim()
+        ? normalizeTelegramAccountId(metadata.accountId)
+        : normalizeTelegramAccountId(this.defaultAccountId);
     const threadId =
       typeof metadata?.threadId === 'string'
         ? metadata.threadId
@@ -1431,6 +1788,7 @@ export class TelegramService extends Service {
     return {
       target: {
         source: 'telegram',
+        accountId,
         roomId: room.id,
         channelId: room.channelId,
         threadId,
@@ -1443,6 +1801,7 @@ export class TelegramService extends Service {
       score,
       contexts: ['social', 'connectors'],
       metadata: {
+        accountId,
         telegramChatId: room.channelId,
         telegramThreadId: threadId,
         roomName: room.name,
@@ -1456,6 +1815,7 @@ export class TelegramService extends Service {
     const byKey = new Map<string, MessageConnectorTarget>();
     for (const target of targets) {
       const key = [
+        (target.target as AccountScopedTargetInfo).accountId ?? '',
         target.kind ?? 'target',
         target.target.channelId ?? '',
         target.target.entityId ?? '',
@@ -1473,17 +1833,24 @@ export class TelegramService extends Service {
 
   private async getTelegramChatForTarget(
     chatId: number | string,
+    accountId = this.defaultAccountId,
   ): Promise<Chat | null> {
-    const known = this.knownChats.get(String(chatId));
+    const known =
+      this.knownChats.get(this.scopedTelegramKey(String(chatId), accountId)) ??
+      this.knownChats.get(String(chatId));
     if (known) {
       return known;
     }
-    if (!this.bot) {
+    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
+    if (!bot) {
       return null;
     }
     try {
-      const chat = await this.bot.telegram.getChat(chatId);
-      this.knownChats.set(String(chat.id), chat);
+      const chat = await bot.telegram.getChat(chatId);
+      this.knownChats.set(
+        this.scopedTelegramKey(String(chat.id), accountId),
+        chat,
+      );
       return chat;
     } catch {
       return null;
@@ -1496,22 +1863,36 @@ export class TelegramService extends Service {
   ): Promise<MessageConnectorTarget[]> {
     const normalizedQuery = normalizeTelegramConnectorQuery(query);
     const targets: MessageConnectorTarget[] = [];
+    const explicitAccountId = this.resolveAccountIdFromContext(
+      context,
+      context.target,
+    );
+    const accountIds = explicitAccountId
+      ? [normalizeTelegramAccountId(explicitAccountId)]
+      : this.getAccountIds();
 
-    for (const chat of this.knownChats.values()) {
-      const score = scoreTelegramConnectorMatch(
-        normalizedQuery,
-        chat.id.toString(),
-        [
-          'title' in chat ? chat.title : undefined,
-          'username' in chat ? chat.username : undefined,
-          'first_name' in chat ? chat.first_name : undefined,
-          'last_name' in chat ? chat.last_name : undefined,
-        ],
-      );
-      if (score <= 0) {
-        continue;
+    for (const accountId of accountIds) {
+      for (const [key, chat] of this.knownChats.entries()) {
+        if (!this.knownChatKeyMatchesAccount(key, chat, accountId)) {
+          continue;
+        }
+        const score = scoreTelegramConnectorMatch(
+          normalizedQuery,
+          chat.id.toString(),
+          [
+            'title' in chat ? chat.title : undefined,
+            'username' in chat ? chat.username : undefined,
+            'first_name' in chat ? chat.first_name : undefined,
+            'last_name' in chat ? chat.last_name : undefined,
+          ],
+        );
+        if (score <= 0) {
+          continue;
+        }
+        targets.push(
+          this.buildConnectorChatTarget(chat, score, undefined, accountId),
+        );
       }
-      targets.push(this.buildConnectorChatTarget(chat, score));
     }
 
     if (
@@ -1522,9 +1903,12 @@ export class TelegramService extends Service {
       const lookup = TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery)
         ? normalizedQuery
         : query.trim();
-      const chat = await this.getTelegramChatForTarget(lookup);
+      const accountId = accountIds[0] ?? this.defaultAccountId;
+      const chat = await this.getTelegramChatForTarget(lookup, accountId);
       if (chat) {
-        targets.push(this.buildConnectorChatTarget(chat, 1));
+        targets.push(
+          this.buildConnectorChatTarget(chat, 1, undefined, accountId),
+        );
       }
     }
 
@@ -1545,9 +1929,24 @@ export class TelegramService extends Service {
   async listConnectorRooms(
     context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
-    const targets = Array.from(this.knownChats.values()).map((chat) =>
-      this.buildConnectorChatTarget(chat, 0.5),
+    const explicitAccountId = this.resolveAccountIdFromContext(
+      context,
+      context.target,
     );
+    const accountIds = explicitAccountId
+      ? [normalizeTelegramAccountId(explicitAccountId)]
+      : this.getAccountIds();
+    const targets: MessageConnectorTarget[] = [];
+    for (const accountId of accountIds) {
+      for (const [key, chat] of this.knownChats.entries()) {
+        if (!this.knownChatKeyMatchesAccount(key, chat, accountId)) {
+          continue;
+        }
+        targets.push(
+          this.buildConnectorChatTarget(chat, 0.5, undefined, accountId),
+        );
+      }
+    }
 
     const room =
       context.roomId && typeof context.runtime.getRoom === 'function'
@@ -1569,6 +1968,75 @@ export class TelegramService extends Service {
     return this.listConnectorRooms(context);
   }
 
+  async fetchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: TelegramConnectorReadParams = {},
+  ): Promise<Memory[]> {
+    const limit = normalizeConnectorLimit(params.limit);
+    const target = params.target ?? context.target;
+    const accountId = await this.resolveAccountIdForTarget(
+      context.runtime,
+      target,
+      { accountId: (context as AccountScopedConnectorContext).accountId },
+    );
+    if (target?.roomId) {
+      const memories = await context.runtime.getMemories({
+        tableName: 'messages',
+        roomId: target.roomId,
+        limit,
+        orderBy: 'createdAt',
+        orderDirection: 'desc',
+      });
+      return memories.filter((memory) => {
+        const metadata = memory.metadata as Record<string, unknown> | undefined;
+        return !metadata?.accountId || metadata.accountId === accountId;
+      });
+    }
+
+    const targets = (await this.listRecentConnectorTargets(context)).slice(
+      0,
+      10,
+    );
+    const roomIds = Array.from(
+      new Set(
+        targets
+          .map((candidate) => candidate.target.roomId)
+          .filter((roomId): roomId is UUID => Boolean(roomId)),
+      ),
+    );
+    const chunks = await Promise.all(
+      roomIds.map((roomId) =>
+        context.runtime.getMemories({
+          tableName: 'messages',
+          roomId,
+          limit,
+          orderBy: 'createdAt',
+          orderDirection: 'desc',
+        }),
+      ),
+    );
+    return chunks
+      .flat()
+      .filter((memory) => {
+        const metadata = memory.metadata as Record<string, unknown> | undefined;
+        return !metadata?.accountId || metadata.accountId === accountId;
+      })
+      .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+      .slice(0, limit);
+  }
+
+  async searchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: TelegramConnectorReadParams & { query: string },
+  ): Promise<Memory[]> {
+    const limit = normalizeConnectorLimit(params.limit);
+    const messages = await this.fetchConnectorMessages(context, {
+      target: params.target ?? context.target,
+      limit: Math.max(limit, 100),
+    });
+    return filterMemoriesByQuery(messages, params.query, limit);
+  }
+
   async getConnectorChatContext(
     target: TargetInfo,
     context: MessageConnectorQueryContext,
@@ -1577,21 +2045,32 @@ export class TelegramService extends Service {
       target.roomId && typeof context.runtime.getRoom === 'function'
         ? await context.runtime.getRoom(target.roomId)
         : null;
+    const accountId = await this.resolveAccountIdForTarget(
+      context.runtime,
+      target,
+      {
+        accountId: (context as AccountScopedConnectorContext).accountId,
+        roomId: target.roomId ?? context.roomId,
+      },
+    );
     const channelId = target.channelId ?? room?.channelId;
     if (!channelId) {
       return null;
     }
 
     const parts = parseTelegramTargetParts(channelId, target.threadId);
-    const chat = await this.getTelegramChatForTarget(parts.chatId);
+    const chat = await this.getTelegramChatForTarget(parts.chatId, accountId);
     const roomId =
       target.roomId ??
       room?.id ??
       (createUniqueUuid(
         this.runtime,
-        parts.threadId
-          ? `${parts.chatId}-${parts.threadId}`
-          : String(parts.chatId),
+        this.scopedTelegramKey(
+          parts.threadId
+            ? `${parts.chatId}-${parts.threadId}`
+            : String(parts.chatId),
+          accountId,
+        ),
       ) as UUID);
     const memories = await context.runtime.getMemories({
       tableName: 'messages',
@@ -1613,6 +2092,7 @@ export class TelegramService extends Service {
         timestamp: memory.createdAt,
         metadata: {
           memoryId: memory.id,
+          accountId,
           source: memory.content?.source,
         },
       }))
@@ -1621,6 +2101,7 @@ export class TelegramService extends Service {
     return {
       target: {
         source: 'telegram',
+        accountId,
         roomId,
         channelId,
         threadId: parts.threadId?.toString(),
@@ -1633,6 +2114,7 @@ export class TelegramService extends Service {
       summary: chat ? `Telegram ${chat.type}` : undefined,
       recentMessages,
       metadata: {
+        accountId,
         telegramChatId: String(parts.chatId),
         telegramThreadId: parts.threadId,
         telegramChatType: chat?.type,
@@ -1644,6 +2126,12 @@ export class TelegramService extends Service {
     entityId: UUID | string,
     context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorUserContext | null> {
+    const accountId = normalizeTelegramAccountId(
+      (context.target as AccountScopedTargetInfo | undefined)?.accountId ??
+        (context as AccountScopedConnectorContext).accountId ??
+        (context as AccountScopedConnectorContext).account?.accountId ??
+        this.defaultAccountId,
+    );
     const entity =
       typeof context.runtime.getEntityById === 'function'
         ? await context.runtime.getEntityById(String(entityId) as UUID)
@@ -1663,7 +2151,7 @@ export class TelegramService extends Service {
       return null;
     }
 
-    const chat = await this.getTelegramChatForTarget(telegramId);
+    const chat = await this.getTelegramChatForTarget(telegramId, accountId);
     const aliases = [
       entity?.names?.[0],
       chat && 'username' in chat ? chat.username : undefined,
@@ -1677,6 +2165,7 @@ export class TelegramService extends Service {
       aliases,
       handles: { telegram: String(telegramId) },
       metadata: {
+        accountId,
         telegramId: String(telegramId),
         telegramChatType: chat?.type,
         username: chat && 'username' in chat ? chat.username : undefined,
@@ -1689,12 +2178,60 @@ export class TelegramService extends Service {
     serviceInstance: TelegramService,
   ) {
     if (serviceInstance?.bot) {
-      const sendHandler =
-        serviceInstance.handleSendMessage.bind(serviceInstance);
-      if (typeof runtime.registerMessageConnector === 'function') {
-        runtime.registerMessageConnector({
+      const registerConnector = (accountId?: string) => {
+        const normalizedAccountId = accountId
+          ? normalizeTelegramAccountId(accountId)
+          : undefined;
+        const state = normalizedAccountId
+          ? serviceInstance.getAccountState(normalizedAccountId)
+          : serviceInstance.getDefaultAccountState();
+        const sendHandler = async (
+          handlerRuntime: IAgentRuntime,
+          target: TargetInfo,
+          content: Content,
+        ): Promise<Memory | undefined> => {
+          await serviceInstance.handleSendMessage(
+            handlerRuntime,
+            normalizedAccountId &&
+              !(target as AccountScopedTargetInfo).accountId
+              ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
+              : target,
+            content,
+          );
+          return undefined;
+        };
+        const withContextAccount = (
+          context: MessageConnectorQueryContext,
+        ): MessageConnectorQueryContext =>
+          normalizedAccountId &&
+          !(context as AccountScopedConnectorContext).accountId
+            ? ({
+                ...context,
+                accountId: normalizedAccountId,
+                account: (context as AccountScopedConnectorContext).account ?? {
+                  source: 'telegram',
+                  accountId: normalizedAccountId,
+                  label: state?.account.name ?? normalizedAccountId,
+                },
+              } as MessageConnectorQueryContext)
+            : context;
+
+        const registration = {
           source: 'telegram',
-          label: 'Telegram',
+          ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
+          ...(normalizedAccountId
+            ? {
+                account: {
+                  source: 'telegram',
+                  accountId: normalizedAccountId,
+                  label: state?.account.name ?? normalizedAccountId,
+                  authMethod: 'BOT_TOKEN',
+                },
+              }
+            : {}),
+          label: state?.account.name
+            ? `Telegram (${state.account.name})`
+            : 'Telegram',
           description:
             'Telegram connector for sending messages to chats, topics, and users.',
           capabilities: [...TELEGRAM_CONNECTOR_CAPABILITIES],
@@ -1702,20 +2239,129 @@ export class TelegramService extends Service {
           contexts: [...TELEGRAM_CONNECTOR_CONTEXTS],
           metadata: {
             service: TELEGRAM_SERVICE_NAME,
+            ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
           },
-          resolveTargets:
-            serviceInstance.resolveConnectorTargets.bind(serviceInstance),
-          listRecentTargets:
-            serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
-          listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
-          getChatContext:
-            serviceInstance.getConnectorChatContext.bind(serviceInstance),
-          getUserContext:
-            serviceInstance.getConnectorUserContext.bind(serviceInstance),
+          resolveTargets: (query, context) =>
+            serviceInstance.resolveConnectorTargets(
+              query,
+              withContextAccount(context),
+            ),
+          listRecentTargets: (context) =>
+            serviceInstance.listRecentConnectorTargets(
+              withContextAccount(context),
+            ),
+          listRooms: (context) =>
+            serviceInstance.listConnectorRooms(withContextAccount(context)),
+          fetchMessages: (context, params) =>
+            serviceInstance.fetchConnectorMessages(
+              withContextAccount(context),
+              {
+                ...params,
+                target:
+                  normalizedAccountId &&
+                  params.target &&
+                  !(params.target as AccountScopedTargetInfo).accountId
+                    ? ({
+                        ...params.target,
+                        accountId: normalizedAccountId,
+                      } as TargetInfo)
+                    : params.target,
+              },
+            ),
+          searchMessages: (context, params) =>
+            serviceInstance.searchConnectorMessages(
+              withContextAccount(context),
+              {
+                ...params,
+                target:
+                  normalizedAccountId &&
+                  params.target &&
+                  !(params.target as AccountScopedTargetInfo).accountId
+                    ? ({
+                        ...params.target,
+                        accountId: normalizedAccountId,
+                      } as TargetInfo)
+                    : params.target,
+              },
+            ),
+          getChatContext: (target, context) =>
+            serviceInstance.getConnectorChatContext(
+              normalizedAccountId &&
+                !(target as AccountScopedTargetInfo).accountId
+                ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
+                : target,
+              withContextAccount(context),
+            ),
+          getUserContext: (entityId, context) =>
+            serviceInstance.getConnectorUserContext(
+              entityId,
+              withContextAccount(context),
+            ),
+          getUser: async (handlerRuntime, params) => {
+            const entityId = String(
+              params.entityId ??
+                params.userId ??
+                params.username ??
+                params.handle ??
+                '',
+            ).trim();
+            if (!entityId) {
+              return null;
+            }
+            const entity =
+              typeof handlerRuntime.getEntityById === 'function'
+                ? await handlerRuntime
+                    .getEntityById(entityId as UUID)
+                    .catch(() => null)
+                : null;
+            if (entity) {
+              return entity;
+            }
+            const context = await serviceInstance.getConnectorUserContext(
+              entityId,
+              {
+                runtime: handlerRuntime,
+                accountId: normalizedAccountId,
+              } as MessageConnectorQueryContext,
+            );
+            if (!context) {
+              return null;
+            }
+            return {
+              id: createUniqueUuid(
+                handlerRuntime,
+                serviceInstance.scopedTelegramKey(
+                  `telegram:${context.handles?.telegram ?? entityId}`,
+                  normalizedAccountId,
+                ),
+              ) as UUID,
+              names: context.aliases?.length
+                ? context.aliases
+                : [context.label ?? entityId],
+              agentId: handlerRuntime.agentId,
+              metadata: {
+                ...context.metadata,
+                ...(normalizedAccountId
+                  ? { accountId: normalizedAccountId }
+                  : {}),
+              },
+            } satisfies Entity;
+          },
           sendHandler,
-        });
+        } as ExtendedMessageConnectorRegistration;
+        runtime.registerMessageConnector(registration);
+      };
+
+      if (typeof runtime.registerMessageConnector === 'function') {
+        registerConnector();
+        for (const accountId of serviceInstance.getAccountIds()) {
+          registerConnector(accountId);
+        }
       } else {
-        runtime.registerSendHandler('telegram', sendHandler);
+        runtime.registerSendHandler(
+          'telegram',
+          serviceInstance.handleSendMessage.bind(serviceInstance),
+        );
       }
       logger.info(
         { src: 'plugin:telegram', agentId: runtime.agentId },
@@ -1734,10 +2380,14 @@ export class TelegramService extends Service {
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
+    const accountId = await this.resolveAccountIdForTarget(runtime, target);
+    const accountState = this.getAccountState(accountId);
+    const messageManager = accountState?.messageManager ?? this.messageManager;
+    const bot = accountState?.bot ?? this.bot;
     // Check if bot and messageManager are available
-    if (!this.bot || !this.messageManager) {
+    if (!bot || !messageManager) {
       logger.error(
-        { src: 'plugin:telegram', agentId: runtime.agentId },
+        { src: 'plugin:telegram', agentId: runtime.agentId, accountId },
         'Bot not initialized, cannot send messages',
       );
       throw new Error(
@@ -1784,12 +2434,27 @@ export class TelegramService extends Service {
       const telegramMeta = entity.metadata?.telegram as
         | Record<string, unknown>
         | undefined;
+      const entityAccountId =
+        typeof entity.metadata?.accountId === 'string'
+          ? entity.metadata.accountId
+          : typeof telegramMeta?.accountId === 'string'
+            ? telegramMeta.accountId
+            : undefined;
+      if (
+        entityAccountId &&
+        normalizeTelegramAccountId(entityAccountId) !== accountId
+      ) {
+        throw new Error(
+          `Entity ${target.entityId} is linked to Telegram account ${entityAccountId}, not ${accountId}`,
+        );
+      }
       const telegramId = telegramMeta?.id;
       if (!telegramId) {
         logger.error(
           {
             src: 'plugin:telegram',
             agentId: runtime.agentId,
+            accountId,
             entityId: target.entityId,
           },
           'Entity has no telegram.id in metadata — cannot send DM without Telegram user ID',
@@ -1818,14 +2483,28 @@ export class TelegramService extends Service {
     try {
       // Use existing MessageManager method, pass chatId and content
       // Assuming sendMessage handles splitting, markdown, etc.
-      await this.messageManager.sendMessage(
+      await messageManager.sendMessage(
         chatId,
-        content,
+        {
+          ...content,
+          metadata: {
+            ...((content.metadata && typeof content.metadata === 'object'
+              ? content.metadata
+              : {}) as Record<string, unknown>),
+            accountId,
+          },
+        },
         undefined,
         threadId,
       );
       logger.info(
-        { src: 'plugin:telegram', agentId: runtime.agentId, chatId, threadId },
+        {
+          src: 'plugin:telegram',
+          agentId: runtime.agentId,
+          accountId,
+          chatId,
+          threadId,
+        },
         'Message sent',
       );
     } catch (error) {
@@ -1833,6 +2512,7 @@ export class TelegramService extends Service {
         {
           src: 'plugin:telegram',
           agentId: runtime.agentId,
+          accountId,
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },

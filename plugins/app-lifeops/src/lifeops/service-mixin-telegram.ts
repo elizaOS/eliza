@@ -18,6 +18,10 @@ import {
   type VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 import { createLifeOpsConnectorGrant } from "./repository.js";
+import {
+  searchTelegramMessagesWithRuntimeService,
+  sendTelegramMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail, requireNonEmptyString } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
@@ -116,6 +120,81 @@ function telegramAgentPluginDegradations(
       retryable: true,
     },
   ];
+}
+
+function memoryToTelegramMessageSearchResult(
+  memory: unknown,
+): TelegramMessageSearchResult {
+  const record = memory && typeof memory === "object" ? memory : {};
+  const content =
+    (record as { content?: { text?: unknown; name?: unknown } }).content ?? {};
+  const metadata =
+    ((record as { metadata?: unknown }).metadata &&
+    typeof (record as { metadata?: unknown }).metadata === "object"
+      ? ((record as { metadata?: unknown }).metadata as Record<string, unknown>)
+      : {}) ?? {};
+  const telegram =
+    metadata.telegram && typeof metadata.telegram === "object"
+      ? (metadata.telegram as Record<string, unknown>)
+      : {};
+  const createdAt = Number((record as { createdAt?: unknown }).createdAt);
+  const timestamp = Number.isFinite(createdAt)
+    ? new Date(createdAt).toISOString()
+    : null;
+  const id =
+    typeof metadata.messageId === "string"
+      ? metadata.messageId
+      : typeof telegram.messageId === "string"
+        ? telegram.messageId
+        : typeof (record as { id?: unknown }).id === "string"
+          ? (record as { id: string }).id
+          : null;
+  return {
+    id,
+    dialogId:
+      typeof telegram.chatId === "string"
+        ? telegram.chatId
+        : typeof metadata.chatId === "string"
+          ? metadata.chatId
+          : typeof metadata.channelId === "string"
+            ? metadata.channelId
+            : null,
+    threadId:
+      typeof telegram.threadId === "string"
+        ? telegram.threadId
+        : typeof metadata.threadId === "string"
+          ? metadata.threadId
+          : null,
+    dialogTitle:
+      typeof metadata.roomName === "string"
+        ? metadata.roomName
+        : typeof content.name === "string"
+          ? content.name
+          : null,
+    username:
+      typeof telegram.username === "string"
+        ? telegram.username
+        : typeof metadata.username === "string"
+          ? metadata.username
+          : null,
+    peerId:
+      typeof telegram.peerId === "string"
+        ? telegram.peerId
+        : typeof metadata.peerId === "string"
+          ? metadata.peerId
+          : null,
+    senderId:
+      typeof telegram.senderId === "string"
+        ? telegram.senderId
+        : typeof metadata.senderId === "string"
+          ? metadata.senderId
+          : null,
+    content: typeof content.text === "string" ? content.text : "",
+    timestamp,
+    outgoing:
+      (record as { entityId?: unknown; agentId?: unknown }).entityId ===
+      (record as { entityId?: unknown; agentId?: unknown }).agentId,
+  };
 }
 
 /** @internal */
@@ -446,12 +525,35 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         if (!status.grantedCapabilities.includes("telegram.send")) {
           fail(403, "Telegram plugin is missing send permission.");
         }
+        const delegated = await sendTelegramMessageWithRuntimeService({
+          runtime: this.runtime,
+          grant: status.grant,
+          target,
+          message,
+        });
+        if (delegated.status === "handled") {
+          return { ok: true, messageId: null };
+        }
+        if (delegated.error) {
+          this.logLifeOpsWarn(
+            "runtime_service_delegation_fallback",
+            delegated.reason,
+            {
+              provider: "telegram",
+              operation: "message.send",
+              error:
+                delegated.error instanceof Error
+                  ? delegated.error.message
+                  : String(delegated.error),
+            },
+          );
+        }
         if (typeof this.runtime.sendMessageToTarget !== "function") {
           fail(503, "Telegram send handler is not available.");
         }
         await this.runtime.sendMessageToTarget(
-          { source: "telegram", channelId: target },
-          { text: message, source: "lifeops" },
+          { source: "telegram", accountId: "default", channelId: target },
+          { text: message, source: "lifeops", metadata: { accountId: "default" } },
         );
         return { ok: true, messageId: null };
       }
@@ -463,10 +565,36 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(403, "Telegram connector is missing send permission.");
       }
 
+      const target = requireNonEmptyString(request.target, "target");
+      const message = requireNonEmptyString(request.message, "message");
+      const delegated = await sendTelegramMessageWithRuntimeService({
+        runtime: this.runtime,
+        grant: status.grant,
+        target,
+        message,
+      });
+      if (delegated.status === "handled") {
+        return { ok: true, messageId: null };
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "telegram",
+            operation: "message.send",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+
       const result = await sendTelegramAccountMessage({
         tokenRef: status.grant.tokenRef,
-        target: requireNonEmptyString(request.target, "target"),
-        message: requireNonEmptyString(request.message, "message"),
+        target,
+        message,
       });
 
       return {
@@ -569,11 +697,41 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const status = await this.getTelegramConnectorStatus(side);
-      if (!status.connected || !status.grant?.tokenRef) {
+      if (!status.connected) {
         fail(409, "Telegram connector is not connected.");
       }
       if (!status.grantedCapabilities.includes("telegram.read")) {
         fail(403, "Telegram connector is missing read permission.");
+      }
+      const delegated = await searchTelegramMessagesWithRuntimeService({
+        runtime: this.runtime,
+        grant: status.grant,
+        query: request.query,
+        channelId: request.scope,
+        limit: request.limit,
+      });
+      if (delegated.status === "handled") {
+        return delegated.value.map(memoryToTelegramMessageSearchResult);
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "telegram",
+            operation: "message.search",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+      if (side === "agent") {
+        fail(503, "Telegram plugin search service is not available.");
+      }
+      if (!status.grant?.tokenRef) {
+        fail(409, "Telegram connector is not connected.");
       }
       return searchTelegramMessages({
         tokenRef: status.grant.tokenRef,

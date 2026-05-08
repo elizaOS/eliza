@@ -19,16 +19,16 @@ message MessageExample {
   Content content = 2;
 }
 
-// Knowledge item - can be a path or directory reference
-message KnowledgeItem {
+// Document source item - can be a path or directory reference
+message DocumentSourceItem {
   oneof item {
     string path = 1;
-    KnowledgeDirectory directory = 2;
+    DocumentDirectory directory = 2;
   }
 }
 
-// Knowledge directory with optional shared flag
-message KnowledgeDirectory {
+// Document directory with optional shared flag
+message DocumentDirectory {
   string path = 1;
   optional bool shared = 2;
 }
@@ -67,8 +67,8 @@ message CharacterSettings {
   optional bool enable_extended_capabilities = 15;
   // Additional dynamic settings
   google.protobuf.Struct extra = 16;
-  // Enable native knowledge runtime feature
-  optional bool enable_knowledge = 17;
+  // Enable native documents runtime feature
+  optional bool enable_documents = 17;
   // Enable native relationships runtime feature
   optional bool enable_relationships = 18;
   // Enable native trajectories runtime feature
@@ -82,7 +82,7 @@ message StyleGuides {
   repeated string post = 3;
 }
 
-// Character configuration defining personality, knowledge, and capabilities
+// Character configuration defining personality, documents, and capabilities
 message Character {
   optional string id = 1;
   string name = 2;
@@ -97,7 +97,7 @@ message Character {
   repeated string post_examples = 8;
   repeated string topics = 9;
   repeated string adjectives = 10;
-  repeated KnowledgeItem knowledge = 11;
+  repeated DocumentSourceItem documents = 11;
   repeated string plugins = 12;
   optional CharacterSettings settings = 13;
   // Secrets as key-value pairs

@@ -57,6 +57,7 @@ import {
  * `this as unknown as DiscordServiceInternals`.
  */
 export interface DiscordServiceInternals {
+	accountId?: string;
 	client: NonNullable<DiscordService["client"]>;
 	runtime: DiscordService["runtime"];
 	character: DiscordService["character"];
@@ -66,6 +67,7 @@ export interface DiscordServiceInternals {
 	channelDebouncer: ChannelDebouncer | undefined;
 	discordSettings: { shouldIgnoreBotMessages: boolean };
 	allowedChannelIds: string[] | undefined;
+	listenChannelIds?: string[];
 	allowAllSlashCommands: Set<string>;
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
@@ -111,7 +113,9 @@ function parseEventListenerConfig(
 	const listenCidsRaw = service.runtime.getSetting(
 		"DISCORD_LISTEN_CHANNEL_IDS",
 	) as string | string[] | undefined;
-	const listenCids = Array.isArray(listenCidsRaw)
+	const listenCids = service.listenChannelIds
+		? service.listenChannelIds
+		: Array.isArray(listenCidsRaw)
 		? listenCidsRaw
 		: listenCidsRaw && typeof listenCidsRaw === "string" && listenCidsRaw.trim()
 			? listenCidsRaw
@@ -167,6 +171,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	messageDebouncer: MessageDebouncer;
 	channelDebouncer: ChannelDebouncer;
 } {
+	const accountId = service.accountId ?? "default";
 	const { listenCids, debounceMs, channelDebounceMs, responseCooldownMs } =
 		parseEventListenerConfig(service);
 	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
@@ -361,6 +366,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: newMessage,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.LISTEN_CHANNEL_MESSAGE,
@@ -381,6 +387,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: message,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE,

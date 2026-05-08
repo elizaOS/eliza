@@ -3,7 +3,7 @@
  *
  * Injects the user's Apple Contacts (as loaded by `IMessageService` at
  * startup) into the agent's state so the LLM can resolve a person's name
- * ("text Shaw") to an actual handle it can pass to unified `SEND_MESSAGE`.
+ * ("text Shaw") to an actual handle it can pass to `MESSAGE` operation=send.
  * Without this provider, the agent has no way to bridge from a
  * contact name to a phone number or email, since the sendMessage action
  * only accepts raw handles (E.164 phones, emails, or `chat_id:` refs).
@@ -68,7 +68,7 @@ function groupContactsByName(contacts: ReadonlyMap<string, { name: string }>): C
 export const contactsProvider = {
   name: "imessageContacts",
   description:
-    "Exposes the user's Apple Contacts (name → phone/email) so the agent can resolve a person's name to a handle for unified SEND_MESSAGE.",
+    "Exposes the user's Apple Contacts (name → phone/email) so the agent can resolve a person's name to a handle for MESSAGE operation=send.",
   descriptionCompressed: "Apple Contacts (name→phone/email) for iMessage handle resolution.",
 
   dynamic: true,
@@ -114,7 +114,7 @@ export const contactsProvider = {
         `The user's Apple Contacts are available for iMessage. ${groups.length} contact(s) loaded${truncated ? ` (showing first ${MAX_CONTACTS_IN_STATE})` : ""}.`,
         "When the user asks you to text, message, or iMessage a person by name,",
         "look up that person below and pass their phone number (preferred) or email",
-        'to SEND_MESSAGE with source "imessage". If the name is ambiguous or',
+        'to MESSAGE operation=send with source "imessage". If the name is ambiguous or',
         "missing, ask the user to clarify instead of guessing.",
         "",
         "Contacts:",

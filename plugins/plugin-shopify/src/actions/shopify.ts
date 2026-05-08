@@ -132,9 +132,10 @@ export const shopifyAction: Action = {
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
+    shopifyAccountIdParameter,
   ],
   validate: async (runtime, message) => {
-    if (!runtime.getSetting("SHOPIFY_ACCESS_TOKEN")) return false;
+    if (!hasShopifyConfig(runtime)) return false;
     return selectRoute(message) !== null;
   },
   handler: async (
@@ -152,7 +153,7 @@ export const shopifyAction: Action = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: { actionName: "SHOPIFY", availableOps: ops },
       };
     }

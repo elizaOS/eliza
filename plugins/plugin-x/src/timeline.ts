@@ -317,6 +317,11 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         },
         agentId: this.runtime.agentId,
         roomId,
+        metadata: buildTwitterMessageMetadata(
+          tweet,
+          createUniqueUuid(this.runtime, tweet.userId),
+          this.client.accountId,
+        ),
         createdAt: getEpochMs(tweet.timestamp),
       };
 
@@ -368,6 +373,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     try {
       // Use the utility function for consistency
       await ensureTwitterContext(this.runtime, {
+        accountId: this.client.accountId,
         userId: tweet.userId,
         username: tweet.username,
         name: tweet.name,
@@ -426,7 +432,10 @@ ${tweet.text}`;
         prompt: quotePrompt,
       });
       const responseObject =
-        (parseJSONObjectFromText(quoteResponse) as Record<string, unknown> | null) ?? {};
+        (parseJSONObjectFromText(quoteResponse) as Record<
+          string,
+          unknown
+        > | null) ?? {};
 
       if (responseObject.post) {
         if (this.isDryRun) {
@@ -473,8 +482,22 @@ ${tweet.text}`;
           roomId: message.roomId,
           content: {
             ...responseObject,
+            source: "twitter",
             inReplyTo: message.id,
           },
+          metadata: {
+            type: "message",
+            source: "twitter",
+            accountId: this.client.accountId,
+            provider: "twitter",
+            fromBot: true,
+            messageIdFull: tweetId,
+            twitter: {
+              accountId: this.client.accountId,
+              tweetId,
+              inReplyTo: tweet.id,
+            },
+          } as unknown as Memory["metadata"],
           createdAt: Date.now(),
         };
 
@@ -507,7 +530,10 @@ ${tweet.text}`;
         prompt: replyPrompt,
       });
       const responseObject =
-        (parseJSONObjectFromText(replyResponse) as Record<string, unknown> | null) ?? {};
+        (parseJSONObjectFromText(replyResponse) as Record<
+          string,
+          unknown
+        > | null) ?? {};
 
       if (responseObject.post) {
         if (this.isDryRun) {
@@ -536,8 +562,22 @@ ${tweet.text}`;
             roomId: message.roomId,
             content: {
               ...responseObject,
+              source: "twitter",
               inReplyTo: message.id,
             },
+            metadata: {
+              type: "message",
+              source: "twitter",
+              accountId: this.client.accountId,
+              provider: "twitter",
+              fromBot: true,
+              messageIdFull: result.id,
+              twitter: {
+                accountId: this.client.accountId,
+                tweetId: result.id,
+                inReplyTo: tweet.id,
+              },
+            } as unknown as Memory["metadata"],
             createdAt: Date.now(),
           };
 

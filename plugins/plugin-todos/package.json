@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-todos",
-  "version": "0.1.0",
-  "description": "TODO_WRITE action and a current-todos provider. Per-conversation in-memory todo list with markdown rendering, mirroring Claude Code's TodoWrite tool.",
+  "version": "0.2.0",
+  "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -33,7 +33,11 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "drizzle-orm": "^0.45.1"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

@@ -99,10 +99,10 @@ L0_SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="L0-007", name="Image generation",
-        description="Agent should GENERATE_IMAGE, not DESIGN_LOGO or EDIT_IMAGE",
+        description="Agent should GENERATE_MEDIA, not DESIGN_LOGO or EDIT_IMAGE",
         level=L0, tags=("core", "image"), distractor_action_count=30,
         turns=(Turn(role="user", text="Can you generate a picture of a cat wearing a top hat?",
-            expected_outcomes=(_action("GENERATE_IMAGE"), _no_action("DESIGN_LOGO"), _no_action("EDIT_IMAGE"))),),
+            expected_outcomes=(_action("GENERATE_MEDIA"), _no_action("DESIGN_LOGO"), _no_action("EDIT_IMAGE"))),),
     ),
     Scenario(
         id="L0-008", name="Follow room",
@@ -529,7 +529,7 @@ L2_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="Send an urgent message to the team about the server outage right now",
                 expected_outcomes=(_action("SEND_MESSAGE"),)),
             Turn(role="user", text="Also generate an image for the monthly report when you get a chance",
-                expected_outcomes=(_action("GENERATE_IMAGE"),)),
+                expected_outcomes=(_action("GENERATE_MEDIA"),)),
             Turn(role="user", text="Which task did you handle first?",
                 expected_outcomes=(_action("REPLY"), _contains("server", weight=0.5))),
         ),

@@ -92,12 +92,12 @@
     "pinTo": [],
     "style": "card",
     "icon": "Binary",
-    "group": "knowledge",
+    "group": "documents",
     "groupOrder": 6,
     "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],
   "kind": "plugin",
-  "subtype": "knowledge"
+  "subtype": "documents"
 }

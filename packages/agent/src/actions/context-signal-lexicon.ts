@@ -28,7 +28,6 @@ export type ContextSignalKey =
   | "read_messages"
   | "search_conversations"
   | "search_entity"
-  | "send_admin_message"
   | "send_message"
   | "stream_control"
   | "temporal_followup"
@@ -195,12 +194,6 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     keywordKeys: {
       strong: "contextSignal.send_message.strong",
       weak: "contextSignal.send_message.weak",
-    },
-  },
-  send_admin_message: {
-    keywordKeys: {
-      strong: "contextSignal.send_admin_message.strong",
-      weak: "contextSignal.send_admin_message.weak",
     },
   },
   search_conversations: {
