@@ -50,8 +50,8 @@ export {
 	ResearchService,
 } from "./services/researchService.ts";
 export type {
-	CreateResearchInput,
 	ContinueResearchInput,
+	CreateResearchInput,
 	EditResearchInput,
 	ListResearchOptions,
 	Research,

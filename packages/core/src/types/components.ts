@@ -144,10 +144,22 @@ export interface MessageHandlerPlan {
 	[key: string]: JsonValue | undefined;
 }
 
+export interface MessageHandlerExtractedRelationship {
+	subject: string;
+	predicate: string;
+	object: string;
+}
+
+export interface MessageHandlerExtract {
+	facts?: string[];
+	relationships?: MessageHandlerExtractedRelationship[];
+}
+
 export interface MessageHandlerResult {
 	processMessage: MessageHandlerAction;
 	plan: MessageHandlerPlan;
 	thought: string;
+	extract?: MessageHandlerExtract;
 }
 
 export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE";
@@ -227,9 +239,9 @@ export const ActionMode = {
 	CONTEXT_BEFORE: "CONTEXT_BEFORE",
 	CONTEXT_DURING: "CONTEXT_DURING",
 	CONTEXT_AFTER: "CONTEXT_AFTER",
-	MESSAGE_BEFORE: "MESSAGE_BEFORE",
-	MESSAGE_DURING: "MESSAGE_DURING",
-	MESSAGE_AFTER: "MESSAGE_AFTER",
+	RESPONSE_HANDLER_BEFORE: "RESPONSE_HANDLER_BEFORE",
+	RESPONSE_HANDLER_DURING: "RESPONSE_HANDLER_DURING",
+	RESPONSE_HANDLER_AFTER: "RESPONSE_HANDLER_AFTER",
 } as const;
 export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 
@@ -237,15 +249,15 @@ export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 export const NON_BLOCKING_MODES = new Set<ActionMode>([
 	ActionMode.ALWAYS_DURING,
 	ActionMode.CONTEXT_DURING,
-	ActionMode.MESSAGE_DURING,
+	ActionMode.RESPONSE_HANDLER_DURING,
 ]);
 
 /** All non-PLANNER hook modes, in canonical pipeline order. */
 export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_BEFORE,
-	ActionMode.MESSAGE_BEFORE,
-	ActionMode.MESSAGE_DURING,
-	ActionMode.MESSAGE_AFTER,
+	ActionMode.RESPONSE_HANDLER_BEFORE,
+	ActionMode.RESPONSE_HANDLER_DURING,
+	ActionMode.RESPONSE_HANDLER_AFTER,
 	ActionMode.CONTEXT_BEFORE,
 	ActionMode.CONTEXT_DURING,
 	ActionMode.CONTEXT_AFTER,
@@ -349,6 +361,21 @@ export interface Action {
 
 	/** Optional role gate checked by planners before exposing this action. */
 	roleGate?: RoleGate;
+
+	/**
+	 * Optional connector account policy checked by planner tool exposure and
+	 * again immediately before handler execution. This must not be implemented
+	 * only inside validate(); validate is advisory and can be bypassed by native
+	 * tool calls.
+	 */
+	connectorAccountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
+
+	/** Compatibility alias for early adopters of connectorAccountPolicy. */
+	accountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
 
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;

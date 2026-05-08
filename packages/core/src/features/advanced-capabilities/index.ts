@@ -5,8 +5,8 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, todos, personality)
- * - Advanced actions (contacts management, room management, image generation, todos, personality, etc.)
+ * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
+ * - Advanced actions (contacts management, room management, todos, personality, etc.)
  * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
  * - Additional services (experience, todos, personality)
  */
@@ -17,19 +17,14 @@ import type { ServiceClass } from "../../types/plugin.ts";
 import {
 	experienceEvaluator,
 	experienceProvider,
-	recordExperienceAction,
 	searchExperiencesAction,
 } from "./experience/index.ts";
 
 // Personality imports
 import {
 	characterEvolutionEvaluator,
-	manageMessageExamplesAction,
-	managePostExamplesAction,
-	manageStyleRulesAction,
 	modifyCharacterAction,
 	persistCharacterAction,
-	setVoiceConfigAction,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
@@ -65,7 +60,6 @@ export const advancedProviders = [
 	providers.contactsProvider,
 	providers.factsProvider,
 	providers.followUpsProvider,
-	providers.knowledgeProvider,
 	providers.relationshipsProvider,
 	providers.roleProvider,
 	providers.settingsProvider,
@@ -80,14 +74,31 @@ export const advancedProviders = [
 export const advancedActions = [
 	withCanonicalActionDocs(actions.createTaskAction),
 	withCanonicalActionDocs(actions.followRoomAction),
-	withCanonicalActionDocs(actions.generateImageAction),
 	withCanonicalActionDocs(actions.muteRoomAction),
 	withCanonicalActionDocs(actions.unfollowRoomAction),
 	withCanonicalActionDocs(actions.unmuteRoomAction),
 	withCanonicalActionDocs(actions.updateRoleAction),
 	withCanonicalActionDocs(actions.updateSettingsAction),
-	withCanonicalActionDocs(recordExperienceAction),
 	withCanonicalActionDocs(searchExperiencesAction),
+	actions.messageAction,
+	actions.postAction,
+	// MESSAGE sub-actions — explicit per-op canonical actions (v4 plan).
+	actions.sendMessageAction,
+	actions.readMessagesAction,
+	actions.searchMessagesAction,
+	actions.listChannelsAction,
+	actions.listServersAction,
+	actions.reactToMessageAction,
+	actions.editMessageAction,
+	actions.deleteMessageAction,
+	actions.pinMessageAction,
+	actions.joinChannelAction,
+	actions.leaveChannelAction,
+	actions.getUserAction,
+	// POST sub-actions.
+	actions.sendPostAction,
+	actions.readFeedAction,
+	actions.searchPostsAction,
 	// Todo actions
 	todoAction,
 	createTodoAction,
@@ -97,10 +108,6 @@ export const advancedActions = [
 	deleteTodoAction,
 	// Personality actions
 	modifyCharacterAction,
-	setVoiceConfigAction,
-	manageStyleRulesAction,
-	manageMessageExamplesAction,
-	managePostExamplesAction,
 	persistCharacterAction,
 ];
 
@@ -109,8 +116,6 @@ export const advancedActions = [
  */
 export const advancedEvaluators = [
 	evaluators.factExtractorEvaluator,
-	evaluators.reflectionEvaluator,
-	evaluators.relationshipExtractionEvaluator,
 	evaluators.skillExtractionEvaluator,
 	evaluators.skillRefinementEvaluator,
 	experienceEvaluator,

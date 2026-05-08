@@ -99,14 +99,16 @@ export function buildCharacterContext(runtime: IAgentRuntime): string {
 	const topics = toMultilineText(runtime.character.topics);
 	const bio = toMultilineText(runtime.character.bio);
 	const style = toMultilineText(runtime.character.style);
-	const knowledge = toMultilineText(runtime.character.knowledge);
+	const documents = toMultilineText(
+		runtime.character.documents ?? runtime.character.knowledge,
+	);
 
 	return [
 		`Agent Name: ${runtime.character.name ?? "Unknown"}`,
 		bio ? `Bio:\n${bio}` : "",
 		style ? `Style:\n${style}` : "",
 		topics ? `Topics:\n${topics}` : "",
-		knowledge ? `Knowledge:\n${knowledge}` : "",
+		documents ? `Documents:\n${documents}` : "",
 	]
 		.filter(Boolean)
 		.join("\n\n");

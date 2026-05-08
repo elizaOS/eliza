@@ -1,9 +1,20 @@
 import type {
 	Agent,
+	AppendConnectorAccountAuditEventParams,
 	Component,
+	ConnectorAccountAuditEventRecord,
+	ConnectorAccountCredentialRefRecord,
+	ConnectorAccountRecord,
+	ConsumeOAuthFlowStateParams,
+	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountParams,
 	Entity,
+	GetConnectorAccountCredentialRefParams,
+	GetConnectorAccountParams,
 	IDatabaseAdapter,
 	JsonValue,
+	ListConnectorAccountCredentialRefsParams,
+	ListConnectorAccountsParams,
 	Log,
 	LogBody,
 	Memory,
@@ -18,7 +29,10 @@ import type {
 	PatchOp,
 	Relationship,
 	Room,
+	OAuthFlowRecord,
+	SetConnectorAccountCredentialRefParams,
 	Task,
+	UpsertConnectorAccountParams,
 	UUID,
 	World,
 } from "./types";
@@ -31,9 +45,9 @@ import type {
  *   authors get documentation in their IDE without reading the interface.
  * - Serves as the compile-time contract: if you extend this class and miss
  *   a method, TypeScript tells you immediately.
- * - Does NOT contain any implementation logic. All implementations live in
- *   concrete adapters (plugin-sql's Drizzle adapters, InMemoryDatabaseAdapter,
- *   etc.). This is intentional -- core must not depend on any ORM.
+ * - Contains no persistence logic. Concrete adapters (plugin-sql's Drizzle
+ *   adapters, InMemoryDatabaseAdapter, etc.) own storage behavior; unsupported
+ *   optional domains throw a clear adapter-level error.
  *
  * All CRUD methods are batch-first (arrays in, arrays out). See
  * IDatabaseAdapter in types/database.ts for the full design rationale.
@@ -556,4 +570,71 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entries: PairingAllowlistEntry[],
 	): Promise<void>;
 	abstract deletePairingAllowlistEntries(ids: UUID[]): Promise<void>;
+
+	protected unsupportedConnectorAccountStorage(): never {
+		throw new Error(
+			"Database adapter does not support connector account storage",
+		);
+	}
+
+	// ── Connector account storage ────────────────────────────────────────
+	listConnectorAccounts(
+		_params?: ListConnectorAccountsParams,
+	): Promise<ConnectorAccountRecord[]> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	getConnectorAccount(
+		_params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	upsertConnectorAccount(
+		_params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	deleteConnectorAccount(
+		_params: DeleteConnectorAccountParams,
+	): Promise<boolean> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	setConnectorAccountCredentialRef(
+		_params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	getConnectorAccountCredentialRef(
+		_params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	listConnectorAccountCredentialRefs(
+		_params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	appendConnectorAccountAuditEvent(
+		_params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	createOAuthFlowState(
+		_params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	consumeOAuthFlowState(
+		_params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		this.unsupportedConnectorAccountStorage();
+	}
 }

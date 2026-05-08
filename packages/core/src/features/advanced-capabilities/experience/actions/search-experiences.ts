@@ -53,7 +53,7 @@ function readNumberParam(value: unknown): number | undefined {
 
 export const searchExperiencesAction: Action = {
 	name: SEARCH_EXPERIENCES,
-	contexts: ["memory", "knowledge", "agent_internal"],
+	contexts: ["memory", "documents", "agent_internal"],
 	roleGate: { minRole: "USER" },
 	similes: [
 		"FIND_EXPERIENCES",
@@ -123,7 +123,7 @@ export const searchExperiencesAction: Action = {
 			) &&
 				/\b(search|find|explore|what|show|recall|know)\b/.test(text)) ||
 			hasActionContextOrKeyword(message, _state, {
-				contexts: ["memory", "knowledge", "agent_internal"],
+				contexts: ["memory", "documents", "agent_internal"],
 				keywords: [
 					"search experiences",
 					"find experiences",

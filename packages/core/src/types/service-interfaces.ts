@@ -219,6 +219,58 @@ export abstract class IVideoService extends Service {
 }
 
 // ============================================================================
+// Media Generation Interfaces
+// ============================================================================
+
+export type MediaGenerationMediaType = "image" | "video" | "audio";
+export type MediaGenerationAudioKind = "music" | "sfx" | "tts";
+
+export interface MediaGenerationRequest {
+	mediaType: MediaGenerationMediaType;
+	prompt: string;
+	audioKind?: MediaGenerationAudioKind;
+	size?: string;
+	quality?: "standard" | "hd";
+	style?: "natural" | "vivid";
+	negativePrompt?: string;
+	seed?: number;
+	duration?: number;
+	aspectRatio?: string;
+	imageUrl?: string;
+	instrumental?: boolean;
+	genre?: string;
+	voice?: string;
+}
+
+export interface MediaGenerationResponse {
+	mediaType: MediaGenerationMediaType;
+	audioKind?: MediaGenerationAudioKind;
+	url?: string;
+	imageUrl?: string;
+	imageBase64?: string;
+	videoUrl?: string;
+	audioUrl?: string;
+	thumbnailUrl?: string;
+	revisedPrompt?: string;
+	title?: string;
+	duration?: number;
+	mimeType?: string;
+	provider?: string;
+	raw?: Record<string, JsonValue>;
+}
+
+export abstract class IMediaGenerationService extends Service {
+	static override readonly serviceType = ServiceType.MEDIA_GENERATION;
+
+	public readonly capabilityDescription =
+		"Generates image, video, and audio media from prompts." as string;
+
+	abstract generateMedia(
+		request: MediaGenerationRequest,
+	): Promise<MediaGenerationResponse>;
+}
+
+// ============================================================================
 // Browser Interfaces
 // ============================================================================
 

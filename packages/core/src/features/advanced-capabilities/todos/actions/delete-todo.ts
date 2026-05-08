@@ -25,7 +25,8 @@ function extractId(message: Memory, options?: HandlerOptions): string | null {
 export const deleteTodoAction: Action = {
 	name: "DELETE_TODO",
 	contexts: ["todos", "agent_internal"],
-	description: "Delete (soft-delete) a todo item.",
+	roleGate: { minRole: "USER" },
+	description: "Soft-delete one existing todo item by id.",
 	similes: ["REMOVE_TODO", "DISCARD_TODO"],
 
 	validate: async (

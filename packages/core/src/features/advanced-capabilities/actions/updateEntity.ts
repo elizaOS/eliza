@@ -101,7 +101,7 @@ function readComponentInput(
  */
 export const updateEntityAction: Action = {
 	name: spec.name,
-	contexts: ["contacts", "memory", "knowledge"],
+	contexts: ["contacts", "memory", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
@@ -116,7 +116,7 @@ export const updateEntityAction: Action = {
 		if (!readComponentInput(message, options)) return false;
 		if (
 			!hasActionContextOrKeyword(message, state, {
-				contexts: ["contacts", "memory", "knowledge"],
+				contexts: ["contacts", "memory", "documents"],
 				keywords: [
 					"update entity",
 					"entity data",

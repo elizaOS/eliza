@@ -1,10 +1,26 @@
 import { withCanonicalActionDocs } from "../action-docs";
 import {
 	addContactAction,
+	deleteMessageAction,
+	editMessageAction,
+	getUserAction,
+	joinChannelAction,
+	leaveChannelAction,
+	listChannelsAction,
+	listServersAction,
+	messageAction,
+	pinMessageAction,
+	postAction,
+	reactToMessageAction,
+	readFeedAction,
+	readMessagesAction,
 	removeContactAction,
 	scheduleFollowUpAction,
 	searchContactsAction,
+	searchMessagesAction,
+	searchPostsAction,
 	sendMessageAction,
+	sendPostAction,
 	updateContactAction,
 	updateEntityAction,
 } from "../features/advanced-capabilities/actions/index";
@@ -20,14 +36,14 @@ import {
 	relationshipsProvider,
 } from "../features/advanced-capabilities/providers/index";
 import {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
 	documentsPlugin,
-	type FetchedKnowledgeUrl,
-	type FetchedKnowledgeUrlKind,
-	type FetchKnowledgeFromUrlOptions,
-	fetchKnowledgeFromUrl,
+	DocumentService,
+	type FetchedDocumentUrl,
+	type FetchedDocumentUrlKind,
+	type FetchDocumentFromUrlOptions,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
 } from "../features/documents/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
@@ -48,7 +64,27 @@ export const relationshipsPlugin: Plugin = {
 		withCanonicalActionDocs(removeContactAction),
 		withCanonicalActionDocs(scheduleFollowUpAction),
 		withCanonicalActionDocs(searchContactsAction),
-		withCanonicalActionDocs(sendMessageAction),
+		messageAction,
+		postAction,
+		// MESSAGE sub-actions — explicit per-op canonical actions (v4 plan).
+		// Registered alongside the MESSAGE umbrella so the planner can pick
+		// either the high-level intent or a precise op directly.
+		sendMessageAction,
+		readMessagesAction,
+		searchMessagesAction,
+		listChannelsAction,
+		listServersAction,
+		reactToMessageAction,
+		editMessageAction,
+		deleteMessageAction,
+		pinMessageAction,
+		joinChannelAction,
+		leaveChannelAction,
+		getUserAction,
+		// POST sub-actions.
+		sendPostAction,
+		readFeedAction,
+		searchPostsAction,
 		withCanonicalActionDocs(updateContactAction),
 		withCanonicalActionDocs(updateEntityAction),
 		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
@@ -123,16 +159,16 @@ export {
 	documentsPluginHeadless,
 } from "../features/documents/index";
 export type {
-	FetchedKnowledgeUrl,
-	FetchedKnowledgeUrlKind,
-	FetchKnowledgeFromUrlOptions,
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
+	FetchDocumentFromUrlOptions,
 };
 export {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
+	DocumentService,
 	FollowUpService,
-	fetchKnowledgeFromUrl,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
 	RelationshipsService,
 	trajectoriesPlugin,
 };

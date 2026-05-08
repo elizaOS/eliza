@@ -58,7 +58,7 @@ export const providersProvider: Provider = {
 			: contextFilteredProviders;
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",
-			"uploaded files, documents, or knowledge-base content -> AVAILABLE_DOCUMENTS, KNOWLEDGE",
+			"uploaded files or stored documents -> DOCUMENTS",
 			"specific people or agents -> ENTITIES",
 			"connections between people -> RELATIONSHIPS",
 			"current platform chat or user identity -> PLATFORM_CHAT_CONTEXT, PLATFORM_USER_CONTEXT",

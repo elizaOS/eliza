@@ -55,7 +55,6 @@ export const CONTEXT_ALIASES: Readonly<
 	portfolio: ["finance", "wallet", "crypto"],
 	web3: ["crypto", "wallet", "finance"],
 	defi: ["crypto", "wallet", "finance"],
-	knowledge: ["documents"],
 });
 
 /**

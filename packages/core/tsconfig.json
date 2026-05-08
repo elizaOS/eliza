@@ -33,7 +33,11 @@
 			"@elizaos/shared/*": ["../shared/src/*"]
 		}
 	},
-	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
+	"include": [
+		"src/**/*.ts",
+		"../@schemas/**/*.ts",
+		"../agent/src/external-modules.d.ts"
+	],
 	"exclude": [
 		"src/**/*.test.ts",
 		"src/**/*.spec.ts",

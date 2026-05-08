@@ -65,7 +65,7 @@ export const contentSchema = z
 		providers: z
 			.array(z.string())
 			.optional()
-			.describe("Data providers to use (e.g., KNOWLEDGE)"),
+			.describe("Data providers to use (e.g., DOCUMENTS)"),
 		source: z.string().optional().describe("Source of the content"),
 		target: z.string().optional().describe("Target of the content"),
 		url: z.string().optional().describe("Related URL"),
@@ -96,34 +96,34 @@ export const messageExampleSchema = z
 	})
 	.describe("A single message in a conversation example");
 
-// DirectoryItem schema
-export const knowledgeDirectorySchema = z
+// Document source schema
+export const documentDirectorySchema = z
 	.object({
-		path: z.string().describe("Path to a knowledge directory"),
+		path: z.string().describe("Path to a document directory"),
 		shared: z
 			.boolean()
 			.optional()
-			.describe("Whether this knowledge is shared across characters"),
+			.describe("Whether these documents are shared across characters"),
 	})
-	.describe("Knowledge directory with optional shared flag");
+	.describe("Document directory with optional shared flag");
 
-const knowledgePathItemSchema = z.object({
+const documentPathItemSchema = z.object({
 	item: z.object({
 		case: z.literal("path"),
 		value: z.string(),
 	}),
 });
 
-const knowledgeDirectoryItemSchema = z.object({
+const documentDirectoryItemSchema = z.object({
 	item: z.object({
 		case: z.literal("directory"),
-		value: knowledgeDirectorySchema,
+		value: documentDirectorySchema,
 	}),
 });
 
-export const knowledgeItemSchema = z
-	.union([knowledgePathItemSchema, knowledgeDirectoryItemSchema])
-	.describe("Knowledge source item (path or directory)");
+export const documentItemSchema = z
+	.union([documentPathItemSchema, documentDirectoryItemSchema])
+	.describe("Document source item (path or directory)");
 
 export const messageExampleGroupSchema = z
 	.object({
@@ -164,7 +164,6 @@ const settingsKnownKeys = new Set([
 	"basic-capabilitiesDefllmoff",
 	"basic-capabilitiesKeepResp",
 	"providersTotalTimeoutMs",
-	"maxWorkingMemoryEntries",
 	"alwaysRespondChannels",
 	"alwaysRespondSources",
 	"defaultTemperature",
@@ -182,7 +181,6 @@ export const settingsSchema = z
 		"basic-capabilitiesDefllmoff": z.boolean().optional(),
 		"basic-capabilitiesKeepResp": z.boolean().optional(),
 		providersTotalTimeoutMs: z.number().int().optional(),
-		maxWorkingMemoryEntries: z.number().int().optional(),
 		alwaysRespondChannels: z.string().optional(),
 		alwaysRespondSources: z.string().optional(),
 		defaultTemperature: z.number().optional(),
@@ -279,19 +277,20 @@ export const characterSchema = z
 		topics: z
 			.array(z.string())
 			.default([])
-			.describe("Topics the character is knowledgeable about and engages with"),
+			.describe("Topics the character understands and engages with"),
 		adjectives: z
 			.array(z.string())
 			.default([])
 			.describe(
 				"Adjectives that describe the character's personality and traits",
 			),
-		knowledge: z
-			.array(knowledgeItemSchema)
+		documents: z
+			.array(documentItemSchema)
 			.default([])
 			.describe(
-				"Knowledge sources (files, directories) the character can reference",
+				"Document sources (files, directories) the character can reference",
 			),
+		knowledge: z.array(documentItemSchema).optional(),
 		plugins: z
 			.array(z.string())
 			.default([])
@@ -315,6 +314,16 @@ export const characterSchema = z
 			),
 	})
 	.strict()
+	.transform((value) => {
+		const { knowledge, ...character } = value;
+		return {
+			...character,
+			documents:
+				character.documents.length > 0
+					? character.documents
+					: (knowledge ?? []),
+		};
+	})
 	.describe(
 		"Complete character definition including personality, behavior, and capabilities",
 	);

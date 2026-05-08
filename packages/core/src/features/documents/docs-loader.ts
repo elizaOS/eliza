@@ -2,32 +2,37 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "../../logger";
 import type { UUID } from "../../types";
-import type { KnowledgeService } from "./service.ts";
-import type { AddDocumentOptions } from "./types.ts";
-import { isTextBackedKnowledgeContent } from "./utils.ts";
+import type { DocumentService } from "./service.ts";
+import type {
+	AddDocumentOptions,
+	DocumentAddedByRole,
+	DocumentAddedFrom,
+	DocumentVisibilityScope,
+} from "./types.ts";
+import { isTextBackedDocumentContent } from "./utils.ts";
 
-export function getKnowledgePath(runtimePath?: string): string {
-	const knowledgePath =
+export function getDocumentsPath(runtimePath?: string): string {
+	const documentsPath =
 		runtimePath ||
-		process.env.KNOWLEDGE_PATH ||
+		process.env.DOCUMENTS_PATH ||
 		path.join(process.cwd(), "docs");
-	const resolvedPath = path.resolve(knowledgePath);
+	const resolvedPath = path.resolve(documentsPath);
 
 	if (!fs.existsSync(resolvedPath)) {
-		logger.warn(`Knowledge path does not exist: ${resolvedPath}`);
+		logger.warn(`Documents path does not exist: ${resolvedPath}`);
 		if (runtimePath) {
 			logger.warn(
-				"Please create the directory or update KNOWLEDGE_PATH in agent settings",
+				"Please create the directory or update DOCUMENTS_PATH in agent settings",
 			);
-		} else if (process.env.KNOWLEDGE_PATH) {
+		} else if (process.env.DOCUMENTS_PATH) {
 			logger.warn(
-				"Please create the directory or update KNOWLEDGE_PATH environment variable",
+				"Please create the directory or update DOCUMENTS_PATH environment variable",
 			);
 		} else {
-			logger.info("To use the knowledge plugin, either:");
+			logger.info("To use the documents plugin, either:");
 			logger.info('1. Create a "docs" folder in your project root');
 			logger.info(
-				"2. Set KNOWLEDGE_PATH in agent settings or environment variable",
+				"2. Set DOCUMENTS_PATH in agent settings or environment variable",
 			);
 		}
 	}
@@ -35,21 +40,26 @@ export function getKnowledgePath(runtimePath?: string): string {
 	return resolvedPath;
 }
 
-export async function loadDocsFromPath(
-	service: KnowledgeService,
+export async function loadDocumentsFromPath(
+	service: DocumentService,
 	agentId: UUID,
 	worldId?: UUID,
-	knowledgePath?: string,
+	documentsPath?: string,
 	options?: {
 		roomId?: UUID;
 		entityId?: UUID;
+		scope?: DocumentVisibilityScope;
+		scopedToEntityId?: UUID;
+		addedBy?: UUID;
+		addedByRole?: DocumentAddedByRole;
+		addedFrom?: DocumentAddedFrom;
 		metadata?: Record<string, unknown>;
 	},
 ): Promise<{ total: number; successful: number; failed: number }> {
-	const docsPath = getKnowledgePath(knowledgePath);
+	const docsPath = getDocumentsPath(documentsPath);
 
 	if (!fs.existsSync(docsPath)) {
-		logger.warn(`Knowledge path does not exist: ${docsPath}`);
+		logger.warn(`Documents path does not exist: ${docsPath}`);
 		return { total: 0, successful: 0, failed: 0 };
 	}
 
@@ -58,7 +68,7 @@ export async function loadDocsFromPath(
 	const files = getAllFiles(docsPath);
 
 	if (files.length === 0) {
-		logger.info("No files found in knowledge path");
+		logger.info("No files found in documents path");
 		return { total: 0, successful: 0, failed: 0 };
 	}
 
@@ -75,12 +85,17 @@ export async function loadDocsFromPath(
 				continue;
 			}
 			logger.debug(`Processing document: ${fileName}`);
-			const result = await addKnowledgeFromFilePath({
+			const result = await addDocumentFromFilePath({
 				service,
 				agentId,
 				worldId,
 				roomId: options?.roomId,
 				entityId: options?.entityId,
+				scope: options?.scope,
+				scopedToEntityId: options?.scopedToEntityId,
+				addedBy: options?.addedBy,
+				addedByRole: options?.addedByRole,
+				addedFrom: options?.addedFrom,
 				filePath,
 				metadata: options?.metadata,
 			});
@@ -106,21 +121,31 @@ export async function loadDocsFromPath(
 	};
 }
 
-export async function addKnowledgeFromFilePath({
+export async function addDocumentFromFilePath({
 	service,
 	agentId,
 	worldId,
 	roomId,
 	entityId,
 	filePath,
+	scope,
+	scopedToEntityId,
+	addedBy,
+	addedByRole,
+	addedFrom,
 	metadata,
 }: {
-	service: KnowledgeService;
+	service: DocumentService;
 	agentId: UUID;
 	worldId?: UUID;
 	roomId?: UUID;
 	entityId?: UUID;
 	filePath: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	addedByRole?: DocumentAddedByRole;
+	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
 }): Promise<{
 	clientDocumentId: string;
@@ -129,19 +154,19 @@ export async function addKnowledgeFromFilePath({
 }> {
 	const fileName = path.basename(filePath);
 	const fileExt = path.extname(filePath).toLowerCase();
-	const contentType = getKnowledgeFileContentType(fileExt);
+	const contentType = getDocumentFileContentType(fileExt);
 
 	if (!contentType) {
-		throw new Error(`Unsupported knowledge file type: ${filePath}`);
+		throw new Error(`Unsupported document file type: ${filePath}`);
 	}
 
 	const fileBuffer = fs.readFileSync(filePath);
-	const isTextBacked = isTextBackedKnowledgeContent(contentType, fileName);
+	const isTextBacked = isTextBackedDocumentContent(contentType, fileName);
 	const content = isTextBacked
 		? fileBuffer.toString("utf-8")
 		: fileBuffer.toString("base64");
 
-	const knowledgeOptions: AddDocumentOptions = {
+	const documentOptions: AddDocumentOptions = {
 		agentId,
 		clientDocumentId: "" as UUID,
 		contentType,
@@ -150,6 +175,11 @@ export async function addKnowledgeFromFilePath({
 		content,
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
+		scope,
+		scopedToEntityId,
+		addedBy,
+		addedByRole,
+		addedFrom,
 		metadata: {
 			...metadata,
 			path: filePath,
@@ -164,7 +194,7 @@ export async function addKnowledgeFromFilePath({
 		},
 	};
 
-	return service.addKnowledge(knowledgeOptions);
+	return service.addDocument(documentOptions);
 }
 
 function getAllFiles(dirPath: string, files: string[] = []): string[] {
@@ -193,7 +223,7 @@ function getAllFiles(dirPath: string, files: string[] = []): string[] {
 	return files;
 }
 
-export function getKnowledgeFileContentType(extension: string): string | null {
+export function getDocumentFileContentType(extension: string): string | null {
 	const contentTypes: Record<string, string> = {
 		".txt": "text/plain",
 		".md": "text/markdown",

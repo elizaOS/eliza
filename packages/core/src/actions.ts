@@ -16,6 +16,15 @@ import {
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
 
+export {
+	dispatchSubaction,
+	normalizeSubaction,
+	readSubaction,
+	type SubactionHandler,
+	type SubactionHandlerMap,
+	type SubactionParameters,
+} from "./actions/subaction-dispatch";
+
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
 const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(

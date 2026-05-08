@@ -12,6 +12,7 @@ export * from "./actions";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
+export * from "./connectors/account-manager";
 export {
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,
@@ -62,7 +63,14 @@ export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
 export * from "./types/onboarding";

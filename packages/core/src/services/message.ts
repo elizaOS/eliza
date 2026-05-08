@@ -1,7 +1,14 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
-import { actionToTool } from "../actions/to-tool";
+import {
+	actionToTool,
+	HANDLE_RESPONSE_TOOL_NAME,
+	PLAN_ACTIONS_TOOL,
+	PLAN_ACTIONS_TOOL_NAME,
+	STABLE_PLANNER_TOOLS,
+} from "../actions/to-tool";
+import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
 import {
 	formatTaskCompletionStatus,
@@ -12,7 +19,6 @@ import { logger } from "../logger";
 import { imageDescriptionTemplate } from "../prompts";
 import {
 	createV5MessageHandlerTool,
-	V5_MESSAGE_HANDLER_TOOL_NAME,
 	v5MessageHandlerTemplate,
 } from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
@@ -38,6 +44,10 @@ import {
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
+import {
+	type FactsAndRelationshipsRunResult,
+	runFactsAndRelationshipsStage,
+} from "../runtime/facts-and-relationships";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
@@ -145,7 +155,6 @@ import {
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
 	inferContextRoutingFromMessage,
-	parseContextList,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -652,11 +661,10 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
  *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
  *     includes system + bio + role) so the text-block CHARACTER provider
  *     would duplicate the same content.
- *   - RECENT_MESSAGES: prior dialogue is rendered as proper assistant/user
- *     chat-message events (see `appendPriorDialogueEvents`), not as a
- *     `# Conversation Messages` text block. Re-emitting it as text duplicates
- *     the current message and breaks the append-only chat protocol the
- *     planner loop relies on.
+ * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
+ * text when no structured `recentMessages` array is available from the
+ * provider. Structured prior turns are additionally rendered by
+ * `appendPriorDialogueEvents`.
  */
 const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"ACTIONS",
@@ -664,12 +672,29 @@ const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"CHARACTER",
 	"EVALUATORS",
 	"PROVIDERS",
-	"RECENT_MESSAGES",
 ] as const;
 
 const V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 	V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
 );
+
+/**
+ * Stage 1 (messageHandler / shouldRespond) does NOT need wall-clock,
+ * room entities, or document store context. It just decides
+ * processMessage + which contexts apply. Excluding these from the
+ * Stage 1 prompt keeps the user message byte-stable across responses
+ * (no per-call CURRENT_TIME drift) so the provider's prefix cache
+ * grows with the conversation rather than resetting every turn.
+ *
+ * Note: we still keep FACTS rendered if present — Stage 1 may need a
+ * grounded fact to discriminate ambiguous routing, and FACTS are stable
+ * across calls (only refreshed when the underlying store changes).
+ */
+const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
+	"CURRENT_TIME",
+	"ENTITIES",
+	"DOCUMENTS",
+] as const;
 
 const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
 const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
@@ -953,18 +978,7 @@ type ResolvedMessageOptions = {
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
-	onBeforeActionExecution?: MessageProcessingOptions["onBeforeActionExecution"];
 };
-
-async function invokeOnBeforeActionExecution(
-	opts: ResolvedMessageOptions,
-	runtime: IAgentRuntime,
-	message: Memory,
-): Promise<void> {
-	if (opts.onBeforeActionExecution) {
-		await opts.onBeforeActionExecution({ runtime, message });
-	}
-}
 
 function normalizeShouldRespondModelType(
 	value: unknown,
@@ -1199,7 +1213,7 @@ function appendStateProviderEvents(
 	}
 }
 
-function createV5MessageContextObject(args: {
+async function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -1207,30 +1221,14 @@ function createV5MessageContextObject(args: {
 	includeTools?: boolean;
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
-}): ContextObject {
+	extraProviderExclusions?: readonly string[];
+}): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
-	const addInstruction = (
-		id: string,
-		content: string | undefined,
-		stable = false,
-	) => {
-		if (!content?.trim()) {
-			return;
-		}
-		events.push({
-			id,
-			type: "instruction",
-			source: "message-service",
-			content: content.trim(),
-			stable,
-		});
-	};
 
-	appendStateProviderEvents(
-		events,
-		args.state,
-		V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
-	);
+	const renderExclusions = args.extraProviderExclusions?.length
+		? [...V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
+		: V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
+	appendStateProviderEvents(events, args.state, renderExclusions);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
 
@@ -1258,6 +1256,14 @@ function createV5MessageContextObject(args: {
 		);
 		for (const action of actions) {
 			try {
+				const accountPolicy = await evaluateConnectorAccountPolicies(
+					args.runtime,
+					action,
+					{ message: args.message },
+				);
+				if (!accountPolicy.allowed) {
+					continue;
+				}
 				const tool = actionToTool(action);
 				events.push({
 					id: `tool:${tool.function.name}`,
@@ -1283,21 +1289,26 @@ function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
-	const expandedTools = events
-		.filter((event) => event.type === "tool" && "tool" in event)
-		.map((event) => {
-			const tool = (
-				event as {
-					tool: { name: string; description?: string; parameters?: unknown };
-				}
-			).tool;
-			return {
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters as ToolDefinition["parameters"],
-				type: "function" as const,
-			};
-		});
+	// LLM sees exactly two tools — HANDLE_RESPONSE (Stage 1) and PLAN_ACTIONS
+	// (Stage 2) — both stable across every request. Per-action specs live in
+	// `events[type=tool]` and are rendered into the conversation's
+	// available-actions block by the available_actions provider; the LLM
+	// picks one by name and passes it back via `PLAN_ACTIONS({ action, … })`.
+	// We only expose PLAN_ACTIONS in the trajectory's expanded-tools metadata
+	// when at least one action is gated; HANDLE_RESPONSE is recorded
+	// separately on its own stage. Empty when no actions are gated so the
+	// planner can short-circuit.
+	const hasAnyAction = events.some(
+		(event) =>
+			event.type === "tool" &&
+			"tool" in event &&
+			Boolean(
+				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
+			),
+	);
+	const expandedTools: ToolDefinition[] = hasAnyAction
+		? [PLAN_ACTIONS_TOOL]
+		: [];
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
 		createdAt: Date.now(),
@@ -1502,7 +1513,7 @@ function parseMessageHandlerNativeToolCall(
 		const name = String(
 			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
 		).trim();
-		if (name !== V5_MESSAGE_HANDLER_TOOL_NAME) {
+		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
 		const args = parseToolArguments(
@@ -1592,11 +1603,68 @@ interface ExecuteV5PlannedToolCallParams {
 	plannerLoopConfig?: PlannerLoopParams["config"];
 }
 
+/**
+ * Unwrap a `PLAN_ACTIONS` tool call into its target action.
+ *
+ * The LLM sees the stable two-tool surface (HANDLE_RESPONSE, PLAN_ACTIONS)
+ * so every Stage 2 invocation arrives wrapped: `{ name: "PLAN_ACTIONS",
+ * params: { action, subaction?, parameters, thought } }`. Returns a
+ * normalized tool call where `name` is the actual action name and `params`
+ * are the action-shaped parameters, ready for the rest of the dispatch
+ * pipeline.
+ *
+ * The `subaction` hint, when present for router-style actions (e.g.
+ * `LINEAR_ISSUE` with `subaction: "create"`), is preserved on
+ * `params.__subaction` so the executor can short-circuit the sub-planner
+ * descent and dispatch directly to the named child. The executor falls
+ * back to a regular sub-planner descent when the hint is missing or
+ * doesn't match a registered sub-action.
+ *
+ * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
+ * already-unwrapped action calls) so they keep their existing semantics.
+ */
+function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
+	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
+		return toolCall;
+	}
+	const params = toolCall.params ?? {};
+	const rawAction = params.action;
+	const actionName = typeof rawAction === "string" ? rawAction.trim() : "";
+	const rawSubaction = params.subaction;
+	const subaction =
+		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
+			? rawSubaction.trim()
+			: undefined;
+	const rawActionParameters = params.parameters;
+	const baseParameters =
+		rawActionParameters &&
+		typeof rawActionParameters === "object" &&
+		!Array.isArray(rawActionParameters)
+			? (rawActionParameters as Record<string, unknown>)
+			: {};
+	const mergedParameters: Record<string, unknown> = subaction
+		? { ...baseParameters, __subaction: subaction }
+		: baseParameters;
+	return {
+		id: toolCall.id,
+		name: actionName,
+		params: mergedParameters,
+	};
+}
+
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
+	const toolCall = unwrapPlanActionsToolCall(args.toolCall);
+	if (!toolCall.name) {
+		return {
+			success: false,
+			error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action`,
+		};
+	}
+
 	const action = (args.executorOptions?.actions ?? args.runtime.actions).find(
-		(candidate) => candidate.name === args.toolCall.name,
+		(candidate) => candidate.name === toolCall.name,
 	);
 
 	if (action && actionHasSubActions(action)) {
@@ -1619,7 +1687,7 @@ async function executeV5PlannedToolCall(
 	const actionResult = await executePlannedToolCall(
 		args.runtime,
 		args.executorCtx,
-		args.toolCall,
+		toolCall,
 		args.executorOptions ?? {},
 	);
 	return actionResultToPlannerToolResult(actionResult);
@@ -1640,28 +1708,27 @@ function subPlannerResultToPlannerToolResult(
 	};
 }
 
+/**
+ * Planner-loop tool surface. We always expose the same fixed two-tool list
+ * — HANDLE_RESPONSE and PLAN_ACTIONS — so the prompt-cache key stays stable
+ * across requests no matter which actions are gated this turn. Action
+ * names + parameter schemas live in the conversation's available-actions
+ * block; the LLM picks one and passes it through PLAN_ACTIONS({ action, … }).
+ *
+ * When no actions are gated for the current turn we fall back to an empty
+ * tool array so the planner can short-circuit (the pipeline's stage-1
+ * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
+ */
 function collectPlannerTools(context: ContextObject): ToolDefinition[] {
-	const tools: ToolDefinition[] = [];
-	for (const event of context.events) {
-		if (event.type !== "tool") {
-			continue;
-		}
-		const tool = (
-			event as {
-				tool?: { name?: string; description?: string; parameters?: unknown };
-			}
-		).tool;
-		if (!tool || typeof tool.name !== "string" || tool.name.length === 0) {
-			continue;
-		}
-		tools.push({
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters as ToolDefinition["parameters"],
-			type: "function",
-		});
-	}
-	return tools;
+	const hasAnyAction = context.events.some(
+		(event) =>
+			event.type === "tool" &&
+			"tool" in event &&
+			Boolean(
+				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
+			),
+	);
+	return hasAnyAction ? [...STABLE_PLANNER_TOOLS] : [];
 }
 
 function collectPreviousActionResults(
@@ -1705,10 +1772,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.runtime.contexts,
 		senderRole,
 	);
-	const context = createV5MessageContextObject({
+	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -1737,6 +1805,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		: undefined;
 
 	let endStatus: "finished" | "errored" = "finished";
+	let factsTask: Promise<{
+		startedAt: number;
+		endedAt: number;
+		result: FactsAndRelationshipsRunResult | null;
+		error?: unknown;
+	} | null> = Promise.resolve(null);
 	try {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
@@ -1780,20 +1854,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			}),
 		);
 
-		// MESSAGE_BEFORE (blocking): hooks fire right before the Stage 1 model
+		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
 		// stable prefix.
 		await args.runtime.runActionsByMode(
-			"MESSAGE_BEFORE",
+			"RESPONSE_HANDLER_BEFORE",
 			args.message,
 			args.state,
 		);
 
-		// MESSAGE_DURING (non-blocking): fire-and-forget alongside the model
+		// RESPONSE_HANDLER_DURING (non-blocking): fire-and-forget alongside the model
 		// call. We don't await — the user contract is "during". Errors are
 		// logged inside `runActionsByMode`.
 		void args.runtime
-			.runActionsByMode("MESSAGE_DURING", args.message, args.state)
+			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
 			.catch(() => {});
 
 		const rawMessageHandler = (await args.runtime.useModel(
@@ -1803,17 +1877,29 @@ export async function runV5MessageRuntimeStage1(args: {
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
 				toolChoice: "required",
+				maxTokens: 1024,
 				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
 		const messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
+			args.runtime.logger?.warn?.(
+				{
+					raw:
+						typeof rawMessageHandler === "string"
+							? rawMessageHandler
+							: JSON.stringify(rawMessageHandler),
+				},
+				"[message] parseMessageHandlerModelOutput returned null",
+			);
+		}
 
-		// MESSAGE_AFTER (blocking): hooks fire after Stage 1 returns and the
+		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
 		// routing decision is parsed, but before the runtime acts on it.
 		// Lets a hook inspect / mutate the parsed plan.
 		await args.runtime.runActionsByMode(
-			"MESSAGE_AFTER",
+			"RESPONSE_HANDLER_AFTER",
 			args.message,
 			args.state,
 		);
@@ -1840,6 +1926,32 @@ export async function runV5MessageRuntimeStage1(args: {
 				prefixHash: stage1PrefixHash,
 				logger: args.runtime.logger,
 			});
+		}
+
+		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
+		// Stage 2 path runs (simple reply or planner). This stage is purely a
+		// side-effect: it dedups + persists user-stated facts/relationships
+		// without blocking the user reply. We DO await it in the `finally`
+		// block before `endTrajectory`, so the trajectory record is complete.
+		if (
+			messageHandler.extract &&
+			((messageHandler.extract.facts?.length ?? 0) > 0 ||
+				(messageHandler.extract.relationships?.length ?? 0) > 0)
+		) {
+			const startedAt = Date.now();
+			factsTask = runFactsAndRelationshipsStage({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				extract: messageHandler.extract,
+			})
+				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
+				.catch((error) => ({
+					startedAt,
+					endedAt: Date.now(),
+					result: null,
+					error,
+				}));
 		}
 
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
@@ -1896,7 +2008,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			recomposedPlannerState,
 			args.runtime,
 		);
-		const plannerContext = createV5MessageContextObject({
+		const plannerContext = await createV5MessageContextObject({
 			...args,
 			state: plannerState,
 			selectedContexts,
@@ -2023,6 +2135,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		endStatus = "errored";
 		throw err;
 	} finally {
+		const factsOutcome = await factsTask;
+		if (recorder && trajectoryId && factsOutcome) {
+			await recordFactsAndRelationshipsStage({
+				recorder,
+				trajectoryId,
+				outcome: factsOutcome,
+				logger: args.runtime.logger,
+			});
+		}
 		if (recorder && trajectoryId) {
 			await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
 				args.runtime.logger?.warn?.(
@@ -2087,6 +2208,92 @@ async function recordMessageHandlerStage(args: {
 			"[TrajectoryRecorder] failed to record messageHandler stage",
 		);
 	}
+}
+
+async function recordFactsAndRelationshipsStage(args: {
+	recorder: TrajectoryRecorder;
+	trajectoryId: string;
+	outcome: {
+		startedAt: number;
+		endedAt: number;
+		result: FactsAndRelationshipsRunResult | null;
+		error?: unknown;
+	};
+	logger?: IAgentRuntime["logger"];
+}): Promise<void> {
+	try {
+		const { startedAt, endedAt, result, error } = args.outcome;
+		const candidates = extractCandidatesForRecording(result);
+		const kept = result?.parsed
+			? {
+					facts: result.parsed.facts,
+					relationships: result.parsed.relationships,
+				}
+			: { facts: [], relationships: [] };
+		const written = result?.written ?? { facts: 0, relationships: 0 };
+		const thought = error
+			? `error: ${error instanceof Error ? error.message : String(error)}`
+			: (result?.parsed.thought ?? "");
+		await args.recorder.recordStage(args.trajectoryId, {
+			stageId: `stage-facts-${startedAt}`,
+			kind: "factsAndRelationships",
+			startedAt,
+			endedAt,
+			latencyMs: endedAt - startedAt,
+			factsAndRelationships: {
+				candidates,
+				kept,
+				written,
+				thought,
+			},
+		});
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record factsAndRelationships stage",
+		);
+	}
+}
+
+function extractCandidatesForRecording(
+	result: FactsAndRelationshipsRunResult | null,
+): {
+	facts: string[];
+	relationships: Array<{ subject: string; predicate: string; object: string }>;
+} {
+	const userMessage = result?.messages?.find(
+		(message) => message.role === "user",
+	);
+	const userContent =
+		typeof userMessage?.content === "string" ? userMessage.content : "";
+	const facts: string[] = [];
+	const relationships: Array<{
+		subject: string;
+		predicate: string;
+		object: string;
+	}> = [];
+	if (!userContent) {
+		return { facts, relationships };
+	}
+	const candidatesBlock = userContent.split("candidates:")[1] ?? "";
+	for (const line of candidatesBlock.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("-")) continue;
+		const body = trimmed.replace(/^-\s*/, "");
+		if (body.startsWith("fact:")) {
+			facts.push(body.slice("fact:".length).trim());
+		} else if (body.startsWith("relationship:")) {
+			const triple = body.slice("relationship:".length).trim().split(/\s+/);
+			if (triple.length >= 3) {
+				relationships.push({
+					subject: triple[0],
+					predicate: triple[1],
+					object: triple.slice(2).join(" "),
+				});
+			}
+		}
+	}
+	return { facts, relationships };
 }
 
 function extractMessageHandlerModelName(
@@ -2379,12 +2586,12 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // metadata-based corrector must not override them with a keyword-matched
 // alternative like a cross-channel send action.
 //
-// CREATE_TRIGGER_TASK + its schedule similes are included because the phrase
+// WORKFLOW + its trigger schedule similes are included because the phrase
 // structure the planner matches on ("every N minutes", "at 7am daily",
 // "schedule a cron task") does not keyword-overlap with the action's
 // description the way LIFE's multi-paragraph reminder/alarm prose does.
 // Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
-// routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
+// routinely overrides a correct CREATE_CRON / WORKFLOW pick on
 // page-automations with LIFE based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
 // RELATIONSHIP is the explicit umbrella action for the contacts /
@@ -2416,12 +2623,11 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"TRANSCRIBE_MEDIA",
 		"DOWNLOAD_MEDIA",
 		"CHAT_WITH_ATTACHMENTS",
-		"READ_CHANNEL",
-		"SEARCH_MESSAGES",
+		"MESSAGE",
+		"POST",
 		"SUMMARIZE_CONVERSATION",
-		"LIST_CHANNELS",
 		"SERVER_INFO",
-		"CREATE_TRIGGER_TASK",
+		"WORKFLOW",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
 		"SCHEDULE_TASK",
@@ -2611,8 +2817,8 @@ The requested providers have already been executed, and their grounded results a
 Use those provider results to produce the final reply and/or action plan for this turn.
 Do not ask for the same providers again.
 If the provider results fully answer the user, reply directly.
-If KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVAILABLE_DOCUMENTS lists multiple files.
-Do not ask "which file?" when the grounded KNOWLEDGE result already resolves the request.`;
+If DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files.
+Do not ask "which file?" when the grounded DOCUMENTS result already resolves the request.`;
 }
 
 function _buildActionRescuePrompt(
@@ -3692,12 +3898,12 @@ export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
 		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
 			text,
 		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/.test(text);
-	const asksDocumentOrKnowledge =
-		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|knowledge base|kb)\b/.test(
+	const asksDocument =
+		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|document base|kb)\b/.test(
 			text,
 		);
 
-	if (asksDocumentOrKnowledge) {
+	if (asksDocument) {
 		return false;
 	}
 
@@ -3718,7 +3924,7 @@ function buildProviderSelectionPrompt(draftReply?: string): string {
 		trimmedDraftReply.length > 0
 			? [
 					"- if the draft reply asks the user to resend, restate, or clarify information that may already exist in provider context, choose the relevant providers instead of sending the draft reply as-is",
-					'- when the recent conversation already identifies a prior upload or knowledge-base question, prefer grounded provider lookup over asking "which file?" again',
+					'- when the recent conversation already identifies a prior upload or document store question, prefer grounded provider lookup over asking "which file?" again',
 				]
 			: [];
 	return `task: Decide whether any providers should be called before sending the assistant's reply.
@@ -3728,8 +3934,8 @@ recent conversation:
 
 ${draftReplySection}rules[${4 + draftReplyRules.length}]:
 - choose providers only when they can supply grounded information needed before the assistant replies
-- uploaded files, documents, prior uploads, and knowledge-base questions should use the relevant providers before asking the user to resend the material
-- if the user asks about an uploaded file or document and AVAILABLE_DOCUMENTS is available, prefer AVAILABLE_DOCUMENTS together with KNOWLEDGE before sending any clarification reply
+- uploaded files, documents, prior uploads, and document store questions should use the relevant providers before asking the user to resend the material
+- if the user asks about an uploaded file or document and DOCUMENTS is available, prefer DOCUMENTS before sending any clarification reply
 - return an empty providers field when no provider lookup is needed
 - do not include actions, text, or thought in the output
 ${draftReplyRules.join("\n")}
@@ -3741,11 +3947,11 @@ Examples:
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "Which file are you referring to?"
   output:
-  {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  {"providers":["DOCUMENTS","DOCUMENTS"]}
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
   output:
-  {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  {"providers":["DOCUMENTS","DOCUMENTS"]}
 - user asks: "thanks, that's all"
   draft reply: "Glad to help."
   output:
@@ -3795,12 +4001,12 @@ async function _recoverProvidersForTurn(args: {
 		if (normalizedProviders.length > 0) {
 			return normalizedProviders;
 		}
-		const shouldUseKnowledge = await shouldUseKnowledgeProviders(
+		const shouldUseDocuments = await shouldUseDocumentProviders(
 			args.runtime,
 			args.state,
 			args.attachments,
 		);
-		return shouldUseKnowledge ? ["AVAILABLE_DOCUMENTS", "KNOWLEDGE"] : [];
+		return shouldUseDocuments ? ["DOCUMENTS"] : [];
 	} catch (error) {
 		args.runtime.logger.warn(
 			{
@@ -3824,9 +4030,9 @@ recent conversation:
 
 rules[5]:
 - answer directly from grounded context when it fully answers the user
-- do not ask the user to resend, rename, or specify a file if grounded document or knowledge context already answers the request
+- do not ask the user to resend, rename, or specify a file if grounded document or document context already answers the request
 - do not say you cannot access the file when grounded context is already present above
-- if KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVAILABLE_DOCUMENTS lists multiple files
+- if DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files
 - if grounded context is still insufficient, say exactly what is missing
 - return only the reply text
 
@@ -3834,28 +4040,28 @@ output:
 Plain text only. No XML, JSON, bullets, or <think>.`;
 }
 
-function buildKnowledgeProviderDecisionPrompt(): string {
-	return `task: Decide whether the assistant should consult uploaded-document or knowledge providers before replying.
+function buildDocumentProviderDecisionPrompt(): string {
+	return `task: Decide whether the assistant should consult uploaded-document or document providers before replying.
 
 recent conversation:
 {{recentMessages}}
 
 rules[5]:
-- return true when the user is asking about an uploaded file, document, prior upload, or knowledge-base content
-- return true when the answer is likely already stored in uploaded documents or semantic knowledge search
-- when AVAILABLE_DOCUMENTS or KNOWLEDGE is available and the user refers to an uploaded file or prior upload, return true
-- return false for generic chat, thanks, or requests that clearly do not depend on uploaded or knowledge-base content
+- return true when the user is asking about an uploaded file, document, prior upload, or document store content
+- return true when the answer is likely already stored in uploaded documents or semantic document search
+- when DOCUMENTS is available and the user refers to an uploaded file or prior upload, return true
+- return false for generic chat, thanks, or requests that clearly do not depend on uploaded or document store content
 - return only the structured output, with no prose
 
 output:
 JSON only. Return exactly one JSON object.
 
 Examples:
-- user asks: "what is the qa codeword from the uploaded file?" -> useKnowledgeProviders: true
-- user asks: "thanks, that's all" -> useKnowledgeProviders: false`;
+- user asks: "what is the qa codeword from the uploaded file?" -> useDocumentProviders: true
+- user asks: "thanks, that's all" -> useDocumentProviders: false`;
 }
 
-async function shouldUseKnowledgeProviders(
+async function shouldUseDocumentProviders(
 	runtime: IAgentRuntime,
 	state: State,
 	attachments?: GenerateTextAttachment[],
@@ -3864,14 +4070,14 @@ async function shouldUseKnowledgeProviders(
 		const parsed = await runtime.dynamicPromptExecFromState({
 			state,
 			params: {
-				prompt: buildKnowledgeProviderDecisionPrompt(),
+				prompt: buildDocumentProviderDecisionPrompt(),
 				...(attachments ? { attachments } : {}),
 			},
 			schema: [
 				{
-					field: "useKnowledgeProviders",
+					field: "useDocumentProviders",
 					description:
-						"true when uploaded-document or knowledge providers should be consulted before replying",
+						"true when uploaded-document or document providers should be consulted before replying",
 					type: "boolean",
 					required: true,
 					validateField: false,
@@ -3885,7 +4091,7 @@ async function shouldUseKnowledgeProviders(
 			},
 		});
 		const value =
-			parsed?.useKnowledgeProviders ?? parsed?.use_knowledge_providers;
+			parsed?.useDocumentProviders ?? parsed?.use_document_providers;
 		if (typeof value === "boolean") {
 			return value;
 		}
@@ -3899,7 +4105,7 @@ async function shouldUseKnowledgeProviders(
 				src: "service:message",
 				error: error instanceof Error ? error.message : String(error),
 			},
-			"Knowledge provider decision model call failed",
+			"Documents provider decision model call failed",
 		);
 		return false;
 	}
@@ -4687,7 +4893,6 @@ export class DefaultMessageService implements IMessageService {
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
-					onBeforeActionExecution: options?.onBeforeActionExecution,
 				};
 
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
@@ -5458,28 +5663,6 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					pendingSimpleEmit = responseContent;
-				} else if (mode === "actions") {
-					await invokeOnBeforeActionExecution(opts, runtime, message);
-					// Pass onStreamChunk to processActions so each action can manage its own streaming context
-					await runtime.processActions(
-						message,
-						responseMessages,
-						state,
-						async (content) => {
-							runtime.logger.debug(
-								{ src: "service:message", content },
-								"Action callback",
-							);
-							if (responseContent) {
-								responseContent.actionCallbacks = content;
-							}
-							if (callback) {
-								return callback(content);
-							}
-							return [];
-						},
-						{ onStreamChunk: opts.onStreamChunk },
-					);
 				}
 			}
 		} else {

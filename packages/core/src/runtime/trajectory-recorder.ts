@@ -36,7 +36,8 @@ export type RecordedStageKind =
 	| "tool"
 	| "evaluation"
 	| "subPlanner"
-	| "compaction";
+	| "compaction"
+	| "factsAndRelationships";
 
 export interface RecordedUsage {
 	promptTokens: number;
@@ -56,12 +57,6 @@ export interface RecordedModelCall {
 	modelType: string;
 	modelName?: string;
 	provider: string;
-	/**
-	 * @deprecated v5 paths emit native chat messages instead of a single
-	 * concatenated prompt string. The recorder no longer requires `prompt`
-	 * on new stages; existing trajectory snapshots may still carry it.
-	 * Trajectory viewers should read `messages` directly.
-	 */
 	prompt?: string;
 	messages?: ChatMessage[] | unknown[];
 	tools?: unknown;
@@ -86,6 +81,33 @@ export interface RecordedEvaluationStage extends EvaluationResult {
 	[key: string]: unknown;
 }
 
+/**
+ * Snapshot of the facts/relationships extraction stage. Logged whenever
+ * Stage 1 emits a non-empty `extract` and the dedup/persist pass runs in
+ * parallel with the planner. Lets reviewers see (a) what the model thought
+ * was worth keeping vs. dropping, and (b) what actually persisted.
+ */
+export interface RecordedFactsAndRelationshipsStage {
+	candidates: {
+		facts: string[];
+		relationships: Array<{
+			subject: string;
+			predicate: string;
+			object: string;
+		}>;
+	};
+	kept: {
+		facts: string[];
+		relationships: Array<{
+			subject: string;
+			predicate: string;
+			object: string;
+		}>;
+	};
+	written: { facts: number; relationships: number };
+	thought: string;
+}
+
 export interface RecordedCacheStage {
 	segmentHashes: string[];
 	prefixHash: string;
@@ -108,6 +130,7 @@ export interface RecordedStage {
 	tool?: RecordedToolStage;
 	evaluation?: RecordedEvaluationStage;
 	cache?: RecordedCacheStage;
+	factsAndRelationships?: RecordedFactsAndRelationshipsStage;
 }
 
 export interface RecordedTrajectoryMetrics {
@@ -343,6 +366,35 @@ function markdownFence(value: string, language = ""): string[] {
 	return [language ? `${fence}${language}` : fence, value, fence];
 }
 
+function summarizeEmbeddingResponse(response: string): string | null {
+	const trimmed = response.trim();
+	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+	try {
+		const parsed = JSON.parse(trimmed);
+		if (
+			!Array.isArray(parsed) ||
+			!parsed.every((value) => typeof value === "number")
+		) {
+			return null;
+		}
+		const preview = parsed
+			.slice(0, 8)
+			.map((value) => Number(value).toFixed(4))
+			.join(", ");
+		return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
+	} catch {
+		return null;
+	}
+}
+
+function modelResponseForMarkdown(model: RecordedModelCall): string {
+	if (model.modelType === "TEXT_EMBEDDING") {
+		const summary = summarizeEmbeddingResponse(model.response);
+		if (summary) return summary;
+	}
+	return model.response;
+}
+
 function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 	const lines: string[] = [];
 	const metrics = trajectory.metrics;
@@ -401,7 +453,7 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			lines.push("");
 			lines.push("### Response");
 			lines.push("");
-			lines.push(...markdownFence(stage.model.response));
+			lines.push(...markdownFence(modelResponseForMarkdown(stage.model)));
 			if (stage.model.messages !== undefined) {
 				lines.push("");
 				lines.push("### Messages");
