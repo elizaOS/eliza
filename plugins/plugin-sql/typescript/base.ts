@@ -18,6 +18,7 @@ import {
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
+  type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
   type Log,
