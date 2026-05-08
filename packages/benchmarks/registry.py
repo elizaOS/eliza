@@ -1912,7 +1912,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.eliza_format.cli",
+            "benchmarks.eliza-format.cli",
             "--provider",
             provider,
             "--out",
@@ -1981,7 +1981,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and not isinstance(temperature, bool):
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2025,7 +2025,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2064,7 +2064,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 

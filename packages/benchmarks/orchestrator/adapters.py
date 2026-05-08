@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -170,7 +171,7 @@ def _make_extra_adapter(
 
 def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.HyperliquidBench",
         "--coverage",
@@ -186,7 +187,7 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
 
 def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "scripts/run_benchmark.py",
         "run",
         "--provider",
@@ -254,7 +255,7 @@ def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[s
 def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     mode = str(ctx.request.extra_config.get("mode", "eliza-agent"))
     args = [
-        "python",
+        sys.executable,
         "run_benchmark.py",
         "--mode",
         mode,
@@ -304,7 +305,7 @@ def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         return args
 
     args = [
-        "python",
+        sys.executable,
         "-m",
         "eliza_adapter.app_eval",
         "--tasks-dir",
@@ -362,7 +363,7 @@ def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
 
 def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.rolodex.python_bench.run",
         "--output",
@@ -384,7 +385,7 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
     output_dir = str(ctx.output_root)
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmark.harness",
         "--data-dir",
@@ -409,7 +410,7 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
     if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
         handler = "llm"
     args = [
-        "python",
+        sys.executable,
         "run_benchmark.py",
         "--handler",
         handler,
@@ -435,7 +436,7 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
 
 def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "elizaos_webshop",
         "--output",
@@ -488,7 +489,7 @@ def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.woobench",
         "--model",
@@ -555,7 +556,7 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
 
 
 def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return ["python", "-m", "benchmarks.evm.eliza_explorer"]
+    return [sys.executable, "-m", "benchmarks.evm.eliza_explorer"]
 
 
 def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -622,7 +623,7 @@ def _score_from_evm(path: Path) -> ScoreSummary:
 
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     return [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.solana.eliza_agent",
         "--output-dir",
@@ -657,7 +658,7 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
 
 def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "scripts/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
@@ -727,7 +728,7 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         ctx.request.extra_config.get("capture_glob", "*.replay.json"),
     ).strip()
     args = [
-        "python",
+        sys.executable,
         "-m",
         "eliza_adapter.replay_eval",
         "--input",

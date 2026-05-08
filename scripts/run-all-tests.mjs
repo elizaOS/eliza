@@ -59,6 +59,13 @@ import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
+const parentRepoRoot = path.dirname(repoRoot);
+const outerRepoRoot =
+  path.basename(repoRoot) === "eliza" &&
+  fs.existsSync(path.join(parentRepoRoot, "package.json")) &&
+  fs.existsSync(path.join(parentRepoRoot, "eliza", "package.json"))
+    ? parentRepoRoot
+    : repoRoot;
 const testRuntimeEnv = buildTestRuntimeEnv(process.env, { repoRoot });
 const bunCmd = testRuntimeEnv.npm_execpath || testRuntimeEnv.BUN || "bun";
 
@@ -99,6 +106,13 @@ const helpFlag = parseFlag("--help") || parseFlag("-h");
 const filterFlag = parseFlagValue("--filter");
 const patternFlag = parseFlagValue("--pattern");
 const onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+
+if (onlyFlag && onlyFlag !== "e2e" && onlyFlag !== "test") {
+  console.error(
+    `[eliza-test] ERROR unsupported --only=${JSON.stringify(onlyFlag)}; expected "e2e" or "test".`,
+  );
+  process.exit(1);
+}
 
 if (helpFlag) {
   process.stdout.write(
@@ -187,11 +201,18 @@ if (TEST_LANE === "pr") {
 
 const EXTRA_SCRIPT_NAMES = [
   "test:integration",
+  "test:e2e:all",
   "test:e2e",
   "test:playwright",
   "test:ui",
   "test:live",
 ];
+const E2E_COMPANION_SCRIPT_NAMES = new Set([
+  "test:playwright",
+  "test:ui",
+  "test:live",
+]);
+const MANUAL_TEST_SCRIPT_PATTERN = /(?:^|:)manual(?:$|:)/;
 const NO_TEST_OUTPUT_PATTERNS = [/No test files found/i, /No tests found/i];
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 const TEST_FILE_SKIP_DIRS = new Set([
@@ -441,6 +462,70 @@ function getReferencedScriptNames(command, scripts) {
   return matches;
 }
 
+function isManualTestScript(scriptName) {
+  return MANUAL_TEST_SCRIPT_PATTERN.test(scriptName);
+}
+
+function isE2EScriptName(scriptName) {
+  return (
+    scriptName === "test:e2e" ||
+    scriptName.startsWith("test:e2e:") ||
+    scriptName.endsWith(":e2e") ||
+    scriptName.includes(":e2e:")
+  );
+}
+
+function isE2ELikeScriptName(scriptName) {
+  return isE2EScriptName(scriptName) || E2E_COMPANION_SCRIPT_NAMES.has(scriptName);
+}
+
+function orderScriptCandidates(scriptNames) {
+  const priority = new Map(
+    [
+      "test:integration",
+      "test:e2e:all",
+      "test:e2e",
+      "test:playwright",
+      "test:ui",
+      "test:live",
+    ].map((scriptName, index) => [scriptName, index]),
+  );
+
+  return [...scriptNames].sort((left, right) => {
+    const leftPriority = priority.get(left) ?? 100;
+    const rightPriority = priority.get(right) ?? 100;
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+function collectAdditionalScriptCandidates(scripts) {
+  const candidates = new Set();
+
+  for (const scriptName of EXTRA_SCRIPT_NAMES) {
+    if (scripts[scriptName]) {
+      candidates.add(scriptName);
+    }
+  }
+
+  for (const scriptName of Object.keys(scripts)) {
+    if (isManualTestScript(scriptName)) {
+      continue;
+    }
+    if (isE2EScriptName(scriptName)) {
+      candidates.add(scriptName);
+    }
+  }
+
+  return orderScriptCandidates(candidates);
+}
+
+function collectE2EScriptCandidates(scripts) {
+  return collectAdditionalScriptCandidates(scripts).filter(isE2ELikeScriptName);
+}
+
 function scriptInvokesScript(
   entryScriptName,
   targetScriptName,
@@ -478,9 +563,67 @@ function scriptInvokesScript(
   return false;
 }
 
+function isCoveredBySelectedScript(scriptName, selectedScriptNames, scripts) {
+  for (const selectedScriptName of selectedScriptNames) {
+    if (selectedScriptName === scriptName) {
+      continue;
+    }
+    if (scriptInvokesScript(selectedScriptName, scriptName, scripts)) {
+      return true;
+    }
+    if (
+      selectedScriptName === "test:e2e:all" &&
+      isE2EScriptName(scriptName)
+    ) {
+      return true;
+    }
+    if (
+      selectedScriptName === "test:e2e" &&
+      scriptName.startsWith("test:e2e:")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function appendScriptIfRunnable(scriptNames, seenCommands, scriptName, scripts) {
+  const raw = normalizeWhitespace(scripts[scriptName] ?? "");
+  if (!raw) {
+    return;
+  }
+
+  if (isCoveredBySelectedScript(scriptName, scriptNames, scripts)) {
+    return;
+  }
+
+  const resolved = resolveScriptCommand(scriptName, scripts) || raw;
+  if (seenCommands.has(resolved)) {
+    return;
+  }
+
+  scriptNames.push(scriptName);
+  seenCommands.add(resolved);
+}
+
 function collectScriptsToRun(scripts) {
   const scriptNames = [];
   const seenCommands = new Set();
+
+  if (onlyFlag === "e2e") {
+    for (const scriptName of collectE2EScriptCandidates(scripts)) {
+      appendScriptIfRunnable(scriptNames, seenCommands, scriptName, scripts);
+    }
+    return scriptNames;
+  }
+
+  if (onlyFlag === "test") {
+    if (scripts.test) {
+      scriptNames.push("test");
+    }
+    return scriptNames;
+  }
 
   if (scripts.test) {
     const resolvedTestCommand =
@@ -492,13 +635,16 @@ function collectScriptsToRun(scripts) {
     }
   }
 
-  for (const scriptName of EXTRA_SCRIPT_NAMES) {
+  for (const scriptName of collectAdditionalScriptCandidates(scripts)) {
     const raw = normalizeWhitespace(scripts[scriptName] ?? "");
     if (!raw) {
       continue;
     }
 
     if (scriptInvokesScript("test", scriptName, scripts)) {
+      continue;
+    }
+    if (isCoveredBySelectedScript(scriptName, scriptNames, scripts)) {
       continue;
     }
 

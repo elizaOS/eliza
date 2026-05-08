@@ -84,10 +84,9 @@ describe("Instagram connector accounts", () => {
 
     expect(registerMessageConnector).toHaveBeenCalledTimes(2);
     expect(registerPostConnector).toHaveBeenCalledTimes(2);
-    expect(registerMessageConnector.mock.calls.map(([registration]) => registration.accountId)).toEqual([
-      "owner",
-      "brand",
-    ]);
+    expect(
+      registerMessageConnector.mock.calls.map(([registration]) => registration.accountId)
+    ).toEqual(["owner", "brand"]);
 
     const brandRegistration = registerMessageConnector.mock.calls[1][0];
     await brandRegistration.sendHandler(

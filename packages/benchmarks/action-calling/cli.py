@@ -52,7 +52,7 @@ PLANNER_TYPES = {"message_handler", "agent_trace", "tool_call", "mcp_tool_call"}
 def _import_helpers():
     sys.path.insert(0, str(TRAINING_ROOT / "scripts"))
     sys.path.insert(0, str(TRAINING_ROOT / "scripts" / "benchmark"))
-    from benchmark import toon_parser  # type: ignore[import-not-found]
+    import toon_parser  # type: ignore[import-not-found]
     from format_for_training import format_record  # type: ignore[import-not-found]
     return toon_parser, format_record
 
