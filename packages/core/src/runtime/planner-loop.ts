@@ -373,9 +373,14 @@ function renderPlannerModelInput(params: {
 				} satisfies PromptSegment,
 			]
 		: renderedContext.promptSegments;
+	// The planner stage instructions are template-derived (`v5PlannerTemplate`)
+	// and structurally identical across iterations and across user turns, so they
+	// belong in the cached prefix. Marking the segment `stable: true` lets the
+	// Anthropic provider stamp `cache_control` on this block and lets the
+	// cache-key prefix extend through these instructions.
 	const promptSegments = normalizePromptSegments([
 		...contextSegments,
-		{ content: `planner_stage:\n${instructions}`, stable: false },
+		{ content: `planner_stage:\n${instructions}`, stable: true },
 	]);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the
