@@ -2,10 +2,10 @@ import {
   getDefaultTriageService,
   type IAgentRuntime,
   logger,
+  messagingTriageActions,
   type Plugin,
   registerSendPolicy,
 } from "@elizaos/core";
-import { manageBrowserBridgeAction } from "./action.ts";
 import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
@@ -43,6 +43,7 @@ import {
 } from "./followup/index.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
+import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
 import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
@@ -53,7 +54,7 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
-import { browserBridgeProvider } from "./provider.ts";
+import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
@@ -64,7 +65,7 @@ import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
-import { BrowserBridgePluginService } from "./service.ts";
+import { BrowserBridgePluginService } from "./service.js";
 import {
   blockUntilTaskCompleteAction,
   listActiveBlocksAction,
@@ -200,7 +201,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   schema: lifeOpsSchema,
   actions: [
-    manageBrowserBridgeAction,
     websiteBlockAction,
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
@@ -227,6 +227,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     chatThreadAction,
     connectorAction,
     toggleFeatureAction,
+    ...messagingTriageActions,
   ],
   providers: [
     browserBridgeProvider,
@@ -265,10 +266,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     // owner approval; everything else passes straight through.
     registerSendPolicy(runtime, createOwnerSendPolicy());
 
-    // First-party adapters that aren't part of core's built-in set: X DMs
-    // (overrides the built-in Twitter adapter), Calendly, and the
-    // browser-bridge.
+    // First-party adapters backed by LifeOps services. Gmail and X replace the
+    // core placeholders so triage actions operate on real connected data.
     const triage = getDefaultTriageService();
+    triage.register(new LifeOpsGmailAdapter());
     triage.register(new XDmAdapter());
     triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
@@ -456,8 +457,4 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export {
-  BrowserBridgePluginService,
-  browserBridgeProvider,
-  manageBrowserBridgeAction,
-};
+export { BrowserBridgePluginService, browserBridgeProvider };
