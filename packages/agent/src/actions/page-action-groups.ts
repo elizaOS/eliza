@@ -33,7 +33,7 @@ const ACTION_GROUP_PARAMETER_SCHEMA = [
   {
     name: "action",
     description:
-      "The child action name to run, such as BROWSER_SESSION, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, or LIST_CONNECTORS.",
+      "The child action name to run, such as BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, or LIST_CONNECTORS.",
     required: true,
     schema: { type: "string" as const },
   },

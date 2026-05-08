@@ -12,7 +12,7 @@
  */
 
 export { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
-export { browserSessionAction } from "./actions/browser-session.js";
+export { browserAction } from "./actions/browser.js";
 export {
   BROWSER_BRIDGE_SUBACTIONS,
   type BrowserBridgeSubaction,
