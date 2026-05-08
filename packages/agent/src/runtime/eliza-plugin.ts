@@ -14,49 +14,20 @@ import {
   saveConnectorConfigAction,
   toggleConnectorAction,
 } from "../actions/connector-control.js";
-import {
-  executeDatabaseQueryAction,
-  getTableDataAction,
-  listDatabaseTablesAction,
-  searchVectorsAction,
-} from "../actions/database.js";
-import {
-  createContactAction,
-  deleteContactAction,
-  getRelationshipActivityAction,
-  linkEntityAction,
-  readEntityAction,
-  resolveMergeCandidateAction,
-  searchEntityAction,
-} from "../actions/entity-actions.js";
+import { contactAction } from "../actions/contact.js";
+import { databaseAction } from "../actions/database.js";
 import { extractPageAction } from "../actions/extract-page.js";
 import { clearLogsAction, queryLogsAction } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
-import {
-  createMemoryAction,
-  editMemoryAction,
-  forgetMemoryAction,
-  recallMemoryFilteredAction,
-} from "../actions/memories.js";
+import { memoryAction } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { readMessagesAction } from "../actions/read-messages.js";
 import { readPluginConfigAction } from "../actions/read-plugin-config.js";
-import { restartAction } from "../actions/restart.js";
-import {
-  describeRegisteredActionsAction,
-  getRuntimeStatusAction,
-  reloadRuntimeConfigAction,
-  restartRuntimeAction,
-} from "../actions/runtime.js";
+import { runtimeAction } from "../actions/runtime.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
 import { setUserNameAction } from "../actions/set-user-name.js";
-import {
-  toggleAutoTrainingAction,
-  toggleCapabilityAction,
-  updateAiProviderAction,
-  updateIdentityAction,
-} from "../actions/settings-actions.js";
+import { settingsAction } from "../actions/settings-actions.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
@@ -68,7 +39,6 @@ import {
 } from "../actions/tasks-coding.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
-import { updateOwnerNameAction } from "../actions/update-owner-name.js";
 import { webSearchAction } from "../actions/web-search.js";
 import { workflowAction } from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
@@ -244,7 +214,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     evaluators: [lateJoinWhitelistEvaluator],
 
     actions: [
-      restartAction,
       terminalAction,
       workflowAction,
       manageTasksAction,
@@ -255,19 +224,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       extractPageAction,
       readChannelAction,
       searchConversationsAction,
-      searchEntityAction,
-      linkEntityAction,
-      readEntityAction,
-      resolveMergeCandidateAction,
-      getRelationshipActivityAction,
-      createContactAction,
-      deleteContactAction,
-      updateOwnerNameAction,
+      contactAction,
       readMessagesAction,
-      updateIdentityAction,
-      updateAiProviderAction,
-      toggleCapabilityAction,
-      toggleAutoTrainingAction,
+      settingsAction,
       listConnectorsAction,
       toggleConnectorAction,
       saveConnectorConfigAction,
@@ -276,19 +235,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // Observability / introspection actions
       queryLogsAction,
       clearLogsAction,
-      getRuntimeStatusAction,
-      describeRegisteredActionsAction,
-      reloadRuntimeConfigAction,
-      restartRuntimeAction,
-      listDatabaseTablesAction,
-      getTableDataAction,
-      executeDatabaseQueryAction,
-      searchVectorsAction,
+      runtimeAction,
+      databaseAction,
       queryTrajectoriesAction,
-      createMemoryAction,
-      recallMemoryFilteredAction,
-      forgetMemoryAction,
-      editMemoryAction,
+      memoryAction,
       archiveCodingTaskAction,
       reopenCodingTaskAction,
     ],
