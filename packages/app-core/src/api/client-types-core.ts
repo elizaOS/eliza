@@ -383,7 +383,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/plugin-browser-bridge/contracts").BrowserBridgeCompanionReleaseManifest
+    | import("@elizaos/plugin-browser/contracts").BrowserBridgeCompanionReleaseManifest
     | null;
 }
 

@@ -883,7 +883,7 @@ export interface LifeOpsWorkflowPermissionPolicy {
 }
 
 // Generic browser-companion + packaging contracts live in
-// `@elizaos/plugin-browser-bridge/contracts`. `LIFEOPS_BROWSER_KINDS`,
+// `@elizaos/plugin-browser/contracts`. `LIFEOPS_BROWSER_KINDS`,
 // `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
 // `LifeOpsBrowserActionKind`, and `LifeOpsBrowserAction` remain here
 // because workflow-linked session shapes below still reference them;

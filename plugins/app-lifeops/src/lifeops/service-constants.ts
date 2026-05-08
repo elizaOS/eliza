@@ -1,7 +1,7 @@
 import type {
   BrowserBridgePermissionState,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsReminderIntensity,
   LifeOpsReminderStep,

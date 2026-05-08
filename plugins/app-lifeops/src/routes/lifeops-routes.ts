@@ -2548,7 +2548,7 @@ export async function handleLifeOpsRoutes(
   }
 
   // Browser companion + package routes extracted to
-  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
 
   if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
@@ -3275,7 +3275,7 @@ export async function handleLifeOpsRoutes(
   }
 
   // Browser session + companion progress/complete routes extracted to
-  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
 
   const occurrenceExplanationMatch = pathname.match(

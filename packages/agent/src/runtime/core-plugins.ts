@@ -69,7 +69,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
-  "@elizaos/plugin-browser-bridge", // Agent Browser Bridge: Chrome/Safari companion pairing, tab + page context sync, packaging artifacts
+  "@elizaos/plugin-browser", // Browser plugin: unified BROWSER + MANAGE_BROWSER_BRIDGE actions; workspace browser + Chrome/Safari companion bridge
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)

@@ -1,13 +1,13 @@
 /**
- * Agent Browser Bridge — public barrel.
+ * @elizaos/plugin-browser — public barrel.
  *
  * Import specific surfaces through the subpath exports defined in
  * `package.json`:
- *   - `@elizaos/plugin-browser-bridge/contracts`
- *   - `@elizaos/plugin-browser-bridge/schema`
- *   - `@elizaos/plugin-browser-bridge/packaging`
- *   - `@elizaos/plugin-browser-bridge/routes`
- *   - `@elizaos/plugin-browser-bridge/plugin`
+ *   - `@elizaos/plugin-browser/contracts`
+ *   - `@elizaos/plugin-browser/schema`
+ *   - `@elizaos/plugin-browser/packaging`
+ *   - `@elizaos/plugin-browser/routes`
+ *   - `@elizaos/plugin-browser/plugin`
  */
 
 export {
@@ -19,7 +19,7 @@ export {
 } from "./actions.js";
 export * from "./contracts.js";
 export * from "./packaging.js";
-export { browserBridgePlugin } from "./plugin.js";
+export { browserPlugin } from "./plugin.js";
 export * from "./routes.js";
 export * from "./schema.js";
 export * from "./service.js";

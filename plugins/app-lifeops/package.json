@@ -150,7 +150,7 @@
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
-    "@elizaos/plugin-browser-bridge": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",

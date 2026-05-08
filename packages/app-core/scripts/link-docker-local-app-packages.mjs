@@ -28,7 +28,7 @@ const localPackages = [
   "eliza/packages/skills",
   "eliza/packages/vault",
   "eliza/plugins/plugin-agent-skills",
-  "eliza/plugins/plugin-browser-bridge",
+  "eliza/plugins/plugin-browser",
   "eliza/plugins/plugin-local-embedding",
   "eliza/plugins/plugin-pdf",
   "eliza/packages/native-plugins/activity-tracker",

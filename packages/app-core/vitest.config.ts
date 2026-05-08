@@ -23,13 +23,14 @@ const pluginAgentSkillsSrc = path.join(
 );
 const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
-  "plugins/plugin-browser-bridge/src",
+  "plugins/plugin-browser/src",
 );
 const pluginElizaCloudSrc = path.join(
   monorepoRoot,
   "plugins/plugin-elizacloud",
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
+const pluginIMessageSrc = path.join(monorepoRoot, "plugins/plugin-imessage/src");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const reactPkg = path.join(fileDir, "node_modules/react");
@@ -162,11 +163,11 @@ export default defineConfig({
         replacement: path.join(pluginAgentSkillsSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge$/,
+        find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
+        find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
@@ -186,6 +187,14 @@ export default defineConfig({
         replacement: path.join(pluginOpenAiSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-imessage$/,
+        replacement: path.join(pluginIMessageSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-imessage\/(.+)$/,
+        replacement: path.join(pluginIMessageSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-pdf$/,
         replacement: path.join(pluginPdfSrc, "index.node.ts"),
       },
@@ -194,11 +203,11 @@ export default defineConfig({
         replacement: path.join(pluginPdfSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge$/,
+        find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
+        find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {

@@ -1,8 +1,8 @@
 {
-  "name": "@elizaos/plugin-browser-bridge",
+  "name": "@elizaos/plugin-browser",
   "version": "2.0.0-beta.0",
   "type": "module",
-  "description": "Agent Browser Bridge plugin: schema, contracts, routes, and packaging utilities for Chrome/Safari browser companions. Generic counterpart to LifeOps' workflow-bound browser sessions.",
+  "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",

@@ -71,11 +71,11 @@
       "@elizaos/app-contacts/*": ["../../plugins/app-contacts/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/plugin-browser-bridge": [
-        "../../plugins/plugin-browser-bridge/src/index.ts"
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/src/index.ts"
       ],
-      "@elizaos/plugin-browser-bridge/*": [
-        "../../plugins/plugin-browser-bridge/src/*"
+      "@elizaos/plugin-browser/*": [
+        "../../plugins/plugin-browser/src/*"
       ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],

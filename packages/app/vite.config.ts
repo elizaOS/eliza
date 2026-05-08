@@ -45,7 +45,7 @@ const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/typescript");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
-  "plugins/plugin-browser-bridge/src",
+  "plugins/plugin-browser/src",
 );
 const appCoreNativePluginEntrypoints = path.join(
   appCoreSrcRoot,
@@ -949,35 +949,35 @@ export default defineConfig({
       // builds. It is not an `app-*` route package, so the dynamic app plugin
       // aliases intentionally skip it.
       {
-        find: /^@elizaos\/plugin-browser-bridge$/,
+        find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/contracts$/,
+        find: /^@elizaos\/plugin-browser\/contracts$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "contracts.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/schema$/,
+        find: /^@elizaos\/plugin-browser\/schema$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "schema.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/packaging$/,
+        find: /^@elizaos\/plugin-browser\/packaging$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "packaging.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/routes$/,
+        find: /^@elizaos\/plugin-browser\/routes$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "routes.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/service$/,
+        find: /^@elizaos\/plugin-browser\/service$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "service.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/actions$/,
+        find: /^@elizaos\/plugin-browser\/actions$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "actions.ts"),
       },
       {
-        find: /^@elizaos\/plugin-browser-bridge\/plugin$/,
+        find: /^@elizaos\/plugin-browser\/plugin$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "plugin.ts"),
       },
       // Node built-in subpaths that browser polyfills don't provide.

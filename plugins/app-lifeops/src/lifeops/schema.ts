@@ -838,7 +838,7 @@ export const lifeWorkflowRuns = pgTable(
 
 // Workflow-bound browser session table. The 4 generic browser tables
 // (companions, settings, tabs, page_contexts) moved to
-// `@elizaos/plugin-browser-bridge/schema`. Only `life_workflow_browser_sessions`
+// `@elizaos/plugin-browser/schema`. Only `life_workflow_browser_sessions`
 // stays here because it carries `workflowId` plus LifeOps scoping columns.
 // The `companionId` column is a soft FK to
 // `browser_bridge_companions.id` (no hard constraint so the plugin package

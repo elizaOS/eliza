@@ -20,7 +20,7 @@ import {
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,

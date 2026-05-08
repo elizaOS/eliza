@@ -5,7 +5,7 @@ import type {
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsBrowserSession,
   LifeOpsCalendarEvent,
