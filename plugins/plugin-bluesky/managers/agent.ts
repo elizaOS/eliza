@@ -13,11 +13,13 @@ import type {
 	NotificationReason,
 } from "../types";
 import {
+	DEFAULT_BLUESKY_ACCOUNT_ID,
 	getActionInterval,
 	getMaxActionsProcessing,
 	getPollInterval,
 	getPostIntervalRange,
 	isPostingEnabled,
+	normalizeBlueSkyAccountId,
 	shouldPostImmediately,
 } from "../utils/config";
 
@@ -39,6 +41,13 @@ export class BlueSkyAgentManager {
 		public readonly client: BlueSkyClient,
 	) {
 		this.accountId = config.accountId ?? "default";
+	}
+
+	private getAccountId(): string {
+		return normalizeBlueSkyAccountId(
+			(this.config as BlueSkyConfig & { accountId?: string }).accountId ??
+				DEFAULT_BLUESKY_ACCOUNT_ID,
+		);
 	}
 
 	async start(): Promise<void> {
@@ -137,6 +146,7 @@ export class BlueSkyAgentManager {
 			const payload: BlueSkyNotificationEventPayload = {
 				runtime: this.runtime,
 				source: "bluesky",
+				accountId: this.getAccountId(),
 				notification,
 				accountId: this.accountId,
 			};
@@ -150,7 +160,7 @@ export class BlueSkyAgentManager {
 		this.actionTimer = setInterval(() => this.processActions(), interval);
 	}
 
-	private async processActions(): Promise<void> {
+	private async processQueuedActions(): Promise<void> {
 		if (!this.running) return;
 
 		const max = getMaxActionsProcessing(this.runtime, this.accountId);
@@ -164,6 +174,7 @@ export class BlueSkyAgentManager {
 				const payload: BlueSkyNotificationEventPayload = {
 					runtime: this.runtime,
 					source: "bluesky",
+					accountId: this.getAccountId(),
 					notification,
 					accountId: this.accountId,
 				};

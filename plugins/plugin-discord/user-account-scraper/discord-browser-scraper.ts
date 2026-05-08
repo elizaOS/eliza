@@ -1,3 +1,8 @@
+// Discord user-account scraper. Drives a logged-in Discord web app inside the
+// Eliza browser workspace, scoped to a per-account partition. The bot-token
+// path (discord.js) is for agent-owned messaging; this scraper exists for
+// owner-side inspection of a real user's Discord (DM previews, search,
+// delivery status) when a bot can't reach that scope.
 import {
   closeBrowserWorkspaceTab,
   evaluateBrowserWorkspaceTab,

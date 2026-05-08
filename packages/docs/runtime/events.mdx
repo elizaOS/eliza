@@ -188,7 +188,7 @@ async function handleMessageReceived(payload: MessagePayload) {
 
   // Check if we should respond
   if (shouldRespond(message, state)) {
-    await runtime.processActions(message, [], state);
+    await executePlannedToolCall(runtime, { message, state }, toolCall);
   }
 
   // Call callback if provided

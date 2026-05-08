@@ -168,7 +168,24 @@ export default defineConfig(({ mode }) => {
         // Order matters: longer prefixes / subpath aliases must precede broader
         // ones. Use regex/exact `find` values so `@elizaos/cloud-ui/foo` doesn't
         // get rewritten to `…/index.ts/foo`.
+        //
+        // The named subpath aliases below mirror the `exports` map in
+        // `cloud/packages/ui/package.json` — keep them in sync. They must
+        // precede the catch-all `@elizaos/cloud-ui/<...>` rule because vite
+        // resolves aliases in declaration order.
         { find: /^@elizaos\/cloud-ui$/, replacement: r("../../packages/ui/src/index.ts") },
+        {
+          find: /^@elizaos\/cloud-ui\/primitives$/,
+          replacement: r("../../packages/ui/src/components/primitives.ts"),
+        },
+        {
+          find: /^@elizaos\/cloud-ui\/brand$/,
+          replacement: r("../../packages/ui/src/components/brand/index.ts"),
+        },
+        {
+          find: /^@elizaos\/cloud-ui\/layout$/,
+          replacement: r("../../packages/ui/src/components/layout/index.ts"),
+        },
         {
           find: /^@\/docs\/components$/,
           replacement: r("../../packages/ui/src/components/docs/mdx-components.tsx"),

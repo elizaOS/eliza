@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { ListCommentsParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const listCommentsAction: Action = {
@@ -32,6 +33,7 @@ export const listCommentsAction: Action = {
       required: false,
       schema: { type: "number" },
     },
+    linearAccountIdParameter,
   ],
   similes: [
     "get-linear-comments",
@@ -77,6 +79,7 @@ export const listCommentsAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const params = _options?.parameters as
         | ListCommentsParameters
@@ -100,11 +103,11 @@ export const listCommentsAction: Action = {
           return { text: errorMessage, success: false };
         }
         const extractedId = match[1];
-        const comments = await linearService.listComments(extractedId, limit);
+        const comments = await linearService.listComments(extractedId, limit, accountId);
         return formatCommentResult(extractedId, comments, message, callback);
       }
 
-      const comments = await linearService.listComments(issueId, limit);
+      const comments = await linearService.listComments(issueId, limit, accountId);
       return formatCommentResult(issueId, comments, message, callback);
     } catch (error) {
       logger.error("Failed to list comments:", error);

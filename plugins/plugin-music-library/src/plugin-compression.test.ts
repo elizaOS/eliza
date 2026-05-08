@@ -6,19 +6,31 @@ describe("music library plugin compression", () => {
   it("registers one domain service and the compressed action set", () => {
     expect(musicLibraryPlugin.services).toEqual([MusicLibraryService]);
     expect(musicLibraryPlugin.actions?.map((action) => action.name)).toEqual([
-      "PLAYLIST_OP",
-      "PLAY_MUSIC_QUERY",
-      "SEARCH_YOUTUBE",
-      "DOWNLOAD_MUSIC",
+      "MUSIC_LIBRARY",
     ]);
   });
 
-  it("exposes the compressed PLAYLIST_OP descCompressed", () => {
+  it("exposes the compressed MUSIC_LIBRARY descCompressed", () => {
     const action = musicLibraryPlugin.actions?.find(
-      (a) => a.name === "PLAYLIST_OP",
+      (a) => a.name === "MUSIC_LIBRARY",
     );
     expect(action?.descriptionCompressed).toBe(
-      "Playlist ops: save, load, delete, add.",
+      "Music library ops: playlist(subaction save/load/delete/add), play-query, search-youtube, download. Mutations require confirmed:true.",
+    );
+  });
+
+  it("keeps legacy action names as MUSIC_LIBRARY similes", () => {
+    const action = musicLibraryPlugin.actions?.find(
+      (a) => a.name === "MUSIC_LIBRARY",
+    );
+    expect(action?.similes).toEqual(
+      expect.arrayContaining([
+        "PLAYLIST",
+        "PLAYLIST_OP",
+        "PLAY_MUSIC_QUERY",
+        "SEARCH_YOUTUBE",
+        "DOWNLOAD_MUSIC",
+      ]),
     );
   });
 

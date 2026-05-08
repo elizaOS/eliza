@@ -14,22 +14,12 @@ import {
   type ShopifyService,
 } from "../services/ShopifyService.js";
 import type { Customer, Order, Product } from "../types.js";
+import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatProductBrief(p: Product): string {
   const price = p.variants.edges[0]?.node.price ?? "n/a";
@@ -156,6 +146,30 @@ export const searchStoreAction: Action = {
   description:
     "Search across products, orders, and customers in a connected Shopify store.",
   descriptionCompressed: "Search Shopify products, orders, customers.",
+  parameters: [
+    {
+      name: "query",
+      description: "Search term.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "scope",
+      description: "Search scope: all, products, orders, or customers.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["all", "products", "orders", "customers"],
+      },
+    },
+    {
+      name: "limit",
+      description: "Maximum results per scope.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    shopifyAccountIdParameter,
+  ],
 
   validate: async (
     runtime: IAgentRuntime,
@@ -172,7 +186,8 @@ export const searchStoreAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    const accountId = getShopifyAccountId(runtime, _options);
+    if (!svc?.isConnected(accountId)) {
       await callback?.({
         text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       });
@@ -200,7 +215,7 @@ export const searchStoreAction: Action = {
         const result = await svc.listProducts({
           query: intent.query,
           first: structured.limit,
-        });
+        }, accountId);
         if (result.products.length > 0) {
           sections.push(
             `**Products** (${result.products.length}):\n${result.products.map(formatProductBrief).join("\n")}`,
@@ -214,7 +229,7 @@ export const searchStoreAction: Action = {
         const result = await svc.listOrders({
           query: intent.query,
           first: structured.limit,
-        });
+        }, accountId);
         if (result.orders.length > 0) {
           sections.push(
             `**Orders** (${result.orders.length}):\n${result.orders.map(formatOrderBrief).join("\n")}`,
@@ -228,7 +243,7 @@ export const searchStoreAction: Action = {
         const result = await svc.listCustomers({
           query: intent.query,
           first: structured.limit,
-        });
+        }, accountId);
         if (result.customers.length > 0) {
           sections.push(
             `**Customers** (${result.customers.length}):\n${result.customers.map(formatCustomerBrief).join("\n")}`,

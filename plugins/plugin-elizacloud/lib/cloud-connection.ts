@@ -1,6 +1,6 @@
 import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
+import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { ElizaConfig } from "@elizaos/agent/config";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";

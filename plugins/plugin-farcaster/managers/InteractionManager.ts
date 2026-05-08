@@ -21,6 +21,7 @@ import {
 import { castUuid, neynarCastToCast } from "../utils";
 import { AsyncQueue } from "../utils/asyncqueue";
 import { standardCastHandlerCallback } from "../utils/callbacks";
+import { DEFAULT_FARCASTER_ACCOUNT_ID, normalizeFarcasterAccountId } from "../utils/config";
 import { EmbedManager } from "./EmbedManager";
 import type { IInteractionProcessor } from "./InteractionProcessor";
 import {
@@ -60,6 +61,13 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
     });
 
     this.runtime.logger.info(`Farcaster interaction mode: ${this.mode}`);
+  }
+
+  private getAccountId(): string {
+    return normalizeFarcasterAccountId(
+      (this.config as FarcasterConfig & { accountId?: string }).accountId ??
+        DEFAULT_FARCASTER_ACCOUNT_ID
+    );
   }
 
   async processMention(cast: NeynarCast): Promise<void> {
@@ -214,8 +222,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
           messageServerId: stringToUuid(cast.authorFid.toString()),
           worldId,
           metadata: {
+            accountId: this.getAccountId(),
             ownership: { ownerId: cast.authorFid.toString() },
             farcaster: {
+              accountId: this.getAccountId(),
               username: cast.profile.username,
               id: cast.authorFid.toString(),
               name: cast.profile.name,
@@ -242,12 +252,16 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
               })
             : undefined,
           source: FARCASTER_SOURCE,
+          accountId: this.getAccountId(),
           channelType: ChannelType.THREAD,
           attachments: cast.media && cast.media.length > 0 ? cast.media : undefined,
         },
         entityId,
         roomId,
         createdAt: cast.timestamp.getTime(),
+        metadata: {
+          accountId: this.getAccountId(),
+        },
       };
 
       return memory;
@@ -286,6 +300,7 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
             memory: newMemory,
             cast: currentCast,
             source: FARCASTER_SOURCE,
+            accountId: this.getAccountId(),
           } as EventPayload
         );
       }
@@ -358,6 +373,7 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
       memory,
       cast,
       source: FARCASTER_SOURCE,
+      accountId: this.getAccountId(),
       callback,
     };
     this.runtime.emitEvent(FarcasterEventTypes.MENTION_RECEIVED, mentionPayload);

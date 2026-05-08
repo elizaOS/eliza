@@ -7,13 +7,14 @@
  *   - GITHUB_ISSUE_OP (write ops require confirmation)
  *   - GITHUB_NOTIFICATION_TRIAGE
  *
- * Auth: two independent PATs.
- *   - GITHUB_USER_PAT   — the user acting on their own behalf
- *   - GITHUB_AGENT_PAT  — the agent acting on its own behalf
+ * Auth: role-tagged account records with legacy PAT fallback.
+ *   - GITHUB_ACCOUNTS   — JSON account records ({accountId, role, token})
+ *   - GITHUB_USER_PAT   — legacy user acting on their own behalf
+ *   - GITHUB_AGENT_PAT  — legacy agent acting on its own behalf
  *   E2E fallbacks: ELIZA_E2E_GITHUB_USER_PAT / ELIZA_E2E_GITHUB_AGENT_PAT.
  *
- * Each action takes an `as: "user" | "agent"` option that selects which
- * token executes the request. GITHUB_PR_OP review and
+ * Each action takes an `as: "user" | "agent"` option and may take accountId
+ * to select a specific account. GITHUB_PR_OP review and
  * GITHUB_NOTIFICATION_TRIAGE default to `"user"`; the other ops default to
  * `"agent"`.
  */
@@ -58,6 +59,7 @@ export {
   type TriagedNotification,
 } from "./actions/notification-triage.js";
 export { prOpAction } from "./actions/pr-op.js";
+export * from "./accounts.js";
 export { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";

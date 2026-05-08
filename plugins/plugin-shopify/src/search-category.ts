@@ -28,6 +28,13 @@ export const SHOPIFY_STORE_SEARCH_CATEGORY: SearchCategoryRegistration = {
       type: "number",
       default: 5,
     },
+    {
+      name: "accountId",
+      label: "Account",
+      description:
+        "Optional Shopify account id. Defaults to SHOPIFY_DEFAULT_ACCOUNT_ID or the legacy single store token.",
+      type: "string",
+    },
   ],
   resultSchemaSummary:
     "Shopify store search sections keyed by products, orders, and customers with Admin GraphQL product/order/customer records.",

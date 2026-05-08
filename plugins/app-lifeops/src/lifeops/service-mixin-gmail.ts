@@ -60,6 +60,11 @@ import {
   sendGoogleGmailMessage,
   sendGoogleGmailReply,
 } from "./google-gmail.js";
+import {
+  readGmailMessageWithGoogleWorkspaceBridge,
+  searchGmailMessagesWithGoogleWorkspaceBridge,
+  sendGmailEmailWithGoogleWorkspaceBridge,
+} from "./google-workspace-bridge.js";
 import { ManagedGoogleClientError } from "./google-managed-client.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import { redactSensitiveData } from "./redact-sensitive-data.js";
@@ -414,6 +419,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                 })
               ).messages
             : await fetchGoogleGmailTriageMessages({
+                // Deprecated transition fallback: plugin-google exposes Gmail
+                // search/read/send, but not LifeOps-specific triage scoring or
+                // classifier metadata yet.
                 accessToken: (
                   await ensureFreshGoogleAccessToken(
                     grant.tokenRef ??
@@ -813,20 +821,51 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
-      const accessToken = (
-        await ensureFreshGoogleAccessToken(
-          grant.tokenRef ??
-            fail(409, "Google Gmail token reference is missing."),
-        )
-      ).accessToken;
       const syncedAt = new Date().toISOString();
-      const syncedMessages = await fetchGoogleGmailSearchMessages({
-        accessToken,
-        selfEmail,
-        maxResults,
+      // Migration boundary: prefer plugin-google's account-scoped Gmail search
+      // when the shared Google Workspace service is present; keep the legacy
+      // local-token fetch as the transition fallback.
+      const bridgeSearch = await searchGmailMessagesWithGoogleWorkspaceBridge({
+        runtime: this.runtime,
+        grant,
         query,
+        maxResults,
         includeSpamTrash,
       });
+      if (bridgeSearch.status === "fallback" && bridgeSearch.error) {
+        this.logLifeOpsWarn(
+          "google_workspace_bridge_fallback",
+          bridgeSearch.reason,
+          {
+            provider: "google",
+            operation: "gmail.searchMessages",
+            grantId: grant.id,
+            mode: grant.mode,
+            error:
+              bridgeSearch.error instanceof Error
+                ? bridgeSearch.error.message
+                : String(bridgeSearch.error),
+          },
+        );
+      }
+      const syncedMessages =
+        bridgeSearch.status === "handled"
+          ? bridgeSearch.value
+          : await fetchGoogleGmailSearchMessages({
+              // Deprecated transition fallback: plugin-google is the primary
+              // Gmail search path; this local-token REST path remains only for
+              // unmigrated Google credential records.
+              accessToken: (
+                await ensureFreshGoogleAccessToken(
+                  grant.tokenRef ??
+                    fail(409, "Google Gmail token reference is missing."),
+                )
+              ).accessToken,
+              selfEmail,
+              maxResults,
+              query,
+              includeSpamTrash,
+            });
       const messages = filterGmailMessagesBySearch({
         messages: syncedMessages.map((message) =>
           materializeGmailMessageSummary({
@@ -981,16 +1020,47 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                   bodyText: result.bodyText,
                 }),
               )
-          : await fetchGoogleGmailMessageDetail({
-              accessToken: (
-                await ensureFreshGoogleAccessToken(
-                  grant.tokenRef ??
-                    fail(409, "Google Gmail token reference is missing."),
-                )
-              ).accessToken,
-              selfEmail,
-              messageId: targetMessageId,
-            });
+          : await (async () => {
+              const bridgeRead =
+                await readGmailMessageWithGoogleWorkspaceBridge({
+                  runtime: this.runtime,
+                  grant,
+                  messageId: targetMessageId,
+                  includeBody: true,
+                });
+              if (bridgeRead.status === "handled") {
+                return bridgeRead.value;
+              }
+              if (bridgeRead.error) {
+                this.logLifeOpsWarn(
+                  "google_workspace_bridge_fallback",
+                  bridgeRead.reason,
+                  {
+                    provider: "google",
+                    operation: "gmail.getMessage",
+                    grantId: grant.id,
+                    mode: grant.mode,
+                    error:
+                      bridgeRead.error instanceof Error
+                        ? bridgeRead.error.message
+                        : String(bridgeRead.error),
+                  },
+                );
+              }
+              // Deprecated transition fallback: plugin-google is the primary
+              // Gmail read path; this local-token REST path remains only for
+              // unmigrated Google credential records.
+              return fetchGoogleGmailMessageDetail({
+                accessToken: (
+                  await ensureFreshGoogleAccessToken(
+                    grant.tokenRef ??
+                      fail(409, "Google Gmail token reference is missing."),
+                  )
+                ).accessToken,
+                selfEmail,
+                messageId: targetMessageId,
+              });
+            })();
 
       if (!detail) {
         fail(404, "life-ops Gmail message not found");
@@ -2183,6 +2253,38 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           });
           return;
         }
+        const bridgeSend = await sendGmailEmailWithGoogleWorkspaceBridge({
+          runtime: this.runtime,
+          grant: args.grant,
+          to,
+          cc,
+          subject,
+          bodyText,
+          threadId: args.message.threadId,
+        });
+        if (bridgeSend.status === "handled") {
+          sentMessageId = bridgeSend.value.messageId;
+          return;
+        }
+        if (bridgeSend.error) {
+          this.logLifeOpsWarn(
+            "google_workspace_bridge_fallback",
+            bridgeSend.reason,
+            {
+              provider: "google",
+              operation: "gmail.sendEmail",
+              grantId: args.grant.id,
+              mode: args.grant.mode,
+              error:
+                bridgeSend.error instanceof Error
+                  ? bridgeSend.error.message
+                  : String(bridgeSend.error),
+            },
+          );
+        }
+        // Deprecated transition fallback: plugin-google is the primary Gmail
+        // send path; this local-token REST path remains only for unmigrated
+        // Google credential records.
         const result = await sendGoogleGmailReply({
           accessToken: (
             await ensureFreshGoogleAccessToken(
@@ -2348,6 +2450,38 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           });
           return;
         }
+        const bridgeSend = await sendGmailEmailWithGoogleWorkspaceBridge({
+          runtime: this.runtime,
+          grant,
+          to,
+          cc,
+          bcc,
+          subject,
+          bodyText,
+        });
+        if (bridgeSend.status === "handled") {
+          sentMessageId = bridgeSend.value.messageId;
+          return;
+        }
+        if (bridgeSend.error) {
+          this.logLifeOpsWarn(
+            "google_workspace_bridge_fallback",
+            bridgeSend.reason,
+            {
+              provider: "google",
+              operation: "gmail.sendEmail",
+              grantId: grant.id,
+              mode: grant.mode,
+              error:
+                bridgeSend.error instanceof Error
+                  ? bridgeSend.error.message
+                  : String(bridgeSend.error),
+            },
+          );
+        }
+        // Deprecated transition fallback: plugin-google is the primary Gmail
+        // send path; this local-token REST path remains only for unmigrated
+        // Google credential records.
         const result = await sendGoogleGmailMessage({
           accessToken: (
             await ensureFreshGoogleAccessToken(

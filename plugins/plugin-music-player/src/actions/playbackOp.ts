@@ -446,11 +446,11 @@ async function handleQueue(
         content: {
           source: "action",
           thought: `Queued music: ${query} (source: ${result.source})`,
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
         metadata: {
           type: "custom" as const,
-          kind: "PLAYBACK_OP",
+          kind: "PLAYBACK",
           op: "queue",
           audioUrl: result.url,
           title: query,
@@ -478,7 +478,7 @@ async function handleQueue(
 }
 
 export const playbackOp: Action = {
-  name: "PLAYBACK_OP",
+  name: "PLAYBACK",
   contexts: ["media", "automation"],
   contextGate: { anyOf: ["media", "automation"] },
   roleGate: { minRole: "USER" },
@@ -589,7 +589,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: 'Paused the music. Say "resume" to continue.',
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -597,7 +597,7 @@ export const playbackOp: Action = {
       { name: "{{name1}}", content: { text: "resume" } },
       {
         name: "{{name2}}",
-        content: { text: "Resumed playback.", actions: ["PLAYBACK_OP"] },
+        content: { text: "Resumed playback.", actions: ["PLAYBACK"] },
       },
     ],
     [
@@ -606,7 +606,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: "Confirmation required before skipping.",
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -616,7 +616,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: "Confirmation required before stopping playback.",
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -626,7 +626,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: 'Confirmation required before adding "Hotel California" to the queue.',
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],

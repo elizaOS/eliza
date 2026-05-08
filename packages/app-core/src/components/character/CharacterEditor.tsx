@@ -243,7 +243,7 @@ export function CharacterEditor({
     else if (activePage === "examples") setRightTab("examples");
   }, [activePage]);
 
-  // Sync activePage when tab changes externally (e.g. nav to /knowledge)
+  // Sync activePage when tab changes externally (e.g. nav to /documents)
   useEffect(() => {
     if (tab === "documents" && activePage !== "documents") {
       setActivePage("documents");

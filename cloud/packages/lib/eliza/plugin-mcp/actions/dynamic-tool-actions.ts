@@ -48,7 +48,7 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
   );
 }
 
-const MCP_ACTION_CONTEXTS = ["connectors", "automation", "knowledge"];
+const MCP_ACTION_CONTEXTS = ["connectors", "automation", "documents"];
 const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
 
 function truncateMcpToolOutput(output: string): string {

@@ -38,5 +38,3 @@ export declare const summarizationTemplate: string;
 export declare const SUMMARIZATION_TEMPLATE: string;
 export declare const transcriptionTemplate: string;
 export declare const TRANSCRIPTION_TEMPLATE: string;
-export declare const unpinMessageTemplate: string;
-export declare const UNPIN_MESSAGE_TEMPLATE: string;

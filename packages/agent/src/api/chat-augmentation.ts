@@ -26,6 +26,11 @@ import { getDocumentsService } from "./documents-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
 
+type DocumentMatch = Awaited<
+	ReturnType<DocumentsServiceLike["searchDocuments"]>
+>[number];
+type DocumentMatches = DocumentMatch[];
+
 // ---------------------------------------------------------------------------
 // Language augmentation
 // ---------------------------------------------------------------------------
@@ -281,19 +286,21 @@ export async function maybeAugmentChatMessageWithDocuments(
         },
       },
       { roomId: scopeRoomId },
-    );
+    ) ?? [];
 
-  const loadMatchesAcrossScopes = async (queryText: string) => {
-    let matches = (await loadMatches(roomId, queryText)) ?? [];
+  const loadMatchesAcrossScopes = async (
+    queryText: string,
+  ): Promise<DocumentMatches> => {
+    let matches = await loadMatches(roomId, queryText);
     if (matches.length === 0 && roomId !== agentId) {
-      matches = (await loadMatches(agentId, queryText)) ?? [];
+      matches = await loadMatches(agentId, queryText);
     }
     return matches;
   };
 
   const selectRelevantMatches = (
-    matches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>>,
-  ) =>
+    matches: DocumentMatches,
+  ): DocumentMatches =>
     matches.filter((match) => {
       const text = match.content?.text?.trim();
       return (
@@ -359,7 +366,7 @@ export async function maybeAugmentChatMessageWithDocuments(
     }
   };
 
-  let relevantMatches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>> = [];
+  let relevantMatches: DocumentMatches = [];
   try {
     relevantMatches = selectRelevantMatches(
       await loadMatchesAcrossScopes(userPrompt),
@@ -507,7 +514,7 @@ export function validateChatImages(images: unknown): string | null {
 
 /**
  * Extension of the core Media attachment shape that carries raw image bytes for
- * action handlers (e.g. POST_TWEET) while the message is in-memory. The
+ * action handlers (e.g. SEND_POST) while the message is in-memory. The
  * extra fields are intentionally stripped before the message is persisted.
  *
  * Note: `_data`/`_mimeType` survive only because elizaOS passes the
@@ -538,7 +545,7 @@ export function buildChatAttachments(
     return { attachments: undefined, compactAttachments: undefined };
   // Compact placeholder URL (no base64) keeps the LLM context lean. The raw
   // image bytes are stashed in `_data`/`_mimeType` for action handlers (e.g.
-  // POST_TWEET) that need to upload them.
+  // SEND_POST) that need to upload them.
   const attachments: ChatAttachmentWithData[] = images.map((img, i) => ({
     id: `img-${i}`,
     url: `attachment:img-${i}`,

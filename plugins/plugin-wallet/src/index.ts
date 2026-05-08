@@ -44,7 +44,7 @@ export {
   YieldOptimizationService,
 } from "./lp/lp-manager-entry.js";
 export * from "./lp/types.js";
-export { agentWalletPlugin, default, walletPlugin } from "./plugin.js";
+export { default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
 export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";

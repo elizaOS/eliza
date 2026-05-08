@@ -1,9 +1,42 @@
-import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  Service,
+  type UUID,
+} from "@elizaos/core";
 import { FarcasterAgentManager } from "../managers/AgentManager";
 import { FARCASTER_SERVICE_NAME } from "../types";
-import { getFarcasterFid, hasFarcasterEnabled, validateFarcasterConfig } from "../utils/config";
+import {
+  normalizeFarcasterAccountId,
+  resolveDefaultFarcasterAccountId,
+  getFarcasterFid,
+  hasFarcasterEnabled,
+  validateFarcasterConfig,
+} from "../utils/config";
 import { FarcasterCastService } from "./CastService";
 import { FarcasterMessageService } from "./MessageService";
+
+type FarcasterPostConnectorRegistration = {
+  source: string;
+  label?: string;
+  description?: string;
+  capabilities?: string[];
+  contexts?: string[];
+  metadata?: Record<string, unknown>;
+  postHandler: (runtime: IAgentRuntime, content: Content) => Promise<Memory>;
+  fetchFeed?: FarcasterCastService["fetchFeed"];
+  searchPosts?: FarcasterCastService["searchPosts"];
+  contentShaping?: {
+    systemPromptFragment?: string;
+    constraints?: Record<string, unknown>;
+  };
+};
+
+type RuntimeWithPostConnector = IAgentRuntime & {
+  registerPostConnector?: (registration: FarcasterPostConnectorRegistration) => void;
+};
 
 export class FarcasterService extends Service {
   private static instance?: FarcasterService;
@@ -42,11 +75,12 @@ export class FarcasterService extends Service {
     }
 
     const farcasterConfig = validateFarcasterConfig(runtime);
+    const accountId = farcasterConfig.accountId;
     manager = new FarcasterAgentManager(runtime, farcasterConfig);
     service.managers.set(runtime.agentId, manager);
 
-    const messageService = new FarcasterMessageService(manager.client, runtime);
-    const castService = new FarcasterCastService(manager.client, runtime);
+    const messageService = new FarcasterMessageService(manager.client, runtime, accountId);
+    const castService = new FarcasterCastService(manager.client, runtime, accountId);
 
     service.messageServices.set(runtime.agentId, messageService);
     service.castServices.set(runtime.agentId, castService);
@@ -69,6 +103,56 @@ export class FarcasterService extends Service {
     } else {
       runtime.logger.debug({ agentId: runtime.agentId }, "Farcaster service not running");
     }
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: FarcasterService): void {
+    const castService = serviceInstance?.getCastService(runtime.agentId);
+    const accountId =
+      castService?.getAccountId() ??
+      normalizeFarcasterAccountId(resolveDefaultFarcasterAccountId(runtime));
+    if (!castService) {
+      runtime.logger.warn(
+        { src: "plugin:farcaster", agentId: runtime.agentId },
+        "Cannot register Farcaster post connector; cast service is not initialized"
+      );
+      return;
+    }
+
+    const withPostConnector = runtime as RuntimeWithPostConnector;
+    if (typeof withPostConnector.registerPostConnector !== "function") {
+      return;
+    }
+
+    withPostConnector.registerPostConnector({
+      source: "farcaster",
+      accountId,
+      label: "Farcaster",
+      description:
+        "Farcaster public cast connector for publishing casts and reading or searching the authenticated account's recent feed.",
+      capabilities: ["post", "fetch_feed", "search_posts"],
+      contexts: ["social", "social_posting", "connectors"],
+      metadata: {
+        accountId,
+        service: FARCASTER_SERVICE_NAME,
+      },
+      postHandler: castService.handleSendPost.bind(castService),
+      fetchFeed: castService.fetchFeed.bind(castService),
+      searchPosts: castService.searchPosts.bind(castService),
+      contentShaping: {
+        systemPromptFragment:
+          "For Farcaster casts, write a conversational public cast under 320 characters. If replying, keep enough context for a public thread.",
+        constraints: {
+          maxLength: 320,
+          supportsMarkdown: false,
+          channelType: ChannelType.FEED,
+        },
+      },
+    });
+
+    runtime.logger.info(
+      { src: "plugin:farcaster", agentId: runtime.agentId },
+      "Registered Farcaster post connector"
+    );
   }
 
   async stop(): Promise<void> {

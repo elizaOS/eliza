@@ -98,7 +98,7 @@ export const FarcasterConfigSchema = z.object({
 export type FarcasterConfig = z.infer<typeof FarcasterConfigSchema>;
 
 export enum FarcasterEventTypes {
-  CAST_GENERATED = "FARCASTER_CAST_GENERATED",
+  POST_GENERATED = "FARCASTER_POST_GENERATED",
   MENTION_RECEIVED = "FARCASTER_MENTION_RECEIVED",
   THREAD_CAST_CREATED = "FARCASTER_THREAD_CAST_CREATED",
 }
@@ -111,6 +111,7 @@ export enum FarcasterMessageType {
 export interface FarcasterGenericCastPayload extends Omit<MessagePayload, "message"> {
   memory: Memory;
   cast: NeynarCast;
+  accountId?: string;
 }
 
 export interface NeynarWebhookData {

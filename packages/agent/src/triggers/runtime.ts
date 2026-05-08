@@ -233,8 +233,7 @@ async function dispatchInstruction(
   );
 
   // For inject_now: the memory is already in the autonomy room. The
-  // AutonomyService loop will pick it up on its next cycle. We don't
-  // call processActions here to avoid double-dispatch — the loop is
+  // AutonomyService loop will pick it up on its next cycle; that loop is
   // the single execution path for all autonomous instructions.
 }
 

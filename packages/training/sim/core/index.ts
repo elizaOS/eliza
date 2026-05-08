@@ -56,9 +56,7 @@ export { type ScanResult, scanSystems } from "./scanner";
 // Implementations
 export { DefaultServiceContainer } from "./service-container";
 // System definers
-/** @deprecated Use `defineSystem()` instead. */
 export {
-  AbstractBabylonSystem,
   defineSystem,
   type SystemDefinition,
 } from "./system";

@@ -1,7 +1,8 @@
 /**
- * Instagram actions module
+ * Instagram actions module.
  *
- * Contains action implementations for Instagram operations.
+ * Instagram DMs route through MESSAGE. Instagram media comments route through
+ * POST with source "instagram" and a mediaId/target.
  */
 
 // Instagram DMs route through MESSAGE. Instagram comments route through POST.

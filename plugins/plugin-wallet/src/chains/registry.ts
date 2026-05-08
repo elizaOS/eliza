@@ -34,6 +34,7 @@ import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
 import { initWalletProvider } from "./evm/providers/wallet";
+import { routeEvmGovernance } from "./evm/gov-router";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";

@@ -14,6 +14,7 @@ import { getEpochMs } from "./time";
  */
 export interface TwitterContextOptions {
   tweet?: ClientTweet;
+  accountId?: string;
   userId: string;
   username: string;
   name?: string;
@@ -43,6 +44,7 @@ export function buildTwitterMessageMetadata(
   return {
     type: "message",
     source: "twitter",
+    ...(accountId ? { accountId } : {}),
     provider: "twitter",
     timestamp: createdAt,
     entityName: tweet.name,
@@ -59,6 +61,7 @@ export function buildTwitterMessageMetadata(
       username: tweet.username,
     },
     twitter: {
+      ...(accountId ? { accountId } : {}),
       id: tweet.userId,
       userId: tweet.userId,
       username: tweet.username,
@@ -83,6 +86,7 @@ export async function ensureTwitterContext(
     username,
     name = username,
     conversationId = userId,
+    accountId,
   } = options;
 
   const worldId = createUniqueUuid(runtime, userId);
@@ -97,7 +101,9 @@ export async function ensureTwitterContext(
       agentId: runtime.agentId,
       metadata: {
         ownership: { ownerId: userId },
+        ...(accountId ? { accountId } : {}),
         twitter: {
+          ...(accountId ? { accountId } : {}),
           username: username,
           id: userId,
         },

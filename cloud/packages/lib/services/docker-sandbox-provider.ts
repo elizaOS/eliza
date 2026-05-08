@@ -10,9 +10,11 @@
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import type { DockerNode } from "@/db/schemas/docker-nodes";
 import { containersEnv } from "@/lib/config/containers-env";
 import { getAgentBaseDomain } from "@/lib/eliza-agent-web-ui";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
 import { getUsedDockerHostPorts } from "@/lib/services/docker-port-allocation";
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
@@ -132,6 +134,10 @@ const PULL_TIMEOUT_MS = 300_000; // 5 min
 
 /** SSH command timeout for docker run / stop / rm. */
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
+
+/** Autoscaled node readiness polling. */
+const AUTOSCALED_NODE_READY_TIMEOUT_MS = 4 * 60 * 1000;
+const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
 function getDockerHealthCmd(port: string): string {
   if (!/^\d+$/.test(port)) {
@@ -359,7 +365,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
-    const dbNode = await dockerNodeManager.getAvailableNode({ requiredPlatform: imagePlatform });
+    let dbNode = await dockerNodeManager.getAvailableNode({ requiredPlatform: imagePlatform });
+    if (!dbNode) {
+      dbNode = await this.provisionAutoscaledNodeForAgent({
+        image: resolvedImage,
+        platform: imagePlatform,
+      });
+    }
 
     let nodeId: string;
     let hostname: string;
@@ -675,6 +687,72 @@ export class DockerSandboxProvider implements SandboxProvider {
       healthUrl: `http://${targetHost}:${webUiPort}/api`,
       metadata: metadata as unknown as Record<string, unknown>,
     };
+  }
+
+  private async provisionAutoscaledNodeForAgent({
+    image,
+    platform,
+  }: {
+    image: string;
+    platform?: string;
+  }): Promise<DockerNode | null> {
+    const env = getCloudAwareEnv();
+    const hcloudToken = containersEnv.hetznerCloudToken();
+    const publicKey = env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
+    if (!hcloudToken || !publicKey) {
+      logger.warn("[docker-sandbox] No Docker capacity and autoscale is not configured", {
+        hasHcloudToken: Boolean(hcloudToken),
+        hasPublicKey: Boolean(publicKey),
+      });
+      return null;
+    }
+
+    try {
+      logger.info("[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node", {
+        image,
+        platform,
+      });
+      const provisioned = await getNodeAutoscaler().provisionNode(
+        {
+          prePullImages: [image],
+          labels: { purpose: "agent-provisioning" },
+        },
+        {
+          controlPlanePublicKey: publicKey,
+          registrationUrl: env.CONTAINERS_BOOTSTRAP_CALLBACK_URL,
+          registrationSecret: env.CONTAINERS_BOOTSTRAP_SECRET,
+        },
+      );
+
+      const deadline = Date.now() + AUTOSCALED_NODE_READY_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const node = await dockerNodesRepository.findByNodeId(provisioned.nodeId);
+        if (
+          node &&
+          (await dockerNodeManager.ensureNodeReady(node, {
+            requiredPlatform: platform,
+          }))
+        ) {
+          logger.info("[docker-sandbox] Autoscaled Docker node is ready", {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+          });
+          return node;
+        }
+        await new Promise((resolve) => setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS));
+      }
+
+      logger.warn("[docker-sandbox] Autoscaled Docker node did not become ready before timeout", {
+        nodeId: provisioned.nodeId,
+        hostname: provisioned.hostname,
+      });
+      return null;
+    } catch (error) {
+      logger.warn("[docker-sandbox] Autoscaled Docker node provisioning failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   // ------------------------------------------------------------------

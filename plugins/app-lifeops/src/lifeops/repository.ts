@@ -83,6 +83,15 @@ import type {
   LifeOpsPaymentSourceStatus,
   LifeOpsPaymentTransaction,
 } from "./payment-types.js";
+import {
+  createConnectorAccountPrivacyPolicy,
+  deriveConnectorAccountId,
+  deriveConnectorAccountIdFromGrant,
+  type LifeOpsConnectorAccountPrivacyPolicy,
+  legacyConnectorAccountIdAlias,
+  normalizeLifeOpsAccountPrivacyScope,
+  normalizeLifeOpsEgressDataClasses,
+} from "./privacy-egress.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import type {
   LifeOpsScheduleMergedState,
@@ -117,7 +126,13 @@ import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 type BrowserCompanionCredential = {
   companion: BrowserBridgeCompanionStatus;
   pairingTokenHash: string | null;
+  pendingPairingTokens: BrowserCompanionPendingPairingToken[];
   pendingPairingTokenHashes: string[];
+};
+
+type BrowserCompanionPendingPairingToken = {
+  hash: string;
+  expiresAt: string | null;
 };
 
 function normalizeConnectorIdentityEmail(value: unknown): string | null {
@@ -503,10 +518,13 @@ function parseConnectorGrant(
   row: Record<string, unknown>,
 ): LifeOpsConnectorGrant {
   const identity = parseJsonRecord(row.identity_json);
-  return {
+  const grant: LifeOpsConnectorGrant = {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : null,
     side: toText(row.side, "owner") as LifeOpsConnectorGrant["side"],
     identity,
     identityEmail: row.identity_email ? toText(row.identity_email) : null,
@@ -526,6 +544,29 @@ function parseConnectorGrant(
       : null,
     metadata: parseJsonRecord(row.metadata_json),
     lastRefreshAt: row.last_refresh_at ? toText(row.last_refresh_at) : null,
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+  return {
+    ...grant,
+    connectorAccountId:
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant),
+  };
+}
+
+function parseConnectorAccountPrivacyPolicy(
+  row: Record<string, unknown>,
+): LifeOpsConnectorAccountPrivacyPolicy {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    provider: toText(row.provider),
+    connectorAccountId: toText(row.connector_account_id),
+    visibilityScope: normalizeLifeOpsAccountPrivacyScope(row.visibility_scope),
+    allowedDataClasses: normalizeLifeOpsEgressDataClasses(
+      parseJsonArray(row.allowed_data_classes_json),
+    ),
+    metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
@@ -966,6 +1007,9 @@ function parseCalendarEvent(
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsCalendarEvent["side"],
     calendarId: toText(row.calendar_id),
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : undefined,
     title: toText(row.title),
     description: toText(row.description),
     location: toText(row.location),
@@ -995,6 +1039,9 @@ function parseGmailMessageSummary(
     agentId: toText(row.agent_id),
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsGmailMessageSummary["side"],
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : undefined,
     grantId: row.grant_id ? toText(row.grant_id) : undefined,
     threadId: toText(row.thread_id),
     subject: toText(row.subject),
@@ -1207,6 +1254,9 @@ function parseCachedInboxMessage(
     participantCount,
     gmailAccountId: row.gmail_account_id
       ? toText(row.gmail_account_id)
+      : undefined,
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
       : undefined,
     gmailAccountEmail: row.gmail_account_email
       ? toText(row.gmail_account_email)
@@ -1440,26 +1490,60 @@ function parseBrowserCompanion(
     permissions: parseBrowserPermissionState(row.permissions_json),
     lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : null,
     pairedAt: row.paired_at ? toText(row.paired_at) : null,
+    pairingTokenExpiresAt: row.pairing_token_expires_at
+      ? toText(row.pairing_token_expires_at)
+      : null,
+    pairingTokenRevokedAt: row.pairing_token_revoked_at
+      ? toText(row.pairing_token_revoked_at)
+      : null,
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
 }
 
+function parseBrowserCompanionPendingPairingTokens(
+  value: unknown,
+): BrowserCompanionPendingPairingToken[] {
+  return parseJsonArray(value)
+    .map((candidate): BrowserCompanionPendingPairingToken | null => {
+      if (typeof candidate === "string" && candidate.length > 0) {
+        return { hash: candidate, expiresAt: null };
+      }
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        return null;
+      }
+      const record = candidate as Record<string, unknown>;
+      if (typeof record.hash !== "string" || record.hash.length === 0) {
+        return null;
+      }
+      return {
+        hash: record.hash,
+        expiresAt:
+          typeof record.expiresAt === "string" && record.expiresAt.length > 0
+            ? record.expiresAt
+            : null,
+      };
+    })
+    .filter(
+      (candidate): candidate is BrowserCompanionPendingPairingToken =>
+        candidate !== null,
+    );
+}
+
 function parseBrowserCompanionCredential(
   row: Record<string, unknown>,
 ): BrowserCompanionCredential {
+  const pendingPairingTokens = parseBrowserCompanionPendingPairingTokens(
+    row.pending_pairing_token_hashes_json,
+  );
   return {
     companion: parseBrowserCompanion(row),
     pairingTokenHash: row.pairing_token_hash
       ? toText(row.pairing_token_hash)
       : null,
-    pendingPairingTokenHashes: parseJsonArray(
-      row.pending_pairing_token_hashes_json,
-    ).filter(
-      (candidate): candidate is string =>
-        typeof candidate === "string" && candidate.length > 0,
-    ),
+    pendingPairingTokens,
+    pendingPairingTokenHashes: pendingPairingTokens.map((token) => token.hash),
   };
 }
 
@@ -2145,6 +2229,8 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureActivitySignalColumns(runtime);
     await LifeOpsRepository.ensureSchedulingNegotiationColumns(runtime);
     await LifeOpsRepository.ensureReminderReviewColumns(runtime);
+    await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
+    await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
   }
 
@@ -2188,6 +2274,21 @@ export class LifeOpsRepository {
     );
   }
 
+  static async ensureBrowserBridgeCompanionTokenColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    if (!(await tableExists(runtime, "browser_bridge_companions"))) {
+      return;
+    }
+    const companionTokenColumnRepairs = [
+      "ALTER TABLE browser_bridge_companions ADD COLUMN IF NOT EXISTS pairing_token_expires_at TEXT",
+      "ALTER TABLE browser_bridge_companions ADD COLUMN IF NOT EXISTS pairing_token_revoked_at TEXT",
+    ];
+    for (const statement of companionTokenColumnRepairs) {
+      await executeRawSql(runtime, statement);
+    }
+  }
+
   static async ensureReminderReviewColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
@@ -2225,6 +2326,62 @@ export class LifeOpsRepository {
       `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_review_due
          ON life_reminder_attempts (agent_id, review_status, review_at)`,
     );
+  }
+
+  static async ensureConnectorAccountColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    const tableColumnRepairs: Array<{
+      table: string;
+      statements: string[];
+    }> = [
+      {
+        table: "life_connector_grants",
+        statements: [
+          "ALTER TABLE life_connector_grants ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_connector_grants_account ON life_connector_grants (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "life_calendar_events",
+        statements: [
+          "ALTER TABLE life_calendar_events ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "ALTER TABLE life_calendar_events ADD COLUMN IF NOT EXISTS purge_resync_required BOOLEAN NOT NULL DEFAULT FALSE",
+          "ALTER TABLE life_calendar_events ADD COLUMN IF NOT EXISTS purge_resync_reason TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_calendar_events_account ON life_calendar_events (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "life_calendar_sync_states",
+        statements: [
+          "ALTER TABLE life_calendar_sync_states ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "ALTER TABLE life_calendar_sync_states ADD COLUMN IF NOT EXISTS purge_resync_required BOOLEAN NOT NULL DEFAULT FALSE",
+          "ALTER TABLE life_calendar_sync_states ADD COLUMN IF NOT EXISTS purge_resync_reason TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_calendar_sync_states_account ON life_calendar_sync_states (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "life_gmail_messages",
+        statements: [
+          "ALTER TABLE life_gmail_messages ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_gmail_messages_account ON life_gmail_messages (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "life_inbox_messages",
+        statements: [
+          "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_inbox_messages_account ON life_inbox_messages (agent_id, connector_account_id)",
+        ],
+      },
+    ];
+
+    for (const repair of tableColumnRepairs) {
+      if (!(await tableExists(runtime, repair.table))) continue;
+      for (const statement of repair.statements) {
+        await executeRawSql(runtime, statement);
+      }
+    }
   }
 
   static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
@@ -3953,8 +4110,85 @@ export class LifeOpsRepository {
     );
   }
 
+  async ensureConnectorAccountPrivacy(input: {
+    agentId: string;
+    provider: string;
+    connectorAccountId: string;
+  }): Promise<LifeOpsConnectorAccountPrivacyPolicy> {
+    const existing = await this.getConnectorAccountPrivacy(
+      input.agentId,
+      input.provider,
+      input.connectorAccountId,
+    );
+    if (existing) return existing;
+
+    const policy = createConnectorAccountPrivacyPolicy(input);
+    await this.upsertConnectorAccountPrivacy(policy);
+    return policy;
+  }
+
+  async upsertConnectorAccountPrivacy(
+    input: LifeOpsConnectorAccountPrivacyPolicy,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_account_privacy (
+        id, agent_id, provider, connector_account_id, visibility_scope,
+        allowed_data_classes_json, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(input.id)},
+        ${sqlQuote(input.agentId)},
+        ${sqlQuote(input.provider)},
+        ${sqlQuote(input.connectorAccountId)},
+        ${sqlQuote(input.visibilityScope)},
+        ${sqlJson(input.allowedDataClasses)},
+        ${sqlJson(input.metadata)},
+        ${sqlQuote(input.createdAt)},
+        ${sqlQuote(input.updatedAt)}
+      )
+      ON CONFLICT(agent_id, provider, connector_account_id) DO UPDATE SET
+        visibility_scope = excluded.visibility_scope,
+        allowed_data_classes_json = excluded.allowed_data_classes_json,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listConnectorAccountPrivacy(
+    agentId: string,
+  ): Promise<LifeOpsConnectorAccountPrivacyPolicy[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_account_privacy
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY provider ASC, connector_account_id ASC`,
+    );
+    return rows.map(parseConnectorAccountPrivacyPolicy);
+  }
+
+  async getConnectorAccountPrivacy(
+    agentId: string,
+    provider: string,
+    connectorAccountId: string,
+  ): Promise<LifeOpsConnectorAccountPrivacyPolicy | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_account_privacy
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND connector_account_id = ${sqlQuote(connectorAccountId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseConnectorAccountPrivacyPolicy(row) : null;
+  }
+
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
     const identityEmail = deriveConnectorIdentityEmail(grant.identity);
+    const connectorAccountId =
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant);
     const logicalIdentityClause =
       identityEmail === null
         ? "identity_email IS NULL"
@@ -3981,7 +4215,8 @@ export class LifeOpsRepository {
       await executeRawSql(
         this.runtime,
         `UPDATE life_connector_grants
-            SET identity_json = ${sqlJson(grant.identity)},
+            SET connector_account_id = ${sqlText(connectorAccountId)},
+                identity_json = ${sqlJson(grant.identity)},
                 identity_email = ${sqlText(identityEmail)},
                 granted_scopes_json = ${sqlJson(grant.grantedScopes)},
                 capabilities_json = ${sqlJson(grant.capabilities)},
@@ -3995,55 +4230,62 @@ export class LifeOpsRepository {
                 updated_at = ${sqlQuote(grant.updatedAt)}
           WHERE id = ${sqlQuote(targetId)}`,
       );
-      return;
+    } else {
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO life_connector_grants (
+          id, agent_id, provider, connector_account_id, side, identity_json,
+          identity_email, granted_scopes_json, capabilities_json, token_ref,
+          mode, execution_target, source_of_truth, preferred_by_agent,
+          cloud_connection_id, metadata_json, last_refresh_at, created_at,
+          updated_at
+        ) VALUES (
+          ${sqlQuote(targetId)},
+          ${sqlQuote(grant.agentId)},
+          ${sqlQuote(grant.provider)},
+          ${sqlText(connectorAccountId)},
+          ${sqlQuote(grant.side)},
+          ${sqlJson(grant.identity)},
+          ${sqlText(identityEmail)},
+          ${sqlJson(grant.grantedScopes)},
+          ${sqlJson(grant.capabilities)},
+          ${sqlText(grant.tokenRef)},
+          ${sqlQuote(grant.mode)},
+          ${sqlQuote(grant.executionTarget)},
+          ${sqlQuote(grant.sourceOfTruth)},
+          ${sqlBoolean(grant.preferredByAgent)},
+          ${sqlText(grant.cloudConnectionId)},
+          ${sqlJson(grant.metadata)},
+          ${sqlText(grant.lastRefreshAt)},
+          ${sqlQuote(createdAt)},
+          ${sqlQuote(grant.updatedAt)}
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          agent_id = excluded.agent_id,
+          provider = excluded.provider,
+          connector_account_id = excluded.connector_account_id,
+          side = excluded.side,
+          identity_json = excluded.identity_json,
+          identity_email = excluded.identity_email,
+          granted_scopes_json = excluded.granted_scopes_json,
+          capabilities_json = excluded.capabilities_json,
+          token_ref = excluded.token_ref,
+          execution_target = excluded.execution_target,
+          source_of_truth = excluded.source_of_truth,
+          preferred_by_agent = excluded.preferred_by_agent,
+          cloud_connection_id = excluded.cloud_connection_id,
+          metadata_json = excluded.metadata_json,
+          last_refresh_at = excluded.last_refresh_at,
+          created_at = life_connector_grants.created_at,
+          updated_at = excluded.updated_at`,
+      );
     }
 
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO life_connector_grants (
-        id, agent_id, provider, side, identity_json, identity_email,
-        granted_scopes_json,
-        capabilities_json, token_ref, mode, execution_target, source_of_truth,
-        preferred_by_agent, cloud_connection_id, metadata_json,
-        last_refresh_at, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(targetId)},
-        ${sqlQuote(grant.agentId)},
-        ${sqlQuote(grant.provider)},
-        ${sqlQuote(grant.side)},
-        ${sqlJson(grant.identity)},
-        ${sqlText(identityEmail)},
-        ${sqlJson(grant.grantedScopes)},
-        ${sqlJson(grant.capabilities)},
-        ${sqlText(grant.tokenRef)},
-        ${sqlQuote(grant.mode)},
-        ${sqlQuote(grant.executionTarget)},
-        ${sqlQuote(grant.sourceOfTruth)},
-        ${sqlBoolean(grant.preferredByAgent)},
-        ${sqlText(grant.cloudConnectionId)},
-        ${sqlJson(grant.metadata)},
-        ${sqlText(grant.lastRefreshAt)},
-        ${sqlQuote(createdAt)},
-        ${sqlQuote(grant.updatedAt)}
-      )
-      ON CONFLICT(id) DO UPDATE SET
-        agent_id = excluded.agent_id,
-        provider = excluded.provider,
-        side = excluded.side,
-        identity_json = excluded.identity_json,
-        identity_email = excluded.identity_email,
-        granted_scopes_json = excluded.granted_scopes_json,
-        capabilities_json = excluded.capabilities_json,
-        token_ref = excluded.token_ref,
-        execution_target = excluded.execution_target,
-        source_of_truth = excluded.source_of_truth,
-        preferred_by_agent = excluded.preferred_by_agent,
-        cloud_connection_id = excluded.cloud_connection_id,
-        metadata_json = excluded.metadata_json,
-        last_refresh_at = excluded.last_refresh_at,
-        created_at = life_connector_grants.created_at,
-        updated_at = excluded.updated_at`,
-    );
+    await this.ensureConnectorAccountPrivacy({
+      agentId: grant.agentId,
+      provider: grant.provider,
+      connectorAccountId,
+    });
   }
 
   async listConnectorGrants(agentId: string): Promise<LifeOpsConnectorGrant[]> {
@@ -4103,13 +4345,21 @@ export class LifeOpsRepository {
     event: LifeOpsCalendarEvent,
     side: LifeOpsConnectorSide = event.side,
   ): Promise<void> {
+    const connectorAccountId =
+      event.connectorAccountId ??
+      deriveConnectorAccountId({
+        provider: event.provider,
+        side,
+        identityEmail: event.accountEmail,
+        grantId: event.grantId,
+      });
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_calendar_events (
         id, agent_id, provider, side, calendar_id, external_event_id, title,
         description, location, status, start_at, end_at, is_all_day,
-        timezone, html_link, conference_link, organizer_json,
-        attendees_json, metadata_json, synced_at, updated_at
+        timezone, html_link, conference_link, organizer_json, attendees_json,
+        connector_account_id, grant_id, metadata_json, synced_at, updated_at
       ) VALUES (
         ${sqlQuote(event.id)},
         ${sqlQuote(event.agentId)},
@@ -4129,6 +4379,8 @@ export class LifeOpsRepository {
         ${sqlText(event.conferenceLink)},
         ${event.organizer ? sqlJson(event.organizer) : "NULL"},
         ${sqlJson(event.attendees)},
+        ${sqlText(connectorAccountId)},
+        ${sqlText(event.grantId)},
         ${sqlJson(event.metadata)},
         ${sqlQuote(event.syncedAt)},
         ${sqlQuote(event.updatedAt)}
@@ -4146,6 +4398,8 @@ export class LifeOpsRepository {
         conference_link = excluded.conference_link,
         organizer_json = excluded.organizer_json,
         attendees_json = excluded.attendees_json,
+        connector_account_id = COALESCE(excluded.connector_account_id, life_calendar_events.connector_account_id),
+        grant_id = COALESCE(excluded.grant_id, life_calendar_events.grant_id),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
@@ -4353,12 +4607,21 @@ export class LifeOpsRepository {
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
     const grantId = requireScopedGmailGrantId(message.grantId);
+    const connectorAccountId =
+      message.connectorAccountId ??
+      deriveConnectorAccountId({
+        provider: message.provider,
+        side,
+        identityEmail: message.accountEmail,
+        grantId,
+      });
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_gmail_messages (
-        id, agent_id, provider, side, external_message_id, grant_id, thread_id,
-        subject, from_display, from_email, reply_to, to_json, cc_json, snippet,
-        received_at, is_unread, is_important, likely_reply_needed, triage_score,
+        id, agent_id, provider, side, external_message_id,
+        connector_account_id, grant_id, thread_id, subject, from_display,
+        from_email, reply_to, to_json, cc_json, snippet, received_at,
+        is_unread, is_important, likely_reply_needed, triage_score,
         triage_reason, label_ids_json, html_link, metadata_json, synced_at,
         updated_at
       ) VALUES (
@@ -4367,6 +4630,7 @@ export class LifeOpsRepository {
         ${sqlQuote(message.provider)},
         ${sqlQuote(side)},
         ${sqlQuote(message.externalId)},
+        ${sqlText(connectorAccountId)},
         ${sqlQuote(grantId)},
         ${sqlQuote(message.threadId)},
         ${sqlQuote(message.subject)},
@@ -4390,6 +4654,7 @@ export class LifeOpsRepository {
       )
       ON CONFLICT(agent_id, provider, side, grant_id, external_message_id) DO UPDATE SET
         id = excluded.id,
+        connector_account_id = COALESCE(excluded.connector_account_id, life_gmail_messages.connector_account_id),
         thread_id = excluded.thread_id,
         subject = excluded.subject,
         from_display = excluded.from_display,
@@ -4527,6 +4792,23 @@ export class LifeOpsRepository {
       const priorityFlagsUpdate = hasPriorityFlags
         ? "excluded.priority_flags_json"
         : "life_inbox_messages.priority_flags_json";
+      const connectorAccountId =
+        message.connectorAccountId ??
+        (channel === "gmail"
+          ? (deriveConnectorAccountId({
+              provider: "google",
+              side: "owner",
+              identityEmail: message.gmailAccountEmail,
+              grantId: message.gmailAccountId,
+            }) ??
+            (message.gmailAccountId
+              ? legacyConnectorAccountIdAlias({
+                  provider: "google",
+                  side: "owner",
+                  grantId: message.gmailAccountId,
+                })
+              : null))
+          : null);
       await executeRawSql(
         this.runtime,
         `INSERT INTO life_inbox_messages (
@@ -4534,7 +4816,7 @@ export class LifeOpsRepository {
           sender_display, sender_email, subject, snippet, received_at,
           is_unread, deep_link, source_ref_json, chat_type, participant_count,
           gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
-          priority_category, priority_flags_json, cached_at, updated_at
+          priority_category, priority_flags_json, connector_account_id, cached_at, updated_at
         ) VALUES (
           ${sqlQuote(message.id)},
           ${sqlQuote(agentId)},
@@ -4559,6 +4841,7 @@ export class LifeOpsRepository {
           ${sqlInteger(message.priorityScore)},
           ${sqlText(message.priorityCategory)},
           ${sqlJson(priorityFlags)},
+          ${sqlText(connectorAccountId)},
           ${sqlQuote(now)},
           ${sqlQuote(now)}
         )
@@ -4583,6 +4866,7 @@ export class LifeOpsRepository {
           priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
           priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
           priority_flags_json = ${priorityFlagsUpdate},
+          connector_account_id = COALESCE(excluded.connector_account_id, life_inbox_messages.connector_account_id),
           cached_at = excluded.cached_at,
           updated_at = excluded.updated_at`,
       );
@@ -5456,6 +5740,7 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
     pairingTokenHash: string,
+    pairingTokenExpiresAt: string | null,
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
@@ -5463,6 +5748,8 @@ export class LifeOpsRepository {
       this.runtime,
       `UPDATE browser_bridge_companions
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
+              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
+              pairing_token_revoked_at = NULL,
               pending_pairing_token_hashes_json = '[]',
               paired_at = ${sqlQuote(pairedAt)},
               updated_at = ${sqlQuote(updatedAt)}
@@ -5474,7 +5761,9 @@ export class LifeOpsRepository {
   async updateBrowserCompanionPendingPairingTokenHashes(
     agentId: string,
     companionId: string,
-    pendingPairingTokenHashes: string[],
+    pendingPairingTokenHashes: Array<
+      string | { hash: string; expiresAt?: string | null }
+    >,
     updatedAt: string,
   ): Promise<void> {
     await executeRawSql(
@@ -5491,7 +5780,10 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
     pairingTokenHash: string,
-    pendingPairingTokenHashes: string[],
+    pendingPairingTokenHashes: Array<
+      string | { hash: string; expiresAt?: string | null }
+    >,
+    pairingTokenExpiresAt: string | null,
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
@@ -5499,9 +5791,28 @@ export class LifeOpsRepository {
       this.runtime,
       `UPDATE browser_bridge_companions
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
+              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
+              pairing_token_revoked_at = NULL,
               pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               paired_at = ${sqlQuote(pairedAt)},
               updated_at = ${sqlQuote(updatedAt)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(companionId)}`,
+    );
+  }
+
+  async revokeBrowserCompanionPairingToken(
+    agentId: string,
+    companionId: string,
+    revokedAt: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE browser_bridge_companions
+          SET pairing_token_revoked_at = ${sqlQuote(revokedAt)},
+              pending_pairing_token_hashes_json = '[]',
+              connection_state = 'disconnected',
+              updated_at = ${sqlQuote(revokedAt)}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}`,
     );
@@ -7242,16 +7553,23 @@ export function createLifeOpsConnectorGrant(
     >,
 ): LifeOpsConnectorGrant {
   const timestamp = isoNow();
-  return {
+  const id = crypto.randomUUID();
+  const grant: LifeOpsConnectorGrant = {
     ...params,
+    connectorAccountId: params.connectorAccountId ?? null,
     side: params.side ?? "owner",
     executionTarget: params.executionTarget ?? "local",
     sourceOfTruth: params.sourceOfTruth ?? "local_storage",
     preferredByAgent: params.preferredByAgent ?? false,
     cloudConnectionId: params.cloudConnectionId ?? null,
-    id: crypto.randomUUID(),
+    id,
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+  return {
+    ...grant,
+    connectorAccountId:
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant),
   };
 }
 
@@ -7369,14 +7687,25 @@ export function createLifeOpsBrowserSession(
 export function createBrowserBridgeCompanionStatus(
   params: Omit<
     BrowserBridgeCompanionStatus,
-    "id" | "createdAt" | "updatedAt" | "pairedAt"
-  > & { pairedAt?: string | null },
+    | "id"
+    | "createdAt"
+    | "updatedAt"
+    | "pairedAt"
+    | "pairingTokenExpiresAt"
+    | "pairingTokenRevokedAt"
+  > & {
+    pairedAt?: string | null;
+    pairingTokenExpiresAt?: string | null;
+    pairingTokenRevokedAt?: string | null;
+  },
 ): BrowserBridgeCompanionStatus {
   const timestamp = isoNow();
   return {
     ...params,
     id: crypto.randomUUID(),
     pairedAt: params.pairedAt ?? timestamp,
+    pairingTokenExpiresAt: params.pairingTokenExpiresAt ?? null,
+    pairingTokenRevokedAt: params.pairingTokenRevokedAt ?? null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

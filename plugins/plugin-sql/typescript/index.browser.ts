@@ -66,8 +66,27 @@ export const plugin: Plugin = {
 
 export default plugin;
 
+export * from "./connector-credential-store";
 export { DatabaseMigrationService } from "./migration-service";
 export * from "./pglite/errors";
 export * from "./schema";
+export type {
+  AppendConnectorAccountAuditEventParams,
+  ConnectorAccountAuditEventRecord,
+  ConnectorAccountAuditOutcome,
+  ConnectorAccountCredentialRefRecord,
+  ConnectorAccountJsonObject,
+  ConnectorAccountRecord,
+  ConsumeOAuthFlowStateParams,
+  CreateOAuthFlowStateParams,
+  DeleteConnectorAccountParams,
+  GetConnectorAccountCredentialRefParams,
+  GetConnectorAccountParams,
+  ListConnectorAccountCredentialRefsParams,
+  ListConnectorAccountsParams,
+  OAuthFlowRecord,
+  SetConnectorAccountCredentialRefParams,
+  UpsertConnectorAccountParams,
+} from "@elizaos/core";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export type { DrizzleDatabase } from "./types";

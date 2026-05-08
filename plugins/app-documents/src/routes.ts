@@ -39,6 +39,16 @@ const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
+const DOCUMENT_SCOPES = new Set([
+  "global",
+  "owner-private",
+  "user-private",
+  "agent-private",
+]);
+const DOCUMENT_ID_ROUTE_PATTERN =
+  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const DOCUMENT_FRAGMENTS_ROUTE_PATTERN =
+  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/fragments$/i;
 
 const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
   "global",
@@ -770,6 +780,8 @@ export async function handleDocumentsRoutes(
       metadata: {
         ...metadata,
         source: "upload",
+        scope,
+        scopedToEntityId,
         filename: document.filename,
         originalFilename: document.filename,
         fileType: originalContentType,

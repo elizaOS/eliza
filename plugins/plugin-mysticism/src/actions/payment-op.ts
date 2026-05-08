@@ -42,7 +42,7 @@ function isPaymentOp(value: unknown): value is PaymentOp {
 }
 
 export const paymentOpAction: Action = {
-  name: "PAYMENT_OP",
+  name: "PAYMENT",
   contexts: ["finance", "payments"],
   contextGate: { anyOf: ["finance", "payments"] },
   roleGate: { minRole: "OWNER" },
@@ -171,7 +171,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "For a full Celtic Cross reading, I'd ask $3.00.",
-          actions: ["PAYMENT_OP"],
+          actions: ["PAYMENT"],
         },
       },
     ],
@@ -180,7 +180,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me check if your payment has come through...",
-          actions: ["PAYMENT_OP"],
+          actions: ["PAYMENT"],
         },
       },
     ],

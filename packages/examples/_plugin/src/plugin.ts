@@ -90,6 +90,7 @@ const helloWorldAction: Action = {
   description: "Responds with a simple hello world message",
   contexts: [...HELLO_WORLD_CONTEXTS],
   contextGate: { anyOf: [...HELLO_WORLD_CONTEXTS] },
+  roleGate: { minRole: "USER" },
 
   validate: async (
     _runtime: IAgentRuntime,

@@ -167,7 +167,7 @@ export const skillAction: Action = {
 			return {
 				success: false,
 				text,
-				values: { error: "MISSING_OP" },
+				values: { error: "MISSING" },
 				data: { actionName: "SKILL", availableOps: ops },
 			};
 		}

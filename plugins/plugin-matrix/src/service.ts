@@ -9,6 +9,7 @@ import {
   type EventPayload,
   type IAgentRuntime,
   logger,
+  type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
   Service,
@@ -16,6 +17,13 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
+import {
+  DEFAULT_MATRIX_ACCOUNT_ID,
+  normalizeMatrixAccountId,
+  readMatrixAccountId,
+  resolveDefaultMatrixAccountId,
+  resolveMatrixAccountSettings,
+} from "./accounts.js";
 import {
   getMatrixLocalpart,
   type IMatrixService,
@@ -62,11 +70,16 @@ function scoreMatrixRoom(room: MatrixRoom, query: string): number {
   return matrixRoomSearchText(room).includes(normalized) ? 0.65 : 0;
 }
 
-function matrixRoomToConnectorTarget(room: MatrixRoom, score = 0.5): MessageConnectorTarget {
+function matrixRoomToConnectorTarget(
+  room: MatrixRoom,
+  score = 0.5,
+  accountId = DEFAULT_MATRIX_ACCOUNT_ID
+): MessageConnectorTarget {
   const label = room.name || room.canonicalAlias || room.roomId;
   return {
     target: {
       source: MATRIX_SERVICE_NAME,
+      accountId,
       channelId: room.roomId,
     },
     label,
@@ -76,6 +89,7 @@ function matrixRoomToConnectorTarget(room: MatrixRoom, score = 0.5): MessageConn
     score,
     contexts: ["social", "connectors"],
     metadata: {
+      accountId,
       roomId: room.roomId,
       canonicalAlias: room.canonicalAlias,
       isEncrypted: room.isEncrypted,
@@ -83,6 +97,104 @@ function matrixRoomToConnectorTarget(room: MatrixRoom, score = 0.5): MessageConn
       memberCount: room.memberCount,
     },
   };
+}
+
+type ConnectorHookContext = {
+  runtime: IAgentRuntime;
+  roomId?: UUID;
+  target?: TargetInfo;
+};
+
+type ConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type ConnectorMutationParams = {
+  target?: TargetInfo;
+  messageId?: string;
+  eventId?: string;
+  emoji?: string;
+};
+
+type ConnectorRoomMembershipParams = {
+  target?: TargetInfo;
+  roomId?: string;
+  roomIdOrAlias?: string;
+  alias?: string;
+  invite?: string;
+  channelId?: string;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: ConnectorHookContext,
+    params?: ConnectorReadParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: ConnectorHookContext,
+    params: ConnectorReadParams & { query: string }
+  ) => Promise<Memory[]>;
+  reactHandler?: (runtime: IAgentRuntime, params: ConnectorMutationParams) => Promise<void>;
+  joinHandler?: (runtime: IAgentRuntime, params: ConnectorRoomMembershipParams) => Promise<void>;
+  leaveHandler?: (runtime: IAgentRuntime, params: ConnectorRoomMembershipParams) => Promise<void>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0] &
+  AdditiveMessageConnectorHooks;
+
+function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(limit), 200);
+}
+
+async function readStoredMessageMemories(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+  limit: number
+): Promise<Memory[]> {
+  return runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit,
+    orderBy: "createdAt",
+    orderDirection: "desc",
+  });
+}
+
+async function readStoredMessagesForTargets(
+  runtime: IAgentRuntime,
+  targets: MessageConnectorTarget[],
+  limit: number
+): Promise<Memory[]> {
+  const roomIds = Array.from(
+    new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
+  );
+  const chunks = await Promise.all(
+    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
+  );
+  return chunks
+    .flat()
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .slice(0, limit);
+}
+
+function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
 }
 
 function extractMatrixSendOptions(content: Content, target: TargetInfo): MatrixMessageSendOptions {
@@ -134,11 +246,20 @@ export class MatrixService extends Service implements IMatrixService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: MatrixService): void {
-    const sendHandler = service.handleSendMessage.bind(service);
+    const accountId = service.getAccountId(runtime);
+    const sendHandler = async (
+      handlerRuntime: IAgentRuntime,
+      target: TargetInfo,
+      content: Content
+    ): Promise<Memory | undefined> => {
+      await service.handleSendMessage(handlerRuntime, target, content);
+      return undefined;
+    };
 
     if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
+      const registration = {
         source: MATRIX_SERVICE_NAME,
+        accountId,
         label: "Matrix",
         capabilities: [
           "send_message",
@@ -152,6 +273,10 @@ export class MatrixService extends Service implements IMatrixService {
         contexts: ["social", "connectors"],
         description:
           "Send messages to joined Matrix rooms, aliases, encrypted rooms, and known direct-message rooms.",
+        metadata: {
+          accountId,
+          service: MATRIX_SERVICE_NAME,
+        },
         sendHandler,
         resolveTargets: async (query) => {
           const rooms = await service.getJoinedRooms();
@@ -160,14 +285,82 @@ export class MatrixService extends Service implements IMatrixService {
             .filter(({ score }) => score > 0)
             .sort((left, right) => right.score - left.score)
             .slice(0, 10)
-            .map(({ room, score }) => matrixRoomToConnectorTarget(room, score));
+            .map(({ room, score }) => matrixRoomToConnectorTarget(room, score, accountId));
         },
         listRecentTargets: async () =>
           (await service.getJoinedRooms())
             .slice(0, 10)
-            .map((room) => matrixRoomToConnectorTarget(room)),
+            .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
         listRooms: async () =>
-          (await service.getJoinedRooms()).map((room) => matrixRoomToConnectorTarget(room)),
+          (await service.getJoinedRooms()).map((room) =>
+            matrixRoomToConnectorTarget(room, 0.5, accountId)
+          ),
+        fetchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          if (target?.roomId) {
+            return readStoredMessageMemories(context.runtime, target.roomId, limit);
+          }
+          const targets = (await service.getJoinedRooms())
+            .slice(0, 10)
+            .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId));
+          return readStoredMessagesForTargets(context.runtime, targets, limit);
+        },
+        searchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          const messages = target?.roomId
+            ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
+            : await readStoredMessagesForTargets(
+                context.runtime,
+                (await service.getJoinedRooms())
+                  .slice(0, 10)
+                  .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
+                Math.max(limit, 100)
+              );
+          return filterMemoriesByQuery(messages, params.query, limit);
+        },
+        reactHandler: async (handlerRuntime, params) => {
+          const target = params.target ?? ({ source: MATRIX_SERVICE_NAME } as TargetInfo);
+          const room = target.roomId ? await handlerRuntime.getRoom(target.roomId) : null;
+          const roomId = String(target.channelId ?? room?.channelId ?? "").trim();
+          const mutationParams = params as ConnectorMutationParams;
+          const eventId = String(mutationParams.eventId ?? params.messageId ?? "").trim();
+          const emoji = String(params.emoji ?? "").trim();
+          if (!roomId || !eventId || !emoji) {
+            throw new Error("Matrix reactHandler requires room, event id, and emoji");
+          }
+          const result = await service.sendReaction(roomId, eventId, emoji);
+          if (!result.success) {
+            throw new Error(result.error || "Matrix reaction failed");
+          }
+        },
+        joinHandler: async (_handlerRuntime, params) => {
+          const membershipParams = params as ConnectorRoomMembershipParams;
+          const roomIdOrAlias = String(
+            membershipParams.roomIdOrAlias ??
+              params.alias ??
+              params.invite ??
+              params.channelId ??
+              params.roomId ??
+              ""
+          ).trim();
+          if (!roomIdOrAlias) {
+            throw new Error("Matrix joinHandler requires a room ID or alias");
+          }
+          await service.joinRoom(roomIdOrAlias);
+        },
+        leaveHandler: async (handlerRuntime, params) => {
+          const target = params.target ?? ({ source: MATRIX_SERVICE_NAME } as TargetInfo);
+          const room = target.roomId ? await handlerRuntime.getRoom(target.roomId) : null;
+          const roomId = String(
+            params?.roomId ?? params?.channelId ?? target.channelId ?? room?.channelId ?? ""
+          );
+          if (!roomId) {
+            throw new Error("Matrix leaveHandler requires a room ID");
+          }
+          await service.leaveRoom(roomId);
+        },
         getChatContext: async (target, context) => {
           const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
           const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
@@ -181,12 +374,14 @@ export class MatrixService extends Service implements IMatrixService {
           return {
             target: {
               source: MATRIX_SERVICE_NAME,
+              accountId,
               channelId: joinedRoom.roomId,
               roomId: target.roomId,
             },
             label: joinedRoom.name || joinedRoom.canonicalAlias || joinedRoom.roomId,
             summary: joinedRoom.topic,
             metadata: {
+              accountId,
               roomId: joinedRoom.roomId,
               canonicalAlias: joinedRoom.canonicalAlias,
               isEncrypted: joinedRoom.isEncrypted,
@@ -211,7 +406,8 @@ export class MatrixService extends Service implements IMatrixService {
             metadata: entity.metadata,
           };
         },
-      });
+      } as ExtendedMessageConnectorRegistration;
+      runtime.registerMessageConnector(registration);
       return;
     }
 
@@ -253,39 +449,7 @@ export class MatrixService extends Service implements IMatrixService {
    * Load settings from runtime.
    */
   private loadSettings(): MatrixSettings {
-    // Helper to safely get string settings
-    const getStringSetting = (key: string): string | undefined => {
-      const value = this.runtime.getSetting(key);
-      return typeof value === "string" ? value : undefined;
-    };
-
-    const homeserver = getStringSetting("MATRIX_HOMESERVER");
-    const userId = getStringSetting("MATRIX_USER_ID");
-    const accessToken = getStringSetting("MATRIX_ACCESS_TOKEN");
-    const deviceId = getStringSetting("MATRIX_DEVICE_ID");
-    const roomsStr = getStringSetting("MATRIX_ROOMS");
-    const autoJoinStr = getStringSetting("MATRIX_AUTO_JOIN");
-    const encryptionStr = getStringSetting("MATRIX_ENCRYPTION");
-    const requireMentionStr = getStringSetting("MATRIX_REQUIRE_MENTION");
-
-    const rooms = roomsStr
-      ? roomsStr
-          .split(",")
-          .map((r: string) => r.trim())
-          .filter(Boolean)
-      : [];
-
-    return {
-      homeserver: homeserver || "",
-      userId: userId || "",
-      accessToken: accessToken || "",
-      deviceId,
-      rooms,
-      autoJoin: autoJoinStr === "true",
-      encryption: encryptionStr === "true",
-      requireMention: requireMentionStr === "true",
-      enabled: true,
-    };
+    return resolveMatrixAccountSettings(this.runtime);
   }
 
   /**
@@ -316,6 +480,7 @@ export class MatrixService extends Service implements IMatrixService {
         logger.info("Matrix sync complete");
         this.runtime.emitEvent(MatrixEventTypes.SYNC_COMPLETE, {
           runtime: this.runtime,
+          accountId: this.getAccountId(),
         } as EventPayload);
       }
     });
@@ -420,6 +585,7 @@ export class MatrixService extends Service implements IMatrixService {
       message,
       room: matrixRoom,
       runtime: this.runtime,
+      accountId: this.getAccountId(),
     } as EventPayload);
   }
 
@@ -468,6 +634,12 @@ export class MatrixService extends Service implements IMatrixService {
 
   isConnected(): boolean {
     return this.connected && this.syncing;
+  }
+
+  getAccountId(runtime?: IAgentRuntime): string {
+    return normalizeMatrixAccountId(
+      this.settings?.accountId ?? (runtime ? resolveDefaultMatrixAccountId(runtime) : undefined)
+    );
   }
 
   getUserId(): string {
@@ -552,6 +724,7 @@ export class MatrixService extends Service implements IMatrixService {
       eventId,
       content: text,
       runtime: this.runtime,
+      accountId: this.getAccountId(),
     } as EventPayload);
 
     return {
@@ -595,6 +768,7 @@ export class MatrixService extends Service implements IMatrixService {
     this.runtime.emitEvent(MatrixEventTypes.ROOM_JOINED, {
       room: { roomId },
       runtime: this.runtime,
+      accountId: this.getAccountId(),
     } as EventPayload);
 
     return roomId;
@@ -610,6 +784,7 @@ export class MatrixService extends Service implements IMatrixService {
     this.runtime.emitEvent(MatrixEventTypes.ROOM_LEFT, {
       roomId,
       runtime: this.runtime,
+      accountId: this.getAccountId(),
     } as EventPayload);
   }
 
@@ -646,6 +821,15 @@ export class MatrixService extends Service implements IMatrixService {
     target: TargetInfo,
     content: Content
   ): Promise<void> {
+    const requestedAccountId = normalizeMatrixAccountId(
+      target.accountId ?? readMatrixAccountId(content, target) ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Matrix account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
     const text = typeof content.text === "string" ? content.text.trim() : "";
     if (!text) {
       return;

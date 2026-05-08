@@ -68,6 +68,26 @@
         "default": "env",
         "sensitive": false
       },
+      "TWITTER_ACCOUNT_ID": {
+        "type": "string",
+        "description": "Account ID for the default X account when connector account routing is enabled.",
+        "required": false,
+        "default": "default",
+        "sensitive": false
+      },
+      "TWITTER_DEFAULT_ACCOUNT_ID": {
+        "type": "string",
+        "description": "Default X account ID used when a target/content does not specify accountId.",
+        "required": false,
+        "default": "default",
+        "sensitive": false
+      },
+      "TWITTER_ACCOUNTS": {
+        "type": "string",
+        "description": "Optional JSON object/array of account-scoped X credentials for multi-account pilots.",
+        "required": false,
+        "sensitive": true
+      },
       "TWITTER_API_KEY": {
         "type": "string",
         "description": "Twitter API key (required for TWITTER_AUTH_MODE=env).",

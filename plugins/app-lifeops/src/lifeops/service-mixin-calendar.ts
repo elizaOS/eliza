@@ -31,6 +31,13 @@ import {
   resolveGoogleExecutionTarget,
   resolveGoogleGrants,
 } from "./google-connector-gateway.js";
+import {
+  createCalendarEventWithGoogleWorkspaceBridge,
+  deleteCalendarEventWithGoogleWorkspaceBridge,
+  listCalendarsWithGoogleWorkspaceBridge,
+  listCalendarEventsWithGoogleWorkspaceBridge,
+  updateCalendarEventWithGoogleWorkspaceBridge,
+} from "./google-workspace-bridge.js";
 import { ManagedGoogleClientError } from "./google-managed-client.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import {
@@ -238,6 +245,34 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                 }
               })()
             : await (async () => {
+                const bridgeList = await listCalendarsWithGoogleWorkspaceBridge(
+                  {
+                    runtime: this.runtime,
+                    grant,
+                  },
+                );
+                if (bridgeList.status === "handled") {
+                  return bridgeList.value;
+                }
+                if (bridgeList.error) {
+                  this.logLifeOpsWarn(
+                    "google_workspace_bridge_fallback",
+                    bridgeList.reason,
+                    {
+                      provider: "google",
+                      operation: "calendar.listCalendars",
+                      grantId: grant.id,
+                      mode: grant.mode,
+                      error:
+                        bridgeList.error instanceof Error
+                          ? bridgeList.error.message
+                          : String(bridgeList.error),
+                    },
+                  );
+                }
+                // Deprecated transition fallback: plugin-google should own
+                // calendar list access; keep local token REST only until all
+                // Google accounts have connectorAccountId-backed credentials.
                 const accessToken = (
                   await ensureFreshGoogleAccessToken(
                     grant.tokenRef ??
@@ -451,18 +486,55 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                   timeZone: args.timeZone,
                 })
               ).events
-            : await fetchGoogleCalendarEvents({
-                accessToken: (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken,
-                calendarId: args.calendarId,
-                timeMin: args.timeMin,
-                timeMax: args.timeMax,
-                timeZone: args.timeZone,
-              });
+            : await (async () => {
+                const bridgeList =
+                  await listCalendarEventsWithGoogleWorkspaceBridge({
+                    runtime: this.runtime,
+                    grant,
+                    calendarId: args.calendarId,
+                    timeMin: args.timeMin,
+                    timeMax: args.timeMax,
+                    timeZone: args.timeZone,
+                    maxResults: 2500,
+                  });
+                if (bridgeList.status === "handled") {
+                  return bridgeList.value;
+                }
+                if (bridgeList.error) {
+                  this.logLifeOpsWarn(
+                    "google_workspace_bridge_fallback",
+                    bridgeList.reason,
+                    {
+                      provider: "google",
+                      operation: "calendar.listEvents",
+                      grantId: grant.id,
+                      mode: grant.mode,
+                      error:
+                        bridgeList.error instanceof Error
+                          ? bridgeList.error.message
+                          : String(bridgeList.error),
+                    },
+                  );
+                }
+                // Deprecated transition fallback: plugin-google is the primary
+                // calendar event list path; this local-token REST path remains
+                // only for unmigrated Google credential records.
+                return fetchGoogleCalendarEvents({
+                  accessToken: (
+                    await ensureFreshGoogleAccessToken(
+                      grant.tokenRef ??
+                        fail(
+                          409,
+                          "Google Calendar token reference is missing.",
+                        ),
+                    )
+                  ).accessToken,
+                  calendarId: args.calendarId,
+                  timeMin: args.timeMin,
+                  timeMax: args.timeMax,
+                  timeZone: args.timeZone,
+                });
+              })();
         const nextEvents = events.map((event) => ({
           id: createCalendarEventId(
             this.agentId(),
@@ -926,22 +998,62 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                   attendees,
                 })
               ).event
-            : await createGoogleCalendarEvent({
-                accessToken: (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken,
-                calendarId,
-                title,
-                description,
-                location,
-                startAt,
-                endAt,
-                timeZone,
-                attendees,
-              });
+            : await (async () => {
+                const bridgeCreate =
+                  await createCalendarEventWithGoogleWorkspaceBridge({
+                    runtime: this.runtime,
+                    grant,
+                    calendarId: calendarId ?? undefined,
+                    title,
+                    description,
+                    location,
+                    startAt,
+                    endAt,
+                    timeZone,
+                    attendees,
+                  });
+                if (bridgeCreate.status === "handled") {
+                  return bridgeCreate.value;
+                }
+                if (bridgeCreate.error) {
+                  this.logLifeOpsWarn(
+                    "google_workspace_bridge_fallback",
+                    bridgeCreate.reason,
+                    {
+                      provider: "google",
+                      operation: "calendar.createEvent",
+                      grantId: grant.id,
+                      mode: grant.mode,
+                      error:
+                        bridgeCreate.error instanceof Error
+                          ? bridgeCreate.error.message
+                          : String(bridgeCreate.error),
+                    },
+                  );
+                }
+                // Deprecated transition fallback: plugin-google is the primary
+                // calendar event creation path; this local-token REST path
+                // remains only for unmigrated Google credential records.
+                return createGoogleCalendarEvent({
+                  accessToken: (
+                    await ensureFreshGoogleAccessToken(
+                      grant.tokenRef ??
+                        fail(
+                          409,
+                          "Google Calendar token reference is missing.",
+                        ),
+                    )
+                  ).accessToken,
+                  calendarId,
+                  title,
+                  description,
+                  location,
+                  startAt,
+                  endAt,
+                  timeZone,
+                  attendees,
+                });
+              })();
         const syncedAt = new Date().toISOString();
         const event: LifeOpsCalendarEvent = {
           id: createCalendarEventId(
@@ -1034,6 +1146,42 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                 })
               ).event
             : await (async () => {
+                const bridgeUpdate =
+                  await updateCalendarEventWithGoogleWorkspaceBridge({
+                    runtime: this.runtime,
+                    grant,
+                    calendarId: calendarId ?? undefined,
+                    eventId: externalEventId,
+                    title: request.title,
+                    description: request.description,
+                    location: request.location,
+                    startAt: request.startAt,
+                    endAt: request.endAt,
+                    timeZone: request.timeZone,
+                    attendees: normalizedAttendees,
+                  });
+                if (bridgeUpdate.status === "handled") {
+                  return bridgeUpdate.value;
+                }
+                if (bridgeUpdate.error) {
+                  this.logLifeOpsWarn(
+                    "google_workspace_bridge_fallback",
+                    bridgeUpdate.reason,
+                    {
+                      provider: "google",
+                      operation: "calendar.updateEvent",
+                      grantId: grant.id,
+                      mode: grant.mode,
+                      error:
+                        bridgeUpdate.error instanceof Error
+                          ? bridgeUpdate.error.message
+                          : String(bridgeUpdate.error),
+                    },
+                  );
+                }
+                // Deprecated transition fallback: plugin-google is the primary
+                // calendar event update path; this local-token REST path remains
+                // only for unmigrated Google credential records.
                 const accessToken = (
                   await ensureFreshGoogleAccessToken(
                     grant.tokenRef ??
@@ -1185,6 +1333,55 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
             eventId: externalEventId,
           });
         } else {
+          const bridgeDelete =
+            await deleteCalendarEventWithGoogleWorkspaceBridge({
+              runtime: this.runtime,
+              grant,
+              calendarId: calendarId ?? undefined,
+              eventId: externalEventId,
+            });
+          if (bridgeDelete.status === "handled") {
+            await this.repository.deleteCalendarEventByExternalId(
+              this.agentId(),
+              "google",
+              calendarId ?? "primary",
+              externalEventId,
+              grant.side,
+            );
+            await this.clearGoogleGrantAuthFailure(grant);
+            await this.recordCalendarEventAudit(
+              externalEventId,
+              "calendar event deleted",
+              {
+                calendarId: calendarId ?? "primary",
+                mode: grant.mode,
+              },
+              {
+                externalId: externalEventId,
+              },
+              "calendar_event_deleted",
+            );
+            return;
+          }
+          if (bridgeDelete.error) {
+            this.logLifeOpsWarn(
+              "google_workspace_bridge_fallback",
+              bridgeDelete.reason,
+              {
+                provider: "google",
+                operation: "calendar.deleteEvent",
+                grantId: grant.id,
+                mode: grant.mode,
+                error:
+                  bridgeDelete.error instanceof Error
+                    ? bridgeDelete.error.message
+                    : String(bridgeDelete.error),
+              },
+            );
+          }
+          // Deprecated transition fallback: plugin-google is the primary
+          // calendar event deletion path; this local-token REST path remains
+          // only for unmigrated Google credential records.
           const accessToken = (
             await ensureFreshGoogleAccessToken(
               grant.tokenRef ??

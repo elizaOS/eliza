@@ -4,34 +4,56 @@ import type {
   PrivacyLevel,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  canSurfaceAccountData,
-  canSurfaceForAudience,
-  filterAccountsForAudience,
-  type LifeOpsAudience,
-} from "../lifeops/privacy.js";
 
 const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 
-interface FakeManager {
-  getAccount: (
-    provider: string,
-    accountId: string,
-  ) => Promise<ConnectorAccount | null>;
-}
+// Stub the runtime values pulled in from @elizaos/core so the test does not
+// transitively load advanced-capabilities action specs (which require build
+// artifacts that may not be present in this test environment). Type-only
+// imports above are erased at runtime and do not trigger this load.
+vi.mock("@elizaos/core", () => ({
+  getConnectorAccountManager(runtime: IAgentRuntime) {
+    return runtime.getService(CONNECTOR_ACCOUNT_SERVICE_TYPE);
+  },
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  DEFAULT_PRIVACY_LEVEL: "owner_only" as PrivacyLevel,
+  PRIVACY_LEVELS: [
+    "owner_only",
+    "team_visible",
+    "semi_public",
+    "public",
+  ] as PrivacyLevel[],
+  getAccountPrivacy(account: ConnectorAccount): PrivacyLevel {
+    const raw = account.metadata?.privacy;
+    const allowed: readonly PrivacyLevel[] = [
+      "owner_only",
+      "team_visible",
+      "semi_public",
+      "public",
+    ];
+    return typeof raw === "string" &&
+      (allowed as readonly string[]).includes(raw)
+      ? (raw as PrivacyLevel)
+      : "owner_only";
+  },
+}));
 
-function makeFakeManager(accounts: ConnectorAccount[]): FakeManager {
-  return {
-    async getAccount(provider, accountId) {
-      return (
-        accounts.find(
-          (account) =>
-            account.provider === provider && account.id === accountId,
-        ) ?? null
-      );
-    },
-  };
-}
+const {
+  canSurfaceAccountData,
+  canSurfaceForAudience,
+  filterAccountsForAudience,
+} = await import("../lifeops/privacy.js");
+
+type LifeOpsAudience =
+  | "owner"
+  | "team"
+  | "agent_message_recipient"
+  | "public";
 
 const PRIVACY_LEVELS: PrivacyLevel[] = [
   "owner_only",
@@ -47,7 +69,6 @@ const AUDIENCES: LifeOpsAudience[] = [
   "public",
 ];
 
-// Expected lattice — for each (privacy, audience) pair, can the data surface?
 const EXPECTED: Record<PrivacyLevel, Record<LifeOpsAudience, boolean>> = {
   owner_only: {
     owner: true,
@@ -75,6 +96,26 @@ const EXPECTED: Record<PrivacyLevel, Record<LifeOpsAudience, boolean>> = {
   },
 };
 
+interface FakeManager {
+  getAccount: (
+    provider: string,
+    accountId: string,
+  ) => Promise<ConnectorAccount | null>;
+}
+
+function makeFakeManager(accounts: ConnectorAccount[]): FakeManager {
+  return {
+    async getAccount(provider, accountId) {
+      return (
+        accounts.find(
+          (account) =>
+            account.provider === provider && account.id === accountId,
+        ) ?? null
+      );
+    },
+  };
+}
+
 function makeAccount(
   overrides: Partial<ConnectorAccount> & { privacy?: PrivacyLevel } = {},
 ): ConnectorAccount {
@@ -96,9 +137,7 @@ function makeAccount(
   };
 }
 
-function makeRuntimeWithManager(
-  accounts: ConnectorAccount[],
-): IAgentRuntime {
+function makeRuntimeWithManager(accounts: ConnectorAccount[]): IAgentRuntime {
   const manager = makeFakeManager(accounts);
   return {
     agentId: "agent-1",
@@ -112,8 +151,15 @@ describe("LifeOps privacy lattice", () => {
   it("matches expected boolean for every (privacy, audience) combination", () => {
     for (const privacy of PRIVACY_LEVELS) {
       for (const audience of AUDIENCES) {
-        expect({ privacy, audience, allowed: canSurfaceForAudience(privacy, audience) })
-          .toEqual({ privacy, audience, allowed: EXPECTED[privacy][audience] });
+        expect({
+          privacy,
+          audience,
+          allowed: canSurfaceForAudience(privacy, audience),
+        }).toEqual({
+          privacy,
+          audience,
+          allowed: EXPECTED[privacy][audience],
+        });
       }
     }
   });
@@ -226,9 +272,11 @@ describe("filterAccountsForAudience (provider-context end-to-end)", () => {
       privacy: "team_visible",
     });
 
-    const filtered = filterAccountsForAudience([ownerOnly, teamVisible], "team", {
-      provider: "google",
-    });
+    const filtered = filterAccountsForAudience(
+      [ownerOnly, teamVisible],
+      "team",
+      { provider: "google" },
+    );
 
     expect(filtered).toHaveLength(1);
     expect(filtered[0]?.id).toBe("acct_team");

@@ -57,6 +57,13 @@
       }
       .hdr .brand { color: var(--cyan); letter-spacing: 0.18em; font-weight: 600; }
       .hdr .sep { color: var(--fg-faint); }
+      .hdr .nav-link {
+        color: var(--fg-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 10px;
+      }
+      .hdr .nav-link:hover { color: var(--cyan); }
       .hdr .field { color: var(--fg-dim); }
       .hdr .field b { color: var(--fg); font-weight: 500; }
       .hdr .spacer { flex: 1; }
@@ -356,6 +363,8 @@
     <div class="app">
       <header class="hdr">
         <span class="brand">AGENT // CONSOLE</span>
+        <span class="sep">│</span>
+        <a class="nav-link" href="/actions">ACTIONS</a>
         <span class="sep">│</span>
         <span class="field">prov <b id="prov">—</b></span>
         <span class="field">model <b id="model">—</b></span>

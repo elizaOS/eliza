@@ -457,7 +457,7 @@ def _build_canonical_completion(step: dict[str, Any], llm_call: dict[str, Any] |
             or "the target account"
         )
         action_line = f"Action: {action_type.lower()} {target}."
-    elif action_type in {"SEND_DM", "SEND_MESSAGE", "GROUP_MESSAGE"}:
+    elif action_type in {"SEND_MESSAGE", "GROUP_MESSAGE"}:
         target = (
             str(
                 params.get("targetUserId") or params.get("groupId") or params.get("chatId") or ""

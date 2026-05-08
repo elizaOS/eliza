@@ -37,6 +37,7 @@ export const lifeConnectorGrants = pgTable(
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     provider: text("provider").notNull(),
+    connectorAccountId: text("connector_account_id"),
     side: text("side").notNull().default("owner"),
     identityJson: text("identity_json").notNull().default("{}"),
     identityEmail: text("identity_email"),
@@ -54,6 +55,27 @@ export const lifeConnectorGrants = pgTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [unique().on(t.agentId, t.provider, t.side, t.mode, t.identityEmail)],
+);
+
+export const lifeAccountPrivacy = pgTable(
+  "life_account_privacy",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
+    allowedDataClassesJson: text("allowed_data_classes_json")
+      .notNull()
+      .default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.provider, t.connectorAccountId),
+    index("idx_life_account_privacy_agent").on(t.agentId, t.provider),
+  ],
 );
 
 export const lifeTaskDefinitions = pgTable(
@@ -615,6 +637,14 @@ export const lifeCalendarEvents = pgTable(
     side: text("side").notNull().default("owner"),
     calendarId: text("calendar_id").notNull(),
     externalEventId: text("external_event_id").notNull(),
+    // New writes set connector_account_id from the owning account. Legacy rows
+    // may be ambiguous across calendar grants; purge/resync before relying on
+    // this column for destructive grant-id removal.
+    connectorAccountId: text("connector_account_id"),
+    purgeResyncRequired: boolean("purge_resync_required")
+      .notNull()
+      .default(false),
+    purgeResyncReason: text("purge_resync_reason"),
     grantId: text("grant_id"),
     title: text("title").notNull().default(""),
     description: text("description").notNull().default(""),
@@ -645,7 +675,12 @@ export const lifeCalendarSyncStates = pgTable(
     provider: text("provider").notNull().default("google"),
     side: text("side").notNull().default("owner"),
     calendarId: text("calendar_id").notNull(),
+    connectorAccountId: text("connector_account_id"),
     grantId: text("grant_id"),
+    purgeResyncRequired: boolean("purge_resync_required")
+      .notNull()
+      .default(false),
+    purgeResyncReason: text("purge_resync_reason"),
     windowStartAt: text("window_start_at").notNull(),
     windowEndAt: text("window_end_at").notNull(),
     syncedAt: text("synced_at").notNull(),
@@ -662,6 +697,7 @@ export const lifeGmailMessages = pgTable(
     provider: text("provider").notNull().default("google"),
     side: text("side").notNull().default("owner"),
     externalMessageId: text("external_message_id").notNull(),
+    connectorAccountId: text("connector_account_id"),
     grantId: text("grant_id"),
     threadId: text("thread_id").notNull().default(""),
     subject: text("subject").notNull().default(""),
@@ -714,6 +750,7 @@ export const lifeInboxMessages = pgTable(
     priorityScore: integer("priority_score"),
     priorityCategory: text("priority_category"),
     priorityFlagsJson: text("priority_flags_json").notNull().default("[]"),
+    connectorAccountId: text("connector_account_id"),
     cachedAt: text("cached_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -1435,6 +1472,7 @@ export const lifeBlockRules = pgTable("life_block_rules", {
 
 export const lifeOpsSchema = {
   lifeConnectorGrants,
+  lifeAccountPrivacy,
   lifeTaskDefinitions,
   lifeTaskOccurrences,
   lifeGoalDefinitions,

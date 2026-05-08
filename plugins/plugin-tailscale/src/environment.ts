@@ -1,5 +1,10 @@
 import type { IAgentRuntime } from '@elizaos/core';
 import { z } from 'zod';
+import {
+  readTailscaleAccounts,
+  resolveTailscaleAccount,
+  resolveTailscaleAccountId,
+} from './accounts';
 
 export const tailscaleEnvSchema = z.object({
   TAILSCALE_AUTH_KEY: z.string().optional(),
@@ -52,16 +57,26 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return String(value);
 }
 
-export async function validateTailscaleConfig(runtime: IAgentRuntime): Promise<TailscaleConfig> {
+export async function validateTailscaleConfig(
+  runtime: IAgentRuntime,
+  accountId?: string,
+): Promise<TailscaleConfig> {
+  const resolvedAccountId = accountId ?? resolveTailscaleAccountId(runtime);
+  const account = resolveTailscaleAccount(readTailscaleAccounts(runtime), resolvedAccountId);
   const config = {
     TAILSCALE_AUTH_KEY:
-      readSetting(runtime, 'TAILSCALE_AUTH_KEY') ?? process.env.TAILSCALE_AUTH_KEY,
-    TAILSCALE_TAGS: readSetting(runtime, 'TAILSCALE_TAGS') ?? process.env.TAILSCALE_TAGS,
-    TAILSCALE_FUNNEL: readSetting(runtime, 'TAILSCALE_FUNNEL') ?? process.env.TAILSCALE_FUNNEL,
+      account?.authKey ?? readSetting(runtime, 'TAILSCALE_AUTH_KEY') ?? process.env.TAILSCALE_AUTH_KEY,
+    TAILSCALE_TAGS: account?.tags ?? readSetting(runtime, 'TAILSCALE_TAGS') ?? process.env.TAILSCALE_TAGS,
+    TAILSCALE_FUNNEL:
+      account?.funnel ?? readSetting(runtime, 'TAILSCALE_FUNNEL') ?? process.env.TAILSCALE_FUNNEL,
     TAILSCALE_DEFAULT_PORT:
-      readSetting(runtime, 'TAILSCALE_DEFAULT_PORT') ?? process.env.TAILSCALE_DEFAULT_PORT,
-    TAILSCALE_BACKEND: readSetting(runtime, 'TAILSCALE_BACKEND') ?? process.env.TAILSCALE_BACKEND,
+      account?.defaultPort ??
+      readSetting(runtime, 'TAILSCALE_DEFAULT_PORT') ??
+      process.env.TAILSCALE_DEFAULT_PORT,
+    TAILSCALE_BACKEND:
+      account?.backend ?? readSetting(runtime, 'TAILSCALE_BACKEND') ?? process.env.TAILSCALE_BACKEND,
     TAILSCALE_AUTH_KEY_EXPIRY_SECONDS:
+      account?.authKeyExpirySeconds ??
       readSetting(runtime, 'TAILSCALE_AUTH_KEY_EXPIRY_SECONDS') ??
       process.env.TAILSCALE_AUTH_KEY_EXPIRY_SECONDS,
   };

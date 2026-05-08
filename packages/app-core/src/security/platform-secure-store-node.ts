@@ -103,7 +103,7 @@ function secretToolStoreWithStdin(
  * Check if `secret-tool` is available on PATH without spawning a shell.
  * Iterates PATH entries directly and checks for the executable.
  */
-async function secretToolOnPath(): Promise<boolean> {
+function secretToolOnPathSync(): boolean {
   if (process.platform === "win32") return false;
   const pathEnv = process.env.PATH ?? "";
   for (const dir of pathEnv.split(path.delimiter)) {
@@ -117,6 +117,10 @@ async function secretToolOnPath(): Promise<boolean> {
     }
   }
   return false;
+}
+
+async function secretToolOnPath(): Promise<boolean> {
+  return secretToolOnPathSync();
 }
 
 function macErrReason(
@@ -348,14 +352,24 @@ export function createNodePlatformSecureStore(): PlatformSecureStore {
   return new NonePlatformSecureStore();
 }
 
+const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
+
+export function isNodePlatformSecureStoreDefaultAvailable(): boolean {
+  if (isDarwin()) return true;
+  if (isLinux()) return secretToolOnPathSync();
+  return false;
+}
+
 /**
- * Opt in: `ELIZA_WALLET_OS_STORE=1` / `true` / `on` / `yes`.
- *
- * Defaults to **off** until the macOS argv exposure is resolved via
- * Security.framework / Bun FFI. Users who accept the risk can enable
- * explicitly.
+ * Explicit override: `ELIZA_WALLET_OS_STORE=0|false|off|no` disables this path.
+ * When unset, default on for supported local secure stores.
  */
 export function isWalletOsStoreReadEnabled(): boolean {
   const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+  if (raw) {
+    if (WALLET_OS_STORE_TRUE_VALUES.has(raw)) return true;
+    if (WALLET_OS_STORE_FALSE_VALUES.has(raw)) return false;
+  }
+  return isNodePlatformSecureStoreDefaultAvailable();
 }

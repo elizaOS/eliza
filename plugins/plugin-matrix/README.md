@@ -68,41 +68,16 @@ const agent = new Agent({
 
 ### Actions
 
-#### MATRIX_SEND_MESSAGE
+Matrix messaging is exposed through the canonical message connector actions.
+Use `source: "matrix"` when a request needs to target Matrix explicitly.
 
-Send a message to a Matrix room.
-
-```typescript
-// User: "Send a message saying 'Hello everyone!'"
-// Agent will send to the current room
-```
-
-#### MATRIX_SEND_REACTION
-
-React to a message with an emoji.
-
-```typescript
-// User: "React to the last message with 👍"
-// Agent will add the reaction
-```
-
-#### MATRIX_LIST_ROOMS
-
-List all rooms the bot has joined.
-
-```typescript
-// User: "What rooms are you in?"
-// Agent will list all joined rooms
-```
-
-#### MATRIX_JOIN_ROOM
-
-Join a Matrix room by ID or alias.
-
-```typescript
-// User: "Join #general:matrix.org"
-// Agent will join the room
-```
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send a message to a Matrix room, channel, thread, or DM |
+| `MESSAGE` | `react` | React to a Matrix message with an emoji |
+| `MESSAGE` | `list_channels` | List joined Matrix rooms |
+| `MESSAGE` | `join` | Join a Matrix room by ID or alias |
+| `MESSAGE` | `leave` | Leave a Matrix room |
 
 ### Providers
 

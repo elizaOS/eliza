@@ -12,7 +12,8 @@
  *
  * Hydration (see `hydrate-wallet-keys-from-platform-store.ts`) reads the
  * vault first and copies the OS-keystore value across on the next boot
- * when the user has `ELIZA_WALLET_OS_STORE=1` enabled.
+ * when the OS-keystore read path is enabled (default on supported desktops,
+ * or explicitly via `ELIZA_WALLET_OS_STORE=1`).
  */
 
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";

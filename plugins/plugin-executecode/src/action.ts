@@ -205,7 +205,7 @@ export const executeCodeAction: Action = {
   roleGate: { minRole: "USER" },
   similes: ["RUN_SCRIPT", "EXECUTE_TOOL_SCRIPT"],
   description:
-    "Execute a short async JavaScript script in-process that orchestrates multiple registered actions via `await tools.<actionName>(args)` and reads runtime state via `context.{agentId,roomId,entityId,getMemories,searchMemories}`. The script's return value is rendered as plain text. Optional allowedActions narrows the callable set; optional timeoutMs overrides the default 30s ceiling (enforced via Promise.race). Use when the same turn needs three or more sequential tool calls with simple control flow or data passed between them — not for single-call work.",
+    "Execute a short async JavaScript function body in the agent process. The script can orchestrate registered actions via `await tools.<actionName>(args)` and read runtime state through `context.{agentId,roomId,entityId,getMemories,searchMemories}`. The script return value is rendered as text and included as JSON-safe data. Optional allowedActions narrows callable actions; optional timeoutMs overrides the default 30s Promise.race timeout. Use when one turn needs three or more sequential action calls with simple control flow or data passed between them.",
   descriptionCompressed:
     "execute-code:async-js script with tools.<action>(args) + context; allowedActions + timeoutMs",
   parameters: [
@@ -301,7 +301,7 @@ export const executeCodeAction: Action = {
       trajectoryLogger &&
       typeof trajectoryLogger.startTrajectory === "function"
     ) {
-      // Legacy signature: (stepId, { agentId, source, metadata }) returns stepId.
+      // Current trajectory logger signature: (stepId, { agentId, source, metadata }) returns stepId.
       await trajectoryLogger.startTrajectory(parentStepId, {
         agentId: runtime.agentId,
         source: "execute-code",
@@ -368,6 +368,8 @@ export const executeCodeAction: Action = {
       parentStepId,
       childSteps,
       childCount: childSteps.length,
+      timeoutMs: effectiveTimeoutMs,
+      ...(allowedActions !== undefined ? { allowedActions } : {}),
     };
 
     if (scriptError) {

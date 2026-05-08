@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "./useConnectorAccounts";
 
 export type { SignalPairingStatus } from "@elizaos/agent";
 
@@ -40,7 +41,7 @@ function toSignalPairingErrorState(error: unknown): SignalPairingState {
   };
 }
 
-export function useSignalPairing(accountId = "default") {
+export function useSignalPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
   const [state, setState] = useState<SignalPairingState>(
     IDLE_SIGNAL_PAIRING_STATE,
   );

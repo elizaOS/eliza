@@ -25,6 +25,9 @@ message TargetInfo {
   optional string server_id = 4;
   optional string entity_id = 5;
   optional string thread_id = 6;
+  // Connector account ID for multi-account sources. Omitted targets use
+  // legacy source-only routing.
+  optional string account_id = 7;
 }
 
 // Message stream chunk payload

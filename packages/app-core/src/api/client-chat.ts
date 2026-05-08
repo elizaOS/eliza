@@ -63,6 +63,9 @@ type DocumentListOptions = {
   scope?: DocumentScope;
   scopedToEntityId?: string;
   addedBy?: string;
+  query?: string;
+  timeRangeStart?: string;
+  timeRangeEnd?: string;
 };
 
 type DocumentUploadRequest = {
@@ -186,6 +189,9 @@ declare module "./client-base" {
       count: number;
     }>;
     sendInboxMessage(data: {
+      accountId?: string;
+      channel?: string;
+      metadata?: Record<string, unknown>;
       roomId: string;
       source: string;
       text: string;
@@ -849,6 +855,11 @@ ElizaClient.prototype.listDocuments = async function (
     params.set("scopedToEntityId", options.scopedToEntityId);
   }
   if (options?.addedBy) params.set("addedBy", options.addedBy);
+  if (options?.query) params.set("q", options.query);
+  if (options?.timeRangeStart) {
+    params.set("timeRangeStart", options.timeRangeStart);
+  }
+  if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
   const query = params.toString();
   return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
 };
@@ -974,7 +985,13 @@ ElizaClient.prototype.quickContext = async function (
 ) {
   const params = new URLSearchParams({ q: query });
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  return this.fetch(`/api/context/quick?${params}`);
+  const response = await this.fetch<
+    QuickContextResponse & { knowledge?: QuickContextResponse["documents"] }
+  >(`/api/context/quick?${params}`);
+  return {
+    ...response,
+    documents: response.documents ?? response.knowledge ?? [],
+  };
 };
 
 ElizaClient.prototype.getMemoryFeed = async function (

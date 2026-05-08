@@ -15,8 +15,8 @@ import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
-} from "../website-blocker/access.ts";
-import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.ts";
+} from "../website-blocker/access.js";
+import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
 import {
   formatWebsiteList,
   type getSelfControlPermissionState,
@@ -26,8 +26,8 @@ import {
   requestSelfControlPermission,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.ts";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+} from "../website-blocker/engine.js";
+import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -791,7 +791,7 @@ export const websiteBlockAction: Action & {
     "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits).",
   descriptionCompressed:
     "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission; macOS draft-then-confirm",
-  contexts: ["screen_time", "browser", "automation", "tasks"],
+  contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 

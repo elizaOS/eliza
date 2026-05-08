@@ -277,32 +277,13 @@ const allEvaluatorMap = new Map<string, EvaluatorDoc>(
   allEvaluatorDocs.map((doc) => [doc.name, doc])
 );
 
-function getLegacyActionSpec(name: string): ActionDoc | undefined {
-  const alias = legacyActionSpecAliases[name];
-  if (!alias) {
-    return undefined;
-  }
-  const target = coreActionMap.get(alias.target) ?? allActionMap.get(alias.target);
-  if (!target) {
-    return undefined;
-  }
-  return {
-    ...target,
-    name,
-    description: alias.description ?? target.description,
-    descriptionCompressed:
-      alias.descriptionCompressed ?? target.descriptionCompressed,
-    similes: alias.similes ?? target.similes,
-  };
-}
-
 /**
  * Get an action spec by name from the core specs.
  * @param name - The action name
  * @returns The action spec or undefined if not found
  */
 export function getActionSpec(name: string): ActionDoc | undefined {
-  return coreActionMap.get(name) ?? allActionMap.get(name) ?? getLegacyActionSpec(name);
+  return coreActionMap.get(name) ?? allActionMap.get(name);
 }
 
 /**

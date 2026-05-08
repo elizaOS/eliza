@@ -5,8 +5,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { getSelfControlAccess } from "../website-blocker/access.ts";
-import { getCachedSelfControlStatus } from "../website-blocker/engine.ts";
+import { getSelfControlAccess } from "../website-blocker/access.js";
+import { getCachedSelfControlStatus } from "../website-blocker/engine.js";
 
 export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",

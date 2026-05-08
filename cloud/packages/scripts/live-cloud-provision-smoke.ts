@@ -15,6 +15,7 @@ const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(/
 const timeoutMs = Number.parseInt(process.env.CLOUD_SMOKE_TIMEOUT_MS ?? "240000", 10);
 const pollIntervalMs = Number.parseInt(process.env.CLOUD_SMOKE_POLL_INTERVAL_MS ?? "5000", 10);
 const skipStreamSmoke = process.env.CLOUD_SMOKE_SKIP_STREAM === "1";
+const keepResources = process.env.CLOUD_SMOKE_KEEP_RESOURCES === "1";
 const runId = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 
 let apiKey: string | undefined;
@@ -509,6 +510,11 @@ async function deleteAgent(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
+  if (keepResources) {
+    console.warn(`[smoke] keeping resources for debug: agent=${agentId ?? ""} org=${orgId ?? ""}`);
+    return;
+  }
+
   try {
     await deleteAgent();
   } catch (error) {

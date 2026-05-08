@@ -21,6 +21,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { ContentType, logger, stringToUuid } from "@elizaos/core";
+import { hasOwnerAccess } from "../security/access.js";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
@@ -283,6 +284,18 @@ export const terminalAction: Action = {
   validate: async () => true,
 
   handler: async (runtime, message, _state, options) => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        success: false,
+        text: "Permission denied: only the owner may run terminal commands.",
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          terminal: { permissionDenied: true },
+        },
+      };
+    }
+
     const input = resolveTerminalInput(options as HandlerOptions | undefined);
     const command = input.command;
 

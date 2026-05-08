@@ -13,6 +13,7 @@
  * returned account so downstream consumers know which surfaces are usable.
  */
 
+import { createHash, randomBytes } from "node:crypto";
 import {
   type ConnectorAccount,
   type ConnectorAccountManager,
@@ -26,7 +27,6 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import { randomBytes, createHash } from "node:crypto";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import {
   GOOGLE_CAPABILITIES,
@@ -95,7 +95,7 @@ function readClientConfig(runtime: IAgentRuntime): {
   const redirectUri = readSetting(runtime, "GOOGLE_REDIRECT_URI");
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
-      "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+      "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured."
     );
   }
   return { clientId, clientSecret, redirectUri };
@@ -141,7 +141,7 @@ function matchCapabilityFromScope(scope: string): GoogleCapability | undefined {
 }
 
 function purposesForCapabilities(
-  capabilities: readonly GoogleCapability[],
+  capabilities: readonly GoogleCapability[]
 ): ConnectorAccountPurpose[] {
   const groups = new Set<GoogleCapabilityGroup>();
   for (const capability of capabilities) {
@@ -226,7 +226,7 @@ async function exchangeAuthorizationCode(args: {
  * scopes, and userinfo identity.
  */
 export function createGoogleConnectorAccountProvider(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): ConnectorAccountProvider {
   return {
     provider: GOOGLE_SERVICE_NAME,
@@ -236,10 +236,7 @@ export function createGoogleConnectorAccountProvider(
       return manager.getStorage().listAccounts(GOOGLE_SERVICE_NAME);
     },
 
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       // Persistence is owned by the manager; this adapter just normalizes the
       // patch into a Google-shaped account so role/purpose/status defaults are
       // sensible when an upstream caller creates the row before OAuth runs.
@@ -256,22 +253,19 @@ export function createGoogleConnectorAccountProvider(
     patchAccount: async (
       _accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ) => {
       return { ...patch, provider: GOOGLE_SERVICE_NAME };
     },
 
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ): Promise<void> => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
       // Credential cleanup is the credential store's responsibility; the
       // manager removes the account row after this resolves.
     },
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
       const redirectUri = request.redirectUri ?? config.redirectUri;
@@ -307,7 +301,7 @@ export function createGoogleConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
@@ -317,7 +311,9 @@ export function createGoogleConnectorAccountProvider(
       const config = readClientConfig(runtime);
       const redirectUri =
         nonEmptyString(request.flow.redirectUri) ??
-        nonEmptyString((request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri) ??
+        nonEmptyString(
+          (request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri
+        ) ??
         config.redirectUri;
 
       const tokens = await exchangeAuthorizationCode({
@@ -330,7 +326,11 @@ export function createGoogleConnectorAccountProvider(
 
       const grantedScopes = parseScopeString(tokens.scope);
       const grantedCapabilities = normalizeRequestedCapabilities(
-        grantedScopes.length > 0 ? grantedScopes : (request.flow.metadata as Record<string, unknown> | undefined)?.requestedScopes as string[] | undefined,
+        grantedScopes.length > 0
+          ? grantedScopes
+          : ((request.flow.metadata as Record<string, unknown> | undefined)?.requestedScopes as
+              | string[]
+              | undefined)
       );
       const purposes = purposesForCapabilities(grantedCapabilities);
 
@@ -354,7 +354,10 @@ export function createGoogleConnectorAccountProvider(
         status: "connected",
         externalId,
         displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
-        label: nonEmptyString(identity.name) ?? nonEmptyString(identity.email) ?? GOOGLE_OAUTH_PROVIDER_METADATA.label,
+        label:
+          nonEmptyString(identity.name) ??
+          nonEmptyString(identity.email) ??
+          GOOGLE_OAUTH_PROVIDER_METADATA.label,
         metadata: {
           email: identity.email ?? null,
           emailVerified: identity.email_verified ?? null,
@@ -379,7 +382,7 @@ export function createGoogleConnectorAccountProvider(
           externalId,
           capabilities: grantedCapabilities,
         },
-        "Google OAuth completed",
+        "Google OAuth completed"
       );
 
       return {

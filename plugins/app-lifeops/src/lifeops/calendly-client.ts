@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Canonical Calendly operations should go
+// through @elizaos/plugin-calendly runtime services; this API client remains
+// for legacy ELIZA_CALENDLY_TOKEN fallback.
 import { logger } from "@elizaos/core";
 
 export interface CalendlyCredentials {
@@ -27,6 +30,11 @@ export interface CalendlyScheduledEvent {
 export interface CalendlyAvailability {
   date: string;
   slots: Array<{ startTime: string; endTime: string }>;
+}
+
+export interface CalendlySingleUseLink {
+  bookingUrl: string;
+  expiresAt: string | null;
 }
 
 export class CalendlyError extends Error {
@@ -360,7 +368,7 @@ function toDateKey(date: Date, timezone?: string): string {
 export async function createCalendlySingleUseLink(
   creds: CalendlyCredentials,
   eventTypeUri: string,
-): Promise<{ bookingUrl: string; expiresAt: string | null }> {
+): Promise<CalendlySingleUseLink> {
   const response = await calendlyRequest<{
     resource: {
       booking_url: string;

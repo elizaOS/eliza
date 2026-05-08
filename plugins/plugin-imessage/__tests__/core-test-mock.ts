@@ -48,6 +48,9 @@ vi.mock("@elizaos/core", () => {
       REACTION_RECEIVED: "REACTION_RECEIVED",
       WORLD_JOINED: "WORLD_JOINED",
     },
+    MemoryType: {
+      MESSAGE: "message",
+    },
     ModelType: {
       TEXT_SMALL: "TEXT_SMALL",
     },

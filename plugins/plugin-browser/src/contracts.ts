@@ -36,6 +36,16 @@ export const BROWSER_BRIDGE_COMPANION_CONNECTION_STATES = [
 export type BrowserBridgeCompanionConnectionState =
   (typeof BROWSER_BRIDGE_COMPANION_CONNECTION_STATES)[number];
 
+export const BROWSER_BRIDGE_COMPANION_AUTH_ERROR_CODES = [
+  "browser_bridge_companion_auth_missing_id",
+  "browser_bridge_companion_auth_missing_token",
+  "browser_bridge_companion_pairing_invalid",
+  "browser_bridge_companion_token_expired",
+  "browser_bridge_companion_token_revoked",
+] as const;
+export type BrowserBridgeCompanionAuthErrorCode =
+  (typeof BROWSER_BRIDGE_COMPANION_AUTH_ERROR_CODES)[number];
+
 export const BROWSER_BRIDGE_ACTION_KINDS = [
   "open",
   "navigate",
@@ -118,6 +128,8 @@ export interface BrowserBridgeCompanionStatus {
   permissions: BrowserBridgePermissionState;
   lastSeenAt: string | null;
   pairedAt: string | null;
+  pairingTokenExpiresAt?: string | null;
+  pairingTokenRevokedAt?: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -222,12 +234,14 @@ export interface CreateBrowserBridgeCompanionPairingRequest {
 export interface BrowserBridgeCompanionPairingResponse {
   companion: BrowserBridgeCompanionStatus;
   pairingToken: string;
+  pairingTokenExpiresAt: string | null;
 }
 
 export interface BrowserBridgeCompanionConfig {
   apiBaseUrl: string;
   companionId: string;
   pairingToken: string;
+  pairingTokenExpiresAt?: string | null;
   browser: BrowserBridgeKind;
   profileId: string;
   profileLabel: string;
@@ -246,6 +260,15 @@ export interface CreateBrowserBridgeCompanionAutoPairRequest {
 export interface BrowserBridgeCompanionAutoPairResponse {
   companion: BrowserBridgeCompanionStatus;
   config: BrowserBridgeCompanionConfig;
+}
+
+export interface RevokeBrowserBridgeCompanionRequest {
+  reason?: string | null;
+}
+
+export interface BrowserBridgeCompanionRevokeResponse {
+  companion: BrowserBridgeCompanionStatus;
+  revokedAt: string;
 }
 
 export interface BrowserBridgeCompanionSyncResponse {

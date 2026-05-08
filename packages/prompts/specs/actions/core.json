@@ -1327,27 +1327,90 @@
       "descriptionCompressed": "Edit contact details for person in conversation."
     },
     {
-      "name": "GENERATE_IMAGE",
-      "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
+      "name": "GENERATE_MEDIA",
+      "description": "Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
       "similes": [
+        "GENERATE_IMAGE",
+        "GENERATE_VIDEO",
+        "GENERATE_AUDIO",
+        "GENERATE_MEDIA_IMAGE",
         "DRAW",
         "CREATE_IMAGE",
         "RENDER_IMAGE",
         "VISUALIZE",
         "MAKE_IMAGE",
         "PAINT",
-        "IMAGE"
+        "IMAGE",
+        "CREATE_VIDEO",
+        "MAKE_VIDEO",
+        "ANIMATE",
+        "COMPOSE",
+        "MAKE_MUSIC",
+        "TEXT_TO_SPEECH",
+        "SOUND_EFFECT"
       ],
       "parameters": [
         {
+          "name": "mediaType",
+          "description": "The kind of media to generate.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["image", "video", "audio"]
+          },
+          "examples": ["image", "video", "audio"],
+          "descriptionCompressed": "Media kind: image, video, audio."
+        },
+        {
           "name": "prompt",
-          "description": "Image generation prompt.",
+          "description": "Detailed generation prompt describing the desired media.",
           "required": true,
           "schema": {
             "type": "string"
           },
           "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
-          "descriptionCompressed": "Image prompt."
+          "descriptionCompressed": "Generation prompt."
+        },
+        {
+          "name": "audioKind",
+          "description": "For audio generation, choose music, sfx, or tts.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["music", "sfx", "tts"]
+          },
+          "examples": ["music", "sfx", "tts"],
+          "descriptionCompressed": "Audio subtype."
+        },
+        {
+          "name": "duration",
+          "description": "Optional target duration in seconds for video or audio.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [5, 30],
+          "descriptionCompressed": "Duration seconds."
+        },
+        {
+          "name": "aspectRatio",
+          "description": "Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["16:9", "9:16"],
+          "descriptionCompressed": "Video aspect ratio."
+        },
+        {
+          "name": "size",
+          "description": "Optional image size or image provider size preset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["1024x1024", "landscape_4_3"],
+          "descriptionCompressed": "Image size."
         }
       ],
       "examples": [
@@ -1362,7 +1425,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1370,14 +1433,14 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "What does a neural network look like visually?"
+              "text": "Make a five second clip of waves rolling in."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I'll create a visualization of a neural network for you, one sec...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll create that video clip.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1385,19 +1448,19 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Can you visualize the feeling of calmness for me?"
+              "text": "Compose a mellow synth track for studying."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "Creating an image to capture calmness for you, please wait a moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll generate that audio track.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ]
       ],
-      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
+      "descriptionCompressed": "Generate image, video, or audio from prompt."
     }
   ]
 }

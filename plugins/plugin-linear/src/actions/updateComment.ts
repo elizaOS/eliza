@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { UpdateCommentParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const updateCommentAction: Action = {
@@ -32,6 +33,7 @@ export const updateCommentAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    linearAccountIdParameter,
   ],
   similes: [
     "edit-linear-comment",
@@ -77,6 +79,7 @@ export const updateCommentAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const params = _options?.parameters as
         | UpdateCommentParameters
@@ -91,14 +94,14 @@ export const updateCommentAction: Action = {
         return { text: errorMessage, success: false };
       }
 
-      const comment = await linearService.updateComment(commentId, body);
+      const comment = await linearService.updateComment(commentId, body, accountId);
 
       const successMessage = `Updated comment ${commentId}.`;
       await callback?.({ text: successMessage, source: message.content.source });
       return {
         text: successMessage,
         success: true,
-        data: { commentId: comment.id },
+        data: { commentId: comment.id, accountId },
       };
     } catch (error) {
       logger.error("Failed to update comment:", error);

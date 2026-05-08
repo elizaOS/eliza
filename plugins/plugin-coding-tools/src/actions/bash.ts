@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import {
   type Action,
@@ -11,7 +12,6 @@ import {
 
 import {
   failureToActionResult,
-  readBoolParam,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
@@ -20,22 +20,16 @@ import {
 } from "../lib/format.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
-import type {
-  ShellTaskRecord,
-  ShellTaskService,
-} from "../services/shell-task-service.js";
 import {
   CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
-  SHELL_TASK_SERVICE,
 } from "../types.js";
 
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_BG_BUDGET_MS = 15_000;
 const STREAM_CAP_CHARS = 30_000;
 
 function clampTimeout(value: number | undefined, fallback: number): number {
@@ -58,15 +52,63 @@ function formatStreams(stdout: string, stderr: string): string {
   return lines.join("\n");
 }
 
-function formatForeground(
-  rec: ShellTaskRecord,
+interface BashRunResult {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+function runBash(
   command: string,
-  took: number,
-): string {
-  const exit = rec.exitCode ?? -1;
-  const head = `$ ${command}\n[exit ${exit}] (cwd=${rec.cwd}, took=${took}ms)`;
-  const streams = formatStreams(rec.stdout, rec.stderr);
-  return streams.length > 0 ? `${head}\n${streams}` : head;
+  cwd: string,
+  timeoutMs: number,
+): Promise<BashRunResult> {
+  return new Promise((resolve) => {
+    const proc = spawn("/bin/bash", ["-c", command], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      if (stdout.length < STREAM_CAP_CHARS * 2) {
+        stdout += chunk.toString("utf8");
+      }
+    });
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < STREAM_CAP_CHARS * 2) {
+        stderr += chunk.toString("utf8");
+      }
+    });
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already dead
+        }
+      }, 1500);
+    }, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
+
+    proc.on("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ exitCode: code, signal, stdout, stderr, timedOut });
+    });
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      stderr += `\n${err.message}`;
+      resolve({ exitCode: -1, signal: null, stdout, stderr, timedOut });
+    });
+  });
 }
 
 export const bashAction: Action = {
@@ -75,9 +117,8 @@ export const bashAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["SHELL", "EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
-  descriptionCompressed:
-    "Run a shell command (foreground or background).",
+    "Execute a shell command via /bin/bash -c <command>. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+  descriptionCompressed: "Run a shell command synchronously.",
   parameters: [
     {
       name: "command",
@@ -105,21 +146,8 @@ export const bashAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "run_in_background",
-      description:
-        "If true, return a task_id immediately. Use TASK_OUTPUT to poll and TASK_STOP to terminate.",
-      required: false,
-      schema: { type: "boolean" },
-    },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -134,10 +162,7 @@ export const bashAction: Action = {
         message: "BASH requires 'command' (string)",
       });
     }
-    const description = readStringParam(options, "description");
     const cwdParam = readStringParam(options, "cwd");
-    const runInBackground =
-      readBoolParam(options, "run_in_background") ?? false;
 
     if (!message.roomId) {
       return failureToActionResult({
@@ -153,10 +178,7 @@ export const bashAction: Action = {
     const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
       typeof SessionCwdService
     > | null;
-    const tasks = runtime.getService(SHELL_TASK_SERVICE) as InstanceType<
-      typeof ShellTaskService
-    > | null;
-    if (!sandbox || !session || !tasks) {
+    if (!sandbox || !session) {
       return failureToActionResult({
         reason: "internal",
         message: "coding-tools services unavailable",
@@ -196,88 +218,44 @@ export const bashAction: Action = {
       "CODING_TOOLS_BASH_TIMEOUT_MS",
       DEFAULT_TIMEOUT_MS,
     );
-    const bgBudget = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_BASH_BG_BUDGET_MS",
-      DEFAULT_BG_BUDGET_MS,
-    );
     const timeout = clampTimeout(
       readNumberParam(options, "timeout"),
       defaultTimeout,
     );
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms`,
+      `${CODING_TOOLS_LOG_PREFIX} BASH cwd=${cwd} timeout=${timeout}ms`,
     );
 
-    const startOpts: {
-      command: string;
-      cwd: string;
-      description?: string;
-    } = {
-      command,
-      cwd,
-    };
-    if (description !== undefined) startOpts.description = description;
-    const rec = tasks.start_(startOpts);
+    const startedAt = Date.now();
+    const result = await runBash(command, cwd, timeout);
+    const took = Date.now() - startedAt;
+    const head = result.timedOut
+      ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
+      : `$ ${command}\n[exit ${result.exitCode ?? -1}] (cwd=${cwd}, took=${took}ms)`;
+    const streams = formatStreams(result.stdout, result.stderr);
+    const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (runInBackground) {
-      const text = `Started background task ${rec.id}`;
-      if (callback) await callback({ text, source: "coding-tools" });
-      return successActionResult(text, { task_id: rec.id, command, cwd });
+    if (callback) await callback({ text, source: "coding-tools" });
+
+    if (result.timedOut) {
+      return failureToActionResult(
+        { reason: "timeout", message: `command timed out after ${timeout}ms` },
+        { cwd, output: text },
+      );
     }
-
-    const startedAt = rec.startedAt;
-    const foregroundBudget = Math.min(timeout, bgBudget);
-    const settled = await tasks.waitFor(rec.id, foregroundBudget);
-
-    if (settled && settled.status !== "running") {
-      const took = (settled.endedAt ?? Date.now()) - startedAt;
-      const text = formatForeground(settled, command, took);
-      if (callback) await callback({ text, source: "coding-tools" });
-      if (settled.status === "completed") {
-        return successActionResult(text, {
-          task_id: settled.id,
-          exit_code: settled.exitCode ?? 0,
-          cwd,
-        });
-      }
+    if ((result.exitCode ?? -1) !== 0) {
       return failureToActionResult(
         {
           reason: "command_failed",
-          message: `command exited with code ${settled.exitCode ?? -1}`,
+          message: `command exited with code ${result.exitCode ?? -1}`,
         },
-        {
-          task_id: settled.id,
-          exit_code: settled.exitCode ?? -1,
-          cwd,
-          output: text,
-        },
+        { exit_code: result.exitCode ?? -1, cwd, output: text },
       );
     }
-
-    if (timeout <= bgBudget) {
-      tasks.stop_(rec.id);
-      await tasks.waitFor(rec.id, 500);
-      const final = tasks.get(rec.id);
-      const took = (final?.endedAt ?? Date.now()) - startedAt;
-      const head = `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`;
-      const streams = formatStreams(final?.stdout ?? "", final?.stderr ?? "");
-      const text = streams.length > 0 ? `${head}\n${streams}` : head;
-      if (callback) await callback({ text, source: "coding-tools" });
-      return failureToActionResult(
-        { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { task_id: rec.id, cwd, output: text },
-      );
-    }
-
-    const text = `Foreground budget (${bgBudget}ms) exceeded. Promoted to background task ${rec.id}. Use TASK_OUTPUT to poll.`;
-    if (callback) await callback({ text, source: "coding-tools" });
     return successActionResult(text, {
-      task_id: rec.id,
-      command,
+      exit_code: result.exitCode ?? 0,
       cwd,
-      promoted: true,
     });
   },
 };

@@ -11,9 +11,27 @@ type BrowserWorkspaceCreateBody = {
 	title?: string;
 	show?: boolean;
 	partition?: string;
+	connectorProvider?: string;
+	connectorAccountId?: string;
 	kind?: "internal" | "standard";
 	width?: number;
 	height?: number;
+};
+
+type BrowserWorkspaceAcquireSessionBody = {
+	provider?: string;
+	accountId?: string;
+	url?: string;
+	title?: string;
+	show?: boolean;
+	reuse?: boolean;
+	authState?:
+		| "unknown"
+		| "ready"
+		| "auth_pending"
+		| "needs_reauth"
+		| "manual_handoff";
+	manualHandoffReason?: string | null;
 };
 
 type BrowserWorkspaceNavigateBody = {
@@ -137,9 +155,33 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 						title: body.title,
 						show: body.show,
 						partition: body.partition,
+						connectorProvider: body.connectorProvider,
+						connectorAccountId: body.connectorAccountId,
 						kind: body.kind,
 						width: body.width,
 						height: body.height,
+					}),
+				});
+				return;
+			}
+
+			if (pathname === "/sessions/acquire" && method === "POST") {
+				const body =
+					(await readJsonBody<BrowserWorkspaceAcquireSessionBody>(req)) ?? {};
+				if (!body.provider?.trim() || !body.accountId?.trim()) {
+					json(res, 400, { error: "provider and accountId are required" });
+					return;
+				}
+				json(res, 200, {
+					session: await manager.acquireConnectorSession({
+						provider: body.provider,
+						accountId: body.accountId,
+						url: body.url,
+						title: body.title,
+						show: body.show,
+						reuse: body.reuse,
+						authState: body.authState,
+						manualHandoffReason: body.manualHandoffReason,
 					}),
 				});
 				return;

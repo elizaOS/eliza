@@ -26,6 +26,10 @@ import {
   searchIMessages as searchIMessagesBridge,
   sendIMessage as sendIMessageBridge,
 } from "./imessage-bridge.js";
+import {
+  readIMessagesWithRuntimeService,
+  sendIMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 
@@ -502,6 +506,30 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     async sendIMessage(
       req: IMessageSendRequest,
     ): Promise<{ ok: true; messageId?: string }> {
+      const delegated = await sendIMessageWithRuntimeService({
+        runtime: this.runtime,
+        to: req.to,
+        text: req.text,
+        mediaUrl: req.attachmentPaths?.[0],
+      });
+      if (delegated.status === "handled") {
+        return { ok: true, messageId: delegated.value.messageId };
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "imessage",
+            operation: "message.send",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
         let result;
@@ -580,6 +608,34 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       since?: string;
       limit?: number;
     }): Promise<IMessageRecord[]> {
+      const delegated = await readIMessagesWithRuntimeService({
+        runtime: this.runtime,
+        chatId: opts.chatId,
+        limit: opts.limit,
+      });
+      if (delegated.status === "handled") {
+        return filterSince(
+          delegated.value.map((message) =>
+            nativeMessageToLifeOps(message as NativeIMessageMessage),
+          ),
+          opts.since,
+        );
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "imessage",
+            operation: "message.read",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService && nativeServiceCanRead(nativeService)) {
         const rows = nativeService.getMessages

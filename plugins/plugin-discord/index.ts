@@ -18,12 +18,17 @@ import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
+import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
 
 const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
-	services: [DiscordService, DiscordOwnerPairingServiceImpl],
+	services: [
+		DiscordService,
+		DiscordOwnerPairingServiceImpl,
+		DiscordUserAccountScraperImpl,
+	],
 	routes: discordSetupRoutes,
 	actions: [
 		mediaOp,
@@ -150,6 +155,35 @@ export {
 	createDiscordConnectorAccountProvider,
 	DISCORD_PROVIDER_ID,
 } from "./connector-account-provider";
+// Discord user-account scraper (browser-workspace driven; per-account
+// partitions). Used by lifeops and any other consumer that needs to read
+// state from a logged-in Discord user account.
+export {
+	captureDiscordDeliveryStatus,
+	closeDiscordTab,
+	DISCORD_APP_URL,
+	type DiscordDmInboxProbe,
+	type DiscordMessageSearchResult,
+	type DiscordTabIdentity,
+	type DiscordTabProbe,
+	type DiscordVisibleDmPreview,
+	discordBrowserWorkspaceAvailable,
+	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+	type DiscordUserAccountScraper,
+	DiscordUserAccountScraperImpl,
+	discordUserAccountPartitionFor,
+	emptyDiscordDmInboxProbe,
+	ensureDiscordTab,
+	navigateDiscordTabToHome,
+	probeDiscordCapturedPage,
+	probeDiscordDocumentState,
+	probeDiscordTab,
+	searchDiscordMessages,
+	type DiscordDesktopCdpStatus,
+	getDiscordDesktopCdpStatus,
+	relaunchDiscordDesktopForCdp,
+	sendDiscordViaDesktopCdp,
+} from "./user-account-scraper";
 // Account management exports (runtime utilities)
 export {
 	DEFAULT_ACCOUNT_ID,

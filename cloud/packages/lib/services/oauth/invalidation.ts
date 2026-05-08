@@ -18,18 +18,20 @@ export async function invalidateOAuthState(
   userId?: string,
   opts?: { skipVersionBump?: boolean },
 ): Promise<void> {
-  try {
-    await Promise.all([
-      opts?.skipVersionBump ? Promise.resolve() : incrementOAuthVersion(orgId, platform),
-      invalidateOrganizationRuntimesFromRegistry(orgId),
-      userId ? entitySettingsCache.invalidateUser(userId) : Promise.resolve(),
-      edgeRuntimeCache.bumpMcpVersion(orgId),
-    ]);
-  } catch (e) {
-    logger.warn("[OAuth] Invalidation chain partially failed", {
-      orgId,
-      platform,
-      error: e instanceof Error ? e.message : String(e),
-    });
+  const results = await Promise.allSettled([
+    opts?.skipVersionBump ? Promise.resolve() : incrementOAuthVersion(orgId, platform),
+    invalidateOrganizationRuntimesFromRegistry(orgId),
+    userId ? entitySettingsCache.invalidateUser(userId) : Promise.resolve(),
+    edgeRuntimeCache.bumpMcpVersion(orgId),
+  ]);
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      logger.warn("[OAuth] Invalidation chain partially failed", {
+        orgId,
+        platform,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
   }
 }

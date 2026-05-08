@@ -46,7 +46,7 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Companion: "nav.companion",
   Connectors: "nav.social",
   Heartbeats: "nav.heartbeats",
-  Knowledge: "nav.knowledge",
+  Knowledge: "nav.documents",
   LifeOps: "nav.lifeops",
   Settings: "nav.settings",
   Stream: "nav.stream",

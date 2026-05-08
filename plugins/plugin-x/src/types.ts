@@ -17,14 +17,17 @@ import type { TwitterPostClient } from "./post";
  * Runtime-provided state passed into the Twitter client constructors.
  *
  * In practice this is either an empty object (when the runtime holds all
- * settings) or a subset of {@link TwitterConfig}. We intentionally do not
- * add an index signature here: extra, unknown keys should be pushed into
- * runtime settings rather than carried on `state`.
- *
- * `accountId` identifies the connector account this client instance is
- * bound to. Defaults to "default" in single-account mode.
+ * settings), a subset of {@link TwitterConfig}, or an account-scoped state
+ * resolved by the plugin-local X account resolver. We intentionally do not add
+ * an index signature here: extra, unknown keys should be pushed into runtime
+ * settings or the connector account store rather than carried on `state`.
  */
 export type TwitterClientState = Partial<TwitterConfig> & {
+  /**
+   * Connector account identifier this client instance is bound to. Defaults
+   * to "default" in single-account mode; resolved via the connector account
+   * manager (or the plugin-local resolver as a fallback) otherwise.
+   */
   accountId?: string;
 };
 

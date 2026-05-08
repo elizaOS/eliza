@@ -187,6 +187,7 @@ const moveTowardFoodAction: Action = {
   description: "Move toward the nearest visible food",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["SEEK_FOOD", "HUNT_FOOD", "FORAGE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -261,6 +262,7 @@ const eatAction: Action = {
   description: "Eat food at current position",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["CONSUME", "FEED"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -304,6 +306,7 @@ const fleeAction: Action = {
   description: "Run away from nearby aggressive agents",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["RUN", "ESCAPE", "EVADE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -382,6 +385,7 @@ const attackAction: Action = {
   description: "Attack a nearby weaker agent to steal energy",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["FIGHT", "HUNT_PREY", "ASSAULT"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -462,6 +466,7 @@ const reproduceAction: Action = {
   description: "Create offspring when energy is high enough",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["SPAWN", "BREED", "REPLICATE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -529,6 +534,7 @@ const wanderAction: Action = {
   description: "Move in a random direction when nothing else to do",
   contexts: [...GAME_CONTEXTS],
   contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["EXPLORE", "ROAM", "MOVE_RANDOM"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

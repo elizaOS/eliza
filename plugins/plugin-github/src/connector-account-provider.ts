@@ -38,9 +38,9 @@ const GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_ENDPOINT = "https://api.github.com/user";
 
 const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
-  "posting",
-  "reading",
-  "admin",
+  "posting" as ConnectorAccountPurpose,
+  "reading" as ConnectorAccountPurpose,
+  "admin" as ConnectorAccountPurpose,
 ];
 
 interface GitHubTokenResponse {

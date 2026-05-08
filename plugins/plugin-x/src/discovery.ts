@@ -48,6 +48,7 @@ interface ScoredAccount {
 export class TwitterDiscoveryClient {
   private twitterClient: Client;
   private runtime: IAgentRuntime;
+  private accountId: string;
   private config: DiscoveryConfig;
   private isRunning: boolean = false;
   private isDryRun: boolean;
@@ -59,6 +60,7 @@ export class TwitterDiscoveryClient {
   ) {
     this.twitterClient = client.twitterClient;
     this.runtime = runtime;
+    this.accountId = client.accountId;
 
     // Check dry run mode. Legacy callers may pass booleans, so widen the
     // narrowed string from `TwitterClientState` back to `unknown`.
@@ -896,6 +898,7 @@ Quote tweet:`;
     try {
       // Ensure context exists before saving memory
       const context = await ensureTwitterContext(this.runtime, {
+        accountId: this.accountId,
         userId: tweet.userId,
         username: tweet.username,
         conversationId: tweet.conversationId || tweet.id,
@@ -907,6 +910,7 @@ Quote tweet:`;
         content: {
           text: `${engagementType} tweet from @${tweet.username}: ${tweet.text}`,
           metadata: {
+            accountId: this.accountId,
             tweetId: tweet.id,
             engagementType,
             source: "discovery",
@@ -932,6 +936,7 @@ Quote tweet:`;
     try {
       // Create a simple context for follows
       const context = await ensureTwitterContext(this.runtime, {
+        accountId: this.accountId,
         userId: user.id,
         username: user.username,
         name: user.name,
@@ -944,6 +949,7 @@ Quote tweet:`;
         content: {
           text: `followed twitter user ${user.id} @${user.username}`,
           metadata: {
+            accountId: this.accountId,
             userId: user.id,
             username: user.username,
             name: user.name,

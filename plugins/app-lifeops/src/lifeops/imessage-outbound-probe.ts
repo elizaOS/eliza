@@ -8,12 +8,23 @@ import {
 const OUTBOUND_SIGNAL_LOOKBACK_MS = 10 * 60 * 1_000;
 const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
 
+function nativeIMessageProbeDisabled(): boolean {
+  const backend = (
+    process.env.ELIZA_IMESSAGE_BACKEND ??
+    process.env.IMESSAGE_BACKEND ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return backend === "none" || backend === "disabled";
+}
+
 export async function probeIMessageOutboundActivity(args: {
   repository: LifeOpsRepository;
   agentId: string;
   dbPath?: string;
 }): Promise<void> {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" || nativeIMessageProbeDisabled()) {
     return;
   }
   // Dynamic import: openChatDb / DEFAULT_CHAT_DB_PATH ship in the local

@@ -45,7 +45,7 @@ export const googlePlugin: Plugin = {
           src: "plugin:google",
           err: err instanceof Error ? err.message : String(err),
         },
-        "Failed to register Google provider with ConnectorAccountManager",
+        "Failed to register Google provider with ConnectorAccountManager"
       );
     }
   },

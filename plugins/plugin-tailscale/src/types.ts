@@ -32,8 +32,8 @@ export interface TunnelStatus {
 }
 
 export interface ITunnelService {
-  startTunnel(port?: number): Promise<string | void>;
-  stopTunnel(): Promise<void>;
+  startTunnel(port?: number, options?: { accountId?: string }): Promise<string | void>;
+  stopTunnel(options?: { accountId?: string }): Promise<void>;
   getUrl(): string | null;
   isActive(): boolean;
   getStatus(): TunnelStatus;

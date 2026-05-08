@@ -11,6 +11,11 @@ export const twitterEnvSchema = z.object({
   // Auth mode (backward compatible default)
   TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
 
+  // Account routing. TWITTER_ACCOUNTS may contain sensitive credentials.
+  TWITTER_ACCOUNT_ID: z.string().default(""),
+  TWITTER_DEFAULT_ACCOUNT_ID: z.string().default(""),
+  TWITTER_ACCOUNTS: z.string().default(""),
+
   // Required API credentials
   TWITTER_API_KEY: z.string().default(""),
   TWITTER_API_SECRET_KEY: z.string().default(""),
@@ -135,6 +140,18 @@ export async function validateTwitterConfig(
 
     const validatedConfig: TwitterConfig = {
       TWITTER_AUTH_MODE: normalizedMode,
+      TWITTER_ACCOUNT_ID:
+        config.TWITTER_ACCOUNT_ID ??
+        getSetting(runtime, "TWITTER_ACCOUNT_ID") ??
+        "",
+      TWITTER_DEFAULT_ACCOUNT_ID:
+        config.TWITTER_DEFAULT_ACCOUNT_ID ??
+        getSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
+        "",
+      TWITTER_ACCOUNTS:
+        config.TWITTER_ACCOUNTS ??
+        getSetting(runtime, "TWITTER_ACCOUNTS") ??
+        "",
       TWITTER_API_KEY:
         config.TWITTER_API_KEY ?? getSetting(runtime, "TWITTER_API_KEY") ?? "",
       TWITTER_API_SECRET_KEY:
@@ -378,6 +395,9 @@ function getDefaultConfig(): TwitterConfig {
 
   return {
     TWITTER_AUTH_MODE,
+    TWITTER_ACCOUNT_ID: getConfig("TWITTER_ACCOUNT_ID") || "",
+    TWITTER_DEFAULT_ACCOUNT_ID: getConfig("TWITTER_DEFAULT_ACCOUNT_ID") || "",
+    TWITTER_ACCOUNTS: getConfig("TWITTER_ACCOUNTS") || "",
     TWITTER_API_KEY: getConfig("TWITTER_API_KEY") || "",
     TWITTER_API_SECRET_KEY: getConfig("TWITTER_API_SECRET_KEY") || "",
     TWITTER_ACCESS_TOKEN: getConfig("TWITTER_ACCESS_TOKEN") || "",

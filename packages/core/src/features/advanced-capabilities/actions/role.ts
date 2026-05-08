@@ -439,6 +439,17 @@ async function applyAssignments(args: {
 	}
 
 	const { world, metadata } = resolved;
+	if (!world) {
+		await callback?.({
+			text: "Cannot manage roles — no world context for this room.",
+		});
+		return {
+			success: false,
+			text: "World not found",
+			error: "WORLD_NOT_FOUND",
+			data: { actionName: "ROLE", op },
+		};
+	}
 	const requesterRole = await resolveEntityRole(
 		runtime,
 		world,
@@ -551,7 +562,7 @@ async function applyAssignments(args: {
 			op,
 			successCount: successes.length,
 			failureCount: failures.length,
-			worldId: resolved.world.id ?? "",
+			worldId: world.id ?? "",
 		},
 	};
 }

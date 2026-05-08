@@ -11,6 +11,7 @@ import {
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionConfig,
   type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgePageContext,
@@ -29,6 +30,7 @@ import type {
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../contracts/index.js";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
+import { authenticateBrowserBridgeCompanionCredential } from "./browser-bridge-companion-auth.js";
 import {
   browserPageContextIdentityKey,
   browserSessionMatchesCompanion,
@@ -114,6 +116,13 @@ export interface BrowserBridgeService {
     request: CreateBrowserBridgeCompanionAutoPairRequest,
     apiBaseUrl: string,
   ): Promise<BrowserBridgeCompanionAutoPairResponse>;
+  revokeBrowserCompanion(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevokeResponse>;
+  revokeBrowserCompanionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+  ): Promise<BrowserBridgeCompanionRevokeResponse>;
   updateBrowserSessionProgress(
     sessionId: string,
     request: UpdateLifeOpsBrowserSessionProgressRequest,
@@ -132,6 +141,33 @@ function mergeMetadata(
 }
 
 const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
+const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
+  30 * 24 * 60 * 60 * 1000;
+
+function browserCompanionPairingTokenTtlMs(): number {
+  const raw =
+    process.env.BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS ??
+    process.env.ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.trunc(parsed);
+    }
+  }
+  return DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS;
+}
+
+function browserCompanionPairingTokenExpiresAt(nowMs = Date.now()): string {
+  return new Date(nowMs + browserCompanionPairingTokenTtlMs()).toISOString();
+}
+
+function isoTimestampExpired(value: string | null | undefined, nowMs: number): boolean {
+  if (!value) {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed <= nowMs;
+}
 
 function browserDomainFromUrl(url: string): string | null {
   try {
@@ -285,69 +321,54 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       companionId: string,
       pairingToken: string,
     ): Promise<BrowserBridgeCompanionStatus> {
+      const nowMs = Date.now();
       const credential = await this.repository.getBrowserCompanionCredential(
         this.agentId(),
         requireNonEmptyString(companionId, "companionId"),
       );
-      if (!credential?.pairingTokenHash) {
-        if (!credential) {
-          fail(401, "browser companion pairing is invalid");
-        }
-        const pendingPairingTokenHashes =
-          credential.pendingPairingTokenHashes ?? [];
-        const pairingTokenHash = hashBrowserCompanionPairingToken(pairingToken);
-        if (!pendingPairingTokenHashes.includes(pairingTokenHash)) {
-          fail(401, "browser companion pairing is invalid");
-        }
-        const nowIso = new Date().toISOString();
-        const remainingPendingPairingTokenHashes =
-          normalizePendingBrowserPairingTokenHashes(
-            pendingPairingTokenHashes.filter(
-              (candidate) => candidate !== pairingTokenHash,
-            ),
-            pairingTokenHash,
-          );
-        await this.repository.promoteBrowserCompanionPendingPairingToken(
-          this.agentId(),
-          credential.companion.id,
-          pairingTokenHash,
-          remainingPendingPairingTokenHashes,
-          nowIso,
-          nowIso,
-        );
-        return {
-          ...credential.companion,
-          pairedAt: nowIso,
-          updatedAt: nowIso,
-        };
-      }
       const pairingTokenHash = hashBrowserCompanionPairingToken(pairingToken);
-      if (credential.pairingTokenHash === pairingTokenHash) {
+      const auth = authenticateBrowserBridgeCompanionCredential({
+        credential,
+        pairingTokenHash,
+        nowMs,
+      });
+      if (!auth.ok) {
+        fail(401, auth.message, auth.code);
+      }
+      if (auth.source === "active") {
         return credential.companion;
       }
-      const pendingPairingTokenHashes =
-        credential.pendingPairingTokenHashes ?? [];
-      if (!pendingPairingTokenHashes.includes(pairingTokenHash)) {
-        fail(401, "browser companion pairing is invalid");
-      }
       const nowIso = new Date().toISOString();
-      const remainingPendingPairingTokenHashes =
+      const remainingPendingPairingTokens =
         normalizePendingBrowserPairingTokenHashes(
-          pendingPairingTokenHashes.filter(
-            (candidate) => candidate !== pairingTokenHash,
+          auth.remainingPendingPairingTokens.map(
+            (candidate) => candidate.hash,
           ),
           pairingTokenHash,
-        );
+        ).map((hash) => {
+          const previous = auth.remainingPendingPairingTokens.find(
+            (candidate) => candidate.hash === hash,
+          );
+          return {
+            hash,
+            expiresAt: previous?.expiresAt ?? null,
+          };
+        });
+      const expiresAt =
+        auth.expiresAt ?? browserCompanionPairingTokenExpiresAt(nowMs);
       await this.repository.promoteBrowserCompanionPendingPairingToken(
         this.agentId(),
         credential.companion.id,
         pairingTokenHash,
-        remainingPendingPairingTokenHashes,
+        remainingPendingPairingTokens,
+        expiresAt,
         nowIso,
         nowIso,
       );
       return {
         ...credential.companion,
+        pairingTokenExpiresAt: expiresAt,
+        pairingTokenRevokedAt: null,
         pairedAt: nowIso,
         updatedAt: nowIso,
       };
@@ -915,39 +936,77 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.repository.upsertBrowserCompanion(companion);
       const pairingToken = `lobr_${crypto.randomBytes(24).toString("base64url")}`;
       const pairingTokenHash = hashBrowserCompanionPairingToken(pairingToken);
-      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const pairingTokenExpiresAt =
+        browserCompanionPairingTokenExpiresAt(nowMs);
       const credential = await this.repository.getBrowserCompanionCredential(
         this.agentId(),
         companion.id,
       );
-      if (!credential?.pairingTokenHash) {
+      const replaceActiveToken =
+        !credential?.pairingTokenHash ||
+        Boolean(credential.companion.pairingTokenRevokedAt) ||
+        isoTimestampExpired(
+          credential.companion.pairingTokenExpiresAt,
+          nowMs,
+        );
+      if (replaceActiveToken) {
         await this.repository.updateBrowserCompanionPairingToken(
           this.agentId(),
           companion.id,
           pairingTokenHash,
+          pairingTokenExpiresAt,
           nowIso,
           nowIso,
         );
       } else {
-        const pendingPairingTokenHashes =
-          normalizePendingBrowserPairingTokenHashes(
-            [pairingTokenHash, ...(credential.pendingPairingTokenHashes ?? [])],
-            credential.pairingTokenHash,
+        const existingPendingPairingTokens =
+          credential.pendingPairingTokens ??
+          (credential.pendingPairingTokenHashes ?? []).map((hash) => ({
+            hash,
+            expiresAt: null,
+          }));
+        const pendingPairingTokens = normalizePendingBrowserPairingTokenHashes(
+          [
+            pairingTokenHash,
+            ...existingPendingPairingTokens.map((candidate) => candidate.hash),
+          ],
+          credential.pairingTokenHash,
+        ).map((hash) => {
+          if (hash === pairingTokenHash) {
+            return { hash, expiresAt: pairingTokenExpiresAt };
+          }
+          const previous = existingPendingPairingTokens.find(
+            (candidate) => candidate.hash === hash,
           );
+          return { hash, expiresAt: previous?.expiresAt ?? null };
+        });
         await this.repository.updateBrowserCompanionPendingPairingTokenHashes(
           this.agentId(),
           companion.id,
-          pendingPairingTokenHashes,
+          pendingPairingTokens,
           nowIso,
         );
       }
       return {
         companion: {
           ...companion,
-          pairedAt: credential?.pairingTokenHash ? companion.pairedAt : nowIso,
+          pairingTokenExpiresAt: replaceActiveToken
+            ? pairingTokenExpiresAt
+            : (credential?.companion.pairingTokenExpiresAt ??
+              companion.pairingTokenExpiresAt ??
+              null),
+          pairingTokenRevokedAt: replaceActiveToken
+            ? null
+            : (credential?.companion.pairingTokenRevokedAt ??
+              companion.pairingTokenRevokedAt ??
+              null),
+          pairedAt: replaceActiveToken ? nowIso : companion.pairedAt,
           updatedAt: nowIso,
         },
         pairingToken,
+        pairingTokenExpiresAt,
       };
     }
 
@@ -975,6 +1034,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           .replace(/\/{1,256}$/, ""),
         companionId: pairing.companion.id,
         pairingToken: pairing.pairingToken,
+        pairingTokenExpiresAt: pairing.pairingTokenExpiresAt,
         browser: pairing.companion.browser,
         profileId: pairing.companion.profileId,
         profileLabel: pairing.companion.profileLabel,
@@ -984,6 +1044,48 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         companion: pairing.companion,
         config,
       };
+    }
+
+    async revokeBrowserCompanion(
+      companionId: string,
+    ): Promise<BrowserBridgeCompanionRevokeResponse> {
+      const normalizedCompanionId = requireNonEmptyString(
+        companionId,
+        "companionId",
+      );
+      const credential = await this.repository.getBrowserCompanionCredential(
+        this.agentId(),
+        normalizedCompanionId,
+      );
+      if (!credential) {
+        fail(404, "browser companion not found");
+      }
+      const revokedAt = new Date().toISOString();
+      await this.repository.revokeBrowserCompanionPairingToken(
+        this.agentId(),
+        normalizedCompanionId,
+        revokedAt,
+      );
+      return {
+        companion: {
+          ...credential.companion,
+          connectionState: "disconnected",
+          pairingTokenRevokedAt: revokedAt,
+          updatedAt: revokedAt,
+        },
+        revokedAt,
+      };
+    }
+
+    async revokeBrowserCompanionFromCompanion(
+      companionId: string,
+      pairingToken: string,
+    ): Promise<BrowserBridgeCompanionRevokeResponse> {
+      const companion = await this.requireBrowserCompanion(
+        companionId,
+        pairingToken,
+      );
+      return this.revokeBrowserCompanion(companion.id);
     }
 
     async syncBrowserCompanion(

@@ -207,6 +207,7 @@ function pairingPayload(
     apiBaseUrl: resolveBrowserBridgeApiBaseUrl(),
     companionId: response.companion.id,
     pairingToken: response.pairingToken,
+    pairingTokenExpiresAt: response.pairingTokenExpiresAt ?? "",
     browser: response.companion.browser,
     profileId: response.companion.profileId,
     profileLabel: response.companion.profileLabel,

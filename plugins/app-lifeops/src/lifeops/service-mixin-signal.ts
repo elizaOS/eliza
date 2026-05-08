@@ -18,6 +18,10 @@ import {
   type StartLifeOpsSignalPairingResponse,
 } from "@elizaos/shared";
 import { createLifeOpsConnectorGrant } from "./repository.js";
+import {
+  readSignalRecentWithRuntimeService,
+  sendSignalMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
@@ -73,10 +77,14 @@ type SignalServiceRecentMessage = {
 type SignalServiceLike = {
   getAccountNumber?: () => string | null;
   isServiceConnected?: () => boolean;
-  getRecentMessages?: (limit?: number) => Promise<SignalServiceRecentMessage[]>;
+  getRecentMessages?: (
+    limit?: number,
+    accountId?: string,
+  ) => Promise<SignalServiceRecentMessage[]>;
   sendMessage?: (
     recipient: string,
     text: string,
+    options?: { accountId?: string; record?: boolean },
   ) => Promise<{ timestamp?: number }>;
 };
 
@@ -218,6 +226,44 @@ function setSignalRuntimeEnv(
   } else {
     delete process.env.SIGNAL_ACCOUNT_NUMBER;
   }
+}
+
+function signalRuntimeMessageToLifeOps(
+  entry: unknown,
+): LifeOpsSignalInboundMessage {
+  const record =
+    entry && typeof entry === "object"
+      ? (entry as Record<string, unknown>)
+      : {};
+  const isGroup = record.isGroup === true;
+  const channelId =
+    typeof record.channelId === "string" ? record.channelId : "";
+  const roomId = typeof record.roomId === "string" ? record.roomId : channelId;
+  const createdAt =
+    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : Date.now();
+  return {
+    id:
+      typeof record.id === "string"
+        ? record.id
+        : `signal-runtime-${createdAt}`,
+    roomId,
+    channelId,
+    threadId: channelId || roomId,
+    roomName: typeof record.roomName === "string" ? record.roomName : "Signal",
+    speakerName:
+      typeof record.speakerName === "string" ? record.speakerName : "Signal",
+    senderNumber: isGroup ? null : channelId || null,
+    senderUuid: null,
+    sourceDevice: null,
+    groupId: isGroup ? channelId || null : null,
+    groupType: null,
+    text: typeof record.text === "string" ? record.text : "",
+    createdAt,
+    isInbound: record.isFromAgent !== true,
+    isGroup,
+  };
 }
 
 async function ensureSignalPluginLoaded(
@@ -633,36 +679,39 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalInboundMessage[]> {
       const signalService = getSignalService(this.runtime);
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
+      const delegated = await readSignalRecentWithRuntimeService({
+        runtime: this.runtime,
+        limit: clampedLimit,
+      });
+      if (delegated.status === "handled" && delegated.value.length > 0) {
+        return delegated.value.map(signalRuntimeMessageToLifeOps);
+      }
+      if (delegated.status === "fallback" && delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "signal",
+            operation: "message.read",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
 
       const localClientConfig = readSignalLocalClientConfigFromEnv();
-      let serviceReadAttempted = false;
+      let serviceReadAttempted = delegated.status === "handled";
 
       // Primary path: use the Signal service's in-memory message store when it
       // exists. In passive LifeOps mode the plugin is connected for send/status
       // only, so this will usually be empty and the direct pull below owns reads.
-      if (signalServiceCanRead(signalService)) {
+      if (!serviceReadAttempted && signalServiceCanRead(signalService)) {
         serviceReadAttempted = true;
         const raw = await signalService.getRecentMessages?.(clampedLimit);
         if (raw && raw.length > 0) {
-          return raw.map(
-            (entry): LifeOpsSignalInboundMessage => ({
-              id: entry.id,
-              roomId: entry.roomId,
-              channelId: entry.channelId,
-              threadId: entry.channelId || entry.roomId,
-              roomName: entry.roomName,
-              speakerName: entry.speakerName,
-              senderNumber: entry.isGroup ? null : entry.channelId || null,
-              senderUuid: null,
-              sourceDevice: null,
-              groupId: entry.isGroup ? entry.channelId || null : null,
-              groupType: null,
-              text: entry.text,
-              createdAt: entry.createdAt,
-              isInbound: !entry.isFromAgent,
-              isGroup: entry.isGroup,
-            }),
-          );
+          return raw.map(signalRuntimeMessageToLifeOps);
         }
       }
 
@@ -704,11 +753,41 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       if (normalizedSide === "agent") {
+        const delegated = await sendSignalMessageWithRuntimeService({
+          runtime: this.runtime,
+          recipient,
+          text,
+        });
+        if (delegated.status === "handled") {
+          return {
+            provider: "signal",
+            side: normalizedSide,
+            recipient,
+            ok: true,
+            timestamp: delegated.value.timestamp,
+          };
+        }
+        if (delegated.error) {
+          this.logLifeOpsWarn(
+            "runtime_service_delegation_fallback",
+            delegated.reason,
+            {
+              provider: "signal",
+              operation: "message.send",
+              error:
+                delegated.error instanceof Error
+                  ? delegated.error.message
+                  : String(delegated.error),
+            },
+          );
+        }
         const signalService = getSignalService(this.runtime);
         if (!signalServiceCanSend(signalService)) {
           fail(503, "Agent-side Signal plugin send service is not available.");
         }
-        const result = await signalService.sendMessage(recipient, text);
+        const result = await signalService.sendMessage(recipient, text, {
+          accountId: "default",
+        });
         if (
           typeof result.timestamp !== "number" ||
           !Number.isFinite(result.timestamp)
@@ -732,6 +811,36 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(403, "Signal send capability is not granted.");
       }
 
+      const delegated = await sendSignalMessageWithRuntimeService({
+        runtime: this.runtime,
+        grant: status.grant,
+        recipient,
+        text,
+      });
+      if (delegated.status === "handled") {
+        return {
+          provider: "signal",
+          side: normalizedSide,
+          recipient,
+          ok: true,
+          timestamp: delegated.value.timestamp,
+        };
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "signal",
+            operation: "message.send",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+
       const signalService = getSignalService(this.runtime);
       const localClientConfig = readSignalLocalClientConfigFromEnv();
       if (!signalServiceCanSend(signalService) && !localClientConfig) {
@@ -739,7 +848,9 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       const result = signalServiceCanSend(signalService)
-        ? await signalService.sendMessage(recipient, text)
+        ? await signalService.sendMessage(recipient, text, {
+            accountId: status.grant?.connectorAccountId ?? "default",
+          })
         : await sendSignalLocalMessage(localClientConfig, { recipient, text });
       if (
         typeof result.timestamp !== "number" ||

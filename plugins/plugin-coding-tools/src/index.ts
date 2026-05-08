@@ -8,11 +8,7 @@ import {
   globAction,
   grepAction,
   lsAction,
-  notebookEditAction,
   readAction,
-  taskOutputAction,
-  taskStopAction,
-  todoWriteAction,
   webFetchAction,
   writeAction,
 } from "./actions/index.js";
@@ -22,34 +18,28 @@ import {
   RipgrepService,
   SandboxService,
   SessionCwdService,
-  ShellTaskService,
 } from "./services/index.js";
 
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. Blocks user-private paths (~/pvt, ~/Library, ~/.ssh, etc.) by default; otherwise unrestricted.",
+    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, BASH, GREP, GLOB, LS, WEB_FETCH, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. The TODO umbrella action (op-based CRUD) is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute. Blocks user-private + per-OS system paths by default.",
   services: [
     FileStateService,
     SandboxService,
     SessionCwdService,
     RipgrepService,
-    ShellTaskService,
   ],
   providers: [availableToolsProvider],
   actions: [
     readAction,
     writeAction,
     editAction,
-    notebookEditAction,
     bashAction,
-    taskOutputAction,
-    taskStopAction,
     grepAction,
     globAction,
     lsAction,
     webFetchAction,
-    todoWriteAction,
     askUserQuestionAction,
     enterWorktreeAction,
     exitWorktreeAction,
@@ -63,7 +53,6 @@ export {
   RipgrepService,
   SandboxService,
   SessionCwdService,
-  ShellTaskService,
 } from "./services/index.js";
 export { availableToolsProvider } from "./providers/available-tools.js";
 export * from "./types.js";

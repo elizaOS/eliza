@@ -166,6 +166,26 @@ async function handlePair(
             const cfgConnectors = cfg.connectors as Record<string, unknown>;
             const previousConfig =
               (cfgConnectors.signal as Record<string, unknown> | undefined) ?? {};
+            if (accountId !== "default") {
+              const accounts =
+                typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
+                  ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
+                  : {};
+              accounts[accountId] = {
+                ...(accounts[accountId] ?? {}),
+                authDir,
+                enabled: true,
+                ...(phoneNumber && phoneNumber.trim().length > 0
+                  ? { account: phoneNumber.trim() }
+                  : {}),
+              };
+              cfgConnectors.signal = {
+                ...previousConfig,
+                accounts,
+                enabled: true,
+              };
+              return;
+            }
             cfgConnectors.signal = {
               ...previousConfig,
               authDir,
@@ -347,7 +367,19 @@ async function handleDisconnect(
     try {
       setupService.updateConfig((cfg) => {
         const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
-        delete connectors.signal;
+        if (accountId === "default") {
+          delete connectors.signal;
+          return;
+        }
+        const signalConfig = connectors.signal as Record<string, unknown> | undefined;
+        const accounts = signalConfig?.accounts as Record<string, unknown> | undefined;
+        if (accounts) {
+          delete accounts[accountId];
+        }
+        connectors.signal = {
+          ...(signalConfig ?? {}),
+          ...(accounts ? { accounts } : {}),
+        };
       });
     } catch (error) {
       res.status(500).json({

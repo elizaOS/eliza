@@ -58,6 +58,7 @@ function formatSpiderStateJson(state: ChannelSpiderState): string {
  * Subset of DiscordService fields needed by history functions.
  */
 export interface HistoryServiceInternals {
+	accountId?: string;
 	client: NonNullable<DiscordService["client"]>;
 	runtime: ICompatRuntime;
 	messageManager: MessageManager | undefined;
@@ -126,6 +127,7 @@ export async function saveSpiderState(
 	service: HistoryServiceInternals,
 	state: ChannelSpiderState,
 ): Promise<void> {
+	const accountId = service.accountId ?? "default";
 	try {
 		const stateId = createUniqueUuid(
 			service.runtime,
@@ -224,6 +226,9 @@ export async function saveSpiderState(
 					: `Spider World ${state.channelId}`,
 				agentId: service.runtime.agentId,
 				messageServerId: stringToUuid(serverId ?? state.channelId),
+				metadata: {
+					accountId,
+				},
 			});
 			service.runtime.logger.debug(`[SpiderState] World ensured: ${worldId}`);
 		} catch (worldError) {
@@ -243,6 +248,9 @@ export async function saveSpiderState(
 				channelId: state.channelId,
 				messageServerId: stringToUuid(serverId ?? state.channelId),
 				worldId,
+				metadata: {
+					accountId,
+				},
 			});
 			service.runtime.logger.debug(`[SpiderState] Room ensured: ${roomId}`);
 		} catch (roomError) {
@@ -282,6 +290,7 @@ export async function saveSpiderState(
 			metadata: {
 				type: MemoryType.CUSTOM,
 				source: "discord-spider-state",
+				accountId,
 				channelId: state.channelId,
 				fullyBackfilled: state.fullyBackfilled,
 			} satisfies CustomMetadata,
@@ -360,6 +369,7 @@ export async function buildMemoryFromMessage(
 	const entityId = service.resolveDiscordEntityId(message.author.id);
 	const roomId = createUniqueUuid(service.runtime, message.channel.id);
 	const channel = message.channel;
+	const accountId = options?.accountId ?? service.accountId ?? "default";
 	const channelType = await service.getChannelType(channel as Channel);
 	const channelGuild = "guild" in channel ? channel.guild : null;
 	const serverId = channelGuild?.id
@@ -432,6 +442,7 @@ export async function buildMemoryFromMessage(
 			username: message.author.username,
 		},
 		discord: {
+			accountId,
 			id: message.author.id,
 			userId: message.author.id,
 			username: message.author.username,
@@ -480,6 +491,7 @@ export async function ensureConnectionsForMessages(
 	messages: Message[],
 	ensuredEntityIds: Set<string> = new Set(),
 ): Promise<void> {
+	const accountId = service.accountId ?? "default";
 	if (messages.length === 0) {
 		return;
 	}
@@ -546,6 +558,9 @@ export async function ensureConnectionsForMessages(
 				channelId: firstMessage.channel.id,
 				type: channelType,
 				source: "discord",
+				metadata: {
+					accountId,
+				},
 			},
 		];
 
@@ -554,12 +569,15 @@ export async function ensureConnectionsForMessages(
 			messageServerId: stringToUuid(serverId),
 			name: firstMessage.guild?.name ?? `DM-${firstMessage.channel.id}`,
 			agentId: service.runtime.agentId,
-			metadata: buildDiscordWorldMetadata(
-				service.runtime,
-				firstMessageChannelGuild?.ownerId ??
-					firstMessage.guild?.ownerId ??
-					undefined,
-			),
+			metadata: {
+				...buildDiscordWorldMetadata(
+					service.runtime,
+					firstMessageChannelGuild?.ownerId ??
+						firstMessage.guild?.ownerId ??
+						undefined,
+				),
+				accountId,
+			},
 		};
 
 		await service.runtime.ensureConnections(entities, rooms, "discord", world);
@@ -588,6 +606,7 @@ export async function fetchChannelHistory(
 	channelId: string,
 	options: ChannelHistoryOptions = {},
 ): Promise<ChannelHistoryResult> {
+	const accountId = service.accountId ?? "default";
 	if (!service.client?.isReady?.()) {
 		service.runtime.logger.warn(
 			{ src: "plugin:discord", agentId: service.runtime.agentId, channelId },
@@ -635,6 +654,9 @@ export async function fetchChannelHistory(
 			const channelGuild = "guild" in channel ? channel.guild : null;
 			return channelGuild?.name || "Discord";
 		})(),
+		metadata: {
+			accountId,
+		},
 	});
 
 	await service.runtime.ensureRoomExists({
@@ -646,6 +668,9 @@ export async function fetchChannelHistory(
 		channelId: channel.id,
 		messageServerId: stringToUuid(serverId),
 		worldId,
+		metadata: {
+			accountId,
+		},
 	});
 
 	// Load spider state

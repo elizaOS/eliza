@@ -1,23 +1,36 @@
 import type { Plugin } from "@elizaos/core";
-import { todoWriteAction } from "./actions/todo-write.js";
+
+import { todoAction } from "./actions/todo.js";
+import * as dbSchema from "./db/index.js";
 import { currentTodosProvider } from "./providers/current-todos.js";
+import { TodosService } from "./service.js";
 
 export const todosPlugin: Plugin = {
   name: "todos",
   description:
-    "TODO_WRITE action and currentTodosProvider. Per-conversation in-memory todo list, mirroring Claude Code's TodoWrite tool. The provider surfaces the current list to the planner each turn so the model always sees outstanding work without re-querying.",
-  actions: [todoWriteAction],
+    "User-scoped persistent todos with CRUD. Single `TODO` umbrella action with op-based dispatch (write/create/update/complete/cancel/delete/list/clear). The currentTodosProvider surfaces the user's pending + in-progress todos to the planner each turn. Backed by a drizzle pgSchema('todos') table; requires @elizaos/plugin-sql.",
+  dependencies: ["@elizaos/plugin-sql"],
+  actions: [todoAction],
   providers: [currentTodosProvider],
+  services: [TodosService],
+  schema: dbSchema,
 };
 
 export default todosPlugin;
 
-export { todoWriteAction } from "./actions/todo-write.js";
+export { todoAction } from "./actions/todo.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
 export {
-  clearAll,
-  clearTodos,
-  getTodos,
-  setTodos,
-} from "./store.js";
+  type CreateTodoInput,
+  type TodoFilter,
+  type UpdateTodoInput,
+  TodosService,
+  getTodosService,
+} from "./service.js";
+export {
+  type TodoRow,
+  type TodoInsert,
+  todosSchema,
+  todosTable,
+} from "./db/schema.js";
 export * from "./types.js";

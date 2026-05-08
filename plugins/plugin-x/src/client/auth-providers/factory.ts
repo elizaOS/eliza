@@ -31,6 +31,6 @@ export function createTwitterAuthProvider(
     case "env":
       return new EnvAuthProvider(runtime, state);
     case "oauth":
-      return new OAuth2PKCEAuthProvider(runtime);
+      return new OAuth2PKCEAuthProvider(runtime, state);
   }
 }

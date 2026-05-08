@@ -819,6 +819,16 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           result.error instanceof Error ? result.error.message : result.reason,
         );
       }
+      const metadata = delegated.value.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const postId =
+        typeof metadata?.messageIdFull === "string"
+          ? metadata.messageIdFull
+          : typeof (metadata?.x as Record<string, unknown> | undefined)
+                ?.tweetId === "string"
+            ? ((metadata?.x as Record<string, unknown>).tweetId as string)
+            : delegated.value.id;
       await this.recordXPostAudit(
         `x:${grant.mode}`,
         "x post sent",

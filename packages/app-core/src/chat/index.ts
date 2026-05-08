@@ -130,7 +130,7 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     { id: "nav-character", label: "Open Character", tab: "character" },
     { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
-    { id: "nav-knowledge", label: "Open Knowledge", tab: "knowledge" },
+    { id: "nav-documents", label: "Open Knowledge", tab: "documents" },
     { id: "nav-connectors", label: "Open Connectors", tab: "connectors" },
     { id: "nav-plugins", label: "Open Plugins", tab: "plugins" },
     { id: "nav-settings", label: "Open Settings", tab: "settings" },

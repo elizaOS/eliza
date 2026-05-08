@@ -14,13 +14,13 @@ import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
-} from "../app-blocker/access.ts";
+} from "../app-blocker/access.js";
 import {
   getAppBlockerStatus,
   getInstalledApps,
   startAppBlock,
   stopAppBlock,
-} from "../app-blocker/engine.ts";
+} from "../app-blocker/engine.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
@@ -139,6 +139,41 @@ function normalizeAppTokens(value: unknown): string[] | undefined {
     (token): token is string => typeof token === "string" && token.length > 0,
   );
   return tokens.length > 0 ? tokens : undefined;
+}
+
+const GAME_APP_HINTS = [
+  "game",
+  "games",
+  "clash",
+  "roblox",
+  "minecraft",
+  "supercell",
+  "mojang",
+];
+
+function inferAndroidPackageNamesFromIntent(
+  intent: string,
+  installedApps: InstalledAppEntry[],
+): string[] {
+  const normalizedIntent = intent.trim().toLowerCase();
+  if (!normalizedIntent || installedApps.length === 0) return [];
+
+  const wantsGames = /\b(?:all\s+)?games?\b/.test(normalizedIntent);
+  const matches = installedApps.filter((app) => {
+    const haystack = `${app.displayName} ${app.packageName}`.toLowerCase();
+    if (wantsGames) {
+      return GAME_APP_HINTS.some((hint) => haystack.includes(hint));
+    }
+
+    const displayName = app.displayName.trim().toLowerCase();
+    const packageName = app.packageName.trim().toLowerCase();
+    return (
+      (displayName.length > 0 && normalizedIntent.includes(displayName)) ||
+      (packageName.length > 0 && normalizedIntent.includes(packageName))
+    );
+  });
+
+  return matches.map((app) => app.packageName.toLowerCase());
 }
 
 async function resolveAppBlockPlanWithLlm(args: {
@@ -269,8 +304,17 @@ async function handleBlock(
   // Fall back to LLM-driven planning when the planner did not supply an
   // explicit selection — vague intents like "block social media" need to be
   // resolved against the device's actual installed-app inventory.
+  const inferredPackageNames =
+    explicitPackageNames.length === 0 && !appTokens && status.platform === "android"
+      ? inferAndroidPackageNamesFromIntent(
+          [params.intent, getMessageText(message)].filter(Boolean).join("\n"),
+          installedApps,
+        )
+      : [];
   const llmPlan =
-    explicitPackageNames.length === 0 && !appTokens
+    explicitPackageNames.length === 0 &&
+    inferredPackageNames.length === 0 &&
+    !appTokens
       ? await resolveAppBlockPlanWithLlm({
           runtime,
           message,
@@ -293,13 +337,20 @@ async function handleBlock(
           ? "Select the iPhone apps in the mobile app picker first, then I can start the block."
           : "Tell me which installed apps to block so I can match them exactly on your device."),
       values: { success: false, error: "PLANNER_SHOULDACT_FALSE", noop: true },
-      data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
+      data: {
+        noop: true,
+        error: "PLANNER_SHOULDACT_FALSE",
+        requiresInput: true,
+        missing: ["apps"],
+      },
     };
   }
 
   const packageNames =
     explicitPackageNames.length > 0
       ? explicitPackageNames
+      : inferredPackageNames.length > 0
+        ? inferredPackageNames
       : (llmPlan?.packageNames ?? []);
   const durationMinutes =
     explicitDurationMinutes !== undefined

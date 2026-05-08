@@ -29,7 +29,7 @@ describe("2004scape action routers", () => {
     expect(names).toEqual([
       "RS_2004_WALK_TO",
       "SKILL_OP",
-      "INVENTORY_OP",
+      "RS_2004_INVENTORY_OP",
       "BANK_OP",
       "SHOP_OP",
       "COMBAT_OP",
@@ -40,7 +40,7 @@ describe("2004scape action routers", () => {
     }
   });
 
-  it("dispatches INVENTORY_OP drop through the game service", async () => {
+  it("dispatches RS_2004_INVENTORY_OP drop through the game service", async () => {
     const calls: Array<{
       actionType: string;
       params: Record<string, unknown>;
@@ -62,7 +62,7 @@ describe("2004scape action routers", () => {
 
     const result = await rs2004InventoryOpAction.handler(
       runtime,
-      makeMemory("action: INVENTORY_OP\nop: drop\nitem: logs"),
+      makeMemory("action: RS_2004_INVENTORY_OP\nop: drop\nitem: logs"),
       undefined,
       {},
     );

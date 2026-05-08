@@ -280,8 +280,6 @@ async function persistChatActionMemory(params: {
 				responseMessageId: targetMemory?.id,
 				metadata: {
 					op: "send",
-					operation: "send",
-					subAction: "SEND_POST",
 					targetSource: connector.source,
 					targetLabel: connector.label,
 					targetRoomId: targetMemory?.roomId,
@@ -294,8 +292,6 @@ async function persistChatActionMemory(params: {
 				provider: connector.source,
 				actionName: "POST",
 				op: "send",
-				operation: "send",
-				subAction: "SEND_POST",
 				targetSource: connector.source,
 				targetLabel: connector.label,
 				targetRoomId: targetMemory?.roomId,
@@ -380,8 +376,6 @@ async function handleSend(
 		data: {
 			actionName: "POST",
 			op: "send",
-			operation: "send",
-			subAction: "SEND_POST",
 			source: selected.connector.source,
 			memoryId: persisted?.id,
 			responseMessageId: platformMessageId,

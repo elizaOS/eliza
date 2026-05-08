@@ -35,7 +35,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
 > = {
   "page-browser": {
     primaryContext: "browser",
-    secondaryContexts: ["page", "page-browser", "browser", "knowledge"],
+    secondaryContexts: ["page", "page-browser", "browser", "documents"],
   },
   "page-character": {
     primaryContext: "character",
@@ -43,7 +43,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
       "page",
       "page-character",
       "character",
-      "knowledge",
+      "documents",
       "social_posting",
     ],
   },

@@ -32,6 +32,12 @@ import {
   type CrossChannelSearchQuery,
   runCrossChannelSearch,
 } from "../lifeops/cross-channel-search.js";
+import {
+  createLifeOpsEgressContext,
+  type LifeOpsEgressContext,
+  redactTextForEgress,
+  redactUrlForEgress,
+} from "../lifeops/privacy-egress.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -124,13 +130,19 @@ function normalizeRequest(
   };
 }
 
-function compactHit(hit: CrossChannelSearchHit) {
+function compactHit(
+  hit: CrossChannelSearchHit,
+  egressContext: LifeOpsEgressContext,
+) {
   const citation: Record<string, string> = {
     platform: hit.citation.platform,
     label: hit.citation.label,
   };
-  if (hit.citation.url) {
-    citation.url = hit.citation.url;
+  const citationUrl = redactUrlForEgress(hit.citation.url, {
+    context: egressContext,
+  });
+  if (citationUrl) {
+    citation.url = citationUrl;
   }
   return {
     channel: hit.channel,
@@ -139,7 +151,13 @@ function compactHit(hit: CrossChannelSearchHit) {
     timestamp: hit.timestamp,
     speaker: hit.speaker,
     ...(hit.subject ? { subject: hit.subject } : {}),
-    text: hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+    text: redactTextForEgress(
+      hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+      {
+        context: egressContext,
+        dataClass: "body",
+      },
+    ),
     citation,
   };
 }
@@ -150,6 +168,7 @@ function renderCrossChannelContextJson(args: {
   unsupported: unknown[];
   degraded: unknown[];
   channelsWithHits: CrossChannelSearchChannel[];
+  egressContext: LifeOpsEgressContext;
 }): string {
   return JSON.stringify({
     cross_channel_context: {
@@ -158,7 +177,7 @@ function renderCrossChannelContextJson(args: {
       unsupportedCount: args.unsupported.length,
       degradedCount: args.degraded.length,
       channelsWithHits: args.channelsWithHits,
-      hits: args.hits.map(compactHit),
+      hits: args.hits.map((hit) => compactHit(hit, args.egressContext)),
     },
   });
 }
@@ -188,6 +207,11 @@ export const crossChannelContextProvider: Provider = {
     if (!(await hasOwnerAccess(runtime, message))) {
       return EMPTY;
     }
+    const egressContext = createLifeOpsEgressContext({
+      isOwner: true,
+      agentId: runtime.agentId,
+      entityId: message.entityId,
+    });
 
     const request = pickRequestFromState(state);
     if (!request) {
@@ -253,6 +277,7 @@ export const crossChannelContextProvider: Provider = {
           unsupported: result.unsupported,
           degraded: result.degraded,
           channelsWithHits: result.channelsWithHits,
+          egressContext,
         }),
         values: {
           crossChannelHits: injected.length,
@@ -263,7 +288,7 @@ export const crossChannelContextProvider: Provider = {
         data: {
           crossChannelContext: {
             query: result.query,
-            hits: injected,
+            hits: injected.map((hit) => compactHit(hit, egressContext)),
             unsupported: result.unsupported,
             degraded: result.degraded,
             resolvedPerson: result.resolvedPerson

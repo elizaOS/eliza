@@ -11,6 +11,7 @@ import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/worksp
 import { whatsappAuthExists } from "@elizaos/agent/services/whatsapp-pairing";
 import type { Plugin } from "@elizaos/core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import { sendWhatsAppMessageWithRuntimeService } from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
@@ -34,6 +35,7 @@ type WhatsAppRuntimeServiceLike = {
   connected?: boolean;
   phoneNumber?: string | null;
   sendMessage?: (message: {
+    accountId?: string;
     type: "text";
     to: string;
     content: string;
@@ -243,6 +245,28 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
     async sendWhatsAppMessage(
       req: WhatsAppSendRequest,
     ): Promise<{ ok: true; messageId: string }> {
+      const delegated = await sendWhatsAppMessageWithRuntimeService({
+        runtime: this.runtime,
+        request: req,
+      });
+      if (delegated.status === "handled") {
+        return delegated.value;
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_fallback",
+          delegated.reason,
+          {
+            provider: "whatsapp",
+            operation: "message.send",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
+
       const creds = readWhatsAppCredentialsFromEnv();
       if (creds) {
         try {
@@ -272,6 +296,7 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
 
         if (runtimeService?.sendMessage) {
           const result = await runtimeService.sendMessage({
+            accountId: "default",
             type: "text",
             to: req.to,
             content: req.text,

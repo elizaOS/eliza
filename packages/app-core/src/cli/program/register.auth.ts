@@ -4,9 +4,9 @@
  * Currently exposes:
  *   - `eliza auth reset` — loopback-only recovery path.
  *
- * The reset command revokes every active session and immediately rejects
- * the legacy static API token. It does NOT touch identities or password
- * hashes — the operator can still log in afterwards via password or SSO.
+ * The reset command revokes every active session. It does NOT touch
+ * identities or password hashes — the operator can still log in afterwards
+ * via password or SSO.
  *
  * Hard rules:
  *   - Refuse to run when `ELIZA_API_BIND` resolves to a non-loopback host.
@@ -181,8 +181,7 @@ export async function runElizaAuthReset(
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
 
   log(theme.heading("Eliza auth reset"));
-  log(theme.muted("This revokes every active session and retires the legacy"));
-  log(theme.muted("static API token immediately. Identities and password"));
+  log(theme.muted("This revokes every active session. Identities and password"));
   log(theme.muted("hashes are NOT touched — log in afterwards as usual."));
   log("");
   log("To prove filesystem access, write the following 32-byte hex token");
@@ -234,8 +233,7 @@ export async function runElizaAuthReset(
   for (const ident of owners) {
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
   }
-  // Machines can have sessions too (legacy bearer scope, future machine
-  // tokens). Sweep them.
+  // Machines can have sessions too. Sweep them.
   const machines = await store.listIdentitiesByKind("machine");
   for (const ident of machines) {
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
@@ -270,9 +268,7 @@ export function registerAuthCommand(program: Command) {
 
   auth
     .command("reset")
-    .description(
-      "Revoke all sessions and retire the legacy static token (loopback only)",
-    )
+    .description("Revoke all sessions (loopback only)")
     .action(async () => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const result = await runElizaAuthReset();
