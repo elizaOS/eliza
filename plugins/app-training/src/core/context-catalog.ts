@@ -83,8 +83,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   SEARCH_WEB: ["documents", "browser"],
   SUMMARIZE: ["documents"],
   ANALYZE: ["documents"],
-  READ_CHANNEL: ["documents", "social"],
-  SEARCH_CONVERSATIONS: ["documents", "social"],
   SEARCH_ENTITY: ["social", "documents"],
   READ_ENTITY: ["social", "documents"],
 

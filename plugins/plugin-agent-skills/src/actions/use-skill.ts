@@ -214,14 +214,14 @@ export const useSkillAction: Action = {
 			const errorText =
 				`Skill \`${rawSlug}\` is not installed. ` +
 				`Installed skills: ${installed.join(", ") || "(none)"}. ` +
-				`Use INSTALL_SKILL to install a skill from the registry.`;
+				`Use SKILL op=install to install a skill from the registry.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}
 
 		const enabled = service.isSkillEnabled(skill.slug);
 		if (!enabled) {
-			const errorText = `Skill \`${skill.slug}\` is disabled. Use ENABLE_SKILL to enable it first.`;
+			const errorText = `Skill \`${skill.slug}\` is disabled. Use SKILL op=toggle enabled=true to enable it first.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

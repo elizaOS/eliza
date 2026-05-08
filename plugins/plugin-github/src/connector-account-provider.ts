@@ -31,6 +31,7 @@ import {
   DEFAULT_GITHUB_USER_ACCOUNT_ID,
   readGitHubAccounts,
 } from "./accounts.js";
+import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { GITHUB_SERVICE_TYPE } from "./types.js";
 
 const GITHUB_AUTHORIZATION_ENDPOINT = "https://github.com/login/oauth/authorize";
@@ -99,6 +100,22 @@ function defaultRoleFromAccountId(accountId: string | undefined): ConnectorAccou
   if (accountId === DEFAULT_GITHUB_USER_ACCOUNT_ID) return "OWNER";
   if (accountId === DEFAULT_GITHUB_AGENT_ACCOUNT_ID) return "AGENT";
   return "OWNER";
+}
+
+function roleFromMetadata(
+  metadata: unknown,
+  accountId: string | undefined
+): ConnectorAccountRole {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  const raw = nonEmptyString(record.role ?? record.accountRole);
+  const normalized = raw?.toUpperCase();
+  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+    return normalized;
+  }
+  return defaultRoleFromAccountId(accountId);
 }
 
 async function exchangeCodeForToken(args: {
@@ -251,7 +268,7 @@ export function createGitHubConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
-      _manager: ConnectorAccountManager,
+      manager: ConnectorAccountManager,
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
@@ -279,10 +296,39 @@ export function createGitHubConnectorAccountProvider(
       if (!login) {
         throw new Error("GitHub /user payload did not include a login.");
       }
+      const expiresAt =
+        typeof tokens.expires_in === "number"
+          ? Date.now() + tokens.expires_in * 1000
+          : undefined;
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: GITHUB_SERVICE_TYPE,
+        accountIdForRef: request.flow.accountId ?? login,
+        storageAccountId: request.flow.accountId,
+        caller: "plugin-github",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: tokens.access_token,
+              ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+              ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+              token_type: nonEmptyString(tokens.token_type) ?? "bearer",
+              scope: tokens.scope ?? "",
+            }),
+            ...(expiresAt !== undefined ? { expiresAt } : {}),
+            metadata: {
+              provider: GITHUB_SERVICE_TYPE,
+              hasRefreshToken: Boolean(tokens.refresh_token),
+            },
+          },
+        ],
+      });
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: GITHUB_SERVICE_TYPE,
-        role: defaultRoleFromAccountId(request.flow.accountId),
+        role: roleFromMetadata(request.flow.metadata, request.flow.accountId),
         purpose: DEFAULT_PURPOSES,
         accessGate: "open",
         status: "connected",
@@ -298,6 +344,13 @@ export function createGitHubConnectorAccountProvider(
           tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
           grantedScopes: parseScopes(tokens.scope),
           hasRefreshToken: Boolean(tokens.refresh_token),
+          expiresAt,
+          credentialRefs: credentialPersist.refs,
+          credentialRefStorage: {
+            vaultAvailable: credentialPersist.vaultAvailable,
+            storageAvailable: credentialPersist.storageAvailable,
+          },
+          oauthCredentialVersion: String(Date.now()),
         },
       };
 

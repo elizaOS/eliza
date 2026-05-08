@@ -43,10 +43,13 @@ describe("connector account privacy confirmation", () => {
     ).toBe(true);
   });
 
-  it("does not require confirmation for non-public changes after owner_only", () => {
+  it("requires confirmation for any non-public increase after owner_only", () => {
     expect(
       getConnectorPrivacyConfirmationRequirement("team_visible", "semi_public"),
-    ).toBe("none");
+    ).toBe("typed");
+  });
+
+  it("does not require confirmation when reducing visibility", () => {
     expect(
       getConnectorPrivacyConfirmationRequirement("public", "owner_only"),
     ).toBe("none");

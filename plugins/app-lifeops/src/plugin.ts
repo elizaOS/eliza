@@ -25,7 +25,6 @@ import { subscriptionsAction } from "./actions/subscriptions.js";
 import { toggleFeatureAction } from "./actions/toggle-feature.js";
 import { voiceCallAction } from "./actions/voice-call.js";
 import { websiteBlockAction } from "./actions/website-block.js";
-import { xAction } from "./actions/x.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -204,7 +203,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     releaseBlockAction,
     appBlockAction,
     calendarAction,
-    xAction,
     resolveRequestAction,
     lifeAction,
     bookTravelAction,
@@ -261,7 +259,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     registerSendPolicy(runtime, createOwnerSendPolicy());
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the
-    // core placeholders so triage actions operate on real connected data.
+    // core placeholders so MESSAGE triage operations operate on real connected data.
     const triage = getDefaultTriageService();
     triage.register(new LifeOpsGmailAdapter());
     triage.register(new XDmAdapter());

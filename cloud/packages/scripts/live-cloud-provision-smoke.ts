@@ -274,7 +274,7 @@ async function createAgent(): Promise<void> {
           bio: ["Cloud provisioning smoke test agent."],
           topics: ["cloud provisioning smoke"],
           adjectives: ["concise"],
-          plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
+          plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-elizacloud"],
           settings: { secrets: {} },
         },
         environmentVars: {

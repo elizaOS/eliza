@@ -5,7 +5,6 @@ import {
 	type ChatMessage,
 	ModelType,
 	type PromptSegment,
-	type TextGenerationModelType,
 } from "../types/model";
 import { computePrefixHashes } from "./context-hash";
 import {
@@ -20,66 +19,33 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
-import type {
-	ContextObject,
-	PlannerToolCall,
-	PlannerTrajectory,
-} from "./planner-loop";
 import {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
-} from "./planner-loop";
+} from "./planner-rendering";
+import type {
+	ContextObject,
+	EvaluatorEffects,
+	EvaluatorOutput,
+	EvaluatorRoute,
+	EvaluatorRuntime,
+	PlannerToolCall,
+	PlannerTrajectory,
+	RunEvaluatorParams,
+} from "./planner-types";
 import type {
 	RecordedStage,
 	RecordedUsage,
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 
-export type EvaluatorRoute = EvaluationResult["decision"];
-
-export interface EvaluatorRuntime {
-	useModel(
-		modelType: TextGenerationModelType,
-		params: {
-			messages: ChatMessage[];
-			responseSchema?: unknown;
-			promptSegments?: PromptSegment[];
-			providerOptions?: Record<string, unknown>;
-		},
-		provider?: string,
-	): Promise<
-		string | { text?: string; object?: unknown; providerMetadata?: unknown }
-	>;
-	logger?: {
-		warn?: (context: unknown, message?: string) => void;
-		debug?: (context: unknown, message?: string) => void;
-	};
-}
-
-export interface EvaluatorEffects {
-	copyToClipboard?: (
-		clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
-	) => Promise<void> | void;
-	messageToUser?: (message: string) => Promise<void> | void;
-}
-
-export type EvaluatorOutput = EvaluationResult & {
-	nextTool?: PlannerToolCall;
-	raw?: Record<string, unknown>;
-};
-
-export interface RunEvaluatorParams {
-	runtime: EvaluatorRuntime;
-	context: ContextObject;
-	trajectory: PlannerTrajectory;
-	modelType?: TextGenerationModelType;
-	effects?: EvaluatorEffects;
-	provider?: string;
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-	iteration?: number;
-}
+export type {
+	EvaluatorEffects,
+	EvaluatorOutput,
+	EvaluatorRoute,
+	EvaluatorRuntime,
+	RunEvaluatorParams,
+} from "./planner-types";
 
 interface RawEvaluatorOutput {
 	success?: unknown;

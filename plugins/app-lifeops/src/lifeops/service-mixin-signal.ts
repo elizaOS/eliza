@@ -5,11 +5,10 @@
 // safety is enforced at the composed-service level (LifeOpsService class).
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
-import type { Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
   type LifeOpsConnectorDegradation,
+  type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsSignalCapability,
   type LifeOpsSignalConnectorStatus,
@@ -17,7 +16,6 @@ import {
   type LifeOpsSignalPairingStatus,
   type StartLifeOpsSignalPairingResponse,
 } from "@elizaos/shared";
-import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   readSignalRecentWithRuntimeService,
   sendSignalMessageWithRuntimeService,
@@ -25,42 +23,16 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
-import {
-  deleteSignalLinkedDevice,
-  findSignalLinkedDeviceInfoForSide,
-  getSignalPairingStatus as getSignalPairingStatusFlow,
-  getSignalPairingStatusForSide,
-  readSignalLinkedDeviceInfo,
-  startSignalPairing as startSignalPairingFlow,
-  stopSignalPairing as stopSignalPairingFlow,
-} from "./signal-auth.js";
-import {
-  readSignalInboundMessages,
-  readSignalLocalClientConfigFromEnv,
-  sendSignalLocalMessage,
-} from "./signal-local-client.js";
-import {
-  removeSignalConnectorConfig,
-  upsertSignalConnectorConfig,
-} from "./signal-runtime-config.js";
 
-type ConnectorSetupServiceLike = {
-  getConfig(): Record<string, unknown>;
-  updateConfig(updater: (config: Record<string, unknown>) => void): void;
-  registerEscalationChannel(channelName: string): boolean;
-  setOwnerContact(update: {
-    source: string;
-    channelId?: string;
-    entityId?: string;
-    roomId?: string;
-  }): boolean;
-};
+const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
+  ...LIFEOPS_SIGNAL_CAPABILITIES,
+];
 
-type RuntimeWithPluginLifecycle = {
-  getPluginOwnership?: (pluginName: string) => { plugin: Plugin } | null;
-  registerPlugin?: (plugin: Plugin) => Promise<void>;
-  reloadPlugin?: (plugin: Plugin) => Promise<void>;
-};
+const SIGNAL_PLUGIN_SETUP_MESSAGE =
+  "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local signal-cli credentials.";
+
+const SIGNAL_PAIRING_MIGRATED_MESSAGE =
+  "Signal pairing has moved to @elizaos/plugin-signal. Use the Signal connector setup routes (/api/signal/pair, /api/signal/status, and /api/signal/disconnect); LifeOps no longer owns Signal device-link credentials.";
 
 type SignalServiceRecentMessage = {
   id: string;
@@ -76,6 +48,7 @@ type SignalServiceRecentMessage = {
 
 type SignalServiceLike = {
   getAccountNumber?: () => string | null;
+  isConnected?: boolean;
   isServiceConnected?: () => boolean;
   getRecentMessages?: (
     limit?: number,
@@ -88,10 +61,6 @@ type SignalServiceLike = {
   ) => Promise<{ timestamp?: number }>;
 };
 
-const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
-  ...LIFEOPS_SIGNAL_CAPABILITIES,
-];
-
 function normalizeSignalCapabilities(
   capabilities: readonly string[] | null | undefined,
 ): LifeOpsSignalCapability[] {
@@ -101,23 +70,17 @@ function normalizeSignalCapabilities(
   );
 }
 
-function getConnectorSetupService(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
-): ConnectorSetupServiceLike | null {
-  return runtime.getService(
-    "connector-setup",
-  ) as ConnectorSetupServiceLike | null;
-}
-
 function getSignalService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): SignalServiceLike | null {
-  const service = runtime.getService("signal") as SignalServiceLike | null;
+  const service = runtime.getService?.("signal") as SignalServiceLike | null;
   return service && typeof service === "object" ? service : null;
 }
 
 function signalServiceConnected(service: SignalServiceLike | null): boolean {
-  return Boolean(service?.isServiceConnected?.());
+  return Boolean(
+    service?.isConnected === true || service?.isServiceConnected?.() === true,
+  );
 }
 
 function signalServiceCanRead(service: SignalServiceLike | null): boolean {
@@ -144,88 +107,70 @@ function signalReadyCapabilities(args: {
   );
 }
 
+function stripLegacyTokenRef(
+  grant: LifeOpsConnectorGrant | null,
+): LifeOpsConnectorGrant | null {
+  if (!grant) {
+    return null;
+  }
+  if (!grant.tokenRef) {
+    return grant;
+  }
+  return {
+    ...grant,
+    tokenRef: null,
+    metadata: {
+      ...grant.metadata,
+      legacyTokenRefIgnored: true,
+    },
+  };
+}
+
 function signalStatusDegradations(args: {
   connected: boolean;
   grantedCapabilities: readonly LifeOpsSignalCapability[];
   inboundReady: boolean;
   sendReady: boolean;
+  hasLegacyTokenRef: boolean;
 }): LifeOpsConnectorDegradation[] {
   const degradations: LifeOpsConnectorDegradation[] = [];
   const granted = new Set(args.grantedCapabilities);
+  if (!args.connected) {
+    degradations.push({
+      axis: "transport-offline",
+      code: "signal_plugin_unavailable",
+      message: SIGNAL_PLUGIN_SETUP_MESSAGE,
+      retryable: true,
+    });
+  }
   if (args.connected && granted.has("signal.read") && !args.inboundReady) {
     degradations.push({
       axis: "transport-offline",
-      code: "signal_inbound_unavailable",
+      code: "signal_plugin_inbound_unavailable",
       message:
-        "Signal is linked, but no runtime or signal-cli receive path is available for inbound reads.",
+        "Signal is connected, but @elizaos/plugin-signal does not expose an inbound read path.",
       retryable: true,
     });
   }
   if (args.connected && granted.has("signal.send") && !args.sendReady) {
     degradations.push({
       axis: "delivery-degraded",
-      code: "signal_send_service_unavailable",
-      message:
-        "Signal is linked, but no runtime or signal-cli send path is available.",
-      retryable: true,
-    });
-  }
-  return degradations;
-}
-
-function signalAgentPluginDegradations(args: {
-  connected: boolean;
-  inboundReady: boolean;
-  sendReady: boolean;
-}): LifeOpsConnectorDegradation[] {
-  if (!args.connected) {
-    return [
-      {
-        axis: "transport-offline",
-        code: "signal_plugin_unavailable",
-        message:
-          "Agent-side Signal is served by @elizaos/plugin-signal. Configure and enable the Signal plugin; LifeOps will not create a separate agent Signal device.",
-        retryable: true,
-      },
-    ];
-  }
-  const degradations: LifeOpsConnectorDegradation[] = [];
-  if (!args.inboundReady) {
-    degradations.push({
-      axis: "transport-offline",
-      code: "signal_plugin_inbound_unavailable",
-      message:
-        "Agent-side Signal is connected, but the plugin does not expose an inbound read path.",
-      retryable: true,
-    });
-  }
-  if (!args.sendReady) {
-    degradations.push({
-      axis: "delivery-degraded",
       code: "signal_plugin_send_unavailable",
       message:
-        "Agent-side Signal is connected, but the plugin does not expose a send path.",
+        "Signal is connected, but @elizaos/plugin-signal does not expose a send path.",
       retryable: true,
     });
   }
+  if (args.hasLegacyTokenRef) {
+    degradations.push({
+      axis: "auth-expired",
+      code: "legacy_lifeops_credentials_ignored",
+      message:
+        "Legacy LifeOps Signal credentials are present but ignored. Migrate this account to @elizaos/plugin-signal before sending or reading Signal messages.",
+      retryable: false,
+    });
+  }
   return degradations;
-}
-
-function setSignalRuntimeEnv(
-  authDir: string | null,
-  phoneNumber: string | null,
-): void {
-  if (authDir && authDir.trim().length > 0) {
-    process.env.SIGNAL_AUTH_DIR = authDir.trim();
-  } else {
-    delete process.env.SIGNAL_AUTH_DIR;
-  }
-
-  if (phoneNumber && phoneNumber.trim().length > 0) {
-    process.env.SIGNAL_ACCOUNT_NUMBER = phoneNumber.trim();
-  } else {
-    delete process.env.SIGNAL_ACCOUNT_NUMBER;
-  }
 }
 
 function signalRuntimeMessageToLifeOps(
@@ -245,9 +190,7 @@ function signalRuntimeMessageToLifeOps(
       : Date.now();
   return {
     id:
-      typeof record.id === "string"
-        ? record.id
-        : `signal-runtime-${createdAt}`,
+      typeof record.id === "string" ? record.id : `signal-runtime-${createdAt}`,
     roomId,
     channelId,
     threadId: channelId || roomId,
@@ -266,46 +209,6 @@ function signalRuntimeMessageToLifeOps(
   };
 }
 
-async function ensureSignalPluginLoaded(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
-): Promise<boolean> {
-  const runtimeWithLifecycle = runtime as typeof runtime &
-    RuntimeWithPluginLifecycle;
-  if (
-    typeof runtimeWithLifecycle.registerPlugin !== "function" &&
-    typeof runtimeWithLifecycle.reloadPlugin !== "function"
-  ) {
-    return false;
-  }
-
-  const mod = await import("@elizaos/plugin-signal");
-  const plugin = (mod.default ?? (mod as { plugin?: Plugin }).plugin) as
-    | Plugin
-    | undefined;
-  if (!plugin) {
-    return false;
-  }
-
-  const existingOwnership =
-    typeof runtimeWithLifecycle.getPluginOwnership === "function"
-      ? runtimeWithLifecycle.getPluginOwnership("signal")
-      : null;
-  if (
-    existingOwnership &&
-    typeof runtimeWithLifecycle.reloadPlugin === "function"
-  ) {
-    await runtimeWithLifecycle.reloadPlugin(plugin);
-    return true;
-  }
-
-  if (typeof runtimeWithLifecycle.registerPlugin === "function") {
-    await runtimeWithLifecycle.registerPlugin(plugin);
-    return true;
-  }
-
-  return false;
-}
-
 /** @internal */
 export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
@@ -316,96 +219,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     lifeOpsSignalServiceRegistered(): boolean {
-      return Boolean(this.runtime.getService("signal"));
-    }
-
-    async lifeOpsEnsureSignalRuntimeReady(
-      authDir: string,
-      phoneNumber: string,
-    ): Promise<void> {
-      const setupService = getConnectorSetupService(this.runtime);
-      let configChanged = false;
-
-      if (setupService) {
-        const config = setupService.getConfig();
-        configChanged = upsertSignalConnectorConfig(config, {
-          authDir,
-          account: phoneNumber,
-        });
-        if (configChanged) {
-          setupService.updateConfig((nextConfig) => {
-            upsertSignalConnectorConfig(nextConfig, {
-              authDir,
-              account: phoneNumber,
-            });
-          });
-        }
-        setupService.setOwnerContact({
-          source: "signal",
-          channelId: phoneNumber,
-        });
-        setupService.registerEscalationChannel("signal");
-      }
-
-      setSignalRuntimeEnv(authDir, phoneNumber);
-      this.runtime.setSetting("SIGNAL_AUTH_DIR", authDir, false);
-      this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", phoneNumber, false);
-      this.runtime.setSetting("SIGNAL_RECEIVE_MODE", "manual", false);
-      this.runtime.setSetting("SIGNAL_AUTO_REPLY", "false", false);
-
-      if (!configChanged && this.lifeOpsSignalServiceRegistered()) {
-        return;
-      }
-
-      try {
-        await ensureSignalPluginLoaded(this.runtime);
-      } catch (error) {
-        logger.warn(
-          `[lifeops-signal] failed to reload Signal plugin after pairing: ${String(error)}`,
-        );
-      }
-    }
-
-    async lifeOpsClearSignalRuntimeConfig(
-      authDir: string | null,
-      phoneNumber: string | null,
-    ): Promise<void> {
-      const setupService = getConnectorSetupService(this.runtime);
-      let configChanged = false;
-
-      if (setupService) {
-        const config = setupService.getConfig();
-        configChanged = removeSignalConnectorConfig(config, {
-          authDir,
-          account: phoneNumber,
-        });
-        if (configChanged) {
-          setupService.updateConfig((nextConfig) => {
-            removeSignalConnectorConfig(nextConfig, {
-              authDir,
-              account: phoneNumber,
-            });
-          });
-        }
-      }
-
-      if (configChanged || authDir || phoneNumber) {
-        setSignalRuntimeEnv(null, null);
-        this.runtime.setSetting("SIGNAL_AUTH_DIR", null, false);
-        this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", null, false);
-      }
-
-      if (!configChanged && !this.lifeOpsSignalServiceConnected()) {
-        return;
-      }
-
-      try {
-        await ensureSignalPluginLoaded(this.runtime);
-      } catch (error) {
-        logger.warn(
-          `[lifeops-signal] failed to reload Signal plugin after disconnect: ${String(error)}`,
-        );
-      }
+      return Boolean(this.runtime.getService?.("signal"));
     }
 
     async getSignalConnectorStatus(
@@ -413,129 +227,45 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      if (resolvedSide === "agent") {
-        const signalService = getSignalService(this.runtime);
-        const inboundReady = signalServiceCanRead(signalService);
-        const sendReady = signalServiceCanSend(signalService);
-        const connected =
-          signalServiceConnected(signalService) || inboundReady || sendReady;
-        const capabilities = signalReadyCapabilities({
-          granted: FULL_SIGNAL_CAPABILITIES,
-          inboundReady,
-          sendReady,
-        });
-        const phoneNumber = signalService?.getAccountNumber?.() ?? null;
-        const degradations = signalAgentPluginDegradations({
-          connected,
-          inboundReady,
-          sendReady,
-        });
-        return {
-          provider: "signal",
-          side: resolvedSide,
-          connected,
-          inbound: connected && capabilities.includes("signal.read"),
-          reason: connected ? "connected" : "disconnected",
-          identity: phoneNumber ? { phoneNumber } : null,
-          grantedCapabilities: capabilities,
-          pairing: null,
-          grant: null,
-          ...(degradations.length > 0 ? { degradations } : {}),
-        };
-      }
-
-      let grant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "signal",
-        "local",
-        resolvedSide,
-      );
-      const pairing = getSignalPairingStatusForSide(
-        this.agentId(),
-        resolvedSide,
-      );
-
-      let connected = false;
-      let reason: LifeOpsSignalConnectorStatus["reason"] = "disconnected";
-      let identity: LifeOpsSignalConnectorStatus["identity"] = null;
-
-      if (!grant) {
-        const candidate = findSignalLinkedDeviceInfoForSide(
-          this.agentId(),
-          resolvedSide,
-        );
-        if (candidate) {
-          grant = createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "signal",
-            identity: {
-              phoneNumber: candidate.info.phoneNumber,
-              uuid: candidate.info.uuid,
-              deviceName: candidate.info.deviceName,
-            },
-            grantedScopes: [],
-            capabilities: FULL_SIGNAL_CAPABILITIES,
-            tokenRef: candidate.tokenRef,
-            mode: "local",
-            side: resolvedSide,
-            metadata: {
-              adoptedFromAgentId:
-                candidate.agentId === this.agentId() ? null : candidate.agentId,
-              adoptedTokenRef:
-                candidate.tokenRef === candidate.info.authDir
-                  ? null
-                  : candidate.info.authDir,
-            },
-            lastRefreshAt: new Date().toISOString(),
-          });
-          await this.repository.upsertConnectorGrant(grant);
-        }
-      }
-
-      let inboundReady = false;
-      let sendReady = false;
-      if (grant?.tokenRef) {
-        const deviceInfo = readSignalLinkedDeviceInfo(grant.tokenRef);
-        if (deviceInfo) {
-          await this.lifeOpsEnsureSignalRuntimeReady(
-            deviceInfo.authDir,
-            deviceInfo.phoneNumber,
+      const signalService = getSignalService(this.runtime);
+      const inboundReady = signalServiceCanRead(signalService);
+      const sendReady = signalServiceCanSend(signalService);
+      const connected =
+        signalServiceConnected(signalService) || inboundReady || sendReady;
+      const legacyGrant = await this.repository
+        .getConnectorGrant(this.agentId(), "signal", "local", resolvedSide)
+        .catch((error) => {
+          this.logLifeOpsWarn(
+            "signal_legacy_grant_status_failed",
+            error instanceof Error ? error.message : String(error),
+            { provider: "signal", side: resolvedSide },
           );
-          const signalService = getSignalService(this.runtime);
-          const localClientConfig = readSignalLocalClientConfigFromEnv();
-          inboundReady =
-            signalServiceCanRead(signalService) || localClientConfig !== null;
-          sendReady =
-            signalServiceCanSend(signalService) || localClientConfig !== null;
-          connected = inboundReady || sendReady;
-          reason = connected ? "connected" : "disconnected";
-          identity = {
-            phoneNumber: deviceInfo.phoneNumber,
-            uuid: deviceInfo.uuid,
-            deviceName: deviceInfo.deviceName,
-          };
-        } else if (pairing) {
-          reason = "pairing";
-        } else {
-          reason = "session_revoked";
-        }
-      } else if (pairing) {
-        reason = "pairing";
-      }
-
-      const grantedCapabilities = normalizeSignalCapabilities(
-        grant?.capabilities,
-      );
+          return null;
+        });
+      const grant = stripLegacyTokenRef(legacyGrant);
+      const grantedCapabilities = connected
+        ? FULL_SIGNAL_CAPABILITIES
+        : normalizeSignalCapabilities(legacyGrant?.capabilities);
       const capabilities = signalReadyCapabilities({
         granted: grantedCapabilities,
         inboundReady,
         sendReady,
       });
+      const legacyIdentity =
+        legacyGrant?.identity && typeof legacyGrant.identity === "object"
+          ? (legacyGrant.identity as Record<string, unknown>)
+          : {};
+      const phoneNumber =
+        signalService?.getAccountNumber?.() ??
+        (typeof legacyIdentity.phoneNumber === "string"
+          ? legacyIdentity.phoneNumber
+          : null);
       const degradations = signalStatusDegradations({
         connected,
         grantedCapabilities,
         inboundReady,
         sendReady,
+        hasLegacyTokenRef: Boolean(legacyGrant?.tokenRef),
       });
 
       return {
@@ -543,49 +273,23 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         side: resolvedSide,
         connected,
         inbound: connected && capabilities.includes("signal.read"),
-        reason,
-        identity,
+        reason: connected
+          ? "connected"
+          : legacyGrant?.tokenRef
+            ? "session_revoked"
+            : "disconnected",
+        identity: phoneNumber ? { phoneNumber } : null,
         grantedCapabilities: capabilities,
-        pairing,
+        pairing: null,
         grant,
         ...(degradations.length > 0 ? { degradations } : {}),
       };
     }
 
     async startSignalPairing(
-      side?: LifeOpsConnectorSide,
+      _side?: LifeOpsConnectorSide,
     ): Promise<StartLifeOpsSignalPairingResponse> {
-      const resolvedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      if (resolvedSide === "agent") {
-        fail(
-          409,
-          "Agent-side Signal is managed by @elizaos/plugin-signal. Configure the Signal plugin instead of pairing a LifeOps Signal device.",
-        );
-      }
-      const session = startSignalPairingFlow(this.agentId(), resolvedSide);
-
-      const grant = createLifeOpsConnectorGrant({
-        agentId: this.agentId(),
-        provider: "signal",
-        identity: {},
-        grantedScopes: [],
-        capabilities: FULL_SIGNAL_CAPABILITIES,
-        tokenRef: session.authDir,
-        mode: "local",
-        side: resolvedSide,
-        metadata: {
-          pairingSessionId: session.sessionId,
-        },
-        lastRefreshAt: new Date().toISOString(),
-      });
-      await this.repository.upsertConnectorGrant(grant);
-
-      return {
-        provider: "signal",
-        side: resolvedSide,
-        sessionId: session.sessionId,
-      };
+      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
     }
 
     async getSignalPairingStatus(
@@ -594,19 +298,13 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!sessionId) {
         fail(400, "sessionId is required");
       }
-      return getSignalPairingStatusFlow(sessionId);
+      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
     }
 
-    stopSignalPairing(side?: LifeOpsConnectorSide): LifeOpsSignalPairingStatus {
-      const resolvedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const result = stopSignalPairingFlow(this.agentId(), resolvedSide);
-      return {
-        sessionId: result.sessionId ?? "",
-        state: result.stopped ? "idle" : "failed",
-        qrDataUrl: null,
-        error: result.stopped ? null : "No active pairing session to stop",
-      };
+    stopSignalPairing(
+      _side?: LifeOpsConnectorSide,
+    ): LifeOpsSignalPairingStatus {
+      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
     }
 
     async disconnectSignal(
@@ -614,38 +312,20 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      if (resolvedSide === "agent") {
-        fail(
-          409,
-          "Agent-side Signal is owned by @elizaos/plugin-signal. Disable or reconfigure the Signal plugin instead of deleting a LifeOps grant.",
-        );
-      }
-      const grant = await this.repository.getConnectorGrant(
+      const legacyGrant = await this.repository.getConnectorGrant(
         this.agentId(),
         "signal",
         "local",
         resolvedSide,
       );
-
-      if (grant) {
-        const deviceInfo = grant.tokenRef
-          ? readSignalLinkedDeviceInfo(grant.tokenRef)
-          : null;
-        if (grant.tokenRef) {
-          deleteSignalLinkedDevice(grant.tokenRef);
-        }
+      if (legacyGrant) {
         await this.repository.deleteConnectorGrant(
           this.agentId(),
           "signal",
           "local",
           resolvedSide,
         );
-        await this.lifeOpsClearSignalRuntimeConfig(
-          grant.tokenRef,
-          deviceInfo?.phoneNumber ?? null,
-        );
       }
-
       return {
         provider: "signal",
         side: resolvedSide,
@@ -659,36 +339,22 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    /**
-     * Read recent inbound Signal messages.
-     *
-     * Primary path: the Signal service (`@elizaos/plugin-signal`) is connected
-     * and exposes a `getRecentMessages()` call on its in-memory store.
-     *
-     * Fallback path: when the service is absent or disconnected but
-     * `SIGNAL_HTTP_URL` and `SIGNAL_ACCOUNT_NUMBER` are set, reads directly
-     * from the signal-cli REST API via {@link readSignalInboundMessages}.
-     * This mirrors how `telegram-local-client.ts` reads Telegram sessions
-     * without the plugin service being active.
-     *
-     * Throws when neither path is available so a missing read transport is not
-     * mistaken for an empty Signal inbox.
-     */
     async readSignalInbound(
       limit = 25,
     ): Promise<LifeOpsSignalInboundMessage[]> {
-      const signalService = getSignalService(this.runtime);
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
+      const status = await this.getSignalConnectorStatus("owner");
       const delegated = await readSignalRecentWithRuntimeService({
         runtime: this.runtime,
+        grant: status.grant,
         limit: clampedLimit,
       });
-      if (delegated.status === "handled" && delegated.value.length > 0) {
+      if (delegated.status === "handled") {
         return delegated.value.map(signalRuntimeMessageToLifeOps);
       }
-      if (delegated.status === "fallback" && delegated.error) {
+      if (delegated.error) {
         this.logLifeOpsWarn(
-          "runtime_service_delegation_fallback",
+          "runtime_service_delegation_failed",
           delegated.reason,
           {
             provider: "signal",
@@ -700,33 +366,9 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
           },
         );
       }
-
-      const localClientConfig = readSignalLocalClientConfigFromEnv();
-      let serviceReadAttempted = delegated.status === "handled";
-
-      // Primary path: use the Signal service's in-memory message store when it
-      // exists. In passive LifeOps mode the plugin is connected for send/status
-      // only, so this will usually be empty and the direct pull below owns reads.
-      if (!serviceReadAttempted && signalServiceCanRead(signalService)) {
-        serviceReadAttempted = true;
-        const raw = await signalService.getRecentMessages?.(clampedLimit);
-        if (raw && raw.length > 0) {
-          return raw.map(signalRuntimeMessageToLifeOps);
-        }
-      }
-
-      // Passive pull path: read directly from the signal-cli REST API.
-      if (localClientConfig) {
-        return readSignalInboundMessages(localClientConfig, clampedLimit);
-      }
-
-      if (serviceReadAttempted) {
-        return [];
-      }
-
       fail(
-        409,
-        "Signal inbound is not configured. Link Signal or configure signal-cli receive before reading messages.",
+        503,
+        `Signal runtime service read is unavailable: ${delegated.reason} ${SIGNAL_PLUGIN_SETUP_MESSAGE}`,
       );
     }
 
@@ -752,63 +394,12 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(400, "text is required");
       }
 
-      if (normalizedSide === "agent") {
-        const delegated = await sendSignalMessageWithRuntimeService({
-          runtime: this.runtime,
-          recipient,
-          text,
-        });
-        if (delegated.status === "handled") {
-          return {
-            provider: "signal",
-            side: normalizedSide,
-            recipient,
-            ok: true,
-            timestamp: delegated.value.timestamp,
-          };
-        }
-        if (delegated.error) {
-          this.logLifeOpsWarn(
-            "runtime_service_delegation_fallback",
-            delegated.reason,
-            {
-              provider: "signal",
-              operation: "message.send",
-              error:
-                delegated.error instanceof Error
-                  ? delegated.error.message
-                  : String(delegated.error),
-            },
-          );
-        }
-        const signalService = getSignalService(this.runtime);
-        if (!signalServiceCanSend(signalService)) {
-          fail(503, "Agent-side Signal plugin send service is not available.");
-        }
-        const result = await signalService.sendMessage(recipient, text, {
-          accountId: "default",
-        });
-        if (
-          typeof result.timestamp !== "number" ||
-          !Number.isFinite(result.timestamp)
-        ) {
-          fail(502, "Signal send did not return a timestamp.");
-        }
-        return {
-          provider: "signal",
-          side: normalizedSide,
-          recipient,
-          ok: true,
-          timestamp: result.timestamp,
-        };
-      }
-
       const status = await this.getSignalConnectorStatus(normalizedSide);
       if (!status.connected) {
-        fail(409, "Signal is not connected.");
+        fail(409, SIGNAL_PLUGIN_SETUP_MESSAGE);
       }
       if (!status.grantedCapabilities.includes("signal.send")) {
-        fail(403, "Signal send capability is not granted.");
+        fail(403, "Signal plugin is missing send permission.");
       }
 
       const delegated = await sendSignalMessageWithRuntimeService({
@@ -828,7 +419,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (delegated.error) {
         this.logLifeOpsWarn(
-          "runtime_service_delegation_fallback",
+          "runtime_service_delegation_failed",
           delegated.reason,
           {
             provider: "signal",
@@ -840,32 +431,10 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
           },
         );
       }
-
-      const signalService = getSignalService(this.runtime);
-      const localClientConfig = readSignalLocalClientConfigFromEnv();
-      if (!signalServiceCanSend(signalService) && !localClientConfig) {
-        fail(503, "Signal send service is not available.");
-      }
-
-      const result = signalServiceCanSend(signalService)
-        ? await signalService.sendMessage(recipient, text, {
-            accountId: status.grant?.connectorAccountId ?? "default",
-          })
-        : await sendSignalLocalMessage(localClientConfig, { recipient, text });
-      if (
-        typeof result.timestamp !== "number" ||
-        !Number.isFinite(result.timestamp)
-      ) {
-        fail(502, "Signal send did not return a timestamp.");
-      }
-
-      return {
-        provider: "signal",
-        side: normalizedSide,
-        recipient,
-        ok: true,
-        timestamp: result.timestamp,
-      };
+      fail(
+        503,
+        `Signal runtime service send is unavailable: ${delegated.reason} ${SIGNAL_PLUGIN_SETUP_MESSAGE}`,
+      );
     }
   }
 

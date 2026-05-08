@@ -400,7 +400,7 @@ export async function startMockApiServer(
     cloud: { enabled: true },
     messages: {
       tts: {
-        provider: "simple-voice",
+        provider: "robot-voice",
       },
     },
     env: { vars: {} },
@@ -899,8 +899,8 @@ export async function startMockApiServer(
         ok: true,
         enabled: true,
         autoSpeak: true,
-        provider: "simple-voice",
-        configuredProvider: "simple-voice",
+        provider: "robot-voice",
+        configuredProvider: "robot-voice",
         hasApiKey: false,
         isSpeaking: false,
         isAttached: true,

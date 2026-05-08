@@ -13,6 +13,7 @@
 
 import type { RegistryAppInfo } from "@elizaos/shared";
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import { readAppsCache } from "../components/apps/apps-cache";
 
 /** Result of main-tab discovery. */
 export interface MainTabApp {
@@ -21,6 +22,17 @@ export interface MainTabApp {
   /** The app's npm package name. */
   appName: string;
 }
+
+/**
+ * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
+ *
+ * Phase 1 of the extraction: while chat is still hardcoded into App.tsx
+ * (`case "chat": return <ChatView />`) the fallback stays "chat" so the
+ * shell renders identically to before for users with no main-tab app.
+ * Phase 5 drops the chat case once `app-chat` claims the seam, at which
+ * point this fallback becomes the HomePlaceholderView surface ("home").
+ */
+export const MAIN_TAB_FALLBACK = "chat" as const;
 
 /** Read the `mainTab` flag, ignoring non-boolean values defensively. */
 function declaresMainTab(app: RegistryAppInfo): boolean {
@@ -58,4 +70,24 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
   if (!tabId) return null;
 
   return { tabId, appName: winner.name };
+}
+
+/**
+ * Resolve the shell's default landing tab.
+ *
+ * Reads the cached apps catalog (`readAppsCache()`) synchronously and
+ * runs `getMainTabApp()` against it. Used at boot before the apps API
+ * call has resolved, so the shell can pick a landing tab without
+ * waiting on the network. Falls back to `MAIN_TAB_FALLBACK` ("chat")
+ * when:
+ *   - the cache is empty (first run), or
+ *   - no app declares `mainTab: true`.
+ *
+ * Optional `apps` argument lets callers supply an already-loaded
+ * catalog (post-hydrate) without going through the cache.
+ */
+export function resolveDefaultLandingTab(apps?: RegistryAppInfo[]): string {
+  const catalog = apps ?? readAppsCache();
+  if (!catalog) return MAIN_TAB_FALLBACK;
+  return getMainTabApp(catalog)?.tabId ?? MAIN_TAB_FALLBACK;
 }

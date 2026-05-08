@@ -111,7 +111,7 @@ Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.
 - `/api/eliza-app/webhook/whatsapp` — group-f-connectors.test.ts
 - `/api/fal/proxy` — group-d-ai-media.test.ts
 - `/api/feedback` — group-h-misc.test.ts
-- `/api/health` — api/health-route.test.ts, v1/misc.test.ts, agent-token-flow.test.ts, group-a-auth.test.ts, group-b-account-billing.test.ts, group-c-agents.test.ts, group-d-ai-media.test.ts, group-g-mcps.test.ts, group-h-misc.test.ts, group-j-knowledge.test.ts
+- `/api/health` — api/health-route.test.ts, v1/misc.test.ts, agent-token-flow.test.ts, group-a-auth.test.ts, group-b-account-billing.test.ts, group-c-agents.test.ts, group-d-ai-media.test.ts, group-g-mcps.test.ts, group-h-misc.test.ts, group-j-documents.test.ts
 - `/api/internal/auth/refresh` — group-a-auth.test.ts
 - `/api/internal/auth/token` — v1/security.test.ts
 - `/api/internal/discord/eliza-app/messages` — group-h-misc.test.ts
@@ -396,13 +396,13 @@ Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.
 - `/api/v1/generate-prompts` — v1/misc.test.ts
 - `/api/v1/generate-video` — v1/media.test.ts
 - `/api/v1/jobs/:jobId` — v1/misc.test.ts
-- `/api/v1/knowledge/check` — group-i-route-coverage-manifest.test.ts
-- `/api/v1/knowledge/pre-upload` — group-j-knowledge.test.ts
-- `/api/v1/knowledge/query` — group-j-knowledge.test.ts
-- `/api/v1/knowledge/submit` — group-j-knowledge.test.ts
-- `/api/v1/knowledge/upload-file` — group-j-knowledge.test.ts
-- `/api/v1/knowledge/:id` — group-i-route-coverage-manifest.test.ts, group-j-knowledge.test.ts
-- `/api/v1/knowledge` — v1/connections.test.ts, v1/security.test.ts, group-i-route-coverage-manifest.test.ts, group-j-knowledge.test.ts
+- `/api/v1/documents/check` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/documents/pre-upload` — group-j-documents.test.ts
+- `/api/v1/documents/query` — group-j-documents.test.ts
+- `/api/v1/documents/submit` — group-j-documents.test.ts
+- `/api/v1/documents/upload-file` — group-j-documents.test.ts
+- `/api/v1/documents/:id` — group-i-route-coverage-manifest.test.ts, group-j-documents.test.ts
+- `/api/v1/documents` — v1/connections.test.ts, v1/security.test.ts, group-i-route-coverage-manifest.test.ts, group-j-documents.test.ts
 - `/api/v1/market/candles/:chain/:address` — group-i-route-coverage-manifest.test.ts
 - `/api/v1/market/portfolio/:chain/:address` — group-i-route-coverage-manifest.test.ts
 - `/api/v1/market/preview/portfolio/:chain/:address` — group-i-route-coverage-manifest.test.ts

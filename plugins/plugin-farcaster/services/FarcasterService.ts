@@ -9,10 +9,10 @@ import {
 import { FarcasterAgentManager } from "../managers/AgentManager";
 import { FARCASTER_SERVICE_NAME } from "../types";
 import {
-  normalizeFarcasterAccountId,
-  resolveDefaultFarcasterAccountId,
   getFarcasterFid,
   hasFarcasterEnabled,
+  normalizeFarcasterAccountId,
+  resolveDefaultFarcasterAccountId,
   validateFarcasterConfig,
 } from "../utils/config";
 import { FarcasterCastService } from "./CastService";

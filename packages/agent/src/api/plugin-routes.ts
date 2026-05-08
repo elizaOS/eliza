@@ -13,7 +13,7 @@ import {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "../config/plugin-widgets.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,

@@ -32,6 +32,7 @@ export interface ElizaCharacter {
   postExamples?: string[];
   topics?: string[];
   adjectives?: string[];
+  documents?: (string | { path: string; shared?: boolean })[];
   knowledge?: (string | { path: string; shared?: boolean })[];
   plugins?: string[];
   avatarUrl?: string;

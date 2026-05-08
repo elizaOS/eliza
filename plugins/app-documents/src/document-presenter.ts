@@ -387,17 +387,6 @@ export function presentDocument(
     fileSize: asNumber(metadata?.fileSize) ?? 0,
     createdAt: asNumber(memory.createdAt) ?? 0,
     fragmentCount,
-    scope:
-      metadata?.scope === "global" ||
-      metadata?.scope === "owner-private" ||
-      metadata?.scope === "user-private" ||
-      metadata?.scope === "agent-private"
-        ? metadata.scope
-        : undefined,
-    scopedToEntityId: asString(metadata?.scopedToEntityId),
-    addedBy: asString(metadata?.addedBy),
-    addedByRole: asString(metadata?.addedByRole),
-    addedFrom: asString(metadata?.addedFrom),
     source: provenance.kind,
     scope: getDocumentVisibilityScope(metadata),
     scopedToEntityId: asString(metadata?.scopedToEntityId),

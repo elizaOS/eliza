@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Action, ActionParameterSchema } from "../../types";
+import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import { validateToolArgs } from "../validate-tool-args.ts";
 
 function makeAction(overrides: Partial<Action>): Action {
@@ -137,6 +138,24 @@ describe("validateToolArgs", () => {
 			valid: false,
 			args: undefined,
 			errors: ["Tool arguments for action SCHEDULE_TASK must be an object"],
+		});
+	});
+
+	it("accepts MESSAGE planner compatibility aliases", () => {
+		const result = validateToolArgs(messageAction, {
+			__subaction: "respond_to_message",
+			id: "mock-email-2",
+			folder: "inbox",
+			reply: "Thanks, I received it.",
+		});
+
+		expect(result.valid).toBe(true);
+		expect(result.errors).toEqual([]);
+		expect(result.args).toMatchObject({
+			__subaction: "respond_to_message",
+			id: "mock-email-2",
+			folder: "inbox",
+			reply: "Thanks, I received it.",
 		});
 	});
 });

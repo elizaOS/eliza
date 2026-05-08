@@ -685,7 +685,6 @@ export const searchAction: Action = {
     "DOCUMENT",
     "SEARCH_PLUGINS",
     "SEARCH_VECTORS",
-    "SEARCH_CONVERSATIONS",
     "SEARCH_ENTITY",
   ],
   description:

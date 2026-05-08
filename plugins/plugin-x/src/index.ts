@@ -8,7 +8,6 @@ import {
   createXConnectorAccountProvider,
   materializeEnvAccountIfMissing,
 } from "./connector-account-provider.js";
-import { registerXSearchCategory } from "./search-category.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
 
@@ -20,7 +19,6 @@ export const XPlugin: Plugin = {
   providers: [],
   services: [XService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    registerXSearchCategory(runtime);
     logger.log("🔧 Initializing X plugin...");
 
     const mode = (

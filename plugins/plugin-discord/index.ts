@@ -4,16 +4,11 @@ import {
 	logger,
 	type Plugin,
 } from "@elizaos/core";
-import createPoll from "./actions/createPoll";
-import mediaOp from "./actions/mediaOp";
 import setupCredentials from "./actions/setup-credentials";
-import { summarize } from "./actions/summarizeConversation";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
-import { voiceStateProvider } from "./providers/voiceState";
-import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
@@ -29,25 +24,16 @@ const discordPlugin: Plugin = {
 		DiscordUserAccountScraperImpl,
 	],
 	routes: discordSetupRoutes,
-	actions: [
-		mediaOp,
-		summarize,
-		createPoll,
-		setupCredentials,
-	],
-	providers: [voiceStateProvider],
+	actions: [setupCredentials],
+	providers: [],
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		registerDiscordSearchCategory(runtime);
-
 		// Register the Discord provider with the ConnectorAccountManager so the
 		// HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
 		// can list, create, patch, delete, and start OAuth on Discord accounts.
 		try {
 			const manager = getConnectorAccountManager(runtime);
-			manager.registerProvider(
-				createDiscordConnectorAccountProvider(runtime),
-			);
+			manager.registerProvider(createDiscordConnectorAccountProvider(runtime));
 		} catch (err) {
 			logger.warn(
 				{

@@ -33,7 +33,7 @@ const ALLOWED_PATH_PREFIXES = [
   "/api/v1/credits",
   "/api/v1/agents",
   "/api/v1/embeddings",
-  "/api/v1/knowledge",
+  "/api/v1/documents",
 ];
 
 interface ProxyRequest {

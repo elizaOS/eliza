@@ -5,15 +5,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@elizaos/ui";
-import type { ConnectorAccountPurpose } from "../../api/client-agent";
+import type { ConnectorAccountRole } from "../../api/client-agent";
 import {
   CONNECTOR_ACCOUNT_PURPOSE_OPTIONS,
   getConnectorPurposeOption,
 } from "./connector-account-options";
 
 export interface ConnectorAccountPurposeSelectorProps {
-  value?: ConnectorAccountPurpose;
-  onChange: (value: ConnectorAccountPurpose) => void;
+  value?: ConnectorAccountRole;
+  onChange: (value: ConnectorAccountRole) => void;
   disabled?: boolean;
   id?: string;
 }
@@ -35,7 +35,7 @@ export function ConnectorAccountPurposeSelector({
         value={resolved}
         disabled={disabled}
         onValueChange={(next) => {
-          if (next !== resolved) onChange(next as ConnectorAccountPurpose);
+          if (next !== resolved) onChange(next as ConnectorAccountRole);
         }}
       >
         <SelectTrigger

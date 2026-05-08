@@ -151,6 +151,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-calendly": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",

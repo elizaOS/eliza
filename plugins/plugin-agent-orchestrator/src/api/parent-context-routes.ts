@@ -167,7 +167,7 @@ function readOriginRoomId(
   );
 }
 
-function normalizeKnowledgeSources(value: unknown): JsonValue[] {
+function normalizeDocumentSources(value: unknown): JsonValue[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): JsonValue[] => {
     if (typeof entry === "string" && entry.trim()) return [entry.trim()];
@@ -283,7 +283,10 @@ async function buildParentContext(
         : typeof character.bio === "string"
           ? [character.bio]
           : [],
-      knowledge: normalizeKnowledgeSources(character.knowledge),
+      documents: normalizeDocumentSources([
+        ...(Array.isArray(character.documents) ? character.documents : []),
+        ...(Array.isArray(character.knowledge) ? character.knowledge : []),
+      ]),
     },
     currentRoom: await loadRoom(ctx.runtime, roomId),
     workdir: session?.workdir ?? task?.workdir ?? null,

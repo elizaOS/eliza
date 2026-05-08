@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { getConnectorAccount } from "../connector-credential-refs";
 import type { TwitterConfig } from "../environment";
 import type { TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
@@ -55,6 +56,21 @@ export function resolveDefaultXAccountId(
     state?.accountId ??
       state?.TWITTER_DEFAULT_ACCOUNT_ID ??
       state?.TWITTER_ACCOUNT_ID ??
+      getSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
+      getSetting(runtime, "TWITTER_ACCOUNT_ID") ??
+      getSetting(runtime, "X_DEFAULT_ACCOUNT_ID") ??
+      getSetting(runtime, "X_ACCOUNT_ID"),
+  );
+}
+
+function hasExplicitDefaultXAccountId(
+  runtime: IAgentRuntime | null | undefined,
+  state?: TwitterClientState,
+): boolean {
+  return Boolean(
+    state?.TWITTER_DEFAULT_ACCOUNT_ID ??
+      state?.TWITTER_ACCOUNT_ID ??
+      state?.accountId ??
       getSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
       getSetting(runtime, "TWITTER_ACCOUNT_ID") ??
       getSetting(runtime, "X_DEFAULT_ACCOUNT_ID") ??
@@ -156,6 +172,29 @@ async function readRuntimeAccountRecord(
     RuntimeWithXConnectorAccounts;
 
   try {
+    const account = await getConnectorAccount(runtime, "x", accountId);
+    if (account) {
+      return {
+        accountId: account.id,
+        source: "x",
+        metadata: {
+          ...(account.metadata && typeof account.metadata === "object"
+            ? (account.metadata as Record<string, unknown>)
+            : {}),
+          accountId: account.id,
+          externalId: account.externalId,
+          displayHandle: account.displayHandle,
+          label: account.label,
+          role: account.role,
+          status: account.status,
+        },
+      };
+    }
+  } catch {
+    // Fall back to legacy runtime connector account hooks.
+  }
+
+  try {
     const store = accountRuntime.getConnectorAccountStore?.("x");
     const account = await store?.getAccount(accountId);
     if (account) return account;
@@ -175,15 +214,54 @@ async function readRuntimeAccountRecord(
   }
 }
 
+function readMetadataRecord(record: RawAccountRecord | undefined): RawAccountRecord {
+  return record?.metadata && typeof record.metadata === "object"
+    ? (record.metadata as RawAccountRecord)
+    : {};
+}
+
+function readMetadataStringArray(
+  record: RawAccountRecord | undefined,
+  key: string,
+): string[] {
+  const metadata = readMetadataRecord(record);
+  const value = metadata[key];
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+  }
+  const text = nonEmptyString(value);
+  return text ? text.split(/\s+/).filter(Boolean) : [];
+}
+
+function readMetadataField(
+  record: RawAccountRecord | undefined,
+  keys: string[],
+): string | undefined {
+  const metadata = readMetadataRecord(record);
+  for (const key of keys) {
+    const value = nonEmptyString(metadata[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function buildStateFromRecord(
   accountId: string,
   record?: RawAccountRecord,
 ): TwitterClientState {
-  const authMode = readRawField(record, [
-    "TWITTER_AUTH_MODE",
-    "authMode",
-    "mode",
+  const metadataAuthMethod = readMetadataField(record, [
+    "authMethod",
+    "oauthMethod",
   ]);
+  const authMode =
+    metadataAuthMethod === "oauth"
+      ? "oauth"
+      : readRawField(record, ["TWITTER_AUTH_MODE", "authMode", "mode"]);
+  const grantedScopes = readMetadataStringArray(record, "grantedScopes");
+  const metadataScopes =
+    grantedScopes.length > 0 ? grantedScopes.join(" ") : readMetadataField(record, ["scope"]);
 
   return {
     accountId,
@@ -211,7 +289,8 @@ function buildStateFromRecord(
       "TWITTER_REDIRECT_URI",
       "redirectUri",
     ]),
-    TWITTER_SCOPES: readRawField(record, ["TWITTER_SCOPES", "scopes"]),
+    TWITTER_SCOPES:
+      metadataScopes ?? readRawField(record, ["TWITTER_SCOPES", "scopes"]),
   };
 }
 
@@ -275,7 +354,7 @@ export async function resolveTwitterAccountConfig(
     };
   }
 
-  if (accountId === defaultAccountId) {
+  if (accountId === defaultAccountId || !hasExplicitDefaultXAccountId(runtime, options.state)) {
     return buildDefaultState(runtime, options.state, accountId);
   }
 

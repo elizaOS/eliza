@@ -45,17 +45,6 @@ export const coreProvidersSpec = {
       description: "Provides information about the agent",
       dynamic: true,
     },
-    {
-      name: "farcasterThread",
-      description:
-        "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
-      dynamic: true,
-    },
-    {
-      name: "farcasterTimeline",
-      description: "Provides recent casts from the agent",
-      dynamic: true,
-    },
   ],
 } as const;
 export const allProvidersSpec = {
@@ -64,17 +53,6 @@ export const allProvidersSpec = {
     {
       name: "farcasterProfile",
       description: "Provides information about the agent",
-      dynamic: true,
-    },
-    {
-      name: "farcasterThread",
-      description:
-        "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
-      dynamic: true,
-    },
-    {
-      name: "farcasterTimeline",
-      description: "Provides recent casts from the agent",
       dynamic: true,
     },
   ],

@@ -4,6 +4,7 @@ import type {
 	ActionParameter,
 	ActionResult,
 	Content,
+	ContentValue,
 	HandlerOptions,
 	IAgentRuntime,
 	Media,
@@ -112,9 +113,39 @@ function postText(params: ParamRecord, message: Memory): string {
 	);
 }
 
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
+}
+
+function connectorSendAsMetadata(message: Memory): Record<string, unknown> | undefined {
+	const metadata = recordValue(message.content?.metadata);
+	return (
+		recordValue(metadata?.connectorSendAs) ??
+		recordValue(metadata?.connectorAccount)
+	);
+}
+
+function accountIdParam(params: ParamRecord, message: Memory): string | undefined {
+	const metadata = recordValue(message.content?.metadata);
+	const sendAs = connectorSendAsMetadata(message);
+	return (
+		textParam(params.accountId) ??
+		textParam(params.connectorAccountId) ??
+		textParam(sendAs?.accountId) ??
+		textParam(metadata?.accountId)
+	);
+}
+
+function sourceParamForMessage(params: ParamRecord, message: Memory): string | undefined {
+	const sendAs = connectorSendAsMetadata(message);
+	return sourceParam(params) ?? textParam(sendAs?.source);
+}
+
 function buildPostContent(
 	params: ParamRecord,
-	source: string,
+	connector: PostConnector,
 	message: Memory,
 ): Content {
 	const feed = textParam(params.feed);
@@ -127,11 +158,22 @@ function buildPostContent(
 			? String(messageMediaId)
 			: textParam(messageMediaId));
 	const replyTo = textParam(params.replyTo) ?? textParam(params.inReplyTo);
+	const accountId = connector.accountId ?? accountIdParam(params, message);
+	const connectorAccount = connector.account
+		? (JSON.parse(JSON.stringify(connector.account)) as ContentValue)
+		: undefined;
 	const content: Content = {
 		text: postText(params, message),
-		source,
+		source: connector.source,
 		channelType: ChannelType.FEED,
-		metadata: { feed, target, mediaId, replyTo },
+		metadata: {
+			feed,
+			target,
+			mediaId,
+			replyTo,
+			accountId,
+			connectorAccount,
+		},
 	};
 	if (replyTo && /^[0-9a-f-]{36}$/i.test(replyTo)) {
 		content.inReplyTo = replyTo as UUID;
@@ -324,13 +366,14 @@ async function handleSend(
 	const selected = selectConnector(
 		"POST",
 		connectors,
-		sourceParam(params),
+		sourceParamForMessage(params, message),
 		message.content?.source,
+		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;
 	const content = applyPostContentShaping(
 		selected.connector,
-		buildPostContent(params, selected.connector.source, message),
+		buildPostContent(params, selected.connector, message),
 	);
 	if (!textParam(content.text) && !content.attachments?.length) {
 		return failure(
@@ -377,6 +420,7 @@ async function handleSend(
 			actionName: "POST",
 			op: "send",
 			source: selected.connector.source,
+			accountId: selected.connector.accountId,
 			memoryId: persisted?.id,
 			responseMessageId: platformMessageId,
 		},
@@ -394,8 +438,9 @@ async function handleRead(
 	const selected = selectConnector(
 		"POST",
 		connectors,
-		sourceParam(params),
+		sourceParamForMessage(params, message),
 		message.content?.source,
+		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;
 	const fetchFeed = selected.connector.fetchFeed;
@@ -407,16 +452,21 @@ async function handleRead(
 			{ source: selected.connector.source },
 		);
 	}
-	const context = buildPostQueryContext(
+	const context = {
+		...buildPostQueryContext(
 		runtime,
 		message,
 		state,
 		selected.connector.source,
-	);
+		),
+		accountId: selected.connector.accountId,
+		account: selected.connector.account,
+	};
 	const target = explicitTargetFromParams(
 		selected.connector.source,
 		params,
 	).target;
+	if (target && selected.connector.accountId) target.accountId = selected.connector.accountId;
 	const posts = await fetchFeed(context, {
 		feed: textParam(params.feed),
 		target,
@@ -457,8 +507,9 @@ async function handleSearch(
 	const selected = selectConnector(
 		"POST",
 		connectors,
-		sourceParam(params),
+		sourceParamForMessage(params, message),
 		message.content?.source,
+		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;
 	const searchPosts = selected.connector.searchPosts;
@@ -470,12 +521,16 @@ async function handleSearch(
 			{ source: selected.connector.source },
 		);
 	}
-	const context = buildPostQueryContext(
+	const context = {
+		...buildPostQueryContext(
 		runtime,
 		message,
 		state,
 		selected.connector.source,
-	);
+		),
+		accountId: selected.connector.accountId,
+		account: selected.connector.account,
+	};
 	const posts = await searchPosts(context, {
 		query,
 		limit: limitParam(params),
@@ -516,6 +571,13 @@ export const POST_PARAMETERS: ActionParameter[] = [
 		name: "source",
 		description:
 			"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "accountId",
+		description:
+			"Optional connector account id for multi-account post connectors.",
 		required: false,
 		schema: { type: "string" },
 	},

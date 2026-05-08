@@ -104,6 +104,7 @@ export type ActionParameterValue = string | number | boolean | null;
 export type ActionParameterExampleValue =
 	| ActionParameterValue
 	| ActionParameters
+	| JsonValue
 	| ActionParameterValue[]
 	| ActionParameters[];
 

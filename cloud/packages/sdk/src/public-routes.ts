@@ -25,6 +25,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/connections/{platform}": { method: "DELETE", path: "/api/v1/connections/{platform}", methodName: "deleteApiV1ConnectionsByPlatform", responseMode: "json", pathParams: ["platform"], catchAllPathParams: [], file: "apps/api/v1/connections/[platform]/route.ts" },
   "DELETE /api/v1/containers/{id}": { method: "DELETE", path: "/api/v1/containers/{id}", methodName: "deleteApiV1ContainersById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/containers/[id]/route.ts" },
   "DELETE /api/v1/discord/connections/{id}": { method: "DELETE", path: "/api/v1/discord/connections/{id}", methodName: "deleteApiV1DiscordConnectionsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/discord/connections/[id]/route.ts" },
+  "DELETE /api/v1/documents/{id}": { method: "DELETE", path: "/api/v1/documents/{id}", methodName: "deleteApiV1DocumentsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/documents/[id]/route.ts" },
+  "DELETE /api/v1/documents/pre-upload": { method: "DELETE", path: "/api/v1/documents/pre-upload", methodName: "deleteApiV1DocumentsPreUpload", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/pre-upload/route.ts" },
   "DELETE /api/v1/eliza/agents/{agentId}": { method: "DELETE", path: "/api/v1/eliza/agents/{agentId}", methodName: "deleteApiV1ElizaAgentsByAgentId", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/[agentId]/route.ts" },
   "DELETE /api/v1/eliza/agents/{agentId}/discord": { method: "DELETE", path: "/api/v1/eliza/agents/{agentId}/discord", methodName: "deleteApiV1ElizaAgentsByAgentIdDiscord", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/[agentId]/discord/route.ts" },
   "DELETE /api/v1/eliza/agents/{agentId}/github": { method: "DELETE", path: "/api/v1/eliza/agents/{agentId}/github", methodName: "deleteApiV1ElizaAgentsByAgentIdGithub", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/[agentId]/github/route.ts" },
@@ -33,8 +35,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/gallery/{id}": { method: "DELETE", path: "/api/v1/gallery/{id}", methodName: "deleteApiV1GalleryById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/gallery/[id]/route.ts" },
   "DELETE /api/v1/generate-image": { method: "DELETE", path: "/api/v1/generate-image", methodName: "deleteApiV1GenerateImage", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-image/route.ts" },
   "DELETE /api/v1/generate-video": { method: "DELETE", path: "/api/v1/generate-video", methodName: "deleteApiV1GenerateVideo", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-video/route.ts" },
-  "DELETE /api/v1/knowledge/{id}": { method: "DELETE", path: "/api/v1/knowledge/{id}", methodName: "deleteApiV1KnowledgeById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/knowledge/[id]/route.ts" },
-  "DELETE /api/v1/knowledge/pre-upload": { method: "DELETE", path: "/api/v1/knowledge/pre-upload", methodName: "deleteApiV1KnowledgePreUpload", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/pre-upload/route.ts" },
   "DELETE /api/v1/mcps/{mcpId}": { method: "DELETE", path: "/api/v1/mcps/{mcpId}", methodName: "deleteApiV1McpsByMcpId", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/route.ts" },
   "DELETE /api/v1/mcps/{mcpId}/publish": { method: "DELETE", path: "/api/v1/mcps/{mcpId}/publish", methodName: "deleteApiV1McpsByMcpIdPublish", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/publish/route.ts" },
   "DELETE /api/v1/oauth/connections/{id}": { method: "DELETE", path: "/api/v1/oauth/connections/{id}", methodName: "deleteApiV1OauthConnectionsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/oauth/connections/[id]/route.ts" },
@@ -123,6 +123,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/discord/oauth": { method: "GET", path: "/api/v1/discord/oauth", methodName: "getApiV1DiscordOauth", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/oauth/route.ts" },
   "GET /api/v1/discord/status": { method: "GET", path: "/api/v1/discord/status", methodName: "getApiV1DiscordStatus", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/status/route.ts" },
   "GET /api/v1/discovery": { method: "GET", path: "/api/v1/discovery", methodName: "getApiV1Discovery", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discovery/route.ts" },
+  "GET /api/v1/documents": { method: "GET", path: "/api/v1/documents", methodName: "getApiV1Documents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/route.ts" },
+  "GET /api/v1/documents/check": { method: "GET", path: "/api/v1/documents/check", methodName: "getApiV1DocumentsCheck", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/check/route.ts" },
   "GET /api/v1/domains": { method: "GET", path: "/api/v1/domains", methodName: "getApiV1Domains", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/route.ts" },
   "GET /api/v1/domains/resolve": { method: "GET", path: "/api/v1/domains/resolve", methodName: "getApiV1DomainsResolve", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/resolve/route.ts" },
   "GET /api/v1/eliza/agents": { method: "GET", path: "/api/v1/eliza/agents", methodName: "getApiV1ElizaAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/route.ts" },
@@ -155,8 +157,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/generate-image": { method: "GET", path: "/api/v1/generate-image", methodName: "getApiV1GenerateImage", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-image/route.ts" },
   "GET /api/v1/generate-video": { method: "GET", path: "/api/v1/generate-video", methodName: "getApiV1GenerateVideo", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-video/route.ts" },
   "GET /api/v1/jobs/{jobId}": { method: "GET", path: "/api/v1/jobs/{jobId}", methodName: "getApiV1JobsByJobId", responseMode: "json", pathParams: ["jobId"], catchAllPathParams: [], file: "apps/api/v1/jobs/[jobId]/route.ts" },
-  "GET /api/v1/knowledge": { method: "GET", path: "/api/v1/knowledge", methodName: "getApiV1Knowledge", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/route.ts" },
-  "GET /api/v1/knowledge/check": { method: "GET", path: "/api/v1/knowledge/check", methodName: "getApiV1KnowledgeCheck", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/check/route.ts" },
   "GET /api/v1/market/candles/{chain}/{address}": { method: "GET", path: "/api/v1/market/candles/{chain}/{address}", methodName: "getApiV1MarketCandlesByChainByAddress", responseMode: "json", pathParams: ["chain", "address"], catchAllPathParams: [], file: "apps/api/v1/market/candles/[chain]/[address]/route.ts" },
   "GET /api/v1/market/portfolio/{chain}/{address}": { method: "GET", path: "/api/v1/market/portfolio/{chain}/{address}", methodName: "getApiV1MarketPortfolioByChainByAddress", responseMode: "json", pathParams: ["chain", "address"], catchAllPathParams: [], file: "apps/api/v1/market/portfolio/[chain]/[address]/route.ts" },
   "GET /api/v1/market/preview/portfolio/{chain}/{address}": { method: "GET", path: "/api/v1/market/preview/portfolio/{chain}/{address}", methodName: "getApiV1MarketPreviewPortfolioByChainByAddress", responseMode: "json", pathParams: ["chain", "address"], catchAllPathParams: [], file: "apps/api/v1/market/preview/portfolio/[chain]/[address]/route.ts" },
@@ -282,7 +282,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/browser/sessions": { method: "POST", path: "/api/v1/browser/sessions", methodName: "postApiV1BrowserSessions", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/browser/sessions/route.ts" },
   "POST /api/v1/browser/sessions/{id}/command": { method: "POST", path: "/api/v1/browser/sessions/{id}/command", methodName: "postApiV1BrowserSessionsByIdCommand", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/browser/sessions/[id]/command/route.ts" },
   "POST /api/v1/browser/sessions/{id}/navigate": { method: "POST", path: "/api/v1/browser/sessions/{id}/navigate", methodName: "postApiV1BrowserSessionsByIdNavigate", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/browser/sessions/[id]/navigate/route.ts" },
-  "POST /api/v1/character-assistant": { method: "POST", path: "/api/v1/character-assistant", methodName: "postApiV1CharacterAssistant", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/character-assistant/route.ts" },
   "POST /api/v1/chat": { method: "POST", path: "/api/v1/chat", methodName: "postApiV1Chat", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/chat/route.ts" },
   "POST /api/v1/chat/completions": { method: "POST", path: "/api/v1/chat/completions", methodName: "postApiV1ChatCompletions", responseMode: "mixed", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/chat/completions/route.ts" },
   "POST /api/v1/connections/{platform}": { method: "POST", path: "/api/v1/connections/{platform}", methodName: "postApiV1ConnectionsByPlatform", responseMode: "json", pathParams: ["platform"], catchAllPathParams: [], file: "apps/api/v1/connections/[platform]/route.ts" },
@@ -294,6 +293,11 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/discord/channels/refresh": { method: "POST", path: "/api/v1/discord/channels/refresh", methodName: "postApiV1DiscordChannelsRefresh", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/channels/refresh/route.ts" },
   "POST /api/v1/discord/connections": { method: "POST", path: "/api/v1/discord/connections", methodName: "postApiV1DiscordConnections", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/connections/route.ts" },
   "POST /api/v1/discord/disconnect": { method: "POST", path: "/api/v1/discord/disconnect", methodName: "postApiV1DiscordDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/disconnect/route.ts" },
+  "POST /api/v1/documents": { method: "POST", path: "/api/v1/documents", methodName: "postApiV1Documents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/route.ts" },
+  "POST /api/v1/documents/pre-upload": { method: "POST", path: "/api/v1/documents/pre-upload", methodName: "postApiV1DocumentsPreUpload", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/pre-upload/route.ts" },
+  "POST /api/v1/documents/query": { method: "POST", path: "/api/v1/documents/query", methodName: "postApiV1DocumentsQuery", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/query/route.ts" },
+  "POST /api/v1/documents/submit": { method: "POST", path: "/api/v1/documents/submit", methodName: "postApiV1DocumentsSubmit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/submit/route.ts" },
+  "POST /api/v1/documents/upload-file": { method: "POST", path: "/api/v1/documents/upload-file", methodName: "postApiV1DocumentsUploadFile", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/upload-file/route.ts" },
   "POST /api/v1/domains/search": { method: "POST", path: "/api/v1/domains/search", methodName: "postApiV1DomainsSearch", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/search/route.ts" },
   "POST /api/v1/eliza/agents": { method: "POST", path: "/api/v1/eliza/agents", methodName: "postApiV1ElizaAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/route.ts" },
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { method: "POST", path: "/api/v1/eliza/agents/{agentId}/api/wallet/{path}", methodName: "postApiV1ElizaAgentsByAgentIdApiWalletByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts" },
@@ -329,11 +333,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/generate-image": { method: "POST", path: "/api/v1/generate-image", methodName: "postApiV1GenerateImage", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-image/route.ts" },
   "POST /api/v1/generate-prompts": { method: "POST", path: "/api/v1/generate-prompts", methodName: "postApiV1GeneratePrompts", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-prompts/route.ts" },
   "POST /api/v1/generate-video": { method: "POST", path: "/api/v1/generate-video", methodName: "postApiV1GenerateVideo", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-video/route.ts" },
-  "POST /api/v1/knowledge": { method: "POST", path: "/api/v1/knowledge", methodName: "postApiV1Knowledge", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/route.ts" },
-  "POST /api/v1/knowledge/pre-upload": { method: "POST", path: "/api/v1/knowledge/pre-upload", methodName: "postApiV1KnowledgePreUpload", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/pre-upload/route.ts" },
-  "POST /api/v1/knowledge/query": { method: "POST", path: "/api/v1/knowledge/query", methodName: "postApiV1KnowledgeQuery", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/query/route.ts" },
-  "POST /api/v1/knowledge/submit": { method: "POST", path: "/api/v1/knowledge/submit", methodName: "postApiV1KnowledgeSubmit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/submit/route.ts" },
-  "POST /api/v1/knowledge/upload-file": { method: "POST", path: "/api/v1/knowledge/upload-file", methodName: "postApiV1KnowledgeUploadFile", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/knowledge/upload-file/route.ts" },
   "POST /api/v1/mcps": { method: "POST", path: "/api/v1/mcps", methodName: "postApiV1Mcps", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/mcps/route.ts" },
   "POST /api/v1/mcps/{mcpId}/publish": { method: "POST", path: "/api/v1/mcps/{mcpId}/publish", methodName: "postApiV1McpsByMcpIdPublish", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/publish/route.ts" },
   "POST /api/v1/messages": { method: "POST", path: "/api/v1/messages", methodName: "postApiV1Messages", responseMode: "mixed", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/messages/route.ts" },
@@ -435,6 +434,8 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/connections/{platform}": { "platform": string | number };
   "DELETE /api/v1/containers/{id}": { "id": string | number };
   "DELETE /api/v1/discord/connections/{id}": { "id": string | number };
+  "DELETE /api/v1/documents/{id}": { "id": string | number };
+  "DELETE /api/v1/documents/pre-upload": Record<never, never>;
   "DELETE /api/v1/eliza/agents/{agentId}": { "agentId": string | number };
   "DELETE /api/v1/eliza/agents/{agentId}/discord": { "agentId": string | number };
   "DELETE /api/v1/eliza/agents/{agentId}/github": { "agentId": string | number };
@@ -443,8 +444,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/gallery/{id}": { "id": string | number };
   "DELETE /api/v1/generate-image": Record<never, never>;
   "DELETE /api/v1/generate-video": Record<never, never>;
-  "DELETE /api/v1/knowledge/{id}": { "id": string | number };
-  "DELETE /api/v1/knowledge/pre-upload": Record<never, never>;
   "DELETE /api/v1/mcps/{mcpId}": { "mcpId": string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { "mcpId": string | number };
   "DELETE /api/v1/oauth/connections/{id}": { "id": string | number };
@@ -533,6 +532,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/discord/oauth": Record<never, never>;
   "GET /api/v1/discord/status": Record<never, never>;
   "GET /api/v1/discovery": Record<never, never>;
+  "GET /api/v1/documents": Record<never, never>;
+  "GET /api/v1/documents/check": Record<never, never>;
   "GET /api/v1/domains": Record<never, never>;
   "GET /api/v1/domains/resolve": Record<never, never>;
   "GET /api/v1/eliza/agents": Record<never, never>;
@@ -565,8 +566,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/generate-image": Record<never, never>;
   "GET /api/v1/generate-video": Record<never, never>;
   "GET /api/v1/jobs/{jobId}": { "jobId": string | number };
-  "GET /api/v1/knowledge": Record<never, never>;
-  "GET /api/v1/knowledge/check": Record<never, never>;
   "GET /api/v1/market/candles/{chain}/{address}": { "chain": string | number; "address": string | number };
   "GET /api/v1/market/portfolio/{chain}/{address}": { "chain": string | number; "address": string | number };
   "GET /api/v1/market/preview/portfolio/{chain}/{address}": { "chain": string | number; "address": string | number };
@@ -692,7 +691,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/browser/sessions": Record<never, never>;
   "POST /api/v1/browser/sessions/{id}/command": { "id": string | number };
   "POST /api/v1/browser/sessions/{id}/navigate": { "id": string | number };
-  "POST /api/v1/character-assistant": Record<never, never>;
   "POST /api/v1/chat": Record<never, never>;
   "POST /api/v1/chat/completions": Record<never, never>;
   "POST /api/v1/connections/{platform}": { "platform": string | number };
@@ -704,6 +702,11 @@ export interface PublicRoutePathParams {
   "POST /api/v1/discord/channels/refresh": Record<never, never>;
   "POST /api/v1/discord/connections": Record<never, never>;
   "POST /api/v1/discord/disconnect": Record<never, never>;
+  "POST /api/v1/documents": Record<never, never>;
+  "POST /api/v1/documents/pre-upload": Record<never, never>;
+  "POST /api/v1/documents/query": Record<never, never>;
+  "POST /api/v1/documents/submit": Record<never, never>;
+  "POST /api/v1/documents/upload-file": Record<never, never>;
   "POST /api/v1/domains/search": Record<never, never>;
   "POST /api/v1/eliza/agents": Record<never, never>;
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
@@ -739,11 +742,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/generate-image": Record<never, never>;
   "POST /api/v1/generate-prompts": Record<never, never>;
   "POST /api/v1/generate-video": Record<never, never>;
-  "POST /api/v1/knowledge": Record<never, never>;
-  "POST /api/v1/knowledge/pre-upload": Record<never, never>;
-  "POST /api/v1/knowledge/query": Record<never, never>;
-  "POST /api/v1/knowledge/submit": Record<never, never>;
-  "POST /api/v1/knowledge/upload-file": Record<never, never>;
   "POST /api/v1/mcps": Record<never, never>;
   "POST /api/v1/mcps/{mcpId}/publish": { "mcpId": string | number };
   "POST /api/v1/messages": Record<never, never>;
@@ -1038,6 +1036,18 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"DELETE /api/v1/discord/connections/{id}", TResponse>("DELETE /api/v1/discord/connections/{id}", options);
   }
 
+  deleteApiV1DocumentsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/documents/{id}">
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/documents/{id}", TResponse>("DELETE /api/v1/documents/{id}", options);
+  }
+
+  deleteApiV1DocumentsPreUpload<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/documents/pre-upload"> = {}
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/documents/pre-upload", TResponse>("DELETE /api/v1/documents/pre-upload", options);
+  }
+
   deleteApiV1ElizaAgentsByAgentId<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}">
   ): Promise<TResponse> {
@@ -1084,18 +1094,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/generate-video"> = {}
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/generate-video", TResponse>("DELETE /api/v1/generate-video", options);
-  }
-
-  deleteApiV1KnowledgeById<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/knowledge/{id}">
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/knowledge/{id}", TResponse>("DELETE /api/v1/knowledge/{id}", options);
-  }
-
-  deleteApiV1KnowledgePreUpload<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/knowledge/pre-upload"> = {}
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/knowledge/pre-upload", TResponse>("DELETE /api/v1/knowledge/pre-upload", options);
   }
 
   deleteApiV1McpsByMcpId<TResponse = unknown>(
@@ -1626,6 +1624,18 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"GET /api/v1/discovery", TResponse>("GET /api/v1/discovery", options);
   }
 
+  getApiV1Documents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/documents"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/documents", TResponse>("GET /api/v1/documents", options);
+  }
+
+  getApiV1DocumentsCheck<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/documents/check"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/documents/check", TResponse>("GET /api/v1/documents/check", options);
+  }
+
   getApiV1Domains<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/domains"> = {}
   ): Promise<TResponse> {
@@ -1816,18 +1826,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/jobs/{jobId}">
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/jobs/{jobId}", TResponse>("GET /api/v1/jobs/{jobId}", options);
-  }
-
-  getApiV1Knowledge<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/knowledge"> = {}
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/knowledge", TResponse>("GET /api/v1/knowledge", options);
-  }
-
-  getApiV1KnowledgeCheck<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/knowledge/check"> = {}
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/knowledge/check", TResponse>("GET /api/v1/knowledge/check", options);
   }
 
   getApiV1MarketCandlesByChainByAddress<TResponse = unknown>(
@@ -2580,12 +2578,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"POST /api/v1/browser/sessions/{id}/navigate", TResponse>("POST /api/v1/browser/sessions/{id}/navigate", options);
   }
 
-  postApiV1CharacterAssistant<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/character-assistant"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/character-assistant", TResponse>("POST /api/v1/character-assistant", options);
-  }
-
   postApiV1Chat<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/chat"> = {}
   ): Promise<TResponse> {
@@ -2650,6 +2642,36 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/discord/disconnect"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/discord/disconnect", TResponse>("POST /api/v1/discord/disconnect", options);
+  }
+
+  postApiV1Documents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/documents"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/documents", TResponse>("POST /api/v1/documents", options);
+  }
+
+  postApiV1DocumentsPreUpload<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/documents/pre-upload"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/documents/pre-upload", TResponse>("POST /api/v1/documents/pre-upload", options);
+  }
+
+  postApiV1DocumentsQuery<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/documents/query"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/documents/query", TResponse>("POST /api/v1/documents/query", options);
+  }
+
+  postApiV1DocumentsSubmit<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/documents/submit"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/documents/submit", TResponse>("POST /api/v1/documents/submit", options);
+  }
+
+  postApiV1DocumentsUploadFile<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/documents/upload-file"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/documents/upload-file", TResponse>("POST /api/v1/documents/upload-file", options);
   }
 
   postApiV1DomainsSearch<TResponse = unknown>(
@@ -2860,36 +2882,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/generate-video"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/generate-video", TResponse>("POST /api/v1/generate-video", options);
-  }
-
-  postApiV1Knowledge<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/knowledge"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/knowledge", TResponse>("POST /api/v1/knowledge", options);
-  }
-
-  postApiV1KnowledgePreUpload<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/knowledge/pre-upload"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/knowledge/pre-upload", TResponse>("POST /api/v1/knowledge/pre-upload", options);
-  }
-
-  postApiV1KnowledgeQuery<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/knowledge/query"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/knowledge/query", TResponse>("POST /api/v1/knowledge/query", options);
-  }
-
-  postApiV1KnowledgeSubmit<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/knowledge/submit"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/knowledge/submit", TResponse>("POST /api/v1/knowledge/submit", options);
-  }
-
-  postApiV1KnowledgeUploadFile<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/knowledge/upload-file"> = {}
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/knowledge/upload-file", TResponse>("POST /api/v1/knowledge/upload-file", options);
   }
 
   postApiV1Mcps<TResponse = unknown>(
@@ -3328,6 +3320,14 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/discord/connections/{id}", options);
   }
 
+  deleteApiV1DocumentsByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/documents/{id}">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/documents/{id}", options);
+  }
+
+  deleteApiV1DocumentsPreUploadRaw(options: PublicRouteCallOptions<"DELETE /api/v1/documents/pre-upload"> = {}): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/documents/pre-upload", options);
+  }
+
   deleteApiV1ElizaAgentsByAgentIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}">): Promise<Response> {
     return this.callRaw("DELETE /api/v1/eliza/agents/{agentId}", options);
   }
@@ -3358,14 +3358,6 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1GenerateVideoRaw(options: PublicRouteCallOptions<"DELETE /api/v1/generate-video"> = {}): Promise<Response> {
     return this.callRaw("DELETE /api/v1/generate-video", options);
-  }
-
-  deleteApiV1KnowledgeByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/knowledge/{id}">): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/knowledge/{id}", options);
-  }
-
-  deleteApiV1KnowledgePreUploadRaw(options: PublicRouteCallOptions<"DELETE /api/v1/knowledge/pre-upload"> = {}): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/knowledge/pre-upload", options);
   }
 
   deleteApiV1McpsByMcpIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/mcps/{mcpId}">): Promise<Response> {
@@ -3720,6 +3712,14 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/discovery", options);
   }
 
+  getApiV1DocumentsRaw(options: PublicRouteCallOptions<"GET /api/v1/documents"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/documents", options);
+  }
+
+  getApiV1DocumentsCheckRaw(options: PublicRouteCallOptions<"GET /api/v1/documents/check"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/documents/check", options);
+  }
+
   getApiV1DomainsRaw(options: PublicRouteCallOptions<"GET /api/v1/domains"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/domains", options);
   }
@@ -3846,14 +3846,6 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1JobsByJobIdRaw(options: PublicRouteCallOptions<"GET /api/v1/jobs/{jobId}">): Promise<Response> {
     return this.callRaw("GET /api/v1/jobs/{jobId}", options);
-  }
-
-  getApiV1KnowledgeRaw(options: PublicRouteCallOptions<"GET /api/v1/knowledge"> = {}): Promise<Response> {
-    return this.callRaw("GET /api/v1/knowledge", options);
-  }
-
-  getApiV1KnowledgeCheckRaw(options: PublicRouteCallOptions<"GET /api/v1/knowledge/check"> = {}): Promise<Response> {
-    return this.callRaw("GET /api/v1/knowledge/check", options);
   }
 
   getApiV1MarketCandlesByChainByAddressRaw(options: PublicRouteCallOptions<"GET /api/v1/market/candles/{chain}/{address}">): Promise<Response> {
@@ -4356,10 +4348,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/browser/sessions/{id}/navigate", options);
   }
 
-  postApiV1CharacterAssistantRaw(options: PublicRouteCallOptions<"POST /api/v1/character-assistant"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/character-assistant", options);
-  }
-
   postApiV1ChatRaw(options: PublicRouteCallOptions<"POST /api/v1/chat"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/chat", options);
   }
@@ -4402,6 +4390,26 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1DiscordDisconnectRaw(options: PublicRouteCallOptions<"POST /api/v1/discord/disconnect"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/discord/disconnect", options);
+  }
+
+  postApiV1DocumentsRaw(options: PublicRouteCallOptions<"POST /api/v1/documents"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/documents", options);
+  }
+
+  postApiV1DocumentsPreUploadRaw(options: PublicRouteCallOptions<"POST /api/v1/documents/pre-upload"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/documents/pre-upload", options);
+  }
+
+  postApiV1DocumentsQueryRaw(options: PublicRouteCallOptions<"POST /api/v1/documents/query"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/documents/query", options);
+  }
+
+  postApiV1DocumentsSubmitRaw(options: PublicRouteCallOptions<"POST /api/v1/documents/submit"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/documents/submit", options);
+  }
+
+  postApiV1DocumentsUploadFileRaw(options: PublicRouteCallOptions<"POST /api/v1/documents/upload-file"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/documents/upload-file", options);
   }
 
   postApiV1DomainsSearchRaw(options: PublicRouteCallOptions<"POST /api/v1/domains/search"> = {}): Promise<Response> {
@@ -4542,26 +4550,6 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1GenerateVideoRaw(options: PublicRouteCallOptions<"POST /api/v1/generate-video"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/generate-video", options);
-  }
-
-  postApiV1KnowledgeRaw(options: PublicRouteCallOptions<"POST /api/v1/knowledge"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/knowledge", options);
-  }
-
-  postApiV1KnowledgePreUploadRaw(options: PublicRouteCallOptions<"POST /api/v1/knowledge/pre-upload"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/knowledge/pre-upload", options);
-  }
-
-  postApiV1KnowledgeQueryRaw(options: PublicRouteCallOptions<"POST /api/v1/knowledge/query"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/knowledge/query", options);
-  }
-
-  postApiV1KnowledgeSubmitRaw(options: PublicRouteCallOptions<"POST /api/v1/knowledge/submit"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/knowledge/submit", options);
-  }
-
-  postApiV1KnowledgeUploadFileRaw(options: PublicRouteCallOptions<"POST /api/v1/knowledge/upload-file"> = {}): Promise<Response> {
-    return this.callRaw("POST /api/v1/knowledge/upload-file", options);
   }
 
   postApiV1McpsRaw(options: PublicRouteCallOptions<"POST /api/v1/mcps"> = {}): Promise<Response> {

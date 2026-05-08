@@ -33,7 +33,10 @@ export function getApiKeyOptional(
 	return typeof value === "string" ? value : undefined;
 }
 
-function stringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+function stringSetting(
+	runtime: IAgentRuntime,
+	key: string,
+): string | undefined {
 	const value = runtime.getSetting(key);
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -261,10 +264,7 @@ export function validateBlueSkyConfig(
 					"true",
 			).toLowerCase() !== "false",
 		postIntervalMin: intValue(
-			readRawField(account, [
-				"postIntervalMin",
-				"BLUESKY_POST_INTERVAL_MIN",
-			]) ??
+			readRawField(account, ["postIntervalMin", "BLUESKY_POST_INTERVAL_MIN"]) ??
 				readRawField(base, ["postIntervalMin", "BLUESKY_POST_INTERVAL_MIN"]) ??
 				(allowEnv
 					? runtime.getSetting("BLUESKY_POST_INTERVAL_MIN")
@@ -272,10 +272,7 @@ export function validateBlueSkyConfig(
 			BLUESKY_POST_INTERVAL_MIN,
 		),
 		postIntervalMax: intValue(
-			readRawField(account, [
-				"postIntervalMax",
-				"BLUESKY_POST_INTERVAL_MAX",
-			]) ??
+			readRawField(account, ["postIntervalMax", "BLUESKY_POST_INTERVAL_MAX"]) ??
 				readRawField(base, ["postIntervalMax", "BLUESKY_POST_INTERVAL_MAX"]) ??
 				(allowEnv
 					? runtime.getSetting("BLUESKY_POST_INTERVAL_MAX")
@@ -306,9 +303,7 @@ export function validateBlueSkyConfig(
 		postImmediately: boolValue(
 			readRawField(account, ["postImmediately", "BLUESKY_POST_IMMEDIATELY"]) ??
 				readRawField(base, ["postImmediately", "BLUESKY_POST_IMMEDIATELY"]) ??
-				(allowEnv
-					? runtime.getSetting("BLUESKY_POST_IMMEDIATELY")
-					: undefined),
+				(allowEnv ? runtime.getSetting("BLUESKY_POST_IMMEDIATELY") : undefined),
 		),
 		maxActionsProcessing: intValue(
 			readRawField(account, [
@@ -394,5 +389,8 @@ export function getPostIntervalRange(
 	max: number;
 } {
 	const config = validateBlueSkyConfig(runtime, accountId);
-	return { min: config.postIntervalMin * 1000, max: config.postIntervalMax * 1000 };
+	return {
+		min: config.postIntervalMin * 1000,
+		max: config.postIntervalMax * 1000,
+	};
 }

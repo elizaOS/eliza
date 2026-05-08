@@ -3,7 +3,6 @@ import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createFeishuConnectorAccountProvider } from "./connector-account-provider";
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
-import { CHAT_STATE_PROVIDER, chatStateProvider } from "./providers";
 import { FeishuService } from "./service";
 
 const feishuPlugin: Plugin = {
@@ -11,7 +10,7 @@ const feishuPlugin: Plugin = {
 	description: "Feishu/Lark client plugin for elizaOS",
 	services: [FeishuService],
 	actions: [],
-	providers: [chatStateProvider],
+	providers: [],
 	tests: [],
 	init: async (
 		_config: Record<string, string>,
@@ -73,8 +72,6 @@ export {
 } from "./formatting";
 export * from "./types";
 export {
-	CHAT_STATE_PROVIDER,
-	chatStateProvider,
 	FEISHU_SERVICE_NAME,
 	FeishuService,
 	MessageManager,

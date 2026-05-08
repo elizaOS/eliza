@@ -13,7 +13,7 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { Route } from "@elizaos/core";
+import type { IAgentRuntime, Route } from "@elizaos/core";
 import {
   BROWSER_WORKSPACE_ROUTE_PATHS,
   handleBrowserWorkspaceRoutes,
@@ -55,7 +55,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 type PluginRouteHandler = NonNullable<Route["handler"]>;
 
 function browserWorkspaceRouteHandler(): PluginRouteHandler {
-  return async (req: unknown, res: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const method = (httpReq.method ?? "GET").toUpperCase();
@@ -65,6 +69,10 @@ function browserWorkspaceRouteHandler(): PluginRouteHandler {
       res: httpRes,
       method,
       pathname: url.pathname,
+      url,
+      state: {
+        runtime: (runtime as IAgentRuntime) ?? null,
+      },
       readJsonBody: httpReadJsonBody,
       json,
       error,

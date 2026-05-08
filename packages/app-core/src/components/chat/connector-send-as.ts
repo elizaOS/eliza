@@ -23,7 +23,7 @@ export interface ConnectorSendAsSnapshot {
   externalId?: string | null;
   status?: string;
   role?: string;
-  purpose?: string;
+  purpose?: string[];
   privacy?: string;
   isDefault?: boolean;
 }
@@ -112,7 +112,7 @@ export function buildConnectorSendAsMetadata(
       : {}),
     ...(account.status ? { status: account.status } : {}),
     ...(account.role ? { role: account.role } : {}),
-    ...(account.purpose ? { purpose: account.purpose } : {}),
+    ...(account.purpose?.length ? { purpose: account.purpose } : {}),
     ...(account.privacy ? { privacy: account.privacy } : {}),
     ...(account.isDefault !== undefined
       ? { isDefault: account.isDefault }

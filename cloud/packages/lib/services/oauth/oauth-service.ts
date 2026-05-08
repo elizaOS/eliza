@@ -17,6 +17,7 @@ import { Errors } from "./errors";
 import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
 import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
+import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 import type {
   GetTokenByPlatformParams,
   GetTokenParams,
@@ -26,6 +27,7 @@ import type {
   OAuthConnection,
   OAuthConnectionRole,
   OAuthProviderInfo,
+  OAuthStandardConnectionRole,
   TokenResult,
 } from "./types";
 
@@ -59,8 +61,11 @@ export function getPreferredActiveConnection(
   userId?: string,
   connectionRole?: OAuthConnectionRole,
 ): OAuthConnection | null {
-  const scopedByRole = connectionRole
-    ? connections.filter((connection) => connection.connectionRole === connectionRole)
+  const normalizedRole = connectionRole ? normalizeOAuthConnectionRole(connectionRole) : undefined;
+  const scopedByRole = normalizedRole
+    ? connections.filter(
+        (connection) => normalizeOAuthConnectionRole(connection.connectionRole) === normalizedRole,
+      )
     : connections;
   if (!userId) {
     return getMostRecentActiveConnection(scopedByRole);
@@ -83,8 +88,11 @@ export function scopeConnectionsForUser(
   userId?: string,
   connectionRole?: OAuthConnectionRole,
 ): OAuthConnection[] {
-  const scopedByRole = connectionRole
-    ? connections.filter((connection) => connection.connectionRole === connectionRole)
+  const normalizedRole = connectionRole ? normalizeOAuthConnectionRole(connectionRole) : undefined;
+  const scopedByRole = normalizedRole
+    ? connections.filter(
+        (connection) => normalizeOAuthConnectionRole(connection.connectionRole) === normalizedRole,
+      )
     : connections;
   if (!userId) {
     return sortConnectionsByRecency(scopedByRole);
@@ -108,12 +116,7 @@ function connectionFromPlatformCredential(cred: PlatformCredential): OAuthConnec
   return {
     id: cred.id,
     userId: cred.user_id || undefined,
-    connectionRole:
-      cred.source_context &&
-      typeof cred.source_context === "object" &&
-      (cred.source_context as Record<string, unknown>).agentGoogleSide === "agent"
-        ? "agent"
-        : "owner",
+    connectionRole: formatOAuthConnectionRole(getStoredConnectionRole(cred.source_context)),
     platform: cred.platform,
     platformUserId: cred.platform_user_id,
     email: cred.platform_email || undefined,
@@ -127,6 +130,14 @@ function connectionFromPlatformCredential(cred: PlatformCredential): OAuthConnec
     tokenExpired: cred.token_expires_at ? new Date(cred.token_expires_at) < new Date() : false,
     source: "platform_credentials",
   };
+}
+
+function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectionRole {
+  if (!sourceContext || typeof sourceContext !== "object") {
+    return "OWNER";
+  }
+  const context = sourceContext as Record<string, unknown>;
+  return normalizeOAuthConnectionRole(context.connectionRole ?? context.agentGoogleSide);
 }
 
 class OAuthService {
@@ -145,6 +156,7 @@ class OAuthService {
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
     const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
     if (!provider) throw Errors.platformNotSupported(platform);
@@ -165,7 +177,7 @@ class OAuthService {
         userId,
         redirectUrl,
         scopes,
-        connectionRole,
+        connectionRole: role,
       });
       return { authUrl: result.authUrl, state: result.state };
     }
@@ -173,7 +185,7 @@ class OAuthService {
     // Legacy provider-specific handlers (only Twitter remains - uses OAuth 1.0a)
     switch (platform) {
       case "twitter":
-        return this.initiateTwitterAuth(organizationId, userId, redirectUrl, connectionRole);
+        return this.initiateTwitterAuth(organizationId, userId, redirectUrl, role);
       default:
         throw Errors.platformNotSupported(platform);
     }
@@ -186,12 +198,13 @@ class OAuthService {
     connectionRole?: OAuthConnectionRole,
   ): Promise<InitiateAuthResult> {
     const { twitterAutomationService } = await import("@/lib/services/twitter-automation");
-    const role = connectionRole === "agent" ? "agent" : "owner";
+    const role = normalizeOAuthConnectionRole(connectionRole);
+    const twitterRole = role === "AGENT" ? "agent" : "owner";
 
     const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
     const result = await twitterAutomationService.generateAuthLink(
       `${baseUrl}/api/v1/twitter/callback`,
-      role,
+      twitterRole,
     );
 
     if (result.flow === "oauth1a") {

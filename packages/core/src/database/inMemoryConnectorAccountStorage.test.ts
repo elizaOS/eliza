@@ -81,9 +81,26 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 			provider: "github",
 			state: "opaque-state",
 			ttlMs: 60_000,
+			metadata: { flowId: "oauth_test" },
 		});
 		expect(flow.stateHash).not.toBe("opaque-state");
 		expect(flow.stateHash).toHaveLength(64);
+		await expect(
+			adapter.getOAuthFlowState({
+				agentId,
+				provider: "github",
+				flowId: "oauth_test",
+				includeExpired: true,
+			}),
+		).resolves.toMatchObject({ stateHash: flow.stateHash });
+		await expect(
+			adapter.updateOAuthFlowState({
+				agentId,
+				provider: "github",
+				flowId: "oauth_test",
+				metadata: { status: "completed" },
+			}),
+		).resolves.toMatchObject({ metadata: { flowId: "oauth_test", status: "completed" } });
 
 		await expect(
 			adapter.consumeOAuthFlowState({
@@ -100,6 +117,13 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 				state: "opaque-state",
 			}),
 		).resolves.toBeNull();
+		await expect(
+			adapter.deleteOAuthFlowState({
+				agentId,
+				provider: "github",
+				flowId: "oauth_test",
+			}),
+		).resolves.toBe(true);
 
 		await expect(
 			adapter.deleteConnectorAccount({

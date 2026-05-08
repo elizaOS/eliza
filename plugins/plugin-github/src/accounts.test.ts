@@ -1,10 +1,12 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import type { ConnectorAccount, IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  readGitHubAccountsWithConnectorCredentials,
   readGitHubAccounts,
   resolveGitHubAccount,
   resolveGitHubAccountSelection,
 } from "./accounts";
+import { createGitHubConnectorAccountProvider } from "./connector-account-provider";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
@@ -14,6 +16,11 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
 }
 
 describe("GitHub account resolution", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("keeps legacy user/agent PATs as role-tagged accounts", () => {
     const accounts = readGitHubAccounts(
       runtime({
@@ -58,4 +65,222 @@ describe("GitHub account resolution", () => {
       token: "reviewer-token",
     });
   });
+
+  it("does not read token-shaped fields from account metadata", () => {
+    const accounts = readGitHubAccounts(
+      runtime({
+        GITHUB_ACCOUNTS: JSON.stringify({
+          reviewer: {
+            role: "user",
+            metadata: { token: "metadata-token", accessToken: "metadata-access" },
+          },
+        }),
+      }),
+    );
+
+    expect(accounts).toEqual([]);
+  });
+
+  it("loads OAuth accounts from connector credential refs", async () => {
+    const vaultRef = "connector.agent-1.github.acct_github_1.oauth_tokens";
+    const account = createConnectorAccount({
+      id: "acct_github_1",
+      role: "AGENT",
+      metadata: {
+        credentialRefs: [{ credentialType: "oauth.tokens", vaultRef }],
+      },
+    });
+    const runtime = runtimeWithConnectorStorage({
+      accounts: [account],
+      vaultValues: new Map([
+        [
+          vaultRef,
+          JSON.stringify({
+            access_token: "github-oauth-token",
+            token_type: "bearer",
+          }),
+        ],
+      ]),
+    });
+
+    const accounts = await readGitHubAccountsWithConnectorCredentials(runtime);
+
+    expect(accounts).toEqual([
+      expect.objectContaining({
+        accountId: "acct_github_1",
+        role: "agent",
+        token: "github-oauth-token",
+      }),
+    ]);
+  });
+
+  it("persists callback tokens as credential refs without returning token metadata", async () => {
+    const vault = new Map<string, string>();
+    const setCredentialRef = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      character: {},
+      getSetting: (key: string) =>
+        ({
+          GITHUB_OAUTH_CLIENT_ID: "github-client",
+          GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
+          GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
+        })[key],
+      getService: (serviceType: string) =>
+        serviceType === "vault"
+          ? {
+              set: async (key: string, value: string) => {
+                vault.set(key, value);
+              },
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+    const manager = {
+      getStorage: () => ({
+        setConnectorAccountCredentialRef: setCredentialRef,
+      }),
+    } as never;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("/login/oauth/access_token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "github-access-token",
+              refresh_token: "github-refresh-token",
+              expires_in: 28800,
+              token_type: "bearer",
+              scope: "repo,read:user",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (href.includes("api.github.com/user")) {
+          return new Response(
+            JSON.stringify({
+              id: 123,
+              login: "ada",
+              name: "Ada",
+              email: "ada@example.com",
+              type: "User",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      }),
+    );
+
+    const provider = createGitHubConnectorAccountProvider(runtime);
+    const result = await provider.completeOAuth?.(
+      {
+        provider: "github",
+        code: "oauth-code",
+        query: {},
+        flow: {
+          id: "flow-1",
+          provider: "github",
+          state: "state-1",
+          status: "pending",
+          accountId: "acct_github_1",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          metadata: { role: "TEAM" },
+        },
+      },
+      manager,
+    );
+
+    const account = result?.account as ConnectorAccount;
+    const metadata = account.metadata as Record<string, unknown>;
+    expect(account.role).toBe("TEAM");
+    expect(JSON.stringify(metadata)).not.toContain("github-access-token");
+    expect(JSON.stringify(metadata)).not.toContain("github-refresh-token");
+    expect(metadata.credentialRefs).toEqual([
+      expect.objectContaining({
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.github.acct_github_1.oauth_tokens",
+      }),
+    ]);
+    expect(vault.get("connector.agent-1.github.acct_github_1.oauth_tokens")).toContain(
+      "github-access-token",
+    );
+    expect(setCredentialRef).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acct_github_1",
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.github.acct_github_1.oauth_tokens",
+      }),
+    );
+  });
 });
+
+function createConnectorAccount(input: {
+  id: string;
+  role: ConnectorAccount["role"];
+  metadata: ConnectorAccount["metadata"];
+}): ConnectorAccount {
+  return {
+    id: input.id,
+    provider: "github",
+    label: "GitHub OAuth",
+    role: input.role,
+    purpose: ["posting"],
+    accessGate: "open",
+    status: "connected",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    metadata: input.metadata,
+  };
+}
+
+function runtimeWithConnectorStorage(options: {
+  accounts: ConnectorAccount[];
+  vaultValues: Map<string, string>;
+}): IAgentRuntime {
+  const storage = {
+    async listAccounts(provider?: string) {
+      return options.accounts.filter((account) => !provider || account.provider === provider);
+    },
+    async getAccount(provider: string, accountId: string) {
+      return (
+        options.accounts.find(
+          (account) => account.provider === provider && account.id === accountId,
+        ) ?? null
+      );
+    },
+    async upsertAccount(account: ConnectorAccount) {
+      return account;
+    },
+    async deleteAccount() {
+      return false;
+    },
+    async createOAuthFlow(flow: unknown) {
+      return flow;
+    },
+    async getOAuthFlow() {
+      return null;
+    },
+    async updateOAuthFlow() {
+      return null;
+    },
+    async deleteOAuthFlow() {
+      return false;
+    },
+  };
+  return {
+    agentId: "agent-1",
+    character: {},
+    getSetting: vi.fn(() => undefined),
+    getService: (serviceType: string) => {
+      if (serviceType === "connector_account_storage") return storage;
+      if (serviceType === "vault") {
+        return {
+          reveal: async (key: string) => options.vaultValues.get(key) ?? "",
+        };
+      }
+      return null;
+    },
+  } as unknown as IAgentRuntime;
+}

@@ -252,7 +252,7 @@ export function parseTriageParams(
 ): TriageParams {
 	const params = getParams(options);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		sinceMs: asNumber(params.sinceMs),
@@ -272,7 +272,7 @@ export function parseListInboxParams(
 ): ListInboxParams {
 	const params = getParams(options);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		limit: asNumber(params.limit),
@@ -400,7 +400,7 @@ export function parseSearchMessagesParams(
 	const params = getParams(options);
 	const sender = parseSenderParam(params.sender);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		sender,

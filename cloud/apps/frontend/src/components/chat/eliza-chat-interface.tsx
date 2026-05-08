@@ -1,6 +1,6 @@
 /**
  * Eliza chat interface component providing full-featured chat functionality.
- * Supports text and voice messages, streaming responses, knowledge base integration,
+ * Supports text and voice messages, streaming responses, document integration,
  * model tier selection, audio playback, and room management.
  *
  * @param props - Chat interface configuration
@@ -64,6 +64,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@elizaos/cloud-ui";
+import type { Voice as CustomVoice } from "@elizaos/cloud-ui/components/voice/types";
+import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui/types/chat-media";
 import {
   ADDITIONAL_IMAGE_MODELS,
   ADDITIONAL_MODELS,
@@ -71,11 +73,9 @@ import {
   formatSelectorProvider,
   IMAGE_TIERS,
 } from "@/lib/models";
-import type { Voice as CustomVoice } from "@elizaos/cloud-ui/components/voice/types";
-import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui/types/chat-media";
 import { useAvailableModels } from "./hooks/use-available-models";
 import { useModelAvailability } from "./hooks/use-model-availability";
-import { PendingKnowledgeProcessor } from "./pending-knowledge-processor";
+import { PendingDocumentsProcessor } from "./pending-documents-processor";
 
 interface Message {
   id: string;
@@ -1028,7 +1028,7 @@ export function ElizaChatInterface({
           formData.append("files", file, file.name);
         }
 
-        const response = await fetch("/api/v1/knowledge/upload-file", {
+        const response = await fetch("/api/v1/documents/upload-file", {
           method: "POST",
           body: formData,
         });
@@ -1296,8 +1296,8 @@ export function ElizaChatInterface({
       <div
         className={`flex flex-col items-center flex-1 min-h-0 w-full px-4 sm:px-6 rounded-2xl bg-[#070707] ${isEmptyChat ? "justify-center" : ""}`}
       >
-        {/* Pending Knowledge Processing Banner */}
-        <PendingKnowledgeProcessor characterId={selectedCharacterId} />
+        {/* Pending document processing banner */}
+        <PendingDocumentsProcessor characterId={selectedCharacterId} />
 
         {/* Loading state */}
         {loadingState.isLoadingMessages && (

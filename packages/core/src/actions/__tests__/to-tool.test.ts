@@ -146,8 +146,8 @@ describe("actionToTool", () => {
 	});
 
 	it("rejects names that are not strict native tool names", () => {
-		expect(() => actionToTool(makeAction({ name: "searchKnowledge" }))).toThrow(
-			/Invalid tool name 'searchKnowledge'/,
+		expect(() => actionToTool(makeAction({ name: "searchDocuments" }))).toThrow(
+			/Invalid tool name 'searchDocuments'/,
 		);
 		expect(() => actionToTool(makeAction({ name: "1_SEARCH" }))).toThrow(
 			/must match/,

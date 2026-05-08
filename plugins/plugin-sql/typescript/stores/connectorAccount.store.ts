@@ -19,7 +19,7 @@ import type {
   UpsertConnectorAccountParams,
   UUID,
 } from "@elizaos/core";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
 import {
   connectorAccountAuditEventsTable,
   connectorAccountCredentialsTable,
@@ -89,6 +89,41 @@ type ConnectorAccountRow = typeof connectorAccountsTable.$inferSelect;
 type ConnectorCredentialRow = typeof connectorAccountCredentialsTable.$inferSelect;
 type ConnectorAuditRow = typeof connectorAccountAuditEventsTable.$inferSelect;
 type OAuthFlowRow = typeof oauthFlowsTable.$inferSelect;
+
+interface GetOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  includeConsumed?: boolean;
+  includeExpired?: boolean;
+  now?: number | Date;
+}
+
+interface UpdateOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  accountId?: string | null;
+  redirectUri?: string | null;
+  codeVerifierRef?: string | null;
+  scopes?: string[];
+  metadata?: ConnectorAccountJsonObject;
+  expiresAt?: number | Date;
+  consumedAt?: number | Date | null;
+  consumedBy?: string | null;
+}
+
+interface DeleteOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+}
 
 function mapAccountRow(row: ConnectorAccountRow): ConnectorAccountRecord {
   return {
@@ -209,16 +244,18 @@ export class ConnectorAccountStore implements Store {
 
   async getAccount(params: GetConnectorAccountParams): Promise<ConnectorAccountRecord | null> {
     return this.ctx.withRetry(async () => {
-      const conditions = [isNull(connectorAccountsTable.deletedAt)];
+      const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
+      const conditions = [
+        eq(connectorAccountsTable.agentId, agentId),
+        isNull(connectorAccountsTable.deletedAt),
+      ];
       if (params.id) {
         conditions.push(eq(connectorAccountsTable.id, params.id));
       } else {
         if (!params.provider || !params.accountKey) {
           throw new Error("getConnectorAccount requires id or provider + accountKey");
         }
-        const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
         conditions.push(
-          eq(connectorAccountsTable.agentId, agentId),
           eq(connectorAccountsTable.provider, params.provider),
           eq(connectorAccountsTable.accountKey, params.accountKey)
         );
@@ -306,16 +343,15 @@ export class ConnectorAccountStore implements Store {
 
   async deleteAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
     return this.ctx.withRetry(async () => {
-      const conditions = [];
+      const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
+      const conditions = [eq(connectorAccountsTable.agentId, agentId)];
       if (params.id) {
         conditions.push(eq(connectorAccountsTable.id, params.id));
       } else {
         if (!params.provider || !params.accountKey) {
           throw new Error("deleteConnectorAccount requires id or provider + accountKey");
         }
-        const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
         conditions.push(
-          eq(connectorAccountsTable.agentId, agentId),
           eq(connectorAccountsTable.provider, params.provider),
           eq(connectorAccountsTable.accountKey, params.accountKey)
         );
@@ -389,6 +425,7 @@ export class ConnectorAccountStore implements Store {
         .from(connectorAccountCredentialsTable)
         .where(
           and(
+            eq(connectorAccountCredentialsTable.agentId, this.ctx.agentId as UUID),
             eq(connectorAccountCredentialsTable.accountId, params.accountId),
             eq(connectorAccountCredentialsTable.credentialType, params.credentialType)
           )
@@ -406,7 +443,12 @@ export class ConnectorAccountStore implements Store {
       const rows = await this.db
         .select()
         .from(connectorAccountCredentialsTable)
-        .where(eq(connectorAccountCredentialsTable.accountId, params.accountId))
+        .where(
+          and(
+            eq(connectorAccountCredentialsTable.agentId, this.ctx.agentId as UUID),
+            eq(connectorAccountCredentialsTable.accountId, params.accountId)
+          )
+        )
         .orderBy(
           desc(connectorAccountCredentialsTable.updatedAt),
           connectorAccountCredentialsTable.id
@@ -545,14 +587,13 @@ export class ConnectorAccountStore implements Store {
     return this.ctx.withRetry(async () => {
       const stateHash = sha256Hex(params.state);
       const now = paramDateToDate(params.now) ?? new Date();
+      const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
       const conditions = [
         eq(oauthFlowsTable.stateHash, stateHash),
+        eq(oauthFlowsTable.agentId, agentId),
         isNull(oauthFlowsTable.consumedAt),
         gt(oauthFlowsTable.expiresAt, now),
       ];
-      if (params.agentId) {
-        conditions.push(eq(oauthFlowsTable.agentId, params.agentId));
-      }
       if (params.provider) {
         conditions.push(eq(oauthFlowsTable.provider, params.provider));
       }
@@ -567,5 +608,111 @@ export class ConnectorAccountStore implements Store {
       const row = updated[0];
       return row ? mapOAuthFlowRow(row) : null;
     }, "ConnectorAccountStore.consumeOAuthFlowState");
+  }
+
+  private async buildOAuthFlowLookupConditions(
+    params:
+      | GetOAuthFlowStateParams
+      | UpdateOAuthFlowStateParams
+      | DeleteOAuthFlowStateParams
+  ): Promise<SQL[]> {
+    const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
+    const conditions: SQL[] = [eq(oauthFlowsTable.agentId, agentId)];
+    if (params.stateHash) {
+      conditions.push(eq(oauthFlowsTable.stateHash, params.stateHash));
+    } else if (params.state) {
+      conditions.push(eq(oauthFlowsTable.stateHash, sha256Hex(params.state)));
+    } else if (params.flowId) {
+      conditions.push(sql`${oauthFlowsTable.metadata}->>'flowId' = ${params.flowId}`);
+    } else {
+      throw new Error("OAuth flow lookup requires state, stateHash, or flowId");
+    }
+    if (params.provider) {
+      conditions.push(eq(oauthFlowsTable.provider, params.provider));
+    }
+    return conditions;
+  }
+
+  async getOAuthFlowState(params: GetOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
+    return this.ctx.withRetry(async () => {
+      const conditions = await this.buildOAuthFlowLookupConditions(params);
+      const now = paramDateToDate(params.now) ?? new Date();
+      if (!params.includeConsumed) {
+        conditions.push(isNull(oauthFlowsTable.consumedAt));
+      }
+      if (!params.includeExpired) {
+        conditions.push(gt(oauthFlowsTable.expiresAt, now));
+      }
+      const rows = await this.db
+        .select()
+        .from(oauthFlowsTable)
+        .where(and(...conditions))
+        .limit(1);
+      const row = rows[0];
+      return row ? mapOAuthFlowRow(row) : null;
+    }, "ConnectorAccountStore.getOAuthFlowState");
+  }
+
+  async updateOAuthFlowState(
+    params: UpdateOAuthFlowStateParams
+  ): Promise<OAuthFlowRecord | null> {
+    return this.ctx.withRetry(async () => {
+      const existing = await this.getOAuthFlowState({
+        ...params,
+        includeConsumed: true,
+        includeExpired: true,
+      });
+      if (!existing) return null;
+
+      const conditions = await this.buildOAuthFlowLookupConditions({
+        stateHash: existing.stateHash,
+        agentId: params.agentId,
+        provider: params.provider,
+      });
+      const updateSet: Partial<typeof oauthFlowsTable.$inferInsert> = {};
+      if (params.accountId !== undefined) updateSet.accountId = params.accountId;
+      if (params.redirectUri !== undefined) updateSet.redirectUri = params.redirectUri;
+      if (params.codeVerifierRef !== undefined) {
+        updateSet.codeVerifierRef = params.codeVerifierRef;
+      }
+      if (params.scopes !== undefined) updateSet.scopes = [...params.scopes];
+      if (params.metadata !== undefined) {
+        updateSet.metadata = {
+          ...existing.metadata,
+          ...params.metadata,
+        };
+      }
+      if (params.expiresAt !== undefined) {
+        updateSet.expiresAt = paramDateToDate(params.expiresAt) ?? new Date();
+      }
+      if (params.consumedAt !== undefined) {
+        updateSet.consumedAt = paramDateToDate(params.consumedAt);
+      }
+      if (params.consumedBy !== undefined) updateSet.consumedBy = params.consumedBy;
+
+      const updated = await this.db
+        .update(oauthFlowsTable)
+        .set(updateSet)
+        .where(and(...conditions))
+        .returning();
+      const row = updated[0];
+      return row ? mapOAuthFlowRow(row) : null;
+    }, "ConnectorAccountStore.updateOAuthFlowState");
+  }
+
+  async deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean> {
+    return this.ctx.withRetry(async () => {
+      const existing = await this.getOAuthFlowState({
+        ...params,
+        includeConsumed: true,
+        includeExpired: true,
+      });
+      if (!existing) return false;
+      const deleted = await this.db
+        .delete(oauthFlowsTable)
+        .where(eq(oauthFlowsTable.stateHash, existing.stateHash))
+        .returning();
+      return deleted.length > 0;
+    }, "ConnectorAccountStore.deleteOAuthFlowState");
   }
 }

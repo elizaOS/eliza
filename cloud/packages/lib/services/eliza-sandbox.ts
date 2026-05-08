@@ -257,7 +257,7 @@ export class ElizaSandboxService {
     const plugins =
       Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
         ? rawConfig.plugins
-        : ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"];
+        : ["@elizaos/plugin-sql", "@elizaos/plugin-elizacloud"];
     const rawSettings =
       rawConfig.settings &&
       typeof rawConfig.settings === "object" &&

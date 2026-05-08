@@ -46,6 +46,7 @@ import { scheduleDraftSendAction } from "../../messaging/triage/actions/schedule
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
+import { refreshMessageConnectorActionDescription } from "./connectorActionUtils.ts";
 
 // ---------------------------------------------------------------------------
 // Op taxonomy
@@ -120,7 +121,11 @@ function numberParam(value: unknown): number | undefined {
 	return undefined;
 }
 
-function clampLimit(value: number | undefined, fallback: number, max: number): number {
+function clampLimit(
+	value: number | undefined,
+	fallback: number,
+	max: number,
+): number {
 	const base = value ?? fallback;
 	return Math.max(1, Math.min(max, Math.floor(base)));
 }
@@ -143,7 +148,10 @@ function isUuidLike(value: string | undefined): value is UUID {
 }
 
 function stripTargetPrefix(value: string): string {
-	return value.trim().replace(/^[@#]+/, "").trim();
+	return value
+		.trim()
+		.replace(/^[@#]+/, "")
+		.trim();
 }
 
 const OP_ALIASES: Record<string, MessageOperation> = {
@@ -215,7 +223,10 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 
 function normalizeOp(value: unknown): MessageOperation | undefined {
 	if (typeof value !== "string") return undefined;
-	const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+	const normalized = value
+		.trim()
+		.toLowerCase()
+		.replace(/[-\s]+/g, "_");
 	if ((MESSAGE_OPS as readonly string[]).includes(normalized)) {
 		return normalized as MessageOperation;
 	}
@@ -227,6 +238,7 @@ function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 		normalizeOp(params.operation) ??
 		normalizeOp(params.subaction) ??
 		normalizeOp(params.subAction) ??
+		normalizeOp(params.__subaction) ??
 		normalizeOp(params.op) ??
 		normalizeOp(params.action);
 	if (explicit) return explicit;
@@ -235,25 +247,43 @@ function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 
 	if (params.draftId && params.sendAt) return "schedule_draft_send";
 	if (params.draftId) return "send_draft";
-	if (params.manageOperation || /\b(unsubscribe|archive|trash|spam|mark read|label)\b/.test(text)) {
+	if (
+		params.manageOperation ||
+		/\b(unsubscribe|archive|trash|spam|mark read|label)\b/.test(text)
+	) {
 		return "manage";
 	}
 	if (/\bdraft\b.*(reply|response)\b/.test(text)) return "draft_reply";
-	if (/\b(draft|compose)\b.*(follow.?up|check.?in|bump)\b/.test(text)) return "draft_followup";
-	if (/\b(respond|reply)\b.*(email|inbox|message)\b/.test(text)) return "respond";
+	if (/\b(draft|compose)\b.*(follow.?up|check.?in|bump)\b/.test(text))
+		return "draft_followup";
+	if (/\b(respond|reply)\b.*(email|inbox|message)\b/.test(text))
+		return "respond";
 	if (/\b(send|confirm)\b.*\bdraft\b/.test(text)) return "send_draft";
-	if (/\b(schedule|defer|send later)\b/.test(text) && /\bdraft\b/.test(text)) return "schedule_draft_send";
-	if (/\b(triage|prioritize|priority|needs reply|needs answer)\b/.test(text)) return "triage";
-	if (/\b(inbox|unread|digest)\b/.test(text) && /\b(list|show|what'?s|summary|summarize)\b/.test(text)) {
+	if (/\b(schedule|defer|send later)\b/.test(text) && /\bdraft\b/.test(text))
+		return "schedule_draft_send";
+	if (/\b(triage|prioritize|priority|needs reply|needs answer)\b/.test(text))
+		return "triage";
+	if (
+		/\b(inbox|unread|digest)\b/.test(text) &&
+		/\b(list|show|what'?s|summary|summarize)\b/.test(text)
+	) {
 		return "list_inbox";
 	}
 
 	const hasContact = textParam(params.contact) || textParam(params.entityId);
-	if (hasContact && /\b(read|recent|history|conversation|messages with|chat with|dms? with)\b/.test(text)) {
+	if (
+		hasContact &&
+		/\b(read|recent|history|conversation|messages with|chat with|dms? with)\b/.test(
+			text,
+		)
+	) {
 		return "read_with_contact";
 	}
 
-	if ((params.query || /\b(search|find)\b/.test(text)) && /\b(inbox|email|gmail|mail)\b/.test(text)) {
+	if (
+		(params.query || /\b(search|find)\b/.test(text)) &&
+		/\b(inbox|email|gmail|mail)\b/.test(text)
+	) {
 		return "search_inbox";
 	}
 	if (params.query || /\b(search|find)\b/.test(text)) return "search";
@@ -265,7 +295,8 @@ function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 	if (/\bleave\b/.test(text)) return "leave";
 	if (/\b(user info|lookup user|get user)\b/.test(text)) return "get_user";
 	if (/\blist\b.*(server|workspace|guild)\b/.test(text)) return "list_servers";
-	if (/\blist\b.*(channel|room|chat|group)\b/.test(text)) return "list_channels";
+	if (/\blist\b.*(channel|room|chat|group)\b/.test(text))
+		return "list_channels";
 	if (/\b(read|recent|history)\b/.test(text)) return "read_channel";
 	return "send";
 }
@@ -303,7 +334,9 @@ type ConnectorWithHooks = MessageConnector & {
 	) => Promise<Memory[]> | Memory[];
 	listServers?: (
 		context: MessageConnectorQueryContext,
-	) => Promise<Array<{ id?: string; name?: string }>> | Array<{ id?: string; name?: string }>;
+	) =>
+		| Promise<Array<{ id?: string; name?: string }>>
+		| Array<{ id?: string; name?: string }>;
 	joinHandler?: (
 		runtime: IAgentRuntime,
 		payload: {
@@ -367,7 +400,9 @@ function listMessageConnectors(runtime: IAgentRuntime): ConnectorWithHooks[] {
 		.map(
 			(source): ConnectorWithHooks => ({
 				source,
-				label: source.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+				label: source
+					.replace(/[_-]+/g, " ")
+					.replace(/\b\w/g, (c) => c.toUpperCase()),
 				capabilities: ["send_message"],
 				supportedTargetKinds: [],
 				contexts: [],
@@ -377,13 +412,31 @@ function listMessageConnectors(runtime: IAgentRuntime): ConnectorWithHooks[] {
 
 function connectorAliases(connector: MessageConnector): string[] {
 	const aliases: string[] = [connector.source, connector.label];
-	const metadataAliases = (connector.metadata as { aliases?: unknown } | undefined)?.aliases;
+	if (connector.accountId) aliases.push(connector.accountId);
+	if (connector.account?.accountId) aliases.push(connector.account.accountId);
+	if (connector.account?.label) aliases.push(connector.account.label);
+	if (connector.account?.name) aliases.push(connector.account.name);
+	const metadataAliases = (
+		connector.metadata as { aliases?: unknown } | undefined
+	)?.aliases;
 	if (Array.isArray(metadataAliases)) {
 		for (const alias of metadataAliases) {
-			if (typeof alias === "string" && alias.trim().length > 0) aliases.push(alias);
+			if (typeof alias === "string" && alias.trim().length > 0)
+				aliases.push(alias);
 		}
 	}
 	return aliases;
+}
+
+function connectorMatchesAccount(
+	connector: ConnectorWithHooks,
+	accountId: string | undefined,
+): boolean {
+	if (!accountId) return true;
+	const normalized = normalizeComparable(accountId);
+	return connectorAliases(connector).some(
+		(alias) => normalizeComparable(alias) === normalized,
+	);
 }
 
 function findConnectorBySource(
@@ -414,12 +467,15 @@ function buildQueryContext(
 	state: State | undefined,
 	source: string | undefined,
 	target?: TargetInfo,
+	connector?: ConnectorWithHooks,
 ): MessageConnectorQueryContext {
 	return {
 		runtime,
 		roomId: message.roomId,
 		entityId: message.entityId,
 		source,
+		accountId: connector?.accountId,
+		account: connector?.account,
 		target,
 		contexts: getActiveRoutingContextsForTurn(state, message),
 		metadata: { messageText: message.content?.text },
@@ -431,39 +487,77 @@ function selectConnectorForOp(
 	source: string | undefined,
 	currentSource: string | undefined,
 	op: MessageOperation,
+	accountId?: string,
 ): { connector: ConnectorWithHooks } | { error: ActionResult } {
 	if (connectors.length === 0) {
 		return {
-			error: opFailure(op, "NO_CONNECTORS_REGISTERED", `MESSAGE op=${op} has no registered connectors.`),
+			error: opFailure(
+				op,
+				"NO_CONNECTORS_REGISTERED",
+				`MESSAGE op=${op} has no registered connectors.`,
+			),
 		};
 	}
 	const explicit = source
-		? findConnectorBySource(connectors, source)
+		? connectors.find(
+				(connector) =>
+					connectorAliases(connector).some(
+						(alias) =>
+							normalizeComparable(alias) === normalizeComparable(source),
+					) && connectorMatchesAccount(connector, accountId),
+			)
 		: undefined;
+	const sourceExists = source
+		? Boolean(findConnectorBySource(connectors, source))
+		: false;
 	if (source && !explicit) {
 		return {
 			error: opFailure(
 				op,
-				"SOURCE_CONNECTOR_NOT_FOUND",
-				`No message connector for source "${source}". Available: ${connectors.map((c) => c.source).join(", ")}.`,
+				sourceExists
+					? "ACCOUNT_CONNECTOR_NOT_FOUND"
+					: "SOURCE_CONNECTOR_NOT_FOUND",
+				sourceExists
+					? `No message connector for account "${accountId}" on source "${source}".`
+					: `No message connector for source "${source}". Available: ${connectors.map((c) => c.source).join(", ")}.`,
 			),
 		};
 	}
 	if (explicit) return { connector: explicit };
 	const fallback = currentSource
-		? findConnectorBySource(connectors, currentSource)
+		? connectors.find(
+				(connector) =>
+					findConnectorBySource([connector], currentSource) &&
+					connectorMatchesAccount(connector, accountId),
+			)
 		: undefined;
 	if (fallback) return { connector: fallback };
-	if (connectors.length > 1) {
+	const accountScoped = connectors.filter((connector) =>
+		connectorMatchesAccount(connector, accountId),
+	);
+	if (accountId && accountScoped.length === 1)
+		return { connector: accountScoped[0]! };
+	if (accountId && accountScoped.length === 0) {
+		return {
+			error: opFailure(
+				op,
+				"ACCOUNT_CONNECTOR_NOT_FOUND",
+				`MESSAGE op=${op} has no connector for account "${accountId}".`,
+			),
+		};
+	}
+	if (accountScoped.length > 1) {
 		return {
 			error: opFailure(
 				op,
 				"SOURCE_AMBIGUOUS",
-				`MESSAGE op=${op} needs a source. Choose one of: ${connectors.map((c) => c.source).join(", ")}.`,
+				`MESSAGE op=${op} needs a source/account. Choose one of: ${accountScoped
+					.map((c) => (c.accountId ? `${c.source}:${c.accountId}` : c.source))
+					.join(", ")}.`,
 			),
 		};
 	}
-	return { connector: connectors[0]! };
+	return { connector: accountScoped[0]! };
 }
 
 // ---------------------------------------------------------------------------
@@ -494,7 +588,14 @@ function explicitTargetFromParams(
 	const serverId = textParam(params.serverId) ?? textParam(params.server);
 	const threadId = textParam(params.threadId) ?? textParam(params.thread);
 
-	if (!targetText && !roomId && !channelId && !entityId && !serverId && !threadId) {
+	if (
+		!targetText &&
+		!roomId &&
+		!channelId &&
+		!entityId &&
+		!serverId &&
+		!threadId
+	) {
 		return {};
 	}
 	return {
@@ -530,17 +631,38 @@ async function resolveOptionalTarget(
 	op: MessageOperation,
 ): Promise<{ target?: TargetInfo; error?: ActionResult }> {
 	const explicit = explicitTargetFromParams(connector.source, params);
-	const context = buildQueryContext(runtime, message, state, connector.source, explicit.target);
+	if (explicit.target) explicit.target.accountId ??= connector.accountId;
+	const context = buildQueryContext(
+		runtime,
+		message,
+		state,
+		connector.source,
+		explicit.target,
+		connector,
+	);
 
 	if (explicit.query && connector.resolveTargets) {
 		try {
 			const matches = await connector.resolveTargets(explicit.query, context);
-			if (matches.length === 1) return { target: matches[0]!.target };
+			if (matches.length === 1) {
+				const target = {
+					...matches[0]!.target,
+					accountId: matches[0]!.target.accountId ?? connector.accountId,
+				};
+				return { target };
+			}
 			if (matches.length > 1) {
-				const sorted = [...matches].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+				const sorted = [...matches].sort(
+					(a, b) => (b.score ?? 0) - (a.score ?? 0),
+				);
 				const [top, second] = sorted;
 				if (top && second && (top.score ?? 0) > (second.score ?? 0) + 0.12) {
-					return { target: top.target };
+					return {
+						target: {
+							...top.target,
+							accountId: top.target.accountId ?? connector.accountId,
+						},
+					};
 				}
 				return {
 					error: opFailure(
@@ -570,12 +692,22 @@ async function resolveOptionalTarget(
 // Result helpers
 // ---------------------------------------------------------------------------
 
-function opFailure(op: MessageOperation, code: string, text: string, extra?: Record<string, unknown>): ActionResult {
+function opFailure(
+	op: MessageOperation,
+	code: string,
+	text: string,
+	extra?: Record<string, unknown>,
+): ActionResult {
 	return {
 		success: false,
 		text,
 		values: { success: false, error: code },
-		data: { actionName: "MESSAGE", operation: op, error: code, ...(extra ?? {}) },
+		data: {
+			actionName: "MESSAGE",
+			operation: op,
+			error: code,
+			...(extra ?? {}),
+		},
 	};
 }
 
@@ -599,7 +731,11 @@ function invalidOpResult(op: MessageOperation, text: string): ActionResult {
 function opErrorWrap(op: MessageOperation, error: unknown): ActionResult {
 	const text = error instanceof Error ? error.message : String(error);
 	logger.error(`[MESSAGE/${op}] ${text}`);
-	return opFailure(op, `MESSAGE_${op.toUpperCase()}_FAILED`, `MESSAGE op=${op} failed: ${text}`);
+	return opFailure(
+		op,
+		`MESSAGE_${op.toUpperCase()}_FAILED`,
+		`MESSAGE op=${op} failed: ${text}`,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +752,7 @@ type SourceResolution = "exact" | "inferred" | "defaulted";
 type NormalizedSendParams = {
 	target?: string;
 	source?: string;
+	accountId?: string;
 	sourceResolution: SourceResolution;
 	targetKind?: MessageTargetKind;
 	message: string;
@@ -635,7 +772,11 @@ type SendCandidate = {
 };
 
 type TargetResolution =
-	| { status: "resolved"; candidate: SendCandidate; sourceResolution: SourceResolution }
+	| {
+			status: "resolved";
+			candidate: SendCandidate;
+			sourceResolution: SourceResolution;
+	  }
 	| {
 			status: "ambiguous";
 			text: string;
@@ -690,7 +831,9 @@ function connectorSupportsKind(
 ): boolean {
 	if (!kind || connector.supportedTargetKinds.length === 0) return true;
 	const aliases = kindAliases(kind);
-	return connector.supportedTargetKinds.some((k) => aliases.has(String(k).toLowerCase()));
+	return connector.supportedTargetKinds.some((k) =>
+		aliases.has(String(k).toLowerCase()),
+	);
 }
 
 function inferSourceFromTarget(
@@ -698,15 +841,21 @@ function inferSourceFromTarget(
 	connectors: ConnectorWithHooks[],
 ): { target?: string; source?: string } {
 	if (!target) return {};
-	const prefixMatch = target.match(/^([a-z0-9_-][a-z0-9 _-]{1,40})\s*[:/]\s*(.+)$/i);
+	const prefixMatch = target.match(
+		/^([a-z0-9_-][a-z0-9 _-]{1,40})\s*[:/]\s*(.+)$/i,
+	);
 	if (prefixMatch?.[1] && prefixMatch[2]) {
 		const connector = findConnectorBySource(connectors, prefixMatch[1]);
-		if (connector) return { source: connector.source, target: prefixMatch[2].trim() };
+		if (connector)
+			return { source: connector.source, target: prefixMatch[2].trim() };
 	}
-	const onMatch = target.match(/^(.+?)\s+(?:on|via|through)\s+([a-z0-9 _-]{2,40})$/i);
+	const onMatch = target.match(
+		/^(.+?)\s+(?:on|via|through)\s+([a-z0-9 _-]{2,40})$/i,
+	);
 	if (onMatch?.[1] && onMatch[2]) {
 		const connector = findConnectorBySource(connectors, onMatch[2]);
-		if (connector) return { source: connector.source, target: onMatch[1].trim() };
+		if (connector)
+			return { source: connector.source, target: onMatch[1].trim() };
 	}
 	return { target };
 }
@@ -719,7 +868,10 @@ function inferSourceFromText(
 	for (const connector of connectors) {
 		for (const alias of connectorAliases(connector)) {
 			const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			const pattern = new RegExp(`\\b(?:on|via|through|using)\\s+${escaped}\\b`, "i");
+			const pattern = new RegExp(
+				`\\b(?:on|via|through|using)\\s+${escaped}\\b`,
+				"i",
+			);
 			if (pattern.test(text)) return connector.source;
 		}
 	}
@@ -754,7 +906,9 @@ function recentTextFromState(state: State | undefined): string {
 	return chunks.slice(-4000);
 }
 
-function inferTargetFromRecentConversation(state: State | undefined): string | undefined {
+function inferTargetFromRecentConversation(
+	state: State | undefined,
+): string | undefined {
 	const recent = recentTextFromState(state);
 	if (!recent) return undefined;
 	const matches = Array.from(recent.matchAll(/[@#][\w.-]{2,}/g));
@@ -777,6 +931,52 @@ function normalizeAttachments(value: unknown): Media[] | undefined {
 	return attachments.length > 0 ? attachments : undefined;
 }
 
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
+}
+
+function connectorSendAsMetadata(
+	message: Memory,
+): Record<string, unknown> | undefined {
+	const metadata = recordValue(message.content?.metadata);
+	return (
+		recordValue(metadata?.connectorSendAs) ??
+		recordValue(metadata?.connectorAccount)
+	);
+}
+
+function accountIdFromParams(
+	raw: ParamRecord,
+	message: Memory,
+): string | undefined {
+	const metadata = recordValue(message.content?.metadata);
+	const sendAs = connectorSendAsMetadata(message);
+	return (
+		textParam(raw.accountId) ??
+		textParam(raw.connectorAccountId) ??
+		textParam(sendAs?.accountId) ??
+		textParam(metadata?.accountId)
+	);
+}
+
+function sourceFromSendAs(message: Memory): string | undefined {
+	const sendAs = connectorSendAsMetadata(message);
+	return textParam(sendAs?.source);
+}
+
+function sourceFromParams(
+	raw: ParamRecord,
+	message: Memory,
+): string | undefined {
+	return (
+		textParam(raw.source) ??
+		textParam(raw.platform) ??
+		sourceFromSendAs(message)
+	);
+}
+
 function normalizeSendParams(
 	raw: ParamRecord,
 	message: Memory,
@@ -789,7 +989,8 @@ function normalizeSendParams(
 		textParam(message.content.target) ??
 		inferTargetFromText(message.content.text) ??
 		inferTargetFromRecentConversation(state);
-	let source = textParam(raw.source) ?? textParam(raw.platform);
+	let source = sourceFromParams(raw, message);
+	const accountId = accountIdFromParams(raw, message);
 	let sourceResolution: SourceResolution = source ? "exact" : "inferred";
 
 	const fromTarget = inferSourceFromTarget(target, connectors);
@@ -810,6 +1011,7 @@ function normalizeSendParams(
 	return {
 		target,
 		source,
+		accountId,
 		sourceResolution,
 		targetKind,
 		message: messageText,
@@ -836,7 +1038,9 @@ function queryMatchesCandidate(
 			candidate.target.threadId,
 			candidate.target.serverId,
 			...(candidate.metadata
-				? Object.values(candidate.metadata).filter((v): v is string => typeof v === "string")
+				? Object.values(candidate.metadata).filter(
+						(v): v is string => typeof v === "string",
+					)
 				: []),
 		]
 			.filter(Boolean)
@@ -857,7 +1061,10 @@ function scoreHookCandidate(
 	baseScore: number,
 	reasons: string[],
 ): number {
-	let score = typeof raw.score === "number" && Number.isFinite(raw.score) ? raw.score : baseScore;
+	let score =
+		typeof raw.score === "number" && Number.isFinite(raw.score)
+			? raw.score
+			: baseScore;
 	if (query && queryMatchesCandidate(query, raw)) score += 0.12;
 	if (targetKind && kindsCompatible(targetKind, raw.kind)) score += 0.08;
 	if (sourceWasExact) score += 0.08;
@@ -876,14 +1083,25 @@ function normalizeHookCandidate(
 ): SendCandidate | null {
 	if (!kindsCompatible(targetKind, raw.kind)) return null;
 	if (!queryMatchesCandidate(query, raw)) return null;
-	const target = { ...raw.target, source: raw.target.source || connector.source } as TargetInfo;
+	const target = {
+		...raw.target,
+		source: raw.target.source || connector.source,
+		accountId: raw.target.accountId ?? connector.accountId,
+	} as TargetInfo;
 	return {
 		connector,
 		target,
 		label: raw.label ?? targetLabel(target),
 		kind: raw.kind ?? targetKind,
 		description: raw.description,
-		score: scoreHookCandidate(raw, query, targetKind, sourceWasExact, baseScore, reasons),
+		score: scoreHookCandidate(
+			raw,
+			query,
+			targetKind,
+			sourceWasExact,
+			baseScore,
+			reasons,
+		),
 		reasons,
 	};
 }
@@ -943,7 +1161,10 @@ async function collectHookTargets(
 
 	if (
 		connector.listRooms &&
-		(query || !targetKind || kindAliases(targetKind).has("room") || kindAliases(targetKind).has("channel"))
+		(query ||
+			!targetKind ||
+			kindAliases(targetKind).has("room") ||
+			kindAliases(targetKind).has("channel"))
 	) {
 		try {
 			const rooms = await connector.listRooms(context);
@@ -977,12 +1198,17 @@ function explicitSendTarget(
 ): SendCandidate {
 	let kind = targetKind;
 	let value = rawTarget.trim();
-	const fieldMatch = value.match(/^(room|channel|server|entity|user|contact|thread|group|email|phone):(.+)$/i);
+	const fieldMatch = value.match(
+		/^(room|channel|server|entity|user|contact|thread|group|email|phone):(.+)$/i,
+	);
 	if (fieldMatch?.[1] && fieldMatch[2]) {
 		kind = normalizeTargetKind(fieldMatch[1]);
 		value = fieldMatch[2].trim();
 	}
-	const target = { source: connector.source } as TargetInfo;
+	const target = {
+		source: connector.source,
+		accountId: connector.accountId,
+	} as TargetInfo;
 	const stripped = stripTargetPrefix(value);
 
 	if (kind === "room") {
@@ -1029,7 +1255,8 @@ function componentString(
 ): string | undefined {
 	for (const key of keys) {
 		const value = component.data?.[key];
-		if (typeof value === "string" && value.trim().length > 0) return value.trim();
+		if (typeof value === "string" && value.trim().length > 0)
+			return value.trim();
 		if (typeof value === "number") return String(value);
 	}
 	return undefined;
@@ -1068,9 +1295,14 @@ async function collectEntityCandidates(
 		for (const connector of connectors) {
 			if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
 			const matchingComponent = entity.components?.find(
-				(c) => normalizeComparable(c.type) === normalizeComparable(connector.source),
+				(c) =>
+					normalizeComparable(c.type) === normalizeComparable(connector.source),
 			);
-			const target = { source: connector.source, entityId: entity.id as UUID } as TargetInfo;
+			const target = {
+				source: connector.source,
+				accountId: connector.accountId,
+				entityId: entity.id as UUID,
+			} as TargetInfo;
 			if (matchingComponent) {
 				const channelId = componentString(matchingComponent, [
 					"channelId",
@@ -1114,11 +1346,13 @@ async function currentRoomCandidate(
 	const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
 	const target = {
 		source: connector.source,
+		accountId: connector.accountId,
 		roomId: (room?.id ?? message.roomId) as UUID,
 	} as TargetInfo;
 	if (room?.channelId) target.channelId = room.channelId;
 	if (room?.serverId) target.serverId = room.serverId;
-	const roomSource = typeof room?.source === "string" ? room.source : message.content.source;
+	const roomSource =
+		typeof room?.source === "string" ? room.source : message.content.source;
 	const sourceMatches =
 		normalizeComparable(roomSource) === normalizeComparable(connector.source);
 	return {
@@ -1136,6 +1370,7 @@ function dedupeCandidates(candidates: SendCandidate[]): SendCandidate[] {
 	for (const c of candidates) {
 		const key = [
 			c.connector.source,
+			c.connector.accountId,
 			c.target.roomId,
 			c.target.channelId,
 			c.target.serverId,
@@ -1167,7 +1402,8 @@ async function resolveAdminTarget(
 	connectors: ConnectorWithHooks[],
 	params: NormalizedSendParams,
 ): Promise<SendCandidate | null> {
-	if (!params.target || !ADMIN_TARGETS.has(params.target.toLowerCase())) return null;
+	if (!params.target || !ADMIN_TARGETS.has(params.target.toLowerCase()))
+		return null;
 	const source = params.source ?? "client_chat";
 	const connector = findConnectorBySource(connectors, source);
 	if (!connector) return null;
@@ -1176,7 +1412,11 @@ async function resolveAdminTarget(
 		stringToUuid(`${runtime.character?.name ?? runtime.agentId}-admin-entity`);
 	return {
 		connector,
-		target: { source: connector.source, entityId: ownerId as UUID } as TargetInfo,
+		target: {
+			source: connector.source,
+			accountId: connector.accountId,
+			entityId: ownerId as UUID,
+		} as TargetInfo,
 		label: params.target,
 		kind: "contact",
 		score: 1,
@@ -1200,8 +1440,15 @@ async function resolveSendTarget(
 		};
 	}
 
-	const exact = findConnectorBySource(connectors, params.source);
-	if (params.source && !exact) {
+	const sourceScoped = params.source
+		? connectors.filter((connector) =>
+				connectorAliases(connector).some(
+					(alias) =>
+						normalizeComparable(alias) === normalizeComparable(params.source),
+				),
+			)
+		: connectors;
+	if (params.source && sourceScoped.length === 0) {
 		return {
 			status: "missing_connector",
 			text: `No message connector for source "${params.source}". Available: ${connectors.map((c) => c.source).join(", ")}.`,
@@ -1209,8 +1456,42 @@ async function resolveSendTarget(
 			sourceResolution: "exact",
 		};
 	}
+	const accountScoped = sourceScoped.filter((connector) =>
+		connectorMatchesAccount(connector, params.accountId),
+	);
+	if (params.accountId && accountScoped.length === 0) {
+		return {
+			status: "missing_connector",
+			text: `No message connector for account "${params.accountId}"${params.source ? ` on ${params.source}` : ""}.`,
+			error: "ACCOUNT_CONNECTOR_NOT_FOUND",
+			sourceResolution: params.sourceResolution,
+		};
+	}
+	if (params.source && !params.accountId && accountScoped.length > 1) {
+		return {
+			status: "ambiguous",
+			text:
+				`MESSAGE op=send needs a connector account for ${params.source}. Choose one of: ` +
+				accountScoped
+					.map((connector) =>
+						connector.accountId
+							? `${connector.source}:${connector.accountId}`
+							: connector.source,
+					)
+					.join(", "),
+			candidates: [],
+			sourceResolution: "exact",
+		};
+	}
+	const exact =
+		params.source && accountScoped.length === 1 ? accountScoped[0] : undefined;
 
-	const adminCandidate = await resolveAdminTarget(runtime, message, connectors, params);
+	const adminCandidate = await resolveAdminTarget(
+		runtime,
+		message,
+		accountScoped,
+		params,
+	);
 	if (adminCandidate) {
 		return {
 			status: "resolved",
@@ -1222,7 +1503,7 @@ async function resolveSendTarget(
 	const sourceWasExact = Boolean(params.source && exact);
 	let considered = exact
 		? [exact]
-		: connectors.filter((c) => connectorSupportsKind(c, params.targetKind));
+		: accountScoped.filter((c) => connectorSupportsKind(c, params.targetKind));
 	if (considered.length === 0) {
 		return {
 			status: "unsupported",
@@ -1239,11 +1520,24 @@ async function resolveSendTarget(
 	}
 
 	const candidates: SendCandidate[] = [];
-	const context = buildQueryContext(runtime, message, state, params.source);
 
 	for (const connector of considered) {
+		const context = buildQueryContext(
+			runtime,
+			message,
+			state,
+			connector.source,
+			undefined,
+			connector,
+		);
 		candidates.push(
-			...(await collectHookTargets(connector, params.target, context, params.targetKind, sourceWasExact)),
+			...(await collectHookTargets(
+				connector,
+				params.target,
+				context,
+				params.targetKind,
+				sourceWasExact,
+			)),
 		);
 	}
 	candidates.push(
@@ -1261,12 +1555,23 @@ async function resolveSendTarget(
 	if (params.target) {
 		for (const connector of considered) {
 			candidates.push(
-				explicitSendTarget(connector, params.target, params.targetKind, sourceWasExact),
+				explicitSendTarget(
+					connector,
+					params.target,
+					params.targetKind,
+					sourceWasExact,
+				),
 			);
 		}
 	} else if (considered.length === 1) {
 		candidates.push(
-			await currentRoomCandidate(runtime, message, state, considered[0]!, sourceWasExact),
+			await currentRoomCandidate(
+				runtime,
+				message,
+				state,
+				considered[0]!,
+				sourceWasExact,
+			),
 		);
 	}
 
@@ -1284,7 +1589,10 @@ async function resolveSendTarget(
 	const ambiguous = sorted.filter(
 		(c) => c !== top && Math.abs(top.score - c.score) <= AMBIGUITY_DELTA,
 	);
-	if (ambiguous.length > 0 && (!params.source || top.score >= AMBIGUITY_SCORE)) {
+	if (
+		ambiguous.length > 0 &&
+		(!params.source || top.score >= AMBIGUITY_SCORE)
+	) {
 		const choices = [top, ...ambiguous];
 		return {
 			status: "ambiguous",
@@ -1301,7 +1609,9 @@ async function resolveSendTarget(
 			status: "ambiguous",
 			text:
 				"MESSAGE op=send needs a more specific target/source. Available connectors:\n" +
-				connectors.map((c, i) => `${i + 1}. ${c.source} (${c.label})`).join("\n"),
+				connectors
+					.map((c, i) => `${i + 1}. ${c.source} (${c.label})`)
+					.join("\n"),
 			candidates: sorted,
 			sourceResolution: params.sourceResolution,
 		};
@@ -1325,16 +1635,24 @@ function buildContent(params: NormalizedSendParams): Content {
 	const content: Content = {
 		text: params.message,
 		source: params.source,
-		metadata: { urgency: params.urgency, targetKind: params.targetKind },
+		metadata: {
+			urgency: params.urgency,
+			targetKind: params.targetKind,
+			accountId: params.accountId,
+		},
 	};
 	if (params.attachments) content.attachments = params.attachments;
 	return content;
 }
 
-function applyContentShaping(connector: ConnectorWithHooks, content: Content): Content {
+function applyContentShaping(
+	connector: ConnectorWithHooks,
+	content: Content,
+): Content {
 	let text = typeof content.text === "string" ? content.text : "";
 	const shaping = connector.contentShaping;
-	if (text && typeof shaping?.postProcess === "function") text = shaping.postProcess(text);
+	if (text && typeof shaping?.postProcess === "function")
+		text = shaping.postProcess(text);
 	const maxLength = shaping?.constraints?.maxLength;
 	if (
 		text &&
@@ -1348,8 +1666,16 @@ function applyContentShaping(connector: ConnectorWithHooks, content: Content): C
 	return text === content.text ? content : { ...content, text };
 }
 
-function channelTypeForKind(kind: MessageTargetKind | undefined): Content["channelType"] {
-	if (kind === "user" || kind === "contact" || kind === "email" || kind === "phone") return ChannelType.DM;
+function channelTypeForKind(
+	kind: MessageTargetKind | undefined,
+): Content["channelType"] {
+	if (
+		kind === "user" ||
+		kind === "contact" ||
+		kind === "email" ||
+		kind === "phone"
+	)
+		return ChannelType.DM;
 	if (kind === "thread") return ChannelType.THREAD;
 	if (kind === "server") return ChannelType.WORLD;
 	return ChannelType.GROUP;
@@ -1364,7 +1690,12 @@ async function ensureOutboundRoom(
 ): Promise<{ roomId: UUID; worldId: UUID }> {
 	const serverPart = target.serverId ?? "default";
 	const targetPart =
-		target.roomId ?? target.channelId ?? target.entityId ?? target.threadId ?? label ?? "default";
+		target.roomId ??
+		target.channelId ??
+		target.entityId ??
+		target.threadId ??
+		label ??
+		"default";
 	const worldId = stringToUuid(
 		`${runtime.agentId}:${source}:message-world:${serverPart}`,
 	) as UUID;
@@ -1423,7 +1754,13 @@ async function persistOutboundMemory(params: {
 	if (!params.persist) return params.sentMemory ?? undefined;
 	const { runtime, source, target, label, kind, content, sentMemory } = params;
 	try {
-		const { roomId, worldId } = await ensureOutboundRoom(runtime, source, target, label, kind);
+		const { roomId, worldId } = await ensureOutboundRoom(
+			runtime,
+			source,
+			target,
+			label,
+			kind,
+		);
 		const platformMessageId =
 			typeof sentMemory?.metadata === "object"
 				? (sentMemory.metadata as { messageIdFull?: string }).messageIdFull
@@ -1445,7 +1782,8 @@ async function persistOutboundMemory(params: {
 				...content,
 				...(sentMemory?.content ?? {}),
 				source,
-				channelType: sentMemory?.content?.channelType ?? channelTypeForKind(kind),
+				channelType:
+					sentMemory?.content?.channelType ?? channelTypeForKind(kind),
 			},
 			metadata: {
 				type: "message",
@@ -1464,7 +1802,11 @@ async function persistOutboundMemory(params: {
 		return { ...memory, id };
 	} catch (error) {
 		runtime.logger.warn(
-			{ src: "MESSAGE/send", err: error instanceof Error ? error.message : String(error), source },
+			{
+				src: "MESSAGE/send",
+				err: error instanceof Error ? error.message : String(error),
+				source,
+			},
 			"Message sent but target room persistence failed",
 		);
 		return params.sentMemory ?? undefined;
@@ -1480,7 +1822,15 @@ async function persistCurrentChatMemory(args: {
 	targetMemory?: Memory;
 	platformMessageId?: string;
 }): Promise<void> {
-	const { runtime, message, source, label, kind, targetMemory, platformMessageId } = args;
+	const {
+		runtime,
+		message,
+		source,
+		label,
+		kind,
+		targetMemory,
+		platformMessageId,
+	} = args;
 	try {
 		const memoryId = stringToUuid(
 			[
@@ -1530,7 +1880,11 @@ async function persistCurrentChatMemory(args: {
 		await runtime.upsertMemory(memory, "messages");
 	} catch (error) {
 		runtime.logger.warn(
-			{ src: "MESSAGE/send", err: error instanceof Error ? error.message : String(error), source },
+			{
+				src: "MESSAGE/send",
+				err: error instanceof Error ? error.message : String(error),
+				source,
+			},
 			"Message sent but action memory persistence failed",
 		);
 	}
@@ -1546,7 +1900,11 @@ async function handleSend(
 	const normalized = normalizeSendParams(params, message, state, connectors);
 
 	if (!normalized.message && !normalized.attachments) {
-		return opFailure("send", "INVALID_PARAMETERS", "MESSAGE op=send requires message text or attachments.");
+		return opFailure(
+			"send",
+			"INVALID_PARAMETERS",
+			"MESSAGE op=send requires message text or attachments.",
+		);
 	}
 	if (!VALID_URGENCIES.has(normalized.urgency)) {
 		return opFailure(
@@ -1556,9 +1914,16 @@ async function handleSend(
 		);
 	}
 
-	const resolution = await resolveSendTarget(runtime, message, state, connectors, normalized);
+	const resolution = await resolveSendTarget(
+		runtime,
+		message,
+		state,
+		connectors,
+		normalized,
+	);
 	if (resolution.status !== "resolved") {
-		const code = resolution.status === "ambiguous" ? "TARGET_AMBIGUOUS" : resolution.error;
+		const code =
+			resolution.status === "ambiguous" ? "TARGET_AMBIGUOUS" : resolution.error;
 		return opFailure("send", code, resolution.text, {
 			sourceResolution: resolution.sourceResolution,
 			candidates:
@@ -1598,7 +1963,9 @@ async function handleSend(
 		});
 	} catch (error) {
 		const text = error instanceof Error ? error.message : String(error);
-		logger.error(`[MESSAGE/send] failed via ${selected.connector.source}: ${text}`);
+		logger.error(
+			`[MESSAGE/send] failed via ${selected.connector.source}: ${text}`,
+		);
 		return opFailure(
 			"send",
 			"MESSAGE_SEND_FAILED",
@@ -1626,18 +1993,22 @@ async function handleSend(
 		platformMessageId,
 	});
 
-	return opSuccess("send", `Message sent via ${selected.connector.label} to ${selected.label}.`, {
-		source: selected.connector.source,
-		target,
-		targetLabel: selected.label,
-		targetKind: selected.kind,
-		sourceResolution: resolution.sourceResolution,
-		resolutionReasons: selected.reasons,
-		thread: normalized.thread,
-		urgency: normalized.urgency,
-		memoryId: persisted?.id,
-		responseMessageId: platformMessageId,
-	});
+	return opSuccess(
+		"send",
+		`Message sent via ${selected.connector.label} to ${selected.label}.`,
+		{
+			source: selected.connector.source,
+			target,
+			targetLabel: selected.label,
+			targetKind: selected.kind,
+			sourceResolution: resolution.sourceResolution,
+			resolutionReasons: selected.reasons,
+			thread: normalized.thread,
+			urgency: normalized.urgency,
+			memoryId: persisted?.id,
+			responseMessageId: platformMessageId,
+		},
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -1646,11 +2017,11 @@ async function handleSend(
 // Two paths:
 //   1. If the connector exposes fetchMessages, use it.
 //   2. Otherwise, fall back to local `messages` table by resolving the room
-//      from the channel/source params (covers the original READ_CHANNEL case).
+//      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
-const READ_CHANNEL_DEFAULT_LIMIT = 50;
-const READ_CHANNEL_MAX_LIMIT = 200;
+const CHANNEL_READ_DEFAULT_LIMIT = 50;
+const CHANNEL_READ_MAX_LIMIT = 200;
 
 function parseDateParam(value: string | undefined): number | undefined {
 	if (!value) return undefined;
@@ -1659,6 +2030,44 @@ function parseDateParam(value: string | undefined): number | undefined {
 	const num = Number(value);
 	if (!Number.isNaN(num)) return num > 1e12 ? num : num * 1000;
 	return undefined;
+}
+
+function connectorReadRequest(
+	target: TargetInfo,
+	params: ParamRecord,
+	limit: number,
+) {
+	return {
+		target,
+		limit,
+		cursor: textParam(params.cursor),
+		before: textParam(params.before),
+		after: textParam(params.after),
+	};
+}
+
+async function fetchRecentMessagesFromConnector(
+	connector: ConnectorWithHooks,
+	context: MessageConnectorQueryContext,
+	params: ParamRecord,
+	limit: number,
+): Promise<Memory[]> {
+	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
+	const recent = await connector.listRecentTargets(context);
+	const memories: Memory[] = [];
+	for (const r of recent.slice(0, 8)) {
+		const target = {
+			...r.target,
+			accountId: r.target.accountId ?? connector.accountId,
+		};
+		memories.push(
+			...((await connector.fetchMessages(
+				{ ...context, target },
+				connectorReadRequest(target, params, limit),
+			)) as Memory[]),
+		);
+	}
+	return memories;
 }
 
 async function resolveLocalChannelRoom(
@@ -1699,18 +2108,37 @@ async function handleReadChannel(
 	params: ParamRecord,
 ): Promise<ActionResult> {
 	const connectors = listMessageConnectors(runtime);
-	const source = textParam(params.source) ?? textParam(params.platform);
+	const source = sourceFromParams(params, message);
+	const accountId = accountIdFromParams(params, message);
 	const channel = textParam(params.channel) ?? textParam(params.target);
-	const limit = clampLimit(numberParam(params.limit), READ_CHANNEL_DEFAULT_LIMIT, READ_CHANNEL_MAX_LIMIT);
+	const limit = clampLimit(
+		numberParam(params.limit),
+		CHANNEL_READ_DEFAULT_LIMIT,
+		CHANNEL_READ_MAX_LIMIT,
+	);
 	const range = textParam(params.range);
 
 	// Prefer in-process connector fetchMessages when available.
-	const hookConnectors = connectors.filter((c) => typeof c.fetchMessages === "function");
-	const selectedConnector = source
-		? findConnectorBySource(hookConnectors, source)
-		: hookConnectors.length === 1
-			? hookConnectors[0]
+	const hookConnectors = connectors.filter(
+		(c) => typeof c.fetchMessages === "function",
+	);
+	const selectedResult =
+		source || accountId
+			? selectConnectorForOp(
+					hookConnectors,
+					source,
+					message.content?.source,
+					"read_channel",
+					accountId,
+				)
 			: undefined;
+	if (selectedResult && "error" in selectedResult) return selectedResult.error;
+	const selectedConnector =
+		selectedResult && "connector" in selectedResult
+			? selectedResult.connector
+			: hookConnectors.length === 1
+				? hookConnectors[0]
+				: undefined;
 
 	if (selectedConnector?.fetchMessages) {
 		const resolved = await resolveOptionalTarget(
@@ -1722,30 +2150,27 @@ async function handleReadChannel(
 			"read_channel",
 		);
 		if (resolved.error) return resolved.error;
-		const context = buildQueryContext(runtime, message, state, selectedConnector.source, resolved.target);
+		const context = buildQueryContext(
+			runtime,
+			message,
+			state,
+			selectedConnector.source,
+			resolved.target,
+			selectedConnector,
+		);
 		try {
 			let memories: Memory[] = [];
 			if (resolved.target) {
 				memories = (await selectedConnector.fetchMessages(context, {
-					target: resolved.target,
-					limit,
-					cursor: textParam(params.cursor),
-					before: textParam(params.before),
-					after: textParam(params.after),
+					...connectorReadRequest(resolved.target, params, limit),
 				})) as Memory[];
-			} else if (selectedConnector.listRecentTargets) {
-				const recent = await selectedConnector.listRecentTargets(context);
-				for (const r of recent.slice(0, 8)) {
-					memories.push(
-						...((await selectedConnector.fetchMessages(context, {
-							target: r.target,
-							limit,
-							cursor: textParam(params.cursor),
-							before: textParam(params.before),
-							after: textParam(params.after),
-						})) as Memory[]),
-					);
-				}
+			} else {
+				memories = await fetchRecentMessagesFromConnector(
+					selectedConnector,
+					context,
+					params,
+					limit,
+				);
 				memories = memories
 					.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 					.slice(0, limit);
@@ -1760,7 +2185,60 @@ async function handleReadChannel(
 		}
 	}
 
-	// Local-room fallback (replaces former READ_CHANNEL on agent runtime).
+	if (!channel && hookConnectors.length > 1) {
+		const results = await Promise.allSettled(
+			hookConnectors.map(async (connector) => {
+				const context = buildQueryContext(
+					runtime,
+					message,
+					state,
+					connector.source,
+					undefined,
+					connector,
+				);
+				return {
+					connector,
+					memories: await fetchRecentMessagesFromConnector(
+						connector,
+						context,
+						params,
+						limit,
+					),
+				};
+			}),
+		);
+		const memories: Memory[] = [];
+		const sources: Array<{ source: string; accountId?: string; count: number }> = [];
+		for (const result of results) {
+			if (result.status === "rejected") {
+				logger.warn(
+					`[MESSAGE/read_channel] recent connector read failed: ${
+						result.reason instanceof Error
+							? result.reason.message
+							: String(result.reason)
+					}`,
+				);
+				continue;
+			}
+			memories.push(...result.value.memories);
+			sources.push({
+				source: result.value.connector.source,
+				accountId: result.value.connector.accountId,
+				count: result.value.memories.length,
+			});
+		}
+		memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+		const limited = memories.slice(0, limit);
+		return opSuccess(
+			"read_channel",
+			limited.length
+				? `Read ${limited.length} recent messages across ${sources.length} connectors.`
+				: "No recent conversations found.",
+			{ sources, memories: limited },
+		);
+	}
+
+	// Local-room fallback (replaces former read-channel leaf behavior on agent runtime).
 	if (!channel) {
 		return opFailure(
 			"read_channel",
@@ -1787,7 +2265,11 @@ async function handleReadChannel(
 			...(range === "dates"
 				? {
 						start: parseDateParam(textParam(params.from)),
-						end: parseDateParam(textParam(params.to)),
+						end: parseDateParam(
+							textParam(params.until) ??
+								textParam(params.end) ??
+								textParam(params.to),
+						),
 					}
 				: {}),
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
@@ -1844,26 +2326,33 @@ type RelationshipsServiceLike = {
 	}) => Promise<RelationshipsGraphSnapshot>;
 };
 
-function getRelationshipsServiceLike(runtime: IAgentRuntime): RelationshipsServiceLike | null {
+function getRelationshipsServiceLike(
+	runtime: IAgentRuntime,
+): RelationshipsServiceLike | null {
 	const candidates: Array<RelationshipsServiceLike | null> = [
-		(runtime.getService?.("relationships_graph") as unknown as RelationshipsServiceLike | null) ?? null,
-		(runtime.getService?.("relationships") as unknown as RelationshipsServiceLike | null) ?? null,
+		(runtime.getService?.(
+			"relationships_graph",
+		) as unknown as RelationshipsServiceLike | null) ?? null,
+		(runtime.getService?.(
+			"relationships",
+		) as unknown as RelationshipsServiceLike | null) ?? null,
 	];
 	for (const candidate of candidates) {
-		if (candidate && typeof candidate.getGraphSnapshot === "function") return candidate;
+		if (candidate && typeof candidate.getGraphSnapshot === "function")
+			return candidate;
 	}
 	return null;
 }
 
 async function handleReadWithContact(
 	runtime: IAgentRuntime,
-	_message: Memory,
+	message: Memory,
 	_state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
-	const platform = textParam(params.platform);
+	const platform = textParam(params.platform) ?? sourceFromSendAs(message);
 	const limit = clampLimit(
 		numberParam(params.limit),
 		READ_WITH_CONTACT_DEFAULT_LIMIT,
@@ -1895,7 +2384,14 @@ async function handleReadWithContact(
 		});
 		const candidates = snapshot?.people ?? [];
 		if (entityId) {
-			person = candidates.find((p) => p.primaryEntityId === entityId || p.memberEntityIds.includes(entityId as UUID)) ?? candidates[0] ?? null;
+			person =
+				candidates.find(
+					(p) =>
+						p.primaryEntityId === entityId ||
+						p.memberEntityIds.includes(entityId as UUID),
+				) ??
+				candidates[0] ??
+				null;
 		} else {
 			person = candidates[0] ?? null;
 		}
@@ -1935,7 +2431,8 @@ async function handleReadWithContact(
 				if (!room) continue;
 				const roomRecord = room as Room & { name?: string; source?: string };
 				const roomPlatform = roomRecord.source ?? room.type ?? "unknown";
-				if (platform && roomPlatform.toLowerCase() !== platform.toLowerCase()) continue;
+				if (platform && roomPlatform.toLowerCase() !== platform.toLowerCase())
+					continue;
 				const memories = (await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
@@ -1948,7 +2445,9 @@ async function handleReadWithContact(
 					roomId: room.id,
 					roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
 					messageCount: memories.length,
-					lastMessageAt: last?.createdAt ? new Date(last.createdAt).toISOString() : null,
+					lastMessageAt: last?.createdAt
+						? new Date(last.createdAt).toISOString()
+						: null,
 				});
 				totalMessages += memories.length;
 			}
@@ -1990,7 +2489,8 @@ const SEARCH_MATCH_THRESHOLD = 0.6;
 const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "conversations",
 	label: "Conversations",
-	description: "Search stored conversation messages across connected platforms.",
+	description:
+		"Search stored conversation messages across connected platforms.",
 	contexts: ["social_posting", "documents"],
 	filters: [
 		{
@@ -2014,7 +2514,9 @@ const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
 
 function ensureConversationSearchCategory(runtime: IAgentRuntime): void {
 	try {
-		runtime.getSearchCategory(CONVERSATION_SEARCH_CATEGORY.category, { includeDisabled: true });
+		runtime.getSearchCategory(CONVERSATION_SEARCH_CATEGORY.category, {
+			includeDisabled: true,
+		});
 	} catch {
 		runtime.registerSearchCategory(CONVERSATION_SEARCH_CATEGORY);
 	}
@@ -2026,17 +2528,35 @@ async function handleSearch(
 	state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
-	const query = textParam(params.query) ?? textParam(params.searchTerm) ?? textParam(params.content);
-	if (!query) return opFailure("search", "INVALID_PARAMETERS", "MESSAGE op=search requires a query.");
-	const limit = clampLimit(numberParam(params.limit), SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
-	const source = textParam(params.source) ?? textParam(params.platform);
+	const query =
+		textParam(params.query) ??
+		textParam(params.searchTerm) ??
+		textParam(params.content);
+	if (!query)
+		return opFailure(
+			"search",
+			"INVALID_PARAMETERS",
+			"MESSAGE op=search requires a query.",
+		);
+	const limit = clampLimit(
+		numberParam(params.limit),
+		SEARCH_DEFAULT_LIMIT,
+		SEARCH_MAX_LIMIT,
+	);
+	const source = sourceFromParams(params, message);
 	const entityId = textParam(params.entityId);
 
 	// Channel-mode: when a connector source supports searchMessages and the user
 	// asked for a connector-scoped search, passthrough.
 	const connectors = connectorsWithHook(runtime, "searchMessages");
 	if (source && connectors.length > 0) {
-		const selection = selectConnectorForOp(connectors, source, message.content?.source, "search");
+		const selection = selectConnectorForOp(
+			connectors,
+			source,
+			message.content?.source,
+			"search",
+			accountIdFromParams(params, message),
+		);
 		if ("error" in selection) {
 			// fall back to semantic search if explicit source not found
 			if (!findConnectorBySource(listMessageConnectors(runtime), source)) {
@@ -2044,9 +2564,23 @@ async function handleSearch(
 			}
 		} else {
 			const connector = selection.connector;
-			const resolved = await resolveOptionalTarget(connector, runtime, message, state, params, "search");
+			const resolved = await resolveOptionalTarget(
+				connector,
+				runtime,
+				message,
+				state,
+				params,
+				"search",
+			);
 			if (resolved.error) return resolved.error;
-			const context = buildQueryContext(runtime, message, state, connector.source, resolved.target);
+			const context = buildQueryContext(
+				runtime,
+				message,
+				state,
+				connector.source,
+				resolved.target,
+				connector,
+			);
 			try {
 				const memories = (await connector.searchMessages!(context, {
 					query,
@@ -2070,12 +2604,18 @@ async function handleSearch(
 	// Conversation-mode: semantic search across stored messages.
 	ensureConversationSearchCategory(runtime);
 	try {
-		const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text: query });
+		const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+			text: query,
+		});
 		const embedding = Array.isArray(embeddingResult)
 			? embeddingResult
 			: (embeddingResult as { embedding?: number[] })?.embedding;
 		if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-			return opFailure("search", "EMBEDDING_FAILED", "Failed to generate search embedding.");
+			return opFailure(
+				"search",
+				"EMBEDDING_FAILED",
+				"Failed to generate search embedding.",
+			);
 		}
 
 		const searchParams: Parameters<IAgentRuntime["searchMemories"]>[0] = {
@@ -2144,19 +2684,35 @@ async function handleListChannels(
 	const connectors = connectorsWithHook(runtime, "listRooms");
 	const selection = selectConnectorForOp(
 		connectors,
-		textParam(params.source),
+		sourceFromParams(params, message),
 		message.content?.source,
 		"list_channels",
+		accountIdFromParams(params, message),
 	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
-	const context = buildQueryContext(runtime, message, state, connector.source);
+	const context = buildQueryContext(
+		runtime,
+		message,
+		state,
+		connector.source,
+		undefined,
+		connector,
+	);
 	try {
 		const targets = await connector.listRooms!(context);
-		return opSuccess("list_channels", `Listed ${targets.length} channels from ${connector.label}.`, {
-			source: connector.source,
-			channels: targets.map((t) => ({ label: t.label, kind: t.kind, target: t.target })),
-		});
+		return opSuccess(
+			"list_channels",
+			`Listed ${targets.length} channels from ${connector.label}.`,
+			{
+				source: connector.source,
+				channels: targets.map((t) => ({
+					label: t.label,
+					kind: t.kind,
+					target: t.target,
+				})),
+			},
+		);
 	} catch (error) {
 		return opErrorWrap("list_channels", error);
 	}
@@ -2171,19 +2727,31 @@ async function handleListServers(
 	const connectors = connectorsWithHook(runtime, "listServers");
 	const selection = selectConnectorForOp(
 		connectors,
-		textParam(params.source),
+		sourceFromParams(params, message),
 		message.content?.source,
 		"list_servers",
+		accountIdFromParams(params, message),
 	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
-	const context = buildQueryContext(runtime, message, state, connector.source);
+	const context = buildQueryContext(
+		runtime,
+		message,
+		state,
+		connector.source,
+		undefined,
+		connector,
+	);
 	try {
 		const servers = await connector.listServers!(context);
-		return opSuccess("list_servers", `Listed ${servers.length} servers from ${connector.label}.`, {
-			source: connector.source,
-			servers,
-		});
+		return opSuccess(
+			"list_servers",
+			`Listed ${servers.length} servers from ${connector.label}.`,
+			{
+				source: connector.source,
+				servers,
+			},
+		);
 	} catch (error) {
 		return opErrorWrap("list_servers", error);
 	}
@@ -2204,13 +2772,21 @@ async function handleJoinLeave(
 	const connectors = connectorsWithHook(runtime, hookName);
 	const selection = selectConnectorForOp(
 		connectors,
-		textParam(params.source),
+		sourceFromParams(params, message),
 		message.content?.source,
 		op,
+		accountIdFromParams(params, message),
 	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
-	const resolved = await resolveOptionalTarget(connector, runtime, message, state, params, op);
+	const resolved = await resolveOptionalTarget(
+		connector,
+		runtime,
+		message,
+		state,
+		params,
+		op,
+	);
 	if (resolved.error) return resolved.error;
 	const payload = {
 		roomId: resolved.target?.roomId,
@@ -2223,10 +2799,15 @@ async function handleJoinLeave(
 	try {
 		if (op === "join") {
 			const room = (await connector.joinHandler!(runtime, payload)) ?? null;
-			return opSuccess("join", `Joined via ${connector.label}.`, { source: connector.source, room });
+			return opSuccess("join", `Joined via ${connector.label}.`, {
+				source: connector.source,
+				room,
+			});
 		}
 		await connector.leaveHandler!(runtime, payload);
-		return opSuccess("leave", `Left via ${connector.label}.`, { source: connector.source });
+		return opSuccess("leave", `Left via ${connector.label}.`, {
+			source: connector.source,
+		});
 	} catch (error) {
 		return opErrorWrap(op, error);
 	}
@@ -2245,37 +2826,77 @@ async function handleMessageMutation(
 ): Promise<ActionResult> {
 	const messageId = textParam(params.messageId) ?? textParam(params.id);
 	if (!messageId) {
-		return opFailure(op, "INVALID_PARAMETERS", `MESSAGE op=${op} requires messageId.`);
+		return opFailure(
+			op,
+			"INVALID_PARAMETERS",
+			`MESSAGE op=${op} requires messageId.`,
+		);
 	}
-	const hookName = ({
-		react: "reactHandler",
-		edit: "editHandler",
-		delete: "deleteHandler",
-		pin: "pinHandler",
-	} as const)[op];
+	const hookName = (
+		{
+			react: "reactHandler",
+			edit: "editHandler",
+			delete: "deleteHandler",
+			pin: "pinHandler",
+		} as const
+	)[op];
 	const connectors = connectorsWithHook(runtime, hookName);
-	const selection = selectConnectorForOp(connectors, textParam(params.source), message.content?.source, op);
+	const selection = selectConnectorForOp(
+		connectors,
+		sourceFromParams(params, message),
+		message.content?.source,
+		op,
+		accountIdFromParams(params, message),
+	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
-	const resolved = await resolveOptionalTarget(connector, runtime, message, state, params, op);
+	const resolved = await resolveOptionalTarget(
+		connector,
+		runtime,
+		message,
+		state,
+		params,
+		op,
+	);
 	if (resolved.error) return resolved.error;
-	const target = resolved.target ?? { source: connector.source };
+	const target = resolved.target ?? {
+		source: connector.source,
+		accountId: connector.accountId,
+	};
 
 	try {
 		if (op === "react") {
 			const emoji = textParam(params.emoji) ?? textParam(params.reaction);
-			if (!emoji) return opFailure("react", "INVALID_PARAMETERS", "MESSAGE op=react requires emoji.");
+			if (!emoji)
+				return opFailure(
+					"react",
+					"INVALID_PARAMETERS",
+					"MESSAGE op=react requires emoji.",
+				);
 			await connector.reactHandler!(runtime, { target, messageId, emoji });
 		} else if (op === "edit") {
 			const text = textParam(params.text) ?? textParam(params.message);
-			if (!text) return opFailure("edit", "INVALID_PARAMETERS", "MESSAGE op=edit requires text.");
+			if (!text)
+				return opFailure(
+					"edit",
+					"INVALID_PARAMETERS",
+					"MESSAGE op=edit requires text.",
+				);
 			const updated = await connector.editHandler!(runtime, {
 				target,
 				messageId,
 				content: { text, source: connector.source },
 			});
-			if (updated && typeof updated === "object" && "id" in updated && updated.id) {
-				await runtime.updateMemory({ ...(updated as Memory), id: updated.id as UUID });
+			if (
+				updated &&
+				typeof updated === "object" &&
+				"id" in updated &&
+				updated.id
+			) {
+				await runtime.updateMemory({
+					...(updated as Memory),
+					id: updated.id as UUID,
+				});
 			}
 		} else if (op === "delete") {
 			await connector.deleteHandler!(runtime, { target, messageId });
@@ -2319,17 +2940,24 @@ async function handleGetUser(
 	const connectors = connectorsWithHook(runtime, "getUser");
 	const selection = selectConnectorForOp(
 		connectors,
-		textParam(params.source),
+		sourceFromParams(params, message),
 		message.content?.source,
 		"get_user",
+		accountIdFromParams(params, message),
 	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
 	try {
-		const user = await connector.getUser!(runtime, { userId, username, handle });
+		const user = await connector.getUser!(runtime, {
+			userId,
+			username,
+			handle,
+		});
 		return opSuccess(
 			"get_user",
-			user ? `Found user on ${connector.label}.` : `No user found on ${connector.label}.`,
+			user
+				? `Found user on ${connector.label}.`
+				: `No user found on ${connector.label}.`,
 			{ source: connector.source, user },
 		);
 	} catch (error) {
@@ -2377,7 +3005,14 @@ async function delegateToTriage(
 	responses: Parameters<Action["handler"]>[5],
 ): Promise<ActionResult> {
 	const action = TRIAGE_OP_TO_ACTION[op];
-	const result = await action.handler(runtime, message, state, options, callback, responses);
+	const result = await action.handler(
+		runtime,
+		message,
+		state,
+		options,
+		callback,
+		responses,
+	);
 	const normalized: ActionResult = result ?? {
 		success: true,
 		text: `MESSAGE operation=${op} completed.`,
@@ -2405,6 +3040,31 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
 	},
 	{
+		name: "subaction",
+		description: "Alias for operation, accepted for planner compatibility.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "subAction",
+		description: "Alias for operation, accepted for planner compatibility.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "__subaction",
+		description:
+			"Legacy alias for operation, accepted for planner compatibility.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "op",
+		description: "Alias for operation, accepted for planner compatibility.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
 		name: "source",
 		description:
 			"Connector source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
@@ -2412,10 +3072,25 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		schema: { type: "string" },
 	},
 	{
+		name: "accountId",
+		description:
+			"Optional connector account id for multi-account message connectors.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
 		name: "sources",
-		description: "Optional inbox sources for op=triage, list_inbox, or search_inbox.",
+		description:
+			"Optional inbox sources for op=triage, list_inbox, or search_inbox.",
 		required: false,
 		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "folder",
+		description:
+			"Optional inbox folder hint for triage, list_inbox, search_inbox, draft, or respond operations.",
+		required: false,
+		schema: { type: "string" },
 	},
 	{
 		name: "target",
@@ -2433,7 +3108,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "channel",
-		description: "Channel/room/group reference for read_channel, list_channels, join, leave.",
+		description:
+			"Channel/room/group reference for read_channel, list_channels, join, leave.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2487,7 +3163,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "entityId",
-		description: "Person/entity ID for read_with_contact, get_user, or scoped search.",
+		description:
+			"Person/entity ID for read_with_contact, get_user, or scoped search.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2541,7 +3218,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "content",
-		description: "Inbox search text or message lookup hint for triage/draft/respond.",
+		description:
+			"Inbox search text or message lookup hint for triage/draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2553,7 +3231,26 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "body",
-		description: "Draft or response body for draft_reply, draft_followup, respond.",
+		description:
+			"Draft or response body for draft_reply, draft_followup, respond.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "reply",
+		description: "Alias for body when drafting or responding to a message.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "replyText",
+		description: "Alias for body when drafting or responding to a message.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "messageBody",
+		description: "Alias for body when drafting or responding to a message.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2571,13 +3268,15 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "draftId",
-		description: "Draft identifier for op=send_draft or op=schedule_draft_send.",
+		description:
+			"Draft identifier for op=send_draft or op=schedule_draft_send.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "confirmed",
-		description: "Whether the user explicitly confirmed sending for op=send_draft.",
+		description:
+			"Whether the user explicitly confirmed sending for op=send_draft.",
 		required: false,
 		schema: { type: "boolean" },
 	},
@@ -2589,7 +3288,21 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "messageId",
-		description: "Platform/full message ID or stored memory ID for react/edit/delete/pin.",
+		description:
+			"Platform/full message ID or stored memory ID for react/edit/delete/pin/respond.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "inReplyToId",
+		description:
+			"Alias for messageId when drafting or responding to a message.",
+		required: false,
+		schema: { type: "string" },
+	},
+	{
+		name: "id",
+		description: "Alias for messageId, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2651,7 +3364,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "persist",
-		description: "Whether op=send persists outbound content to target room memory. Defaults true.",
+		description:
+			"Whether op=send persists outbound content to target room memory. Defaults true.",
 		required: false,
 		schema: { type: "boolean" },
 	},
@@ -2670,12 +3384,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "from",
 		description: "Start date/timestamp for op=read_channel range=dates.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "to",
-		description: "End date/timestamp for op=read_channel range=dates.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2705,7 +3413,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "until",
-		description: "End date for op=search_inbox.",
+		description:
+			"End date/timestamp for op=read_channel range=dates or op=search_inbox.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -2735,6 +3444,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 
 const spec = getActionSpec("MESSAGE");
 
+function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
+	refreshMessageConnectorActionDescription(action, runtime, {
+		baseDescription: MESSAGE_DESCRIPTION,
+		baseCompressed: MESSAGE_COMPRESSED,
+	});
+}
+
 export const messageAction: Action = {
 	name: "MESSAGE",
 	similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
@@ -2745,6 +3461,7 @@ export const messageAction: Action = {
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
 	validate: async (runtime, message, state) => {
+		refreshDescriptions(messageAction, runtime);
 		return hasActionContextOrKeyword(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 			keywords: [
@@ -2782,6 +3499,7 @@ export const messageAction: Action = {
 		});
 	},
 	handler: async (runtime, message, state, options, callback, responses) => {
+		refreshDescriptions(messageAction, runtime);
 		const params = paramsFromOptions(options);
 		const op = inferOp(message, params);
 
@@ -2817,7 +3535,15 @@ export const messageAction: Action = {
 			case "send_draft":
 			case "schedule_draft_send":
 			case "manage":
-				return delegateToTriage(op, runtime, message, state, options, callback, responses);
+				return delegateToTriage(
+					op,
+					runtime,
+					message,
+					state,
+					options,
+					callback,
+					responses,
+				);
 			default: {
 				const unreachable: never = op;
 				return invalidOpResult(

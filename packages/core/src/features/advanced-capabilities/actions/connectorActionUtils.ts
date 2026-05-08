@@ -173,11 +173,15 @@ export function refreshMessageConnectorActionDescription(
 	options: {
 		baseDescription: string;
 		baseCompressed: string;
-		hook: keyof MessageConnector;
+		hook?: keyof MessageConnector;
 		connectorOnly?: boolean;
 	},
 ): void {
-	const connectors = getMessageConnectorsWithHook(runtime, options.hook);
+	const connectors = options.hook
+		? getMessageConnectorsWithHook(runtime, options.hook)
+		: ((runtime as IAgentRuntime & {
+				getMessageConnectors?: () => MessageConnector[];
+			}).getMessageConnectors?.call(runtime) ?? []);
 	const visible = connectors
 		.slice(0, 12)
 		.map((connector) =>
@@ -275,9 +279,15 @@ function normalizeConnectorAlias(value: string | undefined): string {
 function connectorAliases(connector: {
 	source: string;
 	label: string;
+	accountId?: string;
+	account?: { accountId?: string; label?: string; name?: string };
 	metadata?: unknown;
 }): string[] {
 	const aliases = [connector.source, connector.label];
+	if (connector.accountId) aliases.push(connector.accountId);
+	if (connector.account?.accountId) aliases.push(connector.account.accountId);
+	if (connector.account?.label) aliases.push(connector.account.label);
+	if (connector.account?.name) aliases.push(connector.account.name);
 	const metadata = connector.metadata;
 	if (metadata && typeof metadata === "object") {
 		const metadataAliases = (metadata as { aliases?: unknown }).aliases;
@@ -293,7 +303,13 @@ function connectorAliases(connector: {
 }
 
 function connectorMatchesSource(
-	connector: { source: string; label: string; metadata?: unknown },
+	connector: {
+		source: string;
+		label: string;
+		accountId?: string;
+		account?: { accountId?: string; label?: string; name?: string };
+		metadata?: unknown;
+	},
 	source: string | undefined,
 ): boolean {
 	const normalized = normalizeConnectorAlias(source);
@@ -305,11 +321,31 @@ function connectorMatchesSource(
 	);
 }
 
-export function selectConnector<T extends { source: string; label: string }>(
+type SelectableConnector = {
+	source: string;
+	label: string;
+	accountId?: string;
+	account?: { accountId?: string; label?: string; name?: string };
+	metadata?: unknown;
+};
+
+function connectorMatchesAccount(
+	connector: SelectableConnector,
+	accountId: string | undefined,
+): boolean {
+	if (!accountId) return true;
+	const normalized = normalizeConnectorAlias(accountId);
+	return connectorAliases(connector).some(
+		(alias) => normalizeConnectorAlias(alias) === normalized,
+	);
+}
+
+export function selectConnector<T extends SelectableConnector>(
 	actionName: string,
 	connectors: T[],
 	source: string | undefined,
 	currentSource?: string,
+	accountId?: string,
 ): { connector: T } | { result: ActionResult } {
 	const effectiveSource =
 		source ??
@@ -319,17 +355,80 @@ export function selectConnector<T extends { source: string; label: string }>(
 		)
 			? currentSource
 			: undefined);
-	const failure = connectorSelectionFailure(
-		actionName,
-		connectors,
-		effectiveSource,
-	);
-	if (failure) return { result: failure };
-	const connector = effectiveSource
-		? connectors.find((candidate) =>
-				connectorMatchesSource(candidate, effectiveSource),
+	const sourceScoped = effectiveSource
+		? connectors.filter((connector) =>
+				connectorMatchesSource(connector, effectiveSource),
 			)
-		: connectors[0];
+		: connectors;
+	if (connectors.length === 0) {
+		return {
+			result: {
+				success: false,
+				text: `${actionName} has no registered connectors for this operation.`,
+				values: { success: false, error: "NO_CONNECTORS_REGISTERED" },
+				data: { actionName, error: "NO_CONNECTORS_REGISTERED" },
+			},
+		};
+	}
+	if (effectiveSource && sourceScoped.length === 0) {
+		return {
+			result: {
+				success: false,
+				text: `No connector for source "${effectiveSource}" supports ${actionName}. Available sources: ${connectors.map((connector) => connector.source).join(", ")}.`,
+				values: { success: false, error: "SOURCE_CONNECTOR_NOT_FOUND" },
+				data: {
+					actionName,
+					source: effectiveSource,
+					error: "SOURCE_CONNECTOR_NOT_FOUND",
+				},
+			},
+		};
+	}
+	const accountScoped = sourceScoped.filter((connector) =>
+		connectorMatchesAccount(connector, accountId),
+	);
+	if (accountId && accountScoped.length === 0) {
+		return {
+			result: {
+				success: false,
+				text: `${actionName} has no connector for account "${accountId}"${effectiveSource ? ` on ${effectiveSource}` : ""}.`,
+				values: { success: false, error: "ACCOUNT_CONNECTOR_NOT_FOUND" },
+				data: {
+					actionName,
+					source: effectiveSource,
+					accountId,
+					error: "ACCOUNT_CONNECTOR_NOT_FOUND",
+				},
+			},
+		};
+	}
+	if (accountScoped.length > 1) {
+		return {
+			result: {
+				success: false,
+				text:
+					`${actionName} needs a ${effectiveSource ? "connector account" : "source"}. Choose one of: ` +
+					accountScoped
+						.map((connector) =>
+							connector.accountId
+								? `${connector.source}:${connector.accountId}`
+								: connector.source,
+						)
+						.join(", "),
+				values: { success: false, error: "SOURCE_AMBIGUOUS" },
+				data: {
+					actionName,
+					error: "SOURCE_AMBIGUOUS",
+					candidates: accountScoped.map((connector) => ({
+						source: connector.source,
+						accountId: connector.accountId,
+						label: connector.label,
+					})),
+				},
+			},
+		};
+	}
+	const connector = accountScoped[0];
 	if (!connector) {
 		return {
 			result: {

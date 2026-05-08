@@ -1,6 +1,7 @@
-// Deprecated LifeOps fallback shim. Canonical Telegram messaging should go
-// through @elizaos/plugin-telegram runtime services; this direct GramJS client
-// remains for legacy owner-account local sessions.
+// Deprecated LifeOps fallback shim. Active LifeOps Telegram mixins no longer
+// call this direct GramJS client; Telegram messaging should go through
+// @elizaos/plugin-telegram runtime services. This remains only for legacy
+// owner-session cleanup/tests until plugin-side read receipts cover the gap.
 import {
   defaultTelegramAccountDeviceModel,
   defaultTelegramAccountSystemVersion,

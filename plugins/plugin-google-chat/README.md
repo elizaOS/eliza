@@ -83,46 +83,19 @@ const agent = createAgent({
 ```
 ## Actions
 
-### GOOGLE_CHAT_SEND_MESSAGE
+Google Chat messaging routes through the canonical `MESSAGE` action using
+`source: "google-chat"`.
 
-Send a message to a Google Chat space.
-
-**Parameters**:
-- `text` (string): Message content
-- `space` (string): Target space name (e.g., `spaces/AAAA...`)
-- `thread` (string, optional): Thread name to reply in
-
-### GOOGLE_CHAT_SEND_REACTION
-
-Add or remove an emoji reaction to a message.
-
-**Parameters**:
-- `emoji` (string): Unicode emoji character
-- `messageName` (string): Target message resource name
-- `remove` (boolean): Whether to remove the reaction
-
-### GOOGLE_CHAT_LIST_SPACES
-
-List all spaces the bot is a member of.
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send or thread a message in a Google Chat space |
+| `MESSAGE` | `react` | Add or remove a reaction when the connector supports it |
+| `MESSAGE` | `list_channels` | List spaces the bot is a member of |
 
 ## Providers
 
-### googleChatSpaceState
-
-Provides context about the current Google Chat space:
-- `space_name`: Space resource name
-- `space_display_name`: Human-readable space name
-- `space_type`: DM, ROOM, or SPACE
-- `is_threaded`: Whether space uses threads
-- `is_direct`: Whether this is a direct message
-
-### googleChatUserContext
-
-Provides information about the current user:
-- `user_name`: User resource name
-- `display_name`: User's display name
-- `email`: User's email address
-- `user_type`: HUMAN or BOT
+Google Chat does not register standalone planner providers. Space and user
+context is exposed through the Google Chat message connector hooks.
 
 ## Events
 

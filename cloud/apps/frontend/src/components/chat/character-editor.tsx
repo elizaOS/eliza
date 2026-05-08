@@ -1,6 +1,6 @@
 /**
  * Character editor component with tabbed interface for editing character properties.
- * Supports form-based editing, JSON editing, plugins management, and knowledge uploads.
+ * Supports form-based editing, JSON editing, plugins management, and document uploads.
  *
  * @param props - Character editor configuration
  * @param props.character - Character data to edit
@@ -14,7 +14,7 @@ import { AnimatedTabs, Button, ScrollArea } from "@elizaos/cloud-ui";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";
-import type { PreUploadedFile } from "@/lib/types/knowledge";
+import type { PreUploadedFile } from "@/lib/types/documents";
 import { CharacterForm, type FormTab } from "../agent-editor/character-form";
 import { JsonEditor } from "../agent-editor/json-editor";
 import { PluginsTab } from "./plugins-tab";

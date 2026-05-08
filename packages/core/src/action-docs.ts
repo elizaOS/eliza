@@ -10,6 +10,7 @@ import type {
 	ActionParameterSchema,
 	EvaluationExample,
 	Evaluator,
+	JsonValue,
 	Provider,
 } from "./types/index.ts";
 import { compressPromptDescription } from "./utils/prompt-compression.ts";
@@ -42,11 +43,16 @@ const coreActionDocByName: ActionDocByName =
 		return acc;
 	}, {});
 
+function cloneDocExampleValue(value: unknown): JsonValue {
+	return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
 function cloneActionParameterSchema(
 	schema: NonNullable<
 		(typeof allActionDocs)[number]["parameters"]
 	>[number]["schema"],
 ): ActionParameterSchema {
+	const { default: schemaDefault, ...restSchema } = schema;
 	const properties = schema.properties
 		? Object.fromEntries(
 				Object.entries(schema.properties).map(([key, value]) => [
@@ -57,7 +63,11 @@ function cloneActionParameterSchema(
 		: undefined;
 
 	return {
-		...schema,
+		...restSchema,
+		default:
+			schemaDefault === undefined
+				? undefined
+				: cloneDocExampleValue(schemaDefault),
 		enum: schema.enum ? [...schema.enum] : undefined,
 		enumValues: schema.enum ? [...schema.enum] : undefined,
 		properties,
@@ -79,7 +89,7 @@ function toActionParameter(
 		),
 		required: param.required,
 		schema: cloneActionParameterSchema(param.schema),
-		examples: param.examples ? [...param.examples] : undefined,
+		examples: param.examples?.map(cloneDocExampleValue),
 	};
 }
 

@@ -21,6 +21,7 @@ import type {
 	DocumentAddedByRole,
 	DocumentAddedFrom,
 	DocumentVisibilityScope,
+	StoredDocument,
 } from "./types.ts";
 import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
@@ -36,7 +37,7 @@ type DocumentSubAction =
 	| "import_url";
 
 type DocumentActionParameters = {
-	subAction?: string;
+	subaction?: string;
 	query?: string;
 	id?: string;
 	documentId?: string;
@@ -142,7 +143,7 @@ function inferSubAction(
 	params: DocumentActionParameters,
 	message: Memory,
 ): DocumentSubAction | null {
-	const explicit = normalizeSubAction(params.subAction);
+	const explicit = normalizeSubAction(params.subaction);
 	if (explicit) return explicit;
 
 	const text = message.content?.text ?? "";
@@ -168,7 +169,9 @@ function inferSubAction(
 }
 
 function isUuid(value: string): value is UUID {
-	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+		value,
+	);
 }
 
 function getDocumentId(
@@ -337,6 +340,87 @@ function getQuery(params: DocumentActionParameters, message: Memory): string {
 		.trim();
 }
 
+function getDocumentFilterParams(params: DocumentActionParameters): {
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	timeRangeStart?: number;
+	timeRangeEnd?: number;
+	tags?: string[];
+} {
+	const scope =
+		typeof params.scope === "string" &&
+		DOCUMENT_SCOPES.has(params.scope as DocumentVisibilityScope)
+			? (params.scope as DocumentVisibilityScope)
+			: undefined;
+	const scopedToEntityId =
+		typeof params.scopedToEntityId === "string" &&
+		isUuid(params.scopedToEntityId)
+			? (params.scopedToEntityId as UUID)
+			: undefined;
+	const addedBy =
+		typeof params.addedBy === "string" && isUuid(params.addedBy)
+			? (params.addedBy as UUID)
+			: undefined;
+	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
+	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const tags = Array.isArray(params.tags)
+		? params.tags.filter((tag): tag is string => typeof tag === "string")
+		: undefined;
+	return {
+		...(scope ? { scope } : {}),
+		...(scopedToEntityId ? { scopedToEntityId } : {}),
+		...(addedBy ? { addedBy } : {}),
+		...(typeof timeRangeStart === "number" ? { timeRangeStart } : {}),
+		...(typeof timeRangeEnd === "number" ? { timeRangeEnd } : {}),
+		...(tags && tags.length > 0 ? { tags } : {}),
+	};
+}
+
+function storedDocumentMatchesFilters(
+	document: StoredDocument,
+	filters: ReturnType<typeof getDocumentFilterParams>,
+): boolean {
+	const metadata = (document.metadata ?? {}) as Record<string, unknown>;
+	if (filters.scope && metadata.scope !== filters.scope) return false;
+	if (
+		filters.scopedToEntityId &&
+		metadata.scopedToEntityId !== filters.scopedToEntityId
+	) {
+		return false;
+	}
+	if (filters.addedBy && metadata.addedBy !== filters.addedBy) return false;
+	if (filters.tags && filters.tags.length > 0) {
+		const documentTags = Array.isArray(metadata.tags)
+			? metadata.tags.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		if (!filters.tags.every((tag) => documentTags.includes(tag))) {
+			return false;
+		}
+	}
+	const timestamp =
+		typeof metadata.timestamp === "number"
+			? metadata.timestamp
+			: typeof metadata.addedAt === "number"
+				? metadata.addedAt
+				: undefined;
+	if (
+		typeof filters.timeRangeStart === "number" &&
+		(typeof timestamp !== "number" || timestamp < filters.timeRangeStart)
+	) {
+		return false;
+	}
+	if (
+		typeof filters.timeRangeEnd === "number" &&
+		(typeof timestamp !== "number" || timestamp > filters.timeRangeEnd)
+	) {
+		return false;
+	}
+	return true;
+}
+
 function getFilePath(
 	params: DocumentActionParameters,
 	message: Memory,
@@ -384,7 +468,7 @@ async function scopedAddOptions(
 function result(
 	success: boolean,
 	text: string,
-	subAction: DocumentSubAction,
+	subaction: DocumentSubAction,
 	extra: Omit<ActionResult, "success" | "text" | "data"> & {
 		data?: Record<string, unknown>;
 	} = {},
@@ -395,7 +479,7 @@ function result(
 		text,
 		data: {
 			actionName: "DOCUMENT",
-			subAction,
+			subaction,
 			...(extra.data ?? {}),
 		},
 	};
@@ -427,13 +511,18 @@ async function handleSearch(
 		...message,
 		content: { ...message.content, text: query },
 	};
+	const filters = getDocumentFilterParams(params);
 	const matches = await service.searchDocuments(
 		searchMessage,
-		undefined,
+		filters.scopedToEntityId
+			? { entityId: filters.scopedToEntityId }
+			: undefined,
 		getSearchMode(params.searchMode),
 	);
 	const limit = getLimit(params.limit, 5);
-	const visible = matches.slice(0, limit);
+	const visible = matches
+		.filter((item) => storedDocumentMatchesFilters(item, filters))
+		.slice(0, limit);
 	const text =
 		visible.length === 0
 			? `I couldn't find any documents matching "${query}".`
@@ -910,13 +999,13 @@ export const documentAction: Action = {
 	contextGate: { anyOf: ["documents"] },
 	roleGate: { minRole: "USER" },
 	description:
-		"List, search, read, write, edit, delete, and import stored documents. Select one subAction and provide the fields needed for that operation.",
+		"List, search, read, write, edit, delete, and import stored documents. Select one subaction and provide the fields needed for that operation.",
 	descriptionCompressed:
-		"Dispatches document operations using subAction: list, search, read, write, edit, delete, import_file, import_url.",
+		"Dispatches document operations using subaction: list, search, read, write, edit, delete, import_file, import_url.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
-			name: "subAction",
+			name: "subaction",
 			description:
 				"Document operation to perform: list, search, read, write, edit, delete, import_file, or import_url.",
 			required: true,
@@ -1106,17 +1195,17 @@ export const documentAction: Action = {
 			DocumentService.serviceType,
 		);
 		const params = getParams(options);
-		const subAction = inferSubAction(params, message);
+		const subaction = inferSubAction(params, message);
 
 		if (!service) {
 			const text = "Documents service not available.";
 			await emit(callback, { text });
-			return result(false, text, subAction ?? "search", {
+			return result(false, text, subaction ?? "search", {
 				values: { error: "service_unavailable" },
 			});
 		}
-		if (!subAction) {
-			const text = "I need a document subAction to perform.";
+		if (!subaction) {
+			const text = "I need a document subaction to perform.";
 			await emit(callback, { text });
 			return result(false, text, "search", {
 				values: { error: "missing_sub_action" },
@@ -1124,7 +1213,7 @@ export const documentAction: Action = {
 		}
 
 		try {
-			switch (subAction) {
+			switch (subaction) {
 				case "search":
 					return await handleSearch(service, message, params, callback);
 				case "read":
@@ -1161,12 +1250,12 @@ export const documentAction: Action = {
 					);
 			}
 		} catch (error) {
-			logger.error({ error }, `Error in DOCUMENT ${subAction} action`);
-			const text = `I couldn't ${subAction.replace("_", " ")} documents: ${
+			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
+			const text = `I couldn't ${subaction.replace("_", " ")} documents: ${
 				error instanceof Error ? error.message : String(error)
 			}`;
 			await emit(callback, { text });
-			return result(false, text, subAction, {
+			return result(false, text, subaction, {
 				error: error instanceof Error ? error.message : String(error),
 				values: {
 					error: error instanceof Error ? error.message : String(error),

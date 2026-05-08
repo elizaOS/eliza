@@ -3,6 +3,10 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  loadConnectorOAuthTokenSet,
+  saveConnectorOAuthTokenSet,
+} from "../../connector-credential-refs";
 import { DEFAULT_X_ACCOUNT_ID, normalizeXAccountId } from "../accounts";
 
 export interface StoredOAuth2Tokens {
@@ -109,21 +113,82 @@ export class FileTokenStore implements TokenStore {
   }
 }
 
+export class ConnectorAccountTokenStore implements TokenStore {
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly accountId: string,
+    private readonly fallback: TokenStore,
+  ) {}
+
+  async load(): Promise<StoredOAuth2Tokens | null> {
+    const tokenSet = await loadConnectorOAuthTokenSet({
+      runtime: this.runtime,
+      provider: "x",
+      accountId: this.accountId,
+      caller: "plugin-x",
+    });
+    const tokens = normalizeStoredOAuth2Tokens(tokenSet);
+    return tokens ?? this.fallback.load();
+  }
+
+  async save(tokens: StoredOAuth2Tokens): Promise<void> {
+    const saved = await saveConnectorOAuthTokenSet({
+      runtime: this.runtime,
+      provider: "x",
+      accountId: this.accountId,
+      value: JSON.stringify(tokens),
+      expiresAt: tokens.expires_at,
+      caller: "plugin-x",
+    });
+    if (!saved) {
+      await this.fallback.save(tokens);
+    }
+  }
+
+  async clear(): Promise<void> {
+    await this.fallback.clear();
+  }
+}
+
 export function chooseDefaultTokenStore(
   runtime: IAgentRuntime | undefined,
   accountId: string = DEFAULT_X_ACCOUNT_ID,
 ): TokenStore {
+  const normalizedAccountId = normalizeXAccountId(accountId);
   if (
     runtime &&
     typeof runtime.getCache === "function" &&
     typeof runtime.setCache === "function"
   ) {
-    return new RuntimeCacheTokenStore(runtime, accountId);
+    return new ConnectorAccountTokenStore(
+      runtime,
+      normalizedAccountId,
+      new RuntimeCacheTokenStore(runtime, normalizedAccountId),
+    );
   }
 
   logger.warn(
     "Twitter OAuth token persistence: runtime cache API not available; falling back to local token file. " +
       "This file contains sensitive tokens—protect it and rotate tokens if compromised.",
   );
-  return new FileTokenStore(FileTokenStore.defaultPath(accountId));
+  const fallback = new FileTokenStore(FileTokenStore.defaultPath(normalizedAccountId));
+  return runtime
+    ? new ConnectorAccountTokenStore(runtime, normalizedAccountId, fallback)
+    : fallback;
+}
+
+function normalizeStoredOAuth2Tokens(value: unknown): StoredOAuth2Tokens | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const accessToken = typeof record.access_token === "string" ? record.access_token : undefined;
+  const expiresAt = typeof record.expires_at === "number" ? record.expires_at : undefined;
+  if (!accessToken || typeof expiresAt !== "number") return null;
+  return {
+    access_token: accessToken,
+    refresh_token:
+      typeof record.refresh_token === "string" ? record.refresh_token : undefined,
+    expires_at: expiresAt,
+    scope: typeof record.scope === "string" ? record.scope : undefined,
+    token_type: typeof record.token_type === "string" ? record.token_type : undefined,
+  };
 }

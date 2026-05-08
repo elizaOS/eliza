@@ -50,6 +50,11 @@ export interface TrajectoryLlmCall {
   error?: string;
   /** Heuristic classification: "action_planner", "should_respond", "reply", "embedding", "other". */
   purpose: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 export interface TrajectoryProviderSnapshot {
@@ -263,6 +268,30 @@ function llmResponseForMarkdown(call: TrajectoryLlmCall): string {
   return call.response;
 }
 
+function formatUsageLine(call: TrajectoryLlmCall): string | null {
+  const parts: string[] = [];
+  if (call.promptTokens !== undefined) parts.push(`input ${call.promptTokens}`);
+  if (call.completionTokens !== undefined) {
+    parts.push(`output ${call.completionTokens}`);
+  }
+  if (call.totalTokens !== undefined) parts.push(`total ${call.totalTokens}`);
+  if (call.cacheReadInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheReadInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache read ${call.cacheReadInputTokens}${pct}`);
+  }
+  if (call.cacheCreationInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheCreationInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache write ${call.cacheCreationInputTokens}${pct}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function markdownTableCell(value: unknown): string {
   return String(value ?? "")
     .replace(/\\/g, "\\\\")
@@ -320,6 +349,8 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
       lines.push(`- model type: \`${call.modelType}\``);
       lines.push(`- latency: ${formatDuration(call.latencyMs)}`);
       lines.push(`- timestamp: ${formatTimestamp(call.timestamp)}`);
+      const usage = formatUsageLine(call);
+      if (usage) lines.push(`- usage: ${usage}`);
       if (call.error) lines.push(`- error: ${call.error}`);
       if (call.systemPrompt) {
         lines.push("");
@@ -455,6 +486,85 @@ export function serializeLlmCallResult(result: unknown): {
 
   return {
     response: typeof result === "string" ? result : safeStringify(result),
+  };
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractLlmTokenUsage(
+  result: unknown,
+): Pick<
+  TrajectoryLlmCall,
+  | "promptTokens"
+  | "completionTokens"
+  | "totalTokens"
+  | "cacheReadInputTokens"
+  | "cacheCreationInputTokens"
+> {
+  const resultRecord = objectRecord(result);
+  const usageRecord = objectRecord(resultRecord?.usage) ?? resultRecord;
+  const inputDetails =
+    objectRecord(usageRecord?.inputTokenDetails) ??
+    objectRecord(usageRecord?.input_tokens_details) ??
+    objectRecord(usageRecord?.prompt_tokens_details);
+
+  const promptTokens = firstFiniteNumber(
+    usageRecord?.promptTokens,
+    usageRecord?.inputTokens,
+    usageRecord?.prompt_tokens,
+  );
+  const completionTokens = firstFiniteNumber(
+    usageRecord?.completionTokens,
+    usageRecord?.outputTokens,
+    usageRecord?.completion_tokens,
+  );
+  const totalTokens =
+    firstFiniteNumber(usageRecord?.totalTokens, usageRecord?.total_tokens) ??
+    (promptTokens !== undefined || completionTokens !== undefined
+      ? (promptTokens ?? 0) + (completionTokens ?? 0)
+      : undefined);
+  const cacheReadInputTokens = firstFiniteNumber(
+    usageRecord?.cacheReadInputTokens,
+    usageRecord?.cachedPromptTokens,
+    usageRecord?.cachedInputTokens,
+    inputDetails?.cacheReadInputTokens,
+    inputDetails?.cacheReadTokens,
+    inputDetails?.cachedInputTokens,
+    inputDetails?.cached_tokens,
+    inputDetails?.cache_read_input_tokens,
+  );
+  const cacheCreationInputTokens = firstFiniteNumber(
+    usageRecord?.cacheCreationInputTokens,
+    usageRecord?.cacheWriteInputTokens,
+    inputDetails?.cacheCreationInputTokens,
+    inputDetails?.cacheCreationTokens,
+    inputDetails?.cacheWriteTokens,
+    inputDetails?.cache_creation_input_tokens,
+  );
+
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
   };
 }
 
@@ -682,6 +792,7 @@ export class RecordingHarness {
         ? paramsRecord.systemPrompt
         : undefined;
     const serializedResult = serializeLlmCallResult(result);
+    const usage = extractLlmTokenUsage(result);
     this.llmCalls.push({
       callId: id,
       timestamp: start,
@@ -692,6 +803,7 @@ export class RecordingHarness {
       response: serializedResult.response,
       error: serializedResult.error,
       purpose: classifyLlmPurpose(prompt, serializedResult.response, modelType),
+      ...usage,
     });
   }
 

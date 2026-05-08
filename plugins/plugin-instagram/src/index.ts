@@ -1,19 +1,43 @@
-import type { Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger, type Plugin } from "@elizaos/core";
+import { createInstagramConnectorAccountProvider } from "./connector-account-provider";
 import { INSTAGRAM_SERVICE_NAME } from "./constants";
-import { userStateProvider } from "./providers";
 import { InstagramService } from "./service";
 
 const instagramPlugin: Plugin = {
   name: INSTAGRAM_SERVICE_NAME,
   description: "Instagram client plugin for elizaOS",
   actions: [],
-  providers: [userStateProvider],
+  providers: [],
   services: [InstagramService],
+  async init(_config, runtime) {
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createInstagramConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:instagram",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Instagram provider with ConnectorAccountManager"
+      );
+    }
+  },
 };
 
-export * from "./actions";
+export {
+  DEFAULT_INSTAGRAM_ACCOUNT_ID,
+  listInstagramAccountIds,
+  normalizeInstagramAccountId,
+  readInstagramAccountId,
+  resolveDefaultInstagramAccountId,
+  resolveInstagramAccountConfig,
+} from "./accounts";
+export {
+  createInstagramConnectorAccountProvider,
+  INSTAGRAM_PROVIDER_ID,
+} from "./connector-account-provider";
 export * from "./constants";
-export { userStateProvider } from "./providers";
 export * from "./types";
 export { InstagramService };
 export default instagramPlugin;

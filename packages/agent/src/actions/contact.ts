@@ -26,6 +26,8 @@
  *              the same human across platforms.
  *   merge    — accept or reject a pending merge candidate by id.
  *   activity — paginated relationship/identity/fact activity timeline.
+ *   followup — schedule a follow-up touch-base with a contact via the
+ *              FollowUp service (was SCHEDULE_FOLLOW_UP).
  */
 
 import { v4 as uuidv4 } from "uuid";
@@ -74,6 +76,7 @@ const CONTACT_OPS = [
   "link",
   "merge",
   "activity",
+  "followup",
 ] as const;
 type ContactOp = (typeof CONTACT_OPS)[number];
 
@@ -129,6 +132,10 @@ interface ContactParams {
   // activity
   since?: string;
   offset?: number;
+  // followup
+  scheduledAt?: string;
+  priority?: string;
+  message?: string;
 }
 
 interface RelationshipActivityItem {
@@ -165,6 +172,17 @@ interface RelationshipsServiceLike {
     entityId: UUID,
     updates: Record<string, unknown>,
   ): Promise<boolean>;
+  getContact?(entityId: UUID): Promise<unknown | null>;
+}
+
+interface FollowUpServiceLike {
+  scheduleFollowUp(
+    entityId: UUID,
+    scheduledAt: Date,
+    reason: string,
+    priority?: "high" | "medium" | "low",
+    message?: string,
+  ): Promise<{ id?: UUID | string }>;
 }
 
 type RuntimeWithDeleteEntities = IAgentRuntime & {
@@ -1665,6 +1683,112 @@ async function handleActivity(
 }
 
 // ---------------------------------------------------------------------------
+// Op: followup — schedule a follow-up touch-base via FollowUpService
+// ---------------------------------------------------------------------------
+
+async function handleFollowup(
+  runtime: IAgentRuntime,
+  params: ContactParams,
+): Promise<ActionResult> {
+  const relationships = runtime.getService(
+    "relationships",
+  ) as unknown as RelationshipsServiceLike | null;
+  const followUpService = runtime.getService(
+    "follow_up",
+  ) as unknown as FollowUpServiceLike | null;
+  if (!relationships || !followUpService) {
+    return fail(
+      "Follow-up scheduling is unavailable.",
+      "SERVICE_UNAVAILABLE",
+      "followup",
+    );
+  }
+
+  const scheduledAtRaw = readString(params.scheduledAt);
+  if (!scheduledAtRaw) {
+    return fail(
+      "scheduledAt is required.",
+      "MISSING_SCHEDULED_AT",
+      "followup",
+    );
+  }
+  const scheduledAt = new Date(scheduledAtRaw);
+  if (Number.isNaN(scheduledAt.getTime())) {
+    return fail("Invalid scheduledAt.", "INVALID_SCHEDULED_AT", "followup");
+  }
+
+  const contactName = readString(params.name);
+  let entityId: UUID | null = isLikelyUuid(readString(params.entityId))
+    ? (readString(params.entityId) as UUID)
+    : null;
+  if (!entityId && contactName) {
+    const contacts = (await relationships.searchContacts?.({
+      searchTerm: contactName,
+    })) ?? [];
+    entityId = contacts[0]?.entityId ?? null;
+    if (!entityId) {
+      return fail(
+        `Contact "${contactName}" not found.`,
+        "CONTACT_NOT_FOUND",
+        "followup",
+      );
+    }
+  }
+  if (!entityId) {
+    return fail(
+      "name or entityId is required.",
+      "MISSING_CONTACT",
+      "followup",
+    );
+  }
+
+  if (relationships.getContact) {
+    const contact = await relationships.getContact(entityId);
+    if (!contact) {
+      return fail(
+        "Contact not found in relationships.",
+        "CONTACT_NOT_FOUND",
+        "followup",
+      );
+    }
+  }
+
+  const reason = readString(params.reason) ?? "Follow-up";
+  const priorityRaw = readString(params.priority)?.toLowerCase();
+  const priority: "high" | "medium" | "low" =
+    priorityRaw === "high" || priorityRaw === "low" ? priorityRaw : "medium";
+  const messageText = readString(params.message);
+
+  const task = await followUpService.scheduleFollowUp(
+    entityId,
+    scheduledAt,
+    reason,
+    priority,
+    messageText,
+  );
+
+  return {
+    success: true,
+    text: `Scheduled follow-up with ${contactName ?? "contact"} for ${scheduledAt.toLocaleString()}.`,
+    values: {
+      op: "followup",
+      contactId: String(entityId),
+      taskId: task.id ? String(task.id) : "",
+    },
+    data: {
+      actionName: CONTACT_ACTION,
+      op: "followup",
+      contactId: String(entityId),
+      contactName: contactName ?? "",
+      scheduledAt: scheduledAt.toISOString(),
+      taskId: task.id ? String(task.id) : "",
+      reason,
+      priority,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Action
 // ---------------------------------------------------------------------------
 
@@ -1729,6 +1853,10 @@ export const contactAction: Action = {
     // Link aliases
     "LINK_IDENTITIES",
     "COMBINE_CONTACTS",
+    // Followup aliases
+    "SCHEDULE_FOLLOW_UP",
+    "SCHEDULE_FOLLOWUP",
+    "FOLLOW_UP_CONTACT",
   ],
   description:
     "Manage Rolodex contacts and entity identities. Op-based dispatch — provide an `op` parameter:\n" +
@@ -1739,9 +1867,10 @@ export const contactAction: Action = {
     "  delete   — permanently delete a contact (entityId or name; requires confirm:true).\n" +
     "  link     — propose / confirm a merge of two entities representing the same person across platforms.\n" +
     "  merge    — accept or reject a pending merge candidate by id.\n" +
-    "  activity — paginated activity timeline for the Rolodex.",
+    "  activity — paginated activity timeline for the Rolodex.\n" +
+    "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).",
   descriptionCompressed:
-    "manage Rolodex contacts; op-based dispatch (create read search update delete link merge activity)",
+    "manage Rolodex contacts; op-based dispatch (create read search update delete link merge activity followup)",
   parameters: [
     {
       name: "op",
@@ -1919,7 +2048,8 @@ export const contactAction: Action = {
     },
     {
       name: "reason",
-      description: "link: short free-text justification.",
+      description:
+        "link: short free-text justification. followup: reason for the follow-up.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1950,13 +2080,36 @@ export const contactAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
+    {
+      name: "scheduledAt",
+      description: "followup: ISO date/time for the follow-up.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "priority",
+      description: "followup: high | medium | low (default medium).",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["high", "medium", "low"] as const,
+      },
+    },
+    {
+      name: "message",
+      description: "followup: optional message text to include with the follow-up.",
+      required: false,
+      schema: { type: "string" as const },
+    },
   ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
+    options?: HandlerOptions,
   ): Promise<boolean> => {
     registerEntitySearchCategory(runtime);
+    if (readOp(getParams(options).op) === "followup") return true;
     return (
       hasContextSignalSyncForKey(message, state, "search_entity") ||
       hasContextSignalSyncForKey(message, state, "link_entity")
@@ -1995,6 +2148,8 @@ export const contactAction: Action = {
         return handleMerge(runtime, params);
       case "activity":
         return handleActivity(runtime, params);
+      case "followup":
+        return handleFollowup(runtime, params);
     }
   },
   examples: [
@@ -2035,6 +2190,21 @@ export const contactAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Proposed a link between those two entities. Confirm to apply.",
+          action: CONTACT_ACTION,
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Schedule a follow-up with Alice next Monday at 10am.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Scheduled follow-up with Alice for Monday 10:00 AM.",
           action: CONTACT_ACTION,
         },
       },

@@ -50,7 +50,7 @@ describe("connector send-as helpers", () => {
         handle: "@owner",
         isDefault: true,
         role: "OWNER",
-        purpose: "OWNER",
+        purpose: ["messaging"],
       }),
     );
 
@@ -66,7 +66,7 @@ describe("connector send-as helpers", () => {
       handle: "@owner",
       isDefault: true,
       role: "OWNER",
-      purpose: "OWNER",
+      purpose: ["messaging"],
     });
   });
 

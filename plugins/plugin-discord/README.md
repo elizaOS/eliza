@@ -213,17 +213,11 @@ The plugin provides the following actions:
 | Action                           | Description                                              |
 | -------------------------------- | -------------------------------------------------------- |
 | **MESSAGE**                      | Send, read, search, list, react, edit, delete, pin, join, leave, or get user info through the Discord message connector |
-| **DISCORD_CHAT_WITH_ATTACHMENTS** | Handle explicitly selected Discord attachments           |
-| **DISCORD_CREATE_POLL**          | Create a poll in a Discord channel                       |
-| **DISCORD_MEDIA**                | Download or transcribe Discord media                     |
-| **DISCORD_SUMMARIZE_CONVERSATION** | Summarize a date/time range from stored Discord history |
 | **DISCORD_SETUP_CREDENTIALS**    | Set up Discord credential pairing                        |
 
 ### Providers
 
-The plugin includes one state provider:
-
-1. **voiceStateProvider** - Provides state information about voice channels and connection status
+Discord message context is exposed through the MESSAGE connector hooks rather than Discord-specific prompt providers.
 
 ### Event Types
 

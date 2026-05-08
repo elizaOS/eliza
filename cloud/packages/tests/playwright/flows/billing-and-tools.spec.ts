@@ -64,8 +64,8 @@ test.describe("App Chater Flow", () => {
 });
 
 test.describe("Knowledge & MCP Flow", () => {
-  test("knowledge page loads", async ({ page }) => {
-    const response = await page.goto(`${BASE_URL}/dashboard/knowledge`);
+  test("documents page loads", async ({ page }) => {
+    const response = await page.goto(`${BASE_URL}/dashboard/documents`);
     expect(response?.status()).not.toBe(500);
   });
 

@@ -219,7 +219,7 @@ class AgentState:
     order_history: list[Order] = field(default_factory=list)
     delivered_inventory: list[DeliveredInventory] = field(default_factory=list)
     daily_history: list[DailySummary] = field(default_factory=list)
-    notes: dict[str, str] = field(default_factory=dict)  # Agent's scratchpad
+    notes: dict[str, str] = field(default_factory=dict)  # Agent notes
     kv_store: dict[str, str] = field(default_factory=dict)  # Structured memory
 
 

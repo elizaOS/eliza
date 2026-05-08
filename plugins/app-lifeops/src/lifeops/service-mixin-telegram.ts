@@ -8,6 +8,7 @@
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
   type LifeOpsConnectorDegradation,
+  type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
@@ -17,7 +18,6 @@ import {
   type VerifyLifeOpsTelegramConnectorRequest,
   type VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
-import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   searchTelegramMessagesWithRuntimeService,
   sendTelegramMessageWithRuntimeService,
@@ -25,44 +25,43 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail, requireNonEmptyString } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
-import {
-  buildTelegramTokenRef,
-  cancelTelegramAuth,
-  deleteStoredTelegramToken,
-  findPendingTelegramAuthSession,
-  findStoredTelegramTokenForSide,
-  hasManagedTelegramCredentials,
-  inferRetryableTelegramAuthState,
-  readStoredTelegramToken,
-  startTelegramAuth as startTelegramAuthFlow,
-  submitTelegramAuthCode,
-  submitTelegramAuthPassword,
-} from "./telegram-auth.js";
-import {
-  getTelegramReadReceipts,
-  searchTelegramMessages,
-  sendTelegramAccountMessage,
-  type TelegramMessageSearchResult,
-  type TelegramReadReceiptResult,
-  telegramLocalSessionAvailable,
-  verifyTelegramLocalConnector,
-} from "./telegram-local-client.js";
 
-function isLifeOpsTelegramCapability(
-  value: unknown,
-): value is LifeOpsTelegramCapability {
-  return (
-    typeof value === "string" &&
-    (LIFEOPS_TELEGRAM_CAPABILITIES as readonly string[]).includes(value)
-  );
-}
+type TelegramMessageSearchResult = {
+  id: string | null;
+  dialogId: string | null;
+  threadId: string | null;
+  dialogTitle: string | null;
+  username: string | null;
+  peerId: string | null;
+  senderId: string | null;
+  content: string;
+  timestamp: string | null;
+  outgoing: boolean;
+};
+
+type TelegramReadReceiptResult = {
+  messageId: string;
+  status: "delivered_read" | "sent" | "unknown";
+  isRead: boolean | null;
+  timestamp: string | null;
+  content: string | null;
+  outgoing: boolean | null;
+};
 
 const FULL_TELEGRAM_CAPABILITIES: LifeOpsTelegramCapability[] = [
   ...LIFEOPS_TELEGRAM_CAPABILITIES,
 ];
 
+const TELEGRAM_PLUGIN_SETUP_MESSAGE =
+  "Telegram is managed by @elizaos/plugin-telegram. Configure and enable the Telegram connector plugin; LifeOps no longer uses local Telegram API credentials.";
+
+const TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE =
+  "Telegram account auth has moved to @elizaos/plugin-telegram. Use the Telegram connector setup routes (/api/telegram-account/auth/start and /api/telegram-account/auth/submit); LifeOps no longer stores Telegram API credentials.";
+
 type TelegramPluginServiceLike = {
   messageManager?: unknown;
+  connected?: boolean;
+  isServiceConnected?: () => boolean;
   bot?: {
     botInfo?: {
       id?: number | string;
@@ -86,7 +85,11 @@ function getTelegramPluginService(
 function telegramPluginConnected(
   service: TelegramPluginServiceLike | null,
 ): boolean {
-  return Boolean(service?.messageManager);
+  return Boolean(
+    service?.messageManager ||
+      service?.connected === true ||
+      service?.isServiceConnected?.() === true,
+  );
 }
 
 function telegramPluginIdentity(
@@ -105,21 +108,48 @@ function telegramPluginIdentity(
   };
 }
 
-function telegramAgentPluginDegradations(
-  connected: boolean,
-): LifeOpsConnectorDegradation[] {
-  if (connected) {
-    return [];
+function stripLegacyTokenRef(
+  grant: LifeOpsConnectorGrant | null,
+): LifeOpsConnectorGrant | null {
+  if (!grant) {
+    return null;
   }
-  return [
-    {
+  if (!grant.tokenRef) {
+    return grant;
+  }
+  return {
+    ...grant,
+    tokenRef: null,
+    metadata: {
+      ...grant.metadata,
+      legacyTokenRefIgnored: true,
+    },
+  };
+}
+
+function telegramStatusDegradations(args: {
+  connected: boolean;
+  hasLegacyTokenRef: boolean;
+}): LifeOpsConnectorDegradation[] {
+  const degradations: LifeOpsConnectorDegradation[] = [];
+  if (!args.connected) {
+    degradations.push({
       axis: "transport-offline",
       code: "telegram_plugin_unavailable",
-      message:
-        "Agent-side Telegram is served by @elizaos/plugin-telegram. Configure and enable the Telegram bot connector; LifeOps will not create a separate agent Telegram account.",
+      message: TELEGRAM_PLUGIN_SETUP_MESSAGE,
       retryable: true,
-    },
-  ];
+    });
+  }
+  if (args.hasLegacyTokenRef) {
+    degradations.push({
+      axis: "auth-expired",
+      code: "legacy_lifeops_credentials_ignored",
+      message:
+        "Legacy LifeOps Telegram credentials are present but ignored. Migrate this account to @elizaos/plugin-telegram before sending or reading Telegram messages.",
+      retryable: false,
+    });
+  }
+  return degradations;
 }
 
 function memoryToTelegramMessageSearchResult(
@@ -207,107 +237,27 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsTelegramConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      if (side === "agent") {
-        const pluginService = getTelegramPluginService(this.runtime);
-        const connected = telegramPluginConnected(pluginService);
-        const degradations = telegramAgentPluginDegradations(connected);
-        return {
-          provider: "telegram",
-          side,
-          connected,
-          reason: connected ? "connected" : "disconnected",
-          identity: telegramPluginIdentity(pluginService),
-          grantedCapabilities: connected ? FULL_TELEGRAM_CAPABILITIES : [],
-          authState: connected ? "connected" : "idle",
-          authError: null,
-          phone: null,
-          managedCredentialsAvailable: false,
-          storedCredentialsAvailable: false,
-          grant: null,
-          ...(degradations.length > 0 ? { degradations } : {}),
-        };
-      }
-
-      let grant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "telegram",
-        "local",
-        side,
-      );
-      const pendingSession = findPendingTelegramAuthSession(
-        this.agentId(),
-        side,
-      );
-
-      let tokenRef = grant?.tokenRef ?? null;
-      let storedToken = tokenRef ? readStoredTelegramToken(tokenRef) : null;
-
-      if (!storedToken) {
-        const candidate = findStoredTelegramTokenForSide(this.agentId(), side);
-        if (candidate) {
-          const identity = {
-            ...candidate.token.identity,
-            phone: candidate.token.phone,
-          };
-          const capabilities: LifeOpsTelegramCapability[] = [
-            ...LIFEOPS_TELEGRAM_CAPABILITIES,
-          ];
-          grant = grant
-            ? {
-                ...grant,
-                identity,
-                capabilities,
-                tokenRef: candidate.tokenRef,
-                metadata: {
-                  ...grant.metadata,
-                  phone: candidate.token.phone,
-                  adoptedFromAgentId:
-                    candidate.agentId === this.agentId()
-                      ? null
-                      : candidate.agentId,
-                },
-                lastRefreshAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              }
-            : createLifeOpsConnectorGrant({
-                agentId: this.agentId(),
-                provider: "telegram",
-                identity,
-                grantedScopes: [],
-                capabilities,
-                tokenRef: candidate.tokenRef,
-                mode: "local",
-                side,
-                metadata: {
-                  phone: candidate.token.phone,
-                  adoptedFromAgentId:
-                    candidate.agentId === this.agentId()
-                      ? null
-                      : candidate.agentId,
-                },
-                lastRefreshAt: new Date().toISOString(),
-              });
-          await this.repository.upsertConnectorGrant(grant);
-          tokenRef = candidate.tokenRef;
-          storedToken = candidate.token;
-        }
-      }
-
-      const sessionAvailable = telegramLocalSessionAvailable();
-      const connected = Boolean(grant && storedToken && sessionAvailable);
-      const retryableAuthState = pendingSession
-        ? inferRetryableTelegramAuthState({
-            state: pendingSession.state,
-            error: pendingSession.error,
-          })
-        : null;
-      const authState = connected
-        ? "connected"
-        : (retryableAuthState ?? pendingSession?.state ?? "idle");
-
-      const capabilities: LifeOpsTelegramCapability[] = grant
-        ? grant.capabilities.filter(isLifeOpsTelegramCapability)
-        : [];
+      const pluginService = getTelegramPluginService(this.runtime);
+      const connected = telegramPluginConnected(pluginService);
+      const legacyGrant = await this.repository
+        .getConnectorGrant(this.agentId(), "telegram", "local", side)
+        .catch((error) => {
+          this.logLifeOpsWarn(
+            "telegram_legacy_grant_status_failed",
+            error instanceof Error ? error.message : String(error),
+            { provider: "telegram", side },
+          );
+          return null;
+        });
+      const grant = stripLegacyTokenRef(legacyGrant);
+      const legacyMetadata =
+        legacyGrant?.metadata && typeof legacyGrant.metadata === "object"
+          ? legacyGrant.metadata
+          : {};
+      const degradations = telegramStatusDegradations({
+        connected,
+        hasLegacyTokenRef: Boolean(legacyGrant?.tokenRef),
+      });
 
       return {
         provider: "telegram",
@@ -315,135 +265,45 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         connected,
         reason: connected
           ? "connected"
-          : pendingSession
-            ? "auth_pending"
-            : grant || storedToken
-              ? "auth_expired"
-              : "disconnected",
-        identity:
-          storedToken?.identity &&
-          Object.keys(storedToken.identity).length > 0 &&
-          storedToken.identity.id
-            ? storedToken.identity
-            : grant?.identity && Object.keys(grant.identity).length > 0
-              ? (grant.identity as LifeOpsTelegramConnectorStatus["identity"])
-              : null,
-        grantedCapabilities: capabilities,
-        authState,
-        authError: pendingSession?.error ?? null,
+          : legacyGrant?.tokenRef
+            ? "auth_expired"
+            : "disconnected",
+        identity: connected
+          ? (telegramPluginIdentity(pluginService) ??
+            (legacyGrant?.identity as LifeOpsTelegramConnectorStatus["identity"]) ??
+            null)
+          : legacyGrant?.identity &&
+              Object.keys(legacyGrant.identity).length > 0
+            ? (legacyGrant.identity as LifeOpsTelegramConnectorStatus["identity"])
+            : null,
+        grantedCapabilities: connected ? FULL_TELEGRAM_CAPABILITIES : [],
+        authState: connected
+          ? "connected"
+          : legacyGrant?.tokenRef
+            ? "error"
+            : "idle",
+        authError: connected ? null : TELEGRAM_PLUGIN_SETUP_MESSAGE,
         phone:
-          pendingSession?.phone ??
-          storedToken?.phone ??
-          (typeof grant?.metadata.phone === "string"
-            ? grant.metadata.phone
-            : null),
-        managedCredentialsAvailable: hasManagedTelegramCredentials(),
-        storedCredentialsAvailable: Boolean(
-          storedToken?.apiId && storedToken?.apiHash,
-        ),
-        grant: grant ?? null,
+          typeof legacyMetadata.phone === "string"
+            ? legacyMetadata.phone
+            : null,
+        managedCredentialsAvailable: false,
+        storedCredentialsAvailable: Boolean(legacyGrant?.tokenRef),
+        grant,
+        ...(degradations.length > 0 ? { degradations } : {}),
       };
     }
 
     async startTelegramAuth(
-      request: StartLifeOpsTelegramAuthRequest,
+      _request: StartLifeOpsTelegramAuthRequest,
     ): Promise<StartLifeOpsTelegramAuthResponse> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      if (side === "agent") {
-        fail(
-          409,
-          "Agent-side Telegram is managed by @elizaos/plugin-telegram. Configure the Telegram bot connector instead of linking a LifeOps Telegram account.",
-        );
-      }
-      const phone = requireNonEmptyString(request.phone, "phone");
-
-      // startTelegramAuthFlow is now async — it creates a real GramJS client.
-      const session = await startTelegramAuthFlow({
-        agentId: this.agentId(),
-        side,
-        phone,
-        apiId: request.apiId,
-        apiHash: request.apiHash,
-      });
-
-      return {
-        provider: "telegram",
-        side,
-        state:
-          session.state === "idle"
-            ? "waiting_for_code"
-            : session.state === "waiting_for_provisioning_code"
-              ? "waiting_for_provisioning_code"
-              : (session.state as StartLifeOpsTelegramAuthResponse["state"]),
-        error: session.error ?? undefined,
-      };
+      fail(410, TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE);
     }
 
     async submitTelegramAuth(
-      request: SubmitLifeOpsTelegramAuthRequest,
+      _request: SubmitLifeOpsTelegramAuthRequest,
     ): Promise<StartLifeOpsTelegramAuthResponse> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      if (side === "agent") {
-        fail(
-          409,
-          "Agent-side Telegram auth is owned by @elizaos/plugin-telegram. Configure the Telegram bot connector instead of submitting LifeOps account credentials.",
-        );
-      }
-
-      let resultState: StartLifeOpsTelegramAuthResponse["state"];
-      let resultError: string | undefined;
-
-      if (request.code) {
-        const session = findPendingTelegramAuthSession(this.agentId(), side);
-        if (!session) {
-          fail(
-            404,
-            "No pending Telegram auth session found for this agent/side.",
-          );
-        }
-        // submitTelegramAuthCode is now async — it invokes GramJS.
-        const result = await submitTelegramAuthCode(
-          session.sessionId,
-          request.code,
-        );
-        resultState = result.state as StartLifeOpsTelegramAuthResponse["state"];
-        resultError = result.error ?? undefined;
-
-        if (result.state === "connected") {
-          await this.persistTelegramGrant(side, result.phone, result.identity);
-          await cancelTelegramAuth(result.sessionId);
-        }
-      } else if (request.password) {
-        const session = findPendingTelegramAuthSession(this.agentId(), side);
-        if (!session) {
-          fail(
-            404,
-            "No pending Telegram auth session found for this agent/side.",
-          );
-        }
-        const result = await submitTelegramAuthPassword(
-          session.sessionId,
-          request.password,
-        );
-        resultState = result.state as StartLifeOpsTelegramAuthResponse["state"];
-        resultError = result.error ?? undefined;
-
-        if (result.state === "connected") {
-          await this.persistTelegramGrant(side, result.phone, result.identity);
-          await cancelTelegramAuth(result.sessionId);
-        }
-      } else {
-        fail(400, "Either code or password must be provided.");
-      }
-
-      return {
-        provider: "telegram",
-        side,
-        state: resultState,
-        error: resultError,
-      };
+      fail(410, TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE);
     }
 
     async disconnectTelegram(
@@ -451,46 +311,29 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsTelegramConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      if (side === "agent") {
-        fail(
-          409,
-          "Agent-side Telegram is owned by @elizaos/plugin-telegram. Disable or reconfigure the Telegram bot connector instead of deleting a LifeOps grant.",
-        );
-      }
-      const grant = await this.repository.getConnectorGrant(
+      const legacyGrant = await this.repository.getConnectorGrant(
         this.agentId(),
         "telegram",
         "local",
         side,
       );
-      const pendingSession = findPendingTelegramAuthSession(
-        this.agentId(),
-        side,
-      );
-
-      if (pendingSession) {
-        await cancelTelegramAuth(pendingSession.sessionId);
-      }
-
-      if (grant?.tokenRef) {
-        deleteStoredTelegramToken(grant.tokenRef);
-      }
-
-      if (grant) {
+      if (legacyGrant) {
         await this.repository.deleteConnectorGrant(
           this.agentId(),
           "telegram",
           "local",
           side,
         );
+        await this.recordConnectorAudit(
+          `telegram:${side}`,
+          "legacy telegram connector grant disconnected",
+          { side },
+          {
+            disconnected: true,
+            tokenRefIgnored: Boolean(legacyGrant.tokenRef),
+          },
+        );
       }
-
-      await this.recordConnectorAudit(
-        `telegram:${side}`,
-        "telegram connector disconnected",
-        { side },
-        { disconnected: true },
-      );
 
       return {
         provider: "telegram",
@@ -502,7 +345,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         authState: "idle",
         authError: null,
         phone: null,
-        managedCredentialsAvailable: hasManagedTelegramCredentials(),
+        managedCredentialsAvailable: false,
         storedCredentialsAvailable: false,
         grant: null,
       };
@@ -515,58 +358,16 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<{ ok: true; messageId: string | null }> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      if (side === "agent") {
-        const target = requireNonEmptyString(request.target, "target");
-        const message = requireNonEmptyString(request.message, "message");
-        const status = await this.getTelegramConnectorStatus(side);
-        if (!status.connected) {
-          fail(409, "Agent-side Telegram plugin is not connected.");
-        }
-        if (!status.grantedCapabilities.includes("telegram.send")) {
-          fail(403, "Telegram plugin is missing send permission.");
-        }
-        const delegated = await sendTelegramMessageWithRuntimeService({
-          runtime: this.runtime,
-          grant: status.grant,
-          target,
-          message,
-        });
-        if (delegated.status === "handled") {
-          return { ok: true, messageId: null };
-        }
-        if (delegated.error) {
-          this.logLifeOpsWarn(
-            "runtime_service_delegation_fallback",
-            delegated.reason,
-            {
-              provider: "telegram",
-              operation: "message.send",
-              error:
-                delegated.error instanceof Error
-                  ? delegated.error.message
-                  : String(delegated.error),
-            },
-          );
-        }
-        if (typeof this.runtime.sendMessageToTarget !== "function") {
-          fail(503, "Telegram send handler is not available.");
-        }
-        await this.runtime.sendMessageToTarget(
-          { source: "telegram", accountId: "default", channelId: target },
-          { text: message, source: "lifeops", metadata: { accountId: "default" } },
-        );
-        return { ok: true, messageId: null };
-      }
-      const status = await this.getTelegramConnectorStatus(side);
-      if (!status.connected || !status.grant?.tokenRef) {
-        fail(409, "Telegram connector is not connected.");
-      }
-      if (!status.grantedCapabilities.includes("telegram.send")) {
-        fail(403, "Telegram connector is missing send permission.");
-      }
-
       const target = requireNonEmptyString(request.target, "target");
       const message = requireNonEmptyString(request.message, "message");
+      const status = await this.getTelegramConnectorStatus(side);
+      if (!status.connected) {
+        fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
+      }
+      if (!status.grantedCapabilities.includes("telegram.send")) {
+        fail(403, "Telegram plugin is missing send permission.");
+      }
+
       const delegated = await sendTelegramMessageWithRuntimeService({
         runtime: this.runtime,
         grant: status.grant,
@@ -578,7 +379,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (delegated.error) {
         this.logLifeOpsWarn(
-          "runtime_service_delegation_fallback",
+          "runtime_service_delegation_failed",
           delegated.reason,
           {
             provider: "telegram",
@@ -590,17 +391,10 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
           },
         );
       }
-
-      const result = await sendTelegramAccountMessage({
-        tokenRef: status.grant.tokenRef,
-        target,
-        message,
-      });
-
-      return {
-        ok: true,
-        messageId: result.messageId,
-      };
+      fail(
+        503,
+        `Telegram runtime service send is unavailable: ${delegated.reason} ${TELEGRAM_PLUGIN_SETUP_MESSAGE}`,
+      );
     }
 
     async verifyTelegramConnector(
@@ -608,83 +402,60 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<VerifyLifeOpsTelegramConnectorResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      if (side === "agent") {
-        const status = await this.getTelegramConnectorStatus(side);
-        if (!status.connected) {
-          fail(409, "Agent-side Telegram plugin is not connected.");
-        }
-        let send = {
-          ok: true,
-          error: null,
-          target: request.sendTarget ?? "",
-          message: request.sendMessage ?? "",
-          messageId: null,
-        };
-        if (request.sendTarget) {
-          try {
-            const result = await this.sendTelegramMessage({
-              side,
-              target: request.sendTarget,
-              message:
-                request.sendMessage ??
-                "LifeOps Telegram connector verification ping.",
-            });
-            send = {
-              ok: true,
-              error: null,
-              target: request.sendTarget,
-              message:
-                request.sendMessage ??
-                "LifeOps Telegram connector verification ping.",
-              messageId: result.messageId,
-            };
-          } catch (error) {
-            send = {
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-              target: request.sendTarget,
-              message:
-                request.sendMessage ??
-                "LifeOps Telegram connector verification ping.",
-              messageId: null,
-            };
-          }
-        }
-        return {
-          provider: "telegram",
-          side,
-          verifiedAt: new Date().toISOString(),
-          read: {
-            ok: true,
-            error: null,
-            dialogCount: 0,
-            dialogs: [],
-          },
-          send,
-        };
-      }
       const status = await this.getTelegramConnectorStatus(side);
-      if (!status.connected || !status.grant?.tokenRef) {
-        fail(409, "Telegram connector is not connected.");
-      }
-      if (!status.grantedCapabilities.includes("telegram.read")) {
-        fail(403, "Telegram connector is missing read permission.");
-      }
-      if (!status.grantedCapabilities.includes("telegram.send")) {
-        fail(403, "Telegram connector is missing send permission.");
+      if (!status.connected) {
+        fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
       }
 
-      const result = await verifyTelegramLocalConnector({
-        tokenRef: status.grant.tokenRef,
-        recentLimit: request.recentLimit,
-        sendTarget: request.sendTarget,
-        sendMessage: request.sendMessage,
-      });
+      let send = {
+        ok: true,
+        error: null,
+        target: request.sendTarget ?? "",
+        message: request.sendMessage ?? "",
+        messageId: null,
+      };
+      if (request.sendTarget) {
+        try {
+          const result = await this.sendTelegramMessage({
+            side,
+            target: request.sendTarget,
+            message:
+              request.sendMessage ??
+              "LifeOps Telegram connector verification ping.",
+          });
+          send = {
+            ok: true,
+            error: null,
+            target: request.sendTarget,
+            message:
+              request.sendMessage ??
+              "LifeOps Telegram connector verification ping.",
+            messageId: result.messageId,
+          };
+        } catch (error) {
+          send = {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+            target: request.sendTarget,
+            message:
+              request.sendMessage ??
+              "LifeOps Telegram connector verification ping.",
+            messageId: null,
+          };
+        }
+      }
 
       return {
         provider: "telegram",
         side,
-        ...result,
+        verifiedAt: new Date().toISOString(),
+        read: {
+          ok: true,
+          error: null,
+          dialogCount: 0,
+          dialogs: [],
+        },
+        send,
       };
     }
 
@@ -698,11 +469,12 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const status = await this.getTelegramConnectorStatus(side);
       if (!status.connected) {
-        fail(409, "Telegram connector is not connected.");
+        fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
       }
       if (!status.grantedCapabilities.includes("telegram.read")) {
-        fail(403, "Telegram connector is missing read permission.");
+        fail(403, "Telegram plugin is missing read permission.");
       }
+
       const delegated = await searchTelegramMessagesWithRuntimeService({
         runtime: this.runtime,
         grant: status.grant,
@@ -715,7 +487,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (delegated.error) {
         this.logLifeOpsWarn(
-          "runtime_service_delegation_fallback",
+          "runtime_service_delegation_failed",
           delegated.reason,
           {
             provider: "telegram",
@@ -727,102 +499,20 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
           },
         );
       }
-      if (side === "agent") {
-        fail(503, "Telegram plugin search service is not available.");
-      }
-      if (!status.grant?.tokenRef) {
-        fail(409, "Telegram connector is not connected.");
-      }
-      return searchTelegramMessages({
-        tokenRef: status.grant.tokenRef,
-        query: request.query,
-        scope: request.scope,
-        limit: request.limit,
-      });
+      fail(
+        503,
+        `Telegram runtime service search is unavailable: ${delegated.reason} ${TELEGRAM_PLUGIN_SETUP_MESSAGE}`,
+      );
     }
 
-    async getTelegramDeliveryStatus(request: {
+    async getTelegramDeliveryStatus(_request: {
       side?: LifeOpsConnectorSide;
       target: string;
       messageIds: string[];
     }): Promise<TelegramReadReceiptResult[]> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const status = await this.getTelegramConnectorStatus(side);
-      if (!status.connected || !status.grant?.tokenRef) {
-        fail(409, "Telegram connector is not connected.");
-      }
-      if (!status.grantedCapabilities.includes("telegram.read")) {
-        fail(403, "Telegram connector is missing read permission.");
-      }
-      return getTelegramReadReceipts({
-        tokenRef: status.grant.tokenRef,
-        target: requireNonEmptyString(request.target, "target"),
-        messageIds: request.messageIds,
-      });
-    }
-
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
-    /** @internal */
-    async persistTelegramGrant(
-      side: LifeOpsConnectorSide,
-      phone: string,
-      authIdentity?: { id: string; username: string; firstName: string } | null,
-    ): Promise<void> {
-      const tokenRef = buildTelegramTokenRef(this.agentId(), side);
-      const storedToken = readStoredTelegramToken(tokenRef);
-      const identity: Record<string, unknown> = authIdentity
-        ? { ...authIdentity, phone }
-        : storedToken?.identity
-          ? { ...storedToken.identity, phone }
-          : { phone };
-
-      const existing = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "telegram",
-        "local",
-        side,
-      );
-
-      const capabilities: LifeOpsTelegramCapability[] = [
-        ...LIFEOPS_TELEGRAM_CAPABILITIES,
-      ];
-
-      const grant = existing
-        ? {
-            ...existing,
-            identity,
-            capabilities,
-            tokenRef,
-            metadata: {
-              ...existing.metadata,
-              phone,
-            },
-            updatedAt: new Date().toISOString(),
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "telegram",
-            identity,
-            grantedScopes: [],
-            capabilities,
-            tokenRef,
-            mode: "local",
-            side,
-            metadata: { phone },
-            lastRefreshAt: new Date().toISOString(),
-          });
-
-      await this.repository.upsertConnectorGrant(grant);
-
-      await this.recordConnectorAudit(
-        `telegram:${side}`,
-        "telegram connector authenticated",
-        { phone, side },
-        { capabilities },
+      fail(
+        501,
+        "Telegram delivery receipts require a @elizaos/plugin-telegram runtime read-receipt service. LifeOps no longer calls its local GramJS client.",
       );
     }
   }

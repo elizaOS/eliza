@@ -17,7 +17,6 @@ export { subscriptionsAction } from "./actions/subscriptions.js";
 export { toggleFeatureAction } from "./actions/toggle-feature.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export { websiteBlockAction } from "./actions/website-block.js";
-export { xAction } from "./actions/x.js";
 export { getAppBlockerStatus } from "./app-blocker/engine.js";
 export * from "./contracts/index.js";
 export { detectHealthBackend } from "./lifeops/health-bridge.js";

@@ -2,7 +2,7 @@ import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
-import type { ContextEvent, ContextObject } from "../types/context-object";
+import type { ContextEvent } from "../types/context-object";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -13,7 +13,6 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
-import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -23,7 +22,6 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
-import type { EvaluatorEffects, EvaluatorOutput } from "./evaluator";
 import { runEvaluator } from "./evaluator";
 import { parseJsonObject, stringifyForModel } from "./json-output";
 import {
@@ -38,6 +36,22 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import {
+	cacheProviderOptions,
+	toolMessageContent,
+	trajectoryStepsToMessages,
+} from "./planner-rendering";
+import type {
+	ContextObject,
+	EvaluatorOutput,
+	PlannerLoopParams,
+	PlannerLoopResult,
+	PlannerRuntime,
+	PlannerStep,
+	PlannerToolCall,
+	PlannerToolResult,
+	PlannerTrajectory,
+} from "./planner-types";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -45,102 +59,22 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 
-export type { ContextObject } from "../types/context-object";
-
-export interface PlannerRuntime {
-	useModel(
-		modelType: TextGenerationModelType,
-		params: {
-			messages: ChatMessage[];
-			tools?: ToolDefinition[];
-			toolChoice?: ToolChoice;
-			responseSchema?: unknown;
-			promptSegments?: PromptSegment[];
-			providerOptions?: Record<string, unknown>;
-		},
-		provider?: string,
-	): Promise<string | GenerateTextResult>;
-	logger?: {
-		debug?: (context: unknown, message?: string) => void;
-		warn?: (context: unknown, message?: string) => void;
-		error?: (context: unknown, message?: string) => void;
-	};
-}
-
-export interface PlannerToolCall {
-	id?: string;
-	name: string;
-	params?: Record<string, unknown>;
-}
-
-export interface PlannerToolResult {
-	success: boolean;
-	text?: string;
-	data?: Record<string, unknown>;
-	error?: unknown;
-	continueChain?: boolean;
-}
-
-export interface PlannerStep {
-	iteration: number;
-	thought?: string;
-	toolCall?: PlannerToolCall;
-	result?: PlannerToolResult;
-	terminalMessage?: string;
-	terminalOnly?: boolean;
-}
-
-export interface PlannerTrajectory {
-	context: ContextObject;
-	steps: PlannerStep[];
-	archivedSteps: PlannerStep[];
-	plannedQueue: PlannerToolCall[];
-	evaluatorOutputs: EvaluatorOutput[];
-}
-
-export interface PlannerLoopResult {
-	status: "finished" | "continued";
-	trajectory: PlannerTrajectory;
-	evaluator?: EvaluatorOutput;
-	finalMessage?: string;
-}
-
-export interface PlannerLoopParams {
-	runtime: PlannerRuntime;
-	context: ContextObject;
-	config?: Partial<ChainingLoopConfig>;
-	executeToolCall: (
-		toolCall: PlannerToolCall,
-		context: {
-			trajectory: PlannerTrajectory;
-			iteration: number;
-		},
-	) => Promise<PlannerToolResult> | PlannerToolResult;
-	evaluate?: (params: {
-		runtime: PlannerRuntime;
-		context: ContextObject;
-		trajectory: PlannerTrajectory;
-	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
-	onToolCallEnqueued?: (
-		toolCall: PlannerToolCall,
-		context: { iteration: number },
-	) => Promise<void> | void;
-	modelType?: TextGenerationModelType;
-	evaluatorEffects?: EvaluatorEffects;
-	provider?: string;
-	/** Native tool definitions exposed to the planner model. */
-	tools?: ToolDefinition[];
-	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
-	toolChoice?: ToolChoice;
-	/**
-	 * Trajectory recorder for v5 observability. When supplied, the planner
-	 * loop records one stage per planner call, tool execution, and evaluator
-	 * call. When omitted the loop is unaffected.
-	 */
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-}
+export {
+	cacheProviderOptions,
+	trajectoryStepsToMessages,
+} from "./planner-rendering";
+export type {
+	ContextObject,
+	EvaluatorEffects,
+	EvaluatorOutput,
+	PlannerLoopParams,
+	PlannerLoopResult,
+	PlannerRuntime,
+	PlannerStep,
+	PlannerToolCall,
+	PlannerToolResult,
+	PlannerTrajectory,
+} from "./planner-types";
 
 interface RawPlannerOutput {
 	thought?: unknown;
@@ -206,7 +140,11 @@ export async function runPlannerLoop(
 					message: plannerOutput.messageToUser,
 				});
 				if (trajectory.steps.some((step) => step.toolCall)) {
-					const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					const evaluator = await evaluateTrajectory(
+						params,
+						trajectory,
+						iteration,
+					);
 					trajectory.evaluatorOutputs.push(evaluator);
 					trajectory.context = appendEvaluationEvent({
 						context: trajectory.context,
@@ -444,135 +382,6 @@ function renderPlannerModelInput(params: {
 		stepMessages,
 	});
 	return { messages, promptSegments };
-}
-
-/**
- * Convert completed trajectory steps into proper assistant/tool message pairs
- * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
- * terminal-only steps). The resulting array grows append-only across planner
- * iterations, which keeps the prefix byte-identical for cache hits.
- */
-export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
-	const messages: ChatMessage[] = [];
-	for (const step of steps) {
-		if (!step.toolCall || !step.result) {
-			continue;
-		}
-		const toolCallId = stableToolCallId(step);
-		// The model's prior decision: assistant message with a tool call.
-		messages.push({
-			role: "assistant",
-			content: step.thought ?? null,
-			toolCalls: [
-				{
-					id: toolCallId,
-					type: "function",
-					name: step.toolCall.name,
-					arguments: JSON.stringify(step.toolCall.params ?? {}),
-				},
-			],
-		});
-		messages.push({
-			role: "tool",
-			toolCallId,
-			name: step.toolCall.name,
-			content: toolMessageContent(step.result),
-		});
-	}
-	return messages;
-}
-
-/**
- * Stable tool-call id for an assistant turn. Prefer the model-supplied id;
- * fall back to a deterministic `tc-<iter>-<name>-<argsDigest>` so two tool
- * calls in the same iteration with different args don't collide and so
- * re-rendering the trajectory produces byte-identical assistant turns.
- */
-function stableToolCallId(step: PlannerStep): string {
-	if (step.toolCall?.id) {
-		return step.toolCall.id;
-	}
-	const name = step.toolCall?.name ?? "unknown";
-	const argsDigest = shortArgsDigest(step.toolCall?.params);
-	return `tc-${step.iteration}-${name}-${argsDigest}`;
-}
-
-function shortArgsDigest(params: Record<string, unknown> | undefined): string {
-	if (!params) return "0";
-	const json = stringifyForModel(params);
-	let hash = 0;
-	for (let i = 0; i < json.length; i++) {
-		hash = (hash * 31 + json.charCodeAt(i)) | 0;
-	}
-	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
-}
-
-/**
- * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
- * conventions: prefer `result.text`, fall back to a JSON serialization of
- * `data`/`error` only when no text projection exists. Strict-grammar
- * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
- * the tool turn, and this preserves byte-stability when text is consistent.
- */
-function toolMessageContent(result: PlannerToolResult): string {
-	const parts: string[] = [];
-	if (typeof result.text === "string" && result.text.trim().length > 0) {
-		parts.push(`text: ${result.text.trim()}`);
-	}
-	if (result.data && Object.keys(result.data).length > 0) {
-		parts.push(`data: ${stringifyForModel(result.data)}`);
-	}
-	if (result.error) {
-		const errMsg =
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: stringifyForModel(result.error);
-		parts.push(result.success ? `note: ${errMsg}` : `error: ${errMsg}`);
-	}
-	if (parts.length > 0) {
-		return parts.join("\n");
-	}
-	return result.success ? "ok" : "failed";
-}
-
-export function cacheProviderOptions(args: {
-	prefixHash: string;
-	segmentHashes?: readonly string[];
-}): Record<string, JsonValue | object | undefined> {
-	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
-	return {
-		eliza: {
-			promptCacheKey,
-			prefixHash: args.prefixHash,
-			...(args.segmentHashes ? { segmentHashes: [...args.segmentHashes] } : {}),
-		},
-		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
-		},
-		openai: {
-			promptCacheKey,
-			promptCacheRetention: "24h",
-		},
-		// Anthropic requires explicit cache_control on stable segments.
-		// plugin-anthropic reads cacheControl from anthropic providerOptions and
-		// stamps it onto each stable promptSegment block. This key tells the
-		// plugin which TTL to use; "5m" is the Anthropic default.
-		anthropic: {
-			cacheControl: { type: "ephemeral" },
-		},
-		// OpenRouter passes cache_control through to the underlying provider.
-		// For Anthropic-backed models it forwards the anthropic cache_control;
-		// for OpenAI-compat models it forwards prompt_cache_key.
-		openrouter: {
-			promptCacheKey,
-		},
-		gateway: {
-			caching: "auto",
-		},
-	};
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
@@ -1492,19 +1301,18 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 }
 
 /**
- * The LLM sees the stable two-tool surface (HANDLE_RESPONSE, PLAN_ACTIONS)
- * so every action invocation arrives wrapped:
+ * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
+ * arrives wrapped:
  * `{ name: "PLAN_ACTIONS", args: { action, subaction?, parameters, thought } }`.
- * Holding the tool list to a fixed pair keeps prompt-cache hashes stable
- * across requests no matter which actions are gated this turn.
+ * Holding the tool list fixed keeps prompt-cache hashes stable across requests
+ * no matter which actions are gated this turn.
  *
  * We unwrap at the parse boundary so all downstream logic — context-event
  * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
  * failure attribution — sees the actual action name, not the wrapper.
  *
- * The `subaction` hint is preserved on `params.__subaction` for router-style
- * actions (e.g. LINEAR_ISSUE / SHOPIFY) so the executor can short-circuit a
- * sub-planner descent and dispatch directly to the named child.
+ * The `subaction` hint is preserved on `params.subaction` for router-style
+ * actions.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
@@ -1568,7 +1376,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 				? (inner.parameters as Record<string, unknown>)
 				: {};
 		const actionParameters: Record<string, unknown> = subaction
-			? { ...baseParameters, __subaction: subaction }
+			? { ...baseParameters, subaction }
 			: baseParameters;
 		return {
 			id: typeof record.id === "string" ? record.id : undefined,

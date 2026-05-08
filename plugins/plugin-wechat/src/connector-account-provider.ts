@@ -46,8 +46,12 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
 
   if (!config) {
     // Single-account env-only fallback
-    const envApiKey = runtime.getSetting?.("WECHAT_API_KEY") as string | undefined;
-    const envProxy = runtime.getSetting?.("WECHAT_PROXY_URL") as string | undefined;
+    const envApiKey = runtime.getSetting?.("WECHAT_API_KEY") as
+      | string
+      | undefined;
+    const envProxy = runtime.getSetting?.("WECHAT_PROXY_URL") as
+      | string
+      | undefined;
     if (envApiKey?.trim() || envProxy?.trim()) {
       result.push({
         id: WECHAT_DEFAULT_ACCOUNT_ID,
@@ -108,7 +112,8 @@ function toConnectorAccount(account: WechatResolvedAccount): ConnectorAccount {
     role: "AGENT",
     purpose: ["messaging"],
     accessGate: "open",
-    status: account.enabled && account.apiKeyConfigured ? "connected" : "disabled",
+    status:
+      account.enabled && account.apiKeyConfigured ? "connected" : "disabled",
     externalId: account.wcId || undefined,
     displayHandle: account.nickName || undefined,
     createdAt: now,

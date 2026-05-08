@@ -12,21 +12,36 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("CALENDLY", "CALENDAR", undefined)).toBe(true);
   });
 
-  it("matches the core send action to legacy MESSAGE benchmark cases", () => {
+  it("matches draft dispatch aliases to MESSAGE benchmark cases", () => {
     expect(caseMatches("SEND_MESSAGE", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("SEND_MESSAGE", "MESSAGE", ["MESSAGE"])).toBe(true);
+    expect(caseMatches("DISPATCH_DRAFT", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("CONFIRM_AND_SEND", "MESSAGE", ["MESSAGE"])).toBe(true);
+  });
+
+  it("matches planner-invented LifeOps aliases to LIFE benchmark cases", () => {
+    expect(caseMatches("ADD_TODO", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("ADD_HABIT", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("CREATE_HABIT", "LIFE", ["CREATE_HABIT"])).toBe(true);
+    expect(caseMatches("LIST_TODOS", "LIFE", ["LIST_TODOS"])).toBe(true);
   });
 
   it("matches specialized computer-use tools to COMPUTER_USE", () => {
     expect(caseMatches("FILE_ACTION", "COMPUTER_USE", undefined)).toBe(true);
-    expect(caseMatches("TERMINAL_ACTION", "COMPUTER_USE", undefined)).toBe(true);
+    expect(caseMatches("TERMINAL_ACTION", "COMPUTER_USE", undefined)).toBe(
+      true,
+    );
   });
 
   it("ignores background evaluator actions when picking the observed action", () => {
     const observed = pickObservedAction(
       [
         { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
-        { phase: "completed", actionName: "GOOGLE_CALENDAR", actionStatus: "failed" },
+        {
+          phase: "completed",
+          actionName: "GOOGLE_CALENDAR",
+          actionStatus: "failed",
+        },
         { phase: "completed", actionName: "FACT_EXTRACTOR" },
       ],
       "completed",
@@ -106,5 +121,46 @@ describe("action selection benchmark scoring helpers", () => {
     );
 
     expect(planned).toEqual(["MESSAGE"]);
+  });
+
+  it("unwraps native PLAN_ACTIONS tool calls to the selected action", () => {
+    const planned = parsePlannedActionsFromResponse(
+      JSON.stringify({
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "call-1",
+            toolName: "PLAN_ACTIONS",
+            input: {
+              action: "MESSAGE",
+              parameters: { operation: "triage" },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(planned).toEqual(["MESSAGE"]);
+  });
+
+  it("ignores message-handler protocol tool calls in planner scoring", () => {
+    const planned = parsePlannedActionsFromResponse(
+      JSON.stringify({
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "call-1",
+            toolName: "HANDLE_RESPONSE",
+            input: {
+              processMessage: "RESPOND",
+              plan: { contexts: ["email"] },
+              thought: "Route to email.",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(planned).toEqual([]);
   });
 });

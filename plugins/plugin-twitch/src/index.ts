@@ -17,9 +17,6 @@ export * from "./types.js";
 // the MessageConnector registered by TwitchService.registerSendHandlers.
 
 import { createTwitchConnectorAccountProvider } from "./connector-account-provider.js";
-import { userContextProvider } from "./providers/userContext.js";
-
-export { userContextProvider };
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
@@ -36,7 +33,7 @@ const twitchPlugin: Plugin = {
 
   actions: [],
 
-  providers: [userContextProvider],
+  providers: [],
 
   tests: [],
 
@@ -53,7 +50,7 @@ const twitchPlugin: Plugin = {
           src: "plugin:twitch",
           err: err instanceof Error ? err.message : String(err),
         },
-        "Failed to register Twitch provider with ConnectorAccountManager"
+        "Failed to register Twitch provider with ConnectorAccountManager",
       );
     }
 

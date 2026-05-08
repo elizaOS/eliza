@@ -44,18 +44,16 @@ function makeMessage(): Memory {
 describe("executePlannedToolCall", () => {
 	it("matches action names exactly only", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
-		const runtime = makeRuntime([
-			makeAction({ name: "DOCUMENT", handler }),
-		]);
+		const runtime = makeRuntime([makeAction({ name: "DOCUMENT", handler })]);
 
 		const result = await executePlannedToolCall(
 			runtime,
 			{ message: makeMessage() },
-			{ name: "search_knowledge", params: {} },
+			{ name: "search_documents", params: {} },
 		);
 
 		expect(result.success).toBe(false);
-		expect(result.error).toBe("Action not found: search_knowledge");
+		expect(result.error).toBe("Action not found: search_documents");
 		expect(handler).not.toHaveBeenCalled();
 	});
 

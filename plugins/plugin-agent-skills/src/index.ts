@@ -11,10 +11,6 @@
  * @see https://agentskills.io
  */
 
-export { getSkillDetailsAction } from "./actions/get-skill-details";
-// Actions
-export { searchSkillsAction } from "./actions/search-skills";
-export { syncCatalogAction } from "./actions/sync-catalog";
 export { useSkillAction } from "./actions/use-skill";
 // Parser utilities
 export {
@@ -33,11 +29,6 @@ export {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
-export {
-	installAgentSkillsSearchDispatcher,
-	registerAgentSkillsSearchCategory,
-	SKILLS_SEARCH_CATEGORY,
-} from "./search-category";
 // Install service
 export {
 	findBestInstallOption,

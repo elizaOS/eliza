@@ -28,10 +28,14 @@ import { client } from "../../api/client";
 import type {
   CharacterData,
   CharacterHistoryEntry,
-  ExperienceRecord,
   DocumentRecord,
+  ExperienceRecord,
   RelationshipsActivityItem,
 } from "../../api/client-types";
+import {
+  getWindowNavigationPath,
+  shouldUseHashNavigation,
+} from "../../navigation";
 import { useApp } from "../../state/useApp";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
@@ -108,8 +112,7 @@ const CHARACTER_SECTION_META: Record<
 };
 
 function getSectionFromLocation(tab: string): CharacterHubSection {
-  if (typeof window === "undefined") return "overview";
-  const pathname = window.location.pathname.toLowerCase();
+  const pathname = getWindowNavigationPath().toLowerCase();
   if (pathname.endsWith("/personality")) return "personality";
   if (pathname.endsWith("/documents")) return "documents";
   if (pathname.endsWith("/skills")) return "skills";
@@ -125,7 +128,11 @@ function updateCharacterSectionPath(
 ): void {
   if (typeof window === "undefined") return;
   const path = CHARACTER_SECTION_PATHS[section];
-  if (!path || window.location.pathname === path) return;
+  if (!path || getWindowNavigationPath() === path) return;
+  if (shouldUseHashNavigation()) {
+    window.location.hash = path;
+    return;
+  }
   window.history[mode === "replace" ? "replaceState" : "pushState"](
     null,
     "",
@@ -260,12 +267,13 @@ export function CharacterHubView({
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
     getSectionFromLocation(tab),
   );
-  const [documentRecords, setDocumentRecords] = useState<
-    DocumentRecord[]
-  >(() => readHubCache<DocumentRecord[]>("documents", []));
+  const [documentRecords, setDocumentRecords] = useState<DocumentRecord[]>(() =>
+    readHubCache<DocumentRecord[]>("documents", []),
+  );
   const [documentsLoading, setDocumentsLoading] = useState(true);
-  const [selectedDocumentId, setSelectedDocumentId] =
-    useState<string | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    null,
+  );
   const [historyEntries, setHistoryEntries] = useState<CharacterHistoryEntry[]>(
     () => readHubCache<CharacterHistoryEntry[]>("history", []),
   );
@@ -357,11 +365,15 @@ export function CharacterHubView({
   }, [tab]);
 
   useEffect(() => {
-    const handlePopState = () => {
+    const syncSectionFromLocation = () => {
       setActiveSection(getSectionFromLocation(tab));
     };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("popstate", syncSectionFromLocation);
+    window.addEventListener("hashchange", syncSectionFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncSectionFromLocation);
+      window.removeEventListener("hashchange", syncSectionFromLocation);
+    };
   }, [tab]);
 
   useEffect(() => {
@@ -543,9 +555,7 @@ export function CharacterHubView({
 
   const customDocumentRecords = useMemo(
     () =>
-      documentRecords.filter(
-        (document) => !isDefaultDocumentRecord(document),
-      ),
+      documentRecords.filter((document) => !isDefaultDocumentRecord(document)),
     [documentRecords],
   );
 

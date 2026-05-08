@@ -1586,7 +1586,7 @@ export class IMessageService extends Service implements IIMessageService {
           rowId: row.rowId,
           service: row.service,
         },
-        // Raw handle + resolved contact name for chatContextProvider.
+        // Raw handle + resolved contact name for connector target context.
         ...(row.handle ? { imessageHandle: row.handle } : {}),
         ...(resolvedName ? { imessageContactName: resolvedName } : {}),
         // Delivery service: iMessage / SMS / RCS.

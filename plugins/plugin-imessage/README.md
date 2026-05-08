@@ -90,13 +90,8 @@ iMessage sending is exposed through the canonical message connector action. Use
 
 ### Providers
 
-#### imessageChatContext
-
-Provides information about the current chat:
-- Handle (phone/email)
-- Chat ID
-- Chat type (direct/group)
-- Display name
+iMessage does not register standalone planner providers. Chat and contact
+context is exposed through the iMessage message connector hooks.
 
 ## How It Works
 

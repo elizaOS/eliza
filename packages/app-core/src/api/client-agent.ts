@@ -247,7 +247,13 @@ export interface AccountOAuthStartResult {
 // ---------------------------------------------------------------------------
 
 export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM";
-export type ConnectorAccountPurpose = ConnectorAccountRole;
+export type ConnectorAccountPurpose =
+  | "messaging"
+  | "posting"
+  | "reading"
+  | "admin"
+  | "automation"
+  | (string & {});
 
 export type ConnectorAccountPrivacy =
   | "owner_only"
@@ -274,7 +280,7 @@ export interface ConnectorAccountRecord {
   status?: ConnectorAccountStatus;
   statusDetail?: string | null;
   role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose;
+  purpose?: ConnectorAccountPurpose[];
   privacy?: ConnectorAccountPrivacy;
   isDefault?: boolean;
   enabled?: boolean;
@@ -294,7 +300,7 @@ export interface ConnectorAccountsListResponse {
 export interface ConnectorAccountCreateInput {
   label?: string;
   role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose;
+  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
   privacy?: ConnectorAccountPrivacy;
   metadata?: Record<string, unknown>;
 }
@@ -302,7 +308,7 @@ export interface ConnectorAccountCreateInput {
 export interface ConnectorAccountUpdateInput {
   label?: string;
   role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose;
+  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
   privacy?: ConnectorAccountPrivacy;
   enabled?: boolean;
   metadata?: Record<string, unknown>;
@@ -1451,7 +1457,7 @@ ElizaClient.prototype.deleteConnector = async function (
 
 function connectorAccountsPath(
   provider: string,
-  _connectorId: string,
+  _connectorId?: string,
   accountId?: string,
   action?: "test" | "refresh" | "default",
 ): string {
@@ -1498,6 +1504,17 @@ function normalizeConnectorStatus(value: unknown): ConnectorAccountStatus {
   }
 }
 
+function isConnectorRoleValue(value: unknown): value is ConnectorAccountRole {
+  return normalizeConnectorAccountRole(value) !== undefined;
+}
+
+function normalizeConnectorPurposeList(value: unknown): ConnectorAccountPurpose[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return values
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item): item is ConnectorAccountPurpose => Boolean(item) && !isConnectorRoleValue(item));
+}
+
 function normalizeConnectorAccountRecord(
   provider: string,
   connectorId: string,
@@ -1511,6 +1528,7 @@ function normalizeConnectorAccountRecord(
     normalizeConnectorAccountRole(record.role) ??
     normalizeConnectorAccountRole(record.purpose) ??
     "OWNER";
+  const purpose = normalizeConnectorPurposeList(record.purpose);
   const label =
     typeof record.label === "string" && record.label.trim()
       ? record.label
@@ -1540,7 +1558,7 @@ function normalizeConnectorAccountRecord(
       typeof record.externalId === "string" ? record.externalId : null,
     status: normalizeConnectorStatus(record.status),
     role,
-    purpose: role,
+    purpose,
     isDefault: record.isDefault === true,
     enabled: record.enabled !== false,
     metadata:
@@ -1636,7 +1654,7 @@ function connectorAccountAuditPath(
 ElizaClient.prototype.listConnectorAccounts = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
 ) {
   const response = await this.fetch<unknown>(
     connectorAccountsPath(provider, connectorId),
@@ -1651,7 +1669,7 @@ ElizaClient.prototype.listConnectorAccounts = async function (
 ElizaClient.prototype.addConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   body = {},
 ) {
   const response = await this.fetch<unknown>(
@@ -1667,7 +1685,7 @@ ElizaClient.prototype.addConnectorAccount = async function (
 ElizaClient.prototype.patchConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   accountId,
   body,
 ) {
@@ -1684,7 +1702,7 @@ ElizaClient.prototype.patchConnectorAccount = async function (
 ElizaClient.prototype.testConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   accountId,
 ) {
   const response = await this.fetch<unknown>(
@@ -1697,7 +1715,7 @@ ElizaClient.prototype.testConnectorAccount = async function (
 ElizaClient.prototype.refreshConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   accountId,
 ) {
   const response = await this.fetch<unknown>(
@@ -1710,7 +1728,7 @@ ElizaClient.prototype.refreshConnectorAccount = async function (
 ElizaClient.prototype.deleteConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   accountId,
 ) {
   const response = await this.fetch<unknown>(
@@ -1723,7 +1741,7 @@ ElizaClient.prototype.deleteConnectorAccount = async function (
 ElizaClient.prototype.makeDefaultConnectorAccount = async function (
   this: ElizaClient,
   provider,
-  connectorId,
+  connectorId = provider,
   accountId,
 ) {
   const response = await this.fetch<unknown>(

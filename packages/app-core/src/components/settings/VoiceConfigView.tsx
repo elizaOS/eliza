@@ -995,7 +995,7 @@ export function VoiceConfigView() {
           {t("voiceconfigview.EdgeTTSUsesMicros")}
         </div>
       )}
-      {currentProvider === "simple-voice" && (
+      {currentProvider === "robot-voice" && (
         <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
           {t("voiceconfigview.SimpleVoiceUsesYo")}
         </div>

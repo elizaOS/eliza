@@ -93,13 +93,15 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     case "whatsapp":
       return (
         <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
-          {(accountId) => <WhatsAppQrOverlay accountId={accountId} />}
+          {(accountId) => (
+            <WhatsAppQrOverlay accountId={accountId ?? undefined} />
+          )}
         </ConnectorAccountSetupScope>
       );
     case "signal":
       return (
         <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
-          {(accountId) => <SignalQrOverlay accountId={accountId} />}
+          {(accountId) => <SignalQrOverlay accountId={accountId ?? undefined} />}
         </ConnectorAccountSetupScope>
       );
     case "discordlocal":

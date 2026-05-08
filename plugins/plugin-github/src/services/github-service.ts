@@ -12,7 +12,7 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { Octokit } from "@octokit/rest";
 import {
   defaultGitHubAccountIdForRole,
-  readGitHubAccounts,
+  readGitHubAccountsWithConnectorCredentials,
   resolveGitHubAccount,
   type GitHubAccountConfig,
   type GitHubAccountSelection,
@@ -67,15 +67,15 @@ export class GitHubService extends Service implements IGitHubService {
     createClient?: (auth: string) => GitHubOctokitClient,
   ): Promise<Service> {
     const service = new GitHubService(runtime, createClient);
-    service.initialize();
+    await service.initialize();
     return service;
   }
 
-  private initialize(): void {
+  private async initialize(): Promise<void> {
     if (!this.runtime) {
       return;
     }
-    const accounts = readGitHubAccounts(this.runtime);
+    const accounts = await readGitHubAccountsWithConnectorCredentials(this.runtime);
     this.clients.clear();
     for (const account of accounts) {
       this.clients.set(account.accountId, {

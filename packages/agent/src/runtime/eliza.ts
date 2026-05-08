@@ -156,11 +156,11 @@ import {
   loadHooks,
   triggerHook,
 } from "../hooks/index.js";
+import { ensureAgentWorkspace } from "../providers/workspace.js";
 import {
-  ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
-} from "../providers/workspace.js";
+} from "../shared/workspace-resolution.js";
 import { SandboxAuditLog } from "../security/audit-log.js";
 import {
   SandboxManager,

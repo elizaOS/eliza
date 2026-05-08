@@ -49,6 +49,7 @@
     ".": "./src/index.ts",
     "./package.json": "./package.json",
     "./actions": "./src/actions/index.ts",
+    "./actions/workflow": "./src/actions/workflow/index.ts",
     "./actions/*": "./src/actions/*.ts",
     "./api": "./src/api/index.ts",
     "./api/*": "./src/api/*.ts",

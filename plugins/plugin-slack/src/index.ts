@@ -5,8 +5,6 @@ import {
   type Plugin,
 } from "@elizaos/core";
 import { createSlackConnectorAccountProvider } from "./connector-account-provider";
-import { slackEmojisProvider } from "./providers/slackEmojis";
-import { slackPinsProvider } from "./providers/slackPins";
 
 import { SlackService } from "./service";
 
@@ -15,7 +13,7 @@ const slackPlugin: Plugin = {
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
   services: [SlackService],
   actions: [],
-  providers: [slackPinsProvider, slackEmojisProvider],
+  providers: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register with the ConnectorAccountManager so the generic HTTP CRUD +
     // OAuth surface can list, create, patch, delete, and run OAuth v2 install
@@ -181,8 +179,6 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
-export { slackEmojisProvider } from "./providers/slackEmojis";
-export { slackPinsProvider } from "./providers/slackPins";
 // Export service for direct access
 export { SlackService } from "./service";
 // Export types

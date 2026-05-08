@@ -30,8 +30,8 @@ function truncateSkillDetailsText(text: string): string {
 		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
 }
 
-export const getSkillDetailsAction: Action = {
-	name: "GET_SKILL_DETAILS",
+export const getSkillDetailsAction = {
+	name: "SKILL",
 	contexts: ["knowledge", "automation", "settings"],
 	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
 	roleGate: { minRole: "USER" },
@@ -145,12 +145,12 @@ ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.chan
 				name: "{{agentName}}",
 				content: {
 					text: "## PDF Processing\n\n**Slug:** `pdf-processing`\n**Version:** 1.2.0\n**Status:** ✅ Installed...",
-					actions: ["GET_SKILL_DETAILS"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 function extractSlugFromText(text: string): string | null {
 	// Try to extract a slug-like pattern

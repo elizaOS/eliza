@@ -31,13 +31,18 @@ export async function probeIMessageOutboundActivity(args: {
   // workspace plugin but are absent from the published @elizaos/plugin-imessage
   // tarball. Static imports would crash module load on non-darwin CI builds
   // that resolve the plugin from npm.
-  const mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as {
+  let mod: {
     openChatDb?: (path: string) => Promise<{
       getLatestOwnMessageTimestamp: () => number | null;
       close: () => void;
     } | null>;
     DEFAULT_CHAT_DB_PATH?: string;
   };
+  try {
+    mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as typeof mod;
+  } catch {
+    return;
+  }
   if (typeof mod.openChatDb !== "function") {
     return;
   }

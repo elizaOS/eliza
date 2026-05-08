@@ -442,6 +442,41 @@ export interface ConsumeOAuthFlowStateParams {
 	now?: number | Date;
 }
 
+export interface GetOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+	includeConsumed?: boolean;
+	includeExpired?: boolean;
+	now?: number | Date;
+}
+
+export interface UpdateOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes?: string[];
+	metadata?: ConnectorAccountJsonObject;
+	expiresAt?: number | Date;
+	consumedAt?: number | Date | null;
+	consumedBy?: string | null;
+}
+
+export interface DeleteOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+}
+
 export interface AgentRunCounts
 	extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
 
@@ -1388,6 +1423,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	consumeOAuthFlowState(
 		params: ConsumeOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null>;
+	getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
+	updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
+	deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean>;
 
 	// ── Plugin Schema Registration ──────────────────────────────────────────
 	// WHY: Plugins need custom tables (goals, todos) but shouldn't cast runtime.db

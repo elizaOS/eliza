@@ -606,7 +606,13 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
-export type ActionDocParameterExampleValue = string | number | boolean | null;
+export type ActionDocParameterExampleValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ActionDocParameterExampleValue[]
+  | { readonly [key: string]: ActionDocParameterExampleValue };
 
 export type ActionDocParameterSchema = {
   type: "string" | "number" | "integer" | "boolean" | "object" | "array";

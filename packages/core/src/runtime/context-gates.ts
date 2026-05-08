@@ -4,7 +4,7 @@ import type {
 	RoleGate,
 	RoleGateRole,
 } from "../types/contexts";
-import { normalizeContextList } from "./context-registry";
+import { normalizeContextList } from "./context-normalization";
 
 const ROLE_RANK: Record<string, number> = {
 	NONE: 0,

@@ -43,7 +43,7 @@ export interface UseConnectorAccountsResult {
   defaultAccountId: string | null;
   selectedAccountId: string | null;
   selectedAccount: ConnectorAccountRecord | null;
-  effectiveAccountId: string;
+  effectiveAccountId: string | null;
   setSelectedAccountId: (accountId: string | null) => void;
   refresh: () => Promise<void>;
   add: (
@@ -78,8 +78,10 @@ function getPreferredAccountId(
     return data.defaultAccountId;
   }
   return (
-    data.accounts.find((account) => account.isDefault)?.id ??
-    data.accounts[0]?.id ??
+    data.accounts.find(
+      (account) => account.isDefault && account.status === "connected",
+    )?.id ??
+    data.accounts.find((account) => account.status === "connected")?.id ??
     null
   );
 }
@@ -325,8 +327,7 @@ export function useConnectorAccounts(
 
   const accounts = useMemo(() => data?.accounts ?? [], [data?.accounts]);
   const defaultAccountId = getPreferredAccountId(data);
-  const effectiveAccountId =
-    selectedAccountId ?? defaultAccountId ?? DEFAULT_CONNECTOR_ACCOUNT_ID;
+  const effectiveAccountId = selectedAccountId ?? defaultAccountId;
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === effectiveAccountId) ?? null,
     [accounts, effectiveAccountId],

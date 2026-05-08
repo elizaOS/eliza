@@ -1,7 +1,8 @@
 import type { ConnectorAccount, ConnectorAccountStorage } from "@elizaos/core";
 import { OAuth2Client } from "google-auth-library";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
+  createGoogleConnectorAccountProvider,
   DefaultGoogleCredentialResolver,
   GOOGLE_MEET_API_SURFACE,
   GOOGLE_OAUTH_SCOPES,
@@ -18,6 +19,11 @@ import googlePlugin, {
 } from "./index.js";
 
 describe("google plugin", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("exports one Google Workspace plugin with the workspace service", () => {
     expect(googlePlugin.name).toBe("google");
     expect(googlePlugin.description).toContain("Gmail, Calendar, Drive, and Meet");
@@ -142,6 +148,53 @@ describe("google plugin", () => {
     expect(credentialStore.get).toHaveBeenCalledTimes(2);
   });
 
+  it("resolves OAuth clients from account metadata credential refs", async () => {
+    const storage = createCredentialStorage({
+      records: [],
+      metadata: {
+        credentialRefs: [
+          {
+            credentialType: "oauth.tokens",
+            vaultRef: "connector.agent.google.acct_google_1.oauth_tokens",
+          },
+        ],
+        oauthCredentialVersion: "v1",
+      },
+    });
+    const credentialStore = {
+      get: vi.fn(async () =>
+        JSON.stringify({
+          access_token: "metadata-ref-access",
+          refresh_token: "metadata-ref-refresh",
+          expiry_date: Date.now() + 3600_000,
+        })
+      ),
+    };
+    const resolver = new DefaultGoogleCredentialResolver({
+      storage,
+      credentialStore,
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    });
+
+    const client = await resolver.getAuthClient({
+      provider: "google",
+      accountId: "acct_google_1",
+      capabilities: ["gmail.read"],
+      scopes: scopesForGoogleCapabilities(["gmail.read"]),
+      reason: "unit-test",
+    });
+
+    expect(client.credentials).toMatchObject({
+      access_token: "metadata-ref-access",
+      refresh_token: "metadata-ref-refresh",
+    });
+    expect(credentialStore.get).toHaveBeenCalledWith(
+      "connector.agent.google.acct_google_1.oauth_tokens",
+      expect.objectContaining({ reveal: true })
+    );
+  });
+
   it("does not keep unsafe OAuth client cache entries when no credential version is exposed", async () => {
     const storage = createCredentialStorage({
       records: [
@@ -173,6 +226,126 @@ describe("google plugin", () => {
 
     expect(first).not.toBe(second);
     expect(first.credentials.refresh_token).toBe("refresh-token");
+  });
+
+  it("does not resolve OAuth clients from token-shaped account metadata", async () => {
+    const storage = createCredentialStorage({
+      records: [],
+      metadata: {
+        oauthTokens: {
+          access_token: "metadata-access-token",
+          refresh_token: "metadata-refresh-token",
+        },
+      },
+    });
+    const resolver = new DefaultGoogleCredentialResolver({
+      storage,
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    });
+
+    await expect(
+      resolver.getAuthClient({
+        provider: "google",
+        accountId: "acct_google_1",
+        capabilities: ["gmail.read"],
+        scopes: scopesForGoogleCapabilities(["gmail.read"]),
+        reason: "unit-test",
+      })
+    ).rejects.toThrow("credential refs");
+  });
+
+  it("persists OAuth token material as vault-backed credential refs during callback", async () => {
+    const vault = new Map<string, string>();
+    const setCredentialRef = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: (serviceType: string) =>
+        serviceType === "vault"
+          ? {
+              set: async (key: string, value: string) => {
+                vault.set(key, value);
+              },
+            }
+          : null,
+    } as never;
+    const manager = {
+      getStorage: () => ({
+        setConnectorAccountCredentialRef: setCredentialRef,
+      }),
+    } as never;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("oauth2.googleapis.com/token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "google-access-token",
+              refresh_token: "google-refresh-token",
+              expires_in: 3600,
+              scope: GOOGLE_OAUTH_SCOPES.gmail.read,
+              token_type: "Bearer",
+              id_token: createUnsignedJwt({
+                sub: "google-subject",
+                email: "ada@example.com",
+                name: "Ada",
+              }),
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      })
+    );
+
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const result = await provider.completeOAuth?.(
+      {
+        provider: "google",
+        code: "oauth-code",
+        query: {},
+        flow: {
+          id: "flow-1",
+          provider: "google",
+          state: "state-1",
+          status: "pending",
+          accountId: "acct_google_1",
+          codeVerifier: "verifier",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          metadata: { role: "AGENT" },
+        },
+      },
+      manager
+    );
+
+    const metadata = (result?.account as ConnectorAccount)?.metadata as Record<string, unknown>;
+    expect((result?.account as ConnectorAccount)?.role).toBe("AGENT");
+    expect(JSON.stringify(metadata)).not.toContain("google-access-token");
+    expect(JSON.stringify(metadata)).not.toContain("google-refresh-token");
+    expect(metadata.credentialRefs).toEqual([
+      expect.objectContaining({
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.google.acct_google_1.oauth_tokens",
+      }),
+    ]);
+    expect(vault.get("connector.agent-1.google.acct_google_1.oauth_tokens")).toContain(
+      "google-access-token"
+    );
+    expect(setCredentialRef).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acct_google_1",
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.google.acct_google_1.oauth_tokens",
+      })
+    );
   });
 
   it("uses a fake Gmail client with selected Gmail read/send scopes", async () => {
@@ -473,6 +646,7 @@ interface TestCredentialRecord {
 
 function createCredentialStorage(options: {
   records: TestCredentialRecord[];
+  metadata?: ConnectorAccount["metadata"];
 }): ConnectorAccountStorage & {
   listConnectorAccountCredentialRefs(params: {
     accountId: string;
@@ -488,7 +662,7 @@ function createCredentialStorage(options: {
     status: "connected",
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    metadata: {},
+    metadata: options.metadata ?? {},
   };
 
   return {
@@ -520,4 +694,12 @@ function createCredentialStorage(options: {
       return options.records;
     },
   };
+}
+
+function createUnsignedJwt(payload: Record<string, unknown>): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+    Buffer.from(JSON.stringify(payload)).toString("base64url"),
+    "sig",
+  ].join(".");
 }

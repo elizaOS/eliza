@@ -64,6 +64,11 @@
 			"types": "./src/testing/index.ts",
 			"import": "./dist/testing/index.js",
 			"default": "./dist/testing/index.js"
+		},
+		"./services/*": {
+			"types": "./src/services/*.ts",
+			"import": "./src/services/*.ts",
+			"default": "./src/services/*.ts"
 		}
 	},
 	"files": [

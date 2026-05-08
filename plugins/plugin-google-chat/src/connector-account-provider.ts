@@ -71,30 +71,23 @@ function toConnectorAccount(settings: GoogleChatSettings): ConnectorAccount {
 }
 
 export function createGoogleChatConnectorAccountProvider(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): ConnectorAccountProvider {
   return {
     provider: GOOGLE_CHAT_PROVIDER_ID,
     label: "Google Chat",
-    listAccounts: async (
-      _manager: ConnectorAccountManager,
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const ids = listGoogleChatAccountIds(runtime);
       if (ids.length === 0) {
         return [
           toConnectorAccount(
-            resolveGoogleChatAccountSettings(runtime, DEFAULT_GOOGLE_CHAT_ACCOUNT_ID),
+            resolveGoogleChatAccountSettings(runtime, DEFAULT_GOOGLE_CHAT_ACCOUNT_ID)
           ),
         ];
       }
-      return ids.map((id) =>
-        toConnectorAccount(resolveGoogleChatAccountSettings(runtime, id)),
-      );
+      return ids.map((id) => toConnectorAccount(resolveGoogleChatAccountSettings(runtime, id)));
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: GOOGLE_CHAT_PROVIDER_ID,
@@ -107,14 +100,11 @@ export function createGoogleChatConnectorAccountProvider(
     patchAccount: async (
       _accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ) => {
       return { ...patch, provider: GOOGLE_CHAT_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // No-op at provider layer — service-account credentials live in
       // character settings; deletion of those is out of band.
     },

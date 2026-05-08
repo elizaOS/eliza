@@ -3443,7 +3443,7 @@ export const lifeAction: Action & {
       description:
         "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops).",
       required: false,
-      schema: { type: "object" as const },
+      schema: { type: "object" as const, additionalProperties: true },
     },
   ],
   examples: [

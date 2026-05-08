@@ -1,10 +1,4 @@
 {
 	"version": "1.0.0",
-	"providers": [
-		{
-			"name": "voiceState",
-			"description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
-			"dynamic": true
-		}
-	]
+	"providers": []
 }

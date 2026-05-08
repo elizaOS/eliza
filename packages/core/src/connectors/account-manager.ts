@@ -233,6 +233,46 @@ interface ConnectorAccountDatabaseAdapter {
 		provider?: string;
 		accountKey?: string;
 	}): Promise<boolean>;
+	createOAuthFlowState?(params: {
+		state: string;
+		provider: string;
+		accountId?: string | null;
+		redirectUri?: string | null;
+		codeVerifierRef?: string | null;
+		scopes?: string[];
+		metadata?: Record<string, unknown>;
+		ttlMs?: number;
+		expiresAt?: number | Date;
+	}): Promise<ConnectorOAuthDatabaseRecord>;
+	getOAuthFlowState?(params: {
+		state?: string;
+		stateHash?: string;
+		flowId?: string;
+		provider?: string;
+		includeConsumed?: boolean;
+		includeExpired?: boolean;
+		now?: number | Date;
+	}): Promise<ConnectorOAuthDatabaseRecord | null>;
+	updateOAuthFlowState?(params: {
+		state?: string;
+		stateHash?: string;
+		flowId?: string;
+		provider?: string;
+		accountId?: string | null;
+		redirectUri?: string | null;
+		codeVerifierRef?: string | null;
+		scopes?: string[];
+		metadata?: Record<string, unknown>;
+		expiresAt?: number | Date;
+		consumedAt?: number | Date | null;
+		consumedBy?: string | null;
+	}): Promise<ConnectorOAuthDatabaseRecord | null>;
+	deleteOAuthFlowState?(params: {
+		state?: string;
+		stateHash?: string;
+		flowId?: string;
+		provider?: string;
+	}): Promise<boolean>;
 }
 
 interface ConnectorAccountDatabaseRecord {
@@ -250,6 +290,20 @@ interface ConnectorAccountDatabaseRecord {
 	metadata?: Metadata;
 	createdAt?: number;
 	updatedAt?: number;
+}
+
+interface ConnectorOAuthDatabaseRecord {
+	stateHash: string;
+	provider: string;
+	accountId?: string | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes?: string[];
+	metadata?: Record<string, unknown>;
+	createdAt?: number;
+	expiresAt?: number;
+	consumedAt?: number | null;
+	consumedBy?: string | null;
 }
 
 export interface ConnectorAccountPolicy {
@@ -301,6 +355,12 @@ function randomId(prefix: string): string {
 
 function normalizeProvider(provider: string): string {
 	return provider.trim().toLowerCase();
+}
+
+function looksLikeUuid(value: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+		value,
+	);
 }
 
 function normalizeStringArray<T extends string>(
@@ -591,9 +651,14 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		provider: string,
 		accountId: string,
 	): Promise<ConnectorAccount | null> {
-		const byId = await this.adapter.getConnectorAccount({ id: accountId });
-		if (byId && normalizeProvider(byId.provider) === normalizeProvider(provider)) {
-			return databaseRecordToAccount(byId);
+		if (looksLikeUuid(accountId)) {
+			const byId = await this.adapter.getConnectorAccount({ id: accountId });
+			if (
+				byId &&
+				normalizeProvider(byId.provider) === normalizeProvider(provider)
+			) {
+				return databaseRecordToAccount(byId);
+			}
 		}
 		const byKey = await this.adapter.getConnectorAccount({
 			provider: normalizeProvider(provider),
@@ -628,27 +693,126 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		);
 	}
 
-	createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
-		return this.oauthFallback.createOAuthFlow(flow);
+	async createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
+		await this.oauthFallback.createOAuthFlow(flow);
+		if (typeof this.adapter.createOAuthFlowState !== "function") {
+			return cloneFlow(flow);
+		}
+		const record = await this.adapter.createOAuthFlowState({
+			state: flow.state,
+			provider: normalizeProvider(flow.provider),
+			accountId:
+				flow.accountId && looksLikeUuid(flow.accountId)
+					? flow.accountId
+					: null,
+			redirectUri: flow.redirectUri ?? null,
+			codeVerifierRef: stringMetadataValue(
+				flow.metadata,
+				"codeVerifierRef",
+			),
+			metadata: oauthFlowMetadata(flow),
+			expiresAt: flow.expiresAt,
+		});
+		return databaseRecordToOAuthFlow(record, flow.state, flow);
 	}
 
-	getOAuthFlow(
+	async getOAuthFlow(
 		provider: string,
 		flowIdOrState: string,
 	): Promise<ConnectorOAuthFlow | null> {
-		return this.oauthFallback.getOAuthFlow(provider, flowIdOrState);
+		const normalizedProvider = normalizeProvider(provider);
+		const fallback = await this.oauthFallback.getOAuthFlow(
+			normalizedProvider,
+			flowIdOrState,
+		);
+		if (typeof this.adapter.getOAuthFlowState !== "function") {
+			return fallback;
+		}
+		const byFlowId = await this.adapter.getOAuthFlowState({
+			provider: normalizedProvider,
+			flowId: flowIdOrState,
+			includeConsumed: true,
+			includeExpired: true,
+		});
+		const record =
+			byFlowId ??
+			(await this.adapter.getOAuthFlowState({
+				provider: normalizedProvider,
+				state: flowIdOrState,
+				includeConsumed: true,
+				includeExpired: true,
+			}));
+		return record
+			? databaseRecordToOAuthFlow(record, flowIdOrState, fallback ?? undefined)
+			: fallback;
 	}
 
-	updateOAuthFlow(
+	async updateOAuthFlow(
 		provider: string,
 		flowIdOrState: string,
 		patch: Partial<ConnectorOAuthFlow>,
 	): Promise<ConnectorOAuthFlow | null> {
-		return this.oauthFallback.updateOAuthFlow(provider, flowIdOrState, patch);
+		const normalizedProvider = normalizeProvider(provider);
+		const fallback = await this.oauthFallback.updateOAuthFlow(
+			normalizedProvider,
+			flowIdOrState,
+			patch,
+		);
+		if (typeof this.adapter.updateOAuthFlowState !== "function") {
+			return fallback;
+		}
+		const metadata = oauthFlowPatchMetadata(patch);
+		const update = {
+			provider: normalizedProvider,
+			...(patch.accountId !== undefined && patch.accountId && looksLikeUuid(patch.accountId)
+				? { accountId: patch.accountId }
+				: {}),
+			...(patch.redirectUri !== undefined
+				? { redirectUri: patch.redirectUri ?? null }
+				: {}),
+			...(stringMetadataValue(patch.metadata, "codeVerifierRef") !== undefined
+				? {
+						codeVerifierRef:
+							stringMetadataValue(patch.metadata, "codeVerifierRef") ??
+							null,
+					}
+				: {}),
+			...(patch.expiresAt !== undefined ? { expiresAt: patch.expiresAt } : {}),
+			metadata,
+		};
+		const record =
+			(await this.adapter.updateOAuthFlowState({
+				...update,
+				flowId: flowIdOrState,
+			})) ??
+			(await this.adapter.updateOAuthFlowState({
+				...update,
+				state: flowIdOrState,
+			}));
+		return record
+			? databaseRecordToOAuthFlow(record, flowIdOrState, fallback ?? undefined)
+			: fallback;
 	}
 
-	deleteOAuthFlow(provider: string, flowIdOrState: string): Promise<boolean> {
-		return this.oauthFallback.deleteOAuthFlow(provider, flowIdOrState);
+	async deleteOAuthFlow(provider: string, flowIdOrState: string): Promise<boolean> {
+		const normalizedProvider = normalizeProvider(provider);
+		const fallbackDeleted = await this.oauthFallback.deleteOAuthFlow(
+			normalizedProvider,
+			flowIdOrState,
+		);
+		if (typeof this.adapter.deleteOAuthFlowState !== "function") {
+			return fallbackDeleted;
+		}
+		const dbDeleted =
+			(await this.adapter.deleteOAuthFlowState({
+				provider: normalizedProvider,
+				flowId: flowIdOrState,
+			})) ||
+			(await this.adapter.deleteOAuthFlowState({
+				provider: normalizedProvider,
+				state: flowIdOrState,
+			}));
+		return fallbackDeleted || dbDeleted;
 	}
 }
 
@@ -663,6 +827,46 @@ function isConnectorAccountDatabaseAdapter(
 		typeof candidate.upsertConnectorAccount === "function" &&
 		typeof candidate.deleteConnectorAccount === "function"
 	);
+}
+
+function stringMetadataValue(
+	metadata: Metadata | Record<string, unknown> | undefined,
+	key: string,
+): string | undefined {
+	const value = metadata?.[key];
+	return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function oauthFlowMetadata(
+	flow: ConnectorOAuthFlow,
+): Record<string, unknown> {
+	const metadata: Record<string, unknown> = {
+		...(cloneMetadata(flow.metadata) ?? {}),
+		flowId: flow.id,
+		status: flow.status,
+		updatedAt: flow.updatedAt,
+	};
+	if (flow.authUrl) metadata.authUrl = flow.authUrl;
+	if (flow.error) metadata.error = flow.error;
+	if (flow.codeVerifier) metadata.hasCodeVerifier = true;
+	delete metadata.codeVerifier;
+	return metadata;
+}
+
+function oauthFlowPatchMetadata(
+	patch: Partial<ConnectorOAuthFlow>,
+): Record<string, unknown> {
+	const metadata: Record<string, unknown> = {
+		...(cloneMetadata(patch.metadata) ?? {}),
+		updatedAt: nowMs(),
+	};
+	if (patch.id) metadata.flowId = patch.id;
+	if (patch.status) metadata.status = patch.status;
+	if (patch.authUrl !== undefined) metadata.authUrl = patch.authUrl ?? null;
+	if (patch.error !== undefined) metadata.error = patch.error ?? null;
+	if (patch.codeVerifier) metadata.hasCodeVerifier = true;
+	delete metadata.codeVerifier;
+	return metadata;
 }
 
 function databaseRecordToAccount(
@@ -694,6 +898,48 @@ function databaseRecordToAccount(
 		createdAt: record.createdAt ?? now,
 		updatedAt: record.updatedAt ?? now,
 		metadata: cloneMetadata(record.metadata),
+	};
+}
+
+function databaseRecordToOAuthFlow(
+	record: ConnectorOAuthDatabaseRecord,
+	lookupValue?: string,
+	fallback?: ConnectorOAuthFlow,
+): ConnectorOAuthFlow {
+	const now = nowMs();
+	const metadata = (record.metadata ?? {}) as Metadata;
+	const flowId =
+		stringMetadataValue(metadata, "flowId") ??
+		fallback?.id ??
+		(lookupValue?.startsWith("oauth_")
+			? lookupValue
+			: `oauth_${record.stateHash.slice(0, 16)}`);
+	const state =
+		fallback?.state ??
+		(lookupValue && !lookupValue.startsWith("oauth_")
+			? lookupValue
+			: record.stateHash);
+	const statusValue =
+		stringMetadataValue(metadata, "status") ??
+		fallback?.status ??
+		(record.consumedAt ? "completed" : "pending");
+	return {
+		id: flowId,
+		provider: normalizeProvider(record.provider),
+		state,
+		status: statusValue as ConnectorOAuthFlowStatus,
+		accountId: record.accountId ?? fallback?.accountId,
+		authUrl: stringMetadataValue(metadata, "authUrl") ?? fallback?.authUrl,
+		error: stringMetadataValue(metadata, "error") ?? fallback?.error,
+		redirectUri: record.redirectUri ?? fallback?.redirectUri,
+		codeVerifier: fallback?.codeVerifier,
+		createdAt: record.createdAt ?? fallback?.createdAt ?? now,
+		updatedAt:
+			typeof metadata.updatedAt === "number"
+				? metadata.updatedAt
+				: (fallback?.updatedAt ?? record.createdAt ?? now),
+		expiresAt: record.expiresAt ?? fallback?.expiresAt,
+		metadata: cloneMetadata(metadata),
 	};
 }
 
@@ -833,10 +1079,21 @@ export class ConnectorAccountManager extends Service {
 	async listAccounts(provider: string): Promise<ConnectorAccount[]> {
 		const providerId = normalizeProvider(provider);
 		const registered = this.providers.get(providerId);
+		const storedAccounts = await this.storage.listAccounts(providerId);
 		if (registered?.listAccounts) {
-			return (await registered.listAccounts(this)).map(cloneAccount);
+			const providerAccounts = (await registered.listAccounts(this)).map(
+				cloneAccount,
+			);
+			const merged = new Map<string, ConnectorAccount>();
+			for (const account of storedAccounts) {
+				merged.set(account.id, account);
+			}
+			for (const account of providerAccounts) {
+				merged.set(account.id, account);
+			}
+			return Array.from(merged.values());
 		}
-		return this.storage.listAccounts(providerId);
+		return storedAccounts;
 	}
 
 	async getAccount(

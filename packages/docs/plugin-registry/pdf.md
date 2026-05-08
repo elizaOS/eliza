@@ -24,4 +24,4 @@ This plugin has no configuration parameters. It works out of the box once instal
 
 ## Related
 
-- [Knowledge Plugin](/plugin-registry/knowledge) - Knowledge management and retrieval
+- [Knowledge Plugin](/plugin-registry/documents) - Knowledge management and retrieval

@@ -122,14 +122,14 @@ This document catalogs known failure modes across the Eliza system, organized by
 
 ## Knowledge
 
-### F-07: Knowledge service loading timeout
+### F-07: Documents service loading timeout
 
 | Field | Detail |
 |---|---|
 | **Status** | **Fixed** (PR #806) |
 | **Symptoms** | The knowledge tab in the dashboard appears empty or shows a loading spinner indefinitely. |
 | **Root cause** | The embedding service can take more than 10 seconds to initialize on large databases. When this exceeds the configured timeout, the load fails. |
-| **Current mitigation** | Shared knowledge service loader with configurable timeout and client retry UI. |
+| **Current mitigation** | Shared documents service loader with configurable timeout and client retry UI. |
 | **Gap / Risk** | The failure is silent. The UI does not indicate that loading timed out or provide a way to retry. The user sees an empty knowledge tab with no explanation. |
 
 ### F-08: Large document upload rejected
@@ -138,8 +138,8 @@ This document catalogs known failure modes across the Eliza system, organized by
 |---|---|
 | **Status** | **Fixed** (PR #816) |
 | **Symptoms** | Uploading a document larger than 32 MB fails. The upload is rejected by the server. |
-| **Root cause** | The `KNOWLEDGE_UPLOAD_MAX_BODY_BYTES` limit enforces a hard cap on upload size. |
-| **Current mitigation** | Both upload endpoints (`/api/knowledge/documents` and `/api/knowledge/documents/bulk`) return a clear 413 error: "Document upload exceeds the 32 MB limit. Split large files into smaller parts before uploading." |
+| **Root cause** | The document upload body limit enforces a hard cap on upload size. |
+| **Current mitigation** | Both upload endpoints (`/api/documents` and `/api/documents/bulk`) return a clear 413 error: "Document upload exceeds the 32 MB limit. Split large files into smaller parts before uploading." |
 | **Gap / Risk** | No auto-chunking fallback. Users must split large files manually before uploading. |
 
 ---

@@ -27,7 +27,7 @@ description: Eliza 的插件系统提供模块化能力 — 模型提供者、�
 
 <CardGroup cols={2}>
 
-<Card title="核心插件" icon="cube" href="/zh/plugin-registry/knowledge">
+<Card title="核心插件" icon="cube" href="/zh/plugin-registry/documents">
   每个 Eliza 安装都附带的基础插件 — knowledge、database、form、cron、shell、agent-skills、trajectories 和 agent-orchestrator。
 </Card>
 

@@ -16,7 +16,6 @@ import type { BlueSkyClient } from "../client";
 import { generateDmTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { BlueSkyConversation, BlueSkyMessage } from "../types";
 import {
-	DEFAULT_BLUESKY_ACCOUNT_ID,
 	normalizeBlueSkyAccountId,
 	readBlueSkyAccountId,
 } from "../utils/config";
@@ -84,7 +83,9 @@ export class BlueSkyMessageService {
 		content: Content,
 	): Promise<void> {
 		const requestedAccountId = normalizeBlueSkyAccountId(
-			target.accountId ?? readBlueSkyAccountId(content, target) ?? this.getAccountId(),
+			target.accountId ??
+				readBlueSkyAccountId(content, target) ??
+				this.getAccountId(),
 		);
 		if (requestedAccountId !== this.getAccountId()) {
 			throw new Error(

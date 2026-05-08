@@ -171,7 +171,6 @@ declare module "@elizaos/app-documents/service-loader" {
     DocumentAddedByRole,
     DocumentAddedFrom,
     DocumentSearchMode,
-    DocumentServiceLike,
     DocumentsLoadFailReason,
     DocumentsServiceLike,
     DocumentsServiceResult,
@@ -180,7 +179,6 @@ declare module "@elizaos/app-documents/service-loader" {
   export {
     getDocumentsService,
     getDocumentsServiceTimeoutMs,
-    getDocumentsTimeoutMs,
   } from "@elizaos/agent/api/documents-service-loader";
 }
 

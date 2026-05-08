@@ -16,8 +16,9 @@ import { memoryAction } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { pluginAction } from "../actions/plugin.js";
 import { runtimeAction } from "../actions/runtime.js";
-import { scheduleAction } from "../actions/schedule.js";
 import { settingsAction } from "../actions/settings-actions.js";
+import { taskAction } from "../actions/task.js";
+import { triggerAction } from "../actions/trigger.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
@@ -47,7 +48,7 @@ import { createDynamicSkillProvider } from "../providers/skill-provider.js";
 import { createOngoingTasksProvider } from "../providers/tasks.js";
 import { uiCatalogProvider } from "../providers/ui-catalog.js";
 import { createUserNameProvider } from "../providers/user-name.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
 import { AgentMediaGenerationService } from "../services/media-generation.js";
@@ -202,7 +203,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     actions: [
       terminalAction,
       workflowAction,
-      scheduleAction,
+      taskAction,
+      triggerAction,
       ...pageActionGroupActions,
       skillCommandAction,
       webSearchAction,
@@ -216,8 +218,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       databaseAction,
       queryTrajectoriesAction,
       memoryAction,
-      // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK now live as ops on the
-      // TASKS parent in @elizaos/plugin-agent-orchestrator.
+      // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
+      // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
+      // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
+      // CODE umbrella).
     ],
   };
 

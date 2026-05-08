@@ -28,8 +28,8 @@ import type {
 	DocumentAddedFrom,
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
-	DocumentVisibilityScope,
 	DocumentsConfig,
+	DocumentVisibilityScope,
 	LoadResult,
 	StoredDocument,
 } from "./types.ts";
@@ -85,12 +85,28 @@ function normalizeDocumentScope(
 	return scope && DOCUMENT_SCOPES.has(scope) ? scope : "global";
 }
 
+function resolveWriteDocumentScope({
+	scope,
+	entityId,
+	agentId,
+}: {
+	scope: AddDocumentOptions["scope"] | undefined;
+	entityId: UUID | undefined;
+	agentId: UUID;
+}): DocumentVisibilityScope {
+	if (scope && DOCUMENT_SCOPES.has(scope)) return scope;
+	return entityId && entityId !== agentId ? "user-private" : "global";
+}
+
 function getCharacterDocumentSources(runtime: IAgentRuntime): string[] {
 	const character = runtime.character as {
 		documents?: unknown[];
 		knowledge?: unknown[];
 	};
-	const sources = character.documents ?? character.knowledge ?? [];
+	const sources = [
+		...(character.documents ?? []),
+		...(character.knowledge ?? []),
+	];
 	return sources
 		.map((item) => {
 			const itemAny = item as {
@@ -529,7 +545,9 @@ export class DocumentService extends Service {
 		}
 		if (memories.length === 0) return;
 
-		const documents = memories.filter((memory) => this.isDocumentMemory(memory));
+		const documents = memories.filter((memory) =>
+			this.isDocumentMemory(memory),
+		);
 		const fragments = memories.filter((memory) =>
 			this.isDocumentFragmentMemory(memory),
 		);
@@ -539,7 +557,9 @@ export class DocumentService extends Service {
 			if (!document.id) continue;
 			const documentId = document.id as UUID;
 			const relatedFragments = fragments.filter((fragment) => {
-				const metadata = fragment.metadata as Record<string, unknown> | undefined;
+				const metadata = fragment.metadata as
+					| Record<string, unknown>
+					| undefined;
 				return metadata?.documentId === documentId;
 			});
 
@@ -569,7 +589,8 @@ export class DocumentService extends Service {
 		}
 
 		for (const fragment of fragments) {
-			if (!fragment.id || migratedFragmentIds.has(fragment.id as UUID)) continue;
+			if (!fragment.id || migratedFragmentIds.has(fragment.id as UUID))
+				continue;
 			const fragmentId = fragment.id as UUID;
 			await this.runtime.deleteMemory(fragmentId);
 			await this.runtime.createMemory(
@@ -757,7 +778,11 @@ export class DocumentService extends Service {
 				);
 			}
 
-			const documentScope = normalizeDocumentScope(scope);
+			const documentScope = resolveWriteDocumentScope({
+				scope,
+				entityId,
+				agentId,
+			});
 			const targetEntityId =
 				documentScope === "user-private"
 					? (scopedToEntityId ?? entityId ?? agentId)

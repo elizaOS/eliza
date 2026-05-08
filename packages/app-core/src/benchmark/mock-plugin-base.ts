@@ -255,7 +255,7 @@ function createBenchmarkActionJson(prompt: string): string {
         ?.toLowerCase() ?? prompt.toLowerCase();
     let action = "REPLY";
     if (/send a message|message to/.test(currentMessage))
-      action = "SEND_MESSAGE";
+      action = "MESSAGE";
     else if (/mute this|too noisy/.test(currentMessage)) action = "MUTE_ROOM";
     else if (/unmute/.test(currentMessage)) action = "UNMUTE_ROOM";
     else if (/follow the/.test(currentMessage)) action = "FOLLOW_ROOM";
