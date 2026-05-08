@@ -249,7 +249,12 @@ describe("Anthropic native text plumbing", () => {
       promptSegments: [
         { content: "stable prefix", stable: true },
         { content: "dynamic context", stable: false },
-        { content: "planner_stage:\nDo X.", stable: false },
+        // The planner_stage instructions segment is `stable: true` in production
+        // (planner-loop.ts marks it so it enters the cached prefix). The test
+        // fixture must mirror that — otherwise this test would only verify the
+        // single "stable prefix" block carries cache_control, and a regression
+        // in the planner-loop stable flag would slip through silently.
+        { content: "planner_stage:\nDo X.", stable: true },
       ],
       tools,
       providerOptions: {
@@ -296,11 +301,17 @@ describe("Anthropic native text plumbing", () => {
     for (const part of cacheControlled) {
       expect((part.cache_control as Record<string, unknown>).type).toBe("ephemeral");
     }
-    // The stable runtime prefix must be one of the cached blocks.
+    // Both stable segments — the runtime prefix AND the planner_stage instructions —
+    // must be among the cached blocks. The planner-loop runtime marks both
+    // `stable: true`, and with only two stable segments the coalescing limit
+    // (≤4) does not strip either.
     const stableTextValues = cacheControlled.map((p) => p.text);
     expect(stableTextValues.some((t) => typeof t === "string" && t.includes("stable prefix"))).toBe(
       true
     );
+    expect(
+      stableTextValues.some((t) => typeof t === "string" && t.includes("planner_stage"))
+    ).toBe(true);
 
     // Tools must still reach the wire and trigger native tool-calling.
     expect(call.tools).toBe(tools);

@@ -529,17 +529,28 @@ async function generateTextWithModel(
           },
         ],
       };
-  // On the segmented + messages path, `buildPlannerWireMessages` injects the
-  // structured user content (which carries the runtime stable prefix with
-  // cache_control on stable parts) at the head of the wire. The same stable
-  // content already lives inside `systemPrompt` because
-  // `resolveEffectiveSystemPrompt` extracts it from `messages[0]` (which the
-  // planner built from those very segments). Sending it again as a flat
-  // `system: string` would (a) double the prompt cost on cache misses and (b)
-  // contribute nothing on cache hits since the system parameter cannot carry
-  // `cache_control` by itself. Drop it on this path — character / runtime
-  // identity is preserved inside the structured user content via
-  // `staticPrefix.systemPrompt` / `staticPrefix.characterPrompt` segments.
+  // PRECONDITION: when both `messages` and `promptSegments` are provided, the
+  // caller MUST construct `promptSegments` to fully cover the system content
+  // (character identity, static providers, stage instructions). The v5 planner
+  // (`planner-loop.ts`) and evaluator (`evaluator.ts`) — the only callers that
+  // pass both today — satisfy this: their `promptSegments` includes
+  // `staticPrefix.systemPrompt` / `staticPrefix.characterPrompt` rendered by
+  // `renderContextObject`, plus the appended planner_stage / evaluator_stage
+  // instructions segment. `buildPlannerWireMessages` injects that structured
+  // content (with cache_control on stable parts) at the head of the wire, so
+  // the system identity reaches the model via the user message.
+  //
+  // Given that precondition, sending `system: systemPrompt` ALSO would (a)
+  // double the prompt cost on cache misses and (b) contribute nothing on cache
+  // hits since the system parameter cannot carry `cache_control` by itself.
+  // We therefore drop it.
+  //
+  // CAUTION FOR FUTURE CALLERS: a caller that passes both `messages` and
+  // `promptSegments` but does NOT replicate the `system` content inside its
+  // segments would silently lose the system role here. If that use case
+  // appears, gate this drop on an explicit opt-in (e.g.
+  // `providerOptions.eliza.systemCoveredByPromptSegments === true`) rather
+  // than relying on the implicit segmented-prompt heuristic.
   const wireSystemPrompt =
     segmentedPrompt && paramsWithAttachments.messages ? undefined : systemPrompt;
   const generateParams: NativeTextParams = {
