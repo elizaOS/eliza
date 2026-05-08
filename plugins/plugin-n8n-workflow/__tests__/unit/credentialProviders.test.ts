@@ -15,6 +15,7 @@ import { BlueBubblesN8nCredentialProvider } from "../../../plugin-bluebubbles/sr
 import { InstagramN8nCredentialProvider } from "../../../plugin-instagram/src/n8n-credential-provider";
 import { FarcasterN8nCredentialProvider } from "../../../plugin-farcaster/n8n-credential-provider";
 import { BlueskyN8nCredentialProvider } from "../../../plugin-bluesky/n8n-credential-provider";
+import { XN8nCredentialProvider } from "../../../plugin-x/src/n8n-credential-provider";
 
 function makeRuntime(settings: Record<string, string>) {
   return {
@@ -194,6 +195,7 @@ describe("FeishuN8nCredentialProvider", () => {
     const provider = await FeishuN8nCredentialProvider.start(runtime as never);
     const result = await provider.resolve("user1", "httpHeaderAuth");
     expect(result?.status).toBe("credential_data");
+    expect((result as { data: Record<string, unknown> }).data.appSecret).toBe("app-secret");
   });
 
   test("returns null when only one env var is set", async () => {
@@ -218,6 +220,7 @@ describe("SignalN8nCredentialProvider", () => {
     const provider = await SignalN8nCredentialProvider.start(runtime as never);
     const result = await provider.resolve("user1", "httpHeaderAuth");
     expect(result?.status).toBe("credential_data");
+    expect((result as { data: Record<string, unknown> }).data.signalHttpUrl).toBe("http://localhost:8080");
   });
 
   test("returns null when env vars are absent", async () => {
@@ -302,6 +305,7 @@ describe("BlueskyN8nCredentialProvider", () => {
     const provider = await BlueskyN8nCredentialProvider.start(runtime as never);
     const result = await provider.resolve("user1", "httpHeaderAuth");
     expect(result?.status).toBe("credential_data");
+    expect((result as { data: Record<string, unknown> }).data.appPassword).toBe("app-password");
   });
 
   test("returns null when only BLUESKY_HANDLE is set", async () => {
@@ -314,5 +318,64 @@ describe("BlueskyN8nCredentialProvider", () => {
     const runtime = makeRuntime({});
     const provider = await BlueskyN8nCredentialProvider.start(runtime as never);
     expect(await provider.resolve("user1", "httpHeaderAuth")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// X (Twitter)
+// ---------------------------------------------------------------------------
+describe("XN8nCredentialProvider", () => {
+  test("returns twitterOAuth2Api credential when TWITTER_ACCESS_TOKEN is set", async () => {
+    const runtime = makeRuntime({ TWITTER_ACCESS_TOKEN: "oauth2-token" });
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    const result = await provider.resolve("user1", "twitterOAuth2Api");
+    expect(result?.status).toBe("credential_data");
+    expect((result as { data: Record<string, unknown> }).data.accessToken).toBe("oauth2-token");
+  });
+
+  test("returns twitterApi credential when all four v1 env vars are set", async () => {
+    const runtime = makeRuntime({
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET_KEY: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
+    });
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    const result = await provider.resolve("user1", "twitterApi");
+    expect(result?.status).toBe("credential_data");
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.consumerKey).toBe("api-key");
+    expect(data.consumerSecret).toBe("api-secret");
+    expect(data.accessToken).toBe("access-token");
+    expect(data.accessTokenSecret).toBe("access-secret");
+  });
+
+  test("returns null for twitterApi when any v1 env var is missing", async () => {
+    const runtime = makeRuntime({
+      TWITTER_API_KEY: "api-key",
+      TWITTER_ACCESS_TOKEN: "access-token",
+    });
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "twitterApi")).toBeNull();
+  });
+
+  test("returns null for twitterOAuth2Api when TWITTER_ACCESS_TOKEN is absent", async () => {
+    const runtime = makeRuntime({});
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "twitterOAuth2Api")).toBeNull();
+  });
+
+  test("returns null for unsupported cred type", async () => {
+    const runtime = makeRuntime({ TWITTER_ACCESS_TOKEN: "oauth2-token" });
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "slackApi")).toBeNull();
+  });
+
+  test("checkCredentialTypes returns correct split", async () => {
+    const runtime = makeRuntime({});
+    const provider = await XN8nCredentialProvider.start(runtime as never);
+    const result = provider.checkCredentialTypes(["twitterOAuth2Api", "twitterApi", "slackApi"]);
+    expect(result.supported).toEqual(expect.arrayContaining(["twitterOAuth2Api", "twitterApi"]));
+    expect(result.unsupported).toEqual(["slackApi"]);
   });
 });
