@@ -210,7 +210,6 @@ export const sendDraftAction: Action = {
 	descriptionCompressed:
 		"owner outbound message draft/send confirmation-gated; use for Telegram Signal Discord email SMS/iMessage/DM send requests; never sends without confirmed=true",
 	similes: [
-		"SEND_MESSAGE",
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",
 		"COMPOSE_MESSAGE",

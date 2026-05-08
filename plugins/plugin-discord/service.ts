@@ -373,7 +373,12 @@ export class DiscordService extends Service implements IDiscordService {
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =
 		"The agent is able to send and receive messages on discord";
-	accountId = DEFAULT_ACCOUNT_ID;
+	/**
+	 * Connector account ID this service instance speaks for. Single-account
+	 * env-only deployments use DEFAULT_ACCOUNT_ID. When the multi-account
+	 * pool is wired in, each pool slot owns one client and one accountId.
+	 */
+	public accountId: string = DEFAULT_ACCOUNT_ID;
 	private defaultAccountId = DEFAULT_ACCOUNT_ID;
 	private readonly accountPool = new DiscordAccountClientPool();
 	client: DiscordJsClient | null;
@@ -381,12 +386,6 @@ export class DiscordService extends Service implements IDiscordService {
 	discordSettings: DiscordSettings;
 	messageManager?: MessageManager;
 	voiceManager?: VoiceManager;
-	/**
-	 * Connector account ID this service instance speaks for. Single-account
-	 * env-only deployments use DEFAULT_ACCOUNT_ID. When the multi-account
-	 * pool is wired in, each pool slot owns one client and one accountId.
-	 */
-	public readonly accountId: string;
 	private messageDebouncer?: MessageDebouncer;
 	private channelDebouncer?: ChannelDebouncer;
 	private _loginFailed = false;
