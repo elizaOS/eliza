@@ -43,7 +43,11 @@
     "./connectors": "./src/connectors.ts",
     "./env-utils": "./src/env-utils.ts",
     "./format-error": "./src/format-error.ts",
-    "./runtime-env": "./src/runtime-env.ts",
+    "./runtime-env": {
+      "@elizaos/source": "./src/runtime-env.ts",
+      "types": "./dist/runtime-env.d.ts",
+      "default": "./dist/runtime-env.js"
+    },
     "./contracts": "./src/contracts/index.ts",
     "./contracts/apps": "./src/contracts/apps.ts",
     "./contracts/awareness": "./src/contracts/awareness.ts",
@@ -74,9 +78,21 @@
     "./eliza-core-roles": "./src/eliza-core-roles.ts",
     "./validation-keywords": "./src/validation-keywords.ts",
     "./onboarding-presets": "./src/onboarding-presets.ts",
-    "./dev-settings-table": "./src/dev-settings-table.ts",
-    "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
-    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
+    "./dev-settings-table": {
+      "@elizaos/source": "./src/dev-settings-table.ts",
+      "types": "./dist/dev-settings-table.d.ts",
+      "default": "./dist/dev-settings-table.js"
+    },
+    "./dev-settings-banner-style": {
+      "@elizaos/source": "./src/dev-settings-banner-style.ts",
+      "types": "./dist/dev-settings-banner-style.d.ts",
+      "default": "./dist/dev-settings-banner-style.js"
+    },
+    "./dev-settings-figlet-heading": {
+      "@elizaos/source": "./src/dev-settings-figlet-heading.ts",
+      "types": "./dist/dev-settings-figlet-heading.d.ts",
+      "default": "./dist/dev-settings-figlet-heading.js"
+    },
     "./recent-messages-state": "./src/recent-messages-state.ts",
     "./type-guards": "./src/type-guards.ts",
     "./contracts/lifeops-extensions": "./src/contracts/lifeops-extensions.ts"

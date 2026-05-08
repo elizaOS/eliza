@@ -625,6 +625,7 @@ const browserExternals = [
 	"async_hooks", // Node.js built-in module
 	"node:diagnostics_channel", // Node.js built-in module
 	"node:async_hooks", // Node.js built-in module
+	"fs-extra", // Node-only fs library; consumer bundlers stub for browser/Capacitor
 ];
 
 // Node-specific externals (native modules and node-specific packages)
