@@ -142,6 +142,11 @@ const BENCHMARK_USER_NAME = "Owner";
 const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
+const NON_SELECTION_ACTION_NAMES = new Set([
+  "RELATIONSHIP_EXTRACTION",
+  "FACT_EXTRACTOR",
+  "REFLECTION",
+]);
 const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["GOOGLE_CALENDAR", "CALENDAR"],
   ["CALENDLY", "CALENDAR"],
@@ -296,6 +301,11 @@ function isGenericActionName(name: string | null | undefined): boolean {
   return normalized !== null && GENERIC_ACTION_NAMES.has(normalized);
 }
 
+function isNonSelectionActionName(name: string | null | undefined): boolean {
+  const normalized = normalizeActionName(name);
+  return normalized !== null && NON_SELECTION_ACTION_NAMES.has(normalized);
+}
+
 export function pickObservedAction(
   records: ReadonlyArray<{
     phase: "started" | "completed";
@@ -325,7 +335,12 @@ export function pickObservedAction(
       return true;
     })
     .map((record) => record.actionName)
-    .filter((name) => typeof name === "string" && name.trim().length > 0);
+    .filter(
+      (name) =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        !isNonSelectionActionName(name),
+    );
   return (
     firstMatchingActionName(names, expected, acceptable) ??
     names.find((name) => !isGenericActionName(name)) ??
@@ -457,7 +472,8 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
       }
       if (action && typeof action === "object") {
         const record = action as Record<string, unknown>;
-        const rawName = record.name ?? record.action ?? record.actionName;
+        const rawName =
+          record.name ?? record.toolName ?? record.action ?? record.actionName;
         const input =
           record.input && typeof record.input === "object"
             ? (record.input as Record<string, unknown>)

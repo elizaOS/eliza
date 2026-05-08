@@ -3,7 +3,7 @@ export * from "./context-signal.js";
 export * from "./extract-params.js";
 export * from "./get-self-status.js";
 export * from "./grounded-action-reply.js";
-export * from "./log-level.js";
+export * from "./logs.js";
 export * from "./media.js";
 export * from "./plugin.js";
 export * from "./send-message.js";

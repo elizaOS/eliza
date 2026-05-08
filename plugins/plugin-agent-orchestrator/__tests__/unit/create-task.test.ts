@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTaskAction } from "../../src/actions/create-task.js";
+import { createTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,
   memory,

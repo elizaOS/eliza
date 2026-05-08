@@ -240,6 +240,106 @@ export interface AccountOAuthStartResult {
   needsCodeSubmission: boolean;
 }
 
+export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM";
+export type ConnectorAccountPurpose = ConnectorAccountRole;
+export type ConnectorAccountPrivacy =
+  | "owner_only"
+  | "team_visible"
+  | "semi_public"
+  | "public";
+export type ConnectorAccountStatus =
+  | "connected"
+  | "pending"
+  | "needs-reauth"
+  | "error"
+  | "disconnected"
+  | "unknown";
+
+export interface ConnectorAccountRecord {
+  id: string;
+  provider: string;
+  connectorId: string;
+  label: string;
+  role?: ConnectorAccountRole;
+  /**
+   * Legacy UI name for the role selector. The backend persists this as
+   * `role`; connector capability purpose remains separate.
+   */
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  accessGate?: string;
+  status?: ConnectorAccountStatus;
+  statusDetail?: string;
+  enabled?: boolean;
+  externalId?: string | null;
+  handle?: string | null;
+  displayHandle?: string | null;
+  avatarUrl?: string | null;
+  isDefault?: boolean;
+  lastSyncedAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountsListResponse {
+  provider: string;
+  connectorId: string;
+  defaultAccountId: string | null;
+  accounts: ConnectorAccountRecord[];
+}
+
+export interface ConnectorAccountCreateInput {
+  id?: string;
+  label?: string;
+  role?: ConnectorAccountRole;
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  enabled?: boolean;
+  externalId?: string;
+  displayHandle?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountUpdateInput {
+  label?: string;
+  role?: ConnectorAccountRole;
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  enabled?: boolean;
+  externalId?: string | null;
+  displayHandle?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountActionResult {
+  ok?: boolean;
+  provider?: string;
+  connectorId?: string;
+  account?: ConnectorAccountRecord;
+  accounts?: ConnectorAccountRecord[];
+  defaultAccountId?: string | null;
+  status?: ConnectorAccountStatus | string;
+  deleted?: boolean;
+}
+
+export interface ConnectorAccountAuditEventRecord {
+  id: string;
+  accountId?: string | null;
+  agentId?: string;
+  provider: string;
+  actorId?: string | null;
+  action: string;
+  outcome: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+}
+
+export interface ConnectorAccountAuditListResponse {
+  provider: string;
+  events: ConnectorAccountAuditEventRecord[];
+}
+
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
@@ -393,6 +493,50 @@ declare module "./client-base" {
     deleteConnector(
       name: string,
     ): Promise<{ connectors: Record<string, ConnectorConfig> }>;
+    listConnectorAccounts(
+      provider: string,
+      connectorId?: string,
+    ): Promise<ConnectorAccountsListResponse>;
+    addConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      body?: ConnectorAccountCreateInput,
+    ): Promise<ConnectorAccountActionResult>;
+    patchConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      accountId: string,
+      body: ConnectorAccountUpdateInput,
+    ): Promise<ConnectorAccountRecord>;
+    testConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    refreshConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    deleteConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    makeDefaultConnectorAccount(
+      provider: string,
+      connectorId: string | undefined,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    listConnectorAccountAuditEvents(
+      provider: string,
+      query?: {
+        accountId?: string;
+        action?: string;
+        outcome?: string;
+        limit?: number;
+      },
+    ): Promise<ConnectorAccountAuditListResponse>;
     getTriggers(): Promise<{ triggers: TriggerSummary[] }>;
     getTrigger(id: string): Promise<{ trigger: TriggerSummary }>;
     createTrigger(

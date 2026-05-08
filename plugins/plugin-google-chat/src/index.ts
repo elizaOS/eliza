@@ -7,14 +7,12 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { GOOGLE_CHAT_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
-import { googleChatSpacesProvider } from "./providers/index.js";
 import { GoogleChatService } from "./service.js";
 
 // Export types
 export * from "./types.js";
-// Export service, action, and provider
-export { GOOGLE_CHAT_MESSAGE_OP_ACTION, GoogleChatService, googleChatSpacesProvider, messageOp };
+// Export service
+export { GoogleChatService };
 
 /**
  * Google Chat plugin definition
@@ -25,9 +23,9 @@ const googleChatPlugin: Plugin = {
 
   services: [GoogleChatService],
 
-  actions: [messageOp],
+  actions: [],
 
-  providers: [googleChatSpacesProvider],
+  providers: [],
 
   tests: [],
 

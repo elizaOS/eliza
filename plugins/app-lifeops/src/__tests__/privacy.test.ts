@@ -1,10 +1,7 @@
-import {
-  type ConnectorAccount,
-  CONNECTOR_ACCOUNT_SERVICE_TYPE,
-  ConnectorAccountManager,
-  InMemoryConnectorAccountStorage,
-  type IAgentRuntime,
-  type PrivacyLevel,
+import type {
+  ConnectorAccount,
+  IAgentRuntime,
+  PrivacyLevel,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -13,6 +10,28 @@ import {
   filterAccountsForAudience,
   type LifeOpsAudience,
 } from "../lifeops/privacy.js";
+
+const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
+
+interface FakeManager {
+  getAccount: (
+    provider: string,
+    accountId: string,
+  ) => Promise<ConnectorAccount | null>;
+}
+
+function makeFakeManager(accounts: ConnectorAccount[]): FakeManager {
+  return {
+    async getAccount(provider, accountId) {
+      return (
+        accounts.find(
+          (account) =>
+            account.provider === provider && account.id === accountId,
+        ) ?? null
+      );
+    },
+  };
+}
 
 const PRIVACY_LEVELS: PrivacyLevel[] = [
   "owner_only",
@@ -78,9 +97,9 @@ function makeAccount(
 }
 
 function makeRuntimeWithManager(
-  storage: InMemoryConnectorAccountStorage,
+  accounts: ConnectorAccount[],
 ): IAgentRuntime {
-  const manager = new ConnectorAccountManager(undefined, storage);
+  const manager = makeFakeManager(accounts);
   return {
     agentId: "agent-1",
     getService: vi.fn((serviceType: string) =>
@@ -102,14 +121,10 @@ describe("LifeOps privacy lattice", () => {
 
 describe("canSurfaceAccountData", () => {
   it("returns the privacy lattice answer when the account exists", async () => {
-    const storage = new InMemoryConnectorAccountStorage();
-    await storage.upsertAccount(
+    const runtime = makeRuntimeWithManager([
       makeAccount({ id: "acct_owner", privacy: "owner_only" }),
-    );
-    await storage.upsertAccount(
       makeAccount({ id: "acct_team", privacy: "team_visible" }),
-    );
-    const runtime = makeRuntimeWithManager(storage);
+    ]);
 
     expect(
       await canSurfaceAccountData({
@@ -146,9 +161,9 @@ describe("canSurfaceAccountData", () => {
   });
 
   it("defaults to owner_only when the privacy field is missing", async () => {
-    const storage = new InMemoryConnectorAccountStorage();
-    await storage.upsertAccount(makeAccount({ id: "acct_no_privacy" }));
-    const runtime = makeRuntimeWithManager(storage);
+    const runtime = makeRuntimeWithManager([
+      makeAccount({ id: "acct_no_privacy" }),
+    ]);
 
     expect(
       await canSurfaceAccountData({
@@ -169,14 +184,12 @@ describe("canSurfaceAccountData", () => {
   });
 
   it("defaults to owner_only when the privacy value is unrecognized", async () => {
-    const storage = new InMemoryConnectorAccountStorage();
-    await storage.upsertAccount(
+    const runtime = makeRuntimeWithManager([
       makeAccount({
         id: "acct_bad",
         metadata: { privacy: "garbage" } as Record<string, unknown>,
       }),
-    );
-    const runtime = makeRuntimeWithManager(storage);
+    ]);
 
     expect(
       await canSurfaceAccountData({
@@ -189,8 +202,7 @@ describe("canSurfaceAccountData", () => {
   });
 
   it("returns false when the account does not exist (fail-safe)", async () => {
-    const storage = new InMemoryConnectorAccountStorage();
-    const runtime = makeRuntimeWithManager(storage);
+    const runtime = makeRuntimeWithManager([]);
 
     expect(
       await canSurfaceAccountData({

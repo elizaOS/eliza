@@ -15,18 +15,7 @@
 import type { Plugin, ServiceClass } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
-import { cancelTaskAction } from "./actions/cancel-task.js";
-import { createTaskAction } from "./actions/create-task.js";
-import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
-import { listAgentsAction } from "./actions/list-agents.js";
-import { manageIssuesAction } from "./actions/manage-issues.js";
-import { provisionWorkspaceAction } from "./actions/provision-workspace.js";
-import { sendToAgentAction } from "./actions/send-to-agent.js";
-import { spawnAgentAction } from "./actions/spawn-agent.js";
-import { stopAgentAction } from "./actions/stop-agent.js";
-import { taskControlAction } from "./actions/task-control.js";
-import { taskHistoryAction } from "./actions/task-history.js";
-import { taskShareAction } from "./actions/task-share.js";
+import { tasksAction } from "./actions/tasks.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
@@ -39,7 +28,7 @@ import { CodingWorkspaceService } from "./services/workspace-service.js";
 export const agentOrchestratorPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
   description:
-    "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Canonical CREATE_AGENT_TASK / SPAWN_AGENT / SEND_TO_AGENT / STOP_AGENT / LIST_AGENTS plus workspace + issue actions.",
+    "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen.",
   // Services manage ACPX subprocesses, PTY sessions (legacy), workspaces, and sub-agent routing
   services: [
     AcpService as unknown as ServiceClass,
@@ -49,23 +38,7 @@ export const agentOrchestratorPlugin: Plugin = {
     // biome-ignore lint/suspicious/noExplicitAny: legacy PTY/workspace services don't extend Service base class
     CodingWorkspaceService as any,
   ],
-  actions: [
-    // Canonical sub-agent surface (ACP-backed)
-    createTaskAction,
-    spawnAgentAction,
-    sendToAgentAction,
-    stopAgentAction,
-    listAgentsAction,
-    cancelTaskAction,
-    // Task lifecycle / coordination
-    taskHistoryAction,
-    taskControlAction,
-    taskShareAction,
-    // Workspace + git/GitHub integration
-    provisionWorkspaceAction,
-    finalizeWorkspaceAction,
-    manageIssuesAction,
-  ],
+  actions: [tasksAction],
   evaluators: [],
   providers: [
     availableAgentsProvider, // Adapter inventory + raw session list
@@ -95,32 +68,30 @@ export type {
   WriteMemoryOptions,
 } from "coding-agent-adapters";
 
-// Canonical ACP actions
-export { cancelTaskAction } from "./actions/cancel-task.js";
+// Canonical TASKS surface plus back-compat aliases for old action variable
+// imports (every alias resolves to `tasksAction`).
 export {
+  archiveCodingTaskAction,
+  cancelTaskAction,
   createTaskAction,
-  startCodingTaskAction,
-} from "./actions/create-task.js";
-// Legacy orchestrator actions
-export { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
-export {
+  finalizeWorkspaceAction,
   listAgentsAction,
   listTaskAgentsAction,
-} from "./actions/list-agents.js";
-export { manageIssuesAction } from "./actions/manage-issues.js";
-export { provisionWorkspaceAction } from "./actions/provision-workspace.js";
-export {
+  manageIssuesAction,
+  provisionWorkspaceAction,
+  reopenCodingTaskAction,
   sendToAgentAction,
   sendToTaskAgentAction,
-} from "./actions/send-to-agent.js";
-export {
   spawnAgentAction,
   spawnTaskAgentAction,
-} from "./actions/spawn-agent.js";
-export { stopAgentAction, stopTaskAgentAction } from "./actions/stop-agent.js";
-export { taskControlAction } from "./actions/task-control.js";
-export { taskHistoryAction } from "./actions/task-history.js";
-export { taskShareAction } from "./actions/task-share.js";
+  startCodingTaskAction,
+  stopAgentAction,
+  stopTaskAgentAction,
+  taskControlAction,
+  taskHistoryAction,
+  tasksAction,
+  taskShareAction,
+} from "./actions/tasks.js";
 // API routes
 export {
   createCodingAgentRouteHandler,

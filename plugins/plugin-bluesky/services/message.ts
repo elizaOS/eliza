@@ -48,6 +48,7 @@ export class BlueSkyMessageService {
 	constructor(
 		private readonly client: BlueSkyClient,
 		private readonly runtime: IAgentRuntime,
+		public readonly accountId: string = "default",
 	) {}
 
 	async getMessages(convoId: string, limit = 50): Promise<BlueSkyMessage[]> {

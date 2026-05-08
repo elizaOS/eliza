@@ -5,20 +5,6 @@
 
 import type { ConversationMetadata, ConversationScope } from "@elizaos/agent";
 
-export type {
-  ScratchpadCreateTopicRequest,
-  ScratchpadDeleteTopicResponse,
-  ScratchpadReplaceTopicRequest,
-  ScratchpadSearchResponse,
-  ScratchpadSummaryPreviewRequest,
-  ScratchpadSummaryPreviewResponse,
-  ScratchpadTopicDto,
-  ScratchpadTopicMatchDto,
-  ScratchpadTopicResponse,
-  ScratchpadTopicSearchResultDto,
-  ScratchpadTopicsListResponse,
-} from "@elizaos/shared/contracts";
-
 // Conversations
 export interface Conversation {
   id: string;
@@ -267,21 +253,6 @@ export interface DocumentBulkUploadResult {
   results: DocumentBulkUploadItemResult[];
 }
 
-export type KnowledgeStats = DocumentStats;
-export type KnowledgeDocumentProvenanceKind = DocumentProvenanceKind;
-export type KnowledgeDocumentProvenance = DocumentProvenance;
-export type KnowledgeDocument = DocumentRecord;
-export type KnowledgeDocumentDetail = DocumentDetail;
-export type KnowledgeDocumentsResponse = DocumentsResponse;
-export type KnowledgeFragment = DocumentFragmentRecord;
-export type KnowledgeFragmentsResponse = DocumentFragmentsResponse;
-export type KnowledgeSearchResult = DocumentSearchResult;
-export type KnowledgeSearchResponse = DocumentSearchResponse;
-export type KnowledgeUploadResult = DocumentUploadResult;
-export type KnowledgeDocumentUpdateResult = DocumentUpdateResult;
-export type KnowledgeBulkUploadItemResult = DocumentBulkUploadItemResult;
-export type KnowledgeBulkUploadResult = DocumentBulkUploadResult;
-
 // Memory / context command types
 export interface MemorySearchResult {
   id: string;
@@ -308,7 +279,7 @@ export interface QuickContextResponse {
   query: string;
   answer: string;
   memories: MemorySearchResult[];
-  knowledge: DocumentSearchResult[];
+  documents: DocumentSearchResult[];
 }
 
 // Memory Viewer types

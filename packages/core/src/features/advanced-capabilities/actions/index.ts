@@ -12,4 +12,4 @@
 export { messageAction } from "./message.ts";
 export { postAction } from "./post.ts";
 export { roomOpAction } from "./room.ts";
-export { updateRoleAction } from "./role.ts";
+export { roleAction, updateRoleAction } from "./role.ts";

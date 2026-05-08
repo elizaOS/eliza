@@ -499,24 +499,6 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (actionName === "DEVICE_INTENT") {
-    const channels = [
-      ...toStringArray(params?.channel),
-      ...toStringArray(params?.channels),
-      ...toStringArray(resultData?.channel),
-      ...toStringArray(resultData?.channels),
-    ];
-    for (const inferred of ["desktop", "mobile", "phone_call", "sms"]) {
-      if (blob.includes(inferred)) {
-        channels.push(inferred);
-      }
-    }
-    for (const channel of new Set(channels)) {
-      push(channel, params ?? resultData ?? {});
-    }
-    return;
-  }
-
   if (actionName === "VOICE_CALL") {
     const channel = blob.includes("sms") ? "sms" : "phone_call";
     push(channel, params ?? resultData ?? {});

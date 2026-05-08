@@ -80,15 +80,15 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "character",
         primaryContext: "character",
-        secondaryContexts: ["knowledge", "admin"],
+        secondaryContexts: ["documents", "admin"],
         capabilities: ["modify-character", "edit-character-knowledge"],
       };
-    case "knowledge":
+    case "documents":
       return {
         view: "character",
-        primaryContext: "knowledge",
+        primaryContext: "documents",
         secondaryContexts: ["character"],
-        capabilities: ["search-knowledge", "add-knowledge", "modify-character"],
+        capabilities: ["search-documents", "add-documents", "modify-character"],
       };
     case "automations":
     case "triggers":
@@ -102,21 +102,21 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "browser",
         primaryContext: "browser",
-        secondaryContexts: ["knowledge"],
+        secondaryContexts: ["documents"],
         capabilities: ["browser-session", "browse", "extract-page"],
       };
     case "inventory":
       return {
         view: "wallet",
         primaryContext: "wallet",
-        secondaryContexts: ["knowledge"],
+        secondaryContexts: ["documents"],
         capabilities: ["wallet", "portfolio", "transactions"],
       };
     case "lifeops":
       return {
         view: "apps",
         primaryContext: "automation",
-        secondaryContexts: ["social_posting", "knowledge"],
+        secondaryContexts: ["social_posting", "documents"],
         capabilities: ["lifeops", "tasks", "calendar"],
       };
     case "plugins":
@@ -128,7 +128,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
       return {
         view: "system",
         primaryContext: "system",
-        secondaryContexts: ["knowledge"],
+        secondaryContexts: ["documents"],
         capabilities: ["configure-runtime", "inspect-system"],
       };
     case "skills":
@@ -137,7 +137,7 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
     case "memories":
       return {
         view: "knowledge",
-        primaryContext: "knowledge",
+        primaryContext: "documents",
         secondaryContexts: ["admin", "social_posting"],
         capabilities: ["knowledge", "memory", "relationships"],
       };
@@ -435,7 +435,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (!commandBody) {
           appendLocalCommandTurn(
             rawText,
-            "Usage: #remember <text>, #memory <query>, #knowledge <query>, or #<query>.",
+            "Usage: #remember <text>, #memory <query>, #documents <query>, or #<query>.",
           );
           return { handled: true };
         }
@@ -458,14 +458,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           return { handled: true };
         }
 
-        let scope: "memory" | "knowledge" | "all" = "all";
+        let scope: "memory" | "documents" | "all" = "all";
         let query = commandBody;
         if (lower.startsWith("memory ")) {
           scope = "memory";
           query = commandBody.slice("memory ".length).trim();
-        } else if (lower.startsWith("knowledge ")) {
-          scope = "knowledge";
-          query = commandBody.slice("knowledge ".length).trim();
+        } else if (lower.startsWith("documents ")) {
+          scope = "documents";
+          query = commandBody.slice("documents ".length).trim();
         } else if (lower.startsWith("all ")) {
           scope = "all";
           query = commandBody.slice("all ".length).trim();
@@ -476,13 +476,13 @@ export function useChatSend(deps: UseChatSendDeps) {
           return { handled: true };
         }
 
-        const [memoryResult, knowledgeResult] = await Promise.all([
-          scope === "knowledge"
+        const [memoryResult, documentResult] = await Promise.all([
+          scope === "documents"
             ? Promise.resolve(null)
             : client.searchMemory(query, { limit: 6 }),
           scope === "memory"
             ? Promise.resolve(null)
-            : client.searchKnowledge(query, { threshold: 0.2, limit: 6 }),
+            : client.searchDocuments(query, { threshold: 0.2, limit: 6 }),
         ]);
 
         const memoryLines =
@@ -490,8 +490,8 @@ export function useChatSend(deps: UseChatSendDeps) {
             (item, index) =>
               `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()}`,
           ) ?? [];
-        const knowledgeLines =
-          knowledgeResult?.results.map(
+        const documentLines =
+          documentResult?.results.map(
             (item, index) =>
               `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()} (sim ${item.similarity.toFixed(2)})`,
           ) ?? [];
@@ -501,16 +501,16 @@ export function useChatSend(deps: UseChatSendDeps) {
           [
             scope === "memory"
               ? "Memory search"
-              : scope === "knowledge"
+              : scope === "documents"
                 ? "Knowledge search"
                 : "Memory + knowledge search",
             "",
-            scope === "knowledge"
+            scope === "documents"
               ? ""
               : formatSearchBullet("Memories", memoryLines),
             scope === "memory"
               ? ""
-              : formatSearchBullet("Knowledge", knowledgeLines),
+              : formatSearchBullet("Knowledge", documentLines),
           ]
             .filter(Boolean)
             .join("\n\n"),
@@ -535,7 +535,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           (item, index) =>
             `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()}`,
         );
-        const knowledgeLines = quick.knowledge.map(
+        const documentLines = quick.documents.map(
           (item, index) =>
             `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()} (sim ${item.similarity.toFixed(2)})`,
         );
@@ -545,7 +545,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             quick.answer,
             "",
             formatSearchBullet("Memories used", memoryLines),
-            formatSearchBullet("Knowledge used", knowledgeLines),
+            formatSearchBullet("Knowledge used", documentLines),
           ].join("\n"),
         );
         return { handled: true };

@@ -1,4 +1,13 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  createXConnectorAccountProvider,
+  materializeEnvAccountIfMissing,
+} from "./connector-account-provider.js";
 import { registerXSearchCategory } from "./search-category.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
@@ -55,6 +64,28 @@ export const XPlugin: Plugin = {
       }
     } else {
       logger.warn(`Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth.`);
+    }
+
+    // Register with the ConnectorAccountManager so the generic HTTP CRUD/OAuth
+    // surface can list, create, patch, delete, and start OAuth on X accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createXConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:x",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register X provider with ConnectorAccountManager",
+      );
+    }
+
+    // In env mode (single-account legacy), materialize a synthetic `default`
+    // account so the rest of the runtime can address it through the connector
+    // account interface without a separate provisioning step.
+    if (mode === "env") {
+      await materializeEnvAccountIfMissing(runtime);
     }
   },
 };

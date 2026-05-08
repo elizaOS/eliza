@@ -11,6 +11,11 @@
  *   - `@elizaos/plugin-browser/workspace` (browser-workspace command router)
  */
 
+export {
+  BROWSER_SERVICE_TYPE,
+  type BrowserTarget,
+  BrowserService,
+} from "./browser-service.js";
 export { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 export { browserAction } from "./actions/browser.js";
 export {

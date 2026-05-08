@@ -41,10 +41,10 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 
 const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
-  gmail: "messaging",
-  calendar: "calendar",
-  drive: "drive",
-  meet: "meet",
+  gmail: "messaging" as ConnectorAccountPurpose,
+  calendar: "calendar" as ConnectorAccountPurpose,
+  drive: "drive" as ConnectorAccountPurpose,
+  meet: "meet" as ConnectorAccountPurpose,
 };
 
 interface GoogleTokenResponse {

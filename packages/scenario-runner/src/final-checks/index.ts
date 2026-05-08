@@ -381,10 +381,7 @@ function actionMatchesChannel(
     case "desktop":
     case "mobile":
     case "phone_call":
-      return [
-        "DEVICE_INTENT",
-        "VOICE_CALL",
-      ].includes(action.actionName);
+      return ["VOICE_CALL"].includes(action.actionName);
     default:
       return false;
   }
@@ -630,10 +627,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
-    return (
-      action.actionName === "DEVICE_INTENT" ||
-      (/acknowledge/.test(blob) && /sync/.test(blob))
-    );
+    return /acknowledge/.test(blob) && /sync/.test(blob);
   });
   const want = expected ?? true;
   if (any === want) {

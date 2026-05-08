@@ -12,7 +12,7 @@ import {
   normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,
-} from "../cloud/cloud-api-key.js";
+} from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
 import type { ElizaConfig } from "../config/config.js";
 
 // Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,

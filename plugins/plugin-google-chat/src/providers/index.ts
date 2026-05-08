@@ -1,5 +1,1 @@
-/**
- * Google Chat provider exports.
- */
-
-export { googleChatSpacesProvider } from "./googleChatSpaces.js";
+// Google Chat spaces are exposed through MESSAGE list_channels.

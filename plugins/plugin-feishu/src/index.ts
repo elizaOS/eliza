@@ -1,5 +1,7 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { SEND_MESSAGE_ACTION, sendMessageAction } from "./actions";
+import { createFeishuConnectorAccountProvider } from "./connector-account-provider";
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import { CHAT_STATE_PROVIDER, chatStateProvider } from "./providers";
@@ -12,6 +14,23 @@ const feishuPlugin: Plugin = {
 	actions: [],
 	providers: [chatStateProvider],
 	tests: [],
+	init: async (
+		_config: Record<string, string>,
+		runtime: IAgentRuntime,
+	): Promise<void> => {
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(createFeishuConnectorAccountProvider(runtime));
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:feishu",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register Feishu provider with ConnectorAccountManager",
+			);
+		}
+	},
 };
 
 // Account management exports

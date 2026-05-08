@@ -5,10 +5,13 @@ import {
   listBrowserWorkspaceTabs,
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
+  resolveConnectorBrowserWorkspacePartition,
   showBrowserWorkspaceTab,
 } from "@elizaos/plugin-browser/workspace";
 import type { BrowserBridgePageContext } from "@elizaos/plugin-browser";
-import type { LifeOpsConnectorSide } from "@elizaos/shared";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../accounts";
+
+export const DISCORD_PROVIDER_ID = "discord";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
@@ -400,11 +403,16 @@ export function discordBrowserWorkspaceAvailable(
   return isBrowserWorkspaceBridgeConfigured(env);
 }
 
-export function discordPartitionFor(
-  agentId: string,
-  side: LifeOpsConnectorSide,
-): string {
-  return `lifeops-discord-${agentId}-${side}`;
+/**
+ * Resolve the browser-workspace partition for a Discord user-account scrape
+ * session. Each user account gets its own partition so cookies are not shared
+ * across accounts. Single-account env-only deployments use DEFAULT_ACCOUNT_ID.
+ */
+export function discordUserAccountPartitionFor(accountId?: string): string {
+  return resolveConnectorBrowserWorkspacePartition(
+    DISCORD_PROVIDER_ID,
+    normalizeAccountId(accountId ?? DEFAULT_ACCOUNT_ID),
+  );
 }
 
 async function findTabByIdOrPartition(
@@ -428,8 +436,12 @@ async function findTabByIdOrPartition(
 }
 
 export async function ensureDiscordTab(args: {
-  agentId: string;
-  side: LifeOpsConnectorSide;
+  /**
+   * Connector account ID. The browser partition is keyed off this so cookies
+   * stay isolated across multiple Discord user accounts. Defaults to
+   * DEFAULT_ACCOUNT_ID when omitted.
+   */
+  accountId?: string;
   existingTabId?: string | null;
   show?: boolean;
   env?: NodeJS.ProcessEnv;
@@ -441,7 +453,7 @@ export async function ensureDiscordTab(args: {
     );
   }
 
-  const partition = discordPartitionFor(args.agentId, args.side);
+  const partition = discordUserAccountPartitionFor(args.accountId);
   const existing = await findTabByIdOrPartition(
     args.existingTabId ?? null,
     partition,
