@@ -285,8 +285,6 @@ packages/shared/src/**/*.js.map
 packages/shared/src/**/*.d.ts
 packages/shared/src/**/*.d.ts.map
 !packages/shared/src/elizaos-core-roles.d.ts
-!packages/shared/src/env-utils.impl.js
-!packages/shared/src/env-utils.impl.d.ts
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
 apps/*/src/**/*.d.ts
