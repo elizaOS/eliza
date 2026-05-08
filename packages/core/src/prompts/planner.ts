@@ -28,6 +28,10 @@ rules:
 - health metrics and wearable reads ("step count", "sleep last night") belong to HEALTH when available; do not answer from summaries or REPLY
 - LifeOps browser settings, browser bridge settings, and companion connection state belong to MANAGE_BROWSER_BRIDGE refresh when available; browser extension setup/open chrome extensions belongs to MANAGE_BROWSER_BRIDGE install/open_manager; use BROWSER for tab/page operations, not bridge configuration
 - screenshots or control of the desktop/computer/native apps belong to COMPUTER_USE when available; do not invent helper names such as takeScreenshot
+- the task is not complete while the user still needs live/current/external data, filesystem/runtime state, command output, repo work, app builds, pull-request work, deployment, verification, or another side effect and a relevant exposed tool can attempt it
+- if the current context includes a tool-required router decision or instruction, do not return a terminal answer until after at least one exposed non-terminal tool has run for the current request
+- when a relevant exposed tool can attempt the needed work, call that tool instead of replying that the current context cannot browse, search, run commands, inspect, build, deploy, or verify
+- prior attachments, memory, or conversation snippets are not a substitute for an explicit current request to run, check, fetch, inspect, build, deploy, verify, or look something up now; use a relevant exposed tool for the current turn
 - if no tool fits or the task is complete, return no toolCalls and set messageToUser
 
 context_object:

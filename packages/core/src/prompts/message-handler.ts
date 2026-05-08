@@ -26,6 +26,7 @@ rules:
 - choose processMessage=IGNORE when the message should be ignored
 - choose processMessage=STOP when the user asks the agent to stop or disengage
 - plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email
+- plan.requiresTool is true when the current message needs tools, actions, subagents, providers, filesystem/runtime inspection, network/browser/API lookup, live/current/external data, side effects, long-running work, or verification; otherwise false
 - never invent context ids that are not in available_contexts
 - choose plan.contexts=["simple"] (and only "simple") when ALL of the following are true:
     * the message is purely conversational, a greeting, or a factual question the agent can answer from training alone
@@ -33,7 +34,9 @@ rules:
     * no action verbs like search, find, get, fetch, save, send, create, update, delete, run, execute, or call are present
     * the answer would not meaningfully change if checked against up-to-date information, world state, or memory
     * when uncertain: prefer planning over simple
-- never choose "simple" if the message names a person, place, file, document, or data source; asks about schedules or past interactions ("what did I say earlier", "what's on my calendar", "how many X"); or would benefit from any tool call even if the agent could fabricate a plausible answer
+- a platform mention, reply target, channel, room, or connector context does not by itself disqualify the simple shortcut; use simple when the current message only needs a direct conversational reply
+- never choose "simple" if the request needs tools, actions, subagents, providers, filesystem/runtime inspection, network/browser/API lookup, live/current/external data, side effects, long-running work, or verification
+- never choose "simple" if the message names a person, place, file, document, or data source; asks about schedules or past interactions ("what did I say earlier", "what's on my calendar", "how many X"); searches, browses, or looks up current facts; runs shell or terminal commands; inspects files/logs/repos/services/disk; builds or deploys apps; creates pull requests; spawns coding/task agents; sends messages; schedules tasks; or would benefit from any tool call even if the agent could fabricate a plausible answer
 - never choose "simple" for owner life-management requests to start, track, list, create, change, or review todos, habits, routines, goals, reminders, alarms, check-ins, blocks, calls, travel bookings, device delivery, desktop actions, or approvals; route to the relevant context so the owning action can ask any missing-detail follow-up
 - do not choose "simple" for requests to change, persist, update, or remember agent/user settings, preferences, identity, persona, character, response style, or future behavior; select settings and any other relevant context instead
 - explicit morning/night/daily check-in requests should route to tasks; include automation only when the user asks to schedule or change an automation/cadence
@@ -47,6 +50,7 @@ rules:
 - desktop, native-app, browser, Finder, window, or computer screenshots/control requests must include browser or automation when available; do not route desktop screenshots to media alone
 - LifeOps browser, browser bridge, browser companion, browser extension, browser tab, or browser settings requests must include browser; include settings or connectors as secondary contexts when the user asks for configuration/connection state
 - otherwise list every relevant context id; planning will run and tools will be selected from those contexts
+- if only general is available and a tool/action is still needed, use plan.contexts=["general"]
 - include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
 - plan.candidateActions is OPTIONAL. When planning is needed, include up to 12 action-like retrieval hints inferred from the request, such as "send_email", "calendar_create_event", "search_documents", or "play_music". These can be speculative BM25/regex hints; they are not tool calls.
 - plan.parentActionHints is OPTIONAL. Include up to 6 parent action names only when the parent action is explicit or highly likely. Prefer omitting over guessing.

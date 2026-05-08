@@ -548,7 +548,22 @@ function parseJsonPlannerOutput(raw: string): {
 	messageToUser?: string;
 	raw: Record<string, unknown>;
 } {
-	const parsed = parseJsonObject<RawPlannerOutput>(raw) ?? {};
+	const trimmed = raw.trim();
+	const parsedOrNull = parseJsonObject<RawPlannerOutput>(trimmed);
+	if (!parsedOrNull) {
+		// Non-JSON output: treat as a terminal message rather than swallowing.
+		// Planners that drift to plain text would otherwise produce a no-op
+		// terminal step with empty messageToUser.
+		const fallback = getNonEmptyString(trimmed);
+		if (fallback) {
+			return {
+				toolCalls: [],
+				messageToUser: fallback,
+				raw: { text: trimmed } as Record<string, unknown>,
+			};
+		}
+	}
+	const parsed: RawPlannerOutput = parsedOrNull ?? {};
 	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
 	const rawToolCalls =
 		parsed.toolCalls ??
