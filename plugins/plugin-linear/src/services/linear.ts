@@ -11,17 +11,16 @@ import {
 } from "@linear/sdk";
 import {
   DEFAULT_LINEAR_ACCOUNT_ID,
+  type LinearAccountConfig,
   normalizeLinearAccountId,
   readLinearAccounts,
   resolveLinearAccount,
-  type LinearAccountConfig,
 } from "../accounts";
 import type {
   ActivityDetailObject,
   ActivityDetailValue,
   LinearActivityItem,
   LinearCommentInput,
-  LinearConfig,
   LinearIssueInput,
   LinearSearchFilters,
 } from "../types";
@@ -41,7 +40,6 @@ export class LinearService extends Service {
 
   private clients = new Map<string, LinearClientState>();
   private activityLog: LinearActivityItem[] = [];
-  private linearConfig: LinearConfig;
   private defaultAccountId = DEFAULT_LINEAR_ACCOUNT_ID;
   public workspaceId?: string;
 
@@ -51,23 +49,14 @@ export class LinearService extends Service {
     const accounts = runtime ? readLinearAccounts(runtime) : [];
     const requestedDefault = runtime
       ? normalizeLinearAccountId(
-          runtime.getSetting("LINEAR_DEFAULT_ACCOUNT_ID") ??
-            runtime.getSetting("LINEAR_ACCOUNT_ID")
+          runtime.getSetting("LINEAR_DEFAULT_ACCOUNT_ID") ?? runtime.getSetting("LINEAR_ACCOUNT_ID")
         )
       : DEFAULT_LINEAR_ACCOUNT_ID;
-    const defaultAccount =
-      resolveLinearAccount(accounts, requestedDefault) ?? accounts[0] ?? null;
+    const defaultAccount = resolveLinearAccount(accounts, requestedDefault) ?? accounts[0] ?? null;
 
     if (!defaultAccount) {
       throw new LinearAuthenticationError("Linear API key is required");
     }
-
-    this.linearConfig = {
-      LINEAR_API_KEY: defaultAccount.apiKey,
-      LINEAR_WORKSPACE_ID: defaultAccount.workspaceId,
-      LINEAR_ACCOUNT_ID: defaultAccount.accountId,
-      LINEAR_DEFAULT_ACCOUNT_ID: requestedDefault,
-    };
 
     this.defaultAccountId = defaultAccount.accountId;
     this.workspaceId = defaultAccount.workspaceId;
@@ -454,13 +443,7 @@ export class LinearService extends Service {
     if (!payload.success) {
       throw new Error("Failed to delete comment");
     }
-    this.logActivity(
-      "delete_comment",
-      "comment",
-      commentId,
-      { accountId: state.accountId },
-      true
-    );
+    this.logActivity("delete_comment", "comment", commentId, { accountId: state.accountId }, true);
   }
 
   async listComments(issueId: string, limit = 25, accountId?: string): Promise<Comment[]> {

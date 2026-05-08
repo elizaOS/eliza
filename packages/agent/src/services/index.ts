@@ -2,13 +2,13 @@ export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
-export * from "./media-generation.js";
 export {
   EscalationService,
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.js";
 export { createDefaultExecutorRegistry } from "./executor-registry.js";
+export * from "./media-generation.js";
 export * from "./overlay-app-presence.js";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with

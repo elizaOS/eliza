@@ -10,8 +10,17 @@
     "declaration": false,
     "outDir": "./dist",
     "noEmit": true,
-    "types": ["bun-types", "node"]
+    "types": [
+      "bun-types",
+      "node"
+    ]
   },
-  "include": ["*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "extends": "../../../../tsconfig.workspace-paths.json"
 }

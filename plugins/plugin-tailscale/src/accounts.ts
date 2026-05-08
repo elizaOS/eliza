@@ -111,9 +111,7 @@ function accountFromRecord(record: RawAccountRecord): TailscaleAccountConfig | n
       'authKeyExpirySeconds',
     ]) as string | number | undefined,
     cloudApiKey: nonEmptyString(readRawField(record, ['ELIZAOS_CLOUD_API_KEY', 'cloudApiKey'])),
-    cloudBaseUrl: nonEmptyString(
-      readRawField(record, ['ELIZAOS_CLOUD_BASE_URL', 'cloudBaseUrl']),
-    ),
+    cloudBaseUrl: nonEmptyString(readRawField(record, ['ELIZAOS_CLOUD_BASE_URL', 'cloudBaseUrl'])),
     label: nonEmptyString(record.label ?? record.displayName),
   };
   return account;

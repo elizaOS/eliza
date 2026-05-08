@@ -661,7 +661,7 @@ async function databaseHandler(
       success: false,
       text: `op is required and must be one of: ${DATABASE_OPS.join(", ")}.`,
       values: {
-        error: "DATABASE_INVALID_OP",
+        error: "DATABASE_INVALID",
         received: typeof op === "string" ? op : null,
       },
     };
@@ -847,4 +847,3 @@ export const databaseAction: Action = {
     ],
   ],
 };
-

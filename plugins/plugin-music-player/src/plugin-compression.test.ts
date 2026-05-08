@@ -10,7 +10,7 @@ describe("music player plugin compression", () => {
 
   it("registers the compressed action set", () => {
     expect(musicPlayerPlugin.actions?.map((action) => action.name)).toEqual([
-      "PLAYBACK_OP",
+      "PLAYBACK",
       "MANAGE_ROUTING",
       "MANAGE_ZONES",
       "PLAY_AUDIO",
@@ -19,7 +19,7 @@ describe("music player plugin compression", () => {
 
   it("exposes the compressed PLAYBACK_OP descCompressed", () => {
     const action = musicPlayerPlugin.actions?.find(
-      (a) => a.name === "PLAYBACK_OP",
+      (a) => a.name === "PLAYBACK",
     );
     expect(action?.descriptionCompressed).toBe(
       "Music playback ops: pause, resume, skip, stop, queue.",

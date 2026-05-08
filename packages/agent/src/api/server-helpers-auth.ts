@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import { logger } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -16,7 +17,6 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
 // ---------------------------------------------------------------------------

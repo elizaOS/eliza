@@ -13,7 +13,6 @@ import {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "../config/plugin-widgets.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
@@ -30,6 +29,7 @@ import type {
   InstallProgressLike,
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {

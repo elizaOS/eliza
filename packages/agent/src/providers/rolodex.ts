@@ -6,12 +6,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/core/services/relationships-graph-builder";
+import { getValidationKeywordTerms } from "@elizaos/shared";
+import { hasAdminAccess } from "../security/access.js";
 
 const MAX_CONTACTS = 10;
 

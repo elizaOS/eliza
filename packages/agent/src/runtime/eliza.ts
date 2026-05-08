@@ -157,15 +157,15 @@ import {
   triggerHook,
 } from "../hooks/index.js";
 import { ensureAgentWorkspace } from "../providers/workspace.js";
-import {
-  resolveDefaultAgentWorkspaceDir,
-  shouldBootstrapWorkspaceInitFiles,
-} from "../shared/workspace-resolution.js";
 import { SandboxAuditLog } from "../security/audit-log.js";
 import {
   SandboxManager,
   type SandboxMode,
 } from "../services/sandbox-manager.js";
+import {
+  resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
+} from "../shared/workspace-resolution.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { seedBundledDocuments } from "./default-documents.js";
 import discordLocalPlugin from "./discord-local-plugin.js";

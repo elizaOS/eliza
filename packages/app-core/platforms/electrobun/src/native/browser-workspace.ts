@@ -148,7 +148,10 @@ function normalizeConnectorPartitionSegment(
 	return normalized;
 }
 
-function hashConnectorPartitionKey(provider: string, accountId: string): string {
+function hashConnectorPartitionKey(
+	provider: string,
+	accountId: string,
+): string {
 	const input = `${provider.trim().toLowerCase()}\0${accountId.trim().toLowerCase()}`;
 	let hash = 0x811c9dc5;
 	for (let i = 0; i < input.length; i++) {

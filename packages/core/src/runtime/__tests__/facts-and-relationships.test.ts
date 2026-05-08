@@ -195,9 +195,7 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(params.messages?.[1]?.content).toContain("room_entities:");
 
 		// Result parsed and persisted
-		expect(result.parsed.facts).toEqual([
-			"the user's birthday is March 5",
-		]);
+		expect(result.parsed.facts).toEqual(["the user's birthday is March 5"]);
 		expect(result.written.facts).toBe(1);
 		expect(runtime.createMemory).toHaveBeenCalledWith(
 			expect.objectContaining({

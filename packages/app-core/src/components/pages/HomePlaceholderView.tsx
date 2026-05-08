@@ -26,8 +26,8 @@ export function HomePlaceholderView({
         <div className="flex flex-col items-center justify-center gap-4 px-8 py-16 text-center">
           <h2 className="text-lg font-medium">No main app installed yet</h2>
           <p className="text-sm opacity-70 max-w-md">
-            Install an app from the Apps tab and mark it as your main tab to
-            see it here.
+            Install an app from the Apps tab and mark it as your main tab to see
+            it here.
           </p>
           <Button onClick={() => setTab("apps")}>Browse apps</Button>
         </div>

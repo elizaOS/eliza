@@ -1232,7 +1232,7 @@ function main() {
       const jsonTemplateParameters =
         explicitParameters.length === 0 &&
         descriptionParameters.length === 0 &&
-        (name.endsWith("_OP") || description.toLowerCase().includes("router"))
+        (name.endsWith("") || description.toLowerCase().includes("router"))
           ? inferParametersFromJsonTemplate(src)
           : [];
       const parameters =

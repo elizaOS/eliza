@@ -35,7 +35,6 @@ import {
 import {
   createCodeChallenge,
   createCodeVerifier,
-  createState,
 } from "./client/auth-providers/pkce";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs";
 import { getSetting } from "./utils/settings";
@@ -79,7 +78,7 @@ function readScopes(runtime: IAgentRuntime, override?: string[]): string[] {
     return override;
   }
   const raw = getSetting(runtime, "TWITTER_SCOPES");
-  if (raw && raw.trim()) {
+  if (raw?.trim()) {
     return raw
       .split(/\s+/)
       .map((scope) => scope.trim())
@@ -273,7 +272,13 @@ export function createXConnectorAccountProvider(
         code,
         codeVerifier,
       });
-      const me = await fetchAuthenticatedUser(token.access_token!);
+      const accessToken = token.access_token;
+      if (!accessToken) {
+        throw new Error(
+          "Twitter OAuth token exchange did not return an access_token",
+        );
+      }
+      const me = await fetchAuthenticatedUser(accessToken);
       const expiresAt =
         typeof token.expires_in === "number"
           ? Date.now() + token.expires_in * 1000

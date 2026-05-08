@@ -61,7 +61,7 @@ describe("computer-use live parity", () => {
         "FILE_ACTION",
         "MANAGE_WINDOW",
         "TERMINAL_ACTION",
-        "DESKTOP_OP",
+        "DESKTOP",
         "USE_DESKTOP",
       ]),
     );

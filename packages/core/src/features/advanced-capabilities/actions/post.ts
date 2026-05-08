@@ -65,7 +65,8 @@ function resolveOp(message: Memory, options?: HandlerOptions): PostOp {
 	if (explicit) return explicit;
 	const text = `${message.content?.text ?? ""}`.toLowerCase();
 	if (params.query || /\b(search|find)\b/.test(text)) return "search";
-	if (params.feed || /\b(read|recent|timeline|feed)\b/.test(text)) return "read";
+	if (params.feed || /\b(read|recent|timeline|feed)\b/.test(text))
+		return "read";
 	return "send";
 }
 
@@ -119,7 +120,9 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 		: undefined;
 }
 
-function connectorSendAsMetadata(message: Memory): Record<string, unknown> | undefined {
+function connectorSendAsMetadata(
+	message: Memory,
+): Record<string, unknown> | undefined {
 	const metadata = recordValue(message.content?.metadata);
 	return (
 		recordValue(metadata?.connectorSendAs) ??
@@ -127,7 +130,10 @@ function connectorSendAsMetadata(message: Memory): Record<string, unknown> | und
 	);
 }
 
-function accountIdParam(params: ParamRecord, message: Memory): string | undefined {
+function accountIdParam(
+	params: ParamRecord,
+	message: Memory,
+): string | undefined {
 	const metadata = recordValue(message.content?.metadata);
 	const sendAs = connectorSendAsMetadata(message);
 	return (
@@ -138,7 +144,10 @@ function accountIdParam(params: ParamRecord, message: Memory): string | undefine
 	);
 }
 
-function sourceParamForMessage(params: ParamRecord, message: Memory): string | undefined {
+function sourceParamForMessage(
+	params: ParamRecord,
+	message: Memory,
+): string | undefined {
 	const sendAs = connectorSendAsMetadata(message);
 	return sourceParam(params) ?? textParam(sendAs?.source);
 }
@@ -149,8 +158,7 @@ function buildPostContent(
 	message: Memory,
 ): Content {
 	const feed = textParam(params.feed);
-	const target =
-		textParam(params.target) ?? textParam(message.content?.target);
+	const target = textParam(params.target) ?? textParam(message.content?.target);
 	const messageMediaId = message.content?.mediaId;
 	const mediaId =
 		textParam(params.mediaId) ??
@@ -212,9 +220,7 @@ async function ensurePostRoom(
 	const worldId = stringToUuid(
 		`${runtime.agentId}:${source}:feed-world`,
 	) as UUID;
-	const roomId = stringToUuid(
-		`${runtime.agentId}:${source}:feed-room`,
-	) as UUID;
+	const roomId = stringToUuid(`${runtime.agentId}:${source}:feed-room`) as UUID;
 	await runtime.ensureWorldExists({
 		id: worldId,
 		name: `${source} feed`,
@@ -454,10 +460,10 @@ async function handleRead(
 	}
 	const context = {
 		...buildPostQueryContext(
-		runtime,
-		message,
-		state,
-		selected.connector.source,
+			runtime,
+			message,
+			state,
+			selected.connector.source,
 		),
 		accountId: selected.connector.accountId,
 		account: selected.connector.account,
@@ -466,7 +472,8 @@ async function handleRead(
 		selected.connector.source,
 		params,
 	).target;
-	if (target && selected.connector.accountId) target.accountId = selected.connector.accountId;
+	if (target && selected.connector.accountId)
+		target.accountId = selected.connector.accountId;
 	const posts = await fetchFeed(context, {
 		feed: textParam(params.feed),
 		target,
@@ -523,10 +530,10 @@ async function handleSearch(
 	}
 	const context = {
 		...buildPostQueryContext(
-		runtime,
-		message,
-		state,
-		selected.connector.source,
+			runtime,
+			message,
+			state,
+			selected.connector.source,
 		),
 		accountId: selected.connector.accountId,
 		account: selected.connector.account,
@@ -679,7 +686,7 @@ export const postAction: Action = {
 			default:
 				return failure(
 					"unknown",
-					"POST_INVALID_OP",
+					"POST_INVALID",
 					`POST op must be one of: ${POST_OPS.join(", ")}.`,
 				);
 		}

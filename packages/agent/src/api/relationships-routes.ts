@@ -2,6 +2,7 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type {
   RelationshipsGraphQuery,
   RelationshipsGraphService,
+  RelationshipsMergeProposalEvidence,
 } from "@elizaos/core/services/relationships-graph-builder";
 import type { RouteRequestContext } from "./route-helpers.js";
 
@@ -65,9 +66,11 @@ async function getRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  return (runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsServiceWithGraph | null) ?? null;
+  return (
+    (runtime.getService(
+      "relationships",
+    ) as unknown as RelationshipsServiceWithGraph | null) ?? null
+  );
 }
 
 type LinkRequestBody = {
@@ -75,11 +78,20 @@ type LinkRequestBody = {
   evidence?: unknown;
 };
 
-function asEvidenceRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+function asEvidenceRecord(value: unknown): RelationshipsMergeProposalEvidence {
+  if (value === undefined || value === null) {
+    return {};
   }
-  return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  try {
+    return JSON.parse(
+      JSON.stringify(value),
+    ) as RelationshipsMergeProposalEvidence;
+  } catch {
+    return {};
+  }
 }
 
 function parseActivityInteger(

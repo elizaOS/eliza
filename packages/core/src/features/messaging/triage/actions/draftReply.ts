@@ -9,8 +9,8 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
-import { getDefaultTriageService } from "../triage-service.ts";
 import type { TriageService } from "../triage-service.ts";
+import { getDefaultTriageService } from "../triage-service.ts";
 import {
 	bodyParameter,
 	type DraftReplyParams,

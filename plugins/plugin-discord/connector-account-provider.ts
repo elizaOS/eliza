@@ -138,17 +138,18 @@ export function createDiscordConnectorAccountProvider(
 			request: ConnectorOAuthStartRequest,
 			_manager: ConnectorAccountManager,
 		): Promise<ConnectorOAuthStartResult> => {
-			const applicationId = runtime.getSetting(
-				"DISCORD_APPLICATION_ID",
-			) as string | undefined;
+			const applicationId = runtime.getSetting("DISCORD_APPLICATION_ID") as
+				| string
+				| undefined;
 			if (!applicationId) {
 				throw new Error(
 					"DISCORD_APPLICATION_ID is not configured — cannot build install URL",
 				);
 			}
-			const scopes = (request.scopes ?? ["bot", "applications.commands"])
-				.join("+");
-			// Default permissions bitflag: SEND_MESSAGES|VIEW_CHANNEL|READ_MESSAGE_HISTORY (1024+2048+65536)
+			const scopes = (request.scopes ?? ["bot", "applications.commands"]).join(
+				"+",
+			);
+			// Default permissions bitflag: send messages, view channel, read message history (1024+2048+65536)
 			const permissions = "68608";
 			const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
 				applicationId,

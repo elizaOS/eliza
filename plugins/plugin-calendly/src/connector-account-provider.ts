@@ -26,14 +26,13 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import {
-  readCalendlyAccounts,
-  resolveCalendlyAccountId,
-} from "./accounts.js";
+import { readCalendlyAccounts, resolveCalendlyAccountId } from "./accounts.js";
+import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 
 export const CALENDLY_PROVIDER_NAME = "calendly";
 
-const CALENDLY_AUTHORIZATION_ENDPOINT = "https://auth.calendly.com/oauth/authorize";
+const CALENDLY_AUTHORIZATION_ENDPOINT =
+  "https://auth.calendly.com/oauth/authorize";
 const CALENDLY_TOKEN_ENDPOINT = "https://auth.calendly.com/oauth/token";
 const CALENDLY_USER_ENDPOINT = "https://api.calendly.com/users/me";
 
@@ -139,7 +138,9 @@ async function fetchCalendlyUser(
     },
   });
   if (!response.ok) {
-    throw new Error(`Calendly /users/me request failed with ${response.status}`);
+    throw new Error(
+      `Calendly /users/me request failed with ${response.status}`,
+    );
   }
   return (await response.json()) as CalendlyUserPayload;
 }
@@ -289,7 +290,7 @@ export function createCalendlyConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
-      _manager: ConnectorAccountManager,
+      manager: ConnectorAccountManager,
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
@@ -324,6 +325,41 @@ export function createCalendlyConnectorAccountProvider(
           "Calendly /users/me payload did not include a usable URI.",
         );
       }
+      const expiresAt =
+        typeof tokens.expires_in === "number"
+          ? Date.now() + tokens.expires_in * 1000
+          : undefined;
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: CALENDLY_PROVIDER_NAME,
+        accountIdForRef: request.flow.accountId ?? externalId,
+        storageAccountId: request.flow.accountId,
+        caller: "plugin-calendly",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: tokens.access_token,
+              ...(tokens.refresh_token
+                ? { refresh_token: tokens.refresh_token }
+                : {}),
+              token_type: nonEmptyString(tokens.token_type) ?? "bearer",
+              ...(tokens.scope ? { scope: tokens.scope } : {}),
+              ...(tokens.owner ? { owner: tokens.owner } : {}),
+              ...(tokens.organization
+                ? { organization: tokens.organization }
+                : {}),
+              ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+            }),
+            ...(expiresAt !== undefined ? { expiresAt } : {}),
+            metadata: {
+              provider: CALENDLY_PROVIDER_NAME,
+              hasRefreshToken: Boolean(tokens.refresh_token),
+            },
+          },
+        ],
+      });
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: CALENDLY_PROVIDER_NAME,
@@ -347,6 +383,13 @@ export function createCalendlyConnectorAccountProvider(
           organizationUri: nonEmptyString(user?.current_organization) ?? null,
           tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
           hasRefreshToken: Boolean(tokens.refresh_token),
+          expiresAt,
+          credentialRefs: credentialPersist.refs,
+          credentialRefStorage: {
+            vaultAvailable: credentialPersist.vaultAvailable,
+            storageAvailable: credentialPersist.storageAvailable,
+          },
+          oauthCredentialVersion: String(Date.now()),
         },
       };
 

@@ -31,17 +31,17 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   parseJSONObjectFromText,
   type State,
+  stringToUuid,
   type Task,
   type TriggerKind,
   type TriggerType,
   type TriggerWakeMode,
   type UUID,
-  logger,
-  stringToUuid,
 } from "@elizaos/core";
 import {
   findKeywordTermMatch,
@@ -53,9 +53,9 @@ import {
   listTriggerTasks,
   readTriggerConfig,
   readTriggerRuns,
-  taskToTriggerSummary,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
+  taskToTriggerSummary,
   triggersFeatureEnabled,
 } from "../../triggers/runtime.js";
 import {
@@ -65,8 +65,11 @@ import {
   normalizeText,
   normalizeTriggerDraft,
 } from "../../triggers/scheduling.js";
-import type { TriggerConfig, TriggerSummary } from "../../triggers/types.js";
-import type { TriggerTaskMetadata } from "../../triggers/types.js";
+import type {
+  TriggerConfig,
+  TriggerSummary,
+  TriggerTaskMetadata,
+} from "../../triggers/types.js";
 import { parsePositiveInteger } from "../../utils/number-parsing.js";
 import { hasSelectedActionContext } from "../context-signal.js";
 import { fetchJson, findWorkflowById, getApiBase } from "./api.js";
@@ -386,8 +389,7 @@ async function handleToggleActive(
   if (!workflowId) {
     return { success: false, text: "workflowId parameter is required." };
   }
-  const explicitActive =
-    desiredActive ?? readBoolean(params.active);
+  const explicitActive = desiredActive ?? readBoolean(params.active);
   if (explicitActive === undefined) {
     return {
       success: false,
@@ -496,9 +498,10 @@ async function handleExecutions(
     return { success: false, text: errMsg };
   }
   const executions = result.data.executions ?? [];
-  const text = executions.length === 0
-    ? `No executions found for workflow ${workflowId}.`
-    : `Fetched ${executions.length} executions for workflow ${workflowId}.`;
+  const text =
+    executions.length === 0
+      ? `No executions found for workflow ${workflowId}.`
+      : `Fetched ${executions.length} executions for workflow ${workflowId}.`;
   if (callback) {
     await callback({
       text,
@@ -657,8 +660,7 @@ async function handleCreateTrigger(
   }
 
   const creator = String(message.entityId ?? runtime.agentId);
-  const triggerType =
-    explicitTriggerType ?? deriveTriggerType(extraction);
+  const triggerType = explicitTriggerType ?? deriveTriggerType(extraction);
   const fallbackText = messageText || "Trigger";
   const normalized = normalizeTriggerDraft({
     input: {
@@ -686,8 +688,7 @@ async function handleCreateTrigger(
         readString(params.cronExpression) ?? extraction.cronExpression,
       eventKind: readString(params.eventKind) ?? extraction.eventKind,
       maxRuns:
-        readNumber(params.maxRuns) ??
-        parsePositiveInteger(extraction.maxRuns),
+        readNumber(params.maxRuns) ?? parsePositiveInteger(extraction.maxRuns),
       kind: readKind(params.kind),
       workflowId: readString(params.workflowId),
       workflowName: readString(params.workflowName),
@@ -766,9 +767,7 @@ async function handleCreateTrigger(
   if (!metadata) {
     return { success: false, text: "Unable to compute trigger schedule." };
   }
-  const autonomy = runtime.getService(
-    "AUTONOMY",
-  ) as AutonomyServiceLike | null;
+  const autonomy = runtime.getService("AUTONOMY") as AutonomyServiceLike | null;
   const roomId = autonomy?.getAutonomousRoomId?.() ?? message.roomId;
 
   const createdTaskId = await runtime.createTask({
@@ -1317,7 +1316,10 @@ export const workflowAction: Action = {
       };
     }
     if (TRIGGER_OPS.has(op) && !triggersFeatureEnabled(runtime)) {
-      return { success: false, text: "Triggers are disabled by configuration." };
+      return {
+        success: false,
+        text: "Triggers are disabled by configuration.",
+      };
     }
     switch (op) {
       case "create":

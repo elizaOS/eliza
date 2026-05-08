@@ -35,11 +35,7 @@ export const listCommentsAction: Action = {
     },
     linearAccountIdParameter,
   ],
-  similes: [
-    "get-linear-comments",
-    "show-linear-comments",
-    "fetch-linear-comments",
-  ],
+  similes: ["get-linear-comments", "show-linear-comments", "fetch-linear-comments"],
 
   examples: [
     [
@@ -57,11 +53,7 @@ export const listCommentsAction: Action = {
     ],
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> =>
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     validateLinearActionIntent(runtime, message, state, {
       keywords: ["list", "comments", "linear", "issue"],
       regexAlternation: "list|comments|linear|issue",
@@ -72,7 +64,7 @@ export const listCommentsAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
       const linearService = runtime.getService<LinearService>("linear");
@@ -81,21 +73,16 @@ export const listCommentsAction: Action = {
       }
       const accountId = getLinearAccountId(runtime, _options);
 
-      const params = _options?.parameters as
-        | ListCommentsParameters
-        | undefined;
+      const params = _options?.parameters as ListCommentsParameters | undefined;
       const issueId = params?.issueId?.trim() ?? "";
       const limit =
-        typeof params?.limit === "number"
-          ? Math.min(Math.max(1, params.limit), 100)
-          : 25;
+        typeof params?.limit === "number" ? Math.min(Math.max(1, params.limit), 100) : 25;
 
       if (!issueId) {
         // Try to extract issue id from message text
         const match = message.content.text?.match(/([A-Z]+-\d+)/);
         if (!match) {
-          const errorMessage =
-            "Please provide an issueId to list comments for.";
+          const errorMessage = "Please provide an issueId to list comments for.";
           await callback?.({
             text: errorMessage,
             source: message.content.source,
@@ -122,7 +109,7 @@ async function formatCommentResult(
   issueId: string,
   comments: Awaited<ReturnType<LinearService["listComments"]>>,
   message: Memory,
-  callback?: HandlerCallback,
+  callback?: HandlerCallback
 ): Promise<ActionResult> {
   if (comments.length === 0) {
     const text = `No comments on issue ${issueId}.`;
@@ -134,12 +121,10 @@ async function formatCommentResult(
     comments.map(async (c) => {
       const user = await c.user;
       const name = user?.name ?? "unknown";
-      const created = c.createdAt
-        ? new Date(c.createdAt).toISOString().slice(0, 10)
-        : "?";
+      const created = c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "?";
       const body = (c.body ?? "").slice(0, 200);
       return `- [${c.id}] ${name} (${created}): ${body}`;
-    }),
+    })
   );
 
   const text = `${comments.length} comment(s) on ${issueId}:\n${lines.join("\n")}`;

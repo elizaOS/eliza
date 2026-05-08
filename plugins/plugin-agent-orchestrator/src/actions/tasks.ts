@@ -39,10 +39,7 @@ import { getCoordinator } from "../services/pty-service.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { ListTaskThreadsOptions } from "../services/task-registry.js";
 import { discoverTaskShareOptions } from "../services/task-share.js";
-import type {
-  AgentType,
-  SpawnResult,
-} from "../services/types.js";
+import type { AgentType, SpawnResult } from "../services/types.js";
 import type {
   AuthPromptCallback,
   CodingWorkspaceService,
@@ -616,7 +613,7 @@ async function runListAgents(
 
   if (sessions.length === 0) {
     const text =
-      "No active task agents. Use TASKS { op: \"create\" } when the user needs anything more involved than a simple direct reply.";
+      'No active task agents. Use TASKS { op: "create" } when the user needs anything more involved than a simple direct reply.';
     await callbackText(callback, text);
     return {
       success: true,
@@ -1443,8 +1440,7 @@ async function runProvisionWorkspace(
       },
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
       await callback({
         text: `Failed to provision workspace: ${errorMessage}`,
@@ -1583,8 +1579,7 @@ async function runSubmitWorkspace(
       },
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
       await callback({ text: `Failed to finalize workspace: ${errorMessage}` });
     return { success: false, error: "FINALIZE_FAILED" };
@@ -1815,7 +1810,9 @@ async function handleIssueAction(
         }
         const issue = await service.closeIssue(repo, issueNumber);
         if (callback)
-          await callback({ text: `Closed issue #${issue.number}: ${issue.title}` });
+          await callback({
+            text: `Closed issue #${issue.number}: ${issue.title}`,
+          });
         return { success: true, data: { issue } };
       }
 
@@ -2181,7 +2178,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "agentType",
-      description: "Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
+      description:
+        "Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2193,7 +2191,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "repo",
-      description: "Repository URL/slug for op=create / op=manage_issues / op=provision_workspace.",
+      description:
+        "Repository URL/slug for op=create / op=manage_issues / op=provision_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2260,8 +2259,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "taskId",
-      description:
-        "Alias for threadId; preferred for op=archive / op=reopen.",
+      description: "Alias for threadId; preferred for op=archive / op=reopen.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2401,7 +2399,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     // manage_issues
     {
       name: "title",
-      description: "Issue title for op=manage_issues with action=create|update.",
+      description:
+        "Issue title for op=manage_issues with action=create|update.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2510,14 +2509,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       case "send":
         return runSend(runtime, message, state, params, content, callback);
       case "stop_agent":
-        return runStopAgent(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
+        return runStopAgent(runtime, message, state, params, content, callback);
       case "list_agents":
         return runListAgents(
           runtime,
@@ -2567,7 +2559,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       case "reopen":
         return runReopen(runtime, message, state, params, content, callback);
       default:
-        return errorResult("UNKNOWN_OP", `Unknown TASKS op: ${String(op)}`);
+        return errorResult("UNKNOWN", `Unknown TASKS op: ${String(op)}`);
     }
   },
 };

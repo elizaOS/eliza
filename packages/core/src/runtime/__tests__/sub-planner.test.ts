@@ -102,6 +102,48 @@ describe("sub-planner helpers", () => {
 		expect(result.finalMessage).toBe("Done.");
 	});
 
+	it("resolves child action similes before rejecting sub-planner tool calls", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			similes: ["CALENDAR_READ"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "CALENDAR_READ", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "calendar done",
+			data: { actionName: "GOOGLE_CALENDAR" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		expect(execute).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			expect.objectContaining({ name: "GOOGLE_CALENDAR" }),
+			expect.objectContaining({ actions: [child] }),
+		);
+	});
+
 	it("passes child actions to the model as native tool definitions", async () => {
 		const childA = makeAction({
 			name: "CHILD_A",

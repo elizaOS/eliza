@@ -10,11 +10,11 @@
 
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { formatSpeakerLabel } from "../shared/conversation-format.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/core/services/relationships-graph-builder";
+import { formatSpeakerLabel } from "../shared/conversation-format.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,9 +55,11 @@ export type CrossPlatformConversationView = {
 export async function getGraphService(
   runtime: IAgentRuntime,
 ): Promise<RelationshipsGraphService | null> {
-  return (runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsGraphService | null) ?? null;
+  return (
+    (runtime.getService(
+      "relationships",
+    ) as unknown as RelationshipsGraphService | null) ?? null
+  );
 }
 
 /** Returns the set of connector source names that have active send handlers. */

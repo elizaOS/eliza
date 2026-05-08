@@ -84,4 +84,117 @@ describe("ConnectorAccountManager", () => {
 		expect(existingSendHandler).toHaveBeenCalledOnce();
 		expect(providerSendHandler).not.toHaveBeenCalled();
 	});
+
+	it("preserves stored account policy fields when merging provider-listed accounts", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		await manager.upsertAccount("chat", {
+			id: "acct-chat-1",
+			provider: "chat",
+			label: "Stored label",
+			role: "AGENT",
+			purpose: ["automation"],
+			accessGate: "owner_binding",
+			status: "disabled",
+			createdAt: 10,
+			updatedAt: 20,
+			metadata: { stored: true },
+		});
+		manager.registerProvider({
+			provider: "chat",
+			listAccounts: () => [
+				{
+					id: "acct-chat-1",
+					provider: "chat",
+					label: "Provider label",
+					role: "OWNER",
+					purpose: ["messaging"],
+					accessGate: "open",
+					status: "connected",
+					createdAt: 100,
+					updatedAt: 200,
+					metadata: { provider: true },
+				},
+			],
+		});
+
+		const accounts = await manager.listAccounts("chat");
+
+		expect(accounts).toHaveLength(1);
+		expect(accounts[0]).toMatchObject({
+			id: "acct-chat-1",
+			role: "AGENT",
+			purpose: ["automation"],
+			accessGate: "owner_binding",
+			status: "disabled",
+			label: "Stored label",
+		});
+		expect(accounts[0]?.metadata).toEqual({ provider: true, stored: true });
+	});
+
+	it("resolves provider-synthesized accounts by id even before persistence", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "env-only",
+			listAccounts: () => [
+				{
+					id: "default",
+					provider: "env-only",
+					label: "Imported from env",
+					role: "OWNER",
+					purpose: ["messaging"],
+					accessGate: "open",
+					status: "connected",
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			],
+		});
+
+		await expect(
+			manager.getAccount("env-only", "default"),
+		).resolves.toMatchObject({
+			id: "default",
+			role: "OWNER",
+		});
+	});
+
+	it("consumes OAuth callback state only once", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-test",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: () => ({
+				account: {
+					id: "oauth-account",
+					provider: "oauth-test",
+					label: "OAuth account",
+					role: "OWNER",
+					purpose: ["messaging"],
+					accessGate: "open",
+					status: "connected",
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			}),
+		});
+		const flow = await manager.startOAuth("oauth-test");
+
+		await expect(
+			manager.completeOAuth("oauth-test", {
+				state: flow.state,
+				code: "code-1",
+			}),
+		).resolves.toMatchObject({
+			account: { id: "oauth-account" },
+		});
+		await expect(
+			manager.completeOAuth("oauth-test", {
+				state: flow.state,
+				code: "code-2",
+			}),
+		).rejects.toThrow(/already used|unknown|expired/i);
+	});
 });

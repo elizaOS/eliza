@@ -134,40 +134,6 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
-// ConnectorAccountManager provider exports
-export {
-	createDiscordConnectorAccountProvider,
-	DISCORD_PROVIDER_ID,
-} from "./connector-account-provider";
-// Discord user-account scraper (browser-workspace driven; per-account
-// partitions). Used by lifeops and any other consumer that needs to read
-// state from a logged-in Discord user account.
-export {
-	captureDiscordDeliveryStatus,
-	closeDiscordTab,
-	DISCORD_APP_URL,
-	type DiscordDmInboxProbe,
-	type DiscordMessageSearchResult,
-	type DiscordTabIdentity,
-	type DiscordTabProbe,
-	type DiscordVisibleDmPreview,
-	discordBrowserWorkspaceAvailable,
-	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
-	type DiscordUserAccountScraper,
-	DiscordUserAccountScraperImpl,
-	discordUserAccountPartitionFor,
-	emptyDiscordDmInboxProbe,
-	ensureDiscordTab,
-	navigateDiscordTabToHome,
-	probeDiscordCapturedPage,
-	probeDiscordDocumentState,
-	probeDiscordTab,
-	searchDiscordMessages,
-	type DiscordDesktopCdpStatus,
-	getDiscordDesktopCdpStatus,
-	relaunchDiscordDesktopForCdp,
-	sendDiscordViaDesktopCdp,
-} from "./user-account-scraper";
 // Account management exports (runtime utilities)
 export {
 	DEFAULT_ACCOUNT_ID,
@@ -223,6 +189,11 @@ export type {
 	DiscordPluralKitConfig,
 	DiscordReactionNotificationMode,
 } from "./config";
+// ConnectorAccountManager provider exports
+export {
+	createDiscordConnectorAccountProvider,
+	DISCORD_PROVIDER_ID,
+} from "./connector-account-provider";
 export { DISCORD_SERVICE_NAME } from "./constants";
 // Discord local IPC service + setup routes
 export {
@@ -315,3 +286,32 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
+// Discord user-account scraper (browser-workspace driven; per-account
+// partitions). Used by lifeops and any other consumer that needs to read
+// state from a logged-in Discord user account.
+export {
+	captureDiscordDeliveryStatus,
+	closeDiscordTab,
+	DISCORD_APP_URL,
+	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+	type DiscordDesktopCdpStatus,
+	type DiscordDmInboxProbe,
+	type DiscordMessageSearchResult,
+	type DiscordTabIdentity,
+	type DiscordTabProbe,
+	type DiscordUserAccountScraper,
+	DiscordUserAccountScraperImpl,
+	type DiscordVisibleDmPreview,
+	discordBrowserWorkspaceAvailable,
+	discordUserAccountPartitionFor,
+	emptyDiscordDmInboxProbe,
+	ensureDiscordTab,
+	getDiscordDesktopCdpStatus,
+	navigateDiscordTabToHome,
+	probeDiscordCapturedPage,
+	probeDiscordDocumentState,
+	probeDiscordTab,
+	relaunchDiscordDesktopForCdp,
+	searchDiscordMessages,
+	sendDiscordViaDesktopCdp,
+} from "./user-account-scraper";

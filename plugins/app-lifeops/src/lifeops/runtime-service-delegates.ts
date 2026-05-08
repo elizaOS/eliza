@@ -308,8 +308,12 @@ export async function sendXDirectMessageWithRuntimeService(args: {
     entityId: args.participantId,
     metadata: { xUserId: args.participantId },
   });
+  const handleSendMessage = service.handleSendMessage;
+  if (typeof handleSendMessage !== "function") {
+    return fallback("X runtime service handleSendMessage is not registered.");
+  }
   try {
-    await service.handleSendMessage(args.runtime, target, {
+    await handleSendMessage(args.runtime, target, {
       text: args.text,
       source: "lifeops",
       metadata: { accountId },
@@ -365,8 +369,14 @@ export async function fetchXDirectMessagesWithRuntimeService(args: {
         entityId: args.participantId,
       })
     : undefined;
+  const fetchConnectorMessages = service.fetchConnectorMessages;
+  if (typeof fetchConnectorMessages !== "function") {
+    return fallback(
+      "X runtime service fetchConnectorMessages is not registered.",
+    );
+  }
   try {
-    const value = await service.fetchConnectorMessages(
+    const value = await fetchConnectorMessages(
       connectorContext({
         runtime: args.runtime,
         source: "x",

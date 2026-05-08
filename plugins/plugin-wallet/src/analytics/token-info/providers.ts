@@ -2,6 +2,7 @@
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
 import { BirdeyeProvider } from "../birdeye/birdeye";
 import { searchBirdeyeTokens } from "../birdeye/search-category";
+import type { WalletPortfolioResponse } from "../birdeye/types/api/wallet";
 import { extractAddresses } from "../birdeye/utils";
 import type { DexScreenerService } from "../dexscreener/service";
 import type {
@@ -10,15 +11,9 @@ import type {
   DexScreenerProfile,
   DexScreenerServiceResponse,
 } from "../dexscreener/types";
-import type {
-  TokenInfoDispatchContext,
-  TokenInfoProvider,
-} from "./types";
+import type { TokenInfoDispatchContext, TokenInfoProvider } from "./types";
 
-function success(
-  text: string,
-  data: Record<string, unknown>,
-): ActionResult {
+function success(text: string, data: Record<string, unknown>): ActionResult {
   return {
     success: true,
     text,
@@ -124,12 +119,15 @@ async function executeDexScreener(
         );
         return emit(
           context,
-          success(`Token search results for "${query}":\n${topPairs(service, pairs)}`, {
-            target: "dexscreener",
-            subaction: "search",
-            query,
-            pairs: pairs.slice(0, 10),
-          }),
+          success(
+            `Token search results for "${query}":\n${topPairs(service, pairs)}`,
+            {
+              target: "dexscreener",
+              subaction: "search",
+              query,
+              pairs: pairs.slice(0, 10),
+            },
+          ),
         );
       }
       case "token": {
@@ -137,7 +135,10 @@ async function executeDexScreener(
         if (!tokenAddress) {
           return emit(
             context,
-            failure("Provide tokenAddress or address.", "MISSING_TOKEN_ADDRESS"),
+            failure(
+              "Provide tokenAddress or address.",
+              "MISSING_TOKEN_ADDRESS",
+            ),
           );
         }
         const pairs = requireDexResult(
@@ -183,12 +184,15 @@ async function executeDexScreener(
         );
         return emit(
           context,
-          success(`Trending tokens (${timeframe}):\n${topPairs(service, pairs, limit)}`, {
-            target: "dexscreener",
-            subaction: "trending",
-            timeframe,
-            pairs,
-          }),
+          success(
+            `Trending tokens (${timeframe}):\n${topPairs(service, pairs, limit)}`,
+            {
+              target: "dexscreener",
+              subaction: "trending",
+              timeframe,
+              pairs,
+            },
+          ),
         );
       }
       case "new-pairs": {
@@ -285,9 +289,13 @@ async function executeDexScreener(
       case "wallet":
         return emit(
           context,
-          failure("DexScreener does not support wallet lookup.", "UNSUPPORTED_SUBACTION", {
-            target: "dexscreener",
-          }),
+          failure(
+            "DexScreener does not support wallet lookup.",
+            "UNSUPPORTED_SUBACTION",
+            {
+              target: "dexscreener",
+            },
+          ),
         );
     }
   } catch (error) {
@@ -301,15 +309,24 @@ async function executeDexScreener(
   }
 }
 
-function formatBirdeyeWallet(result: any, address: string): string {
+type BirdeyePortfolioToken = WalletPortfolioResponse["data"]["items"][number];
+
+function formatBirdeyeWallet(
+  result: WalletPortfolioResponse,
+  address: string,
+): string {
   const tokens = result?.data?.items?.slice(0, 10) ?? [];
   const totalValue =
     typeof result?.data?.totalUsd === "number"
       ? result.data.totalUsd
-      : tokens.reduce((sum: number, token: any) => sum + (token.valueUsd || 0), 0);
+      : tokens.reduce(
+          (sum: number, token: BirdeyePortfolioToken) =>
+            sum + (token.valueUsd ?? 0),
+          0,
+        );
   const holdings = tokens
     .map(
-      (token: any) =>
+      (token: BirdeyePortfolioToken) =>
         `- ${String(token.symbol ?? "TOKEN").toUpperCase()}: $${Number(token.valueUsd ?? 0).toLocaleString()} (${token.uiAmount ?? "n/a"})`,
     )
     .join("\n");
@@ -326,14 +343,20 @@ async function executeBirdeye(
       if (!query) {
         return emit(
           context,
-          failure("Provide query or tokenAddress for Birdeye token lookup.", "MISSING_QUERY"),
+          failure(
+            "Provide query or tokenAddress for Birdeye token lookup.",
+            "MISSING_QUERY",
+          ),
         );
       }
       const mode =
         params.kind === "token-address" || /^0x[a-fA-F0-9]{40}$/.test(query)
           ? "address"
           : "symbol";
-      const result = await searchBirdeyeTokens(context.runtime, { query, mode });
+      const result = await searchBirdeyeTokens(context.runtime, {
+        query,
+        mode,
+      });
       return emit(
         context,
         success(result.text, {
@@ -350,7 +373,10 @@ async function executeBirdeye(
       if (!query) {
         return emit(
           context,
-          failure("Provide wallet address for Birdeye wallet lookup.", "MISSING_WALLET"),
+          failure(
+            "Provide wallet address for Birdeye wallet lookup.",
+            "MISSING_WALLET",
+          ),
         );
       }
       const addresses = extractAddresses(query);
@@ -391,9 +417,13 @@ async function executeBirdeye(
 
     return emit(
       context,
-      failure(`Birdeye does not support ${params.subaction}.`, "UNSUPPORTED_SUBACTION", {
-        target: "birdeye",
-      }),
+      failure(
+        `Birdeye does not support ${params.subaction}.`,
+        "UNSUPPORTED_SUBACTION",
+        {
+          target: "birdeye",
+        },
+      ),
     );
   } catch (error) {
     return emit(
@@ -428,6 +458,19 @@ function coingeckoBaseUrl(runtime: IAgentRuntime): string {
   return runtime.getSetting("COINGECKO_PRO_API_KEY")
     ? "https://pro-api.coingecko.com/api/v3"
     : "https://api.coingecko.com/api/v3";
+}
+
+/** Subset of CoinGecko `/coins/{id}` JSON used by TOKEN_INFO formatting. */
+interface CoingeckoCoinDetail {
+  id?: string;
+  name?: string;
+  symbol?: string;
+  market_data?: {
+    current_price?: { usd?: number | string };
+    market_cap?: { usd?: number | string };
+    total_volume?: { usd?: number | string };
+    price_change_percentage_24h?: number | string;
+  };
 }
 
 async function fetchCoingecko<T>(
@@ -476,7 +519,10 @@ async function executeCoingecko(
     if (params.subaction === "search") {
       const query = params.query;
       if (!query) {
-        return emit(context, failure("Provide query for CoinGecko search.", "MISSING_QUERY"));
+        return emit(
+          context,
+          failure("Provide query for CoinGecko search.", "MISSING_QUERY"),
+        );
       }
       const result = await fetchCoingecko<{
         coins?: Array<{
@@ -509,17 +555,22 @@ async function executeCoingecko(
       const address = params.tokenAddress ?? params.address;
       let path: string;
       if (address && params.chain) {
-        const platform = COINGECKO_PLATFORM_ALIASES[params.chain.toLowerCase()] ?? params.chain;
+        const platform =
+          COINGECKO_PLATFORM_ALIASES[params.chain.toLowerCase()] ??
+          params.chain;
         path = `/coins/${encodeURIComponent(platform)}/contract/${encodeURIComponent(address)}`;
       } else if (id) {
         path = `/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
       } else {
         return emit(
           context,
-          failure("Provide CoinGecko coin id/query, or address with chain.", "MISSING_TOKEN"),
+          failure(
+            "Provide CoinGecko coin id/query, or address with chain.",
+            "MISSING_TOKEN",
+          ),
         );
       }
-      const coin = await fetchCoingecko<any>(runtime, path);
+      const coin = await fetchCoingecko<CoingeckoCoinDetail>(runtime, path);
       const market = coin.market_data ?? {};
       const text = [
         `${coin.name} (${String(coin.symbol ?? "").toUpperCase()})`,
@@ -572,9 +623,13 @@ async function executeCoingecko(
 
     return emit(
       context,
-      failure(`CoinGecko does not support ${params.subaction}.`, "UNSUPPORTED_SUBACTION", {
-        target: "coingecko",
-      }),
+      failure(
+        `CoinGecko does not support ${params.subaction}.`,
+        "UNSUPPORTED_SUBACTION",
+        {
+          target: "coingecko",
+        },
+      ),
     );
   } catch (error) {
     return emit(

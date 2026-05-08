@@ -90,7 +90,7 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   PAUSE_CRON: ["automation"],
   TRIGGER_WEBHOOK: ["automation"],
   SCHEDULE: ["automation"],
-  SEND_MESSAGE: ["social"],
+  MESSAGE: ["social"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],

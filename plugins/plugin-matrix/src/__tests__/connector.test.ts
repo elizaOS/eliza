@@ -7,9 +7,7 @@ describe("Matrix message connector", () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
-      getSetting: vi.fn((key: string) =>
-        key === "MATRIX_DEFAULT_ACCOUNT_ID" ? "work" : null
-      ),
+      getSetting: vi.fn((key: string) => (key === "MATRIX_DEFAULT_ACCOUNT_ID" ? "work" : null)),
       character: { settings: {} },
       getRoom: vi.fn(),
     } as unknown as IAgentRuntime;

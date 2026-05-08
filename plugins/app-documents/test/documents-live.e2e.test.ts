@@ -6,6 +6,7 @@
  */
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
+import { documentsPlugin } from "@elizaos/app-documents/setup-routes";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
@@ -34,7 +35,10 @@ try {
   // dotenv may not be available.
 }
 
-const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
+const LIVE_PROVIDER =
+  selectLiveProvider("cerebras") ??
+  selectLiveProvider("openai") ??
+  selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 const DOCUMENT_CODEWORD = "VELVET-MOON-4821";
 
@@ -78,7 +82,7 @@ async function startDocumentServer(): Promise<StartedDocumentServer> {
   const runtimeResult = await createRealTestRuntime({
     withLLM: true,
     preferredProvider: LIVE_PROVIDER?.name,
-    plugins: [createElizaPlugin({ agentId: "main" })],
+    plugins: [createElizaPlugin({ agentId: "main" }), documentsPlugin],
   });
   const { startApiServer } = await import("@elizaos/agent/api/server");
   const server = await startApiServer({
@@ -233,7 +237,7 @@ RAG retrieval should answer questions about this codeword from the document.
     });
     const text = await askForExactDocumentCodeword(
       server?.port ?? 0,
-      conversation.id,
+      conversation.conversationId,
     );
     expect(text).toContain(DOCUMENT_CODEWORD);
   }, 120_000);

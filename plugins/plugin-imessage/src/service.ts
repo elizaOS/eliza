@@ -30,16 +30,16 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
+  normalizeAccountId as normalizeIMessageAccountId,
+} from "./accounts.js";
+import {
   type ChatDbMessage,
   type ChatDbReader,
   DEFAULT_CHAT_DB_PATH,
   getLastChatDbAccessIssue,
   openChatDb,
 } from "./chatdb-reader.js";
-import {
-  DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
-  normalizeAccountId as normalizeIMessageAccountId,
-} from "./accounts.js";
 import {
   addContact,
   type ContactPatch,
@@ -239,8 +239,7 @@ function publicIMessageToMemory(
   const entityId = message.isFromMe
     ? runtime.agentId
     : (createUniqueUuid(runtime, handle || message.chatId || message.id) as UUID);
-  const channelType =
-    message.chatId && message.chatId.includes(";+;") ? ChannelType.GROUP : ChannelType.DM;
+  const channelType = message.chatId?.includes(";+;") ? ChannelType.GROUP : ChannelType.DM;
 
   return {
     id: createUniqueUuid(runtime, `imessage-public:${message.id}`) as UUID,

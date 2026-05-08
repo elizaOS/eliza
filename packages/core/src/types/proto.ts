@@ -25,10 +25,10 @@ import type {
 export * from "./generated/eliza/v1/agent_pb.js";
 export * from "./generated/eliza/v1/components_pb.js";
 export * from "./generated/eliza/v1/database_pb.js";
+export * from "./generated/eliza/v1/documents_pb.js";
 export * from "./generated/eliza/v1/environment_pb.js";
 export * from "./generated/eliza/v1/events_pb.js";
 export * from "./generated/eliza/v1/ipc_pb.js";
-export * from "./generated/eliza/v1/documents_pb.js";
 export * from "./generated/eliza/v1/memory_pb.js";
 export * from "./generated/eliza/v1/message_service_pb.js";
 export * from "./generated/eliza/v1/messaging_pb.js";

@@ -1,6 +1,10 @@
 import { isCloudConnected } from '@elizaos/cloud-routing';
 import { elizaLogger, type IAgentRuntime } from '@elizaos/core';
-import { readTailscaleAccounts, resolveTailscaleAccount, resolveTailscaleAccountId } from '../accounts';
+import {
+  readTailscaleAccounts,
+  resolveTailscaleAccount,
+  resolveTailscaleAccountId,
+} from '../accounts';
 import type { TailscaleBackendMode } from '../types';
 import { CloudTailscaleService } from './CloudTailscaleService';
 import { LocalTailscaleService } from './LocalTailscaleService';

@@ -141,7 +141,9 @@ function readQuestionsParam(options: HandlerOptions | undefined): unknown {
 	return params?.questions ?? opts.questions;
 }
 
-function readTextParam(options: HandlerOptions | undefined): string | undefined {
+function readTextParam(
+	options: HandlerOptions | undefined,
+): string | undefined {
 	if (!options || typeof options !== "object") return undefined;
 	const opts = options as Record<string, unknown>;
 	const params = opts.parameters as Record<string, unknown> | undefined;

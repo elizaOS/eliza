@@ -347,7 +347,11 @@ type ConnectorWithHooks = MessageConnector & {
 			invite?: string;
 			target?: TargetInfo;
 		},
-	) => Promise<{ id?: UUID } | null | void> | { id?: UUID } | null | void;
+	) =>
+		| Promise<{ id?: UUID } | null | undefined>
+		| { id?: UUID }
+		| null
+		| undefined;
 	leaveHandler?: (
 		runtime: IAgentRuntime,
 		payload: {
@@ -369,7 +373,11 @@ type ConnectorWithHooks = MessageConnector & {
 			messageId: string;
 			content: Content;
 		},
-	) => Promise<Memory | { id?: UUID } | void> | Memory | { id?: UUID } | void;
+	) =>
+		| Promise<Memory | { id?: UUID } | undefined>
+		| Memory
+		| { id?: UUID }
+		| undefined;
 	deleteHandler?: (
 		runtime: IAgentRuntime,
 		payload: { target: TargetInfo; messageId: string },
@@ -535,8 +543,10 @@ function selectConnectorForOp(
 	const accountScoped = connectors.filter((connector) =>
 		connectorMatchesAccount(connector, accountId),
 	);
-	if (accountId && accountScoped.length === 1)
-		return { connector: accountScoped[0]! };
+	if (accountId && accountScoped.length === 1) {
+		const sole = accountScoped[0];
+		if (sole) return { connector: sole };
+	}
 	if (accountId && accountScoped.length === 0) {
 		return {
 			error: opFailure(
@@ -557,7 +567,17 @@ function selectConnectorForOp(
 			),
 		};
 	}
-	return { connector: accountScoped[0]! };
+	const fallbackConnector = accountScoped[0];
+	if (!fallbackConnector) {
+		return {
+			error: opFailure(
+				op,
+				"NO_CONNECTORS_REGISTERED",
+				`MESSAGE op=${op} could not resolve a connector.`,
+			),
+		};
+	}
+	return { connector: fallbackConnector };
 }
 
 // ---------------------------------------------------------------------------
@@ -645,9 +665,19 @@ async function resolveOptionalTarget(
 		try {
 			const matches = await connector.resolveTargets(explicit.query, context);
 			if (matches.length === 1) {
+				const sole = matches[0];
+				if (!sole) {
+					return {
+						error: opFailure(
+							op,
+							"TARGET_RESOLVE_FAILED",
+							"Target resolution returned an empty match.",
+						),
+					};
+				}
 				const target = {
-					...matches[0]!.target,
-					accountId: matches[0]!.target.accountId ?? connector.accountId,
+					...sole.target,
+					accountId: sole.target.accountId ?? connector.accountId,
 				};
 				return { target };
 			}
@@ -725,7 +755,7 @@ function opSuccess(
 }
 
 function invalidOpResult(op: MessageOperation, text: string): ActionResult {
-	return opFailure(op, "MESSAGE_INVALID_OP", text);
+	return opFailure(op, "MESSAGE_INVALID", text);
 }
 
 function opErrorWrap(op: MessageOperation, error: unknown): ActionResult {
@@ -1564,15 +1594,18 @@ async function resolveSendTarget(
 			);
 		}
 	} else if (considered.length === 1) {
-		candidates.push(
-			await currentRoomCandidate(
-				runtime,
-				message,
-				state,
-				considered[0]!,
-				sourceWasExact,
-			),
-		);
+		const soleConnector = considered[0];
+		if (soleConnector) {
+			candidates.push(
+				await currentRoomCandidate(
+					runtime,
+					message,
+					state,
+					soleConnector,
+					sourceWasExact,
+				),
+			);
+		}
 	}
 
 	const sorted = dedupeCandidates(candidates);
@@ -1585,7 +1618,15 @@ async function resolveSendTarget(
 		};
 	}
 
-	const top = sorted[0]!;
+	const top = sorted[0];
+	if (top === undefined) {
+		return {
+			status: "missing_target",
+			text: "MESSAGE op=send could not resolve a target. Provide target and (if needed) source/targetKind.",
+			error: "TARGET_NOT_RESOLVED",
+			sourceResolution: params.sourceResolution,
+		};
+	}
 	const ambiguous = sorted.filter(
 		(c) => c !== top && Math.abs(top.score - c.score) <= AMBIGUITY_DELTA,
 	);
@@ -2208,7 +2249,11 @@ async function handleReadChannel(
 			}),
 		);
 		const memories: Memory[] = [];
-		const sources: Array<{ source: string; accountId?: string; count: number }> = [];
+		const sources: Array<{
+			source: string;
+			accountId?: string;
+			count: number;
+		}> = [];
 		for (const result of results) {
 			if (result.status === "rejected") {
 				logger.warn(
@@ -2582,7 +2627,15 @@ async function handleSearch(
 				connector,
 			);
 			try {
-				const memories = (await connector.searchMessages!(context, {
+				const searchMessages = connector.searchMessages;
+				if (typeof searchMessages !== "function") {
+					return opFailure(
+						"search",
+						"NOT_SUPPORTED",
+						`Search is not supported for ${connector.label}.`,
+					);
+				}
+				const memories = (await searchMessages(context, {
 					query,
 					target: resolved.target,
 					limit,
@@ -2700,7 +2753,15 @@ async function handleListChannels(
 		connector,
 	);
 	try {
-		const targets = await connector.listRooms!(context);
+		const listRooms = connector.listRooms;
+		if (typeof listRooms !== "function") {
+			return opFailure(
+				"list_channels",
+				"NOT_SUPPORTED",
+				`Listing channels is not supported for ${connector.label}.`,
+			);
+		}
+		const targets = await listRooms(context);
 		return opSuccess(
 			"list_channels",
 			`Listed ${targets.length} channels from ${connector.label}.`,
@@ -2743,7 +2804,15 @@ async function handleListServers(
 		connector,
 	);
 	try {
-		const servers = await connector.listServers!(context);
+		const listServers = connector.listServers;
+		if (typeof listServers !== "function") {
+			return opFailure(
+				"list_servers",
+				"NOT_SUPPORTED",
+				`Listing servers is not supported for ${connector.label}.`,
+			);
+		}
+		const servers = await listServers(context);
 		return opSuccess(
 			"list_servers",
 			`Listed ${servers.length} servers from ${connector.label}.`,
@@ -2798,13 +2867,29 @@ async function handleJoinLeave(
 	};
 	try {
 		if (op === "join") {
-			const room = (await connector.joinHandler!(runtime, payload)) ?? null;
+			const joinHandler = connector.joinHandler;
+			if (typeof joinHandler !== "function") {
+				return opFailure(
+					"join",
+					"NOT_SUPPORTED",
+					`Join is not supported for ${connector.label}.`,
+				);
+			}
+			const room = (await joinHandler(runtime, payload)) ?? null;
 			return opSuccess("join", `Joined via ${connector.label}.`, {
 				source: connector.source,
 				room,
 			});
 		}
-		await connector.leaveHandler!(runtime, payload);
+		const leaveHandler = connector.leaveHandler;
+		if (typeof leaveHandler !== "function") {
+			return opFailure(
+				"leave",
+				"NOT_SUPPORTED",
+				`Leave is not supported for ${connector.label}.`,
+			);
+		}
+		await leaveHandler(runtime, payload);
 		return opSuccess("leave", `Left via ${connector.label}.`, {
 			source: connector.source,
 		});
@@ -2873,7 +2958,15 @@ async function handleMessageMutation(
 					"INVALID_PARAMETERS",
 					"MESSAGE op=react requires emoji.",
 				);
-			await connector.reactHandler!(runtime, { target, messageId, emoji });
+			const reactHandler = connector.reactHandler;
+			if (typeof reactHandler !== "function") {
+				return opFailure(
+					"react",
+					"NOT_SUPPORTED",
+					`React is not supported for ${connector.label}.`,
+				);
+			}
+			await reactHandler(runtime, { target, messageId, emoji });
 		} else if (op === "edit") {
 			const text = textParam(params.text) ?? textParam(params.message);
 			if (!text)
@@ -2882,7 +2975,15 @@ async function handleMessageMutation(
 					"INVALID_PARAMETERS",
 					"MESSAGE op=edit requires text.",
 				);
-			const updated = await connector.editHandler!(runtime, {
+			const editHandler = connector.editHandler;
+			if (typeof editHandler !== "function") {
+				return opFailure(
+					"edit",
+					"NOT_SUPPORTED",
+					`Edit is not supported for ${connector.label}.`,
+				);
+			}
+			const updated = await editHandler(runtime, {
 				target,
 				messageId,
 				content: { text, source: connector.source },
@@ -2899,9 +3000,25 @@ async function handleMessageMutation(
 				});
 			}
 		} else if (op === "delete") {
-			await connector.deleteHandler!(runtime, { target, messageId });
+			const deleteHandler = connector.deleteHandler;
+			if (typeof deleteHandler !== "function") {
+				return opFailure(
+					"delete",
+					"NOT_SUPPORTED",
+					`Delete is not supported for ${connector.label}.`,
+				);
+			}
+			await deleteHandler(runtime, { target, messageId });
 		} else {
-			await connector.pinHandler!(runtime, {
+			const pinHandler = connector.pinHandler;
+			if (typeof pinHandler !== "function") {
+				return opFailure(
+					"pin",
+					"NOT_SUPPORTED",
+					`Pin is not supported for ${connector.label}.`,
+				);
+			}
+			await pinHandler(runtime, {
 				target,
 				messageId,
 				pin: boolParam(params.pin) ?? true,
@@ -2948,7 +3065,15 @@ async function handleGetUser(
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
 	try {
-		const user = await connector.getUser!(runtime, {
+		const getUserFn = connector.getUser;
+		if (typeof getUserFn !== "function") {
+			return opFailure(
+				"get_user",
+				"NOT_SUPPORTED",
+				`User lookup is not supported for ${connector.label}.`,
+			);
+		}
+		const user = await getUserFn(runtime, {
 			userId,
 			username,
 			handle,

@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
 export const connectorAccountsTable = pgTable(
@@ -37,16 +46,12 @@ export const connectorAccountsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
-    uniqueIndex("connector_accounts_agent_provider_account_key_uniq").on(
-      table.agentId,
-      table.provider,
-      table.accountKey
-    ).where(sql`${table.deletedAt} IS NULL`),
-    uniqueIndex("connector_accounts_agent_provider_external_uniq").on(
-      table.agentId,
-      table.provider,
-      table.externalId
-    ).where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("connector_accounts_agent_provider_account_key_uniq")
+      .on(table.agentId, table.provider, table.accountKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("connector_accounts_agent_provider_external_uniq")
+      .on(table.agentId, table.provider, table.externalId)
+      .where(sql`${table.deletedAt} IS NULL`),
     index("connector_accounts_agent_provider_idx").on(table.agentId, table.provider),
     index("connector_accounts_status_idx").on(table.status),
     index("connector_accounts_updated_idx").on(table.updatedAt),

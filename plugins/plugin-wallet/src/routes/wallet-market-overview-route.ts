@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { fetchWithTimeoutGuard } from "@elizaos/agent/api/server-helpers-fetch";
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import { logger } from "@elizaos/core";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,

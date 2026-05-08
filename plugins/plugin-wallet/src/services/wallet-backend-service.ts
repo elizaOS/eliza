@@ -7,7 +7,6 @@ import {
 } from "@elizaos/core";
 import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
 import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
-import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import type {
   WalletChainHandler,
   WalletChainHandlerMetadata,
@@ -253,9 +252,7 @@ export class WalletBackendService extends Service {
   ): WalletRouterFailure | null {
     if (params.subaction === "bridge") {
       const detail = validateWalletBridgeParams(params);
-      return detail
-        ? { ok: false, error: "INVALID_PARAMS", detail }
-        : null;
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (!params.amount) {
       return {

@@ -10,6 +10,7 @@ import { client } from "../api";
 import type {
   ConnectorAccountActionResult,
   ConnectorAccountCreateInput,
+  ConnectorAccountOAuthStartInput,
   ConnectorAccountRecord,
   ConnectorAccountsListResponse,
   ConnectorAccountUpdateInput,
@@ -48,6 +49,9 @@ export interface UseConnectorAccountsResult {
   refresh: () => Promise<void>;
   add: (
     body?: ConnectorAccountCreateInput,
+  ) => Promise<ConnectorAccountActionResult>;
+  startOAuth: (
+    body?: ConnectorAccountOAuthStartInput,
   ) => Promise<ConnectorAccountActionResult>;
   update: (
     accountId: string,
@@ -186,6 +190,26 @@ export function useConnectorAccounts(
       }
     },
     [connectorId, markSaving, notify, provider, refresh],
+  );
+
+  const startOAuth = useCallback<UseConnectorAccountsResult["startOAuth"]>(
+    async (body = {}) => {
+      const key = `oauth:${provider}:${connectorId}:${body.accountId ?? "new"}`;
+      markSaving(key, true);
+      try {
+        return await client.startConnectorAccountOAuth(
+          provider,
+          connectorId,
+          body,
+        );
+      } catch (err) {
+        notify("Failed to start connector OAuth", err);
+        throw err;
+      } finally {
+        markSaving(key, false);
+      }
+    },
+    [connectorId, markSaving, notify, provider],
   );
 
   const update = useCallback<UseConnectorAccountsResult["update"]>(
@@ -370,6 +394,7 @@ export function useConnectorAccounts(
     setSelectedAccountId,
     refresh,
     add,
+    startOAuth,
     update,
     test,
     refreshAccount,

@@ -141,16 +141,16 @@ describe("plugin-openai Cerebras config", () => {
         JSON.stringify({
           data: [{ embedding }],
         }),
-        { status: 200 },
-      ),
+        { status: 200 }
+      )
     );
 
     await expect(handleTextEmbedding(runtime, { text: "remote embedding" })).resolves.toEqual(
-      embedding,
+      embedding
     );
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://embeddings.example/v1/embeddings",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST" })
     );
   });
 });

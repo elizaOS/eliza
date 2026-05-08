@@ -56,5 +56,4 @@ describe("plugin manager umbrella action", () => {
 			expect(pluginManagerExports).not.toHaveProperty(oldExport);
 		}
 	});
-
 });

@@ -69,6 +69,7 @@ const ROLE_OWNER: Role = "OWNER";
 export * from "./actions/index.ts";
 export * from "./providers/index.ts";
 
+import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -77,7 +78,6 @@ import {
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
-import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import core capabilities (trust, secrets, plugin-manager)
 import {
 	pluginManagerCapability,

@@ -4,13 +4,13 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 

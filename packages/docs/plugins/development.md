@@ -259,7 +259,7 @@ Parameters allow the LLM to extract structured data from the conversation:
 
 ```typescript
 const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "MESSAGE",
   description: "Send a message to a specific user on a platform",
 
   parameters: [

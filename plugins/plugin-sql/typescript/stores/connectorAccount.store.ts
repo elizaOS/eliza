@@ -19,7 +19,7 @@ import type {
   UpsertConnectorAccountParams,
   UUID,
 } from "@elizaos/core";
-import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, type SQL, sql } from "drizzle-orm";
 import {
   connectorAccountAuditEventsTable,
   connectorAccountCredentialsTable,
@@ -214,9 +214,7 @@ export class ConnectorAccountStore implements Store {
     return this.ctx.getDb();
   }
 
-  async listAccounts(
-    params: ListConnectorAccountsParams = {}
-  ): Promise<ConnectorAccountRecord[]> {
+  async listAccounts(params: ListConnectorAccountsParams = {}): Promise<ConnectorAccountRecord[]> {
     return this.ctx.withRetry(async () => {
       const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
       const conditions = [
@@ -329,6 +327,7 @@ export class ConnectorAccountStore implements Store {
             connectorAccountsTable.provider,
             connectorAccountsTable.accountKey,
           ],
+          targetWhere: sql`${connectorAccountsTable.deletedAt} IS NULL`,
           set: updateSet,
         })
         .returning();
@@ -420,6 +419,8 @@ export class ConnectorAccountStore implements Store {
     params: GetConnectorAccountCredentialRefParams
   ): Promise<ConnectorAccountCredentialRefRecord | null> {
     return this.ctx.withRetry(async () => {
+      const account = await this.getAccount({ id: params.accountId });
+      if (!account) return null;
       const rows = await this.db
         .select()
         .from(connectorAccountCredentialsTable)
@@ -440,6 +441,8 @@ export class ConnectorAccountStore implements Store {
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.ctx.withRetry(async () => {
+      const account = await this.getAccount({ id: params.accountId });
+      if (!account) return [];
       const rows = await this.db
         .select()
         .from(connectorAccountCredentialsTable)
@@ -508,9 +511,7 @@ export class ConnectorAccountStore implements Store {
         conditions.push(eq(connectorAccountAuditEventsTable.provider, params.provider));
       }
       if (params.accountId) {
-        conditions.push(
-          eq(connectorAccountAuditEventsTable.accountId, params.accountId as UUID)
-        );
+        conditions.push(eq(connectorAccountAuditEventsTable.accountId, params.accountId as UUID));
       }
       if (params.action) {
         conditions.push(eq(connectorAccountAuditEventsTable.action, params.action));
@@ -557,10 +558,8 @@ export class ConnectorAccountStore implements Store {
         .insert(oauthFlowsTable)
         .values(insertValues)
         .onConflictDoUpdate({
-          target: oauthFlowsTable.stateHash,
+          target: [oauthFlowsTable.agentId, oauthFlowsTable.provider, oauthFlowsTable.stateHash],
           set: {
-            agentId,
-            provider: params.provider,
             accountId: params.accountId ?? null,
             redirectUri: params.redirectUri ?? null,
             codeVerifierRef: params.codeVerifierRef ?? null,
@@ -611,10 +610,7 @@ export class ConnectorAccountStore implements Store {
   }
 
   private async buildOAuthFlowLookupConditions(
-    params:
-      | GetOAuthFlowStateParams
-      | UpdateOAuthFlowStateParams
-      | DeleteOAuthFlowStateParams
+    params: GetOAuthFlowStateParams | UpdateOAuthFlowStateParams | DeleteOAuthFlowStateParams
   ): Promise<SQL[]> {
     const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
     const conditions: SQL[] = [eq(oauthFlowsTable.agentId, agentId)];
@@ -653,9 +649,7 @@ export class ConnectorAccountStore implements Store {
     }, "ConnectorAccountStore.getOAuthFlowState");
   }
 
-  async updateOAuthFlowState(
-    params: UpdateOAuthFlowStateParams
-  ): Promise<OAuthFlowRecord | null> {
+  async updateOAuthFlowState(params: UpdateOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
     return this.ctx.withRetry(async () => {
       const existing = await this.getOAuthFlowState({
         ...params,
@@ -666,8 +660,8 @@ export class ConnectorAccountStore implements Store {
 
       const conditions = await this.buildOAuthFlowLookupConditions({
         stateHash: existing.stateHash,
-        agentId: params.agentId,
-        provider: params.provider,
+        agentId: existing.agentId,
+        provider: existing.provider,
       });
       const updateSet: Partial<typeof oauthFlowsTable.$inferInsert> = {};
       if (params.accountId !== undefined) updateSet.accountId = params.accountId;
@@ -708,9 +702,14 @@ export class ConnectorAccountStore implements Store {
         includeExpired: true,
       });
       if (!existing) return false;
+      const conditions = await this.buildOAuthFlowLookupConditions({
+        stateHash: existing.stateHash,
+        agentId: existing.agentId,
+        provider: existing.provider,
+      });
       const deleted = await this.db
         .delete(oauthFlowsTable)
-        .where(eq(oauthFlowsTable.stateHash, existing.stateHash))
+        .where(and(...conditions))
         .returning();
       return deleted.length > 0;
     }, "ConnectorAccountStore.deleteOAuthFlowState");

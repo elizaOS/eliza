@@ -7,14 +7,12 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { type Credentials, OAuth2Client } from "google-auth-library";
+import { credentialRefRecordsFromMetadata } from "./connector-credential-refs.js";
 import type {
   GoogleAuthClient,
   GoogleAuthResolutionRequest,
   GoogleCredentialResolver,
 } from "./types.js";
-import {
-  credentialRefRecordsFromMetadata,
-} from "./connector-credential-refs.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
@@ -254,7 +252,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
   }
 
   private async resolveCredentialMaterial(
-    account: ConnectorAccount,
+    _account: ConnectorAccount,
     request: GoogleAuthResolutionRequest,
     records: ConnectorCredentialRefRecord[],
     version: string | undefined

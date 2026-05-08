@@ -105,10 +105,7 @@ async function runGoOffline(): Promise<ActionResult> {
     const result = await apiPost("/api/stream/offline");
     if (!result.ok) {
       const detail = result.data?.error ?? `HTTP ${result.status}`;
-      return failure(
-        "go_offline",
-        `Failed to stop stream: ${String(detail)}`,
-      );
+      return failure("go_offline", `Failed to stop stream: ${String(detail)}`);
     }
     return {
       success: true,
@@ -155,7 +152,7 @@ export const streamAction: Action = {
       return {
         success: false,
         text: `Invalid stream op. Expected one of: ${STREAM_OPS.join(", ")}`,
-        error: "STREAM_INVALID_OP",
+        error: "STREAM_INVALID",
       };
     }
     switch (op) {

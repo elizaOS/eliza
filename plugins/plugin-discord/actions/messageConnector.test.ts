@@ -169,11 +169,9 @@ describe("Discord message connector adapter", () => {
 		const registrations = runtime.registerMessageConnector.mock.calls.map(
 			(call) => call[0],
 		);
-		expect(registrations.map((registration) => registration.accountId)).toEqual([
-			undefined,
-			"default",
-			"team",
-		]);
+		expect(registrations.map((registration) => registration.accountId)).toEqual(
+			[undefined, "default", "team"],
+		);
 
 		const teamRegistration = registrations.find(
 			(registration) => registration.accountId === "team",

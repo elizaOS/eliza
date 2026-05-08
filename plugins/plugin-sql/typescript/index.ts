@@ -10,9 +10,6 @@ import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage
 import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
 
-export * from "./connector-credential-store";
-export * from "./pglite/errors";
-export * from "./schema";
 export type {
   AppendConnectorAccountAuditEventParams,
   ConnectorAccountAuditEventRecord,
@@ -31,6 +28,9 @@ export type {
   SetConnectorAccountCredentialRefParams,
   UpsertConnectorAccountParams,
 } from "@elizaos/core";
+export * from "./connector-credential-store";
+export * from "./pglite/errors";
+export * from "./schema";
 export type { DrizzleDatabase } from "./types";
 
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");

@@ -3,6 +3,7 @@ export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
+export { deviceIntentAction } from "./actions/device-intent.js";
 export { healthAction } from "./actions/health.js";
 export { lifeAction } from "./actions/life.js";
 export { passwordManagerAction } from "./actions/password-manager.js";

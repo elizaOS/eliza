@@ -1,7 +1,4 @@
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-} from '@elizaos/core';
+import { getConnectorAccountManager, type IAgentRuntime } from '@elizaos/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createTailscaleConnectorAccountProvider,
@@ -41,9 +38,7 @@ describe('Tailscale ConnectorAccountManager provider', () => {
         funnel: 'true',
       }),
     });
-    expect(account?.purpose).toEqual(
-      expect.arrayContaining(['admin', 'automation']),
-    );
+    expect(account?.purpose).toEqual(expect.arrayContaining(['admin', 'automation']));
   });
 
   it('creates, patches, and deletes stored accounts without hiding legacy default', async () => {
@@ -71,14 +66,10 @@ describe('Tailscale ConnectorAccountManager provider', () => {
       expect.arrayContaining([created.id, 'default']),
     );
 
-    const patched = await manager.patchAccount(
-      TAILSCALE_PROVIDER_ID,
-      created.id,
-      {
-        label: 'Renamed tailnet',
-        displayHandle: 'team-tailnet',
-      },
-    );
+    const patched = await manager.patchAccount(TAILSCALE_PROVIDER_ID, created.id, {
+      label: 'Renamed tailnet',
+      displayHandle: 'team-tailnet',
+    });
     expect(patched).toMatchObject({
       id: created.id,
       label: 'Renamed tailnet',
@@ -87,11 +78,7 @@ describe('Tailscale ConnectorAccountManager provider', () => {
       purpose: ['admin'],
     });
 
-    await expect(
-      manager.deleteAccount(TAILSCALE_PROVIDER_ID, created.id),
-    ).resolves.toBe(true);
-    await expect(
-      manager.getAccount(TAILSCALE_PROVIDER_ID, created.id),
-    ).resolves.toBeNull();
+    await expect(manager.deleteAccount(TAILSCALE_PROVIDER_ID, created.id)).resolves.toBe(true);
+    await expect(manager.getAccount(TAILSCALE_PROVIDER_ID, created.id)).resolves.toBeNull();
   });
 });

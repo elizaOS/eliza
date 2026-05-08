@@ -88,7 +88,6 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 | `@elizaos/plugin-cua` | CUA 计算机使用代理（云沙箱自动化） |
 | `@elizaos/plugin-obsidian` | Obsidian vault CLI 集成 |
 | `@elizaos/plugin-repoprompt` | RepoPrompt CLI 集成 |
-| `@elizaos/plugin-claude-code-workbench` | Claude Code 协作工作流 |
 | `@elizaos/plugin-computeruse` | 计算机使用自动化（特定平台） |
 | `@elizaos/plugin-browser` | 浏览器自动化（需要 stagehand-server） |
 | `@elizaos/plugin-vision` | 视觉理解（功能门控） |

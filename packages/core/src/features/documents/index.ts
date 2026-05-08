@@ -42,13 +42,13 @@ export { documentsProvider } from "./provider";
 export type { SearchMode } from "./service";
 export { DocumentService } from "./service";
 export * from "./types";
+export type {
+	FetchDocumentFromUrlOptions,
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
+} from "./url-ingest";
 export {
 	__setDocumentUrlFetchImplForTests,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
-} from "./url-ingest";
-export type {
-	FetchedDocumentUrl,
-	FetchedDocumentUrlKind,
-	FetchDocumentFromUrlOptions,
 } from "./url-ingest";

@@ -177,15 +177,15 @@ const pluginManagerCapability = {
 
 export type {
 	DocumentsPluginConfig,
+	FetchDocumentFromUrlOptions,
 	FetchedDocumentUrl,
 	FetchedDocumentUrlKind,
-	FetchDocumentFromUrlOptions,
 } from "./documents/index";
 export {
 	createDocumentsPlugin,
+	DocumentService,
 	documentAction,
 	documentActions,
-	DocumentService,
 	documentsPlugin,
 	documentsPluginCore,
 	documentsPluginHeadless,

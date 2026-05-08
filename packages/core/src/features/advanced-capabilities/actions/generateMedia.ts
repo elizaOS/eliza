@@ -29,7 +29,12 @@ const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	description:
 		"Generate or process images, audio, or video from a user prompt.",
 	descriptionCompressed: "generate media image audio video prompt",
-	similes: ["GENERATE_IMAGE", "CREATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"],
+	similes: [
+		"GENERATE_IMAGE",
+		"CREATE_IMAGE",
+		"GENERATE_VIDEO",
+		"GENERATE_AUDIO",
+	],
 };
 
 const MEDIA_CONTEXTS = ["media", "files"] as const;
@@ -148,7 +153,10 @@ function messageText(message: Memory): string {
 	return typeof content?.text === "string" ? content.text : "";
 }
 
-function readPrompt(message: Memory, options?: HandlerOptions): string | undefined {
+function readPrompt(
+	message: Memory,
+	options?: HandlerOptions,
+): string | undefined {
 	const params = readParams(options);
 	const prompt = params.prompt ?? message.content.prompt;
 	if (typeof prompt === "string" && prompt.trim()) return prompt.trim();
@@ -169,7 +177,9 @@ function readNumberParam(
 	key: string,
 ): number | undefined {
 	const value = params[key];
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
 
 function readBooleanParam(
@@ -180,25 +190,38 @@ function readBooleanParam(
 	return typeof value === "boolean" ? value : undefined;
 }
 
-function normalizeMediaType(value: unknown): MediaGenerationMediaType | undefined {
+function normalizeMediaType(
+	value: unknown,
+): MediaGenerationMediaType | undefined {
 	if (value === "image" || value === "video" || value === "audio") return value;
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "image" || normalized === "video" || normalized === "audio") {
+	if (
+		normalized === "image" ||
+		normalized === "video" ||
+		normalized === "audio"
+	) {
 		return normalized;
 	}
 	return undefined;
 }
 
-function normalizeAudioKind(value: unknown): MediaGenerationAudioKind | undefined {
+function normalizeAudioKind(
+	value: unknown,
+): MediaGenerationAudioKind | undefined {
 	if (value === "music" || value === "sfx" || value === "tts") return value;
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().toLowerCase();
 	if (normalized === "music" || normalized === "sfx" || normalized === "tts") {
 		return normalized;
 	}
-	if (normalized === "sound_effect" || normalized === "sound-effect") return "sfx";
-	if (normalized === "speech" || normalized === "voice" || normalized === "voiceover") {
+	if (normalized === "sound_effect" || normalized === "sound-effect")
+		return "sfx";
+	if (
+		normalized === "speech" ||
+		normalized === "voice" ||
+		normalized === "voiceover"
+	) {
 		return "tts";
 	}
 	return undefined;
@@ -212,7 +235,8 @@ function inferMediaType(
 	if (explicit) return explicit;
 
 	const lower = text.toLowerCase();
-	if (/\b(video|clip|film|movie|animate|animation)\b/.test(lower)) return "video";
+	if (/\b(video|clip|film|movie|animate|animation)\b/.test(lower))
+		return "video";
 	if (
 		/\b(audio|music|song|sound effect|sfx|tts|text to speech|speech|voiceover|beat|track|compose)\b/.test(
 			lower,
@@ -232,7 +256,11 @@ function inferAudioKind(
 
 	const lower = text.toLowerCase();
 	if (/\b(sound effect|sfx|foley)\b/.test(lower)) return "sfx";
-	if (/\b(tts|text to speech|speech|voiceover|narrat(e|ion)|say this)\b/.test(lower)) {
+	if (
+		/\b(tts|text to speech|speech|voiceover|narrat(e|ion)|say this)\b/.test(
+			lower,
+		)
+	) {
 		return "tts";
 	}
 	if (/\b(music|song|instrumental|beat|track|compose)\b/.test(lower)) {
@@ -241,7 +269,10 @@ function inferAudioKind(
 	return undefined;
 }
 
-function buildRequest(message: Memory, options?: HandlerOptions): MediaGenerationRequest | null {
+function buildRequest(
+	message: Memory,
+	options?: HandlerOptions,
+): MediaGenerationRequest | null {
 	const params = readParams(options);
 	const prompt = readPrompt(message, options);
 	if (!prompt) return null;
@@ -251,14 +282,18 @@ function buildRequest(message: Memory, options?: HandlerOptions): MediaGeneratio
 		mediaType,
 		prompt,
 		audioKind:
-			mediaType === "audio" ? (inferAudioKind(params, prompt) ?? "music") : undefined,
+			mediaType === "audio"
+				? (inferAudioKind(params, prompt) ?? "music")
+				: undefined,
 		size: readStringParam(params, "size"),
 		quality:
 			params.quality === "standard" || params.quality === "hd"
 				? params.quality
 				: undefined,
 		style:
-			params.style === "natural" || params.style === "vivid" ? params.style : undefined,
+			params.style === "natural" || params.style === "vivid"
+				? params.style
+				: undefined,
 		negativePrompt: readStringParam(params, "negativePrompt"),
 		seed: readNumberParam(params, "seed"),
 		duration: readNumberParam(params, "duration"),
@@ -286,21 +321,29 @@ function resultUrl(result: MediaGenerationResponse): string | undefined {
 	if (result.url) return result.url;
 	if (result.mediaType === "image") {
 		if (result.imageUrl) return result.imageUrl;
-		if (result.imageBase64) return `data:image/png;base64,${result.imageBase64}`;
+		if (result.imageBase64)
+			return `data:image/png;base64,${result.imageBase64}`;
 	}
 	if (result.mediaType === "video") return result.videoUrl;
 	return result.audioUrl;
 }
 
-function extensionFor(url: string, mediaType: MediaGenerationMediaType): string {
+function extensionFor(
+	url: string,
+	mediaType: MediaGenerationMediaType,
+): string {
 	if (url.startsWith("data:image/")) return "png";
 	if (url.startsWith("data:audio/")) return "mp3";
 	if (url.startsWith("data:video/")) return "mp4";
 	try {
-		const extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
-		if (mediaType === "image" && IMAGE_EXTENSIONS.has(extension)) return extension;
-		if (mediaType === "video" && VIDEO_EXTENSIONS.has(extension)) return extension;
-		if (mediaType === "audio" && AUDIO_EXTENSIONS.has(extension)) return extension;
+		const extension =
+			new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
+		if (mediaType === "image" && IMAGE_EXTENSIONS.has(extension))
+			return extension;
+		if (mediaType === "video" && VIDEO_EXTENSIONS.has(extension))
+			return extension;
+		if (mediaType === "audio" && AUDIO_EXTENSIONS.has(extension))
+			return extension;
 	} catch {
 		// Fall through to media defaults.
 	}
@@ -435,7 +478,8 @@ export const generateMediaAction = {
 		try {
 			result = await generateWithService(runtime, request);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			logger.error(
 				{
 					src: "plugin:advanced-capabilities:action:generate_media",

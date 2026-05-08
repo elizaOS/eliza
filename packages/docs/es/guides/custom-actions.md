@@ -76,7 +76,7 @@ Similar a la eyección de plugins pero para el propio framework núcleo de eliza
 
 </div>
 
-**SEND_MESSAGE** -- Envía un mensaje a un usuario o sala en una plataforma/servicio específico. Requiere `targetType` (`user` o `room`), `source` (nombre del servicio como `telegram`), `target` (ID de entidad/sala), y `text`. Busca el servicio mediante `runtime.getService()` y llama al método de envío apropiado.
+**MESSAGE** -- Envía un mensaje a un usuario o sala en una plataforma/servicio específico. Requiere `targetType` (`user` o `room`), `source` (nombre del servicio como `telegram`), `target` (ID de entidad/sala), y `text`. Busca el servicio mediante `runtime.getService()` y llama al método de envío apropiado.
 
 <div id="media-generation">
 

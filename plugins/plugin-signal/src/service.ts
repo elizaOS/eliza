@@ -76,6 +76,7 @@ type ConnectorUserLookupParams = {
   username?: string;
   handle?: string;
   query?: string;
+  target?: TargetInfo;
 };
 
 type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
@@ -857,8 +858,13 @@ export class SignalService extends Service implements ISignalService {
                     : params.target,
               }
             ),
-          reactHandler: (handlerRuntime, params) =>
-            service.reactConnectorMessage(handlerRuntime, {
+          reactHandler: (handlerRuntime, params) => {
+            const channelId =
+              params.target?.channelId ??
+              ("channelId" in params ? params.channelId : undefined);
+            const roomId =
+              params.target?.roomId ?? ("roomId" in params ? params.roomId : undefined);
+            return service.reactConnectorMessage(handlerRuntime, {
               ...params,
               target: params.target
                 ? params.target.accountId
@@ -867,10 +873,11 @@ export class SignalService extends Service implements ISignalService {
                 : ({
                     source: SIGNAL_SERVICE_NAME,
                     accountId: connectorAccountId,
-                    channelId: params.channelId,
-                    roomId: params.roomId,
+                    channelId,
+                    roomId,
                   } as TargetInfo),
-            }),
+            });
+          },
           getUser: service.getConnectorUser.bind(service),
           getChatContext: async (target, context) => {
             const targetAccountId = service.normalizeAccountId(

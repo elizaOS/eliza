@@ -213,7 +213,8 @@ export const taskAction: Action = {
   similes: [],
   description:
     "Workbench task CRUD. Op-based dispatch (create / update / complete / delete / list).",
-  descriptionCompressed: "workbench task CRUD: create update complete delete list",
+  descriptionCompressed:
+    "workbench task CRUD: create update complete delete list",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -239,7 +240,7 @@ export const taskAction: Action = {
       const result = failed(
         "invalid",
         `Invalid op. Expected one of: ${TASK_OPS.join(", ")}.`,
-        "TASK_INVALID_OP",
+        "TASK_INVALID",
       );
       if (callback) {
         await callback({ text: result.text ?? "", action: TASK_ACTION });

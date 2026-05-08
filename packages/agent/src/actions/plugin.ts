@@ -176,11 +176,7 @@ function normalizeConfig(value: unknown): Record<string, string> | null {
 }
 
 function resolveTargetId(params: PluginParams): string {
-  return (
-    params.pluginId?.trim() ||
-    params.connectorId?.trim() ||
-    ""
-  );
+  return params.pluginId?.trim() || params.connectorId?.trim() || "";
 }
 
 function resolveListFilter(params: PluginParams): ListFilter {
@@ -242,7 +238,13 @@ async function doUninstall(
   return {
     success: true,
     text: `Plugin ${result.pluginName} uninstalled successfully.${result.requiresRestart ? " The agent will restart to drop it." : ""}`,
-    data: { actionName: "PLUGIN", op: "uninstall", pluginId, npmName, ...result },
+    data: {
+      actionName: "PLUGIN",
+      op: "uninstall",
+      pluginId,
+      npmName,
+      ...result,
+    },
   };
 }
 
@@ -261,8 +263,7 @@ async function doUpdate(
 
   const npmName = normalizeNpmName(pluginId);
   const stream = params.stream;
-  const options =
-    stream !== undefined ? { releaseStream: stream } : undefined;
+  const options = stream !== undefined ? { releaseStream: stream } : undefined;
   const result = await mgr.updatePlugin(npmName, undefined, options);
 
   if (!result.success) {
@@ -370,10 +371,7 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
 
   const config = normalizeConfig(params.config);
   if (!config || Object.keys(config).length === 0) {
-    return fail(
-      "Missing or empty config object.",
-      "PLUGIN_CONFIGURE_FAILED",
-    );
+    return fail("Missing or empty config object.", "PLUGIN_CONFIGURE_FAILED");
   }
 
   const base = getApiBase();
@@ -387,12 +385,11 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp
-    .json()
-    .catch(() => ({}))) as PluginMutationResponse;
+  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
 
   if (!resp.ok || data.success === false || data.ok === false) {
-    const errMsg = data.error || data.message || `Save failed (${resp.status}).`;
+    const errMsg =
+      data.error || data.message || `Save failed (${resp.status}).`;
     logger.warn(`[plugin:configure] ${errMsg}`);
     return fail(
       `Failed to save config for ${pluginId}: ${errMsg}`,
@@ -539,10 +536,7 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
 
   const enabled = params.enabled;
   if (typeof enabled !== "boolean") {
-    return fail(
-      "Missing 'enabled' boolean parameter.",
-      "PLUGIN_TOGGLE_FAILED",
-    );
+    return fail("Missing 'enabled' boolean parameter.", "PLUGIN_TOGGLE_FAILED");
   }
 
   const base = getApiBase();
@@ -556,12 +550,11 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp
-    .json()
-    .catch(() => ({}))) as PluginMutationResponse;
+  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
 
   if (!resp.ok || data.success === false || data.ok === false) {
-    const errMsg = data.error || data.message || `Toggle failed (${resp.status}).`;
+    const errMsg =
+      data.error || data.message || `Toggle failed (${resp.status}).`;
     logger.warn(`[plugin:toggle] ${errMsg}`);
     return fail(
       `Failed to ${enabled ? "enable" : "disable"} ${pluginId}: ${errMsg}`,
@@ -820,7 +813,7 @@ export const pluginAction: Action = {
     if (!op || !PLUGIN_OPS.includes(op)) {
       return fail(
         `op is required and must be one of ${PLUGIN_OPS.join(", ")}.`,
-        "PLUGIN_INVALID_OP",
+        "PLUGIN_INVALID",
       );
     }
 
@@ -862,7 +855,7 @@ export const pluginAction: Action = {
           return await doDisconnect(params);
       }
 
-      return fail(`Unhandled op '${op}'.`, "PLUGIN_INVALID_OP");
+      return fail(`Unhandled op '${op}'.`, "PLUGIN_INVALID");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn(`[plugin:${op}] failed: ${msg}`);
@@ -909,8 +902,7 @@ export const pluginAction: Action = {
     },
     {
       name: "enabled",
-      description:
-        "toggle: true to enable, false to disable.",
+      description: "toggle: true to enable, false to disable.",
       required: false,
       schema: { type: "boolean" as const },
     },

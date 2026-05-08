@@ -596,7 +596,8 @@ function sanitizeForRecord(
 		return undefined;
 	}
 	if (typeof value === "function") {
-		return `[Function ${(value as Function).name || "anonymous"}]`;
+		const fnName = (value as { name?: string }).name;
+		return `[Function ${typeof fnName === "string" && fnName.length > 0 ? fnName : "anonymous"}]`;
 	}
 	if (typeof value === "symbol") {
 		return value.toString();
@@ -620,7 +621,9 @@ function sanitizeForRecord(
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
 		const output: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+		for (const [key, entry] of Object.entries(
+			value as Record<string, unknown>,
+		)) {
 			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
 			if (sanitized !== undefined) {
 				output[key] = sanitized;

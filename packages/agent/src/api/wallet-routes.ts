@@ -1,15 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type {
-  WalletExportRejection as WalletExportRejectionLike,
-  WalletExportRequestBody,
-} from "@elizaos/shared";
-import {
-  normalizeWalletRpcSelections,
-  type WalletConfigUpdateRequest,
-  type WalletRpcSelections,
-} from "@elizaos/shared";
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import {
   type CloudWalletDescriptor,
@@ -22,6 +13,15 @@ import {
   persistCloudWalletCache,
   provisionCloudWalletsBestEffort,
 } from "@elizaos/plugin-elizacloud/cloud/cloud-wallet";
+import type {
+  WalletExportRejection as WalletExportRejectionLike,
+  WalletExportRequestBody,
+} from "@elizaos/shared";
+import {
+  normalizeWalletRpcSelections,
+  type WalletConfigUpdateRequest,
+  type WalletRpcSelections,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";

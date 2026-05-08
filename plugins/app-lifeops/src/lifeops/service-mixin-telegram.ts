@@ -62,6 +62,8 @@ type TelegramPluginServiceLike = {
   messageManager?: unknown;
   connected?: boolean;
   isServiceConnected?: () => boolean;
+  handleSendMessage?: unknown;
+  searchConnectorMessages?: unknown;
   bot?: {
     botInfo?: {
       id?: number | string;
@@ -88,7 +90,26 @@ function telegramPluginConnected(
   return Boolean(
     service?.messageManager ||
       service?.connected === true ||
-      service?.isServiceConnected?.() === true,
+      service?.isServiceConnected?.() === true ||
+      telegramPluginCanRead(service) ||
+      telegramPluginCanSend(service),
+  );
+}
+
+function telegramPluginCanRead(service: TelegramPluginServiceLike | null): boolean {
+  return typeof service?.searchConnectorMessages === "function";
+}
+
+function telegramPluginCanSend(service: TelegramPluginServiceLike | null): boolean {
+  return typeof service?.handleSendMessage === "function";
+}
+
+function telegramReadyCapabilities(args: {
+  readReady: boolean;
+  sendReady: boolean;
+}): LifeOpsTelegramCapability[] {
+  return FULL_TELEGRAM_CAPABILITIES.filter((capability) =>
+    capability === "telegram.read" ? args.readReady : args.sendReady,
   );
 }
 
@@ -129,6 +150,8 @@ function stripLegacyTokenRef(
 
 function telegramStatusDegradations(args: {
   connected: boolean;
+  readReady: boolean;
+  sendReady: boolean;
   hasLegacyTokenRef: boolean;
 }): LifeOpsConnectorDegradation[] {
   const degradations: LifeOpsConnectorDegradation[] = [];
@@ -137,6 +160,24 @@ function telegramStatusDegradations(args: {
       axis: "transport-offline",
       code: "telegram_plugin_unavailable",
       message: TELEGRAM_PLUGIN_SETUP_MESSAGE,
+      retryable: true,
+    });
+  }
+  if (args.connected && !args.readReady) {
+    degradations.push({
+      axis: "transport-offline",
+      code: "telegram_plugin_read_unavailable",
+      message:
+        "Telegram is connected, but @elizaos/plugin-telegram does not expose a message search/read path.",
+      retryable: true,
+    });
+  }
+  if (args.connected && !args.sendReady) {
+    degradations.push({
+      axis: "delivery-degraded",
+      code: "telegram_plugin_send_unavailable",
+      message:
+        "Telegram is connected, but @elizaos/plugin-telegram does not expose a send path.",
       retryable: true,
     });
   }
@@ -239,6 +280,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
       const pluginService = getTelegramPluginService(this.runtime);
       const connected = telegramPluginConnected(pluginService);
+      const readReady = telegramPluginCanRead(pluginService);
+      const sendReady = telegramPluginCanSend(pluginService);
       const legacyGrant = await this.repository
         .getConnectorGrant(this.agentId(), "telegram", "local", side)
         .catch((error) => {
@@ -256,8 +299,13 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
           : {};
       const degradations = telegramStatusDegradations({
         connected,
+        readReady,
+        sendReady,
         hasLegacyTokenRef: Boolean(legacyGrant?.tokenRef),
       });
+      const grantedCapabilities = connected
+        ? telegramReadyCapabilities({ readReady, sendReady })
+        : [];
 
       return {
         provider: "telegram",
@@ -276,7 +324,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
               Object.keys(legacyGrant.identity).length > 0
             ? (legacyGrant.identity as LifeOpsTelegramConnectorStatus["identity"])
             : null,
-        grantedCapabilities: connected ? FULL_TELEGRAM_CAPABILITIES : [],
+        grantedCapabilities,
         authState: connected
           ? "connected"
           : legacyGrant?.tokenRef
@@ -407,6 +455,35 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
       }
 
+      let read = {
+        ok: false,
+        error: "Telegram plugin is missing read permission.",
+        dialogCount: 0,
+        dialogs: [],
+      };
+      if (status.grantedCapabilities.includes("telegram.read")) {
+        try {
+          const messages = await this.searchTelegramMessages({
+            side,
+            query: "",
+            limit: request.recentLimit ?? 10,
+          });
+          read = {
+            ok: true,
+            error: null,
+            dialogCount: messages.length,
+            dialogs: [],
+          };
+        } catch (error) {
+          read = {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+            dialogCount: 0,
+            dialogs: [],
+          };
+        }
+      }
+
       let send = {
         ok: true,
         error: null,
@@ -449,12 +526,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         provider: "telegram",
         side,
         verifiedAt: new Date().toISOString(),
-        read: {
-          ok: true,
-          error: null,
-          dialogCount: 0,
-          dialogs: [],
-        },
+        read,
         send,
       };
     }

@@ -92,7 +92,8 @@ const ROUTES: LinearRoute[] = [
   {
     op: "list_comments",
     action: listCommentsAction,
-    match: /\b(list|show|get|fetch|view)\b.*\bcomments?\b|\bcomments?\b.*\b(list|show|get|fetch)\b/i,
+    match:
+      /\b(list|show|get|fetch|view)\b.*\bcomments?\b|\bcomments?\b.*\b(list|show|get|fetch)\b/i,
   },
   {
     op: "clear_activity",

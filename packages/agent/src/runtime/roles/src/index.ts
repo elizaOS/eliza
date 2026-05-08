@@ -14,7 +14,12 @@
  *   }
  */
 
-import { type IAgentRuntime, logger, type Plugin, roleAction } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  roleAction,
+} from "@elizaos/core";
 import { rolesProvider } from "./provider.js";
 import type { RolesConfig, RolesWorldMetadata } from "./types.js";
 import {

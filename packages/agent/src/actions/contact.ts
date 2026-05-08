@@ -30,7 +30,6 @@
  *              FollowUp service (was SCHEDULE_FOLLOW_UP).
  */
 
-import { v4 as uuidv4 } from "uuid";
 import type {
   Action,
   ActionExample,
@@ -48,12 +47,14 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  findEntityByName,
   logger,
   ModelType,
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import { findEntityByName } from "@elizaos/core";
+import type { RelationshipsMergeProposalEvidence } from "@elizaos/core/services/relationships-graph-builder";
+import { v4 as uuidv4 } from "uuid";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -541,7 +542,11 @@ async function handleSearch(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:search] Error:", errMsg);
-    return fail(`Failed to search contacts: ${errMsg}`, "SEARCH_FAILED", "search");
+    return fail(
+      `Failed to search contacts: ${errMsg}`,
+      "SEARCH_FAILED",
+      "search",
+    );
   }
 }
 
@@ -588,7 +593,9 @@ async function handleRead(
   }
 
   try {
-    let resolvedEntityId = isLikelyUuid(entityId) ? (entityId as UUID) : undefined;
+    let resolvedEntityId = isLikelyUuid(entityId)
+      ? (entityId as UUID)
+      : undefined;
 
     if (!resolvedEntityId && name) {
       const snapshot = await graphService.getGraphSnapshot({
@@ -661,7 +668,11 @@ async function handleCreate(
 ): Promise<ActionResult> {
   const name = readString(params.name);
   if (!name) {
-    return fail("CONTACT create requires a name.", "INVALID_PARAMETERS", "create");
+    return fail(
+      "CONTACT create requires a name.",
+      "INVALID_PARAMETERS",
+      "create",
+    );
   }
 
   // Build entity-level metadata.
@@ -751,7 +762,11 @@ async function handleCreate(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:create] Error:", errMsg);
-    return fail(`Failed to create contact: ${errMsg}`, "CREATE_FAILED", "create");
+    return fail(
+      `Failed to create contact: ${errMsg}`,
+      "CREATE_FAILED",
+      "create",
+    );
   }
 }
 
@@ -777,7 +792,14 @@ async function handleUpdate(
     !Array.isArray(data) &&
     state
   ) {
-    return handleUpdateComponent(runtime, message, state, source, data, callback);
+    return handleUpdateComponent(
+      runtime,
+      message,
+      state,
+      source,
+      data,
+      callback,
+    );
   }
 
   // Branch 2: legacy core UPDATE_CONTACT — categories/tags/preferences via
@@ -873,7 +895,11 @@ async function handleUpdate(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:update] Error:", errMsg);
-    return fail(`Failed to update contact: ${errMsg}`, "UPDATE_FAILED", "update");
+    return fail(
+      `Failed to update contact: ${errMsg}`,
+      "UPDATE_FAILED",
+      "update",
+    );
   }
 }
 
@@ -988,7 +1014,10 @@ async function handleUpdateContactInfo(
     updateData.preferences = { ...basePrefs, notes };
   }
 
-  const updated = await relationships.updateContact(contact.entityId, updateData);
+  const updated = await relationships.updateContact(
+    contact.entityId,
+    updateData,
+  );
   if (!updated) {
     return fail(
       "Failed to update contact via RelationshipsService.",
@@ -1157,7 +1186,8 @@ async function handleDelete(
 ): Promise<ActionResult> {
   const entityId = readString(params.entityId);
   const contactName = readString(params.name);
-  const confirmed = readBoolean(params.confirm) ?? readBoolean(params.confirmed);
+  const confirmed =
+    readBoolean(params.confirm) ?? readBoolean(params.confirmed);
 
   // Path A: REMOVE_CONTACT semantics — name-based with RelationshipsService.
   if (contactName && !entityId) {
@@ -1257,7 +1287,11 @@ async function handleDelete(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:delete] Error:", errMsg);
-    return fail(`Failed to delete contact: ${errMsg}`, "DELETE_FAILED", "delete");
+    return fail(
+      `Failed to delete contact: ${errMsg}`,
+      "DELETE_FAILED",
+      "delete",
+    );
   }
 }
 
@@ -1273,7 +1307,10 @@ interface LinkExtraction {
 }
 
 function parseLinkExtraction(text: string): LinkExtraction {
-  const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) return {};
   const normalize = (v: unknown): string | undefined => {
     if (v == null) return undefined;
@@ -1410,7 +1447,7 @@ async function handleLink(
   }
 
   try {
-    const evidence: Record<string, unknown> = {
+    const evidence: RelationshipsMergeProposalEvidence = {
       notes: reason || "user-requested manual link",
       source: "CONTACT:link",
       userMessageId: message.id,
@@ -1706,11 +1743,7 @@ async function handleFollowup(
 
   const scheduledAtRaw = readString(params.scheduledAt);
   if (!scheduledAtRaw) {
-    return fail(
-      "scheduledAt is required.",
-      "MISSING_SCHEDULED_AT",
-      "followup",
-    );
+    return fail("scheduledAt is required.", "MISSING_SCHEDULED_AT", "followup");
   }
   const scheduledAt = new Date(scheduledAtRaw);
   if (Number.isNaN(scheduledAt.getTime())) {
@@ -1722,9 +1755,10 @@ async function handleFollowup(
     ? (readString(params.entityId) as UUID)
     : null;
   if (!entityId && contactName) {
-    const contacts = (await relationships.searchContacts?.({
-      searchTerm: contactName,
-    })) ?? [];
+    const contacts =
+      (await relationships.searchContacts?.({
+        searchTerm: contactName,
+      })) ?? [];
     entityId = contacts[0]?.entityId ?? null;
     if (!entityId) {
       return fail(
@@ -1735,11 +1769,7 @@ async function handleFollowup(
     }
   }
   if (!entityId) {
-    return fail(
-      "name or entityId is required.",
-      "MISSING_CONTACT",
-      "followup",
-    );
+    return fail("name or entityId is required.", "MISSING_CONTACT", "followup");
   }
 
   if (relationships.getContact) {
@@ -1952,8 +1982,7 @@ export const contactAction: Action = {
     },
     {
       name: "tags",
-      description:
-        "create/update: tags for the contact_info component.",
+      description: "create/update: tags for the contact_info component.",
       required: false,
       schema: {
         type: "array" as const,
@@ -1981,7 +2010,8 @@ export const contactAction: Action = {
     },
     {
       name: "attributes",
-      description: "create/update: free-form attribute map merged into entity metadata.",
+      description:
+        "create/update: free-form attribute map merged into entity metadata.",
       required: false,
       schema: { type: "object" as const, additionalProperties: true },
     },
@@ -2042,7 +2072,8 @@ export const contactAction: Action = {
     },
     {
       name: "confirmation",
-      description: "link: true to apply the merge immediately, false to only propose.",
+      description:
+        "link: true to apply the merge immediately, false to only propose.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2097,7 +2128,8 @@ export const contactAction: Action = {
     },
     {
       name: "message",
-      description: "followup: optional message text to include with the follow-up.",
+      description:
+        "followup: optional message text to include with the follow-up.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2127,7 +2159,7 @@ export const contactAction: Action = {
     if (!op) {
       return fail(
         `op is required and must be one of ${CONTACT_OPS.join(", ")}.`,
-        "INVALID_OP",
+        "INVALID",
       );
     }
 

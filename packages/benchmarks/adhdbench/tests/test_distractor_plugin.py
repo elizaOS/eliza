@@ -44,7 +44,7 @@ def test_no_collision_with_bootstrap() -> None:
     """Distractor names must not collide with bootstrap action names."""
     bootstrap_names = {
         "REPLY", "IGNORE", "NONE", "COMPACT_SESSION", "CHOOSE_OPTION",
-        "SEND_MESSAGE", "ADD_CONTACT", "REMOVE_CONTACT", "UPDATE_CONTACT",
+        "MESSAGE", "ADD_CONTACT", "REMOVE_CONTACT", "UPDATE_CONTACT",
         "UPDATE_CONTACT_INFO", "SEARCH_CONTACTS", "FOLLOW_ROOM", "UNFOLLOW_ROOM",
         "MUTE_ROOM", "UNMUTE_ROOM", "RESET_SESSION", "STATUS", "UPDATE_SETTINGS",
         "UPDATE_ROLE", "GENERATE_MEDIA", "SCHEDULE_FOLLOW_UP",

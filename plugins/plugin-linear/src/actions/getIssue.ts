@@ -218,7 +218,7 @@ export const getIssueAction: Action = {
               ...filters,
               limit: getStringValue(searchBy.recency) ? 10 : 5,
             },
-            accountId,
+            accountId
           );
 
           if (issues.length === 0) {

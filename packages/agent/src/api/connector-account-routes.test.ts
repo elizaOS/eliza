@@ -152,7 +152,10 @@ const coreMocks = vi.hoisted(() => {
       return this.storage.deleteAccount(provider, accountId);
     }
 
-    async startOAuth(provider: string) {
+    async startOAuth(
+      provider: string,
+      input?: { metadata?: Record<string, unknown> },
+    ) {
       const normalized = provider.toLowerCase();
       const registered = this.providers.get(normalized);
       if (!registered?.startOAuth) throw new Error("OAuth not supported");
@@ -164,6 +167,7 @@ const coreMocks = vi.hoisted(() => {
         status: "pending",
         createdAt: now,
         updatedAt: now,
+        metadata: input?.metadata,
       };
       await this.storage.createOAuthFlow(flow);
       const started = await registered.startOAuth({ flow });
@@ -418,6 +422,65 @@ describe("connector account routes", () => {
     expect(testHarness.captured.body).toMatchObject({
       ok: true,
       account: expect.objectContaining({ id: "acct_google" }),
+    });
+  });
+
+  it("normalizes legacy role arrays out of purpose", async () => {
+    const { ctx, captured } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/accounts",
+      body: {
+        id: "acct_google_array",
+        purpose: ["OWNER", "messaging"],
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status).toBe(201);
+    expect(captured.body).toMatchObject({
+      id: "acct_google_array",
+      role: "OWNER",
+      purpose: ["messaging"],
+    });
+  });
+
+  it("does not serialize disabled metadata defaults as active defaults", async () => {
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/accounts",
+    });
+    await storage.upsertAccount({
+      id: "acct_disabled_default",
+      provider: "slack",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "disabled",
+      createdAt: 1,
+      updatedAt: 1,
+      metadata: { isDefault: true },
+    });
+    await storage.upsertAccount({
+      id: "acct_connected",
+      provider: "slack",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: 2,
+      updatedAt: 2,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.body).toMatchObject({
+      defaultAccountId: "acct_connected",
+      accounts: expect.arrayContaining([
+        expect.objectContaining({
+          id: "acct_disabled_default",
+          isDefault: false,
+        }),
+      ]),
     });
   });
 

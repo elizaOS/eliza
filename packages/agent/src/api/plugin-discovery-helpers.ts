@@ -12,9 +12,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.js";
 import { signalAuthExists } from "../services/signal-pairing.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   type PluginParamInfo,
   validatePluginConfig,

@@ -3,9 +3,7 @@ import type { MatrixSettings } from "./types.js";
 
 export const DEFAULT_MATRIX_ACCOUNT_ID = "default";
 
-export type MatrixAccountConfig = Partial<
-  Omit<MatrixSettings, "rooms" | "accountId">
-> & {
+export type MatrixAccountConfig = Partial<Omit<MatrixSettings, "rooms" | "accountId">> & {
   accountId?: string;
   id?: string;
   rooms?: string[] | string;
@@ -106,7 +104,8 @@ export function listMatrixAccountIds(runtime: IAgentRuntime): string[] {
 
 export function resolveDefaultMatrixAccountId(runtime: IAgentRuntime): string {
   const requested =
-    stringSetting(runtime, "MATRIX_DEFAULT_ACCOUNT_ID") ?? stringSetting(runtime, "MATRIX_ACCOUNT_ID");
+    stringSetting(runtime, "MATRIX_DEFAULT_ACCOUNT_ID") ??
+    stringSetting(runtime, "MATRIX_ACCOUNT_ID");
   if (requested) return normalizeMatrixAccountId(requested);
 
   const ids = listMatrixAccountIds(runtime);
@@ -121,15 +120,24 @@ export function readMatrixAccountId(...sources: unknown[]): string | undefined {
       record.parameters && typeof record.parameters === "object"
         ? (record.parameters as Record<string, unknown>)
         : {};
-    const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : {};
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
     const metadata =
       record.metadata && typeof record.metadata === "object"
         ? (record.metadata as Record<string, unknown>)
         : {};
     const matrix =
-      data.matrix && typeof data.matrix === "object" ? (data.matrix as Record<string, unknown>) : {};
+      data.matrix && typeof data.matrix === "object"
+        ? (data.matrix as Record<string, unknown>)
+        : {};
     const value =
-      record.accountId ?? parameters.accountId ?? data.accountId ?? matrix.accountId ?? metadata.accountId;
+      record.accountId ??
+      parameters.accountId ??
+      data.accountId ??
+      matrix.accountId ??
+      metadata.accountId;
     if (typeof value === "string" && value.trim()) return normalizeMatrixAccountId(value);
   }
   return undefined;
@@ -148,21 +156,37 @@ export function resolveMatrixAccountSettings(
 
   return {
     accountId,
-    homeserver: account.homeserver ?? base.homeserver ?? (allowEnv ? stringSetting(runtime, "MATRIX_HOMESERVER") : undefined) ?? "",
-    userId: account.userId ?? base.userId ?? (allowEnv ? stringSetting(runtime, "MATRIX_USER_ID") : undefined) ?? "",
+    homeserver:
+      account.homeserver ??
+      base.homeserver ??
+      (allowEnv ? stringSetting(runtime, "MATRIX_HOMESERVER") : undefined) ??
+      "",
+    userId:
+      account.userId ??
+      base.userId ??
+      (allowEnv ? stringSetting(runtime, "MATRIX_USER_ID") : undefined) ??
+      "",
     accessToken:
       account.accessToken ??
       base.accessToken ??
       (allowEnv ? stringSetting(runtime, "MATRIX_ACCESS_TOKEN") : undefined) ??
       "",
     deviceId:
-      account.deviceId ?? base.deviceId ?? (allowEnv ? stringSetting(runtime, "MATRIX_DEVICE_ID") : undefined),
-    rooms: roomsValue(account.rooms ?? base.rooms ?? (allowEnv ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)),
+      account.deviceId ??
+      base.deviceId ??
+      (allowEnv ? stringSetting(runtime, "MATRIX_DEVICE_ID") : undefined),
+    rooms: roomsValue(
+      account.rooms ?? base.rooms ?? (allowEnv ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
+    ),
     autoJoin: boolValue(
-      account.autoJoin ?? base.autoJoin ?? (allowEnv ? stringSetting(runtime, "MATRIX_AUTO_JOIN") : undefined)
+      account.autoJoin ??
+        base.autoJoin ??
+        (allowEnv ? stringSetting(runtime, "MATRIX_AUTO_JOIN") : undefined)
     ),
     encryption: boolValue(
-      account.encryption ?? base.encryption ?? (allowEnv ? stringSetting(runtime, "MATRIX_ENCRYPTION") : undefined)
+      account.encryption ??
+        base.encryption ??
+        (allowEnv ? stringSetting(runtime, "MATRIX_ENCRYPTION") : undefined)
     ),
     requireMention: boolValue(
       account.requireMention ??

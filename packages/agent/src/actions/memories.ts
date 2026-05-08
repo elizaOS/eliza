@@ -14,7 +14,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { ModelType, logger, stringToUuid } from "@elizaos/core";
+import { logger, ModelType, stringToUuid } from "@elizaos/core";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
 type MemoryOp = (typeof MEMORY_OPS)[number];
@@ -180,11 +180,13 @@ async function doSearch(
     return typeof text === "string" && text.trim().length > 0;
   });
 
-  if (entityId) filtered = filtered.filter((c) => c.memory.entityId === entityId);
+  if (entityId)
+    filtered = filtered.filter((c) => c.memory.entityId === entityId);
 
   if (query) {
     filtered = filtered.filter((c) => {
-      const text = (c.memory.content as { text?: string } | undefined)?.text ?? "";
+      const text =
+        (c.memory.content as { text?: string } | undefined)?.text ?? "";
       return scoreText(text, query) > 0;
     });
   }
@@ -194,16 +196,19 @@ async function doSearch(
   );
 
   const total = filtered.length;
-  const items = filtered.slice(0, limit).map((c) => toListItem(c.memory, c.type));
-  const lines = items.slice(0, 25).map(
-    (m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`,
-  );
+  const items = filtered
+    .slice(0, limit)
+    .map((c) => toListItem(c.memory, c.type));
+  const lines = items
+    .slice(0, 25)
+    .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
 
   return {
     success: true,
-    text: [`Found ${items.length} memory item(s) (total: ${total}).`, ...lines].join(
-      "\n",
-    ),
+    text: [
+      `Found ${items.length} memory item(s) (total: ${total}).`,
+      ...lines,
+    ].join("\n"),
     values: { count: items.length, total },
     data: {
       actionName: "MEMORY",
@@ -330,12 +335,13 @@ export const memoryAction: Action = {
     _state,
     options,
   ): Promise<ActionResult> => {
-    const params = ((options as HandlerOptions | undefined)?.parameters ?? {}) as MemoryParams;
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as MemoryParams;
     const op = params.op;
     if (!op || !MEMORY_OPS.includes(op)) {
       return fail(
         `op is required and must be one of ${MEMORY_OPS.join(", ")}.`,
-        "MEMORY_INVALID_OP",
+        "MEMORY_INVALID",
       );
     }
     try {
@@ -375,7 +381,8 @@ export const memoryAction: Action = {
     },
     {
       name: "kind",
-      description: 'create: optional category label, e.g. "fact", "preference".',
+      description:
+        'create: optional category label, e.g. "fact", "preference".',
       required: false,
       schema: { type: "string" as const },
     },
@@ -405,7 +412,8 @@ export const memoryAction: Action = {
     },
     {
       name: "query",
-      description: "search: case-insensitive text match against memory content.",
+      description:
+        "search: case-insensitive text match against memory content.",
       required: false,
       schema: { type: "string" as const },
     },

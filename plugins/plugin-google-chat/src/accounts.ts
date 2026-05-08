@@ -3,9 +3,7 @@ import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
 
 export const DEFAULT_GOOGLE_CHAT_ACCOUNT_ID = "default";
 
-export type GoogleChatAccountConfig = Partial<
-  Omit<GoogleChatSettings, "spaces" | "accountId">
-> & {
+export type GoogleChatAccountConfig = Partial<Omit<GoogleChatSettings, "spaces" | "accountId">> & {
   accountId?: string;
   id?: string;
   spaces?: string[] | string;
@@ -133,7 +131,10 @@ export function readGoogleChatAccountId(...sources: unknown[]): string | undefin
       record.parameters && typeof record.parameters === "object"
         ? (record.parameters as Record<string, unknown>)
         : {};
-    const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : {};
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
     const metadata =
       record.metadata && typeof record.metadata === "object"
         ? (record.metadata as Record<string, unknown>)
@@ -193,7 +194,11 @@ export function resolveGoogleChatAccountSettings(
       (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE") : undefined) ??
       "",
     webhookPath: webhookPath.startsWith("/") ? webhookPath : `/${webhookPath}`,
-    spaces: spaceList(account.spaces ?? base.spaces ?? (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_SPACES") : undefined)),
+    spaces: spaceList(
+      account.spaces ??
+        base.spaces ??
+        (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_SPACES") : undefined)
+    ),
     requireMention: boolValue(
       account.requireMention ??
         base.requireMention ??
@@ -201,7 +206,9 @@ export function resolveGoogleChatAccountSettings(
       true
     ),
     enabled: boolValue(
-      account.enabled ?? base.enabled ?? (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_ENABLED") : undefined),
+      account.enabled ??
+        base.enabled ??
+        (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_ENABLED") : undefined),
       true
     ),
     botUser:

@@ -5,7 +5,6 @@ import type {
 	Action,
 	ActionResult,
 	Entity,
-	Evaluator,
 	IAgentRuntime,
 	Memory,
 	State,
@@ -13,7 +12,6 @@ import type {
 } from "../../../types/index.ts";
 import { ActionMode } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
-import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("RELATIONSHIP_EXTRACTION");

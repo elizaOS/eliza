@@ -786,7 +786,14 @@ export const websiteBlockAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: ["SELFCONTROL", "SITE_BLOCKER", "HOSTS_BLOCK", "FOCUS_BLOCK"],
+  similes: [
+    "SELFCONTROL",
+    "SITE_BLOCKER",
+    "HOSTS_BLOCK",
+    "FOCUS_BLOCK",
+    "BLOCK_WEBSITE",
+    "WEBSITE_BLOCKER",
+  ],
   description:
     "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits).",
   descriptionCompressed:

@@ -10,9 +10,24 @@
     "outDir": "./dist",
     "rootDir": ".",
     "declaration": true,
-    "lib": ["ES2022", "DOM"],
-    "types": ["node", "bun-types"]
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node",
+      "bun-types"
+    ]
   },
-  "include": ["*.ts", "typescript/**/*.ts", "api/**/*.ts"],
-  "exclude": ["node_modules", "dist", "rust"]
+  "include": [
+    "*.ts",
+    "typescript/**/*.ts",
+    "api/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "rust"
+  ],
+  "extends": "../../../tsconfig.workspace-paths.json"
 }

@@ -1,8 +1,9 @@
 import {
+  type ConnectorAccount,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CALENDLY_PROVIDER_NAME,
   createCalendlyConnectorAccountProvider,
@@ -16,6 +17,11 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
 }
 
 describe("Calendly ConnectorAccountManager provider", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("lists legacy access tokens as a default OWNER account", async () => {
     const rt = runtime({ CALENDLY_ACCESS_TOKEN: "calendly-token" });
     const manager = getConnectorAccountManager(rt);
@@ -87,5 +93,116 @@ describe("Calendly ConnectorAccountManager provider", () => {
     await expect(
       manager.getAccount(CALENDLY_PROVIDER_NAME, created.id),
     ).resolves.toBeNull();
+  });
+
+  it("persists callback tokens as credential refs without returning token metadata", async () => {
+    const vault = new Map<string, string>();
+    const setCredentialRef = vi.fn(async () => undefined);
+    const rt = {
+      agentId: "agent-1",
+      character: {},
+      getSetting: vi.fn(
+        (key: string) =>
+          ({
+            CALENDLY_OAUTH_CLIENT_ID: "calendly-client",
+            CALENDLY_OAUTH_CLIENT_SECRET: "calendly-secret",
+            CALENDLY_OAUTH_REDIRECT_URI:
+              "http://localhost/oauth/calendly/callback",
+          })[key],
+      ),
+      getService: (serviceType: string) =>
+        serviceType === "vault"
+          ? {
+              set: async (key: string, value: string) => {
+                vault.set(key, value);
+              },
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+    const manager = {
+      getStorage: () => ({
+        setConnectorAccountCredentialRef: setCredentialRef,
+      }),
+    } as never;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("auth.calendly.com/oauth/token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "calendly-access-token",
+              refresh_token: "calendly-refresh-token",
+              expires_in: 7200,
+              token_type: "bearer",
+              scope: "default",
+              owner: "https://api.calendly.com/users/user-1",
+              organization: "https://api.calendly.com/organizations/org-1",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (href.includes("api.calendly.com/users/me")) {
+          return new Response(
+            JSON.stringify({
+              resource: {
+                uri: "https://api.calendly.com/users/user-1",
+                name: "Ada Lovelace",
+                email: "ada@example.com",
+                scheduling_url: "https://calendly.com/ada",
+                timezone: "America/Los_Angeles",
+                current_organization:
+                  "https://api.calendly.com/organizations/org-1",
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      }),
+    );
+
+    const provider = createCalendlyConnectorAccountProvider(rt);
+    const result = await provider.completeOAuth?.(
+      {
+        provider: CALENDLY_PROVIDER_NAME,
+        code: "oauth-code",
+        query: {},
+        flow: {
+          id: "flow-1",
+          provider: CALENDLY_PROVIDER_NAME,
+          state: "state-1",
+          status: "pending",
+          accountId: "acct_calendly_1",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      manager,
+    );
+
+    const account = result?.account as ConnectorAccount;
+    const metadata = account.metadata as Record<string, unknown>;
+    expect(JSON.stringify(metadata)).not.toContain("calendly-access-token");
+    expect(JSON.stringify(metadata)).not.toContain("calendly-refresh-token");
+    expect(metadata.credentialRefs).toEqual([
+      expect.objectContaining({
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.calendly.acct_calendly_1.oauth_tokens",
+      }),
+    ]);
+    expect(
+      vault.get("connector.agent-1.calendly.acct_calendly_1.oauth_tokens"),
+    ).toContain("calendly-access-token");
+    expect(
+      vault.get("connector.agent-1.calendly.acct_calendly_1.oauth_tokens"),
+    ).toContain("calendly-refresh-token");
+    expect(setCredentialRef).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acct_calendly_1",
+        credentialType: "oauth.tokens",
+        vaultRef: "connector.agent-1.calendly.acct_calendly_1.oauth_tokens",
+      }),
+    );
   });
 });

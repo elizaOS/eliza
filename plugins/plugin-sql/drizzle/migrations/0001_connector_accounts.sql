@@ -49,7 +49,7 @@ CREATE TABLE "connector_account_audit_events" (
 );
 --> statement-breakpoint
 CREATE TABLE "oauth_flows" (
-	"state_hash" text PRIMARY KEY NOT NULL,
+	"state_hash" text NOT NULL,
 	"agent_id" uuid NOT NULL,
 	"provider" text NOT NULL,
 	"account_id" uuid,
@@ -60,7 +60,8 @@ CREATE TABLE "oauth_flows" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"consumed_at" timestamp with time zone,
-	"consumed_by" text
+	"consumed_by" text,
+	CONSTRAINT "oauth_flows_agent_provider_state_pk" PRIMARY KEY("agent_id","provider","state_hash")
 );
 --> statement-breakpoint
 ALTER TABLE "connector_accounts" ADD CONSTRAINT "connector_accounts_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

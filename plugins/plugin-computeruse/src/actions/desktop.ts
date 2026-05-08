@@ -21,8 +21,11 @@ import {
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type {
   FileActionParams,
+  FileActionType,
   TerminalActionParams,
+  TerminalActionType,
   WindowActionParams,
+  WindowActionType,
 } from "../types.js";
 import type { DesktopOp } from "./desktop-handlers.js";
 import {
@@ -33,13 +36,23 @@ import {
 } from "./desktop-handlers.js";
 import { resolveActionParams } from "./helpers.js";
 
-interface DesktopParameters
-  extends FileActionParams,
-    WindowActionParams,
-    TerminalActionParams {
-  op?: DesktopOp;
-  subaction?: DesktopOp;
-}
+/**
+ * Resolved DESKTOP payload. `action` semantics depend on the chosen `op` (file /
+ * window / terminal); dispatch narrows before calling per-op handlers.
+ */
+type DesktopParameters = Omit<
+  Partial<FileActionParams>,
+  "action"
+> &
+  Omit<Partial<WindowActionParams>, "action"> &
+  Omit<Partial<TerminalActionParams>, "action"> & {
+    op?: DesktopOp;
+    subaction?: DesktopOp;
+    action?:
+      | FileActionType
+      | WindowActionType
+      | TerminalActionType;
+  };
 
 export const desktopAction: Action = {
   name: "DESKTOP",
@@ -69,7 +82,7 @@ export const desktopAction: Action = {
     "MANAGE_WINDOW",
     "TERMINAL_ACTION",
     // Generic aliases.
-    "DESKTOP_OP",
+    "DESKTOP",
     "USE_DESKTOP",
     "DESKTOP_ACTION",
   ],
@@ -284,9 +297,11 @@ export const desktopAction: Action = {
     return dispatchSubaction(
       op,
       {
-        file: () => handleFileOp(service, params, callback),
-        window: () => handleWindowOp(service, params, callback),
-        terminal: () => handleTerminalOp(service, params, callback),
+        file: () => handleFileOp(service, params as FileActionParams, callback),
+        window: () =>
+          handleWindowOp(service, params as WindowActionParams, callback),
+        terminal: () =>
+          handleTerminalOp(service, params as TerminalActionParams, callback),
       },
       undefined,
     );

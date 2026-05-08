@@ -28,11 +28,11 @@ export { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 export { ChatView } from "./components/pages/ChatView";
 export { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
+export { DocumentsView } from "./components/pages/DocumentsView";
 export {
   HeartbeatsDesktopShell,
   HeartbeatsView,
 } from "./components/pages/HeartbeatsView";
-export { DocumentsView } from "./components/pages/DocumentsView";
 export { LogsView } from "./components/pages/LogsView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";

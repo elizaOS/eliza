@@ -2,6 +2,7 @@ import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { mockCharacter } from "../schema-data";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
@@ -119,6 +120,22 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
       new Set(["api_key", "webhook_secret"])
     );
     expect(all.every((c) => c.id === set1.id || c.id === set2.id)).toBe(true);
+
+    await adapter.deleteConnectorAccount({
+      provider: "stripe",
+      accountKey: "acct_123",
+    });
+    await expect(
+      adapter.getConnectorAccountCredentialRef({
+        accountId: account.id,
+        credentialType: "api_key",
+      })
+    ).resolves.toBeNull();
+    await expect(
+      adapter.listConnectorAccountCredentialRefs({
+        accountId: account.id,
+      })
+    ).resolves.toEqual([]);
   });
 
   it("appends and lists audit events with redaction and filtering", async () => {
@@ -251,5 +268,59 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
         flowId: "oauth_spotify_1",
       })
     ).resolves.toBe(true);
+  });
+
+  it("keeps identical OAuth states isolated by agent and provider", async () => {
+    const sameState = "shared-raw-state";
+    const otherAgentId = "00000000-0000-4000-8000-000000000123" as UUID;
+    const createdOtherAgent = await adapter.createAgent({
+      ...mockCharacter,
+      id: otherAgentId,
+      name: "Other OAuth Test Agent",
+      username: "other_oauth_test_agent",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    expect(createdOtherAgent).toBe(true);
+
+    const spotify = await adapter.createOAuthFlowState({
+      provider: "spotify",
+      state: sameState,
+      metadata: { flowId: "oauth_spotify_shared" },
+    });
+    const github = await adapter.createOAuthFlowState({
+      provider: "github",
+      state: sameState,
+      metadata: { flowId: "oauth_github_shared" },
+    });
+    const otherAgent = await adapter.createOAuthFlowState({
+      agentId: otherAgentId,
+      provider: "spotify",
+      state: sameState,
+      metadata: { flowId: "oauth_other_agent_shared" },
+    });
+
+    expect(spotify.stateHash).toBe(github.stateHash);
+    expect(otherAgent.stateHash).toBe(spotify.stateHash);
+
+    await expect(
+      adapter.consumeOAuthFlowState({
+        provider: "spotify",
+        state: sameState,
+      })
+    ).resolves.toMatchObject({ provider: "spotify", agentId: testAgentId });
+    await expect(
+      adapter.getOAuthFlowState({
+        provider: "github",
+        state: sameState,
+      })
+    ).resolves.toMatchObject({ provider: "github", agentId: testAgentId });
+    await expect(
+      adapter.getOAuthFlowState({
+        agentId: otherAgentId,
+        provider: "spotify",
+        state: sameState,
+      })
+    ).resolves.toMatchObject({ provider: "spotify", agentId: otherAgentId });
   });
 });

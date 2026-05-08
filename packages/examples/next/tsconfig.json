@@ -24,6 +24,18 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@elizaos/core": [
+        "./../../../packages/core/src/index.node.ts"
+      ],
+      "@elizaos/core/*": [
+        "./../../../packages/core/src/*"
+      ],
+      "@elizaos/shared": [
+        "./../../../packages/shared/src/index.ts"
+      ],
+      "@elizaos/shared/*": [
+        "./../../../packages/shared/src/*"
       ]
     },
     "target": "ES2017"

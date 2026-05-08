@@ -74,18 +74,17 @@ import {
 	type User,
 } from "discord.js";
 import {
+	DiscordAccountClientPool,
+	type DiscordAccountClientState,
+} from "./account-client-pool";
+import {
 	DEFAULT_ACCOUNT_ID,
 	listEnabledDiscordAccounts,
 	normalizeAccountId,
 	type ResolvedDiscordAccount,
 	resolveDefaultDiscordAccountId,
-	resolveDiscordAccount,
 } from "./accounts";
-import {
-	DiscordAccountClientPool,
-	type DiscordAccountClientState,
-} from "./account-client-pool";
-import { createCompatRuntime, type ICompatRuntime } from "./compat";
+import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer, MessageDebouncer } from "./debouncer";
 import {
@@ -791,8 +790,7 @@ export class DiscordService extends Service implements IDiscordService {
 			shouldIgnoreDirectMessages:
 				config.shouldIgnoreDirectMessages ?? base.shouldIgnoreDirectMessages,
 			shouldRespondOnlyToMentions:
-				config.shouldRespondOnlyToMentions ??
-				base.shouldRespondOnlyToMentions,
+				config.shouldRespondOnlyToMentions ?? base.shouldRespondOnlyToMentions,
 			replyToMode: config.replyToMode ?? base.replyToMode,
 			dmPolicy: config.dm?.policy ?? base.dmPolicy,
 			allowFrom:
@@ -856,7 +854,9 @@ export class DiscordService extends Service implements IDiscordService {
 	private getAccountState(
 		accountId?: string | null,
 	): DiscordAccountClientState | null {
-		const requested = accountId ? normalizeAccountId(accountId) : this.defaultAccountId;
+		const requested = accountId
+			? normalizeAccountId(accountId)
+			: this.defaultAccountId;
 		return this.accountPool?.get?.(requested) ?? null;
 	}
 
@@ -867,7 +867,9 @@ export class DiscordService extends Service implements IDiscordService {
 	private requireAccountState(
 		accountId?: string | null,
 	): DiscordAccountClientState {
-		const normalized = accountId ? normalizeAccountId(accountId) : this.defaultAccountId;
+		const normalized = accountId
+			? normalizeAccountId(accountId)
+			: this.defaultAccountId;
 		const state = this.getAccountState(normalized);
 		if (!state) {
 			throw new Error(`Discord account is not configured: ${normalized}`);
@@ -1585,10 +1587,7 @@ export class DiscordService extends Service implements IDiscordService {
 		query: string,
 		context: MessageConnectorQueryContext,
 	): Promise<MessageConnectorTarget[]> {
-		const accountId = this.resolveAccountIdFromTarget(
-			context.target,
-			context,
-		);
+		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
 			return [];
@@ -1742,10 +1741,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async listConnectorRooms(
 		context: MessageConnectorQueryContext,
 	): Promise<MessageConnectorTarget[]> {
-		const accountId = this.resolveAccountIdFromTarget(
-			context.target,
-			context,
-		);
+		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
 			return [];
@@ -1770,10 +1766,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async listRecentConnectorTargets(
 		context: MessageConnectorQueryContext,
 	): Promise<MessageConnectorTarget[]> {
-		const accountId = this.resolveAccountIdFromTarget(
-			context.target,
-			context,
-		);
+		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		const targets: MessageConnectorTarget[] = [];
 		const currentRoom =
@@ -1909,10 +1902,7 @@ export class DiscordService extends Service implements IDiscordService {
 		entityId: UUID | string,
 		context: MessageConnectorQueryContext,
 	): Promise<MessageConnectorUserContext | null> {
-		const accountId = this.resolveAccountIdFromTarget(
-			context.target,
-			context,
-		);
+		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
 			return null;
@@ -2033,10 +2023,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async listConnectorServers(
 		context: MessageConnectorQueryContext,
 	): Promise<World[]> {
-		const accountId = this.resolveAccountIdFromTarget(
-			context.target,
-			context,
-		);
+		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
 			return [];
@@ -2059,10 +2046,7 @@ export class DiscordService extends Service implements IDiscordService {
 		_context: MessageConnectorQueryContext,
 		params: ConnectorFetchMessagesParams,
 	): Promise<Memory[]> {
-		const accountId = this.resolveAccountIdFromTarget(
-			params.target,
-			params,
-		);
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const channel = await this.resolveConnectorTextChannel(
 			params.target,
 			params,
@@ -2129,10 +2113,7 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorMessageMutationParams,
 	): Promise<void> {
-		const accountId = this.resolveAccountIdFromTarget(
-			params.target,
-			params,
-		);
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const state = this.requireAccountState(accountId);
 		const emoji = params.emoji?.trim();
 		if (!emoji) {
@@ -2158,10 +2139,7 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorMessageMutationParams,
 	): Promise<Memory> {
-		const accountId = this.resolveAccountIdFromTarget(
-			params.target,
-			params,
-		);
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const state = this.requireAccountState(accountId);
 		const text = params.content?.text ?? params.text;
 		if (!text?.trim()) {
@@ -2209,10 +2187,7 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorChannelMutationParams,
 	): Promise<Room | null> {
-		const accountId = this.resolveAccountIdFromTarget(
-			params.target,
-			params,
-		);
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const channel = await this.resolveConnectorTextChannel(
 			params.target,
 			params,
@@ -2241,7 +2216,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 		const runtimeWithEnsure = this.runtime as typeof this.runtime & {
 			ensureRoomExists?: (room: Room) => Promise<void>;
-			createRoom?: (room: Room) => Promise<UUID | void>;
+			createRoom?: (room: Room) => Promise<UUID | undefined>;
 		};
 		if (typeof runtimeWithEnsure.ensureRoomExists === "function") {
 			await runtimeWithEnsure.ensureRoomExists(room);
@@ -2259,10 +2234,7 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorChannelMutationParams,
 	): Promise<void> {
-		const accountId = this.resolveAccountIdFromTarget(
-			params.target,
-			params,
-		);
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const channel = await this.resolveConnectorTextChannel(
 			params.target,
 			params,
@@ -2274,7 +2246,9 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorUserLookupParams,
 	): Promise<unknown> {
-		const accountId = normalizeAccountId(params.accountId ?? this.defaultAccountId);
+		const accountId = normalizeAccountId(
+			params.accountId ?? this.defaultAccountId,
+		);
 		const client = this.getClient(accountId);
 		if (!client) {
 			return null;
@@ -2370,10 +2344,6 @@ export class DiscordService extends Service implements IDiscordService {
 		);
 	}
 
-	private async onReady(readyClient: any) {
-		return this.onReadyForAccount(this.defaultAccountId, readyClient);
-	}
-
 	/**
 	 * Registers send handlers for the Discord service instance.
 	 * @static
@@ -2396,17 +2366,19 @@ export class DiscordService extends Service implements IDiscordService {
 					accountId: string | undefined,
 					legacy = false,
 				) => {
-					const scopedTarget = (target: TargetInfo): TargetInfo => ({
-						...target,
-						accountId: accountIdFromRecord(target) ?? accountId,
-					} as TargetInfo);
+					const scopedTarget = (target: TargetInfo): TargetInfo =>
+						({
+							...target,
+							accountId: accountIdFromRecord(target) ?? accountId,
+						}) as TargetInfo;
 					const scopedContext = (
 						context: MessageConnectorQueryContext,
-					): MessageConnectorQueryContext => ({
-						...context,
-						accountId: accountIdFromRecord(context) ?? accountId,
-						target: context.target ? scopedTarget(context.target) : undefined,
-					} as MessageConnectorQueryContext);
+					): MessageConnectorQueryContext =>
+						({
+							...context,
+							accountId: accountIdFromRecord(context) ?? accountId,
+							target: context.target ? scopedTarget(context.target) : undefined,
+						}) as MessageConnectorQueryContext;
 					const scopedFetchParams = <
 						T extends
 							| ConnectorFetchMessagesParams
@@ -2724,9 +2696,7 @@ export class DiscordService extends Service implements IDiscordService {
 	): Promise<string | null> {
 		try {
 			const client = this.getClient(accountId);
-			const channel = client
-				? await client.channels.fetch(channelId)
-				: null;
+			const channel = client ? await client.channels.fetch(channelId) : null;
 			if (channel && "topic" in channel) {
 				return (channel as TextChannel).topic;
 			}
@@ -2763,8 +2733,7 @@ export class DiscordService extends Service implements IDiscordService {
 			return true;
 		}
 		return (
-			allowedChannelIds.includes(channelId) ||
-			dynamicChannelIds.has(channelId)
+			allowedChannelIds.includes(channelId) || dynamicChannelIds.has(channelId)
 		);
 	}
 
@@ -2792,8 +2761,10 @@ export class DiscordService extends Service implements IDiscordService {
 		accountId?: string | null,
 	): boolean {
 		const state = this.getAccountState(accountId);
-		const allowedChannelIds = state?.allowedChannelIds ?? this.allowedChannelIds;
-		const dynamicChannelIds = state?.dynamicChannelIds ?? this.dynamicChannelIds;
+		const allowedChannelIds =
+			state?.allowedChannelIds ?? this.allowedChannelIds;
+		const dynamicChannelIds =
+			state?.dynamicChannelIds ?? this.dynamicChannelIds;
 		if (allowedChannelIds?.includes(channelId)) {
 			return false;
 		}
@@ -2805,7 +2776,8 @@ export class DiscordService extends Service implements IDiscordService {
 	 */
 	public getAllowedChannels(accountId?: string | null): string[] {
 		const state = this.getAccountState(accountId);
-		const envChannels = state?.allowedChannelIds ?? this.allowedChannelIds ?? [];
+		const envChannels =
+			state?.allowedChannelIds ?? this.allowedChannelIds ?? [];
 		const dynamicChannels = Array.from(
 			state?.dynamicChannelIds ?? this.dynamicChannelIds,
 		);
@@ -2868,7 +2840,11 @@ export class DiscordService extends Service implements IDiscordService {
 		reaction: MessageReaction | PartialMessageReaction,
 		user: User | PartialUser,
 	): Promise<void> {
-		await this.handleReactionAddForAccount(this.defaultAccountId, reaction, user);
+		await this.handleReactionAddForAccount(
+			this.defaultAccountId,
+			reaction,
+			user,
+		);
 	}
 
 	private async handleReactionAddForAccount(

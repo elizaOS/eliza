@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 import type { IDatabaseAdapter, UUID } from "../types";
+import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 
@@ -100,7 +100,9 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 				flowId: "oauth_test",
 				metadata: { status: "completed" },
 			}),
-		).resolves.toMatchObject({ metadata: { flowId: "oauth_test", status: "completed" } });
+		).resolves.toMatchObject({
+			metadata: { flowId: "oauth_test", status: "completed" },
+		});
 
 		await expect(
 			adapter.consumeOAuthFlowState({

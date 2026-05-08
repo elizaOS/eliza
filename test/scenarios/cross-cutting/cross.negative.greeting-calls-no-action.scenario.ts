@@ -15,7 +15,7 @@ export default scenario({
   domain: "cross-cutting",
   tags: ["cross-cutting", "negative", "critical", "happy-path"],
   description:
-    "A plain 'good morning' greeting must not call SEND_MESSAGE, MESSAGE, SCHEDULE_FOLLOW_UP, CREATE_TASK, or any other side-effect action. The agent should respond conversationally via REPLY.",
+    "A plain 'good morning' greeting must not call MESSAGE, MESSAGE, SCHEDULE_FOLLOW_UP, CREATE_TASK, or any other side-effect action. The agent should respond conversationally via REPLY.",
 
   isolation: "per-scenario",
 
@@ -35,7 +35,7 @@ export default scenario({
       room: "main",
       text: "Hey, good morning!",
       forbiddenActions: [
-        "SEND_MESSAGE",
+        "MESSAGE",
         "MESSAGE",
         "SCHEDULE_FOLLOW_UP",
         "CREATE_TASK",

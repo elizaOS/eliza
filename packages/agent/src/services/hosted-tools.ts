@@ -1,8 +1,8 @@
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceTab,
 } from "@elizaos/plugin-browser/workspace/browser-workspace-types";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 
 export interface HostedSearchResponse {
   answer: string;

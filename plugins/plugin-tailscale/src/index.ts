@@ -1,8 +1,4 @@
-import {
-  type Plugin,
-  elizaLogger,
-  getConnectorAccountManager,
-} from '@elizaos/core';
+import { type Plugin, elizaLogger, getConnectorAccountManager } from '@elizaos/core';
 import { tailscaleAction } from './actions/tailscale';
 import { createTailscaleConnectorAccountProvider } from './connector-account-provider';
 import { tailscaleStatusProvider } from './providers/tailscale-status';

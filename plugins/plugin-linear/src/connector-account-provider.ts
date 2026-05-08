@@ -32,9 +32,7 @@ const LINEAR_AUTHORIZATION_ENDPOINT = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_ENDPOINT = "https://api.linear.app/oauth/token";
 const LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql";
 
-const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
-  "admin" as ConnectorAccountPurpose,
-];
+const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = ["admin" as ConnectorAccountPurpose];
 
 interface LinearTokenResponse {
   access_token?: string;
@@ -81,7 +79,7 @@ function readClientConfig(runtime: IAgentRuntime): {
   const redirectUri = readSetting(runtime, "LINEAR_OAUTH_REDIRECT_URI");
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
-      "Linear OAuth requires LINEAR_OAUTH_CLIENT_ID, LINEAR_OAUTH_CLIENT_SECRET, and LINEAR_OAUTH_REDIRECT_URI to be configured.",
+      "Linear OAuth requires LINEAR_OAUTH_CLIENT_ID, LINEAR_OAUTH_CLIENT_SECRET, and LINEAR_OAUTH_REDIRECT_URI to be configured."
     );
   }
   return { clientId, clientSecret, redirectUri };
@@ -117,14 +115,12 @@ async function exchangeCodeForToken(args: {
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Linear token exchange failed with ${response.status}: ${body}`,
-    );
+    throw new Error(`Linear token exchange failed with ${response.status}: ${body}`);
   }
   const parsed = (await response.json()) as LinearTokenResponse;
   if (parsed.error) {
     throw new Error(
-      `Linear token exchange returned error ${parsed.error}: ${parsed.error_description ?? "no description"}`,
+      `Linear token exchange returned error ${parsed.error}: ${parsed.error_description ?? "no description"}`
     );
   }
   if (!parsed.access_token) {
@@ -133,9 +129,7 @@ async function exchangeCodeForToken(args: {
   return parsed;
 }
 
-async function fetchLinearViewer(
-  accessToken: string,
-): Promise<LinearViewerPayload> {
+async function fetchLinearViewer(accessToken: string): Promise<LinearViewerPayload> {
   const response = await fetch(LINEAR_GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
@@ -143,14 +137,11 @@ async function fetchLinearViewer(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      query:
-        "{ viewer { id name email organization { id name urlKey } } }",
+      query: "{ viewer { id name email organization { id name urlKey } } }",
     }),
   });
   if (!response.ok) {
-    throw new Error(
-      `Linear viewer query failed with ${response.status}`,
-    );
+    throw new Error(`Linear viewer query failed with ${response.status}`);
   }
   return (await response.json()) as LinearViewerPayload;
 }
@@ -181,26 +172,19 @@ function synthesizeEnvAccounts(runtime: IAgentRuntime): ConnectorAccount[] {
  * Build the Linear ConnectorAccountManager provider.
  */
 export function createLinearConnectorAccountProvider(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): ConnectorAccountProvider {
   return {
     provider: LINEAR_PROVIDER_NAME,
     label: "Linear",
 
-    listAccounts: async (
-      manager: ConnectorAccountManager,
-    ): Promise<ConnectorAccount[]> => {
-      const stored = await manager
-        .getStorage()
-        .listAccounts(LINEAR_PROVIDER_NAME);
+    listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+      const stored = await manager.getStorage().listAccounts(LINEAR_PROVIDER_NAME);
       if (stored.length > 0) return stored;
       return synthesizeEnvAccounts(runtime);
     },
 
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: LINEAR_PROVIDER_NAME,
@@ -214,21 +198,18 @@ export function createLinearConnectorAccountProvider(
     patchAccount: async (
       _accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ) => {
       return { ...patch, provider: LINEAR_PROVIDER_NAME };
     },
 
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ): Promise<void> => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
       // Credential cleanup is the credential store's responsibility.
     },
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
       const redirectUri = request.redirectUri ?? config.redirectUri;
@@ -258,18 +239,15 @@ export function createLinearConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
-      _manager: ConnectorAccountManager,
+      _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
-        throw new Error(
-          "Linear OAuth callback is missing an authorization code.",
-        );
+        throw new Error("Linear OAuth callback is missing an authorization code.");
       }
 
       const config = readClientConfig(runtime);
-      const redirectUri =
-        nonEmptyString(request.flow.redirectUri) ?? config.redirectUri;
+      const redirectUri = nonEmptyString(request.flow.redirectUri) ?? config.redirectUri;
 
       const tokens = await exchangeCodeForToken({
         clientId: config.clientId,
@@ -289,9 +267,7 @@ export function createLinearConnectorAccountProvider(
       const workspaceHandle = nonEmptyString(organization?.urlKey);
       const externalId = workspaceId ?? workspaceHandle;
       if (!externalId) {
-        throw new Error(
-          "Linear viewer payload did not include an organization id or urlKey.",
-        );
+        throw new Error("Linear viewer payload did not include an organization id or urlKey.");
       }
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
@@ -302,10 +278,7 @@ export function createLinearConnectorAccountProvider(
         status: "connected",
         externalId,
         displayHandle: workspaceHandle ?? externalId,
-        label:
-          nonEmptyString(organization?.name) ??
-          nonEmptyString(workspaceHandle) ??
-          "Linear",
+        label: nonEmptyString(organization?.name) ?? nonEmptyString(workspaceHandle) ?? "Linear",
         metadata: {
           authMethod: "oauth",
           workspaceId: workspaceId ?? null,
@@ -326,7 +299,7 @@ export function createLinearConnectorAccountProvider(
           workspaceId: workspaceId ?? null,
           workspaceHandle: workspaceHandle ?? null,
         },
-        "Linear OAuth completed",
+        "Linear OAuth completed"
       );
 
       return {

@@ -1,6 +1,5 @@
 import type http from "node:http";
 import {
-  DEFAULT_PRIVACY_LEVEL,
   type ConnectorAccount,
   type ConnectorAccountAccessGate,
   type ConnectorAccountPatch,
@@ -8,11 +7,12 @@ import {
   type ConnectorAccountRole,
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
+  DEFAULT_PRIVACY_LEVEL,
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
-import { z } from "zod";
+import { z, type infer as ZodInfer } from "zod";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 export interface ConnectorAccountRouteContext {
@@ -208,20 +208,28 @@ function redactAuditMetadata(value: unknown): unknown {
 }
 
 function accountPatchFromBody(
-  body: z.infer<typeof accountInputSchema> | z.infer<typeof accountPatchSchema>,
+  body: ZodInfer<typeof accountInputSchema> | ZodInfer<typeof accountPatchSchema>,
   baseMetadata?: Metadata,
 ): ConnectorAccountPatch {
+  const purposeValues = Array.isArray(body.purpose)
+    ? body.purpose
+    : body.purpose
+      ? [body.purpose]
+      : [];
   const role =
     normalizeConnectorAccountRoleValue(body.role) ??
-    (isConnectorAccountRoleValue(body.purpose)
-      ? normalizeConnectorAccountRoleValue(body.purpose)
-      : undefined);
-  const purpose = isConnectorAccountRoleValue(body.purpose)
-    ? undefined
-    : (body.purpose as
-        | ConnectorAccountPurpose
-        | ConnectorAccountPurpose[]
-        | undefined);
+    purposeValues
+      .map((value: string) => normalizeConnectorAccountRoleValue(value))
+      .find((value): value is ConnectorAccountRole => Boolean(value));
+  const purposeValuesWithoutRoles = purposeValues.filter(
+    (value: string) => !isConnectorAccountRoleValue(value),
+  ) as ConnectorAccountPurpose[];
+  const purpose =
+    purposeValuesWithoutRoles.length === 0
+      ? undefined
+      : Array.isArray(body.purpose)
+        ? purposeValuesWithoutRoles
+        : purposeValuesWithoutRoles[0];
   const metadata = cleanMetadata(body.metadata);
   const nextMetadata =
     metadata || body.privacy
@@ -277,7 +285,7 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     displayHandle: account.displayHandle,
     ownerBindingId: account.ownerBindingId,
     ownerIdentityId: account.ownerIdentityId,
-    isDefault: metadata.isDefault === true,
+    isDefault: metadata.isDefault === true && isUsableDefaultAccount(account),
     enabled: account.status !== "disabled" && account.status !== "revoked",
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
@@ -317,7 +325,7 @@ function serializeFlow(flow: ConnectorOAuthFlow): Record<string, unknown> {
     createdAt: flow.createdAt,
     updatedAt: flow.updatedAt,
     expiresAt: flow.expiresAt,
-    metadata: flow.metadata,
+    metadata: redactAuditMetadata(flow.metadata),
   };
 }
 

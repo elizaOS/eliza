@@ -31,14 +31,8 @@ import type {
   State,
 } from "@elizaos/core";
 import type { JsonObject, JsonValue } from "../protocol.js";
-import {
-  MINECRAFT_SERVICE_TYPE,
-  type MinecraftService,
-} from "../services/minecraft-service.js";
-import {
-  WAYPOINTS_SERVICE_TYPE,
-  type WaypointsService,
-} from "../services/waypoints-service.js";
+import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+import { WAYPOINTS_SERVICE_TYPE, type WaypointsService } from "../services/waypoints-service.js";
 import {
   emit,
   isPlaceFace,
@@ -168,21 +162,18 @@ function parseConnectOverrides(params: Record<string, unknown>): JsonObject {
 
 function parseControl(
   params: Record<string, unknown>,
-  text: string,
+  text: string
 ): { control: string; state: boolean; durationMs?: number } | null {
   const control = readString(params, "control", "key", "direction");
   const state = readBoolean(params, "state", "pressed", "enabled");
   const durationMs = readNumber(params, "durationMs", "duration");
   if (control && state !== null) {
-    return durationMs && durationMs > 0
-      ? { control, state, durationMs }
-      : { control, state };
+    return durationMs && durationMs > 0 ? { control, state, durationMs } : { control, state };
   }
   const match = text.trim().match(/^(\S+)\s+(true|false)(?:\s+(\d+))?$/i);
   if (!match) return null;
   const parsedDuration = match[3] ? Number(match[3]) : undefined;
-  if (parsedDuration !== undefined && !Number.isFinite(parsedDuration))
-    return null;
+  if (parsedDuration !== undefined && !Number.isFinite(parsedDuration)) return null;
   return parsedDuration
     ? {
         control: match[1],
@@ -194,7 +185,7 @@ function parseControl(
 
 function parseLook(
   params: Record<string, unknown>,
-  text: string,
+  text: string
 ): { yaw: number; pitch: number } | null {
   const yaw = readNumber(params, "yaw");
   const pitch = readNumber(params, "pitch");
@@ -207,33 +198,21 @@ function parseLook(
   return { yaw: parsedYaw, pitch: parsedPitch };
 }
 
-function parseWaypointName(
-  text: string,
-  params: Record<string, unknown>,
-): string | null {
-  const explicit = readString(
-    params,
-    "name",
-    "waypointName",
-    "waypoint",
-    "target",
-  );
+function parseWaypointName(text: string, params: Record<string, unknown>): string | null {
+  const explicit = readString(params, "name", "waypointName", "waypoint", "target");
   if (explicit) return explicit;
   const stripped = text
     .trim()
     .replace(
       /\b(?:minecraft|mc|waypoints?|set|save|create|delete|remove|goto|go to|navigate|to)\b/gi,
-      " ",
+      " "
     )
     .replace(/\s+/g, " ")
     .trim();
   return stripped || null;
 }
 
-function parsePlaceFace(
-  params: Record<string, unknown>,
-  text: string,
-): PlaceFace | null {
+function parsePlaceFace(params: Record<string, unknown>, text: string): PlaceFace | null {
   const explicit = readString(params, "face");
   if (isPlaceFace(explicit)) return explicit;
   const match = text.trim().match(/\b(up|down|north|south|east|west)\b/i);
@@ -242,10 +221,7 @@ function parsePlaceFace(
   return isPlaceFace(candidate) ? candidate : null;
 }
 
-function parseEntityId(
-  params: Record<string, unknown>,
-  text: string,
-): number | null {
+function parseEntityId(params: Record<string, unknown>, text: string): number | null {
   const fromParams = readNumber(params, "entityId", "entity");
   if (fromParams !== null) return fromParams;
   const match = text.trim().match(/\b(?:entity\s*)?(\d+)\b/i);
@@ -305,18 +281,13 @@ export const minecraftAction: Action = {
     },
     {
       name: "params",
-      description:
-        "Optional JSON object containing the fields required by the chosen op.",
+      description: "Optional JSON object containing the fields required by the chosen op.",
       descriptionCompressed: "Op fields.",
       required: false,
       schema: { type: "object" },
     },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     return runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE) != null;
   },
   handler: async (
@@ -324,24 +295,21 @@ export const minecraftAction: Action = {
     message: Memory,
     _state?: State,
     options?: HandlerOptions | Record<string, JsonValue | undefined>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    if (!service)
-      return { text: "Minecraft service is not available", success: false };
+    if (!service) return { text: "Minecraft service is not available", success: false };
 
     const params = mergedInput(message, options);
     const text = message.content.text ?? "";
-    const op = normalizeOp(
-      params.op ?? params.subaction ?? params.actionType ?? params.type,
-    );
+    const op = normalizeOp(params.op ?? params.subaction ?? params.actionType ?? params.type);
     if (!op) {
       return emit(
         ACTION_NAME,
         callback,
         `MC requires an op: one of ${MC_OPS.join("|")}.`,
         message.content.source,
-        { success: false },
+        { success: false }
       );
     }
 
@@ -350,7 +318,7 @@ export const minecraftAction: Action = {
         case "connect": {
           const session = await withMinecraftTimeout(
             service.createBot(parseConnectOverrides(params)),
-            "minecraft connect",
+            "minecraft connect"
           );
           return await emit(
             ACTION_NAME,
@@ -361,7 +329,7 @@ export const minecraftAction: Action = {
               success: true,
               data: { botId: session.botId },
               values: { connected: true },
-            },
+            }
           );
         }
         case "disconnect": {
@@ -372,33 +340,23 @@ export const minecraftAction: Action = {
               callback,
               "No Minecraft bot is connected.",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
-          await withMinecraftTimeout(
-            service.destroyBot(session.botId),
-            "minecraft disconnect",
-          );
+          await withMinecraftTimeout(service.destroyBot(session.botId), "minecraft disconnect");
           return await emit(
             ACTION_NAME,
             callback,
             "Disconnected Minecraft bot.",
             message.content.source,
-            { success: true, values: { connected: false } },
+            { success: true, values: { connected: false } }
           );
         }
         case "stop": {
-          await withMinecraftTimeout(
-            service.request("stop", {}),
-            "minecraft stop",
-          );
-          return await emit(
-            ACTION_NAME,
-            callback,
-            "Stopped movement.",
-            message.content.source,
-            { success: true },
-          );
+          await withMinecraftTimeout(service.request("stop", {}), "minecraft stop");
+          return await emit(ACTION_NAME, callback, "Stopped movement.", message.content.source, {
+            success: true,
+          });
         }
         case "goto": {
           const vec = parseVec3(params, text);
@@ -408,54 +366,42 @@ export const minecraftAction: Action = {
               callback,
               "Missing coordinates (x y z).",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           await withMinecraftTimeout(
             service.request("goto", { x: vec.x, y: vec.y, z: vec.z }),
-            "minecraft goto",
+            "minecraft goto"
           );
           return await emit(
             ACTION_NAME,
             callback,
             `Moving to (${vec.x}, ${vec.y}, ${vec.z}).`,
             message.content.source,
-            { success: true },
+            { success: true }
           );
         }
         case "look": {
           const req = parseLook(params, text);
           if (!req) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing yaw/pitch.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing yaw/pitch.", message.content.source, {
+              success: false,
+            });
           }
           await withMinecraftTimeout(
             service.request("look", { yaw: req.yaw, pitch: req.pitch }),
-            "minecraft look",
+            "minecraft look"
           );
-          return await emit(
-            ACTION_NAME,
-            callback,
-            "Adjusted view.",
-            message.content.source,
-            { success: true },
-          );
+          return await emit(ACTION_NAME, callback, "Adjusted view.", message.content.source, {
+            success: true,
+          });
         }
         case "control": {
           const req = parseControl(params, text);
           if (!req) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing control command.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing control command.", message.content.source, {
+              success: false,
+            });
           }
           await withMinecraftTimeout(
             service.request("control", {
@@ -465,38 +411,32 @@ export const minecraftAction: Action = {
                 ? { durationMs: Math.min(req.durationMs, 10_000) }
                 : {}),
             }),
-            "minecraft control",
+            "minecraft control"
           );
           return await emit(
             ACTION_NAME,
             callback,
             `Set control ${req.control}=${String(req.state)}${req.durationMs ? ` for ${req.durationMs}ms` : ""}.`,
             message.content.source,
-            { success: true },
+            { success: true }
           );
         }
         case "waypoint_goto": {
-          const waypoints = runtime.getService<WaypointsService>(
-            WAYPOINTS_SERVICE_TYPE,
-          );
+          const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
           if (!waypoints) {
             return emit(
               ACTION_NAME,
               callback,
               "Waypoints service not available.",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const name = parseWaypointName(text, params);
           if (!name) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing waypoint name.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing waypoint name.", message.content.source, {
+              success: false,
+            });
           }
           const wp = waypoints.getWaypoint(name);
           if (!wp) {
@@ -505,19 +445,19 @@ export const minecraftAction: Action = {
               callback,
               `No waypoint named "${name}".`,
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           await withMinecraftTimeout(
             service.request("goto", { x: wp.x, y: wp.y, z: wp.z }),
-            "minecraft waypoint goto",
+            "minecraft waypoint goto"
           );
           return await emit(
             ACTION_NAME,
             callback,
             `Navigating to waypoint "${wp.name}" at (${wp.x.toFixed(1)}, ${wp.y.toFixed(1)}, ${wp.z.toFixed(1)}).`,
             message.content.source,
-            { success: true },
+            { success: true }
           );
         }
         case "dig": {
@@ -528,21 +468,20 @@ export const minecraftAction: Action = {
               callback,
               "Missing coordinates (x y z).",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const data = await withMinecraftTimeout(
             service.request("dig", { x: vec.x, y: vec.y, z: vec.z }),
-            "minecraft dig",
+            "minecraft dig"
           );
-          const blockName =
-            typeof data.blockName === "string" ? data.blockName : "block";
+          const blockName = typeof data.blockName === "string" ? data.blockName : "block";
           return await emit(
             ACTION_NAME,
             callback,
             `Dug ${blockName} at (${vec.x}, ${vec.y}, ${vec.z}).`,
             message.content.source,
-            { success: true, data },
+            { success: true, data }
           );
         }
         case "place": {
@@ -553,7 +492,7 @@ export const minecraftAction: Action = {
               callback,
               "Missing coordinates (x y z).",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const face = parsePlaceFace(params, text);
@@ -563,31 +502,30 @@ export const minecraftAction: Action = {
               callback,
               "Missing placement face (up/down/north/south/east/west).",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           await withMinecraftTimeout(
             service.request("place", { x: vec.x, y: vec.y, z: vec.z, face }),
-            "minecraft place",
+            "minecraft place"
           );
           return await emit(
             ACTION_NAME,
             callback,
             `Placed block at (${vec.x}, ${vec.y}, ${vec.z}) face=${face}.`,
             message.content.source,
-            { success: true },
+            { success: true }
           );
         }
         case "chat": {
-          const msg =
-            readString(params, "message", "text") ?? text.trim();
+          const msg = readString(params, "message", "text") ?? text.trim();
           if (!msg) {
             return emit(
               ACTION_NAME,
               callback,
               "No chat message provided.",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const maxChatPreviewLength = 500;
@@ -597,58 +535,45 @@ export const minecraftAction: Action = {
             callback,
             `Sent Minecraft chat: ${msg.slice(0, maxChatPreviewLength)}`,
             message.content.source,
-            { success: true, values: { sent: true } },
+            { success: true, values: { sent: true } }
           );
         }
         case "attack": {
           const entityId = parseEntityId(params, text);
           if (entityId === null) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing entityId.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing entityId.", message.content.source, {
+              success: false,
+            });
           }
-          await withMinecraftTimeout(
-            service.request("attack", { entityId }),
-            "minecraft attack",
-          );
+          await withMinecraftTimeout(service.request("attack", { entityId }), "minecraft attack");
           return await emit(
             ACTION_NAME,
             callback,
             `Attacked entity ${entityId}.`,
             message.content.source,
-            { success: true },
+            { success: true }
           );
         }
         case "waypoint_set": {
-          const waypoints = runtime.getService<WaypointsService>(
-            WAYPOINTS_SERVICE_TYPE,
-          );
+          const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
           if (!waypoints) {
             return emit(
               ACTION_NAME,
               callback,
               "Waypoints service not available.",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const name = parseWaypointName(text, params);
           if (!name) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing waypoint name.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing waypoint name.", message.content.source, {
+              success: false,
+            });
           }
           const worldState = await withMinecraftTimeout(
             service.getWorldState(),
-            "minecraft world state",
+            "minecraft world state"
           );
           const pos = worldState.position;
           if (!pos) {
@@ -657,7 +582,7 @@ export const minecraftAction: Action = {
               callback,
               "No position available (is the bot connected?).",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const wp = await waypoints.setWaypoint(name, pos.x, pos.y, pos.z);
@@ -675,64 +600,49 @@ export const minecraftAction: Action = {
                 z: wp.z,
                 createdAt: wp.createdAt.toISOString(),
               },
-            },
+            }
           );
         }
         case "waypoint_delete": {
-          const waypoints = runtime.getService<WaypointsService>(
-            WAYPOINTS_SERVICE_TYPE,
-          );
+          const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
           if (!waypoints) {
             return emit(
               ACTION_NAME,
               callback,
               "Waypoints service not available.",
               message.content.source,
-              { success: false },
+              { success: false }
             );
           }
           const name = parseWaypointName(text, params);
           if (!name) {
-            return emit(
-              ACTION_NAME,
-              callback,
-              "Missing waypoint name.",
-              message.content.source,
-              { success: false },
-            );
+            return emit(ACTION_NAME, callback, "Missing waypoint name.", message.content.source, {
+              success: false,
+            });
           }
           const deleted = await waypoints.deleteWaypoint(name);
           return await emit(
             ACTION_NAME,
             callback,
-            deleted
-              ? `Deleted waypoint "${name}".`
-              : `No waypoint named "${name}".`,
+            deleted ? `Deleted waypoint "${name}".` : `No waypoint named "${name}".`,
             message.content.source,
-            { success: deleted, values: { deleted } },
+            { success: deleted, values: { deleted } }
           );
         }
         default: {
           const _exhaustive: never = op;
           void _exhaustive;
-          return emit(
-            ACTION_NAME,
-            callback,
-            "Unknown MC op.",
-            message.content.source,
-            { success: false },
-          );
+          return emit(ACTION_NAME, callback, "Unknown MC op.", message.content.source, {
+            success: false,
+          });
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return emit(
-        ACTION_NAME,
-        callback,
-        `MC ${op} failed: ${msg}`,
-        message.content.source,
-        { success: false, data: { error: msg } },
-      );
+      return emit(ACTION_NAME, callback, `MC ${op} failed: ${msg}`, message.content.source, {
+        success: false,
+        data: { error: msg },
+      });
     }
   },
   examples: [],

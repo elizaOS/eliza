@@ -101,7 +101,9 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     case "signal":
       return (
         <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
-          {(accountId) => <SignalQrOverlay accountId={accountId ?? undefined} />}
+          {(accountId) => (
+            <SignalQrOverlay accountId={accountId ?? undefined} />
+          )}
         </ConnectorAccountSetupScope>
       );
     case "discordlocal":

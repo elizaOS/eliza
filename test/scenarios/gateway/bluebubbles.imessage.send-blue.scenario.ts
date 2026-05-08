@@ -8,9 +8,9 @@ export default scenario({
   id: "bluebubbles.imessage.send-blue",
   title: "Agent confirms then sends a BlueBubbles iMessage",
   domain: "gateway",
-	tags: ["gateway", "imessage", "bluebubbles", "smoke"],
-	description:
-		"The first turn must ask for confirmation. After the explicit yes, SEND_MESSAGE should route through BlueBubbles and persist the outbound message.",
+  tags: ["gateway", "imessage", "bluebubbles", "smoke"],
+  description:
+    "The first turn must ask for confirmation. After the explicit yes, MESSAGE should route through BlueBubbles and persist the outbound message.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -31,29 +31,29 @@ export default scenario({
       room: "main",
       text: "iMessage Sarah that I'll be there in 10 minutes.",
       responseIncludesAny: ["iMessage", "Sarah", "confirm", "10"],
-			forbiddenActions: ["SEND_MESSAGE", "AGENT_SEND_MESSAGE"],
+      forbiddenActions: ["MESSAGE"],
     },
     {
       kind: "message",
       name: "confirm-imessage",
       room: "main",
       text: "Yes, send it.",
-		assertTurn: expectTurnToCallAction({
-			acceptedActions: ["SEND_MESSAGE"],
-			description: "BlueBubbles send after confirmation",
-		}),
+      assertTurn: expectTurnToCallAction({
+        acceptedActions: ["MESSAGE"],
+        description: "BlueBubbles send after confirmation",
+      }),
       responseIncludesAny: ["sent", "delivered", "iMessage"],
     },
   ],
   finalChecks: [
-	{
-		type: "selectedAction",
-		actionName: "SEND_MESSAGE",
-	},
-	{
-		type: "actionCalled",
-		actionName: "SEND_MESSAGE",
-		status: "success",
+    {
+      type: "selectedAction",
+      actionName: "MESSAGE",
+    },
+    {
+      type: "actionCalled",
+      actionName: "MESSAGE",
+      status: "success",
     },
     {
       type: "custom",
@@ -85,22 +85,16 @@ export default scenario({
         const secondTurnActions = ctx.turns?.[1]?.actionsCalled ?? [];
 
         if (
-			firstTurnActions.some((action) =>
-				["SEND_MESSAGE", "AGENT_SEND_MESSAGE"].includes(
-					action.actionName,
-				),
-			)
+          firstTurnActions.some((action) => action.actionName === "MESSAGE")
         ) {
           return "first turn sent a message before confirmation";
         }
 
-		if (
-			!secondTurnActions.some(
-				(action) => action.actionName === "SEND_MESSAGE",
-			)
-		) {
-			return "second turn did not call SEND_MESSAGE";
-		}
+        if (
+          !secondTurnActions.some((action) => action.actionName === "MESSAGE")
+        ) {
+          return "second turn did not call MESSAGE";
+        }
 
         return undefined;
       },

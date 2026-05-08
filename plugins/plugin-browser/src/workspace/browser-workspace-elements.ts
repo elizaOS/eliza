@@ -11,12 +11,12 @@ import type {
 } from "./browser-workspace-types.js";
 
 export function buildBrowserWorkspaceElementSelector(element: Element): string {
+  const escapeFn = (
+    globalThis as { CSS?: { escape?: (value: string) => string } }
+  ).CSS?.escape;
   const escapedId =
-    typeof (globalThis as { CSS?: { escape?: (value: string) => string } }).CSS
-      ?.escape === "function"
-      ? (
-          globalThis as { CSS: { escape: (value: string) => string } }
-        ).CSS.escape(element.id)
+    typeof escapeFn === "function"
+      ? escapeFn(element.id)
       : element.id.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
 
   if (element.id) {

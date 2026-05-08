@@ -1,12 +1,12 @@
+export { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud/routes/cloud-billing-routes";
+export { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud/routes/cloud-compat-routes";
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
 export * from "./actions/index.js";
-export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
-export { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud/routes/cloud-billing-routes";
-export { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud/routes/cloud-compat-routes";
 export * from "./api/config-env.js";
 export * from "./api/conversation-metadata.js";
 export * from "./api/index.js";

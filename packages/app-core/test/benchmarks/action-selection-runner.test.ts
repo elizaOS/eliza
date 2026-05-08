@@ -13,8 +13,8 @@ describe("action selection benchmark scoring helpers", () => {
   });
 
   it("matches draft dispatch aliases to MESSAGE benchmark cases", () => {
-    expect(caseMatches("SEND_MESSAGE", "MESSAGE", undefined)).toBe(true);
-    expect(caseMatches("SEND_MESSAGE", "MESSAGE", ["MESSAGE"])).toBe(true);
+    expect(caseMatches("MESSAGE", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("MESSAGE", "MESSAGE", ["MESSAGE"])).toBe(true);
     expect(caseMatches("DISPATCH_DRAFT", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("CONFIRM_AND_SEND", "MESSAGE", ["MESSAGE"])).toBe(true);
   });
@@ -24,11 +24,31 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("ADD_HABIT", "LIFE", undefined)).toBe(true);
     expect(caseMatches("CREATE_HABIT", "LIFE", ["CREATE_HABIT"])).toBe(true);
     expect(caseMatches("LIST_TODOS", "LIFE", ["LIST_TODOS"])).toBe(true);
+    expect(caseMatches("LIFE.add_goal", "LIFE", undefined)).toBe(true);
   });
 
   it("matches specialized computer-use tools to COMPUTER_USE", () => {
     expect(caseMatches("FILE_ACTION", "COMPUTER_USE", undefined)).toBe(true);
     expect(caseMatches("TERMINAL_ACTION", "COMPUTER_USE", undefined)).toBe(
+      true,
+    );
+  });
+
+  it("matches planner aliases for social and focus actions", () => {
+    expect(caseMatches("SOCIAL_POSTING", "POST", undefined)).toBe(true);
+    expect(caseMatches("GET_TIMELINE", "POST", undefined)).toBe(true);
+    expect(caseMatches("BLOCK_WEBSITE", "WEBSITE_BLOCK", undefined)).toBe(true);
+    expect(caseMatches("PHONE_BLOCK_APPS", "APP_BLOCK", undefined)).toBe(true);
+  });
+
+  it("matches atomic device intent broadcast aliases", () => {
+    expect(caseMatches("BROADCAST_INTENT", "DEVICE_INTENT", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("DEVICE_BROADCAST", "DEVICE_INTENT", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("MOBILE_REMINDER", "DEVICE_INTENT", undefined)).toBe(
       true,
     );
   });

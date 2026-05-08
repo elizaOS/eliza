@@ -17,15 +17,15 @@ import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { pluginAction } from "../actions/plugin.js";
 import { runtimeAction } from "../actions/runtime.js";
 import { settingsAction } from "../actions/settings-actions.js";
-import { taskAction } from "../actions/task.js";
-import { triggerAction } from "../actions/trigger.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
+import { taskAction } from "../actions/task.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
+import { triggerAction } from "../actions/trigger.js";
 import { webSearchAction } from "../actions/web-search.js";
 import { workflowAction } from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
@@ -48,10 +48,10 @@ import { createDynamicSkillProvider } from "../providers/skill-provider.js";
 import { createOngoingTasksProvider } from "../providers/tasks.js";
 import { uiCatalogProvider } from "../providers/ui-catalog.js";
 import { createUserNameProvider } from "../providers/user-name.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
 import { AgentMediaGenerationService } from "../services/media-generation.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { registerTriggerTaskWorker } from "../triggers/runtime.js";
 
 import { setCustomActionsRuntime } from "./custom-actions.js";

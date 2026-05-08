@@ -143,6 +143,26 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     );
   });
 
+  it("reports Telegram read capability only when the runtime service exposes search", async () => {
+    const service = serviceWithLegacyGrants({
+      services: {
+        telegram: {
+          connected: true,
+          handleSendMessage: vi.fn(async () => undefined),
+        },
+      },
+      grants: { telegram: legacyGrant("telegram") },
+    });
+
+    await expect(service.getTelegramConnectorStatus("owner")).resolves.toMatchObject({
+      connected: true,
+      grantedCapabilities: ["telegram.send"],
+      degradations: expect.arrayContaining([
+        expect.objectContaining({ code: "telegram_plugin_read_unavailable" }),
+      ]),
+    });
+  });
+
   it("does not read or send Signal from legacy LifeOps token refs", async () => {
     const service = serviceWithLegacyGrants({
       grants: { signal: legacyGrant("signal") },
@@ -283,6 +303,26 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       to: "+15550000001",
       content: "hello",
       replyToMessageId: undefined,
+    });
+  });
+
+  it("reports WhatsApp missing hooks when the runtime service is connected but incomplete", async () => {
+    const service = serviceWithLegacyGrants({
+      services: {
+        whatsapp: {
+          connected: true,
+        },
+      },
+    });
+
+    await expect(service.getWhatsAppConnectorStatus()).resolves.toMatchObject({
+      connected: false,
+      outboundReady: false,
+      inboundReady: false,
+      degradations: expect.arrayContaining([
+        expect.objectContaining({ code: "whatsapp_plugin_send_unavailable" }),
+        expect.objectContaining({ code: "whatsapp_plugin_inbound_unavailable" }),
+      ]),
     });
   });
 });

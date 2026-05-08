@@ -35,13 +35,13 @@ const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
 function hasExplicitConfig(account: TailscaleAccountConfig): boolean {
   return Boolean(
     account.authKey ||
-      account.tags !== undefined ||
-      account.funnel !== undefined ||
-      account.defaultPort !== undefined ||
-      account.backend !== undefined ||
-      account.authKeyExpirySeconds !== undefined ||
-      account.cloudApiKey ||
-      account.cloudBaseUrl,
+    account.tags !== undefined ||
+    account.funnel !== undefined ||
+    account.defaultPort !== undefined ||
+    account.backend !== undefined ||
+    account.authKeyExpirySeconds !== undefined ||
+    account.cloudApiKey ||
+    account.cloudBaseUrl,
   );
 }
 
@@ -106,9 +106,7 @@ function mergeStoredAccountPatch(
     id: account.id,
     purpose: normalizePurposes(patch.purpose, account.purpose),
     externalId:
-      patch.externalId === undefined
-        ? account.externalId
-        : (patch.externalId ?? undefined),
+      patch.externalId === undefined ? account.externalId : (patch.externalId ?? undefined),
     displayHandle:
       patch.displayHandle === undefined
         ? account.displayHandle
@@ -133,12 +131,8 @@ export function createTailscaleConnectorAccountProvider(
     provider: TAILSCALE_PROVIDER_ID,
     label: 'Tailscale',
 
-    listAccounts: async (
-      manager: ConnectorAccountManager,
-    ): Promise<ConnectorAccount[]> => {
-      const stored = await manager
-        .getStorage()
-        .listAccounts(TAILSCALE_PROVIDER_ID);
+    listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+      const stored = await manager.getStorage().listAccounts(TAILSCALE_PROVIDER_ID);
       const storedById = new Set(stored.map((account) => account.id));
       const defaultAccountId = resolveTailscaleAccountId(runtime);
       const synthesized = readTailscaleAccounts(runtime)
@@ -147,10 +141,7 @@ export function createTailscaleConnectorAccountProvider(
       return [...stored, ...synthesized];
     },
 
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager,
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: TAILSCALE_PROVIDER_ID,
@@ -166,19 +157,14 @@ export function createTailscaleConnectorAccountProvider(
       patch: ConnectorAccountPatch,
       manager: ConnectorAccountManager,
     ) => {
-      const existing = await manager
-        .getStorage()
-        .getAccount(TAILSCALE_PROVIDER_ID, accountId);
+      const existing = await manager.getStorage().getAccount(TAILSCALE_PROVIDER_ID, accountId);
       if (existing) {
         return mergeStoredAccountPatch(existing, patch);
       }
       return { ...patch, provider: TAILSCALE_PROVIDER_ID };
     },
 
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager,
-    ): Promise<void> => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
       // Runtime credentials live in env/character settings or the selected
       // backend; the manager removes only its account row.
     },

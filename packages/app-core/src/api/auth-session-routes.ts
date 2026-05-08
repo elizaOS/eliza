@@ -19,7 +19,6 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { AuthStore } from "../services/auth-store";
 import { extractHeaderValue, getProvidedApiToken } from "./auth";

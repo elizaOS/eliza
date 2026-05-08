@@ -92,7 +92,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration
-  "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows for this monorepo
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)
   "@elizaos/plugin-browser", // browser automation (requires stagehand-server)
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)

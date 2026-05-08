@@ -124,11 +124,6 @@ const v4 = () => crypto.randomUUID();
 import type { DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
-  ConnectorAccountStore,
-  type ListConnectorAccountAuditEventsParams,
-} from "./stores/connectorAccount.store";
-import type { StoreContext } from "./stores/types";
-import {
   agentTable,
   cacheTable,
   channelParticipantsTable,
@@ -149,6 +144,11 @@ import {
   taskTable,
   worldTable,
 } from "./schema/index";
+import {
+  ConnectorAccountStore,
+  type ListConnectorAccountAuditEventsParams,
+} from "./stores/connectorAccount.store";
+import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
@@ -5291,9 +5291,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.getConnectorAccountStore().getOAuthFlowState(params);
   }
 
-  async updateOAuthFlowState(
-    params: UpdateOAuthFlowStateParams
-  ): Promise<OAuthFlowRecord | null> {
+  async updateOAuthFlowState(params: UpdateOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
     return this.getConnectorAccountStore().updateOAuthFlowState(params);
   }
 

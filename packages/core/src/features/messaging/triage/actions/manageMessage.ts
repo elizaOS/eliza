@@ -9,8 +9,8 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
-import { getDefaultTriageService } from "../triage-service.ts";
 import type { TriageService } from "../triage-service.ts";
+import { getDefaultTriageService } from "../triage-service.ts";
 import {
 	type ManageMessageParams,
 	messageIdParameter,
@@ -26,7 +26,8 @@ async function resolveTargetMessageId(
 	if (parsed.messageId) return parsed.messageId;
 	const hits = await service.search(runtime, {
 		...parsed.lookup,
-		sources: parsed.lookup.sources ?? (parsed.source ? [parsed.source] : undefined),
+		sources:
+			parsed.lookup.sources ?? (parsed.source ? [parsed.source] : undefined),
 		limit: 1,
 	});
 	return hits[0]?.id ?? null;
@@ -40,7 +41,13 @@ export const manageMessageAction: Action = {
 		"Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, unsubscribe, or block a sender. Use this for unsubscribe/block/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
 	descriptionCompressed:
 		"mutate msg/sender: archive trash spam mark-read label tag mute unsubscribe block; target by messageId or sender/content",
-	similes: ["ARCHIVE_MESSAGE", "TAG_MESSAGE", "UNSUBSCRIBE", "BLOCK_SENDER", "MARK_READ"],
+	similes: [
+		"ARCHIVE_MESSAGE",
+		"TAG_MESSAGE",
+		"UNSUBSCRIBE",
+		"BLOCK_SENDER",
+		"MARK_READ",
+	],
 	parameters: [
 		{ ...messageIdParameter, required: false },
 		{
@@ -122,14 +129,9 @@ export const manageMessageAction: Action = {
 			logger.warn(`[ManageMessage] ${text}`);
 			return { success: false, text, error: text };
 		}
-		const result = await service.manage(
-			runtime,
-			messageId,
-			parsed.operation,
-			{
-				source: parsed.source,
-			},
-		);
+		const result = await service.manage(runtime, messageId, parsed.operation, {
+			source: parsed.source,
+		});
 
 		const opLabel = parsed.operation.kind;
 		if (!result.ok) {
@@ -155,9 +157,7 @@ export const manageMessageAction: Action = {
 		}
 
 		const text = `Applied ${opLabel} to message ${messageId}.`;
-		logger.info(
-			`[ManageMessage] op=${opLabel} messageId=${messageId} ok`,
-		);
+		logger.info(`[ManageMessage] op=${opLabel} messageId=${messageId} ok`);
 		if (callback) {
 			await callback({ text, action: "MESSAGE" });
 		}

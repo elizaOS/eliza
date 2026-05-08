@@ -276,10 +276,10 @@ export const logsAction: Action = {
       if (callback) {
         callback({
           text: `Unknown LOGS op. Use one of: ${LOGS_OPS.join(", ")}.`,
-          action: "LOGS_INVALID_OP",
+          action: "LOGS_INVALID",
         });
       }
-      return failure(`Unknown LOGS op: ${String(op)}`, "LOGS_INVALID_OP", {
+      return failure(`Unknown LOGS op: ${String(op)}`, "LOGS_INVALID", {
         validOps: [...LOGS_OPS],
       });
     }
@@ -390,4 +390,3 @@ export const logsAction: Action = {
     ],
   ],
 };
-

@@ -907,35 +907,55 @@ async function dispatchSignalVerify(
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
-  const [status, messages] = await Promise.all([
-    service.getSignalConnectorStatus(side),
-    service.readSignalInbound(limit),
-  ]);
+  const status = await service.getSignalConnectorStatus(side);
+  let messages: Awaited<ReturnType<LifeOpsService["readSignalInbound"]>> = [];
+  let readError: string | null = null;
+  if (status.inbound) {
+    try {
+      messages = await service.readSignalInbound(limit, side);
+    } catch (error) {
+      readError = error instanceof Error ? error.message : String(error);
+    }
+  } else {
+    readError = "Signal plugin inbound read is unavailable.";
+  }
   const sendText =
     params.sendMessage ?? "LifeOps Signal connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "signal",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendSignalMessage({
+  let send: Awaited<ReturnType<LifeOpsService["sendSignalMessage"]>> | null =
+    null;
+  let sendError: string | null = null;
+  if (params.sendTarget) {
+    try {
+      send =
+        (await sendVerificationThroughRegistry({
+          runtime,
+          connector: "signal",
+          target: params.sendTarget,
+          text: sendText,
+        })) ??
+        (await service.sendSignalMessage({
+          side,
           recipient: params.sendTarget,
           text: sendText,
-        })
-      : null);
+        }));
+    } catch (error) {
+      sendError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const readOk = readError === null;
+  const sendOk = !params.sendTarget || send?.ok === true;
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected && readOk && sendOk,
+    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${readOk ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "failed"}, send=${params.sendTarget ? (sendOk ? "ok" : "failed") : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "signal",
       subaction: "verify",
       status,
-      read: { ok: true, count: messages.length, messages },
-      send,
+      read: { ok: readOk, error: readError, count: messages.length, messages },
+      send: send
+        ? { ...send, error: sendError }
+        : { ok: !params.sendTarget, error: sendError },
     },
   };
 }
@@ -1165,7 +1185,7 @@ async function dispatchWhatsApp(
       return unsupportedOperation(
         "whatsapp",
         subaction,
-        "WhatsApp connection is configured via env vars (ELIZA_WHATSAPP_ACCESS_TOKEN / ELIZA_WHATSAPP_PHONE_NUMBER_ID); nothing to do via the action layer.",
+        "WhatsApp connection is managed by @elizaos/plugin-whatsapp. Configure the WhatsApp connector plugin; LifeOps no longer owns local WhatsApp API credentials.",
       );
     case "disconnect":
       return unsupportedOperation(

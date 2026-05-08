@@ -18,19 +18,19 @@ import {
   parseJSONObjectFromText,
   type UUID,
 } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { extractCompatTextContent } from "./compat-utils.js";
 import {
-  getDocumentsService,
   type DocumentsServiceLike,
+  getDocumentsService,
 } from "./documents-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
 
 type DocumentMatch = Awaited<
-	ReturnType<DocumentsServiceLike["searchDocuments"]>
+  ReturnType<DocumentsServiceLike["searchDocuments"]>
 >[number];
 type DocumentMatches = DocumentMatch[];
 
@@ -301,9 +301,7 @@ export async function maybeAugmentChatMessageWithDocuments(
     return matches;
   };
 
-  const selectRelevantMatches = (
-    matches: DocumentMatches,
-  ): DocumentMatches =>
+  const selectRelevantMatches = (matches: DocumentMatches): DocumentMatches =>
     matches.filter((match) => {
       const text = match.content?.text?.trim();
       return (
@@ -517,7 +515,7 @@ export function validateChatImages(images: unknown): string | null {
 
 /**
  * Extension of the core Media attachment shape that carries raw image bytes for
- * action handlers (e.g. SEND_POST) while the message is in-memory. The
+ * action handlers (e.g. POST) while the message is in-memory. The
  * extra fields are intentionally stripped before the message is persisted.
  *
  * Note: `_data`/`_mimeType` survive only because elizaOS passes the
@@ -548,7 +546,7 @@ export function buildChatAttachments(
     return { attachments: undefined, compactAttachments: undefined };
   // Compact placeholder URL (no base64) keeps the LLM context lean. The raw
   // image bytes are stashed in `_data`/`_mimeType` for action handlers (e.g.
-  // SEND_POST) that need to upload them.
+  // POST) that need to upload them.
   const attachments: ChatAttachmentWithData[] = images.map((img, i) => ({
     id: `img-${i}`,
     url: `attachment:img-${i}`,

@@ -19,9 +19,9 @@ export { AutonomyService } from "./features/autonomy/index";
 export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export {
 	__setDocumentUrlFetchImplForTests,
+	type FetchDocumentFromUrlOptions,
 	type FetchedDocumentUrl,
 	type FetchedDocumentUrlKind,
-	type FetchDocumentFromUrlOptions,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./features/documents/index";

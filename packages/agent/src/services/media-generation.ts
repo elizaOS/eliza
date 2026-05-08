@@ -1,6 +1,6 @@
 import {
-  IMediaGenerationService,
   type IAgentRuntime,
+  IMediaGenerationService,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   ServiceType,
@@ -33,11 +33,9 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
   readonly capabilityDescription =
     "Generates image, video, and audio through configured local media providers.";
 
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
-
-  static async start(runtime: IAgentRuntime): Promise<AgentMediaGenerationService> {
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<AgentMediaGenerationService> {
     return new AgentMediaGenerationService(runtime);
   }
 
