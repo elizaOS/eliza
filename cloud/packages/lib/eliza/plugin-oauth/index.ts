@@ -1,14 +1,14 @@
 import type { Plugin } from "@elizaos/core";
-import { oauthGetAction } from "./actions/oauth-get";
-import { oauthListAction } from "./actions/oauth-list";
+import { oauthAction } from "./actions/oauth";
 import { userAuthStatusProvider } from "./providers/user-auth-status";
 
-export { oauthGetAction, oauthListAction, userAuthStatusProvider };
+export { oauthAction, userAuthStatusProvider };
 
 export const oauthPlugin: Plugin = {
   name: "eliza-cloud-oauth",
-  description: "Cloud OAuth connection actions and user authentication context",
-  actions: [oauthGetAction, oauthListAction],
+  description:
+    "Cloud OAuth connection actions and user authentication context",
+  actions: [oauthAction],
   providers: [userAuthStatusProvider],
   evaluators: [],
   services: [],
