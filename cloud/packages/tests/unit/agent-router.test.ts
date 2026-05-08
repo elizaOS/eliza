@@ -80,6 +80,40 @@ describe("resolveAgentRouting", () => {
       target: "195.201.57.227:23790",
     });
   });
+
+  test("returns null when bridge_url has no explicit port", async () => {
+    // Sandboxes always store bridge_url with an explicit port. A portless URL
+    // is treated as malformed rather than silently defaulting to 80.
+    state.rows.set("66666666-6666-6666-6666-666666666666", {
+      id: "66666666-6666-6666-6666-666666666666",
+      status: "running",
+      bridge_url: "http://1.2.3.4",
+      web_ui_port: 21000,
+    });
+    expect(await resolveAgentRouting("66666666-6666-6666-6666-666666666666")).toBeNull();
+  });
+
+  test("returns null when status is the empty string", async () => {
+    state.rows.set("77777777-7777-7777-7777-777777777777", {
+      id: "77777777-7777-7777-7777-777777777777",
+      status: "",
+      bridge_url: "http://1.2.3.4:19000",
+      web_ui_port: 21000,
+    });
+    expect(await resolveAgentRouting("77777777-7777-7777-7777-777777777777")).toBeNull();
+  });
+
+  test("returns null when web_ui_port is 0 (falsy)", async () => {
+    // web_ui_port === 0 is rejected by the daemon's `!sandbox.web_ui_port`
+    // check. Documenting this so a future switch to `== null` is intentional.
+    state.rows.set("88888888-8888-8888-8888-888888888888", {
+      id: "88888888-8888-8888-8888-888888888888",
+      status: "running",
+      bridge_url: "http://1.2.3.4:19000",
+      web_ui_port: 0,
+    });
+    expect(await resolveAgentRouting("88888888-8888-8888-8888-888888888888")).toBeNull();
+  });
 });
 
 describe("readRouterConfig", () => {
@@ -111,6 +145,46 @@ describe("readRouterConfig", () => {
     ).toEqual({
       port: 3458,
       bindHost: "127.0.0.1",
+    });
+  });
+
+  test("falls back to default port when AGENT_ROUTER_PORT is zero or negative", () => {
+    expect(readRouterConfig({ AGENT_ROUTER_PORT: "0" } as NodeJS.ProcessEnv)).toEqual({
+      port: 3458,
+      bindHost: "127.0.0.1",
+    });
+    expect(readRouterConfig({ AGENT_ROUTER_PORT: "-1" } as NodeJS.ProcessEnv)).toEqual({
+      port: 3458,
+      bindHost: "127.0.0.1",
+    });
+  });
+
+  test("uses custom port with default bind host when only port is set", () => {
+    expect(readRouterConfig({ AGENT_ROUTER_PORT: "4567" } as NodeJS.ProcessEnv)).toEqual({
+      port: 4567,
+      bindHost: "127.0.0.1",
+    });
+  });
+
+  test("uses custom bind host with default port when only host is set", () => {
+    expect(
+      readRouterConfig({
+        AGENT_ROUTER_BIND_HOST: "0.0.0.0",
+      } as NodeJS.ProcessEnv),
+    ).toEqual({
+      port: 3458,
+      bindHost: "0.0.0.0",
+    });
+  });
+
+  test("trims whitespace from AGENT_ROUTER_BIND_HOST", () => {
+    expect(
+      readRouterConfig({
+        AGENT_ROUTER_BIND_HOST: "  10.0.0.1  ",
+      } as NodeJS.ProcessEnv),
+    ).toEqual({
+      port: 3458,
+      bindHost: "10.0.0.1",
     });
   });
 });
