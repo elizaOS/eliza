@@ -57,3 +57,33 @@ Companion-scoped endpoints (`/api/browser-bridge/companions/sync`,
 The legacy `X-LifeOps-Browser-Companion-Id` and
 `x-eliza-browser-companion-id` headers were removed — no alias fallback is
 accepted.
+
+## Connector Browser Auth
+
+Browser-backed connector auth must use session handles rather than extracted
+browser secrets. The workspace helper
+`acquireBrowserWorkspaceConnectorSession({ provider, accountId, ... })` binds a
+named connector account to either:
+
+- an internal browser partition named
+  `persist:connector-{provider}-{accountId}`; or
+- a Browser Bridge companion profile handle when a companion/profile reference
+  is supplied.
+
+Connector partitions reject raw `cookies`, `storage`, and `state` export/load
+operations. Store the returned partition/profile/session references only. Auth
+states are explicit: `auth_pending`, `needs_reauth`, and `manual_handoff`
+represent login, MFA, CAPTCHA, or other user-required steps.
+
+## Companion Token Gaps
+
+The companion bearer token is stored server-side only as a SHA-256 hash and
+manual re-pairing rotates the active hash via a bounded pending-token list.
+Full TTL/revocation is not complete in the generic Browser Bridge surface yet.
+Missing pieces:
+
+- schema columns for active-token expiry, pending-token expiry, and revoked
+  timestamp/reason;
+- repository methods and HTTP routes for explicit revoke;
+- companion-side handling that clears local config on revoke/expiry responses;
+- a migration path for existing `browser_bridge_companions` rows.

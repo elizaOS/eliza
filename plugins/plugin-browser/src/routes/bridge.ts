@@ -35,18 +35,18 @@ import {
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "./contracts.js";
+} from "../contracts.js";
 import {
   buildBrowserBridgeCompanionPackage,
   getBrowserBridgeCompanionDownloadFile,
   getBrowserBridgeCompanionPackageStatus,
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
-} from "./packaging.js";
+} from "../packaging.js";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
-} from "./service.js";
+} from "../service.js";
 
 export interface BrowserBridgeRouteContext {
   req: http.IncomingMessage;

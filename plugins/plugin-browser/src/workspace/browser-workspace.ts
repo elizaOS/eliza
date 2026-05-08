@@ -324,6 +324,29 @@ export async function acquireBrowserWorkspaceConnectorSession(
     });
   }
 
+  if (isBrowserWorkspaceBridgeConfigured(env)) {
+    const payload = await requestBrowserWorkspace<{
+      session: BrowserWorkspaceConnectorSessionHandle;
+    }>(
+      "/sessions/acquire",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          accountId,
+          authState: request.authState,
+          manualHandoffReason: request.manualHandoffReason,
+          provider,
+          reuse: request.reuse,
+          show: request.show,
+          title: request.title,
+          url: request.url,
+        }),
+      },
+      env,
+    );
+    return payload.session;
+  }
+
   const partition = resolveBrowserWorkspaceConnectorPartition(
     provider,
     accountId,

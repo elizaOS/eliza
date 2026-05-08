@@ -181,19 +181,18 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   /** Unified wallet (canonical actions + providers — incremental migration). */
   agent_wallet: "@elizaos/plugin-wallet",
   "agent-wallet": "@elizaos/plugin-wallet",
+  /** Browser plugin: workspace browser + Chrome/Safari companion bridge. Replaces `@elizaos/app-browser` and `@elizaos/plugin-browser-bridge`; aliases here so short IDs in plugins.allow and config.features still resolve. */
   browser: "@elizaos/plugin-browser",
-  /** Eliza desktop browser workspace + Steward; package is `@elizaos/app-browser`. */
-  "app-browser": "@elizaos/app-browser",
-  appBrowser: "@elizaos/app-browser",
-  "eliza-browser": "@elizaos/app-browser",
-  elizaBrowser: "@elizaos/app-browser",
+  "app-browser": "@elizaos/plugin-browser",
+  appBrowser: "@elizaos/plugin-browser",
+  "eliza-browser": "@elizaos/plugin-browser",
+  elizaBrowser: "@elizaos/plugin-browser",
+  "browser-bridge": "@elizaos/plugin-browser",
+  browserBridge: "@elizaos/plugin-browser",
   /** Native Polymarket app runtime plugin. */
   polymarket: "@elizaos/app-polymarket",
   "app-polymarket": "@elizaos/app-polymarket",
   appPolymarket: "@elizaos/app-polymarket",
-  /** Agent Browser Bridge: Chrome/Safari companion + packaging. Core plugin; aliased here so short IDs resolve in plugins.allow and config.features. */
-  "browser-bridge": "@elizaos/plugin-browser",
-  browserBridge: "@elizaos/plugin-browser",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/app-lifeops",

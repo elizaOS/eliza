@@ -44,6 +44,50 @@ import {
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+
+const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
+
+function executableOnPathSync(binaryName: string): boolean {
+  if (process.platform === "win32") return false;
+  const pathEnv = process.env.PATH ?? "";
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, binaryName), fs.constants.X_OK);
+      return true;
+    } catch {
+      // keep scanning PATH
+    }
+  }
+  return false;
+}
+
+function isWalletOsStoreDefaultAvailable(): boolean {
+  if (process.platform === "darwin") return true;
+  if (process.platform === "linux") return executableOnPathSync("secret-tool");
+  return false;
+}
+
+function isWalletOsStoreEnabledForStartup(): boolean {
+  const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
+  if (raw) {
+    if (WALLET_OS_STORE_TRUE_VALUES.has(raw)) return true;
+    if (WALLET_OS_STORE_FALSE_VALUES.has(raw)) return false;
+  }
+  return isWalletOsStoreDefaultAvailable();
+}
+
+function isPlaintextWalletPrivateKeyConfigValue(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return Boolean(trimmed && !trimmed.startsWith("vault://"));
+}
+
+function isVaultConfigRef(value: string): boolean {
+  return value.startsWith("vault://") && value.length > "vault://".length;
+}
+
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -147,6 +191,7 @@ import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
+import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
@@ -1972,7 +2017,23 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector routes (extracted to connector-routes.ts) ──────────────
+  // ── Connector account routes (/api/connectors/:provider/accounts, oauth) ──
+  if (
+    await handleConnectorAccountRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+      error,
+      readJsonBody,
+    })
+  ) {
+    return;
+  }
+
+  // ── Connector config routes (extracted to connector-routes.ts) ─────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2200,7 +2261,7 @@ async function handleRequest(
   }
 
   // Browser workspace routes (/api/browser-workspace/*) are served by the
-  // @elizaos/app-browser plugin via Plugin.routes.
+  // @elizaos/plugin-browser plugin via Plugin.routes.
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
@@ -2607,8 +2668,12 @@ export async function startApiServer(opts?: {
   ] as const;
   for (const key of envKeysToHydrate) {
     const value = persistedEnv?.[key];
-    if (typeof value === "string" && value.trim() && !process.env[key]) {
-      process.env[key] = value.trim();
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed && !isVaultConfigRef(trimmed) && !process.env[key]) {
+      process.env[key] = trimmed;
     }
   }
 
@@ -2635,24 +2700,17 @@ export async function startApiServer(opts?: {
   // available synchronously from the start (cloud-provisioned containers).
   await initStewardWalletCache();
 
-  // Warn when wallet private keys live in plaintext config and the OS secure
-  // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
+  // Warn when wallet private keys live in plaintext config and no secure local
+  // store is active. Vault sentinels are not plaintext and should not trigger it.
   {
     const hasPlaintextKeys =
-      (typeof persistedEnv?.EVM_PRIVATE_KEY === "string" &&
-        persistedEnv.EVM_PRIVATE_KEY.trim()) ||
-      (typeof persistedEnv?.SOLANA_PRIVATE_KEY === "string" &&
-        persistedEnv.SOLANA_PRIVATE_KEY.trim());
-    const osStoreRaw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
-    const osStoreEnabled =
-      osStoreRaw === "1" ||
-      osStoreRaw === "true" ||
-      osStoreRaw === "on" ||
-      osStoreRaw === "yes";
+      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.EVM_PRIVATE_KEY) ||
+      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.SOLANA_PRIVATE_KEY);
+    const osStoreEnabled = isWalletOsStoreEnabledForStartup();
     if (hasPlaintextKeys && !osStoreEnabled) {
       logger.warn(
         "[wallet] Private keys are stored in plaintext config. " +
-          "Set ELIZA_WALLET_OS_STORE=1 to use the OS secure store instead.",
+          "Use the vault or enable ELIZA_WALLET_OS_STORE=1 on a supported desktop.",
       );
     }
   }

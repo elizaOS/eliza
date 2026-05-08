@@ -1,4 +1,5 @@
 import {
+  assertBrowserWorkspaceConnectorSecretsNotExported,
   createBrowserWorkspaceCommandTargetError,
   DEFAULT_TIMEOUT_MS,
   normalizeEnvValue,
@@ -18,6 +19,18 @@ import type {
   BrowserWorkspaceSnapshotRecord,
   BrowserWorkspaceTab,
 } from "./browser-workspace-types.js";
+
+async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
+  id: string,
+  env: NodeJS.ProcessEnv,
+  operation: string,
+): Promise<void> {
+  const payload = await requestBrowserWorkspace<{
+    tabs?: BrowserWorkspaceTab[];
+  }>("/tabs", undefined, env);
+  const tab = payload.tabs?.find((entry) => entry.id === id) ?? null;
+  assertBrowserWorkspaceConnectorSecretsNotExported(tab?.partition, operation);
+}
 
 async function readErrorBody(response: Response): Promise<string> {
   try {
@@ -1358,6 +1371,18 @@ export async function executeDesktopBrowserWorkspaceUtilityCommand(
   env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  if (
+    command.subaction === "cookies" ||
+    command.subaction === "storage" ||
+    (command.subaction === "set" &&
+      (command.setAction === "credentials" || command.setAction === "headers"))
+  ) {
+    await assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
+      id,
+      env,
+      command.subaction,
+    );
+  }
   const startedAt = Date.now();
   const result = await evaluateBrowserWorkspaceTab(
     {
@@ -1438,6 +1463,7 @@ export async function getDesktopBrowserWorkspaceSessionState(
   env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown>> {
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  await assertDesktopBrowserWorkspaceCanAccessProfileSecrets(id, env, "state");
   const result = await evaluateBrowserWorkspaceTab(
     {
       id,
@@ -1483,6 +1509,7 @@ export async function loadDesktopBrowserWorkspaceSessionState(
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  await assertDesktopBrowserWorkspaceCanAccessProfileSecrets(id, env, "state");
   await evaluateBrowserWorkspaceTab(
     {
       id,

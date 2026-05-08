@@ -13,11 +13,11 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { Plugin, Route } from "@elizaos/core";
+import type { Route } from "@elizaos/core";
 import {
   BROWSER_WORKSPACE_ROUTE_PATHS,
   handleBrowserWorkspaceRoutes,
-} from "./routes/browser-workspace-routes.js";
+} from "./workspace.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -82,10 +82,3 @@ export const browserWorkspaceRoutes: Route[] =
         handler: browserWorkspaceRouteHandler(),
       }) as Route,
   );
-
-export const browserWorkspaceRoutePlugin: Plugin = {
-  name: "@elizaos/app-browser-routes",
-  description:
-    "Browser workspace tabs, navigation, eval, and snapshot HTTP routes",
-  routes: browserWorkspaceRoutes,
-};
