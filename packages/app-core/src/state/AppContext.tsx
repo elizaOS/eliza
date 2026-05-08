@@ -170,7 +170,10 @@ export function AppProvider({
     console.warn("[eliza] Failed to sync language to server:", lang);
   }, []);
   return (
-    <TranslationProvider onLanguageSyncError={onLanguageSyncError}>
+    <TranslationProvider
+      onLanguageSyncError={onLanguageSyncError}
+      branding={brandingOverride}
+    >
       <AppProviderInner branding={brandingOverride}>
         {children}
       </AppProviderInner>
