@@ -744,6 +744,12 @@ function nativeModuleStubPlugin(): Plugin {
       ]);
       if (nodeBuiltins.has(id) || nodeBuiltins.has(id.split("/")[0]))
         return `${VIRTUAL_PREFIX}node:${id}`;
+      if (
+        /^@napi-rs\/keyring/.test(id) ||
+        id.replace(/\\/g, "/").includes("/@napi-rs/keyring")
+      ) {
+        return `${VIRTUAL_PREFIX}@napi-rs/keyring`;
+      }
       const bare = id.startsWith("@")
         ? id.split("/").slice(0, 2).join("/")
         : id.split("/")[0];
@@ -756,7 +762,22 @@ function nativeModuleStubPlugin(): Plugin {
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
 
-      const modName = id.slice(VIRTUAL_PREFIX.length).split("/")[0];
+      const strippedFull = id.slice(VIRTUAL_PREFIX.length);
+      if (strippedFull === "@napi-rs/keyring") {
+        return [
+          "export class Entry {",
+          "  constructor(_service, _account) {}",
+          '  getPassword() { return ""; }',
+          "  setPassword() {",
+          "    throw new Error(",
+          '      "OS keychain is unavailable in the browser/renderer build."',
+          "    );",
+          "  }",
+          "}",
+        ].join("\n");
+      }
+
+      const modName = strippedFull.split("/")[0];
       // node-llama-cpp is the most import-heavy native module — its consumers
       // use many named exports (LlamaLogLevel, getLlama, etc.).  Return a
       // module whose default export is a Proxy that returns no-op stubs for
@@ -1349,6 +1370,8 @@ export default defineConfig({
       "undici",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-embedding",
+      "@napi-rs/keyring",
+      "@elizaos/vault",
     ],
   },
   build: {
@@ -1381,6 +1404,7 @@ export default defineConfig({
         )
           return true;
         if (/^@node-llama-cpp\//.test(id)) return true;
+        if (/^@napi-rs\/keyring/.test(id)) return true;
         return false;
       },
       input: {

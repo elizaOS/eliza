@@ -1262,6 +1262,10 @@ export default defineConfig({
       // Node-only connector; LifeOps server services may dynamically import it,
       // but the renderer must not parse its Baileys/qrcode-terminal graph.
       "@elizaos/plugin-whatsapp",
+      // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
+      "@napi-rs/keyring",
+      // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
+      "@elizaos/vault",
     ],
   },
   build: {
