@@ -1,6 +1,8 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { searchStoreAction } from "./actions/search-store.js";
 import { shopifyAction } from "./actions/shopify.js";
+import { createShopifyConnectorAccountProvider } from "./connector-account-provider.js";
 import { storeContextProvider } from "./providers/store-context.js";
 import { registerShopifySearchCategory } from "./search-category.js";
 import { ShopifyService } from "./services/ShopifyService.js";
@@ -22,10 +24,23 @@ const shopifyPlugin: Plugin = {
   },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerShopifySearchCategory(runtime);
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createShopifyConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:shopify",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Shopify provider with ConnectorAccountManager",
+      );
+    }
   },
 };
 
 export default shopifyPlugin;
 export * from "./accounts.js";
+export { createShopifyConnectorAccountProvider } from "./connector-account-provider.js";
 export type { ShopifyPluginConfig } from "./types.js";
 export { ShopifyService };

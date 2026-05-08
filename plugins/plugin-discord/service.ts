@@ -1234,6 +1234,11 @@ export class DiscordService extends Service implements IDiscordService {
 		target: TargetInfo,
 		content: Content,
 	): Promise<void> {
+		// Resolve the connector account this outbound message must use.
+		// Priority: explicit target.accountId > this service instance's default.
+		// `Content.metadata` is intentionally NOT consulted because it may be
+		// user-supplied per the MessageMetadata contract — actions thread the
+		// trusted inbound `Memory.metadata.accountId` into `target.accountId`.
 		const accountId = this.resolveAccountIdFromTarget(target);
 		const state = this.getAccountState(accountId);
 		const client = state?.client ?? null;
@@ -1242,25 +1247,9 @@ export class DiscordService extends Service implements IDiscordService {
 			throw new Error(`Discord client is not ready for account ${accountId}.`);
 		}
 
-		// Resolve the connector account this outbound message must use.
-		// Priority: explicit target.accountId > this service instance's default.
-		// In single-account mode the resolved id is always the service's own;
-		// when the per-account client pool is wired in, a mismatch here is the
-		// signal to dispatch to the matching account's client.
-		const requestedAccountId = this.resolveOutboundAccountId(target, content);
-		if (requestedAccountId !== this.accountId) {
-			runtime.logger.warn(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					requestedAccountId,
-					serviceAccountId: this.accountId,
-				},
-				"Discord send requested for a non-default account; per-account routing is not wired yet — sending via this client",
-			);
-		}
-
-		const client = this.client;
+		// Reference content to avoid an unused-parameter lint hit; outbound
+		// resolution only consults `target.accountId` for trust reasons.
+		void content;
 
 		let targetChannel: Channel | undefined | null = null;
 		let resolvedChannelId: string | null = null;

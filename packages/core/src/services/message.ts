@@ -2240,6 +2240,19 @@ async function recordFactsAndRelationshipsStage(args: {
 			startedAt,
 			endedAt,
 			latencyMs: endedAt - startedAt,
+			model: result?.rawResponse
+				? {
+						modelType: String(ModelType.TEXT_LARGE),
+						provider: "default",
+						messages: result.messages,
+						tools: result.tools,
+						toolChoice: "required",
+						response:
+							typeof result.rawResponse === "string"
+								? result.rawResponse
+								: JSON.stringify(result.rawResponse),
+					}
+				: undefined,
 			factsAndRelationships: {
 				candidates,
 				kept,

@@ -7,9 +7,7 @@ import {
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
-  type ConnectorAccountAuditOutcome,
   type ConnectorAccountCredentialRefRecord,
-  type ConnectorAccountJsonObject,
   type ConnectorAccountRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
@@ -20,7 +18,6 @@ import {
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
-  type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
   type Log,
@@ -71,148 +68,14 @@ type CountMemoriesParams = {
   metadata?: Record<string, unknown>;
 };
 
-const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
-const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
-  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
-
-export function redactConnectorAuditMetadata(value: unknown): JsonValue {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    return value.map((item) => redactConnectorAuditMetadata(item));
-  }
-  if (typeof value === "object") {
-    const redacted: ConnectorAccountJsonObject = {};
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
-        ? CONNECTOR_AUDIT_REDACTED
-        : redactConnectorAuditMetadata(item);
-    }
-    return redacted;
-  }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  return String(value);
-}
-
-function toConnectorDate(value: number | Date | null | undefined): Date | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  return value instanceof Date ? value : new Date(value);
-}
-
-function dateToMillis(value: Date | null | undefined): number | null {
-  return value ? value.getTime() : null;
-}
-
-function stripUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined)
-  ) as Partial<T>;
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
-function asJsonObject(value: unknown): ConnectorAccountJsonObject {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as ConnectorAccountJsonObject;
-  }
-  return {};
-}
-
-function mapConnectorAccountRow(
-  row: typeof connectorAccountsTable.$inferSelect
-): ConnectorAccountRecord {
-  return {
-    id: row.id as UUID,
-    agentId: row.agentId as UUID,
-    provider: row.provider,
-    accountKey: row.accountKey,
-    externalId: row.externalId,
-    displayName: row.displayName,
-    username: row.username,
-    email: row.email,
-    role: row.role,
-    purpose: asStringArray(row.purpose),
-    accessGate: row.accessGate,
-    status: row.status,
-    scopes: asStringArray(row.scopes),
-    capabilities: asStringArray(row.capabilities),
-    profile: asJsonObject(row.profile),
-    metadata: asJsonObject(row.metadata),
-    connectedAt: dateToMillis(row.connectedAt) ?? Date.now(),
-    lastSyncAt: dateToMillis(row.lastSyncAt),
-    deletedAt: dateToMillis(row.deletedAt),
-    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
-    updatedAt: dateToMillis(row.updatedAt) ?? Date.now(),
-  };
-}
-
-function mapConnectorCredentialRow(
-  row: typeof connectorAccountCredentialsTable.$inferSelect
-): ConnectorAccountCredentialRefRecord {
-  return {
-    id: row.id as UUID,
-    accountId: row.accountId as UUID,
-    agentId: row.agentId as UUID,
-    provider: row.provider,
-    credentialType: row.credentialType,
-    vaultRef: row.vaultRef,
-    metadata: asJsonObject(row.metadata),
-    expiresAt: dateToMillis(row.expiresAt),
-    lastVerifiedAt: dateToMillis(row.lastVerifiedAt),
-    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
-    updatedAt: dateToMillis(row.updatedAt) ?? Date.now(),
-  };
-}
-
-function mapConnectorAuditRow(
-  row: typeof connectorAccountAuditEventsTable.$inferSelect
-): ConnectorAccountAuditEventRecord {
-  return {
-    id: row.id as UUID,
-    accountId: row.accountId as UUID | null,
-    agentId: row.agentId as UUID,
-    provider: row.provider,
-    actorId: row.actorId,
-    action: row.action,
-    outcome: row.outcome as ConnectorAccountAuditOutcome,
-    metadata: asJsonObject(row.metadata),
-    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
-  };
-}
-
-function mapOAuthFlowRow(row: typeof oauthFlowsTable.$inferSelect): OAuthFlowRecord {
-  return {
-    stateHash: row.stateHash,
-    agentId: row.agentId as UUID,
-    provider: row.provider,
-    accountId: row.accountId as UUID | null,
-    redirectUri: row.redirectUri,
-    codeVerifierRef: row.codeVerifierRef,
-    scopes: asStringArray(row.scopes),
-    metadata: asJsonObject(row.metadata),
-    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
-    expiresAt: dateToMillis(row.expiresAt) ?? Date.now(),
-    consumedAt: dateToMillis(row.consumedAt),
-    consumedBy: row.consumedBy,
-  };
-}
-
 import {
   and,
   cosineDistance,
   count,
   desc,
   eq,
-  gt,
   gte,
   inArray,
-  isNull,
   lt,
   lte,
   or,
@@ -223,7 +86,6 @@ import {
 const v4 = () => crypto.randomUUID();
 
 import type { DatabaseMigrationService } from "./migration-service";
-import { sha256Async } from "./runtime-migrator/crypto-utils";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
   ConnectorAccountStore,
