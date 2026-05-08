@@ -1,4 +1,4 @@
-import { isTruthyEnvValue } from "./env-utils.impl.js";
+import { isTruthyEnvValue } from "./env-utils.ts";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";
 export const DEFAULT_SERVER_ONLY_PORT = 2138;
