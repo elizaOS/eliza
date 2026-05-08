@@ -2,7 +2,10 @@
  * Integration tests for per-connector CredentialProvider implementations.
  * Verifies the resolve() / checkCredentialTypes() contract for every wired connector.
  */
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, afterAll } from "bun:test";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import { SlackN8nCredentialProvider } from "../../../plugin-slack/src/n8n-credential-provider";
 import { WhatsAppN8nCredentialProvider } from "../../../plugin-whatsapp/src/n8n-credential-provider";
 import { MatrixN8nCredentialProvider } from "../../../plugin-matrix/src/n8n-credential-provider";
@@ -153,17 +156,78 @@ describe("TwitchN8nCredentialProvider", () => {
 // Google Chat
 // ---------------------------------------------------------------------------
 describe("GoogleChatN8nCredentialProvider", () => {
-  test("returns googleChatOAuth2Api credential when GOOGLE_APPLICATION_CREDENTIALS is set", async () => {
-    const runtime = makeRuntime({ GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account.json" });
+  const tmpFiles: string[] = [];
+  afterAll(async () => {
+    await Promise.all(tmpFiles.map((p) => fs.unlink(p).catch(() => {})));
+  });
+  async function writeTempJson(content: string): Promise<string> {
+    const filePath = path.join(os.tmpdir(), `gchat-sa-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    await fs.writeFile(filePath, content, "utf-8");
+    tmpFiles.push(filePath);
+    return filePath;
+  }
+
+  test("returns inline JSON when GOOGLE_CHAT_SERVICE_ACCOUNT is set", async () => {
+    const inline = JSON.stringify({ type: "service_account", project_id: "p1" });
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT: inline });
     const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
     const result = await provider.resolve("user1", "googleChatOAuth2Api");
     expect(result?.status).toBe("credential_data");
+    expect((result as { data: { serviceAccountKey: string } }).data.serviceAccountKey).toBe(inline);
+  });
+
+  test("reads and inlines file content when GOOGLE_CHAT_SERVICE_ACCOUNT_FILE is set", async () => {
+    const content = JSON.stringify({ type: "service_account", project_id: "from-file" });
+    const filePath = await writeTempJson(content);
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT_FILE: filePath });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    const result = await provider.resolve("user1", "googleChatOAuth2Api");
+    expect(result?.status).toBe("credential_data");
+    expect((result as { data: { serviceAccountKey: string } }).data.serviceAccountKey).toBe(content);
+  });
+
+  test("falls back to GOOGLE_APPLICATION_CREDENTIALS file path", async () => {
+    const content = JSON.stringify({ type: "service_account", project_id: "from-app-creds" });
+    const filePath = await writeTempJson(content);
+    const runtime = makeRuntime({ GOOGLE_APPLICATION_CREDENTIALS: filePath });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    const result = await provider.resolve("user1", "googleChatOAuth2Api");
+    expect(result?.status).toBe("credential_data");
+    expect((result as { data: { serviceAccountKey: string } }).data.serviceAccountKey).toBe(content);
+  });
+
+  test("returns null when service account file does not exist", async () => {
+    const runtime = makeRuntime({ GOOGLE_APPLICATION_CREDENTIALS: "/nonexistent/path/sa.json" });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "googleChatOAuth2Api")).toBeNull();
+  });
+
+  test("returns null when service account file is not valid JSON", async () => {
+    const filePath = await writeTempJson("not-json-content");
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT_FILE: filePath });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "googleChatOAuth2Api")).toBeNull();
   });
 
   test("returns null when no Google credential env vars are set", async () => {
     const runtime = makeRuntime({});
     const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
     expect(await provider.resolve("user1", "googleChatOAuth2Api")).toBeNull();
+  });
+
+  test("returns null for unsupported cred type", async () => {
+    const inline = JSON.stringify({ type: "service_account" });
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT: inline });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "slackApi")).toBeNull();
+  });
+
+  test("checkCredentialTypes returns correct split", async () => {
+    const runtime = makeRuntime({});
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    const result = provider.checkCredentialTypes(["googleChatOAuth2Api", "slackApi"]);
+    expect(result.supported).toEqual(["googleChatOAuth2Api"]);
+    expect(result.unsupported).toEqual(["slackApi"]);
   });
 });
 

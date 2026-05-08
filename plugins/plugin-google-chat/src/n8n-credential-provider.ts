@@ -1,4 +1,5 @@
-import { type IAgentRuntime, Service } from '@elizaos/core';
+import { type IAgentRuntime, Service, logger } from '@elizaos/core';
+import { promises as fs } from 'node:fs';
 
 // Inlined to avoid adding @elizaos/plugin-n8n-workflow as a compile-time dependency.
 // The runtime duck-types the service — only the serviceType string and resolve() shape matter.
@@ -22,15 +23,30 @@ export class GoogleChatN8nCredentialProvider extends Service {
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== 'googleChatOAuth2Api') return null;
-    // Google Chat service account credentials — prefer JSON inline, fallback to file path.
-    const serviceAccountJson = this.runtime.getSetting('GOOGLE_CHAT_SERVICE_ACCOUNT') as string | undefined;
-    const serviceAccountFile = this.runtime.getSetting('GOOGLE_CHAT_SERVICE_ACCOUNT_FILE') as string | undefined;
-    const appCredentials = this.runtime.getSetting('GOOGLE_APPLICATION_CREDENTIALS') as string | undefined;
-    const credentialsSource = serviceAccountJson?.trim() || serviceAccountFile?.trim() || appCredentials?.trim();
-    if (!credentialsSource) return null;
+    const inlineJson = (this.runtime.getSetting('GOOGLE_CHAT_SERVICE_ACCOUNT') as string | undefined)?.trim();
+    const filePath =
+      (this.runtime.getSetting('GOOGLE_CHAT_SERVICE_ACCOUNT_FILE') as string | undefined)?.trim() ||
+      (this.runtime.getSetting('GOOGLE_APPLICATION_CREDENTIALS') as string | undefined)?.trim();
+
+    let serviceAccountKey: string | undefined;
+    if (inlineJson) {
+      serviceAccountKey = inlineJson;
+    } else if (filePath) {
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        JSON.parse(content);
+        serviceAccountKey = content;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn(`[GoogleChat] Failed to read service account file at ${filePath}: ${message}`);
+        return null;
+      }
+    }
+
+    if (!serviceAccountKey) return null;
     return {
       status: 'credential_data',
-      data: { serviceAccountKey: credentialsSource },
+      data: { serviceAccountKey },
     };
   }
 
