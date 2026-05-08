@@ -5,8 +5,10 @@ import { listAgentsAction } from "./actions/list-agents.js";
 import { sendToAgentAction } from "./actions/send-to-agent.js";
 import { spawnAgentAction } from "./actions/spawn-agent.js";
 import { stopAgentAction } from "./actions/stop-agent.js";
+import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { AcpService } from "./services/acp-service.js";
+import { SubAgentRouter } from "./services/sub-agent-router.js";
 
 export const acpPlugin: Plugin = {
   name: "@elizaos/plugin-acpx",
@@ -20,8 +22,11 @@ export const acpPlugin: Plugin = {
     listAgentsAction,
     cancelTaskAction,
   ],
-  providers: [availableAgentsProvider],
-  services: [AcpService as unknown as ServiceClass],
+  providers: [availableAgentsProvider, activeSubAgentsProvider],
+  services: [
+    AcpService as unknown as ServiceClass,
+    SubAgentRouter as unknown as ServiceClass,
+  ],
 };
 
 export const taskAgentPlugin = acpPlugin;
@@ -48,6 +53,7 @@ export {
   spawnTaskAgentAction,
 } from "./actions/spawn-agent.js";
 export { stopAgentAction, stopTaskAgentAction } from "./actions/stop-agent.js";
+export { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 export {
   acpAvailableAgentsProvider,
   availableAgentsProvider,
@@ -64,6 +70,7 @@ export {
   InMemorySessionStore,
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
+export { SubAgentRouter } from "./services/sub-agent-router.js";
 
 export type {
   AcpEventCallback,
