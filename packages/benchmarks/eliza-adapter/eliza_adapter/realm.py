@@ -295,6 +295,14 @@ class ElizaREALMAgent:
                         if not plan
                         else "COMPLETE_TASK"
                     )
+                if selected_action == "REPLY":
+                    selected_action = (
+                        "GENERATE_PLAN"
+                        if not plan
+                        else "EXECUTE_STEP"
+                        if len(executed_steps) < len(plan)
+                        else "COMPLETE_TASK"
+                    )
 
                 logger.info(
                     "[eliza-realm] Iteration %d: action=%s",

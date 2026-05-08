@@ -1173,7 +1173,7 @@ async function dispatchWhatsAppVerify(
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
   const status = await service.getWhatsAppConnectorStatus();
-  const recent = service.pullWhatsAppRecent(limit);
+  const recent = await service.pullWhatsAppRecent(limit);
   const sendText =
     params.sendMessage ?? "LifeOps WhatsApp connector verification ping.";
   const send =

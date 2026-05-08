@@ -220,7 +220,6 @@ export function actionEntrySearchText(
 		...(action.tags ?? []),
 		extractSearchableText(action.examples),
 		extractSearchableText(action.parameters),
-		extractSearchableText(action.contexts),
 		...children.flatMap((child) => [
 			child.name,
 			child.description,
@@ -230,7 +229,6 @@ export function actionEntrySearchText(
 			...child.tags,
 			extractSearchableText(child.examples),
 			extractSearchableText(child.parameters),
-			extractSearchableText(child.contexts),
 		]),
 	]);
 }

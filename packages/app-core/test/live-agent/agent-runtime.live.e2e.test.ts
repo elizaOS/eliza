@@ -30,7 +30,7 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 import { sleep, withTimeout } from "../helpers/test-utils";
 
 /** Matches the table name used by @elizaos/core personality module. */

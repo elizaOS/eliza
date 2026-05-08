@@ -105,7 +105,12 @@ describe("OpenAI native text plumbing", () => {
       (call.output as { responseFormat: Promise<unknown> }).responseFormat
     ).resolves.toEqual({
       type: "json",
-      schema: responseSchema,
+      schema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+        additionalProperties: false,
+      },
     });
     expect(result).toMatchObject({
       text: "ok",

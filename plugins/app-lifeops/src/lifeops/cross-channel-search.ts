@@ -68,6 +68,7 @@ async function getClusterMemories(
     entityId: primaryEntityId,
   });
 }
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsGmailMessageSummary,
@@ -335,7 +336,7 @@ type CrossChannelNativeSearchService = GmailSearchService & {
       text: string;
     }>
   >;
-  pullWhatsAppRecent?: (limit?: number) => {
+  pullWhatsAppRecent?: (limit?: number) => Promise<{
     count: number;
     messages: Array<{
       id: string;
@@ -345,7 +346,7 @@ type CrossChannelNativeSearchService = GmailSearchService & {
       text?: string;
       metadata?: { contactName?: string };
     }>;
-  };
+  }>;
   getCalendarFeed?: (
     requestUrl: URL,
     request: {
@@ -630,7 +631,7 @@ async function searchWhatsApp(
 
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const recent = lifeOps.pullWhatsAppRecent(limit + 25);
+  const recent = await lifeOps.pullWhatsAppRecent(limit + 25);
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of recent.messages) {
     const text = msg.text?.trim();
@@ -983,9 +984,10 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService = (runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsGraphServiceWithCluster | null) ?? null;
+  const baseService =
+    (runtime.getService(
+      "relationships",
+    ) as unknown as RelationshipsGraphServiceWithCluster | null) ?? null;
   const service = baseService
     ? ({
         ...baseService,

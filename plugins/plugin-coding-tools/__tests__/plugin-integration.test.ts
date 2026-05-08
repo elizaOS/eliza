@@ -19,9 +19,7 @@ import codingToolsPlugin, {
 import * as pluginModule from "../src/index.js";
 
 const EXPECTED_ACTIONS = [
-  "READ",
-  "WRITE",
-  "EDIT",
+  "FILE",
   "BASH",
   "GREP",
   "GLOB",
@@ -38,10 +36,21 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 11 expected actions", () => {
+  it("registers exactly the 9 expected top-level actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
+  });
+
+  it("routes file operations through hidden READ/WRITE/EDIT sub-actions", () => {
+    const fileAction = (codingToolsPlugin.actions ?? []).find(
+      (action) => action.name === "FILE",
+    );
+    expect(fileAction).toBeTruthy();
+    const subActionNames = (fileAction?.subActions ?? []).map((action) =>
+      typeof action === "string" ? action : action.name,
+    );
+    expect(subActionNames).toEqual(["READ", "WRITE", "EDIT"]);
   });
 
   it("each action has the required fields", () => {
@@ -154,7 +163,12 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   function findAction(name: string) {
-    const a = (codingToolsPlugin.actions ?? []).find((x) => x.name === name);
+    const actions = codingToolsPlugin.actions ?? [];
+    const fileAction = actions.find((x) => x.name === "FILE");
+    const fileSubActions = (fileAction?.subActions ?? []).flatMap((entry) =>
+      typeof entry === "string" ? [] : [entry],
+    );
+    const a = [...actions, ...fileSubActions].find((x) => x.name === name);
     if (!a) throw new Error(`action ${name} not found`);
     return a;
   }

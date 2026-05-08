@@ -64,6 +64,13 @@ interface SignalMockService {
   stop(): Promise<void>;
 }
 
+interface WhatsAppMockService {
+  connected: boolean;
+  phoneNumber: string;
+  handleWebhook(payload: Record<string, unknown>): Promise<void>;
+  fetchConnectorMessages(limit?: number): Promise<Memory[]>;
+}
+
 interface BrowserWorkspaceTab {
   id: string;
   url?: string;
@@ -180,6 +187,31 @@ function installSignalMockService(runtime: AgentRuntime): Cleanup {
       services.set("signal", previous);
     } else {
       services.delete("signal");
+    }
+  };
+}
+
+function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
+  const services = servicesMap(runtime);
+  const previous = services.get("whatsapp");
+  const buffered: Record<string, unknown>[] = [];
+  const whatsappService: WhatsAppMockService = {
+    connected: true,
+    phoneNumber: LIFEOPS_SIMULATOR_OWNER.phone,
+    async handleWebhook(payload) {
+      buffered.push(payload);
+    },
+    async fetchConnectorMessages(limit = 25) {
+      return [];
+    },
+  };
+  services.set("whatsapp", [whatsappService]);
+  return () => {
+    buffered.length = 0;
+    if (previous) {
+      services.set("whatsapp", previous);
+    } else {
+      services.delete("whatsapp");
     }
   };
 }
@@ -304,15 +336,18 @@ export function createLifeOpsSimulatorRuntimeFixtures(): LifeOpsSimulatorRuntime
   return {
     async applyRuntimeFixtures(runtime) {
       const cleanupSignal = installSignalMockService(runtime);
+      const cleanupWhatsApp = installWhatsAppMockService(runtime);
       let cleanupDiscord: Cleanup;
       try {
         cleanupDiscord = installDiscordMockSendTarget(runtime);
       } catch (err) {
+        await cleanupWhatsApp();
         await cleanupSignal();
         throw err;
       }
       return async () => {
         await cleanupDiscord();
+        await cleanupWhatsApp();
         await cleanupSignal();
       };
     },

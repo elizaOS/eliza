@@ -13,16 +13,16 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/real-runtime";
-import { relationshipAction } from "../src/actions/relationships.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
+import { relationshipAction } from "../src/actions/relationship.ts";
+import { LifeOpsRepository } from "../src/lifeops/repository.ts";
+import { LifeOpsService } from "../src/lifeops/service.ts";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   getCanonicalIdentityGraph,
   getCanonicalPersonDetail,
   seedCanonicalIdentityFixture,
-} from "./helpers/lifeops-identity-merge-fixtures.js";
+} from "./helpers/lifeops-identity-merge-fixtures.ts";
 
 const AGENT_ID = "lifeops-relationships-agent";
 
@@ -395,18 +395,16 @@ describe("relationships handler — real PGLite", () => {
         input &&
         "prompt" in input &&
         typeof input.prompt === "string" &&
-        input.prompt.includes("(Rolodex) subaction for this request.")
+        input.prompt.includes(
+          "Plan the RELATIONSHIP (Rolodex / follow-up) subaction",
+        )
       ) {
-        return [
-          "The response will be in valid JSON format with exactly the required fields.",
-          "```json",
-          JSON.stringify({
-            subaction: "days_since",
-            shouldAct: false,
-            response: "Omar, what have you been up to since we last talked?",
-          }),
-          "```",
-        ].join("\n");
+        return JSON.stringify({
+          subaction: "days_since",
+          shouldAct: false,
+          relationshipId: rel.id,
+          response: "Omar, what have you been up to since we last talked?",
+        });
       }
       return originalUseModel(modelType, input as never);
     }) as typeof runtime.useModel;

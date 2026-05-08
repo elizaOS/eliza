@@ -553,7 +553,12 @@ const selectedLiveProvider = await selectLifeOpsLiveProvider();
 const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
   omitOpenAiBaseUrl: true,
 });
-const SUPPORTED_PROVIDER_NAMES = new Set(["openai", "openrouter", "google"]);
+const SUPPORTED_PROVIDER_NAMES = new Set([
+  "cerebras",
+  "openai",
+  "openrouter",
+  "google",
+]);
 const LIVE_SUITE_ENABLED =
   LIVE_TESTS_ENABLED &&
   selectedLiveProvider !== null &&
@@ -564,7 +569,7 @@ if (!LIVE_SUITE_ENABLED) {
     ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider &&
     !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
-      ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, or Google`
+      ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use Cerebras, OpenAI, OpenRouter, or Google`
       : null,
   ].filter((entry): entry is string => Boolean(entry));
   console.info(

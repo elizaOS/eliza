@@ -1,5 +1,5 @@
 import {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
 	ContentType,
 	type IAgentRuntime,
 	ServiceType,
@@ -52,14 +52,14 @@ function managerFor(testRuntime: IAgentRuntime): MessageManager {
 }
 
 afterEach(() => {
-	__setKnowledgeUrlFetchImplForTests(null);
+	__setDocumentUrlFetchImplForTests(null);
 });
 
 describe("MessageManager URL enrichment", () => {
 	it("turns direct webpage URLs into readable link attachments without a browser service", async () => {
 		const html =
 			"<html><head><style>.hidden{display:none}</style><script>window.secret='wrong'</script></head><body><p>secret phrase: velvet-lantern-7419</p></body></html>";
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response(html, {
 				headers: { "content-type": "text/html; charset=utf-8" },
 			});
@@ -82,7 +82,7 @@ describe("MessageManager URL enrichment", () => {
 	});
 
 	it("uses a stable attachment id for the same direct URL", async () => {
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response("same page", {
 				headers: { "content-type": "text/plain; charset=utf-8" },
 			});

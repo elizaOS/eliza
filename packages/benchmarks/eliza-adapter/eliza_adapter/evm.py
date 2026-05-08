@@ -167,6 +167,9 @@ class ElizaBridgeEVMExplorer:
         last_feedback: str,
     ) -> tuple[int, bool, dict[str, object], str]:
         """LLM-assisted step: send state to the bridge, parse TS code, execute."""
+        if not self._initialized:
+            self.initialize()
+
         if is_first_llm_step:
             try:
                 self._client.reset(task_id=self._run_id, benchmark="evm")
@@ -240,9 +243,6 @@ class ElizaBridgeEVMExplorer:
 
     async def run(self, env: "AnvilEnv") -> dict[str, object]:
         """Main exploration loop — same shape as the in-process EVMExplorerAgent."""
-        if not self._initialized:
-            self.initialize()
-
         logger.info(
             "ElizaBridgeEVMExplorer  model=%s  chain=%s  max=%d  id=%s  agent_type=eliza-ts-bridge",
             self._model_name, self._chain, self._max_messages, self._run_id,

@@ -97,19 +97,22 @@ def _make_registry_adapter(
         "agentbench",
         "gaia",
         "gaia_orchestrated",
+        "gauntlet",
         "realm",
         "rlm_bench",
         "social_alpha",
         "terminal_bench",
     }:
-        adapter_pythonpath = str((benchmarks_root / "eliza-adapter").resolve())
+        adapter_python_paths = [str((benchmarks_root / "eliza-adapter").resolve())]
+        if benchmark_id == "gauntlet":
+            adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
 
         def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
             existing = ctx.env.get("PYTHONPATH", "")
             pythonpath = (
-                os.pathsep.join([adapter_pythonpath, existing])
+                os.pathsep.join([*adapter_python_paths, existing])
                 if existing
-                else adapter_pythonpath
+                else os.pathsep.join(adapter_python_paths)
             )
             return {"PYTHONPATH": pythonpath}
 
@@ -268,12 +271,18 @@ def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         args.extend(["--output", str(ctx.request.extra_config["output_file"])])
     else:
         args.extend(["--output", str(ctx.output_root / "experience-results.json")])
-    if "experiences" in ctx.request.extra_config:
-        args.extend(["--experiences", str(int(ctx.request.extra_config["experiences"]))])
-    if "queries" in ctx.request.extra_config:
-        args.extend(["--queries", str(int(ctx.request.extra_config["queries"]))])
-    if "learning_cycles" in ctx.request.extra_config:
-        args.extend(["--learning-cycles", str(int(ctx.request.extra_config["learning_cycles"]))])
+    experiences = ctx.request.extra_config.get("experiences")
+    if isinstance(experiences, int) and experiences > 0:
+        args.extend(["--experiences", str(experiences)])
+    queries = ctx.request.extra_config.get("queries", ctx.request.extra_config.get("max_tasks"))
+    if isinstance(queries, int) and queries > 0:
+        args.extend(["--queries", str(queries)])
+    learning_cycles = ctx.request.extra_config.get(
+        "learning_cycles",
+        ctx.request.extra_config.get("max_tasks"),
+    )
+    if isinstance(learning_cycles, int) and learning_cycles > 0:
+        args.extend(["--learning-cycles", str(learning_cycles)])
     if "seed" in ctx.request.extra_config:
         args.extend(["--seed", str(int(ctx.request.extra_config["seed"]))])
     return args
@@ -517,6 +526,14 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         if isinstance(value, str) and value.strip():
             args.extend([cli_key, value.strip()])
 
+    max_tasks = ctx.request.extra_config.get("max_tasks")
+    has_scope_filter = any(
+        isinstance(ctx.request.extra_config.get(key), str) and ctx.request.extra_config.get(key).strip()
+        for key in ("scenario", "system", "persona")
+    )
+    if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
+        args.extend(["--scenario", "skeptic_tarot_01"])
+
     concurrency = ctx.request.extra_config.get("concurrency")
     if isinstance(concurrency, int) and concurrency > 0:
         args.extend(["--concurrency", str(concurrency)])
@@ -545,7 +562,11 @@ def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    env: dict[str, str] = {}
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
     model = ctx.request.model.strip()
     provider = ctx.request.provider.strip().lower()
     if model:
@@ -643,6 +664,8 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
         else "false",
     }
     max_messages = ctx.request.extra_config.get("max_messages")
+    if not isinstance(max_messages, int):
+        max_messages = ctx.request.extra_config.get("max_tasks")
     if isinstance(max_messages, int) and max_messages >= 0:
         env["MAX_MESSAGES"] = str(max_messages)
     environment_config = ctx.request.extra_config.get("environment_config")
@@ -811,6 +834,38 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
             "securityScore": target.get("securityScore"),
             "capabilityScore": target.get("capabilityScore"),
         },
+    )
+
+
+def _score_from_experience(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    agent = data.get("eliza_agent", {}) if isinstance(data, dict) else {}
+    if not isinstance(agent, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    values: list[float] = []
+    metrics: dict[str, Any] = {}
+    for key in (
+        "learning_success_rate",
+        "agent_recall_rate",
+        "agent_keyword_incorporation_rate",
+        "direct_recall_rate",
+    ):
+        raw = agent.get(key)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            val = float(raw)
+            metrics[key] = val
+            values.append(val)
+
+    if not values:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics=metrics)
+    return ScoreSummary(
+        score=sum(values) / len(values),
+        unit="ratio",
+        higher_is_better=True,
+        metrics=metrics,
     )
 
 
@@ -1009,6 +1064,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_iterations": 5,
             "max_depth": 3,
         },
+        "mint": {
+            "agent": "eliza",
+        },
+        "social_alpha": {
+            "system": "eliza",
+        },
         "swe_bench": {
             "max_instances": 1,
             "no_docker": True,
@@ -1126,7 +1187,16 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="Experience memory benchmark via Eliza agent mode",
             cwd=str((benchmarks_root / "experience").resolve()),
             command_builder=_command_experience,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [
+                        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+                        ctx.env.get("PYTHONPATH", ""),
+                    ],
+                ).rstrip(os.pathsep),
+            },
             result_patterns=["experience-results.json", "*.json"],
+            score_extractor=_score_from_experience,
         ),
         _make_extra_adapter(
             adapter_id="app-eval",

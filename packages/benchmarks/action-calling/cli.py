@@ -121,6 +121,45 @@ def _load_planner_records(test_file: Path, limit: int) -> list[dict]:
     return out
 
 
+def _fallback_format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | None:
+    expected = str(record.get("expectedResponse") or "").strip()
+    current = record.get("currentMessage") or {}
+    user_text = current.get("content") if isinstance(current, dict) else None
+    if not expected or not isinstance(user_text, str) or not user_text.strip():
+        return None
+
+    available_actions = record.get("availableActions") or []
+    tool_specs = (record.get("metadata") or {}).get("toolSpecs") or []
+    system = (
+        "You are an elizaOS action planner. Respond only with the planner TOON "
+        "envelope below. Do not write a title, markdown fence, JSON, or prose "
+        "outside the document.\n\n"
+        "Required shape:\n"
+        "thought: <brief rationale>\n"
+        "actions[1]:\n"
+        "  - name: <ACTION_NAME>\n"
+        "    params:\n"
+        "      tool: <tool name when the action calls a tool>\n"
+        "      arguments:\n"
+        "        <required parameter>: <value>\n"
+        "providers[0]:\n"
+        "text: null\n"
+        "simple: false"
+    )
+    prompt = {
+        "message": user_text,
+        "availableActions": available_actions,
+        "toolSpecs": tool_specs,
+    }
+    return {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=True)},
+            {"role": "assistant", "content": expected},
+        ],
+    }
+
+
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="action-calling")
     p.add_argument(
@@ -242,6 +281,8 @@ def main() -> int:
     for i, rec in enumerate(records):
         formatted = format_record(rec)
         if not formatted:
+            formatted = _fallback_format_record(rec)
+        if not formatted:
             continue
         msgs = formatted["messages"]
         if msgs and msgs[-1]["role"] == "assistant":
@@ -333,6 +374,8 @@ def main() -> int:
     args_ok = rate(n_args_parse_ok)
     keys = rate(n_required_keys_ok)
     score = _geometric_mean([fmt, name, args_ok, keys])
+    if n == 0:
+        raise SystemExit("no examples were formatted/evaluated")
 
     summary = {
         "model": args.model,

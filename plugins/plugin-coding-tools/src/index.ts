@@ -2,16 +2,13 @@ import type { Plugin } from "@elizaos/core";
 import {
   askUserQuestionAction,
   bashAction,
-  editAction,
   enterWorktreeAction,
   exitWorktreeAction,
   fileAction,
   globAction,
   grepAction,
   lsAction,
-  readAction,
   webFetchAction,
-  writeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {

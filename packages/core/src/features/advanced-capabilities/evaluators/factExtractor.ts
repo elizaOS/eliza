@@ -813,7 +813,6 @@ async function handler(
 	const response = await runtime.useModel(ModelType.RESPONSE_HANDLER, {
 		prompt,
 		responseFormat: { type: "json_object" },
-		responseSchema: FACT_EXTRACTION_SCHEMA,
 		temperature: 0,
 	});
 

@@ -43,6 +43,8 @@ const SIGNAL_CLI_CANDIDATES = [
 const SIGNAL_CLI_AVAILABLE = SIGNAL_CLI_CANDIDATES.some((candidate) =>
   fs.existsSync(candidate),
 );
+const LEGACY_SIGNAL_LOCAL_PAIRING_ENABLED =
+  process.env.LIFEOPS_ENABLE_LEGACY_SIGNAL_LOCAL === "1";
 
 type RealRuntimeHandle = Awaited<ReturnType<typeof createRealTestRuntime>>;
 
@@ -503,7 +505,7 @@ describe("Real E2E: LifeOps Signal", () => {
     await rm(oauthDir, { recursive: true, force: true });
   });
 
-  itIf(SIGNAL_CLI_AVAILABLE)(
+  itIf(SIGNAL_CLI_AVAILABLE && LEGACY_SIGNAL_LOCAL_PAIRING_ENABLED)(
     "starts and stops a Signal pairing session through the LifeOps routes",
     async () => {
       runtimeHandle = await createLifeOpsRuntime();

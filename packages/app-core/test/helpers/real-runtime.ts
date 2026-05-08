@@ -216,6 +216,7 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     "gpt-oss-120b";
   const env = {
     CEREBRAS_API_KEY: apiKey,
+    OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
     MILADY_PROVIDER: "cerebras",
     OPENAI_SMALL_MODEL: smallModel,
@@ -318,7 +319,7 @@ export async function createRealTestRuntime(
     let providerConfig: LiveProviderConfig | null = null;
 
     if (options?.withLLM) {
-      const { selectLiveProvider } = await import("./live-provider");
+      const { selectLiveProvider } = await import("./live-provider.ts");
       providerConfig = selectLiveProvider(options.preferredProvider);
       if (!providerConfig && options.preferredProvider) {
         providerConfig = selectLiveProvider();

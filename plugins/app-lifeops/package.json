@@ -159,14 +159,14 @@
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
+    "@elizaos/plugin-x": "workspace:*",
     "@elizaos/scenario-schema": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^4.0.1",
-    "sharp": "^0.34.5",
-    "telegram": "2.26.22"
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.0",

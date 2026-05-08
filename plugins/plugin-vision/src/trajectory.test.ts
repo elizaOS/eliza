@@ -62,8 +62,13 @@ describe("vision trajectory capture", () => {
       purpose: "background",
       actionType: "florence2.analyzeImage",
     });
-    expect(String(llmCalls[0]?.userPrompt)).toContain(
-      "task: describe_visual_scene",
-    );
+    expect(JSON.parse(String(llmCalls[0]?.userPrompt))).toEqual({
+      task: "describe_visual_scene",
+      image: {
+        source: "camera_frame",
+        mimeType: "image/jpeg",
+        bytes: Buffer.from("image").byteLength,
+      },
+    });
   });
 });

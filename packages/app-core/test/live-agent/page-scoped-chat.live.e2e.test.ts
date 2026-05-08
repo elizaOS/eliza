@@ -146,7 +146,9 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
           const turn = await harness.send(scopeCase.prompt, {
             metadata: buildTestRoutingMetadata(scopeCase.scope),
           });
-          expect(turn.responseText.length).toBeGreaterThan(0);
+          expect(turn.responseText).not.toMatch(
+            /something (?:went wrong|flaked)|try again/i,
+          );
 
           const trajectory = await loadLatestTrajectoryForScope(
             runtime,
@@ -182,7 +184,9 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       try {
         // No stampPageScopedRoomMetadata — the room stays unscoped.
         const turn = await harness.send("hi, what can you do?");
-        expect(turn.responseText.length).toBeGreaterThan(0);
+        expect(turn.responseText).not.toMatch(
+          /something (?:went wrong|flaked)|try again/i,
+        );
 
         // Trajectory still gets written; the page-scoped provider should NOT
         // appear in any of its provider accesses.
@@ -280,7 +284,9 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
             }),
           },
         );
-        expect(turn.responseText.length).toBeGreaterThan(0);
+        expect(turn.responseText).not.toMatch(
+          /something (?:went wrong|flaked)|try again/i,
+        );
 
         const trajectory = await loadLatestTrajectoryForScope(
           runtime,

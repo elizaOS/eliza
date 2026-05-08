@@ -891,6 +891,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--provider", provider_name])
             if model.model:
                 args.extend(["--model", model.model])
+            base_url = extra.get("base_url")
+            if isinstance(base_url, str) and base_url.strip():
+                args.extend(["--base-url", base_url.strip()])
         elif model.provider:
             raise ValueError(f"mint: unsupported provider '{model.provider}'")
         if extra.get("no_ablation") is True:
@@ -1027,7 +1030,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        if extra.get("dry_run") is True:
+        if extra.get("dry_run") is True or extra.get("no_docker") is True:
             args.append("--dry-run")
         if extra.get("oracle") is True:
             args.append("--oracle")
@@ -1135,11 +1138,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             runs = extra.get("num_runs")
         if isinstance(runs, int) and runs > 0:
             args.extend(["--runs", str(runs)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--runs", "1"])
         days = extra.get("days")
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
         if isinstance(days, int) and days > 0:
             args.extend(["--days", str(days)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--days", "1"])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -1539,6 +1546,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         seed = extra.get("seed")
         if isinstance(seed, int) and seed > 0:
             args.extend(["--seed", str(seed)])
+        max_scenarios = extra.get("max_scenarios")
+        if not isinstance(max_scenarios, int):
+            max_scenarios = extra.get("max_tasks")
+        if isinstance(max_scenarios, int) and max_scenarios > 0:
+            args.extend(["--max-scenarios", str(max_scenarios)])
         return args
 
     def _gauntlet_result(output_dir: Path) -> Path:
@@ -1699,6 +1711,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
         elif (model.provider or "").strip().lower() == "mock":
+            profile = "mock"
+        elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
+            Path("benchmarks/voicebench/shared/audio/default.wav").exists()
+            or Path("agent-town/public/assets/background.mp3").exists()
+        ):
             profile = "mock"
         else:
             profile = "groq"
@@ -1912,7 +1929,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.eliza-format.cli",
+            "benchmarks.eliza_format.cli",
             "--provider",
             provider,
             "--out",

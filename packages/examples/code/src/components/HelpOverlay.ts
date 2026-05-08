@@ -1,25 +1,17 @@
-import type { Component } from "@elizaos/tui";
+import type { Component, Terminal } from "@elizaos/tui";
 import chalk from "chalk";
 
 export class HelpOverlay implements Component {
-  constructor(width: number, height: number) {
-    this.width = width;
-    this.height = height;
-  }
+  constructor(private readonly terminal: Terminal) {}
 
-  resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
-  }
+  invalidate(): void {}
 
-  render(width: number, height: number): string[] {
-    this.width = width;
-    this.height = height;
+  render(width: number): string[] {
+    const height = Math.max(1, this.terminal.rows);
 
     const output: string[] = [];
     const innerWidth = Math.max(1, width - 4);
 
-    // Border
     const borderColor = chalk.cyan;
     const topBorder = ` ${borderColor(`╭${"─".repeat(innerWidth)}╮`)}`;
     const bottomBorder = ` ${borderColor(`╰${"─".repeat(innerWidth)}╯`)}`;
@@ -28,13 +20,11 @@ export class HelpOverlay implements Component {
     output.push(topBorder);
     output.push(emptyLine);
 
-    // Title
     output.push(
       ` ${borderColor("│")} ${chalk.bold.cyan("Help")}${" ".repeat(innerWidth - 5)}${borderColor("│")}`,
     );
     output.push(emptyLine);
 
-    // Navigation section
     output.push(
       ` ${borderColor("│")} ${chalk.bold("Navigation")}${" ".repeat(innerWidth - 11)}${borderColor("│")}`,
     );
@@ -55,7 +45,6 @@ export class HelpOverlay implements Component {
     );
     output.push(emptyLine);
 
-    // Chat section
     output.push(
       ` ${borderColor("│")} ${chalk.bold("Chat")}${" ".repeat(innerWidth - 5)}${borderColor("│")}`,
     );
@@ -67,7 +56,6 @@ export class HelpOverlay implements Component {
     );
     output.push(emptyLine);
 
-    // Tasks section
     output.push(
       ` ${borderColor("│")} ${chalk.bold("Tasks")}${" ".repeat(innerWidth - 6)}${borderColor("│")}`,
     );
@@ -82,7 +70,6 @@ export class HelpOverlay implements Component {
     );
     output.push(emptyLine);
 
-    // Commands section
     output.push(
       ` ${borderColor("│")} ${chalk.bold("Commands")}${" ".repeat(innerWidth - 9)}${borderColor("│")}`,
     );
@@ -94,14 +81,12 @@ export class HelpOverlay implements Component {
     );
     output.push(emptyLine);
 
-    // Fill remaining height
     const usedLines = output.length;
-    const remainingLines = height - usedLines - 2; // -2 for bottom content
+    const remainingLines = height - usedLines - 2;
     for (let i = 0; i < remainingLines; i++) {
       output.push(emptyLine);
     }
 
-    // Footer
     output.push(
       ` ${borderColor("│")} ${chalk.dim("Press ? or Esc to close")}${" ".repeat(Math.max(0, innerWidth - 24))}${borderColor("│")}`,
     );

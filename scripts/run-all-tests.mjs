@@ -781,6 +781,16 @@ function taskBelongsToShard(taskKey, shardCfg) {
   return bucket === shardCfg.index - 1;
 }
 
+function taskMatchesSelection(label, scriptName, taskKey) {
+  if (packageFilters.some((rx) => !rx.test(label))) {
+    return false;
+  }
+  if (scriptFilter && !scriptFilter.test(scriptName)) {
+    return false;
+  }
+  return taskBelongsToShard(taskKey, shardConfig);
+}
+
 // ---------------------------------------------------------------------------
 // Script runner
 // ---------------------------------------------------------------------------
@@ -834,6 +844,85 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
   });
 }
 
+function runDirectTask(label, command, args, cwd, extraEnv = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: {
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
+        PWD: cwd,
+        ...extraEnv,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let capturedOutput = "";
+
+    child.stdout?.on("data", (chunk) => {
+      process.stdout.write(chunk);
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
+    });
+    child.stderr?.on("data", (chunk) => {
+      process.stderr.write(chunk);
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) {
+        resolve({ skipped: false });
+        return;
+      }
+      if (outputIndicatesNoTests(capturedOutput)) {
+        resolve({ skipped: true });
+        return;
+      }
+      reject(
+        new Error(
+          `${label} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
+        ),
+      );
+    });
+  });
+}
+
+async function runRepoVitestE2E(extraEnv = {}) {
+  const configName =
+    TEST_LANE === "post-merge" ? "live-e2e.config.ts" : "e2e.config.ts";
+  const runVitestScript = path
+    .relative(outerRepoRoot, path.join(repoRoot, "scripts", "run-vitest.mjs"))
+    .split(path.sep)
+    .join("/");
+  const configPath = path
+    .relative(outerRepoRoot, path.join(repoRoot, "test", "vitest", configName))
+    .split(path.sep)
+    .join("/");
+  const label = `repo#vitest:${configName}`;
+
+  console.log(`[eliza-test] START ${label}`);
+  const startedAt = Date.now();
+  const result = await runDirectTask(
+    label,
+    "node",
+    [runVitestScript, "run", "--config", configPath],
+    outerRepoRoot,
+    extraEnv,
+  );
+  const durationMs = Date.now() - startedAt;
+  if (result.skipped) {
+    console.log(`[eliza-test] SKIP ${label} (${durationMs}ms, no test files found)`);
+    return;
+  }
+  console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
+}
+
 // ---------------------------------------------------------------------------
 // Cloud step
 // ---------------------------------------------------------------------------
@@ -846,14 +935,27 @@ function runCloudTests() {
       resolve({ skipped: true });
       return;
     }
-    console.log("[eliza-test] START cloud#test");
+    const cloudPackageJsonPath = path.join(cloudDir, "package.json");
+    const cloudPackageJson = JSON.parse(
+      fs.readFileSync(cloudPackageJsonPath, "utf8"),
+    );
+    const scriptName = onlyFlag === "e2e" ? "test:e2e:all" : "test";
+    if (!cloudPackageJson.scripts?.[scriptName]) {
+      console.log(`[eliza-test] SKIP cloud#${scriptName} (script not found)`);
+      resolve({ skipped: true });
+      return;
+    }
+
+    console.log(`[eliza-test] START cloud#${scriptName}`);
     const startedAt = Date.now();
-    const child = spawn(bunCmd, ["run", "test"], {
+    const child = spawn(bunCmd, ["run", scriptName], {
       cwd: cloudDir,
       env: {
         ...testRuntimeEnv,
         NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
         PWD: cloudDir,
+        ...buildLaneEnv(),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -872,18 +974,18 @@ function runCloudTests() {
     child.on("exit", (code, signal) => {
       const durationMs = Date.now() - startedAt;
       if (code === 0) {
-        console.log(`[eliza-test] PASS cloud#test (${durationMs}ms)`);
+        console.log(`[eliza-test] PASS cloud#${scriptName} (${durationMs}ms)`);
         resolve({ skipped: false });
         return;
       }
       if (outputIndicatesNoTests(capturedOutput)) {
-        console.log(`[eliza-test] SKIP cloud#test (${durationMs}ms, no test files found)`);
+        console.log(`[eliza-test] SKIP cloud#${scriptName} (${durationMs}ms, no test files found)`);
         resolve({ skipped: true });
         return;
       }
       reject(
         new Error(
-          `cloud#test failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
+          `cloud#${scriptName} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
         ),
       );
     });
@@ -921,15 +1023,9 @@ for (const packageJsonPath of packageJsonPaths) {
         continue;
       }
     }
-    if (packageFilters.some((rx) => !rx.test(label))) {
-      continue;
-    }
-    if (scriptFilter && !scriptFilter.test(scriptName)) {
-      continue;
-    }
     // Shard filtering: deterministic by relative package dir hash. Keeps a
     // package's `test` + `test:e2e` tasks colocated in the same shard.
-    if (!taskBelongsToShard(relativeDir, shardConfig)) {
+    if (!taskMatchesSelection(label, scriptName, relativeDir)) {
       continue;
     }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
@@ -952,6 +1048,16 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
+  }
+}
+
+if (onlyFlag !== "test") {
+  const repoE2ELabel = "repo (.)#test:e2e";
+  if (!started && repoE2ELabel.includes(startAt)) {
+    started = true;
+  }
+  if (started && taskMatchesSelection(repoE2ELabel, "test:e2e", "repo:e2e")) {
+    await runRepoVitestE2E(buildLaneEnv());
   }
 }
 

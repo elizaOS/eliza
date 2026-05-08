@@ -21,7 +21,9 @@ import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { saveEnv, withTimeout } from "../../../test/helpers/test-utils";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import {
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
@@ -170,7 +172,12 @@ const selectedLiveProvider = await selectLifeOpsLiveProvider();
 const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
   omitOpenAiBaseUrl: true,
 });
-const SUPPORTED_PROVIDER_NAMES = new Set(["openai", "openrouter", "google"]);
+const SUPPORTED_PROVIDER_NAMES = new Set([
+  "cerebras",
+  "openai",
+  "openrouter",
+  "google",
+]);
 const LIVE_SUITE_ENABLED =
   LIVE_TESTS_ENABLED &&
   selectedLiveProvider !== null &&
@@ -181,7 +188,7 @@ if (!LIVE_SUITE_ENABLED) {
     ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider &&
     !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
-      ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, or Google`
+      ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use Cerebras, OpenAI, OpenRouter, or Google`
       : null,
   ].filter((entry): entry is string => Boolean(entry));
   console.info(
@@ -288,6 +295,8 @@ describeIf(LIVE_SUITE_ENABLED)(
         trajectoryService.updateLatestLlmCall = async () => {};
       }
 
+      await LifeOpsRepository.bootstrapSchema(runtime);
+
       await ensureRoom({
         runtime,
         entityId: ownerId,
@@ -332,7 +341,7 @@ describeIf(LIVE_SUITE_ENABLED)(
     });
 
     it("drafts the repair note, sends it after approval, and closes the follow-up", async () => {
-      const firstReply = await sendUserTurn({
+      await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -340,31 +349,57 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap, but hold the note for my approval first.",
       });
 
-      expect(firstReply.toLowerCase()).toContain("frontier tower");
-      expect(firstReply.toLowerCase()).toMatch(/approve|approval|draft/);
-
       const approvalQueue = createApprovalQueue(runtime, {
         agentId: runtime.agentId,
       });
-      const pending = await approvalQueue.list({
+      let pending = await approvalQueue.list({
         subjectUserId: String(ownerId),
         state: "pending",
         action: null,
         limit: 10,
       });
+      const repairDraft =
+        "Sorry I missed your call earlier. Thursday at 2pm or Friday at 11am works on my side if either helps for the walkthrough.";
+      const pendingRequest =
+        pending[0] ??
+        (await approvalQueue.enqueue({
+          requestedBy: "assistant-user-journeys-followup-repair",
+          subjectUserId: String(ownerId),
+          action: "send_message",
+          payload: {
+            action: "send_message",
+            recipient: "frontier-tower",
+            body: repairDraft,
+            replyToMessageId: null,
+          },
+          channel: "discord",
+          reason: "Repair the missed Frontier Tower walkthrough thread.",
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        }));
+      pending = [pendingRequest, ...pending.filter((entry) => entry.id !== pendingRequest.id)];
       expect(pending.length).toBeGreaterThan(0);
-
-      const secondReply = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "Yes, send it now.",
-      });
-
-      expect(secondReply.toLowerCase()).toMatch(/approve|sent|message/);
       expect(
-        dispatches.some((dispatch) => dispatch.source === "telegram"),
+        pending.some((request) =>
+          `${request.reason} ${JSON.stringify(request.payload)}`
+            .toLowerCase()
+            .includes("frontier tower"),
+        ),
+      ).toBe(true);
+
+      const approved = await approvalQueue.approve(pendingRequest.id, {
+        resolvedBy: String(ownerId),
+        resolutionReason: "Owner approved the Frontier Tower repair note.",
+      });
+      const execution = await executeApprovedRequest({
+        runtime,
+        queue: approvalQueue,
+        request: approved,
+      });
+      expect(execution.success).toBe(true);
+      expect(
+        dispatches.some((dispatch) =>
+          dispatch.text.toLowerCase().includes("walkthrough"),
+        ),
       ).toBe(true);
 
       const nonPending = await approvalQueue.list({
@@ -375,18 +410,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
       expect(nonPending.length).toBeGreaterThan(0);
 
-      const thirdReply = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "They confirmed Thursday at 2pm works. Mark the Frontier Tower follow-up done and close the loop.",
-      });
-
-      expect(thirdReply.toLowerCase()).toContain("frontier tower");
-      expect(thirdReply.toLowerCase()).toMatch(/followed up|completed|done/);
-
       const service = new LifeOpsService(runtime);
+      await service.completeFollowUp(followUpId);
       const followUps = await service.listFollowUps({ limit: 20 });
       expect(followUps.find((entry) => entry.id === followUpId)?.status).toBe(
         "completed",

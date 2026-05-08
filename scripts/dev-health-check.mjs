@@ -32,6 +32,8 @@ const DEFAULT_API_PORT = 31337;
 const DEFAULT_INITIAL_PROBE_DELAY_MS = 8000;
 const POLL_INTERVAL_MS = 1000;
 const FETCH_TIMEOUT_MS = 3000;
+const FINAL_PROBE_RETRIES = 3;
+const FINAL_PROBE_RETRY_DELAY_MS = 1000;
 
 function parseArgs(argv) {
   const options = {
@@ -261,6 +263,12 @@ function isSuspiciousLogLine(line) {
   if (/\b(EADDRINUSE|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_[A-Z0-9_]+)\b/.test(line)) {
     return true;
   }
+  if (/\bPort \d+ is already in use\b/i.test(line)) {
+    return true;
+  }
+  if (/\bRetrying with dynamic port\b/i.test(line)) {
+    return true;
+  }
   if (/\b(timed out|timeout)\b/i.test(line)) {
     return true;
   }
@@ -387,6 +395,13 @@ function apiHealthProblem(result) {
   }
   if (typeof body.database === "string" && /error|failed/i.test(body.database)) {
     return `database=${body.database}`;
+  }
+  if (
+    body.plugins &&
+    typeof body.plugins === "object" &&
+    Number(body.plugins.failed) > 0
+  ) {
+    return `plugins.failed=${body.plugins.failed}`;
   }
   return null;
 }
@@ -534,6 +549,22 @@ async function run() {
     await wait(POLL_INTERVAL_MS);
   }
 
+  let finalProbe =
+    probes.at(-1) ?? (await probeStack(options.uiPort, options.apiPort));
+  for (
+    let attempt = 1;
+    attempt <= FINAL_PROBE_RETRIES &&
+    (!finalProbe.uiReady || !finalProbe.apiReady || finalProbe.apiProblem);
+    attempt += 1
+  ) {
+    await wait(FINAL_PROBE_RETRY_DELAY_MS);
+    finalProbe = await probeStack(options.uiPort, options.apiPort);
+    probes.push(finalProbe);
+    console.log(
+      `[dev-health-check] final confirmation ${attempt}/${FINAL_PROBE_RETRIES}: ${summarizeProbe(finalProbe)}`,
+    );
+  }
+
   await terminateProcessTree(child);
 
   const logText = allLogText(logChunks);
@@ -541,8 +572,6 @@ async function run() {
   writeFileSync(logPath, logText, "utf8");
 
   const logAnalysis = analyzeLogs(logText);
-  const finalProbe =
-    probes.at(-1) ?? (await probeStack(options.uiPort, options.apiPort));
   const uiEverReady = probes.some((probe) => probe.uiReady);
   const apiEverReady = probes.some((probe) => probe.apiReady);
   const exitedEarly = Boolean(

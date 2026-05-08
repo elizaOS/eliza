@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -101,6 +102,7 @@ class ElizaBridgeSolanaExplorer:
         self.strategy = ExplorationStrategy(max_messages=max_messages)
         self._client = client or ElizaClient()
         self._initialized = False
+        self._server_mgr = None
         self.metrics: dict = {
             "model": model_name,
             "run_index": run_index,
@@ -122,6 +124,16 @@ class ElizaBridgeSolanaExplorer:
 
     def _ensure_ready(self) -> None:
         if not self._initialized:
+            if not os.environ.get("ELIZA_BENCH_URL"):
+                from eliza_adapter.server_manager import ElizaServerManager
+
+                self._server_mgr = ElizaServerManager()
+                self._server_mgr.start()
+                os.environ["ELIZA_BENCH_TOKEN"] = self._server_mgr.token
+                os.environ.setdefault(
+                    "ELIZA_BENCH_URL", f"http://localhost:{self._server_mgr.port}"
+                )
+                self._client = self._server_mgr.client
             self._client.wait_until_ready(timeout=120)
             try:
                 self._client.reset(task_id=self.run_id, benchmark="solana")

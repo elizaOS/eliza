@@ -293,7 +293,7 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
       : { schema: responseSchema };
 
   return Output.object({
-    schema: jsonSchema(schemaOptions.schema as JSONSchema7),
+    schema: jsonSchema(sanitizeJsonSchema(schemaOptions.schema, true)),
     ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
     ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
   }) as NativeOutput;
@@ -566,6 +566,16 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
       properties[key] = sanitizeJsonSchema(value);
     }
     sanitized.properties = properties;
+
+    const propertyKeys = Object.keys(properties);
+    const existingRequired = Array.isArray(sanitized.required)
+      ? sanitized.required.filter((key): key is string => typeof key === "string")
+      : [];
+    sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+  }
+
+  if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+    sanitized.additionalProperties = false;
   }
 
   if (sanitized.items) {
