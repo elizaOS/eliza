@@ -540,10 +540,9 @@ function toOnboardingConnectionFromSelection(
  * Sets `agents.defaults.subscriptionProvider` so the task-agent orchestrator
  * knows which subscription is active.
  *
- * For providers whose tokens can be used directly by the runtime (Codex),
- * also sets `agents.defaults.model.primary`.  For Anthropic subscriptions,
- * `model.primary` is NOT set because those tokens are restricted to the
- * Claude Code CLI (TOS).
+ * For providers with a runtime model-provider plugin, also sets
+ * `agents.defaults.model.primary`. Anthropic subscriptions are restricted to
+ * Claude Code CLI (TOS), so `model.primary` is NOT set for that provider.
  *
  * Mutates `config` in place.
  */
@@ -565,9 +564,9 @@ export function applySubscriptionProviderConfig(
   if (modelProvider) {
     defaults.subscriptionProvider = subscriptionKey;
 
-    // Only set model.primary for providers whose tokens work with the
-    // runtime.  Anthropic subscription tokens are restricted to Claude
-    // Code CLI (TOS) so the runtime cannot use them for LLM inference.
+    // Only set model.primary for providers with a runtime model-provider
+    // plugin. Anthropic subscription tokens are restricted to Claude Code
+    // CLI (TOS), so the runtime cannot use them for LLM inference.
     const runtimeApplicable = subscriptionKey !== "anthropic-subscription";
     if (runtimeApplicable) {
       defaults.model = { ...defaults.model, primary: modelProvider };

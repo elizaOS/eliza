@@ -67,7 +67,7 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
 /** Maps subscription provider IDs to their model provider short names. */
 export const SUBSCRIPTION_PROVIDER_MAP: Record<SubscriptionProvider, string> = {
   "anthropic-subscription": "anthropic",
-  "openai-codex": "openai",
+  "openai-codex": "codex-cli",
 };
 
 export interface StoredCredentials {
