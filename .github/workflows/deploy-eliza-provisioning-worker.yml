@@ -13,7 +13,9 @@ on:
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
+      - 'cloud/packages/scripts/daemons/agent-router.ts'
       - 'cloud/packages/scripts/eliza-provisioning-worker.service'
+      - 'cloud/packages/scripts/eliza-agent-router.service'
       - 'cloud/packages/lib/services/provisioning-jobs.ts'
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
@@ -118,15 +120,19 @@ jobs:
             done
             cd /opt/eliza
 
-            # Install/refresh the systemd unit.
+            # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
               cloud/packages/scripts/eliza-provisioning-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
+            sudo install -m 0644 \
+              cloud/packages/scripts/eliza-agent-router.service \
+              /etc/systemd/system/eliza-agent-router.service
             sudo systemctl daemon-reload
-            sudo systemctl enable "$SYSTEMD_UNIT"
+            sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
 
             sudo systemctl restart "$SYSTEMD_UNIT"
-            echo "=== Restart issued; waiting for first poll cycle ==="
+            sudo systemctl restart eliza-agent-router.service
+            echo "=== Restart issued for both daemons ==="
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
@@ -161,7 +167,20 @@ jobs:
                 NOW_SEC=$(awk '{print int($1)}' /proc/uptime)
                 AGE=$(( NOW_SEC - UPTIME_SEC ))
                 if [ "$AGE" -ge "$STABLE_THRESHOLD_SEC" ]; then
-                  echo "Worker active and stable for ${AGE}s (>= ${STABLE_THRESHOLD_SEC}s threshold) on attempt $attempt."
+                  if ! sudo systemctl is-active --quiet eliza-agent-router.service; then
+                    echo "::error::eliza-agent-router.service is not active."
+                    sudo systemctl status eliza-agent-router.service --no-pager || true
+                    sudo journalctl -u eliza-agent-router.service -n 50 --no-pager || true
+                    exit 1
+                  fi
+                  ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
+                  : "${ROUTER_PORT:=3458}"
+                  if ! curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
+                    echo "::error::eliza-agent-router /healthz did not respond on port ${ROUTER_PORT}."
+                    sudo journalctl -u eliza-agent-router.service -n 50 --no-pager || true
+                    exit 1
+                  fi
+                  echo "Both daemons active and stable (worker ${AGE}s, router /healthz OK) on attempt $attempt."
                   exit 0
                 fi
                 echo "Health check attempt $attempt/18: active but only ${AGE}s old, waiting for stability..."
