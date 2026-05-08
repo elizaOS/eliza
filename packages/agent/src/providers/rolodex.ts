@@ -11,8 +11,7 @@ import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
-} from "../services/relationships-graph.js";
-import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
+} from "@elizaos/core/services/relationships-graph-builder";
 
 const MAX_CONTACTS = 10;
 
@@ -66,9 +65,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = (await resolveRelationshipsGraphService(
-        runtime,
-      )) as RelationshipsGraphService | null;
+      const graphService = runtime.getService(
+        "relationships",
+      ) as unknown as RelationshipsGraphService | null;
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

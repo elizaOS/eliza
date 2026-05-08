@@ -10,18 +10,18 @@ import {
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import {
   type CloudWalletDescriptor,
   type CloudWalletProvider,
   ElizaCloudClient,
-} from "../cloud/bridge-client.js";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+} from "@elizaos/plugin-elizacloud/cloud/bridge-client";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
 import {
   getOrCreateClientAddressKey,
   persistCloudWalletCache,
   provisionCloudWalletsBestEffort,
-} from "../cloud/cloud-wallet.js";
+} from "@elizaos/plugin-elizacloud/cloud/cloud-wallet";
 import type { ElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";

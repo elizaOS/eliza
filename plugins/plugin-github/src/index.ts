@@ -23,9 +23,11 @@ import type http from "node:http";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { issueOpAction } from "./actions/issue-op.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { prOpAction } from "./actions/pr-op.js";
+import { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
@@ -58,6 +60,7 @@ export {
 } from "./actions/notification-triage.js";
 export { prOpAction } from "./actions/pr-op.js";
 export * from "./accounts.js";
+export { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";
 
@@ -91,6 +94,18 @@ export const githubPlugin: Plugin = {
   routes: githubRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerGitHubSearchCategory(runtime);
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createGitHubConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:github",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register GitHub provider with ConnectorAccountManager",
+      );
+    }
   },
 };
 

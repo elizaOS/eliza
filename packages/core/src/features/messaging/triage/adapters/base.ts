@@ -217,7 +217,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 
 /**
  * Pure in-memory filter shared by adapters that lack native search and by
- * the cross-connector SEARCH_MESSAGES action when it merges results.
+ * the cross-connector MESSAGE action when it merges results.
  */
 export function filterInMemory(
 	messages: MessageRef[],

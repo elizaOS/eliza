@@ -497,37 +497,37 @@ declare module "./client-base" {
     ): Promise<{ connectors: Record<string, ConnectorConfig> }>;
     listConnectorAccounts(
       provider: string,
-      connectorId: string,
+      connectorId?: string,
     ): Promise<ConnectorAccountsListResponse>;
     addConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       body?: ConnectorAccountCreateInput,
     ): Promise<ConnectorAccountActionResult>;
     patchConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       accountId: string,
       body: ConnectorAccountUpdateInput,
     ): Promise<ConnectorAccountRecord>;
     testConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       accountId: string,
     ): Promise<ConnectorAccountActionResult>;
     refreshConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       accountId: string,
     ): Promise<ConnectorAccountActionResult>;
     deleteConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       accountId: string,
     ): Promise<ConnectorAccountActionResult>;
     makeDefaultConnectorAccount(
       provider: string,
-      connectorId: string,
+      connectorId: string | undefined,
       accountId: string,
     ): Promise<ConnectorAccountActionResult>;
     listConnectorAccountAuditEvents(

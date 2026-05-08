@@ -35,8 +35,8 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "CALENDAR",
-          "SEND_DRAFT",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
         ],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
@@ -58,16 +58,16 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "SEND_DRAFT", "TRIAGE_MESSAGES"],
+      actionName: ["CALENDAR", "MESSAGE", "MESSAGE"],
     },
     {
       type: "approvalRequestExists",
       expected: true,
-      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "CALENDAR"],
+      actionName: ["MESSAGE", "MESSAGE", "CALENDAR"],
     },
     {
       type: "noSideEffectOnReject",
-      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",
@@ -75,8 +75,8 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: [
           "CALENDAR",
-          "SEND_DRAFT",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
         ],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
@@ -88,7 +88,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "bulk reschedule is queued behind a single approval covering the partnership cohort",
-        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "CALENDAR"],
+        actionName: ["MESSAGE", "MESSAGE", "CALENDAR"],
       }),
     },
     {

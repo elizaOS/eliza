@@ -57,11 +57,11 @@ function fallbackReplyBody(original: MessageRef | undefined): string {
 
 /**
  * One-shot reply: drafts a reply, then either sends immediately or hands off
- * to the registered SendPolicy for owner approval. Equivalent to DRAFT_REPLY
- * followed by SEND_DRAFT, collapsed into a single agent step.
+ * to the registered SendPolicy for owner approval. Equivalent to MESSAGE
+ * followed by MESSAGE, collapsed into a single agent step.
  */
 export const respondToMessageAction: Action = {
-	name: "RESPOND_TO_MESSAGE",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
@@ -102,7 +102,7 @@ export const respondToMessageAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Replied.",
-					action: "RESPOND_TO_MESSAGE",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -163,7 +163,7 @@ export const respondToMessageAction: Action = {
 					`[RespondToMessage] policy hold: draftId=${record.draftId} requestId=${enq.requestId}`,
 				);
 				if (callback) {
-					await callback({ text, action: "RESPOND_TO_MESSAGE" });
+					await callback({ text, action: "MESSAGE" });
 				}
 				return {
 					success: false,
@@ -188,7 +188,7 @@ export const respondToMessageAction: Action = {
 			`[RespondToMessage] sent draftId=${sent.draftId} externalId=${sent.sentExternalId ?? "unknown"}`,
 		);
 		if (callback) {
-			await callback({ text, action: "RESPOND_TO_MESSAGE" });
+			await callback({ text, action: "MESSAGE" });
 		}
 		return {
 			success: true,

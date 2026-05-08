@@ -204,6 +204,14 @@ export const appLaunchSchema = z.object({
   uiExtension: z.object({ detailPanelId: z.string() }).optional(),
   curatedSlug: z.string().optional(),
   routePlugin: appRoutePluginSchema.optional(),
+  /**
+   * If true, the app declares itself as the default landing tab.
+   * Mirrors `package.json#elizaos.app.mainTab`. Consumed by
+   * `getMainTabApp()` in this package to compute the shell's landing
+   * tab. Exactly one installed app should set this; multiple declarers
+   * are resolved deterministically by alphabetic id.
+   */
+  mainTab: z.boolean().optional(),
 });
 
 export type AppLaunch = z.infer<typeof appLaunchSchema>;

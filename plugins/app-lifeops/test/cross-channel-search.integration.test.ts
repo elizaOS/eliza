@@ -3,7 +3,7 @@
  *
  * Boots a real AgentRuntime on PGLite, seeds messages into five rooms
  * (each pinned to a different platform via `source`), runs the
- * SEARCH_MESSAGES action (with direct query — no LLM required),
+ * MESSAGE action (with direct query — no LLM required),
  * and asserts merged citations across all five platforms.
  *
  * Run:
@@ -209,7 +209,7 @@ describe("cross-channel-search WS1 integration", () => {
     expect(gmailStatus).toBeTruthy();
   }, 120_000);
 
-  it("SEARCH_MESSAGES action returns merged clipboard-ready payload with citations", async () => {
+  it("MESSAGE action returns merged clipboard-ready payload with citations", async () => {
     const handler = searchAcrossChannelsAction.handler;
     if (!handler) throw new Error("searchAcrossChannelsAction.handler missing");
 

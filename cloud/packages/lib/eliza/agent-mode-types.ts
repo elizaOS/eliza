@@ -63,10 +63,11 @@ export function isValidAgentModeConfig(config: unknown): config is AgentModeConf
 
 /**
  * Plugin sets for each agent mode
+ * The single backend chat mode does not load mode-owned cloud plugins.
  * Conditional plugins are injected separately from character settings.
  */
 export const AGENT_MODE_PLUGINS = {
-  [AgentMode.CHAT]: ["@elizaos/plugin-elizacloud"],
+  [AgentMode.CHAT]: [],
 } as const;
 
 /**

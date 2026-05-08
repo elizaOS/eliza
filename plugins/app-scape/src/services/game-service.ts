@@ -31,7 +31,7 @@ import {
 import {
   formatScapeRouterPrompt,
   resolveScapeRouterAction,
-} from "../actions/router-definitions.js";
+} from "./autonomous-loop-prompt.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { inventoryProvider } from "../providers/inventory.js";

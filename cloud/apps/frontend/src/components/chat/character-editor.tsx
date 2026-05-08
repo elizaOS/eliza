@@ -15,11 +15,8 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";
 import type { PreUploadedFile } from "@/lib/types/knowledge";
-import {
-  CharacterForm,
-  type FormTab,
-} from "../character-builder/character-form";
-import { JsonEditor } from "../character-builder/json-editor";
+import { CharacterForm, type FormTab } from "../agent-editor/character-form";
+import { JsonEditor } from "../agent-editor/json-editor";
 import { PluginsTab } from "./plugins-tab";
 import { UploadsTab } from "./uploads-tab";
 
@@ -115,7 +112,7 @@ export function CharacterEditor({
             {showJson ? (
               <h2 className="text-xl font-bold text-white">JSON Editor</h2>
             ) : (
-              <h2 className="text-xl font-bold text-white">Agent Builder</h2>
+              <h2 className="text-xl font-bold text-white">Agent Editor</h2>
             )}
           </div>
           <div className="flex items-center justify-between w-full sm:w-auto">

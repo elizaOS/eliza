@@ -1,12 +1,12 @@
 /**
- * Live E2E tests for knowledge integration.
+ * Live E2E tests for document integration.
  *
- * These tests use a real runtime, real embeddings, and a real LLM-backed
- * chat route for retrieval.
+ * These tests use a real runtime, real embeddings, and a real LLM-backed chat
+ * route for retrieval.
  */
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
   createConversation,
@@ -38,7 +38,7 @@ const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 const DOCUMENT_CODEWORD = "VELVET-MOON-4821";
 
-type StartedDocumentsServer = {
+type StartedDocumentServer = {
   close: () => Promise<void>;
   port: number;
 };
@@ -48,9 +48,9 @@ async function askForExactDocumentCodeword(
   conversationId: string,
 ): Promise<string> {
   const prompts = [
-    "What is the exact deployment codeword from the uploaded knowledge document? Reply with only the exact codeword, including hyphens and digits. Do not execute any actions.",
-    "Search the uploaded knowledge document and copy the exact string from the sentence 'The deployment codeword is ...'. Reply with the codeword only. Do not update any profile or entity.",
-    "Return only the exact uppercase-and-hyphen codeword from knowledge. No actions. No explanation.",
+    "What is the exact deployment codeword from the uploaded document? Reply with only the exact codeword, including hyphens and digits. Do not execute any actions.",
+    "Search the uploaded document and copy the exact string from the sentence 'The deployment codeword is ...'. Reply with the codeword only. Do not update any profile or entity.",
+    "Return only the exact uppercase-and-hyphen codeword from documents. No actions. No explanation.",
   ];
 
   let lastText = "";
@@ -74,7 +74,7 @@ async function askForExactDocumentCodeword(
   return lastText;
 }
 
-async function startDocumentsServer(): Promise<StartedDocumentsServer> {
+async function startDocumentServer(): Promise<StartedDocumentServer> {
   const runtimeResult = await createRealTestRuntime({
     withLLM: true,
     preferredProvider: LIVE_PROVIDER?.name,
@@ -97,19 +97,19 @@ async function startDocumentsServer(): Promise<StartedDocumentsServer> {
   };
 }
 
-describeIf(CAN_RUN)("Live: Documents management flow", () => {
-  let server: StartedDocumentsServer | null = null;
+describeIf(CAN_RUN)("Live: document management flow", () => {
+  let server: StartedDocumentServer | null = null;
   let uploadedDocumentId: string | null = null;
 
   beforeAll(async () => {
-    server = await startDocumentsServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
     await server?.close();
   });
 
-  it("step 1: gets knowledge stats", async () => {
+  it("step 1: gets document stats", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
@@ -123,11 +123,11 @@ describeIf(CAN_RUN)("Live: Documents management flow", () => {
 
   it("step 2: uploads a text document", async () => {
     const testContent = `
-# Test Knowledge Document
+# Test Document
 
 The deployment codeword is ${DOCUMENT_CODEWORD}.
 
-This document verifies that knowledge upload, semantic search, and chat
+This document verifies that document upload, semantic search, and chat
 retrieval all use the real runtime path.
 
 RAG retrieval should answer questions about this codeword from the document.
@@ -189,7 +189,7 @@ RAG retrieval should answer questions about this codeword from the document.
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      `/api/documents/${encodeURIComponent(uploadedDocumentId ?? /fragments"")}`,
+      `/api/documents/fragments/${encodeURIComponent(uploadedDocumentId ?? "")}`,
     );
 
     expect(status).toBe(200);
@@ -203,7 +203,7 @@ RAG retrieval should answer questions about this codeword from the document.
     ).toBe(true);
   });
 
-  it("step 6: searches knowledge with semantic matching", async () => {
+  it("step 6: searches documents with semantic matching", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
@@ -227,13 +227,13 @@ RAG retrieval should answer questions about this codeword from the document.
     }
   });
 
-  it("step 7: chat retrieves the uploaded knowledge through the real runtime", async () => {
+  it("step 7: chat retrieves the uploaded document through the real runtime", async () => {
     const conversation = await createConversation(server?.port ?? 0, {
-      title: "Knowledge retrieval",
+      title: "Document retrieval",
     });
     const text = await askForExactDocumentCodeword(
       server?.port ?? 0,
-      conversationId,
+      conversation.id,
     );
     expect(text).toContain(DOCUMENT_CODEWORD);
   }, 120_000);
@@ -261,10 +261,10 @@ RAG retrieval should answer questions about this codeword from the document.
 });
 
 describeIf(CAN_RUN)("Live: URL import validation", () => {
-  let server: StartedDocumentsServer | null = null;
+  let server: StartedDocumentServer | null = null;
 
   beforeAll(async () => {
-    server = await startDocumentsServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
@@ -296,18 +296,18 @@ describeIf(CAN_RUN)("Live: URL import validation", () => {
   });
 });
 
-describeIf(CAN_RUN)("Live: empty knowledge base behavior", () => {
-  let server: StartedDocumentsServer | null = null;
+describeIf(CAN_RUN)("Live: empty document store behavior", () => {
+  let server: StartedDocumentServer | null = null;
 
   beforeAll(async () => {
-    server = await startDocumentsServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
     await server?.close();
   });
 
-  it("knowledge stats work when empty", async () => {
+  it("document stats work when empty", async () => {
     const { data: listData } = await req(
       server?.port ?? 0,
       "GET",

@@ -161,6 +161,13 @@ export class ClientBase {
   twitterClient: Client;
   accountId: string;
   runtime: IAgentRuntime;
+  /**
+   * Connector account this client represents. Used to stamp Memory.metadata
+   * and routing context for inbound X traffic. Defaults to "default" when the
+   * plugin is running in single-account mode; resolved from the connector
+   * account manager via {@link resolveRequestedXAccountId} otherwise.
+   */
+  accountId = "default";
   lastCheckedTweetId: bigint | null = null;
   temperature = 0.5;
 

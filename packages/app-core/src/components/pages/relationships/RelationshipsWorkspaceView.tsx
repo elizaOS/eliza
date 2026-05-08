@@ -20,6 +20,7 @@ import { RelationshipsCandidateMergesPanel } from "./RelationshipsCandidateMerge
 import {
   RelationshipsConnectionsPanel,
   RelationshipsConversationsPanel,
+  RelationshipsDocumentsPanel,
   RelationshipsFactsPanel,
   RelationshipsPersonSummaryPanel,
   RelationshipsRelevantMemoriesPanel,
@@ -335,6 +336,9 @@ export function RelationshipsWorkspaceView({
               </div>
               <RelationshipsRelevantMemoriesPanel person={detail} />
               <RelationshipsUserPreferencesPanel person={detail} />
+              <div className="xl:col-span-2">
+                <RelationshipsDocumentsPanel person={detail} />
+              </div>
             </div>
           ) : null}
 

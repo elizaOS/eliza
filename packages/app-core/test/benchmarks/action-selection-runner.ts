@@ -154,7 +154,7 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["PROPOSE_MEETING_TIMES", "CALENDAR"],
   ["CHECK_AVAILABILITY", "CALENDAR"],
   ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
-  ["SEND_MESSAGE", "SEND_DRAFT"],
+  ["SEND_MESSAGE", "MESSAGE"],
   ["DISPATCH_DRAFT", "SEND_DRAFT"],
   ["CONFIRM_AND_SEND", "SEND_DRAFT"],
   ["FILE_ACTION", "COMPUTER_USE"],
@@ -217,7 +217,14 @@ export function normalizeActionName(name: string | null | undefined): string | n
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
-  return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  const normalized = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
+}
+
+function canonicalActionName(name: string | null | undefined): string | null {
+  const normalized = normalizeActionName(name);
+  if (normalized === null) return null;
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 
 function canonicalActionName(name: string | null | undefined): string | null {
@@ -340,7 +347,12 @@ export function pickObservedAction(
       return true;
     })
     .map((record) => record.actionName)
-    .filter((name) => typeof name === "string" && name.trim().length > 0);
+    .filter(
+      (name) =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        !isNonSelectionActionName(name),
+    );
   return (
     firstMatchingActionName(names, expected, acceptable) ??
     names.find(
@@ -499,39 +511,39 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
     parsed.name ??
     parsed.actionName;
   const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
-	const names = actionValues
-		.flatMap((action) => {
-			if (typeof action === "string") {
-				return action.split(",");
-			}
-			if (action && typeof action === "object") {
-				const record = action as Record<string, unknown>;
-				const rawFunction = record.function as Record<string, unknown> | undefined;
-				const input =
-					record.input && typeof record.input === "object"
-						? (record.input as Record<string, unknown>)
-						: undefined;
-				const rawName =
-					record.name ??
-					record.action ??
-					record.actionName ??
-					record.toolName ??
-					rawFunction?.name;
-				const canonicalRawName =
-					typeof rawName === "string" ? canonicalActionName(rawName) : null;
-				if (canonicalRawName === "CALL_ACTION") {
-					const nestedName =
-						input?.actionName ??
-						input?.name ??
-						(record.actionParameters &&
-						typeof record.actionParameters === "object"
-							? (record.actionParameters as Record<string, unknown>).actionName
-							: undefined);
-					return typeof nestedName === "string" ? [nestedName] : [];
-				}
-				return typeof rawName === "string" ? [rawName] : [];
-			}
-			return [];
+  const names = actionValues
+    .flatMap((action) => {
+      if (typeof action === "string") {
+        return action.split(",");
+      }
+      if (action && typeof action === "object") {
+        const record = action as Record<string, unknown>;
+        const rawFunction = record.function as Record<string, unknown> | undefined;
+        const input =
+          record.input && typeof record.input === "object"
+            ? (record.input as Record<string, unknown>)
+            : undefined;
+        const rawName =
+          record.name ??
+          record.action ??
+          record.actionName ??
+          record.toolName ??
+          rawFunction?.name;
+        const canonicalRawName =
+          typeof rawName === "string" ? canonicalActionName(rawName) : null;
+        if (canonicalRawName === "CALL_ACTION") {
+          const nestedName =
+            input?.actionName ??
+            input?.name ??
+            (record.actionParameters &&
+            typeof record.actionParameters === "object"
+              ? (record.actionParameters as Record<string, unknown>).actionName
+              : undefined);
+          return typeof nestedName === "string" ? [nestedName] : [];
+        }
+        return typeof rawName === "string" ? [rawName] : [];
+      }
+      return [];
     })
     .map((name) => canonicalActionName(name))
     .filter((name): name is string => name !== null);

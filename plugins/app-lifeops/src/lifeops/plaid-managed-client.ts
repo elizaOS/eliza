@@ -14,7 +14,7 @@
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent/cloud/base-url";
+} from "@elizaos/plugin-elizacloud/cloud/base-url";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 const PLAID_REQUEST_TIMEOUT_MS = 30_000;

@@ -49,6 +49,14 @@ export interface RegistryAppMeta {
    * the client gates the render.
    */
   visibleInAppStore?: boolean;
+  /**
+   * If true, the app declares itself as the default landing tab for the
+   * shell. Set via `package.json` → `elizaos.app.mainTab`. Exactly one
+   * installed app should declare this; if multiple do, the shell picks
+   * the first one deterministically and logs a warning. Consumed by
+   * `getMainTabApp()` in `@elizaos/app-core` at boot.
+   */
+  mainTab?: boolean;
 }
 
 export interface RegistryPluginInfo {

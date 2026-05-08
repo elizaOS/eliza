@@ -1,3 +1,9 @@
+/**
+ * Trajectory introspection actions.
+ *
+ * QUERY_TRAJECTORIES → GET /api/trajectories
+ */
+
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";

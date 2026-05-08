@@ -21,9 +21,7 @@
  */
 
 import type { Plugin, Route } from "@elizaos/core";
-import { fileAction } from "./actions/file-action.js";
-import { manageWindowAction } from "./actions/manage-window.js";
-import { terminalAction } from "./actions/terminal-action.js";
+import { desktopAction } from "./actions/desktop.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { computerUseRouteHandler } from "./routes/computer-use-compat-routes.js";
@@ -69,12 +67,10 @@ export const computerUsePlugin: Plugin = {
   // biome-ignore lint/suspicious/noExplicitAny: ElizaOS Plugin type expects Service[] but our class uses static start()
   services: [ComputerUseService as any],
 
-  actions: [
-    useComputerAction,
-    manageWindowAction,
-    fileAction,
-    terminalAction,
-  ],
+  // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
+  // and DESKTOP (parent action dispatching file/window/terminal ops) stay
+  // registered as distinct top-level actions — they cover different surfaces.
+  actions: [useComputerAction, desktopAction],
 
   evaluators: [],
 

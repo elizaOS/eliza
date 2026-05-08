@@ -956,6 +956,21 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		} catch {} // Build might fail or not exist, continue
 	}
 
+	/**
+	 * Update an installed plugin to the latest available version.
+	 *
+	 * Resolves the registry entry (which always points to the latest npm
+	 * version) and re-runs install. The package manager treats the existing
+	 * install as a no-op when the version already matches and as an upgrade
+	 * otherwise.
+	 */
+	async updatePlugin(
+		pluginName: string,
+		onProgress?: (progress: InstallProgress) => void,
+	): Promise<InstallResult> {
+		return this.installPlugin(pluginName, onProgress);
+	}
+
 	async uninstallPlugin(pluginName: string): Promise<UninstallResult> {
 		return this.serialiseInstall(async () => {
 			const info = await getRegistryEntry(pluginName);

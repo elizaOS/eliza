@@ -7,7 +7,7 @@
 // or moving to a single composed interface — tracked as separate work.
 import fs from "node:fs";
 import path from "node:path";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/shared/workspace-resolution";
 import { whatsappAuthExists } from "@elizaos/agent/services/whatsapp-pairing";
 import type { Plugin } from "@elizaos/core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";

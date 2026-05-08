@@ -1,4 +1,4 @@
-import { resolveCloudApiBaseUrl } from "../cloud/base-url.js";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceTab,

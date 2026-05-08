@@ -71,7 +71,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   },
   {
     name: "character knowledge",
-    path: "/character/knowledge",
+    path: "/character/documents",
     readyChecks: [
       { selector: '[data-testid="character-editor-view"]' },
       { selector: '[data-testid="knowledge-view"]' },
@@ -921,7 +921,7 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/knowledge/documents**", async (route) => {
+  await page.route("**/api/documents**", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "POST") {
       await route.fallback();

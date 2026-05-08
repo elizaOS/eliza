@@ -13,11 +13,18 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Plugin,
+  Route,
+  ServiceClass,
+  UUID,
+} from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
 import { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
+import { BrowserService } from "./browser-service.js";
 import { browserWorkspaceProvider } from "./providers/workspace.js";
 import {
   type BrowserBridgeRouteContext,
@@ -191,6 +198,7 @@ export const browserPlugin: Plugin = {
     "Browser plugin: BROWSER + MANAGE_BROWSER_BRIDGE + BROWSER_AUTOFILL_LOGIN actions; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
   schema: browserBridgeSchema,
   routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
+  services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
   actions: [
     browserAction,

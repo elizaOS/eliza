@@ -657,7 +657,7 @@ function resolveResponse(prompt: string): {
       value: gmailPayload(request, prompt),
     };
   }
-  if (prompt.includes("Plan the SEND_DRAFT action for this request.")) {
+  if (prompt.includes("Plan the MESSAGE action for this request.")) {
     return {
       kind: "cross-channel-send",
       request,

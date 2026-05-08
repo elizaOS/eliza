@@ -485,32 +485,14 @@ function captureConnectorDispatchesFromAction(
   };
 
   if (
-    actionName === "SEND_DRAFT" ||
-    actionName === "RESPOND_TO_MESSAGE"
+    actionName === "MESSAGE" ||
+    actionName === "MESSAGE"
   ) {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(resultData?.channel),
       ...toStringArray(resultData?.channels),
     ];
-    for (const channel of new Set(channels)) {
-      push(channel, params ?? resultData ?? {});
-    }
-    return;
-  }
-
-  if (actionName === "DEVICE_INTENT") {
-    const channels = [
-      ...toStringArray(params?.channel),
-      ...toStringArray(params?.channels),
-      ...toStringArray(resultData?.channel),
-      ...toStringArray(resultData?.channels),
-    ];
-    for (const inferred of ["desktop", "mobile", "phone_call", "sms"]) {
-      if (blob.includes(inferred)) {
-        channels.push(inferred);
-      }
-    }
     for (const channel of new Set(channels)) {
       push(channel, params ?? resultData ?? {});
     }

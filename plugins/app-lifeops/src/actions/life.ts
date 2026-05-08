@@ -1997,8 +1997,7 @@ export const lifeAction: Action & {
     "NEW_GOAL",
   ],
   description:
-    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR and CHECKIN. " +
-    " Relationship follow-ups and days-since-contact questions belong to RELATIONSHIP. Device-targeted or broadcast reminders for phone/mobile/all devices belong to DEVICE_INTENT.",
+    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR.",
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
   contexts: ["tasks", "calendar", "health"],

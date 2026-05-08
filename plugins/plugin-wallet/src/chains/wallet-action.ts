@@ -109,7 +109,9 @@ function normalizeRawParams(
       raw.actionType ??
       (op ? "gov" : undefined) ??
       legacySubaction(action),
-    chain: raw.target ?? raw.chain ?? raw.fromChain ?? raw.network,
+    chain: raw.chain ?? raw.fromChain ?? raw.network,
+    toChain:
+      raw.toChain ?? raw.toNetwork ?? raw.destinationChain ?? raw.targetChain,
     fromToken:
       raw.fromToken ??
       raw.inputToken ??
@@ -253,9 +255,9 @@ async function parseParams(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route crypto wallet operations through the registered chain handlers. Use subaction transfer, swap, bridge, or gov. target selects the chain; mode prepare previews and mode execute submits. Legacy chain aliases are accepted.",
+    "Route wallet token operations through the registered chain handlers. Use subaction transfer, swap, or bridge with uniform params: subaction, chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun. Bridge uses chain as the source and toChain as the destination. Omit chain only when one registered handler supports the subaction.",
   descriptionCompressed:
-    "Crypto wallet router: subaction transfer|swap|bridge|gov, target chain, mode prepare|execute.",
+    "Route wallet transfer/swap/bridge via chain registry; params: subaction, chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun.",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "USER" },
@@ -283,10 +285,17 @@ export const walletRouterAction: Action = {
     {
       name: "target",
       description:
-        "Chain id or name. Omit only when one chain supports the subaction.",
+        "Chain id or name (source chain for bridge). Omit only when one chain supports subaction.",
       required: false,
       schema: { type: "string" },
       examples: ["base", "solana", "8453"],
+    },
+    {
+      name: "toChain",
+      description: "Destination chain for bridge.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["arbitrum", "optimism", "base"],
     },
     {
       name: "fromToken",
@@ -305,8 +314,9 @@ export const walletRouterAction: Action = {
     },
     {
       name: "amount",
-      description: "Human-readable token amount. Required for transfer, swap, and bridge.",
-      required: false,
+      description:
+        "Human-readable token amount. Required for transfer, swap, and bridge.",
+      required: true,
       schema: { type: "string" },
       examples: ["0.1", "25"],
     },

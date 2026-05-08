@@ -88,7 +88,7 @@ export class DebugTraceCollector {
     agentId: UUID,
     inputText: string,
     source: string,
-    agentMode: "chat" | "assistant" | "build" | "unknown" = "unknown",
+    agentMode: "chat" | "unknown" = "unknown",
     maxIterations: number = 6,
   ) {
     this.trace = {

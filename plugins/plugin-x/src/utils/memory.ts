@@ -54,6 +54,7 @@ export function buildTwitterMessageMetadata(
     sourceId: entityId,
     chatType: ChannelType.FEED,
     messageIdFull: tweet.id,
+    accountId: accountId ?? "default",
     sender: {
       id: tweet.userId,
       name: tweet.name,

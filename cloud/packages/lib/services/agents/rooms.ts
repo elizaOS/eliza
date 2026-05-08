@@ -53,7 +53,7 @@ export interface RoomPreview {
   lastTime?: number; // from last message createdAt (ms timestamp)
   lastText?: string; // from last message content.text (truncated)
   isLocked?: boolean; // Whether the room is locked (character was created/saved)
-  isBuildRoom?: boolean; // Whether this is a BUILD/CREATOR room
+  isBuildRoom?: boolean; // Whether this is a legacy builder room
 }
 
 // Re-export for convenience
@@ -174,10 +174,10 @@ export class RoomsService {
    *
    * By default, filters out:
    * - Locked rooms (where a character was created/saved)
-   * - BUILD and CREATOR rooms (character building sessions)
+   * - legacy builder rooms
    *
    * @param entityId - The user's ID (from auth)
-   * @param options.includeBuildRooms - Include build rooms in results (for edit mode)
+   * @param options.includeBuildRooms - Include legacy builder rooms in results
    * @returns Room previews sorted by most recent activity
    */
   async getRoomsForEntity(
@@ -189,7 +189,7 @@ export class RoomsService {
 
     const includeBuildRooms = options?.includeBuildRooms ?? false;
 
-    // Transform to API response format and filter out locked/builder rooms
+    // Transform to API response format and filter out locked/legacy builder rooms
     return roomsWithPreview
       .map((room) => {
         const metadata = room.metadata as { locked?: boolean } | null;

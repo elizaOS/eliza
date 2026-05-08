@@ -23,7 +23,7 @@ const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
 const QUICK_CONTEXT_MAX_LIMIT = 20;
-const QUICK_CONTEXT_DOCUMENT_THRESHOLD = 0.2;
+const QUICK_CONTEXT_DOCUMENTS_THRESHOLD = 0.2;
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
@@ -154,7 +154,7 @@ async function searchMemoryNotes(
   return hits.slice(0, limit);
 }
 
-async function searchDocumentsForQuickContext(
+async function searchDocuments(
   runtime: AgentRuntime,
   query: string,
   limit: number,
@@ -182,7 +182,7 @@ async function searchDocumentsForQuickContext(
 
   return matches
     .filter(
-      (match) => (match.similarity ?? 0) >= QUICK_CONTEXT_DOCUMENT_THRESHOLD,
+      (match) => (match.similarity ?? 0) >= QUICK_CONTEXT_DOCUMENTS_THRESHOLD,
     )
     .slice(0, limit)
     .map((match) => {
@@ -221,10 +221,10 @@ function buildQuickContextPrompt(params: {
           .map((item, index) => `- [M${index + 1}] ${item.text}`)
           .join("\n")
       : "- none";
-	const documentsSection =
-		documents.length > 0
-			? documents
-					.map((item, index) => `- [D${index + 1}] ${item.text}`)
+  const documentsSection =
+    documents.length > 0
+      ? documents
+          .map((item, index) => `- [D${index + 1}] ${item.text}`)
           .join("\n")
       : "- none";
 
@@ -238,7 +238,7 @@ function buildQuickContextPrompt(params: {
     "Saved memory notes:",
     memorySection,
     "",
-    "Documents snippets:",
+    "Document snippets:",
     documentsSection,
   ].join("\n");
 }
@@ -440,7 +440,7 @@ export async function handleMemoryRoutes(
 
     const [memories, documents] = await Promise.all([
       searchMemoryNotes(runtime, roomId, query, limit),
-      searchDocumentsForQuickContext(runtime, query, limit),
+      searchDocuments(runtime, query, limit),
     ]);
 
     const prompt = buildQuickContextPrompt({ query, memories, documents });
@@ -451,12 +451,12 @@ export async function handleMemoryRoutes(
       answer = text.trim();
     }
 
-	    json(res, {
-	      query,
-	      answer,
-	      memories,
-	      documents,
-	    });
+    json(res, {
+      query,
+      answer,
+      memories,
+      documents,
+    });
     return true;
   }
 

@@ -39,12 +39,18 @@ function stringSetting(runtime: IAgentRuntime, key: string): string | undefined 
 }
 
 function characterConfig(runtime: IAgentRuntime): BlueSkyMultiAccountConfig {
-	const settings = runtime.character?.settings as Record<string, unknown> | undefined;
+	const settings = runtime.character?.settings as
+		| Record<string, unknown>
+		| undefined;
 	const raw = settings?.bluesky;
-	return raw && typeof raw === "object" ? (raw as BlueSkyMultiAccountConfig) : {};
+	return raw && typeof raw === "object"
+		? (raw as BlueSkyMultiAccountConfig)
+		: {};
 }
 
-function parseAccountsJson(runtime: IAgentRuntime): Record<string, RawBlueSkyAccountConfig> {
+function parseAccountsJson(
+	runtime: IAgentRuntime,
+): Record<string, RawBlueSkyAccountConfig> {
 	const raw = stringSetting(runtime, "BLUESKY_ACCOUNTS");
 	if (!raw) return {};
 
@@ -57,7 +63,10 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, RawBlueSkyAcc
 						(item): item is RawBlueSkyAccountConfig =>
 							Boolean(item) && typeof item === "object",
 					)
-					.map((item) => [normalizeBlueSkyAccountId(item.accountId ?? item.id), item]),
+					.map((item) => [
+						normalizeBlueSkyAccountId(item.accountId ?? item.id),
+						item,
+					]),
 			);
 		}
 		return parsed && typeof parsed === "object"
@@ -68,7 +77,9 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, RawBlueSkyAcc
 	}
 }
 
-function allAccountConfigs(runtime: IAgentRuntime): Record<string, RawBlueSkyAccountConfig> {
+function allAccountConfigs(
+	runtime: IAgentRuntime,
+): Record<string, RawBlueSkyAccountConfig> {
 	return {
 		...(characterConfig(runtime).accounts ?? {}),
 		...parseAccountsJson(runtime),
@@ -80,7 +91,9 @@ function accountConfig(
 	accountId: string,
 ): RawBlueSkyAccountConfig {
 	const accounts = allAccountConfigs(runtime);
-	return accounts[accountId] ?? accounts[normalizeBlueSkyAccountId(accountId)] ?? {};
+	return (
+		accounts[accountId] ?? accounts[normalizeBlueSkyAccountId(accountId)] ?? {}
+	);
 }
 
 function readRawField(
@@ -91,7 +104,8 @@ function readRawField(
 	for (const key of keys) {
 		const value = record[key];
 		if (typeof value === "string" && value.trim()) return value.trim();
-		if (typeof value === "number" || typeof value === "boolean") return String(value);
+		if (typeof value === "number" || typeof value === "boolean")
+			return String(value);
 	}
 	return undefined;
 }
@@ -125,9 +139,9 @@ export function listBlueSkyAccountIds(runtime: IAgentRuntime): string[] {
 	for (const id of Object.keys(allAccountConfigs(runtime))) {
 		ids.add(normalizeBlueSkyAccountId(id));
 	}
-	return Array.from(ids.size ? ids : new Set([DEFAULT_BLUESKY_ACCOUNT_ID])).sort(
-		(a, b) => a.localeCompare(b),
-	);
+	return Array.from(
+		ids.size ? ids : new Set([DEFAULT_BLUESKY_ACCOUNT_ID]),
+	).sort((a, b) => a.localeCompare(b));
 }
 
 export function resolveDefaultBlueSkyAccountId(runtime: IAgentRuntime): string {
@@ -138,10 +152,12 @@ export function resolveDefaultBlueSkyAccountId(runtime: IAgentRuntime): string {
 	const ids = listBlueSkyAccountIds(runtime);
 	return ids.includes(DEFAULT_BLUESKY_ACCOUNT_ID)
 		? DEFAULT_BLUESKY_ACCOUNT_ID
-		: ids[0];
+		: (ids[0] ?? DEFAULT_BLUESKY_ACCOUNT_ID);
 }
 
-export function readBlueSkyAccountId(...sources: unknown[]): string | undefined {
+export function readBlueSkyAccountId(
+	...sources: unknown[]
+): string | undefined {
 	for (const source of sources) {
 		if (!source || typeof source !== "object") continue;
 		const record = source as Record<string, unknown>;
@@ -167,7 +183,8 @@ export function readBlueSkyAccountId(...sources: unknown[]): string | undefined 
 			data.accountId ??
 			bluesky.accountId ??
 			metadata.accountId;
-		if (typeof value === "string" && value.trim()) return normalizeBlueSkyAccountId(value);
+		if (typeof value === "string" && value.trim())
+			return normalizeBlueSkyAccountId(value);
 	}
 	return undefined;
 }
@@ -228,60 +245,85 @@ export function validateBlueSkyConfig(
 				readRawField(base, ["dryRun", "BLUESKY_DRY_RUN"]) ??
 				(allowEnv ? runtime.getSetting("BLUESKY_DRY_RUN") : undefined),
 		),
-		pollInterval:
-			intValue(
-				readRawField(account, ["pollInterval", "BLUESKY_POLL_INTERVAL"]) ??
-					readRawField(base, ["pollInterval", "BLUESKY_POLL_INTERVAL"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_POLL_INTERVAL") : undefined),
-				BLUESKY_POLL_INTERVAL,
-			),
+		pollInterval: intValue(
+			readRawField(account, ["pollInterval", "BLUESKY_POLL_INTERVAL"]) ??
+				readRawField(base, ["pollInterval", "BLUESKY_POLL_INTERVAL"]) ??
+				(allowEnv ? runtime.getSetting("BLUESKY_POLL_INTERVAL") : undefined),
+			BLUESKY_POLL_INTERVAL,
+		),
 		enablePost:
 			String(
 				readRawField(account, ["enablePost", "BLUESKY_ENABLE_POSTING"]) ??
 					readRawField(base, ["enablePost", "BLUESKY_ENABLE_POSTING"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_ENABLE_POSTING") : undefined) ??
+					(allowEnv
+						? runtime.getSetting("BLUESKY_ENABLE_POSTING")
+						: undefined) ??
 					"true",
 			).toLowerCase() !== "false",
-		postIntervalMin:
-			intValue(
-				readRawField(account, ["postIntervalMin", "BLUESKY_POST_INTERVAL_MIN"]) ??
-					readRawField(base, ["postIntervalMin", "BLUESKY_POST_INTERVAL_MIN"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_POST_INTERVAL_MIN") : undefined),
-				BLUESKY_POST_INTERVAL_MIN,
-			),
-		postIntervalMax:
-			intValue(
-				readRawField(account, ["postIntervalMax", "BLUESKY_POST_INTERVAL_MAX"]) ??
-					readRawField(base, ["postIntervalMax", "BLUESKY_POST_INTERVAL_MAX"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_POST_INTERVAL_MAX") : undefined),
-				BLUESKY_POST_INTERVAL_MAX,
-			),
+		postIntervalMin: intValue(
+			readRawField(account, [
+				"postIntervalMin",
+				"BLUESKY_POST_INTERVAL_MIN",
+			]) ??
+				readRawField(base, ["postIntervalMin", "BLUESKY_POST_INTERVAL_MIN"]) ??
+				(allowEnv
+					? runtime.getSetting("BLUESKY_POST_INTERVAL_MIN")
+					: undefined),
+			BLUESKY_POST_INTERVAL_MIN,
+		),
+		postIntervalMax: intValue(
+			readRawField(account, [
+				"postIntervalMax",
+				"BLUESKY_POST_INTERVAL_MAX",
+			]) ??
+				readRawField(base, ["postIntervalMax", "BLUESKY_POST_INTERVAL_MAX"]) ??
+				(allowEnv
+					? runtime.getSetting("BLUESKY_POST_INTERVAL_MAX")
+					: undefined),
+			BLUESKY_POST_INTERVAL_MAX,
+		),
 		enableActionProcessing:
 			String(
-				readRawField(account, ["enableActionProcessing", "BLUESKY_ENABLE_ACTION_PROCESSING"]) ??
-					readRawField(base, ["enableActionProcessing", "BLUESKY_ENABLE_ACTION_PROCESSING"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_ENABLE_ACTION_PROCESSING") : undefined) ??
+				readRawField(account, [
+					"enableActionProcessing",
+					"BLUESKY_ENABLE_ACTION_PROCESSING",
+				]) ??
+					readRawField(base, [
+						"enableActionProcessing",
+						"BLUESKY_ENABLE_ACTION_PROCESSING",
+					]) ??
+					(allowEnv
+						? runtime.getSetting("BLUESKY_ENABLE_ACTION_PROCESSING")
+						: undefined) ??
 					"true",
 			).toLowerCase() !== "false",
-		actionInterval:
-			intValue(
-				readRawField(account, ["actionInterval", "BLUESKY_ACTION_INTERVAL"]) ??
-					readRawField(base, ["actionInterval", "BLUESKY_ACTION_INTERVAL"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_ACTION_INTERVAL") : undefined),
-				BLUESKY_ACTION_INTERVAL,
-			),
+		actionInterval: intValue(
+			readRawField(account, ["actionInterval", "BLUESKY_ACTION_INTERVAL"]) ??
+				readRawField(base, ["actionInterval", "BLUESKY_ACTION_INTERVAL"]) ??
+				(allowEnv ? runtime.getSetting("BLUESKY_ACTION_INTERVAL") : undefined),
+			BLUESKY_ACTION_INTERVAL,
+		),
 		postImmediately: boolValue(
 			readRawField(account, ["postImmediately", "BLUESKY_POST_IMMEDIATELY"]) ??
 				readRawField(base, ["postImmediately", "BLUESKY_POST_IMMEDIATELY"]) ??
-				(allowEnv ? runtime.getSetting("BLUESKY_POST_IMMEDIATELY") : undefined),
+				(allowEnv
+					? runtime.getSetting("BLUESKY_POST_IMMEDIATELY")
+					: undefined),
 		),
-		maxActionsProcessing:
-			intValue(
-				readRawField(account, ["maxActionsProcessing", "BLUESKY_MAX_ACTIONS_PROCESSING"]) ??
-					readRawField(base, ["maxActionsProcessing", "BLUESKY_MAX_ACTIONS_PROCESSING"]) ??
-					(allowEnv ? runtime.getSetting("BLUESKY_MAX_ACTIONS_PROCESSING") : undefined),
-				BLUESKY_MAX_ACTIONS,
-			),
+		maxActionsProcessing: intValue(
+			readRawField(account, [
+				"maxActionsProcessing",
+				"BLUESKY_MAX_ACTIONS_PROCESSING",
+			]) ??
+				readRawField(base, [
+					"maxActionsProcessing",
+					"BLUESKY_MAX_ACTIONS_PROCESSING",
+				]) ??
+				(allowEnv
+					? runtime.getSetting("BLUESKY_MAX_ACTIONS_PROCESSING")
+					: undefined),
+			BLUESKY_MAX_ACTIONS,
+		),
 		enableDMs:
 			String(
 				readRawField(account, ["enableDMs", "BLUESKY_ENABLE_DMS"]) ??
@@ -304,50 +346,53 @@ export function validateBlueSkyConfig(
 	return { ...result.data, accountId: normalizedAccountId };
 }
 
-export function getPollInterval(runtime: IAgentRuntime): number {
-	const seconds =
-		parseInt(String(runtime.getSetting("BLUESKY_POLL_INTERVAL") ?? ""), 10) ||
-		BLUESKY_POLL_INTERVAL;
-	return seconds * 1000;
+export function getPollInterval(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): number {
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return config.pollInterval * 1000;
 }
 
-export function getActionInterval(runtime: IAgentRuntime): number {
-	const seconds =
-		parseInt(String(runtime.getSetting("BLUESKY_ACTION_INTERVAL") ?? ""), 10) ||
-		BLUESKY_ACTION_INTERVAL;
-	return seconds * 1000;
+export function getActionInterval(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): number {
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return config.actionInterval * 1000;
 }
 
-export function getMaxActionsProcessing(runtime: IAgentRuntime): number {
-	return (
-		parseInt(
-			String(runtime.getSetting("BLUESKY_MAX_ACTIONS_PROCESSING") ?? ""),
-			10,
-		) || BLUESKY_MAX_ACTIONS
-	);
+export function getMaxActionsProcessing(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): number {
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return config.maxActionsProcessing;
 }
 
-export function isPostingEnabled(runtime: IAgentRuntime): boolean {
-	return runtime.getSetting("BLUESKY_ENABLE_POSTING") !== "false";
+export function isPostingEnabled(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): boolean {
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return config.enablePost;
 }
 
-export function shouldPostImmediately(runtime: IAgentRuntime): boolean {
-	return runtime.getSetting("BLUESKY_POST_IMMEDIATELY") === "true";
+export function shouldPostImmediately(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): boolean {
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return config.postImmediately;
 }
 
-export function getPostIntervalRange(runtime: IAgentRuntime): {
+export function getPostIntervalRange(
+	runtime: IAgentRuntime,
+	accountId?: string,
+): {
 	min: number;
 	max: number;
 } {
-	const min =
-		parseInt(
-			String(runtime.getSetting("BLUESKY_POST_INTERVAL_MIN") ?? ""),
-			10,
-		) || BLUESKY_POST_INTERVAL_MIN;
-	const max =
-		parseInt(
-			String(runtime.getSetting("BLUESKY_POST_INTERVAL_MAX") ?? ""),
-			10,
-		) || BLUESKY_POST_INTERVAL_MAX;
-	return { min: min * 1000, max: max * 1000 };
+	const config = validateBlueSkyConfig(runtime, accountId);
+	return { min: config.postIntervalMin * 1000, max: config.postIntervalMax * 1000 };
 }

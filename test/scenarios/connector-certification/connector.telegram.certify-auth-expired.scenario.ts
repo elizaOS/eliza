@@ -21,7 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "telegram-auth-expired",
       text: "Open the Telegram chat and send the reply, but if the Telegram login expired, say that explicitly and ask for re-authentication instead of claiming it was sent.",
       responseIncludesAny: ["telegram", "expired", "auth", "reconnect"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["telegram", "expired", "auth", "reconnect"],
     },
   ],

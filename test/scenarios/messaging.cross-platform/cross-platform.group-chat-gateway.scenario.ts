@@ -31,7 +31,7 @@ export default scenario({
       room: "main",
       text: "Create a group chat with the agent and Alice on Discord.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform group chat creation",
         includesAny: ["create_group_chat", "discord", "Alice"],
       }),
@@ -40,13 +40,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "SEND_DRAFT",
+      actionName: "MESSAGE",
     },
     {
       type: "custom",
       name: "cross-platform-group-chat-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform group chat creation",
         includesAny: ["create_group_chat", "discord", "Alice"],
       }),
@@ -60,7 +60,7 @@ export default scenario({
           return "scenario runtime unavailable";
         }
         const hit = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "SEND_DRAFT",
+          (entry) => entry.actionName === "MESSAGE",
         );
         const data =
           hit?.result?.data && typeof hit.result.data === "object"

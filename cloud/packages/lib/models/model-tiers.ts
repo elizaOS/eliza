@@ -483,15 +483,15 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
 ];
 
 /**
- * Build mode tiers - uses more capable models for character building tasks.
- * The fast tier uses a better model since gpt-oss can't handle complex build instructions.
+ * Agent editing tiers - uses more capable models for character and configuration tasks.
+ * The fast tier uses a better model since gpt-oss can't handle complex editing instructions.
  */
-export const BUILD_MODE_TIERS: Record<ModelTier, ModelTierConfig> = {
+export const AGENT_EDITING_TIERS: Record<ModelTier, ModelTierConfig> = {
   fast: {
     ...MODEL_TIERS.fast,
     modelId: "minimax/minimax-m2.7",
     provider: "minimax",
-    description: "Fast responses for build mode",
+    description: "Fast responses for agent editing",
   },
   pro: {
     ...MODEL_TIERS.pro,
@@ -500,10 +500,10 @@ export const BUILD_MODE_TIERS: Record<ModelTier, ModelTierConfig> = {
   ultra: MODEL_TIERS.ultra,
 };
 
-export const BUILD_MODE_TIER_LIST: ModelTierConfig[] = [
-  BUILD_MODE_TIERS.fast,
-  BUILD_MODE_TIERS.pro,
-  BUILD_MODE_TIERS.ultra,
+export const AGENT_EDITING_TIER_LIST: ModelTierConfig[] = [
+  AGENT_EDITING_TIERS.fast,
+  AGENT_EDITING_TIERS.pro,
+  AGENT_EDITING_TIERS.ultra,
 ];
 
 export const DEFAULT_MODEL_TIER: ModelTier = "pro";

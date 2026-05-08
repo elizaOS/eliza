@@ -16,7 +16,7 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
 // ---------------------------------------------------------------------------

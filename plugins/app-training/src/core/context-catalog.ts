@@ -128,7 +128,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 
   // --- Social ---
   MESSAGE: ["social", "documents", "automation"],
-  POST: ["social"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],

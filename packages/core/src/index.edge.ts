@@ -13,6 +13,7 @@ export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
 export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 export {
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,

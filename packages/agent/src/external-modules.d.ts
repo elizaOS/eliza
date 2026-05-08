@@ -131,6 +131,19 @@ declare module "telegram/sessions" {
   }
 }
 declare module "@elizaos/plugin-elizacloud";
+declare module "@elizaos/plugin-elizacloud/onboarding" {
+  export interface CloudOnboardingResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+  export function runCloudOnboarding(
+    clack: unknown,
+    name: string,
+    chosenTemplate?: unknown,
+  ): Promise<CloudOnboardingResult | null>;
+}
 declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-edge-tts/node";
@@ -150,68 +163,25 @@ declare module "@elizaos/app-documents/routes" {
 }
 
 declare module "@elizaos/app-documents/service-loader" {
-  import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-
-  export type DocumentsLoadFailReason =
-    | "timeout"
-    | "runtime_unavailable"
-    | "not_registered";
-  export interface DocumentServiceLike {
-    addDocument(options: {
-      agentId?: UUID;
-      worldId: UUID;
-      roomId: UUID;
-      entityId: UUID;
-      clientDocumentId: UUID;
-      contentType: string;
-      originalFilename: string;
-      content: string;
-      metadata?: Record<string, unknown>;
-    }): Promise<{
-      clientDocumentId: string;
-      storedDocumentMemoryId: UUID;
-      fragmentCount: number;
-    }>;
-    searchDocuments(
-      message: Memory,
-      options?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-    ): Promise<
-      Array<{
-        id: UUID;
-        content: { text?: string };
-        similarity?: number;
-        metadata?: Record<string, unknown>;
-      }>
-    >;
-    getMemories(params: {
-      tableName: string;
-      roomId?: UUID;
-      count?: number;
-      offset?: number;
-      end?: number;
-    }): Promise<Memory[]>;
-    countMemories(params: {
-      tableName: string;
-      roomId?: UUID;
-      unique?: boolean;
-    }): Promise<number>;
-    updateDocument?(options: {
-      documentId: UUID;
-      content: string;
-    }): Promise<{
-      documentId: UUID;
-      fragmentCount: number;
-    }>;
-    deleteMemory(memoryId: UUID): Promise<void>;
-  }
-  export interface DocumentsServiceResult {
-    service: DocumentServiceLike | null;
-    reason?: DocumentsLoadFailReason;
-  }
-  export const getDocumentsService: (
-    runtime: AgentRuntime | null,
-  ) => Promise<DocumentsServiceResult>;
-  export const getDocumentsServiceTimeoutMs: () => number;
+  // Source of truth lives in @elizaos/agent/api/documents-service-loader.
+  // The plugin re-exports those names verbatim, so this ambient declaration
+  // simply forwards the same surface for environments where the workspace
+  // resolver fails to pick up the plugin's TypeScript exports map.
+  export type {
+    DocumentAddedByRole,
+    DocumentAddedFrom,
+    DocumentSearchMode,
+    DocumentServiceLike,
+    DocumentsLoadFailReason,
+    DocumentsServiceLike,
+    DocumentsServiceResult,
+    DocumentVisibilityScope,
+  } from "@elizaos/agent/api/documents-service-loader";
+  export {
+    getDocumentsService,
+    getDocumentsServiceTimeoutMs,
+    getDocumentsTimeoutMs,
+  } from "@elizaos/agent/api/documents-service-loader";
 }
 
 declare module "@elizaos/app-training/core/context-types" {

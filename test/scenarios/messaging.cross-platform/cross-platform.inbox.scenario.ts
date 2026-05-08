@@ -58,9 +58,9 @@ export default scenario({
       text: "Show me what unread messages need my attention from Priya Rao across Gmail, Signal, Telegram, and WhatsApp, without treating her like four different contacts.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
-          "TRIAGE_MESSAGES",
-          "SEARCH_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
+          "MESSAGE",
           "READ_MESSAGES",
         ],
         description: "deduped inbox lookup for one canonical person",
@@ -108,9 +108,9 @@ export default scenario({
       name: "cross-platform-inbox-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
-          "TRIAGE_MESSAGES",
-          "SEARCH_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
+          "MESSAGE",
           "READ_MESSAGES",
         ],
         description: "deduped inbox lookup for one canonical person",

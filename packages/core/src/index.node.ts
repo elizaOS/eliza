@@ -65,8 +65,8 @@ export type {
 	TriagePriority,
 	TriageScore,
 } from "./features/messaging/triage";
-// Cross-platform messaging triage (TRIAGE_MESSAGES, SEARCH_MESSAGES, MANAGE_MESSAGE,
-// SCHEDULE_DRAFT_SEND, RESPOND_TO_MESSAGE, adapters, SendPolicy, TriageService).
+// Cross-platform messaging triage (MESSAGE, MESSAGE, MESSAGE,
+// MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
 // Selective re-export — `MessageParticipant` collides with an unrelated type in
 // `types/service-interfaces.ts`; consumers that need the triage-side participant type
 // import it directly from "@elizaos/core/features/messaging/triage".

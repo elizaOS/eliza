@@ -350,13 +350,13 @@ export const coreActionsSpec = {
 		{
 			name: "MESSAGE",
 			description:
-				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, and users. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user. Public feed publishing belongs to POST.",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
 			parameters: [
 				{
 					name: "operation",
 					description:
-						"Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user.",
+						"Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 					required: false,
 					schema: {
 						type: "string",
@@ -373,6 +373,15 @@ export const coreActionsSpec = {
 							"join",
 							"leave",
 							"get_user",
+							"triage",
+							"list_inbox",
+							"search_inbox",
+							"draft_reply",
+							"draft_followup",
+							"respond",
+							"send_draft",
+							"schedule_draft_send",
+							"manage",
 						],
 					},
 					descriptionCompressed: "message operation",
@@ -380,12 +389,25 @@ export const coreActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, or wechat.",
+						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector source",
+					descriptionCompressed: "connector or inbox source",
+				},
+				{
+					name: "sources",
+					description:
+						"Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "inbox sources",
 				},
 				{
 					name: "target",
@@ -398,16 +420,6 @@ export const coreActionsSpec = {
 					descriptionCompressed: "loose message target",
 				},
 				{
-					name: "roomId",
-					description:
-						"Platform room or stored room ID for channel/group/DM operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "room id",
-				},
-				{
 					name: "channel",
 					description: "Loose channel, room, or group name/reference.",
 					required: false,
@@ -415,15 +427,6 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "channel reference",
-				},
-				{
-					name: "channelId",
-					description: "Platform channel ID for channel operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "channel id",
 				},
 				{
 					name: "server",
@@ -434,71 +437,6 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "server reference",
-				},
-				{
-					name: "serverId",
-					description: "Platform server, guild, workspace, or team ID.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "server id",
-				},
-				{
-					name: "userId",
-					description:
-						"Platform user ID or stored entity ID for user/DM operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "user id",
-				},
-				{
-					name: "username",
-					description: "Loose username for user/DM lookup.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "username",
-				},
-				{
-					name: "handle",
-					description: "Loose platform handle for user/DM lookup.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "handle",
-				},
-				{
-					name: "threadId",
-					description: "Thread identifier for threaded message operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "thread id",
-				},
-				{
-					name: "alias",
-					description:
-						"Channel or room alias for operation=join or operation=leave.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "room alias",
-				},
-				{
-					name: "invite",
-					description: "Invite URL or token for operation=join.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "invite",
 				},
 				{
 					name: "message",
@@ -512,7 +450,8 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "query",
-					description: "Search term for operation=search.",
+					description:
+						"Search term for operation=search or operation=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -520,14 +459,94 @@ export const coreActionsSpec = {
 					descriptionCompressed: "search query",
 				},
 				{
+					name: "content",
+					description:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message lookup text",
+				},
+				{
+					name: "sender",
+					description:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "sender lookup",
+				},
+				{
+					name: "body",
+					description:
+						"Draft or response body for operation=draft_reply, draft_followup, or respond.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft body",
+				},
+				{
+					name: "to",
+					description: "Recipient identifiers for operation=draft_followup.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "draft recipients",
+				},
+				{
+					name: "subject",
+					description: "Optional subject for email-like draft operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft subject",
+				},
+				{
 					name: "messageId",
 					description:
-						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin.",
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed: "message id",
+				},
+				{
+					name: "draftId",
+					description:
+						"Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft id",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Whether the user explicitly confirmed sending for operation=send_draft.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "send confirmed",
+				},
+				{
+					name: "sendAt",
+					description: "Scheduled send time for operation=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "send time",
 				},
 				{
 					name: "emoji",
@@ -549,8 +568,38 @@ export const coreActionsSpec = {
 					descriptionCompressed: "pin state",
 				},
 				{
+					name: "manageOperation",
+					description:
+						"Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "manage operation",
+				},
+				{
+					name: "label",
+					description:
+						"Label for operation=manage when adding or removing labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message label",
+				},
+				{
+					name: "tag",
+					description: "Tag for operation=manage when adding or removing tags.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message tag",
+				},
+				{
 					name: "limit",
-					description: "Maximum number of messages/channels/servers to return.",
+					description:
+						"Maximum number of messages/channels/servers/inbox items to return.",
 					required: false,
 					schema: {
 						type: "integer",
@@ -568,24 +617,34 @@ export const coreActionsSpec = {
 					descriptionCompressed: "pagination cursor",
 				},
 				{
-					name: "before",
+					name: "sinceMs",
 					description:
-						"Optional message id or timestamp boundary for older read/search results.",
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "number",
 					},
-					descriptionCompressed: "before boundary",
+					descriptionCompressed: "since timestamp",
 				},
 				{
-					name: "after",
+					name: "since",
 					description:
-						"Optional message id or timestamp boundary for newer read/search results.",
+						"Start timestamp or parseable date for operation=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "after boundary",
+					descriptionCompressed: "search start",
+				},
+				{
+					name: "until",
+					description:
+						"End timestamp or parseable date for operation=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search end",
 				},
 			],
 			examples: [
@@ -618,15 +677,25 @@ export const coreActionsSpec = {
 						},
 					},
 				},
+				{
+					user: "Triage my Gmail inbox",
+					actions: ["MESSAGE"],
+					params: {
+						MESSAGE: {
+							operation: "triage",
+							source: "gmail",
+						},
+					},
+				},
 			],
 			descriptionCompressed:
-				"primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user dm group channel room thread user server",
+				"primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
 		},
 		{
 			name: "POST",
 			description:
-				"Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.",
-			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+				"Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+			similes: ["POST", "PUBLISH", "TWEET", "CAST"],
 			parameters: [
 				{
 					name: "operation",
@@ -660,12 +729,12 @@ export const coreActionsSpec = {
 				{
 					name: "target",
 					description:
-						"Loose feed target for operation=send/read, such as a user, handle, channel, media id, or connector-specific reference.",
+						"Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post target",
+					descriptionCompressed: "feed target",
 				},
 				{
 					name: "feed",
@@ -675,27 +744,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed selector",
-				},
-				{
-					name: "replyTo",
-					description:
-						"Optional post, cast, media, or thread identifier when publishing a reply/comment.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "reply/comment target",
-				},
-				{
-					name: "mediaId",
-					description:
-						"Optional media identifier for connectors that publish comments or replies to media.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "media id",
+					descriptionCompressed: "feed",
 				},
 				{
 					name: "query",
@@ -704,7 +753,26 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search query",
+					descriptionCompressed: "post search query",
+				},
+				{
+					name: "replyTo",
+					description: "Post/comment/reply target for operation=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reply target",
+				},
+				{
+					name: "mediaId",
+					description:
+						"Media id for connector-specific comment surfaces such as Instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "media id",
 				},
 				{
 					name: "limit",
@@ -726,34 +794,16 @@ export const coreActionsSpec = {
 					descriptionCompressed: "pagination cursor",
 				},
 				{
-					name: "before",
-					description:
-						"Optional post id or timestamp boundary for older feed/search results.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "before boundary",
-				},
-				{
-					name: "after",
-					description:
-						"Optional post id or timestamp boundary for newer feed/search results.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "after boundary",
-				},
-				{
 					name: "attachments",
-					description:
-						"Optional media attachments for connectors that support media posts.",
+					description: "Optional post attachments.",
 					required: false,
 					schema: {
 						type: "array",
+						items: {
+							type: "object",
+						},
 					},
-					descriptionCompressed: "media attachments",
+					descriptionCompressed: "post attachments",
 				},
 			],
 			examples: [
@@ -761,7 +811,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Post 'shipping today' to X",
+							text: "Post this on X: shipping today",
 						},
 					},
 					{
@@ -775,25 +825,13 @@ export const coreActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: 'Post "shipping today" to X',
-					actions: ["REPLY", "POST"],
+					user: "Post this on X: shipping today",
+					actions: ["POST"],
 					params: {
 						POST: {
 							operation: "send",
 							source: "x",
 							text: "shipping today",
-						},
-					},
-				},
-				{
-					user: "Comment 'looks good' on Instagram media 180123",
-					actions: ["REPLY", "POST"],
-					params: {
-						POST: {
-							operation: "send",
-							source: "instagram",
-							mediaId: "180123",
-							text: "looks good",
 						},
 					},
 				},
@@ -1917,13 +1955,13 @@ export const allActionsSpec = {
 		{
 			name: "MESSAGE",
 			description:
-				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, and users. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user. Public feed publishing belongs to POST.",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
 			parameters: [
 				{
 					name: "operation",
 					description:
-						"Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user.",
+						"Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1940,6 +1978,15 @@ export const allActionsSpec = {
 							"join",
 							"leave",
 							"get_user",
+							"triage",
+							"list_inbox",
+							"search_inbox",
+							"draft_reply",
+							"draft_followup",
+							"respond",
+							"send_draft",
+							"schedule_draft_send",
+							"manage",
 						],
 					},
 					descriptionCompressed: "message operation",
@@ -1947,12 +1994,25 @@ export const allActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, or wechat.",
+						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector source",
+					descriptionCompressed: "connector or inbox source",
+				},
+				{
+					name: "sources",
+					description:
+						"Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "inbox sources",
 				},
 				{
 					name: "target",
@@ -1965,16 +2025,6 @@ export const allActionsSpec = {
 					descriptionCompressed: "loose message target",
 				},
 				{
-					name: "roomId",
-					description:
-						"Platform room or stored room ID for channel/group/DM operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "room id",
-				},
-				{
 					name: "channel",
 					description: "Loose channel, room, or group name/reference.",
 					required: false,
@@ -1982,15 +2032,6 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "channel reference",
-				},
-				{
-					name: "channelId",
-					description: "Platform channel ID for channel operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "channel id",
 				},
 				{
 					name: "server",
@@ -2001,71 +2042,6 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "server reference",
-				},
-				{
-					name: "serverId",
-					description: "Platform server, guild, workspace, or team ID.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "server id",
-				},
-				{
-					name: "userId",
-					description:
-						"Platform user ID or stored entity ID for user/DM operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "user id",
-				},
-				{
-					name: "username",
-					description: "Loose username for user/DM lookup.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "username",
-				},
-				{
-					name: "handle",
-					description: "Loose platform handle for user/DM lookup.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "handle",
-				},
-				{
-					name: "threadId",
-					description: "Thread identifier for threaded message operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "thread id",
-				},
-				{
-					name: "alias",
-					description:
-						"Channel or room alias for operation=join or operation=leave.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "room alias",
-				},
-				{
-					name: "invite",
-					description: "Invite URL or token for operation=join.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "invite",
 				},
 				{
 					name: "message",
@@ -2079,7 +2055,8 @@ export const allActionsSpec = {
 				},
 				{
 					name: "query",
-					description: "Search term for operation=search.",
+					description:
+						"Search term for operation=search or operation=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2087,14 +2064,94 @@ export const allActionsSpec = {
 					descriptionCompressed: "search query",
 				},
 				{
+					name: "content",
+					description:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message lookup text",
+				},
+				{
+					name: "sender",
+					description:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "sender lookup",
+				},
+				{
+					name: "body",
+					description:
+						"Draft or response body for operation=draft_reply, draft_followup, or respond.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft body",
+				},
+				{
+					name: "to",
+					description: "Recipient identifiers for operation=draft_followup.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "draft recipients",
+				},
+				{
+					name: "subject",
+					description: "Optional subject for email-like draft operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft subject",
+				},
+				{
 					name: "messageId",
 					description:
-						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin.",
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed: "message id",
+				},
+				{
+					name: "draftId",
+					description:
+						"Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft id",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Whether the user explicitly confirmed sending for operation=send_draft.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "send confirmed",
+				},
+				{
+					name: "sendAt",
+					description: "Scheduled send time for operation=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "send time",
 				},
 				{
 					name: "emoji",
@@ -2116,8 +2173,38 @@ export const allActionsSpec = {
 					descriptionCompressed: "pin state",
 				},
 				{
+					name: "manageOperation",
+					description:
+						"Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "manage operation",
+				},
+				{
+					name: "label",
+					description:
+						"Label for operation=manage when adding or removing labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message label",
+				},
+				{
+					name: "tag",
+					description: "Tag for operation=manage when adding or removing tags.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message tag",
+				},
+				{
 					name: "limit",
-					description: "Maximum number of messages/channels/servers to return.",
+					description:
+						"Maximum number of messages/channels/servers/inbox items to return.",
 					required: false,
 					schema: {
 						type: "integer",
@@ -2135,24 +2222,34 @@ export const allActionsSpec = {
 					descriptionCompressed: "pagination cursor",
 				},
 				{
-					name: "before",
+					name: "sinceMs",
 					description:
-						"Optional message id or timestamp boundary for older read/search results.",
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "number",
 					},
-					descriptionCompressed: "before boundary",
+					descriptionCompressed: "since timestamp",
 				},
 				{
-					name: "after",
+					name: "since",
 					description:
-						"Optional message id or timestamp boundary for newer read/search results.",
+						"Start timestamp or parseable date for operation=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "after boundary",
+					descriptionCompressed: "search start",
+				},
+				{
+					name: "until",
+					description:
+						"End timestamp or parseable date for operation=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search end",
 				},
 			],
 			examples: [
@@ -2185,15 +2282,25 @@ export const allActionsSpec = {
 						},
 					},
 				},
+				{
+					user: "Triage my Gmail inbox",
+					actions: ["MESSAGE"],
+					params: {
+						MESSAGE: {
+							operation: "triage",
+							source: "gmail",
+						},
+					},
+				},
 			],
 			descriptionCompressed:
-				"primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user dm group channel room thread user server",
+				"primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
 		},
 		{
 			name: "POST",
 			description:
-				"Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.",
-			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+				"Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+			similes: ["POST", "PUBLISH", "TWEET", "CAST"],
 			parameters: [
 				{
 					name: "operation",
@@ -2227,12 +2334,12 @@ export const allActionsSpec = {
 				{
 					name: "target",
 					description:
-						"Loose feed target for operation=send/read, such as a user, handle, channel, media id, or connector-specific reference.",
+						"Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post target",
+					descriptionCompressed: "feed target",
 				},
 				{
 					name: "feed",
@@ -2242,27 +2349,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed selector",
-				},
-				{
-					name: "replyTo",
-					description:
-						"Optional post, cast, media, or thread identifier when publishing a reply/comment.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "reply/comment target",
-				},
-				{
-					name: "mediaId",
-					description:
-						"Optional media identifier for connectors that publish comments or replies to media.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "media id",
+					descriptionCompressed: "feed",
 				},
 				{
 					name: "query",
@@ -2271,7 +2358,26 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search query",
+					descriptionCompressed: "post search query",
+				},
+				{
+					name: "replyTo",
+					description: "Post/comment/reply target for operation=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reply target",
+				},
+				{
+					name: "mediaId",
+					description:
+						"Media id for connector-specific comment surfaces such as Instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "media id",
 				},
 				{
 					name: "limit",
@@ -2293,34 +2399,16 @@ export const allActionsSpec = {
 					descriptionCompressed: "pagination cursor",
 				},
 				{
-					name: "before",
-					description:
-						"Optional post id or timestamp boundary for older feed/search results.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "before boundary",
-				},
-				{
-					name: "after",
-					description:
-						"Optional post id or timestamp boundary for newer feed/search results.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "after boundary",
-				},
-				{
 					name: "attachments",
-					description:
-						"Optional media attachments for connectors that support media posts.",
+					description: "Optional post attachments.",
 					required: false,
 					schema: {
 						type: "array",
+						items: {
+							type: "object",
+						},
 					},
-					descriptionCompressed: "media attachments",
+					descriptionCompressed: "post attachments",
 				},
 			],
 			examples: [
@@ -2328,7 +2416,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Post 'shipping today' to X",
+							text: "Post this on X: shipping today",
 						},
 					},
 					{
@@ -2342,25 +2430,13 @@ export const allActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: 'Post "shipping today" to X',
-					actions: ["REPLY", "POST"],
+					user: "Post this on X: shipping today",
+					actions: ["POST"],
 					params: {
 						POST: {
 							operation: "send",
 							source: "x",
 							text: "shipping today",
-						},
-					},
-				},
-				{
-					user: "Comment 'looks good' on Instagram media 180123",
-					actions: ["REPLY", "POST"],
-					params: {
-						POST: {
-							operation: "send",
-							source: "instagram",
-							mediaId: "180123",
-							text: "looks good",
 						},
 					},
 				},

@@ -1,4 +1,10 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import { createSignalConnectorAccountProvider } from "./connector-account-provider";
 
 // Service
 import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
@@ -17,6 +23,22 @@ const signalPlugin: Plugin = {
   providers: [],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register the Signal provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete Signal accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createSignalConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:signal",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Signal provider with ConnectorAccountManager"
+      );
+    }
+
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
     const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
@@ -80,6 +102,11 @@ const signalPlugin: Plugin = {
 
 export default signalPlugin;
 
+// ConnectorAccountManager provider exports
+export {
+  createSignalConnectorAccountProvider,
+  SIGNAL_PROVIDER_ID,
+} from "./connector-account-provider";
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,

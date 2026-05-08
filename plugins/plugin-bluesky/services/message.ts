@@ -56,7 +56,7 @@ export class BlueSkyMessageService {
 	constructor(
 		private readonly client: BlueSkyClient,
 		private readonly runtime: IAgentRuntime,
-		private readonly accountId: string = DEFAULT_BLUESKY_ACCOUNT_ID,
+		public readonly accountId: string = "default",
 	) {}
 
 	getAccountId(): string {

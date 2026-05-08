@@ -24,8 +24,9 @@ import type { TwitterPostClient } from "./post";
  */
 export type TwitterClientState = Partial<TwitterConfig> & {
   /**
-   * Plugin-local account identifier used until the shared connector account
-   * store becomes the source of truth for X account routing.
+   * Connector account identifier this client instance is bound to. Defaults
+   * to "default" in single-account mode; resolved via the connector account
+   * manager (or the plugin-local resolver as a fallback) otherwise.
    */
   accountId?: string;
 };

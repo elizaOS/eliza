@@ -1,5 +1,34 @@
 import type { AgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 
+// Canonical union types for the documents service surface.
+// Plugin packages (e.g. @elizaos/app-documents) re-export these so route
+// helpers and presenters share one type vocabulary across the workspace.
+export type DocumentVisibilityScope =
+  | "global"
+  | "owner-private"
+  | "user-private"
+  | "agent-private";
+
+export type DocumentAddedByRole =
+  | "OWNER"
+  | "ADMIN"
+  | "USER"
+  | "AGENT"
+  | "RUNTIME";
+
+export type DocumentAddedFrom =
+  | "chat"
+  | "upload"
+  | "url"
+  | "file"
+  | "agent-autonomous"
+  | "runtime-internal"
+  | "lifeops"
+  | "default-seed"
+  | "character";
+
+export type DocumentSearchMode = "hybrid" | "vector" | "keyword";
+
 export interface DocumentsServiceLike {
   addDocument(options: {
     agentId?: UUID;
@@ -11,6 +40,11 @@ export interface DocumentsServiceLike {
     originalFilename: string;
     content: string;
     metadata?: Record<string, unknown>;
+    scope?: DocumentVisibilityScope;
+    scopedToEntityId?: UUID;
+    addedBy?: UUID;
+    addedByRole?: DocumentAddedByRole;
+    addedFrom?: DocumentAddedFrom;
   }): Promise<{
     clientDocumentId: string;
     storedDocumentMemoryId: UUID;
@@ -19,14 +53,21 @@ export interface DocumentsServiceLike {
   searchDocuments(
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+    searchMode?: DocumentSearchMode,
   ): Promise<
     Array<{
       id: UUID;
       content: { text?: string };
       similarity?: number;
       metadata?: Record<string, unknown>;
+      worldId?: UUID;
     }>
   >;
+  listDocuments?(
+    message?: Memory,
+    options?: Record<string, unknown>,
+  ): Promise<Memory[]>;
+  getDocumentById?(documentId: UUID, message?: Memory): Promise<Memory | null>;
   getMemories(params: {
     tableName: string;
     roomId?: UUID;
@@ -39,15 +80,20 @@ export interface DocumentsServiceLike {
     roomId?: UUID;
     unique?: boolean;
   }): Promise<number>;
-  updateDocument?(options: {
+  updateDocument(options: {
     documentId: UUID;
     content: string;
+    message?: Memory;
   }): Promise<{
     documentId: UUID;
     fragmentCount: number;
   }>;
+  deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
   deleteMemory(memoryId: UUID): Promise<void>;
 }
+
+/** Alias kept for backwards-compatible plugin imports. */
+export type DocumentServiceLike = DocumentsServiceLike;
 
 export type DocumentsLoadFailReason =
   | "timeout"
@@ -69,6 +115,9 @@ export function getDocumentsServiceTimeoutMs(): number {
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }
+
+/** Alias kept for backwards-compatible plugin imports. */
+export const getDocumentsTimeoutMs = getDocumentsServiceTimeoutMs;
 
 export async function getDocumentsService(
   runtime: AgentRuntime | null,

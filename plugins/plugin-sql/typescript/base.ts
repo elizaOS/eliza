@@ -29,6 +29,7 @@ import {
   type Memory,
   type MemoryMetadata,
   type Metadata,
+  type OAuthFlowRecord,
   type PairingAllowlistEntry,
   type PairingAllowlistsResult,
   type PairingChannel,
@@ -42,7 +43,6 @@ import {
   type Relationship,
   type Room,
   type RunStatus,
-  type OAuthFlowRecord,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -226,6 +226,11 @@ import type { DatabaseMigrationService } from "./migration-service";
 import { sha256Async } from "./runtime-migrator/crypto-utils";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
+  ConnectorAccountStore,
+  type ListConnectorAccountAuditEventsParams,
+} from "./stores/connectorAccount.store";
+import type { StoreContext } from "./stores/types";
+import {
   agentTable,
   cacheTable,
   channelParticipantsTable,
@@ -259,6 +264,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected migrationService?: DatabaseMigrationService;
+  private _connectorAccountStore?: ConnectorAccountStore;
+
+  protected getConnectorAccountStore(): ConnectorAccountStore {
+    if (!this._connectorAccountStore) {
+      const ctx: StoreContext = {
+        getDb: () => this.db as DrizzleDatabase,
+        withRetry: <T>(operation: () => Promise<T>) => this.withDatabase(operation),
+        withIsolationContext: <T>(
+          entityId: UUID | null,
+          callback: (tx: DrizzleDatabase) => Promise<T>
+        ) => this.withEntityContext(entityId, callback),
+        agentId: this.agentId,
+        getEmbeddingDimension: () => this.embeddingDimension,
+      };
+      this._connectorAccountStore = new ConnectorAccountStore(ctx);
+    }
+    return this._connectorAccountStore;
+  }
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
 
@@ -5309,333 +5332,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   // ── Connector account storage ────────────────────────────────────────
 
   async listConnectorAccounts(
-    params: ListConnectorAccountsParams = {}
+    params?: ListConnectorAccountsParams
   ): Promise<ConnectorAccountRecord[]> {
-    return this.withDatabase(async () => {
-      const conditions: SQL[] = [
-        eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId),
-      ];
-      if (params.provider) conditions.push(eq(connectorAccountsTable.provider, params.provider));
-      if (params.status) conditions.push(eq(connectorAccountsTable.status, params.status));
-
-      const rows = await this.db
-        .select()
-        .from(connectorAccountsTable)
-        .where(and(...conditions))
-        .orderBy(desc(connectorAccountsTable.updatedAt))
-        .limit(params.limit ?? 100)
-        .offset(params.offset ?? 0);
-
-      return rows.map(mapConnectorAccountRow);
-    });
+    return this.getConnectorAccountStore().listAccounts(params ?? {});
   }
 
   async getConnectorAccount(
     params: GetConnectorAccountParams
   ): Promise<ConnectorAccountRecord | null> {
-    return this.withDatabase(async () => {
-      const conditions: SQL[] = [];
-      if (params.id) {
-        conditions.push(eq(connectorAccountsTable.id, params.id));
-      } else {
-        conditions.push(eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId));
-        if (!params.provider || !params.accountKey) {
-          throw new Error("getConnectorAccount requires id or provider + accountKey");
-        }
-        conditions.push(eq(connectorAccountsTable.provider, params.provider));
-        conditions.push(eq(connectorAccountsTable.accountKey, params.accountKey));
-      }
-
-      const rows = await this.db
-        .select()
-        .from(connectorAccountsTable)
-        .where(and(...conditions))
-        .limit(1);
-
-      return rows[0] ? mapConnectorAccountRow(rows[0]) : null;
-    });
+    return this.getConnectorAccountStore().getAccount(params);
   }
 
   async upsertConnectorAccount(
     params: UpsertConnectorAccountParams
   ): Promise<ConnectorAccountRecord> {
-    return this.withDatabase(async () => {
-      const now = new Date();
-      const values = stripUndefined({
-        id: params.id,
-        agentId: params.agentId ?? this.agentId,
-        provider: params.provider,
-        accountKey: params.accountKey,
-        externalId: params.externalId,
-        displayName: params.displayName,
-        username: params.username,
-        email: params.email,
-        role: params.role,
-        purpose: params.purpose,
-        accessGate: params.accessGate,
-        status: params.status,
-        scopes: params.scopes,
-        capabilities: params.capabilities,
-        profile: params.profile,
-        metadata: params.metadata,
-        connectedAt: toConnectorDate(params.connectedAt),
-        lastSyncAt: toConnectorDate(params.lastSyncAt),
-        deletedAt: toConnectorDate(params.deletedAt),
-        updatedAt: now,
-      }) as typeof connectorAccountsTable.$inferInsert;
-
-      const updateSet = stripUndefined({
-        externalId: params.externalId,
-        displayName: params.displayName,
-        username: params.username,
-        email: params.email,
-        role: params.role,
-        purpose: params.purpose,
-        accessGate: params.accessGate,
-        status: params.status,
-        scopes: params.scopes,
-        capabilities: params.capabilities,
-        profile: params.profile,
-        metadata: params.metadata,
-        connectedAt: toConnectorDate(params.connectedAt),
-        lastSyncAt: toConnectorDate(params.lastSyncAt),
-        deletedAt: toConnectorDate(params.deletedAt),
-        updatedAt: now,
-      });
-
-      const rows = await this.db
-        .insert(connectorAccountsTable)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [
-            connectorAccountsTable.agentId,
-            connectorAccountsTable.provider,
-            connectorAccountsTable.accountKey,
-          ],
-          set: updateSet,
-        })
-        .returning();
-
-      if (!rows[0]) {
-        throw new Error("Failed to upsert connector account");
-      }
-      return mapConnectorAccountRow(rows[0]);
-    });
+    return this.getConnectorAccountStore().upsertAccount(params);
   }
 
   async deleteConnectorAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
-    return this.withDatabase(async () => {
-      const conditions: SQL[] = [];
-      if (params.id) {
-        conditions.push(eq(connectorAccountsTable.id, params.id));
-      } else {
-        conditions.push(eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId));
-        if (!params.provider || !params.accountKey) {
-          throw new Error("deleteConnectorAccount requires id or provider + accountKey");
-        }
-        conditions.push(eq(connectorAccountsTable.provider, params.provider));
-        conditions.push(eq(connectorAccountsTable.accountKey, params.accountKey));
-      }
-
-      const rows = await this.db
-        .delete(connectorAccountsTable)
-        .where(and(...conditions))
-        .returning();
-      return rows.length > 0;
-    });
+    return this.getConnectorAccountStore().deleteAccount(params);
   }
 
   async setConnectorAccountCredentialRef(
     params: SetConnectorAccountCredentialRefParams
   ): Promise<ConnectorAccountCredentialRefRecord> {
-    return this.withDatabase(async () => {
-      const account = await this.getConnectorAccount({ id: params.accountId });
-      if (!account) {
-        throw new Error(`Connector account not found: ${params.accountId}`);
-      }
-
-      const now = new Date();
-      const values = stripUndefined({
-        accountId: params.accountId,
-        agentId: account.agentId,
-        provider: account.provider,
-        credentialType: params.credentialType,
-        vaultRef: params.vaultRef,
-        metadata: params.metadata,
-        expiresAt: toConnectorDate(params.expiresAt),
-        lastVerifiedAt: toConnectorDate(params.lastVerifiedAt),
-        updatedAt: now,
-      }) as typeof connectorAccountCredentialsTable.$inferInsert;
-
-      const updateSet = stripUndefined({
-        vaultRef: params.vaultRef,
-        metadata: params.metadata,
-        expiresAt: toConnectorDate(params.expiresAt),
-        lastVerifiedAt: toConnectorDate(params.lastVerifiedAt),
-        updatedAt: now,
-      });
-
-      const rows = await this.db
-        .insert(connectorAccountCredentialsTable)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [
-            connectorAccountCredentialsTable.accountId,
-            connectorAccountCredentialsTable.credentialType,
-          ],
-          set: updateSet,
-        })
-        .returning();
-
-      if (!rows[0]) {
-        throw new Error("Failed to set connector credential ref");
-      }
-      return mapConnectorCredentialRow(rows[0]);
-    });
+    return this.getConnectorAccountStore().setCredentialRef(params);
   }
 
   async getConnectorAccountCredentialRef(
     params: GetConnectorAccountCredentialRefParams
   ): Promise<ConnectorAccountCredentialRefRecord | null> {
-    return this.withDatabase(async () => {
-      const rows = await this.db
-        .select()
-        .from(connectorAccountCredentialsTable)
-        .where(
-          and(
-            eq(connectorAccountCredentialsTable.accountId, params.accountId),
-            eq(connectorAccountCredentialsTable.credentialType, params.credentialType)
-          )
-        )
-        .limit(1);
-
-      return rows[0] ? mapConnectorCredentialRow(rows[0]) : null;
-    });
+    return this.getConnectorAccountStore().getCredentialRef(params);
   }
 
   async listConnectorAccountCredentialRefs(
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
-    return this.withDatabase(async () => {
-      const rows = await this.db
-        .select()
-        .from(connectorAccountCredentialsTable)
-        .where(eq(connectorAccountCredentialsTable.accountId, params.accountId))
-        .orderBy(desc(connectorAccountCredentialsTable.updatedAt));
-
-      return rows.map(mapConnectorCredentialRow);
-    });
+    return this.getConnectorAccountStore().listCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(
     params: AppendConnectorAccountAuditEventParams
   ): Promise<ConnectorAccountAuditEventRecord> {
-    return this.withDatabase(async () => {
-      let agentId = params.agentId ?? this.agentId;
-      let provider = params.provider;
-      if (params.accountId && (!params.agentId || !provider)) {
-        const account = await this.getConnectorAccount({ id: params.accountId });
-        if (!account) {
-          throw new Error(`Connector account not found: ${params.accountId}`);
-        }
-        agentId = account.agentId;
-        provider = account.provider;
-      }
-      if (!provider) {
-        throw new Error("appendConnectorAccountAuditEvent requires provider or accountId");
-      }
+    return this.getConnectorAccountStore().appendAuditEvent(params);
+  }
 
-      const metadata = asJsonObject(redactConnectorAuditMetadata(params.metadata ?? {}));
-      const rows = await this.db
-        .insert(connectorAccountAuditEventsTable)
-        .values({
-          accountId: params.accountId ?? null,
-          agentId,
-          provider,
-          actorId: params.actorId ?? null,
-          action: params.action,
-          outcome: params.outcome ?? "success",
-          metadata,
-          createdAt: toConnectorDate(params.createdAt) ?? new Date(),
-        })
-        .returning();
-
-      if (!rows[0]) {
-        throw new Error("Failed to append connector account audit event");
-      }
-      return mapConnectorAuditRow(rows[0]);
-    });
+  async listConnectorAccountAuditEvents(
+    params: ListConnectorAccountAuditEventsParams = {}
+  ): Promise<ConnectorAccountAuditEventRecord[]> {
+    return this.getConnectorAccountStore().listAuditEvents(params);
   }
 
   async createOAuthFlowState(params: CreateOAuthFlowStateParams): Promise<OAuthFlowRecord> {
-    return this.withDatabase(async () => {
-      const stateHash = await sha256Async(params.state);
-      const expiresAt =
-        toConnectorDate(params.expiresAt) ?? new Date(Date.now() + (params.ttlMs ?? 10 * 60_000));
-
-      const rows = await this.db
-        .insert(oauthFlowsTable)
-        .values(
-          stripUndefined({
-            stateHash,
-            agentId: params.agentId ?? this.agentId,
-            provider: params.provider,
-            accountId: params.accountId,
-            redirectUri: params.redirectUri,
-            codeVerifierRef: params.codeVerifierRef,
-            scopes: params.scopes,
-            metadata: params.metadata,
-            expiresAt,
-            consumedAt: null,
-            consumedBy: null,
-          }) as typeof oauthFlowsTable.$inferInsert
-        )
-        .onConflictDoUpdate({
-          target: oauthFlowsTable.stateHash,
-          set: stripUndefined({
-            agentId: params.agentId ?? this.agentId,
-            provider: params.provider,
-            accountId: params.accountId,
-            redirectUri: params.redirectUri,
-            codeVerifierRef: params.codeVerifierRef,
-            scopes: params.scopes,
-            metadata: params.metadata,
-            expiresAt,
-            consumedAt: null,
-            consumedBy: null,
-          }),
-        })
-        .returning();
-
-      if (!rows[0]) {
-        throw new Error("Failed to create OAuth flow state");
-      }
-      return mapOAuthFlowRow(rows[0]);
-    });
+    return this.getConnectorAccountStore().createOAuthFlowState(params);
   }
 
   async consumeOAuthFlowState(
     params: ConsumeOAuthFlowStateParams
   ): Promise<OAuthFlowRecord | null> {
-    return this.withDatabase(async () => {
-      const stateHash = await sha256Async(params.state);
-      const now = toConnectorDate(params.now) ?? new Date();
-      const conditions: SQL[] = [
-        eq(oauthFlowsTable.stateHash, stateHash),
-        isNull(oauthFlowsTable.consumedAt),
-        gt(oauthFlowsTable.expiresAt, now),
-      ];
-      if (params.agentId) conditions.push(eq(oauthFlowsTable.agentId, params.agentId));
-      if (params.provider) conditions.push(eq(oauthFlowsTable.provider, params.provider));
-
-      const rows = await this.db
-        .update(oauthFlowsTable)
-        .set({ consumedAt: now, consumedBy: params.consumedBy ?? null })
-        .where(and(...conditions))
-        .returning();
-
-      return rows[0] ? mapOAuthFlowRow(rows[0]) : null;
-    });
+    return this.getConnectorAccountStore().consumeOAuthFlowState(params);
   }
 }
 

@@ -27,7 +27,6 @@ const EXPECTED_ACTIONS = [
   "GLOB",
   "LS",
   "WEB_FETCH",
-  "CODE_WEB_SEARCH",
   "ASK_USER_QUESTION",
   "ENTER_WORKTREE",
   "EXIT_WORKTREE",
@@ -39,7 +38,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 12 expected actions", () => {
+  it("registers exactly the 11 expected actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());

@@ -360,7 +360,7 @@ async function processAndSaveFragments({
 					metadata: fragmentMetadata,
 				};
 
-				await runtime.createMemory(fragmentMemory, "documents");
+				await runtime.createMemory(fragmentMemory, "document_fragments");
 				savedCount++;
 			} catch (saveError) {
 				const errorMessage =

@@ -4,7 +4,7 @@ export {
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
 export * from "./actions/index.js";
-export type { CloudConfigLike } from "./api/cloud-status-routes.js";
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 export * from "./api/config-env.js";
 export * from "./api/conversation-metadata.js";
 export * from "./api/index.js";
@@ -88,8 +88,6 @@ export * from "./api/wallet-capability.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";
-export { resolveCloudApiBaseUrl } from "./cloud/base-url.js";
-export * from "./cloud/index.js";
 export { CharacterSchema } from "./config/character-schema.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";

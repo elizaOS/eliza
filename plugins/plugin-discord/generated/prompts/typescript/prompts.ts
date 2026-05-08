@@ -119,6 +119,27 @@ Respond with JSON only, no markdown:
 
 export const GET_USER_TEMPLATE = getUserTemplate;
 
+export const getUserTemplate = `# Getting Discord user information
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting information about a Discord user. Extract:
+1. The user identifier (username, user ID, or mention)
+2. Whether they want detailed server-specific info
+
+Examples:
+- "who is @john?" -> userIdentifier: "john", detailed: false
+- "tell me about user 123456789" -> userIdentifier: "123456789", detailed: false
+- "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
+- "who am I?" -> userIdentifier: "self", detailed: false
+
+Respond with JSON only, no markdown:
+{
+  "userIdentifier": "username|user-id|mention|self",
+  "detailed": false
+}`;
+
+export const GET_USER_TEMPLATE = getUserTemplate;
+
 export const joinChannelTemplate = `# Messages we are searching for channel join information
 {{recentMessages}}
 
@@ -253,6 +274,28 @@ Respond with JSON only, no markdown:
 }`;
 
 export const SEARCH_MESSAGES_TEMPLATE = searchMessagesTemplate;
+
+export const sendMessageTemplate = `# Messages we are searching for Discord message target information
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting to send a Discord message. Your goal is to determine:
+1. The target they want to message (could be a channel, thread, username, user ID, or mentioned user)
+2. The message content they want to send
+
+Extract the target identifier and the message content from their request.
+- If they mention a channel like #general or <#channelid>, extract that
+- If they mention a user like @username or <@userid>, extract that
+- If they provide a username or display name, extract that
+- If they provide a user ID (long number), extract that
+- Extract the complete message they want to send
+
+Respond with JSON only, no markdown:
+{
+  "targetIdentifier": "channel|thread|username|user-id|@mention",
+  "messageContent": "the message to send"
+}`;
+
+export const SEND_MESSAGE_TEMPLATE = sendMessageTemplate;
 
 export const sendMessageTemplate = `# Messages we are searching for Discord message target information
 {{recentMessages}}

@@ -179,22 +179,18 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
   });
 
   it("should benchmark runtime creation times", async () => {
-    const modes = [AgentMode.CHAT];
     const benchmarks: Record<string, number> = {};
 
-    for (const mode of modes) {
-      // Ensure clean state
-      const userContext = buildUserContext(localTestData, {
-        agentMode: mode,
-        webSearchEnabled: false,
-      });
+    const userContext = buildUserContext(localTestData, {
+      agentMode: AgentMode.CHAT,
+      webSearchEnabled: false,
+    });
 
-      startTimer(`bench_${mode}`);
-      const runtime = await runtimeFactory.createRuntimeForUser(userContext);
-      benchmarks[mode] = endTimer(`bench_${mode}`);
+    startTimer("bench_chat");
+    const runtime = await runtimeFactory.createRuntimeForUser(userContext);
+    benchmarks[AgentMode.CHAT] = endTimer("bench_chat");
 
-      await invalidateRuntime(runtime.agentId as string);
-    }
+    await invalidateRuntime(runtime.agentId as string);
 
     console.log("\nRuntime Creation Benchmarks:");
     for (const [mode, time] of Object.entries(benchmarks)) {
@@ -202,7 +198,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       localTimings[`benchmark_${mode}`] = time;
     }
 
-    // Chat runtime should create in under 10 seconds
+    // The single chat mode should create in under 10 seconds.
     expect(benchmarks[AgentMode.CHAT]).toBeLessThan(10000);
   }, 180000);
 });

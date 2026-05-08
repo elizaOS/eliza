@@ -192,6 +192,7 @@ export function toAppInfo(
     session: meta?.session,
     developerOnly: meta?.developerOnly,
     visibleInAppStore: meta?.visibleInAppStore,
+    mainTab: meta?.mainTab,
   };
 }
 

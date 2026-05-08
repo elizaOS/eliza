@@ -297,7 +297,6 @@ Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.
 - `/api/v1/chain/nfts/:chain/:address` — group-h-misc.test.ts
 - `/api/v1/chain/tokens/:chain/:address` — v1/misc.test.ts
 - `/api/v1/chain/transfers/:chain/:address` — group-h-misc.test.ts
-- `/api/v1/character-assistant` — v1/security.test.ts
 - `/api/v1/chat/completions` — v1/affiliates.test.ts, v1/chat.test.ts, group-d-ai-media.test.ts
 - `/api/v1/chat` — v1/affiliates.test.ts, v1/chat.test.ts, group-d-ai-media.test.ts
 - `/api/v1/connections/:platform` — v1/connections.test.ts

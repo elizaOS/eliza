@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Reply on WhatsApp to Eve saying see you at 7.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "whatsapp draft reply",
         includesAny: ["whatsapp", "Eve", "draft", "reply"],
       }),
@@ -46,7 +46,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "whatsapp send after confirmation",
         includesAny: ["send", "whatsapp", "reply"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",
@@ -87,7 +87,7 @@ export default scenario({
       type: "custom",
       name: "whatsapp-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "whatsapp draft then send",
         includesAny: ["whatsapp", "draft", "send", "reply"],
         minCount: 2,
@@ -98,7 +98,7 @@ export default scenario({
       name: "whatsapp-reply-send-payload-is-addressed",
       predicate: async (ctx) => {
         const sendActions = ctx.actionsCalled.filter((action) =>
-          ["SEND_DRAFT", "SEND_DRAFT"].includes(
+          ["MESSAGE", "MESSAGE"].includes(
             action.actionName,
           ),
         );

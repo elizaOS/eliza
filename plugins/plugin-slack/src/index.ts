@@ -1,5 +1,4 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-
 import { slackEmojisProvider } from "./providers/slackEmojis";
 import { slackPinsProvider } from "./providers/slackPins";
 

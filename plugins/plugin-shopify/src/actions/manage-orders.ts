@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -90,194 +88,119 @@ User message: "${text}"
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
+export async function manageOrdersHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+): Promise<ActionResult | undefined> {
+  const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
+  if (!svc?.isConnected()) {
+    await callback?.({
+      text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
+    });
+    return { success: false, error: "Shopify not connected" };
+  }
 
-const examples: ActionExample[][] = [
-  [
-    {
-      name: "user",
-      content: { text: "Show me recent orders" },
-    },
-    {
-      name: "assistant",
-      content: {
-        text: "Here are the most recent orders:",
-      },
-    },
-  ],
-  [
-    {
-      name: "user",
-      content: { text: "What's the status of order #1042?" },
-    },
-    {
-      name: "assistant",
-      content: {
-        text: "Here are the details for order #1042:",
-      },
-    },
-  ],
-  [
-    {
-      name: "user",
-      content: { text: "Fulfill order 1042" },
-    },
-    {
-      name: "assistant",
-      content: {
-        text: "Order #1042 has been marked as fulfilled.",
-      },
-    },
-  ],
-];
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const intent =
+    readOrderIntent(options) ?? (await classifyIntent(runtime, text));
 
-export const manageOrdersAction: Action = {
-  name: "MANAGE_SHOPIFY_ORDERS",
-  contexts: ["payments", "connectors", "automation"],
-  contextGate: { anyOf: ["payments", "connectors", "automation"] },
-  roleGate: { minRole: "USER" },
-  similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
-  description:
-    "List recent orders and check order status. Fulfillment requires confirmed:true.",
-  descriptionCompressed:
-    "List orders, check status, mark fulfilled in Shopify.",
-  parameters: [
-    {
-      name: "confirmed",
-      description: "Must be true to fulfill a Shopify order after preview.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
-    shopifyAccountIdParameter,
-  ],
+  if (!intent) {
+    await callback?.({
+      text: "I couldn't determine what order action you want. Try: list orders, check order status, or fulfill an order.",
+    });
+    return { success: false, error: "Could not classify intent" };
+  }
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-  ): Promise<boolean> => {
-    return hasShopifyConfig(runtime);
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
-    const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    const accountId = getShopifyAccountId(runtime, options);
-    if (!svc?.isConnected(accountId)) {
+  try {
+    if (intent.action === "list") {
+      const queryStr = intent.query ?? undefined;
+      const result = await svc.listOrders({ query: queryStr, first: 10 });
+      if (result.orders.length === 0) {
+        await callback?.({
+          text: queryStr
+            ? `No orders found matching "${queryStr}".`
+            : "No orders found.",
+        });
+        return { success: true, text: "No orders found" };
+      }
+      const lines = result.orders.map(formatOrder);
+      const more = result.hasNextPage ? "\n\n(More orders available)" : "";
       await callback?.({
-        text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
+        text: `Recent orders (${result.orders.length}):\n\n${lines.join("\n")}${more}`,
       });
-      return { success: false, error: "Shopify not connected" };
+      return { success: true, data: { orders: result.orders } };
     }
 
-    const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const intent =
-      readOrderIntent(options) ?? (await classifyIntent(runtime, text));
-
-    if (!intent) {
-      await callback?.({
-        text: "I couldn't determine what order action you want. Try: list orders, check order status, or fulfill an order.",
+    if (intent.action === "get") {
+      const cleanName = intent.orderName.replace(/^#/, "").trim();
+      const result = await svc.listOrders({
+        query: `name:#${cleanName}`,
+        first: 1,
       });
-      return { success: false, error: "Could not classify intent" };
-    }
-
-    try {
-      if (intent.action === "list") {
-        const queryStr = intent.query ?? undefined;
-        const result = await svc.listOrders({ query: queryStr, first: 10 }, accountId);
-        if (result.orders.length === 0) {
-          await callback?.({
-            text: queryStr
-              ? `No orders found matching "${queryStr}".`
-              : "No orders found.",
-          });
-          return { success: true, text: "No orders found" };
-        }
-        const lines = result.orders.map(formatOrder);
-        const more = result.hasNextPage ? "\n\n(More orders available)" : "";
-        await callback?.({
-          text: `Recent orders (${result.orders.length}):\n\n${lines.join("\n")}${more}`,
-        });
-        return { success: true, data: { orders: result.orders } };
+      if (result.orders.length === 0) {
+        await callback?.({ text: `Order #${cleanName} not found.` });
+        return { success: false, error: "Order not found" };
       }
-
-      if (intent.action === "get") {
-        // Search for the order by name
-        const cleanName = intent.orderName.replace(/^#/, "").trim();
-        const result = await svc.listOrders({
-          query: `name:#${cleanName}`,
-          first: 1,
-        }, accountId);
-        if (result.orders.length === 0) {
-          await callback?.({ text: `Order #${cleanName} not found.` });
-          return { success: false, error: "Order not found" };
-        }
-        const order = result.orders[0];
-        const total = order.totalPriceSet.shopMoney;
-        const lineItems = order.lineItems.edges.map(
-          (e) =>
-            `  - ${e.node.title} x${e.node.quantity} (${e.node.originalUnitPriceSet.shopMoney.amount} ${e.node.originalUnitPriceSet.shopMoney.currencyCode})`,
-        );
-        const detail = [
-          `**Order ${order.name}**`,
-          `Status: ${order.displayFulfillmentStatus} | Payment: ${order.displayFinancialStatus ?? "n/a"}`,
-          `Total: ${total.amount} ${total.currencyCode}`,
-          `Customer: ${order.customer?.displayName ?? "Guest"}`,
-          `Created: ${order.createdAt.slice(0, 10)}`,
-          `Items:`,
-          ...lineItems,
-        ].join("\n");
-        await callback?.({ text: detail });
-        return { success: true, data: { order } };
-      }
-
-      if (intent.action === "fulfill") {
-        const cleanName = intent.orderName.replace(/^#/, "").trim();
-        const result = await svc.listOrders({
-          query: `name:#${cleanName}`,
-          first: 1,
-        }, accountId);
-        if (result.orders.length === 0) {
-          await callback?.({ text: `Order #${cleanName} not found.` });
-          return { success: false, error: "Order not found" };
-        }
-        const order = result.orders[0];
-        const preview = [
-          "Confirmation required before fulfilling Shopify order:",
-          `Order: ${order.name}`,
-          `Status: ${order.displayFulfillmentStatus}`,
-          `Customer: ${order.customer?.displayName ?? "Guest"}`,
-        ].join("\n");
-        if (!isConfirmed(options)) {
-          await callback?.({ text: preview });
-          return confirmationRequired(preview, { intent, orderId: order.id });
-        }
-        const fulfillment = await svc.fulfillOrder(order.id, accountId);
-        await callback?.({
-          text: `Order ${order.name} fulfilled (status: ${fulfillment.status}).`,
-        });
-        return { success: true, data: { order: order.name, fulfillment } };
-      }
-
-      await callback?.({ text: "Unsupported order action." });
-      return { success: false, error: "Unknown action" };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error(
-        { src: "plugin:shopify:manage-orders", error: msg },
-        "Order action failed",
+      const order = result.orders[0];
+      const total = order.totalPriceSet.shopMoney;
+      const lineItems = order.lineItems.edges.map(
+        (e) =>
+          `  - ${e.node.title} x${e.node.quantity} (${e.node.originalUnitPriceSet.shopMoney.amount} ${e.node.originalUnitPriceSet.shopMoney.currencyCode})`,
       );
-      await callback?.({ text: `Shopify order operation failed: ${msg}` });
-      return { success: false, error: msg };
+      const detail = [
+        `**Order ${order.name}**`,
+        `Status: ${order.displayFulfillmentStatus} | Payment: ${order.displayFinancialStatus ?? "n/a"}`,
+        `Total: ${total.amount} ${total.currencyCode}`,
+        `Customer: ${order.customer?.displayName ?? "Guest"}`,
+        `Created: ${order.createdAt.slice(0, 10)}`,
+        `Items:`,
+        ...lineItems,
+      ].join("\n");
+      await callback?.({ text: detail });
+      return { success: true, data: { order } };
     }
-  },
 
-  examples,
-};
+    if (intent.action === "fulfill") {
+      const cleanName = intent.orderName.replace(/^#/, "").trim();
+      const result = await svc.listOrders({
+        query: `name:#${cleanName}`,
+        first: 1,
+      });
+      if (result.orders.length === 0) {
+        await callback?.({ text: `Order #${cleanName} not found.` });
+        return { success: false, error: "Order not found" };
+      }
+      const order = result.orders[0];
+      const preview = [
+        "Confirmation required before fulfilling Shopify order:",
+        `Order: ${order.name}`,
+        `Status: ${order.displayFulfillmentStatus}`,
+        `Customer: ${order.customer?.displayName ?? "Guest"}`,
+      ].join("\n");
+      if (!isConfirmed(options)) {
+        await callback?.({ text: preview });
+        return confirmationRequired(preview, { intent, orderId: order.id });
+      }
+      const fulfillment = await svc.fulfillOrder(order.id);
+      await callback?.({
+        text: `Order ${order.name} fulfilled (status: ${fulfillment.status}).`,
+      });
+      return { success: true, data: { order: order.name, fulfillment } };
+    }
+
+    await callback?.({ text: "Unsupported order action." });
+    return { success: false, error: "Unknown action" };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(
+      { src: "plugin:shopify:manage-orders", error: msg },
+      "Order action failed",
+    );
+    await callback?.({ text: `Shopify order operation failed: ${msg}` });
+    return { success: false, error: msg };
+  }
+}

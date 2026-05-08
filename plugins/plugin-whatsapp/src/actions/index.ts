@@ -1,1 +1,1 @@
-export {};
+// WhatsApp messaging routes through MESSAGE connector hooks.

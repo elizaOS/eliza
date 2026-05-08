@@ -31,21 +31,19 @@ import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
   DISCORD_APP_URL,
+  type DiscordDesktopCdpStatus,
   type DiscordMessageSearchResult,
   type DiscordTabProbe,
   discordBrowserWorkspaceAvailable,
   emptyDiscordDmInboxProbe,
   ensureDiscordTab,
+  getDiscordDesktopCdpStatus,
   probeDiscordCapturedPage,
   probeDiscordTab,
-  searchDiscordMessages,
-} from "./discord-browser-scraper.js";
-import {
-  type DiscordDesktopCdpStatus,
-  getDiscordDesktopCdpStatus,
   relaunchDiscordDesktopForCdp,
+  searchDiscordMessages,
   sendDiscordViaDesktopCdp,
-} from "./discord-desktop-cdp.js";
+} from "@elizaos/plugin-discord";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   searchDiscordMessagesWithRuntimeService,
@@ -1379,9 +1377,13 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
+      // TODO(lifeops): per-side accountId mapping. Until LifeOps wires owner
+      // vs agent grants to distinct ConnectorAccount IDs, scope the browser
+      // partition by `lifeops-${agentId}-${side}`-shaped accountId so cookies
+      // remain isolated between owner and agent flows.
+      const sideAccountId = `${this.agentId()}-${normalizedSide}`;
       const { tabId } = await ensureDiscordTab({
-        agentId: this.agentId(),
-        side: normalizedSide,
+        accountId: sideAccountId,
         existingTabId: tabIdFromGrant(existing),
         show: true,
       });

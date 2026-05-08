@@ -6,8 +6,13 @@
  */
 
 import { platform } from "node:os";
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
 // The former iMessage-specific send action duplicated the MessageConnector
 // path. The connector registered by IMessageService.registerSendHandlers is
 // now the canonical delivery path through MESSAGE operation=send. This plugin
@@ -111,8 +116,24 @@ const imessagePlugin: Plugin = {
   routes: imessageSetupRoutes,
   tests: [],
 
-  init: async (config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing iMessage plugin...");
+
+    // Register the iMessage provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete iMessage accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createIMessageConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:imessage",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register iMessage provider with ConnectorAccountManager"
+      );
+    }
 
     const isMacOS = platform() === "darwin";
 
@@ -138,6 +159,11 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
+// ConnectorAccountManager provider exports
+export {
+  createIMessageConnectorAccountProvider,
+  IMESSAGE_PROVIDER_ID,
+} from "./connector-account-provider.js";
 // Channel configuration types
 export type {
   IMessageConfig,

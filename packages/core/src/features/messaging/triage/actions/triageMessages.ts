@@ -19,7 +19,7 @@ import {
 } from "./_shared.ts";
 
 export const triageMessagesAction: Action = {
-	name: "TRIAGE_MESSAGES",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description:
@@ -41,7 +41,7 @@ export const triageMessagesAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Scanning your inboxes and ranking by priority.",
-					action: "TRIAGE_MESSAGES",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -79,7 +79,7 @@ export const triageMessagesAction: Action = {
 		if (callback) {
 			await callback({
 				text: summary,
-				action: "TRIAGE_MESSAGES",
+				action: "MESSAGE",
 			});
 		}
 

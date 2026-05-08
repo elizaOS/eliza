@@ -5,7 +5,7 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 
 export * from "./accounts.js";
 // Service
@@ -16,6 +16,7 @@ export * from "./types.js";
 // Twitch send/list/join/leave operations route through the MESSAGE action via
 // the MessageConnector registered by TwitchService.registerSendHandlers.
 
+import { createTwitchConnectorAccountProvider } from "./connector-account-provider.js";
 import { userContextProvider } from "./providers/userContext.js";
 
 export { userContextProvider };
@@ -43,6 +44,19 @@ const twitchPlugin: Plugin = {
     _config: Record<string, string>,
     runtime: IAgentRuntime,
   ): Promise<void> => {
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createTwitchConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:twitch",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Twitch provider with ConnectorAccountManager"
+      );
+    }
+
     const username = runtime.getSetting("TWITCH_USERNAME");
     const clientId = runtime.getSetting("TWITCH_CLIENT_ID");
     const accessToken = runtime.getSetting("TWITCH_ACCESS_TOKEN");

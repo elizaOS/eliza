@@ -14,11 +14,11 @@ import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
-	name: "SEARCH_MESSAGES",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Read-only search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations. Do not use for requests to draft, reply, send, unsubscribe, block, archive, trash, label, or otherwise mutate messages; use DRAFT_REPLY, RESPOND_TO_MESSAGE, SEND_DRAFT, or MANAGE_MESSAGE instead.",
+		"Read-only search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations. Do not use for requests to draft, reply, send, unsubscribe, block, archive, trash, label, or otherwise mutate messages; use MESSAGE, MESSAGE, MESSAGE, or MESSAGE instead.",
 	descriptionCompressed:
 		"read-only search msgs; not for draft reply send unsubscribe archive trash label mutate",
 	similes: [
@@ -81,7 +81,7 @@ export const searchMessagesAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Searching across connected channels.",
-					action: "SEARCH_MESSAGES",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -116,7 +116,7 @@ export const searchMessagesAction: Action = {
 		);
 
 		if (callback) {
-			await callback({ text, action: "SEARCH_MESSAGES" });
+			await callback({ text, action: "MESSAGE" });
 		}
 
 		return {

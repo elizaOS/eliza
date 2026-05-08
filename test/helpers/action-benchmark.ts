@@ -126,7 +126,7 @@ export const QUICK_BENCHMARK_CASES: BenchmarkCase[] = [
   {
     id: "email-triage",
     userMessage: "Triage my gmail inbox",
-    expectedAction: "TRIAGE_MESSAGES",
+    expectedAction: "MESSAGE",
     tags: ["email", "critical"],
   },
   {
@@ -138,7 +138,7 @@ export const QUICK_BENCHMARK_CASES: BenchmarkCase[] = [
   {
     id: "send-telegram",
     userMessage: "Send a telegram message to Jane saying I'm running late",
-    expectedAction: "SEND_DRAFT",
+    expectedAction: "MESSAGE",
     tags: ["messaging", "critical"],
   },
   {

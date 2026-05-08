@@ -30,7 +30,7 @@ export default scenario({
       room: "main",
       text: "[call transcript] Hi agent, this is a voice call coming in from my phone.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["REPLY", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
         description: "twilio voice transcript route-to-agent",
         includesAny: ["call", "voice", "received", "hello"],
       }),
@@ -40,13 +40,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["REPLY", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["REPLY", "MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",
       name: "twilio-call-receive-produces-grounded-response",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["REPLY", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
         description: "twilio voice transcript route-to-agent",
         includesAny: ["call", "voice", "received", "hello"],
       }),

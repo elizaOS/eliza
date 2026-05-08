@@ -1,28 +1,6 @@
-import { withCanonicalActionDocs } from "../action-docs";
 import {
-	addContactAction,
-	deleteMessageAction,
-	editMessageAction,
-	getUserAction,
-	joinChannelAction,
-	leaveChannelAction,
-	listChannelsAction,
-	listServersAction,
 	messageAction,
-	pinMessageAction,
 	postAction,
-	reactToMessageAction,
-	readFeedAction,
-	readMessagesAction,
-	removeContactAction,
-	scheduleFollowUpAction,
-	searchContactsAction,
-	searchMessagesAction,
-	searchPostsAction,
-	sendMessageAction,
-	sendPostAction,
-	updateContactAction,
-	updateEntityAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
 	factExtractorAction,
@@ -60,33 +38,17 @@ export const relationshipsPlugin: Plugin = {
 	description:
 		"Native relationship, contact, follow-up, and social memory capabilities.",
 	actions: [
-		withCanonicalActionDocs(addContactAction),
-		withCanonicalActionDocs(removeContactAction),
-		withCanonicalActionDocs(scheduleFollowUpAction),
-		withCanonicalActionDocs(searchContactsAction),
+		// Contact / Rolodex / entity ops are consolidated into the
+		// `CONTACT` parent action in `@elizaos/agent`
+		// (packages/agent/src/actions/contact.ts). The old
+		// addContactAction / removeContactAction / searchContactsAction /
+		// updateContactAction / updateEntityAction leaves are no longer
+		// registered here — their similes live on CONTACT's similes list.
 		messageAction,
 		postAction,
-		// MESSAGE sub-actions — explicit per-op canonical actions (v4 plan).
-		// Registered alongside the MESSAGE umbrella so the planner can pick
-		// either the high-level intent or a precise op directly.
-		sendMessageAction,
-		readMessagesAction,
-		searchMessagesAction,
-		listChannelsAction,
-		listServersAction,
-		reactToMessageAction,
-		editMessageAction,
-		deleteMessageAction,
-		pinMessageAction,
-		joinChannelAction,
-		leaveChannelAction,
-		getUserAction,
-		// POST sub-actions.
-		sendPostAction,
-		readFeedAction,
-		searchPostsAction,
-		withCanonicalActionDocs(updateContactAction),
-		withCanonicalActionDocs(updateEntityAction),
+		// MESSAGE and POST use umbrella `operation`/`op` parameters instead of
+		// registering per-operation leaves. The planner unwraps those compact
+		// calls at benchmark/report time.
 		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
 		factExtractorAction,
 		reflectionAction,

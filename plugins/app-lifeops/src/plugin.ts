@@ -10,10 +10,7 @@ import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
-import { chatThreadAction } from "./actions/chat-thread.js";
-import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
-import { deviceIntentAction } from "./actions/device-intent.js";
 import { healthAction } from "./actions/health.js";
 import { lifeAction } from "./actions/life.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
@@ -212,19 +209,16 @@ const rawAppLifeOpsPlugin: Plugin = {
     lifeAction,
     bookTravelAction,
     profileAction,
-    checkinAction,
     relationshipAction,
     screenTimeAction,
     voiceCallAction,
     remoteDesktopAction,
     scheduleAction,
-    deviceIntentAction,
     passwordManagerAction,
     autofillAction,
     healthAction,
     subscriptionsAction,
     paymentsAction,
-    chatThreadAction,
     connectorAction,
     toggleFeatureAction,
     ...messagingTriageActions,

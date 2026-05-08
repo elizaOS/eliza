@@ -1,4 +1,10 @@
-import type { Plugin } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
 
@@ -8,10 +14,32 @@ const whatsappPlugin: Plugin = {
   actions: [],
   services: [WhatsAppConnectorService],
   routes: whatsappSetupRoutes,
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register the WhatsApp provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete WhatsApp accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createWhatsAppConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:whatsapp",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register WhatsApp provider with ConnectorAccountManager"
+      );
+    }
+  },
 };
 
 export default whatsappPlugin;
 
+// ConnectorAccountManager provider exports
+export {
+  createWhatsAppConnectorAccountProvider,
+  WHATSAPP_PROVIDER_ID,
+} from "./connector-account-provider";
 // Account management exports
 export {
   checkWhatsAppUserAccess,

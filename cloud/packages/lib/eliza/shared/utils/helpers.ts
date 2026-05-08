@@ -25,8 +25,8 @@ import type { ParsedPlan, ParsedResponse } from "./parsers";
 export const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 /**
- * Check if runtime is in creator mode (chatting with default Eliza to create new character)
- * vs build mode (editing existing character)
+ * Check if runtime is in creator mode (chatting with default Eliza to create a new character)
+ * vs editing an existing character.
  */
 export function isCreatorMode(runtime: IAgentRuntime): boolean {
   const characterId = runtime.character.id;
