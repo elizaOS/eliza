@@ -234,7 +234,7 @@ const ASK_USER_PATTERNS = [
   /\bwhich (?:would you|do you|of these)\b/i,
   /\bpick one of\b/i,
   /\bchoose one of\b/i,
-  /\boption\s*[\(\[]?[123abc][\)\]]?\b/i,
+  /\boption\s*[([]?[123abc][)\]]?\b/i,
   /^\s*[123abc]\.\s/m,
 ];
 

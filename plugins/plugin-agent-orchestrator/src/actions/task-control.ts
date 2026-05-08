@@ -11,16 +11,16 @@ import { getCoordinator } from "../services/pty-service.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
-const deprecatedActionWarnings = new Set<string>();
+const migrationActionWarnings = new Set<string>();
 
-function warnDeprecatedSpawnSurface(
+function warnCoordinatorTaskThreadSurface(
   actionName: string,
   replacement: string,
 ): void {
-  if (deprecatedActionWarnings.has(actionName)) return;
-  deprecatedActionWarnings.add(actionName);
+  if (migrationActionWarnings.has(actionName)) return;
+  migrationActionWarnings.add(actionName);
   console.warn(
-    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+    `[plugin-agent-orchestrator] ${actionName} controls the coordinator task-thread surface. Prefer ${replacement} from @elizaos/plugin-agent-orchestrator for new session control flows.`,
   );
 }
 type TaskControlOperation =
@@ -63,10 +63,22 @@ function inferOperation(
   return null;
 }
 
-/**
- * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
- * Use @elizaos/plugin-acpx session control actions instead. This action remains during the migration window.
- */
+function failureResult(
+  error: string,
+  text: string,
+  data: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    success: false,
+    error,
+    text,
+    data: {
+      actionName: "TASK_CONTROL",
+      ...data,
+    },
+  };
+}
+
 export const taskControlAction: Action = {
   name: "TASK_CONTROL",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -82,7 +94,7 @@ export const taskControlAction: Action = {
     "REOPEN_TASK",
   ],
   description:
-    "Apply a control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a session, optional follow-up instruction + agentType override), continue (send a follow-up instruction to the existing or a new session), archive (hide from active lists), reopen (restore from archive). The target thread is resolved from threadId, sessionId, or a free-text search; resume/continue accept an optional instruction.",
+    "Apply a current control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a task session with optional follow-up instruction and agentType override), continue (send a follow-up instruction to the existing or a new task session), archive (hide from active lists), reopen (restore from archive). Resolve the target from threadId, sessionId, or free-text search.",
   descriptionCompressed:
     "task-control:op=pause|stop|resume|continue|archive|reopen coordinator-task-thread (threadId|sessionId|search; +note|instruction|agentType)",
   examples: [
@@ -125,16 +137,18 @@ export const taskControlAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    warnDeprecatedSpawnSurface(
+    warnCoordinatorTaskThreadSurface(
       "taskControlAction",
-      "@elizaos/plugin-acpx session control actions",
+      "@elizaos/plugin-agent-orchestrator session control actions",
     );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {
         await callback({ text: access.reason });
       }
-      return { success: false, error: "FORBIDDEN", text: access.reason };
+      return failureResult("FORBIDDEN", access.reason, {
+        reason: "access_denied",
+      });
     }
 
     const coordinator = getCoordinator(runtime);
@@ -142,7 +156,11 @@ export const taskControlAction: Action = {
       if (callback) {
         await callback({ text: "Coordinator is not available." });
       }
-      return { success: false, error: "SERVICE_UNAVAILABLE" };
+      return failureResult(
+        "SERVICE_UNAVAILABLE",
+        "Coordinator is not available.",
+        { reason: "coordinator_unavailable" },
+      );
     }
 
     const params =
@@ -160,7 +178,11 @@ export const taskControlAction: Action = {
           text: "No task-control operation was specified. Use pause, stop, resume, continue, archive, or reopen.",
         });
       }
-      return { success: false, error: "INVALID_OPERATION" };
+      return failureResult(
+        "INVALID_OPERATION",
+        "No task-control operation was specified. Use pause, stop, resume, continue, archive, or reopen.",
+        { reason: "invalid_operation" },
+      );
     }
 
     const thread = await resolveTaskThreadTarget({
@@ -174,7 +196,11 @@ export const taskControlAction: Action = {
       if (callback) {
         await callback({ text: "I could not find a matching task thread." });
       }
-      return { success: false, error: "THREAD_NOT_FOUND" };
+      return failureResult(
+        "THREAD_NOT_FOUND",
+        "I could not find a matching task thread.",
+        { reason: "thread_not_found", operation },
+      );
     }
 
     const note =
@@ -189,7 +215,11 @@ export const taskControlAction: Action = {
       textValue(params.agentType) ?? textValue(content.agentType);
 
     let responseText = "";
-    let data: Record<string, unknown> = { threadId: thread.id, operation };
+    let data: Record<string, unknown> = {
+      actionName: "TASK_CONTROL",
+      threadId: thread.id,
+      operation,
+    };
 
     if (operation === "pause") {
       const result = await coordinator.pauseTaskThread(thread.id, note);

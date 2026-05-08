@@ -14,8 +14,8 @@
 
 import type http from "node:http";
 import type { AgentRuntime, IAgentRuntime, Plugin, Route } from "@elizaos/core";
-import { handleCodingAgentRoutes } from "./api/routes.js";
 import type { RouteContext } from "./api/route-utils.js";
+import { handleCodingAgentRoutes } from "./api/routes.js";
 import {
   CODING_AGENTS_FALLBACK_ROUTE_PATHS,
   handleCodingAgentsFallback,

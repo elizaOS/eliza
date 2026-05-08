@@ -1,6 +1,6 @@
 # ACPX_REFERENCE.md
 
-Canonical reference for the `acpx` CLI as consumed by `@elizaos/plugin-acpx`. Authoritative source: `.research/acpx-docs/` (ocplatform/acpx README, docs/CLI.md, skills/acpx/SKILL.md, ACP coverage roadmap). All citations refer to those files.
+Canonical reference for the `acpx` CLI as consumed by `@elizaos/plugin-agent-orchestrator`. Authoritative source: `.research/acpx-docs/` (ocplatform/acpx README, docs/CLI.md, skills/acpx/SKILL.md, ACP coverage roadmap). All citations refer to those files.
 
 ## 1. Overview
 
@@ -22,7 +22,7 @@ Canonical reference for the `acpx` CLI as consumed by `@elizaos/plugin-acpx`. Au
 - State: `~/.acpx/` (sessions, flows, config). Uses OS home directory; inheritable.
 - Authoritative cite: `.research/acpx-docs/README.md` lines 1-50.
 
-### What `@elizaos/plugin-acpx` uses
+### What `@elizaos/plugin-agent-orchestrator` uses
 
 - `acpx --format json <agent> exec ...` for one-shot tasks (CREATE_TASK).
 - `acpx --format json <agent> sessions new --name X` for session creation.
@@ -255,7 +255,7 @@ CLI flags ALWAYS override config. (cite: docs_CLI.md line 423)
 
 Cite: docs_CLI.md lines 71-90.
 
-Out of scope for `@elizaos/plugin-acpx` v0.1.0. Mentioned for completeness.
+Out of scope for `@elizaos/plugin-agent-orchestrator` v0.1.0. Mentioned for completeness.
 
 ```
 acpx flow run <file> [--input-json <json> | --input-file <path>] [--default-agent <name>]
@@ -572,7 +572,7 @@ Non-interactive policy:
 - `--non-interactive-permissions deny` (default): deny non-read/search prompts when no TTY.
 - `--non-interactive-permissions fail`: fail with `PERMISSION_PROMPT_UNAVAILABLE` instead.
 
-For `@elizaos/plugin-acpx`, the plugin runs in a server context with no TTY. Strategy:
+For `@elizaos/plugin-agent-orchestrator`, the plugin runs in a server context with no TTY. Strategy:
 - `approvalPreset = "autonomous"` → `--approve-all` (most common case for milady cloud).
 - `approvalPreset = "permissive"` → `--approve-all`.
 - `approvalPreset = "standard"` → `--approve-reads --non-interactive-permissions deny`.

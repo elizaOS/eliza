@@ -1,38 +1,41 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
-    "lib": ["ESNext", "dom"],
     "target": "ESNext",
-    "module": "Preserve",
-    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "bundler",
+    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "incremental": true,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "forceConsistentCasingInFileNames": false,
+    "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
     "resolveJsonModule": true,
     "noImplicitAny": true,
-    "allowJs": true,
+    "allowJs": false,
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "isolatedModules": false,
-    "noEmit": true,
     "types": ["node", "bun-types"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "./node_modules",
-      "../../node_modules",
-      "../../../node_modules"
-    ]
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist"]
+    },
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
+  "include": ["**/*.ts"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/__tests__/**/*",
+    "**/*.spec.ts"
+  ]
 }

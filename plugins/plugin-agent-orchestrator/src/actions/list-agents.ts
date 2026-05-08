@@ -52,7 +52,7 @@ export const listAgentsAction: Action = {
 
     if (sessions.length === 0) {
       const text =
-        "No active task agents. Use CREATE_TASK when the user needs anything more involved than a simple direct reply.";
+        "No active task agents. Use CREATE_AGENT_TASK when the user needs anything more involved than a simple direct reply.";
       await callbackText(callback, text);
       return {
         success: true,

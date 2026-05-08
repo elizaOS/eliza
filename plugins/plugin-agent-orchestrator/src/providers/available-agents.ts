@@ -17,7 +17,7 @@ export const availableAgentsProvider: Provider = {
     const service = getAcpService(runtime);
     if (!service) {
       const text =
-        "# acpx task agents\n@elizaos/plugin-acpx task-agent service is not available.";
+        "# acpx task agents\n@elizaos/plugin-agent-orchestrator task-agent service is not available.";
       return {
         text,
         values: { availableAgents: text },

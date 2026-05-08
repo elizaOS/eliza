@@ -17,11 +17,11 @@
  */
 
 import type { Action, IAgentRuntime, Logger } from "@elizaos/core";
+import type { PTYService } from "./pty-service.js";
 import {
   LIFEOPS_CONTEXT_BROKER_SLUG,
   runLifeOpsContextBroker,
 } from "./skill-lifeops-context-broker.js";
-import type { PTYService } from "./pty-service.js";
 
 const LOG_PREFIX = "[SkillCallback]";
 /**
@@ -78,7 +78,7 @@ export function parseUseSkillDirective(
   if (!slug) return null;
 
   let args: unknown;
-  if (argsRaw && argsRaw.trim()) {
+  if (argsRaw?.trim()) {
     try {
       args = JSON.parse(argsRaw);
     } catch {

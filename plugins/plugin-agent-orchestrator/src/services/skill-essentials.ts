@@ -36,7 +36,7 @@ ALWAYS-on, no shell tool required — just print the line.
 # Bridge endpoints (parent state, read-only)
 
 When HTTP hooks are wired (variants \`swarm\` and \`repo\`), GET these to query parent state:
-- \`http://localhost:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\$PARALLAX_SESSION_ID/parent-context\` — agent character, originating room, original task
+- \`http://localhost:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$PARALLAX_SESSION_ID/parent-context\` — agent character, originating room, original task
 - \`.../memory?q=<query>&limit=<N>\` — recent messages from the originating room
 - \`.../active-workspaces\` — sibling sub-agents (swarm only)
 

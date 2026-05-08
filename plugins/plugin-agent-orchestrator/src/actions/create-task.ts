@@ -98,9 +98,10 @@ async function runPromptAndClose(
 }
 
 export const createTaskAction = {
-  name: "CREATE_TASK",
+  name: "CREATE_AGENT_TASK",
   roleGate: { minRole: "OWNER" },
   similes: [
+    "CREATE_TASK",
     "START_CODING_TASK",
     "LAUNCH_CODING_TASK",
     "RUN_CODING_TASK",
@@ -211,7 +212,7 @@ export const createTaskAction = {
     const service = getAcpService(runtime);
     if (!service) {
       const text =
-        "ACP subprocess service is not available. Install acpx and ensure @elizaos/plugin-acpx is loaded.";
+        "ACP subprocess service is not available. Install acpx and ensure @elizaos/plugin-agent-orchestrator is loaded.";
       await callbackText(callback, text);
       return errorResult("SERVICE_UNAVAILABLE");
     }
@@ -292,7 +293,7 @@ export const createTaskAction = {
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(parsed.task, index);
       const msg = failureMessage(outcome.reason);
-      logger(runtime).error?.("CREATE_TASK launch failed", {
+      logger(runtime).error?.("CREATE_AGENT_TASK launch failed", {
         error: msg,
         agentType,
         workdir,

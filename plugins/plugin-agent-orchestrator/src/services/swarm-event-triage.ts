@@ -165,7 +165,8 @@ export function buildTriagePrompt(ctx: TriageContext): string {
  * Parse the LLM's triage response. Returns null on failure.
  */
 export function parseTriageResponse(llmOutput: string): TriageTier | null {
-  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(llmOutput);
+  const parsedJson =
+    parseJsonObjectResponse<Record<string, unknown>>(llmOutput);
   if (parsedJson?.tier === "routine" || parsedJson?.tier === "creative") {
     return parsedJson.tier;
   }

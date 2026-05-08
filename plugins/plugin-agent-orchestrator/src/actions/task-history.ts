@@ -13,16 +13,16 @@ import type {
   TaskThreadStatus,
 } from "../services/task-registry.js";
 
-const deprecatedActionWarnings = new Set<string>();
+const migrationActionWarnings = new Set<string>();
 
-function warnDeprecatedSpawnSurface(
+function warnCoordinatorTaskThreadSurface(
   actionName: string,
   replacement: string,
 ): void {
-  if (deprecatedActionWarnings.has(actionName)) return;
-  deprecatedActionWarnings.add(actionName);
+  if (migrationActionWarnings.has(actionName)) return;
+  migrationActionWarnings.add(actionName);
   console.warn(
-    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+    `[plugin-agent-orchestrator] ${actionName} reads the coordinator task-thread surface. Prefer ${replacement} from @elizaos/plugin-agent-orchestrator for new session history flows.`,
   );
 }
 type HistoryMetric = "list" | "count" | "detail";
@@ -195,10 +195,22 @@ function renderThreadLine(entry: {
   return `- ${entry.title} [${entry.status}] (${activity})${entry.summary ? `: ${entry.summary}` : ""}`;
 }
 
-/**
- * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
- * Use @elizaos/plugin-acpx session history/list actions instead. This action remains during the migration window.
- */
+function failureResult(
+  error: string,
+  text: string,
+  data: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    success: false,
+    error,
+    text,
+    data: {
+      actionName: "TASK_HISTORY",
+      ...data,
+    },
+  };
+}
+
 export const taskHistoryAction: Action = {
   name: "TASK_HISTORY",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -212,7 +224,7 @@ export const taskHistoryAction: Action = {
     "TASK_STATUS_HISTORY",
   ],
   description:
-    "Query the agent-orchestrator coordinator's task threads as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for 'what am I working on right now', date-range summaries, topic search, task counts, or a single thread's detail — never to dump raw conversation history into context.",
+    "Query the agent-orchestrator coordinator's current task-thread registry as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for current work, date-range summaries, topic search, task counts, or one thread's detail.",
   descriptionCompressed:
     "task-history:metric=list|count|detail + window + statuses + search + limit (no raw transcripts)",
   examples: [
@@ -255,16 +267,18 @@ export const taskHistoryAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    warnDeprecatedSpawnSurface(
+    warnCoordinatorTaskThreadSurface(
       "taskHistoryAction",
-      "@elizaos/plugin-acpx session history/list actions",
+      "@elizaos/plugin-agent-orchestrator session history/list actions",
     );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {
         await callback({ text: access.reason });
       }
-      return { success: false, error: "FORBIDDEN", text: access.reason };
+      return failureResult("FORBIDDEN", access.reason, {
+        reason: "access_denied",
+      });
     }
 
     const coordinator = getCoordinator(runtime);
@@ -272,7 +286,11 @@ export const taskHistoryAction: Action = {
       if (callback) {
         await callback({ text: "Coordinator is not available." });
       }
-      return { success: false, error: "SERVICE_UNAVAILABLE" };
+      return failureResult(
+        "SERVICE_UNAVAILABLE",
+        "Coordinator is not available.",
+        { reason: "coordinator_unavailable" },
+      );
     }
 
     const params =
@@ -379,6 +397,7 @@ export const taskHistoryAction: Action = {
       success: true,
       text: responseText,
       data: {
+        actionName: "TASK_HISTORY",
         filters: threadFilters,
         window,
         count,

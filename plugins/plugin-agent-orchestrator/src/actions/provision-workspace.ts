@@ -182,7 +182,10 @@ export const provisionWorkspaceAction: Action = {
           parentWorkspaceId,
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Workspace provisioning timeout")), PROVISION_WORKSPACE_TIMEOUT_MS),
+          setTimeout(
+            () => reject(new Error("Workspace provisioning timeout")),
+            PROVISION_WORKSPACE_TIMEOUT_MS,
+          ),
         ),
       ]);
 

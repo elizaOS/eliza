@@ -128,7 +128,7 @@ export const activeWorkspaceContextProvider: Provider = {
     ) {
       lines.push("guidance:");
       lines.push(
-        "  createTask: Use ACPX CREATE_TASK when the user needs anything more involved than a simple direct reply.",
+        "  createTask: Use ACPX CREATE_AGENT_TASK when the user needs anything more involved than a simple direct reply.",
       );
     } else {
       if (workspaces.length > 0) {

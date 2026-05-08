@@ -1,6 +1,6 @@
 # Migrating from plugin-agent-orchestrator spawn actions
 
-`@elizaos/plugin-acpx` replaces the PTY-backed code-agent spawn surface in `@elizaos/plugin-agent-orchestrator` with Agent Client Protocol subprocess sessions.
+`@elizaos/plugin-agent-orchestrator` replaces the PTY-backed code-agent spawn surface in `@elizaos/plugin-agent-orchestrator` with Agent Client Protocol subprocess sessions.
 
 ## Why migrate
 
@@ -26,7 +26,7 @@ The orchestrator spawn actions drive coding agents through PTYs, terminal escape
    ACPX_APPROVE_ALL=false
    ```
 
-3. Add `@elizaos/plugin-acpx` to your character/plugin list.
+3. Add `@elizaos/plugin-agent-orchestrator` to your character/plugin list.
 4. Remove direct imports of `plugin-agent-orchestrator` spawn-side actions after you migrate callers.
 
 ## Action mapping
@@ -50,4 +50,4 @@ The orchestrator spawn actions drive coding agents through PTYs, terminal escape
 
 ## Compatibility window
 
-The orchestrator actions remain functional for now and log a deprecation warning when invoked. They are expected to be removed after roughly one release cycle once callers migrate to `@elizaos/plugin-acpx`.
+The orchestrator actions remain functional for now and log a deprecation warning when invoked. They are expected to be removed after roughly one release cycle once callers migrate to `@elizaos/plugin-agent-orchestrator`.
