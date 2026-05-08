@@ -1,8 +1,6 @@
 import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
 import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
-import advancedMemoryPlugin from "./plugin-advanced-memory";
-import advancedMemoryStoragePlugin from "./plugin-advanced-memory-storage";
 import { cloudBillingPlugin } from "./plugin-cloud-billing";
 import { cloudBootstrapPlugin } from "./plugin-cloud-bootstrap";
 
@@ -1242,8 +1240,6 @@ const agent = {
     elizaOSCloudPlugin,
     elevenLabsPlugin,
     cloudBootstrapPlugin,
-    advancedMemoryStoragePlugin,
-    advancedMemoryPlugin,
     cloudBillingPlugin,
   ],
   providers: [

@@ -1,21 +1,14 @@
 /**
  * Agent Mode Types
- * Defines how the agent processes messages based on different operational modes
+ * Defines the backend message-processing mode.
  */
 
 /**
  * Available agent modes for message processing
- * Each mode loads a specific set of plugins optimized for that use case
  */
 export enum AgentMode {
-  /** Chat mode - Fast single-shot responses for playground/simple conversations */
+  /** Chat mode - single backend message-processing mode */
   CHAT = "chat",
-
-  /** Build mode - Agent assists in creating/modifying character files */
-  BUILD = "build",
-
-  /** Assistant mode - Planning-based with action execution and knowledge access */
-  ASSISTANT = "assistant",
 }
 
 /**
@@ -70,26 +63,10 @@ export function isValidAgentModeConfig(config: unknown): config is AgentModeConf
 
 /**
  * Plugin sets for each agent mode
- * These define which plugins are loaded for each operational mode
- * NOTE: Knowledge and WebSearch plugins are conditionally loaded - not included in base sets
+ * Conditional plugins are injected separately from character settings.
  */
 export const AGENT_MODE_PLUGINS = {
-  [AgentMode.CHAT]: [
-    "@elizaos/plugin-elizacloud",
-    "@eliza-cloud/plugin-chat-playground",
-    "@eliza-cloud/plugin-advanced-memory",
-  ],
-  [AgentMode.BUILD]: [
-    "@elizaos/plugin-elizacloud",
-    "@eliza-cloud/plugin-character-builder",
-    "@eliza-cloud/plugin-advanced-memory",
-  ],
-  [AgentMode.ASSISTANT]: [
-    "@elizaos/plugin-elizacloud",
-    "@eliza-cloud/plugin-assistant",
-    "@eliza-cloud/plugin-oauth",
-    "@eliza-cloud/plugin-advanced-memory",
-  ],
+  [AgentMode.CHAT]: ["@elizaos/plugin-elizacloud"],
 } as const;
 
 /**
@@ -98,18 +75,6 @@ export const AGENT_MODE_PLUGINS = {
 interface McpServerConfig {
   type: string;
   url: string;
-}
-
-/**
- * Affiliate character data configuration
- * When present, swaps plugin-assistant for plugin-affiliate
- */
-export interface AffiliateData {
-  vibe?: string;
-  affiliateId?: string;
-  autoImage?: boolean;
-  imageUrls?: string[];
-  [key: string]: unknown;
 }
 
 /**
@@ -181,28 +146,4 @@ export function getConditionalPlugins(settings: Record<string, unknown>): string
   return Object.entries(SETTINGS_PLUGIN_MAP)
     .filter(([key]) => hasValidConfiguration(key as keyof typeof SETTINGS_PLUGIN_MAP, settings))
     .map(([, pluginName]) => pluginName);
-}
-
-/**
- * Check if character settings require ASSISTANT mode upgrade.
- * Only returns a key when settings contain actual configuration.
- */
-export function requiresAssistantMode(
-  settings: Record<string, unknown>,
-): keyof typeof SETTINGS_PLUGIN_MAP | null {
-  for (const key of Object.keys(SETTINGS_PLUGIN_MAP)) {
-    if (hasValidConfiguration(key as keyof typeof SETTINGS_PLUGIN_MAP, settings)) {
-      return key as keyof typeof SETTINGS_PLUGIN_MAP;
-    }
-  }
-  return null;
-}
-
-/**
- * Check if character has affiliate data configured.
- * When true, plugin-affiliate should be loaded instead of plugin-assistant.
- */
-export function hasAffiliateData(settings: Record<string, unknown>): boolean {
-  const affiliateData = settings.affiliateData as AffiliateData | undefined;
-  return affiliateData != null && Object.keys(affiliateData).length > 0;
 }
