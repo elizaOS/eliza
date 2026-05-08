@@ -21,13 +21,17 @@ export class SlackN8nCredentialProvider extends Service {
   async stop(): Promise<void> {}
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
+    // slackApi takes a bot token (xoxb-) for the legacy n8n credential type.
+    // slackOAuth2Api takes a user OAuth token (xoxp-) — NOT the Socket Mode app token (xapp-).
+    // SLACK_APP_TOKEN is xapp- and only usable for Socket Mode WebSocket connections; it has no
+    // API scopes, so wiring it as an OAuth2 access token would yield invalid_auth at execution.
     const botToken = this.runtime.getSetting('SLACK_BOT_TOKEN') as string | undefined;
-    const appToken = this.runtime.getSetting('SLACK_APP_TOKEN') as string | undefined;
+    const userToken = this.runtime.getSetting('SLACK_USER_TOKEN') as string | undefined;
     if (credType === 'slackApi' && botToken?.trim()) {
       return { status: 'credential_data', data: { accessToken: botToken.trim() } };
     }
-    if (credType === 'slackOAuth2Api' && appToken?.trim()) {
-      return { status: 'credential_data', data: { accessToken: appToken.trim() } };
+    if (credType === 'slackOAuth2Api' && userToken?.trim()) {
+      return { status: 'credential_data', data: { accessToken: userToken.trim() } };
     }
     return null;
   }
