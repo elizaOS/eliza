@@ -11,15 +11,13 @@
  *   - `@elizaos/plugin-browser/workspace` (browser-workspace command router)
  */
 
-export {
-  browserBridgeActions,
-  browserBridgeInstallAction,
-  browserBridgeOpenManagerAction,
-  browserBridgeRefreshAction,
-  browserBridgeRevealFolderAction,
-} from "./actions/bridge.js";
 export { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 export { browserSessionAction } from "./actions/browser-session.js";
+export {
+  BROWSER_BRIDGE_SUBACTIONS,
+  type BrowserBridgeSubaction,
+  manageBrowserBridgeAction,
+} from "./actions/manage-browser-bridge.js";
 export * from "./contracts.js";
 export * from "./packaging.js";
 export { browserPlugin } from "./plugin.js";

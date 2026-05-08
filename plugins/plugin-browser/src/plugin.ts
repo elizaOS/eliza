@@ -15,9 +15,9 @@ import {
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { browserBridgeActions } from "./actions/bridge.js";
 import { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 import { browserSessionAction } from "./actions/browser-session.js";
+import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
@@ -190,6 +190,6 @@ export const browserPlugin: Plugin = {
   actions: [
     browserSessionAction,
     browserAutofillLoginAction,
-    ...browserBridgeActions,
+    manageBrowserBridgeAction,
   ],
 };
