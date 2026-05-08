@@ -6,12 +6,7 @@
  */
 
 import { platform } from "node:os";
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
 // The former iMessage-specific send action duplicated the MessageConnector
 // path. The connector registered by IMessageService.registerSendHandlers is
@@ -159,13 +154,13 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
-// ConnectorAccountManager provider exports
-export {
-  createIMessageConnectorAccountProvider,
-  IMESSAGE_PROVIDER_ID,
-} from "./connector-account-provider.js";
 // Channel configuration types
 export type {
   IMessageConfig,
   IMessageReactionNotificationMode,
 } from "./config.js";
+// ConnectorAccountManager provider exports
+export {
+  createIMessageConnectorAccountProvider,
+  IMESSAGE_PROVIDER_ID,
+} from "./connector-account-provider.js";

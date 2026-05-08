@@ -1,9 +1,4 @@
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
@@ -35,11 +30,6 @@ const whatsappPlugin: Plugin = {
 
 export default whatsappPlugin;
 
-// ConnectorAccountManager provider exports
-export {
-  createWhatsAppConnectorAccountProvider,
-  WHATSAPP_PROVIDER_ID,
-} from "./connector-account-provider";
 // Account management exports
 export {
   checkWhatsAppUserAccess,
@@ -71,6 +61,11 @@ export type {
   WhatsAppChannelConfig,
   WhatsAppGroupConfig,
 } from "./config";
+// ConnectorAccountManager provider exports
+export {
+  createWhatsAppConnectorAccountProvider,
+  WHATSAPP_PROVIDER_ID,
+} from "./connector-account-provider";
 // Normalization and utility exports
 export {
   buildWhatsAppUserJid,

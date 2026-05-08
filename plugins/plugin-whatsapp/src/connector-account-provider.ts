@@ -77,9 +77,7 @@ export function createWhatsAppConnectorAccountProvider(
   return {
     provider: WHATSAPP_PROVIDER_ID,
     label: "WhatsApp",
-    listAccounts: async (
-      _manager: ConnectorAccountManager
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const enabled = listEnabledWhatsAppAccounts(runtime);
       if (enabled.length > 0) {
         return enabled.map(toConnectorAccount);
@@ -87,10 +85,7 @@ export function createWhatsAppConnectorAccountProvider(
       const fallback = resolveWhatsAppAccount(runtime, DEFAULT_ACCOUNT_ID);
       return [toConnectorAccount(fallback)];
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: WHATSAPP_PROVIDER_ID,
@@ -107,10 +102,7 @@ export function createWhatsAppConnectorAccountProvider(
     ) => {
       return { ...patch, provider: WHATSAPP_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // Persistent credentials live in character settings / env; deletion at
       // the manager layer is a no-op marker.
     },

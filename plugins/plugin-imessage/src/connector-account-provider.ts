@@ -73,9 +73,7 @@ export function createIMessageConnectorAccountProvider(
   return {
     provider: IMESSAGE_PROVIDER_ID,
     label: "iMessage",
-    listAccounts: async (
-      _manager: ConnectorAccountManager
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const enabled = listEnabledIMessageAccounts(runtime);
       if (enabled.length > 0) {
         return enabled.map(toConnectorAccount);
@@ -83,10 +81,7 @@ export function createIMessageConnectorAccountProvider(
       const fallback = resolveIMessageAccount(runtime, DEFAULT_ACCOUNT_ID);
       return [toConnectorAccount(fallback)];
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: IMESSAGE_PROVIDER_ID,
@@ -103,10 +98,7 @@ export function createIMessageConnectorAccountProvider(
     ) => {
       return { ...patch, provider: IMESSAGE_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // No-op: iMessage account state is the macOS Messages app; out-of-band.
     },
     // No OAuth — iMessage reads the local chat.db on macOS.

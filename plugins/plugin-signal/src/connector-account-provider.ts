@@ -77,9 +77,7 @@ export function createSignalConnectorAccountProvider(
   return {
     provider: SIGNAL_PROVIDER_ID,
     label: "Signal",
-    listAccounts: async (
-      _manager: ConnectorAccountManager
-    ): Promise<ConnectorAccount[]> => {
+    listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       const enabled = listEnabledSignalAccounts(runtime);
       if (enabled.length > 0) {
         return enabled.map(toConnectorAccount);
@@ -87,10 +85,7 @@ export function createSignalConnectorAccountProvider(
       const fallback = resolveSignalAccount(runtime, DEFAULT_ACCOUNT_ID);
       return [toConnectorAccount(fallback)];
     },
-    createAccount: async (
-      input: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager
-    ) => {
+    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
         ...input,
         provider: SIGNAL_PROVIDER_ID,
@@ -107,10 +102,7 @@ export function createSignalConnectorAccountProvider(
     ) => {
       return { ...patch, provider: SIGNAL_PROVIDER_ID };
     },
-    deleteAccount: async (
-      _accountId: string,
-      _manager: ConnectorAccountManager
-    ) => {
+    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // Persistent credentials for Signal live in signal-cli auth dir;
       // unlinking happens via `signalLogout`. Deletion at the manager layer is
       // a no-op marker.

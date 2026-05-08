@@ -44,13 +44,13 @@ function toConnectorAccount(settings: NostrSettings): ConnectorAccount {
   return {
     id: normalizeNostrAccountId(settings.accountId),
     provider: NOSTR_PROVIDER_ID,
-    label: settings.profile?.name ?? settings.publicKey || settings.accountId,
+    label: settings.profile?.name ?? (settings.publicKey || settings.accountId),
     role: "OWNER",
     purpose: ["messaging"],
     accessGate: accessGateForAccount(settings),
     status: settings.enabled !== false && configured ? "connected" : "disabled",
     externalId: settings.publicKey || undefined,
-    displayHandle: settings.profile?.name ?? settings.publicKey || undefined,
+    displayHandle: settings.profile?.name ?? (settings.publicKey || undefined),
     createdAt: now,
     updatedAt: now,
     metadata: {

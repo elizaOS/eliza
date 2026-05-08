@@ -323,20 +323,11 @@ const wechatPlugin: Plugin = {
   description: "WeChat messaging via proxy API",
 
   async init(config: Record<string, unknown>, runtime: unknown) {
-    // Register the WeChat provider with the ConnectorAccountManager. The
-    // manager is loaded dynamically because plugin-wechat does not statically
-    // import @elizaos/core (its types are referenced lazily).
     try {
-      const core = (await import("@elizaos/core")) as {
-        getConnectorAccountManager: (rt: unknown) => {
-          registerProvider: (provider: unknown) => unknown;
-        };
-      };
-      const manager = core.getConnectorAccountManager(runtime);
-      const provider = createWechatConnectorAccountProvider(
-        runtime as Parameters<typeof createWechatConnectorAccountProvider>[0],
+      const manager = getConnectorAccountManager(runtime as IAgentRuntime);
+      manager.registerProvider(
+        createWechatConnectorAccountProvider(runtime as IAgentRuntime),
       );
-      manager.registerProvider(provider);
     } catch (err) {
       console.warn(
         "[wechat] Failed to register provider with ConnectorAccountManager:",
