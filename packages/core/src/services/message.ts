@@ -145,7 +145,6 @@ import {
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
 	inferContextRoutingFromMessage,
-	parseContextList,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -1205,26 +1204,11 @@ function createV5MessageContextObject(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
+	toolActions?: readonly Action[];
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 }): ContextObject {
 	const events: ContextEvent[] = [];
-	const addInstruction = (
-		id: string,
-		content: string | undefined,
-		stable = false,
-	) => {
-		if (!content?.trim()) {
-			return;
-		}
-		events.push({
-			id,
-			type: "instruction",
-			source: "message-service",
-			content: content.trim(),
-			stable,
-		});
-	};
 
 	appendStateProviderEvents(
 		events,
@@ -1251,11 +1235,13 @@ function createV5MessageContextObject(args: {
 	});
 
 	if (args.includeTools && args.selectedContexts?.length) {
-		const actions = filterByContextGate(
-			args.runtime.actions,
-			args.selectedContexts,
-			args.userRoles,
-		);
+		const actions =
+			args.toolActions ??
+			filterByContextGate(
+				args.runtime.actions,
+				args.selectedContexts,
+				args.userRoles,
+			);
 		for (const action of actions) {
 			try {
 				const tool = actionToTool(action);
@@ -1332,6 +1318,38 @@ function createV5MessageContextObject(args: {
 		limits: {},
 		events,
 	});
+}
+
+async function collectValidatedPlannerActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	selectedContexts: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): Promise<Action[]> {
+	const contextAllowed = filterByContextGate(
+		args.runtime.actions,
+		args.selectedContexts,
+		args.userRoles,
+	);
+	const available: Action[] = [];
+	for (const action of contextAllowed) {
+		if (!action.validate) {
+			available.push(action);
+			continue;
+		}
+		try {
+			if (await action.validate(args.runtime, args.message, args.state)) {
+				available.push(action);
+			}
+		} catch (error) {
+			args.runtime.logger?.warn?.(
+				{ src: "service:message", action: action.name, error },
+				"Skipping action whose validate() failed before v5 tool exposure",
+			);
+		}
+	}
+	return available;
 }
 
 function filterSelectedContextsForRole(
@@ -1878,11 +1896,12 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		const userRoles = [senderRole];
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
 			selectedContexts,
-			userRoles: [senderRole],
+			userRoles,
 		});
 		const recomposedPlannerState =
 			typeof args.runtime.composeState === "function"
@@ -1896,12 +1915,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			recomposedPlannerState,
 			args.runtime,
 		);
+		const plannerActions = await collectValidatedPlannerActions({
+			runtime: args.runtime,
+			message: args.message,
+			state: plannerState,
+			selectedContexts,
+			userRoles,
+		});
 		const plannerContext = createV5MessageContextObject({
 			...args,
 			state: plannerState,
 			selectedContexts,
 			includeTools: true,
-			userRoles: [senderRole],
+			toolActions: plannerActions,
+			userRoles,
 			availableContexts,
 		});
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
@@ -1913,6 +1940,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
+					...(messageHandler.plan.requiresTool !== undefined
+						? { requiresTool: messageHandler.plan.requiresTool }
+						: {}),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
@@ -1930,6 +1960,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
 		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const requireNonTerminalToolCall =
+			messageHandler.plan.requiresTool === true && plannerTools.length > 0;
+		const effectivePlannerContext = requireNonTerminalToolCall
+			? appendContextEvent(plannerContextWithDecision, {
+					id: `tool-required:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: messageHandlerEndedAt,
+					content:
+						"The Stage 1 router marked this current turn as requiring a tool. " +
+						"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
+						"Call at least one exposed non-terminal tool that can attempt the current request.",
+				})
+			: plannerContextWithDecision;
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
@@ -1952,9 +1996,10 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const plannerResult = await runPlannerLoop({
 			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
+			context: effectivePlannerContext,
 			config: args.plannerLoopConfig,
 			tools: plannerTools.length > 0 ? plannerTools : undefined,
+			requireNonTerminalToolCall,
 			evaluatorEffects,
 			recorder,
 			trajectoryId,
@@ -1962,14 +2007,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				executeV5PlannedToolCall({
 					runtime: args.runtime,
 					toolCall,
-					plannerContext: plannerContextWithDecision,
+					plannerContext: effectivePlannerContext,
 					executorCtx: {
 						message: args.message,
 						state: plannerState,
 						activeContexts: selectedContexts,
-						userRoles: [senderRole],
+						userRoles,
 						previousResults: collectPreviousActionResults(ctx.trajectory),
 					},
+					executorOptions: { actions: plannerActions },
 					plannerRuntime,
 					evaluatorEffects,
 					recorder,

@@ -283,6 +283,90 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).not.toContain("CHARACTER");
 	});
 
+	it("exposes only validated tools and enforces tool-required routing", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "The current request needs runtime inspection.",
+				plan: {
+					contexts: ["general"],
+					requiresTool: true,
+				},
+			}),
+			JSON.stringify({
+				thought: "I can answer directly.",
+				toolCalls: [],
+				messageToUser: "Looks fine.",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "CHECK_RUNTIME",
+						arguments: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Checked.",
+				messageToUser: "Checked.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({ success: true, text: "checked" }));
+		const validateAllowed = vi.fn(async () => true);
+		const validateDenied = vi.fn(async () => false);
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: validateAllowed,
+				handler,
+			},
+			{
+				name: "SKIP_RUNTIME",
+				description: "Unavailable runtime check.",
+				contexts: ["general"],
+				validate: validateDenied,
+				handler: vi.fn(),
+			},
+		] as unknown as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(validateAllowed).toHaveBeenCalledTimes(1);
+		expect(validateDenied).toHaveBeenCalledTimes(1);
+		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(firstPlannerParams.tools?.map((tool) => tool.name)).toEqual([
+			"CHECK_RUNTIME",
+		]);
+		expect(firstPlannerParams.messages?.[1]?.content).toContain(
+			"Stage 1 router marked this current turn as requiring a tool",
+		);
+		const retryPlannerParams = useModelCalls(runtime)[2]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(retryPlannerParams.messages?.[1]?.content).toContain(
+			"previous planner response was not valid",
+		);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Checked.");
+		}
+	});
+
 	it("returns a simple no-context reply without calling the planner", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({

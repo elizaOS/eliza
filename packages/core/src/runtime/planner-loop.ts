@@ -132,6 +132,12 @@ export interface PlannerLoopParams {
 	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
 	toolChoice?: ToolChoice;
 	/**
+	 * When true, terminal planner output is only valid after at least one
+	 * non-terminal tool has executed. This lets an upstream router enforce
+	 * tool-required turns without task-specific prompt rules.
+	 */
+	requireNonTerminalToolCall?: boolean;
+	/**
 	 * Trajectory recorder for v5 observability. When supplied, the planner
 	 * loop records one stage per planner call, tool execution, and evaluator
 	 * call. When omitted the loop is unaffected.
@@ -163,6 +169,9 @@ export async function runPlannerLoop(
 		evaluatorOutputs: [],
 	};
 	const failures: FailureLike[] = [];
+	const requireNonTerminalToolCall =
+		params.requireNonTerminalToolCall === true &&
+		hasExposedNonTerminalTool(params.tools);
 
 	for (
 		let iteration = 1;
@@ -192,6 +201,19 @@ export async function runPlannerLoop(
 			});
 
 			if (plannerOutput.toolCalls.length === 0) {
+				if (
+					requireNonTerminalToolCall &&
+					!hasExecutedNonTerminalTool(trajectory)
+				) {
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "no_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
+				}
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -206,6 +228,19 @@ export async function runPlannerLoop(
 			}
 
 			if (plannerOutput.toolCalls.every(isTerminalToolCall)) {
+				if (
+					requireNonTerminalToolCall &&
+					!hasExecutedNonTerminalTool(trajectory)
+				) {
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "terminal_only_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
+				}
 				const finalMessage = terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
 					plannerOutput.messageToUser,
@@ -336,6 +371,28 @@ export async function runPlannerLoop(
 			decision: "CONTINUE",
 			thought: "Planner loop stopped at iteration limit.",
 		} satisfies EvaluatorOutput);
+	if (requireNonTerminalToolCall && !hasExecutedNonTerminalTool(trajectory)) {
+		const finalMessage =
+			"I could not complete that because the planner did not select an available tool after retrying.";
+		params.runtime.logger?.warn?.(
+			{
+				maxPlannerIterations: config.maxPlannerIterations,
+				steps: trajectory.steps.length,
+			},
+			"Planner exhausted retries before satisfying a required tool call",
+		);
+		return {
+			status: "continued",
+			trajectory,
+			evaluator: {
+				...evaluator,
+				success: false,
+				decision: "CONTINUE",
+				messageToUser: finalMessage,
+			},
+			finalMessage,
+		};
+	}
 	return {
 		status: "continued",
 		trajectory,
@@ -554,7 +611,15 @@ function parseJsonPlannerOutput(raw: string): {
 	messageToUser?: string;
 	raw: Record<string, unknown>;
 } {
-	const parsed = parseJsonObject<RawPlannerOutput>(raw) ?? {};
+	const trimmed = raw.trim();
+	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
+	if (!parsed) {
+		return {
+			toolCalls: [],
+			messageToUser: getNonEmptyString(trimmed),
+			raw: { text: trimmed },
+		};
+	}
 	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
 	const toolCalls = normalizeToolCalls(
 		parsed.toolCalls ?? parsed.tools ?? parsed.actions ?? parsed.action,
@@ -1271,6 +1336,73 @@ function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
 
 function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
 	return ["REPLY", "IGNORE", "STOP"].includes(toolCall.name.toUpperCase());
+}
+
+function getToolDefinitionName(tool: ToolDefinition): string | undefined {
+	const maybeTool = tool as ToolDefinition & {
+		function?: { name?: unknown };
+		name?: unknown;
+	};
+	const name = maybeTool.name ?? maybeTool.function?.name;
+	return typeof name === "string" && name.trim().length > 0
+		? name.trim()
+		: undefined;
+}
+
+function hasExposedNonTerminalTool(
+	tools: ToolDefinition[] | undefined,
+): boolean {
+	return (
+		Array.isArray(tools) &&
+		tools.some((tool) => {
+			const name = getToolDefinitionName(tool);
+			return Boolean(name && !isTerminalToolCall({ name }));
+		})
+	);
+}
+
+function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
+	return trajectory.steps.some(
+		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
+	);
+}
+
+function handleRequiredToolPlannerMiss(params: {
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	plannerOutput: ReturnType<typeof parsePlannerOutput>;
+	reason: "no_tool_calls" | "terminal_only_tool_calls";
+	logger?: PlannerRuntime["logger"];
+}): void {
+	const createdAt = Date.now();
+	params.logger?.warn?.(
+		{
+			iteration: params.iteration,
+			reason: params.reason,
+			messageToUser: params.plannerOutput.messageToUser,
+			toolCalls: params.plannerOutput.toolCalls.map((toolCall) => ({
+				name: toolCall.name,
+				id: toolCall.id,
+			})),
+		},
+		"Planner returned terminal output before satisfying a required tool call; retrying",
+	);
+	params.trajectory.context = appendContextEvent(params.trajectory.context, {
+		id: `required-tool-retry:${params.iteration}:${params.reason}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content:
+			"The previous planner response was not valid because this turn is tool-required and no non-terminal tool has run yet. " +
+			"Retry by calling one exposed non-terminal tool that can attempt the current request. " +
+			"After that tool returns, use its result to decide whether to continue or answer the user.",
+		metadata: {
+			iteration: params.iteration,
+			reason: params.reason,
+			messageToUser: params.plannerOutput.messageToUser,
+			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
+		},
+	});
 }
 
 function terminalMessageFromToolCalls(
