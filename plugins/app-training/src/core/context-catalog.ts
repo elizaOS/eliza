@@ -127,7 +127,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   SCHEDULE: ["automation"],
 
   // --- Social ---
-  MESSAGE: ["social", "knowledge", "automation"],
+  MESSAGE: ["social", "documents", "automation"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],

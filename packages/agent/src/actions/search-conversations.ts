@@ -9,7 +9,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { formatSpeakerLabel } from "../providers/conversation-utils.js";
+import { formatSpeakerLabel } from "../shared/conversation-format.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 import { extractActionParamsViaLlm } from "./extract-params.js";
 

@@ -10,7 +10,7 @@ import {
   listBrowserWorkspaceTabs,
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
-  resolveConnectorBrowserWorkspacePartition,
+  resolveBrowserWorkspaceConnectorPartition,
   showBrowserWorkspaceTab,
 } from "@elizaos/plugin-browser/workspace";
 import type { BrowserBridgePageContext } from "@elizaos/plugin-browser";
@@ -414,7 +414,7 @@ export function discordBrowserWorkspaceAvailable(
  * across accounts. Single-account env-only deployments use DEFAULT_ACCOUNT_ID.
  */
 export function discordUserAccountPartitionFor(accountId?: string): string {
-  return resolveConnectorBrowserWorkspacePartition(
+  return resolveBrowserWorkspaceConnectorPartition(
     DISCORD_PROVIDER_ID,
     normalizeAccountId(accountId ?? DEFAULT_ACCOUNT_ID),
   );

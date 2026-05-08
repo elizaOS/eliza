@@ -184,7 +184,10 @@ export class ConnectorAccountStore implements Store {
   ): Promise<ConnectorAccountRecord[]> {
     return this.ctx.withRetry(async () => {
       const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
-      const conditions = [eq(connectorAccountsTable.agentId, agentId)];
+      const conditions = [
+        eq(connectorAccountsTable.agentId, agentId),
+        isNull(connectorAccountsTable.deletedAt),
+      ];
       if (params.provider) {
         conditions.push(eq(connectorAccountsTable.provider, params.provider));
       }
@@ -206,7 +209,7 @@ export class ConnectorAccountStore implements Store {
 
   async getAccount(params: GetConnectorAccountParams): Promise<ConnectorAccountRecord | null> {
     return this.ctx.withRetry(async () => {
-      const conditions = [];
+      const conditions = [isNull(connectorAccountsTable.deletedAt)];
       if (params.id) {
         conditions.push(eq(connectorAccountsTable.id, params.id));
       } else {
@@ -248,7 +251,7 @@ export class ConnectorAccountStore implements Store {
         role: params.role ?? "OWNER",
         purpose: params.purpose ? [...params.purpose] : ["messaging"],
         accessGate: params.accessGate ?? "open",
-        status: params.status ?? "active",
+        status: params.status ?? "connected",
         scopes: params.scopes ? [...params.scopes] : [],
         capabilities: params.capabilities ? [...params.capabilities] : [],
         profile: params.profile ?? {},
@@ -278,7 +281,7 @@ export class ConnectorAccountStore implements Store {
         updateSet.connectedAt = connectedAt;
       }
       if (lastSyncAt !== undefined) updateSet.lastSyncAt = lastSyncAt;
-      if (deletedAt !== undefined) updateSet.deletedAt = deletedAt;
+      updateSet.deletedAt = deletedAt === undefined ? null : deletedAt;
 
       const inserted = await this.db
         .insert(connectorAccountsTable)
@@ -320,7 +323,7 @@ export class ConnectorAccountStore implements Store {
       const now = new Date();
       const updated = await this.db
         .update(connectorAccountsTable)
-        .set({ deletedAt: now, updatedAt: now })
+        .set({ deletedAt: now, status: "disabled", updatedAt: now })
         .where(and(...conditions))
         .returning();
       return updated.length > 0;
