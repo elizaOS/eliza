@@ -3957,6 +3957,7 @@ function WorkflowAutomationDetailPane({
       return undefined;
     }
     let cancelled = false;
+    setExecutions([]);
     setExecutionsLoading(true);
     void client
       .getN8nWorkflowExecutions(automation.workflowId, 10)
