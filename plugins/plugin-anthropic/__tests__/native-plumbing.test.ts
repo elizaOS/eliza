@@ -306,6 +306,89 @@ describe("Anthropic native text plumbing", () => {
     expect(call.tools).toBe(tools);
   }, 60_000);
 
+  it("stamps cache_control on the evaluator path (handleResponseHandler) with messages and promptSegments", async () => {
+    // The evaluator (`runEvaluator`) calls `useModel` with the same
+    // messages + promptSegments shape as the planner — same builder
+    // (`buildStageChatMessages`) plus an `evaluator_stage` instructions segment
+    // that planner-loop / evaluator both now mark stable. The provider-side
+    // wire-path fix is in `generateTextWithModel`, which is shared by the
+    // planner (handleActionPlanner) and the evaluator (handleResponseHandler),
+    // so this test locks in that the evaluator entry point also benefits.
+    const generateText = vi.fn(async () => ({
+      text: '{"success":true,"decision":"FINISH","thought":"done"}',
+      finishReason: "stop",
+      usage: {
+        inputTokens: 50,
+        outputTokens: 8,
+        cacheReadInputTokens: 40,
+        cacheCreationInputTokens: 10,
+      },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleResponseHandler } = await import("../models/text");
+    await handleResponseHandler(createRuntime(), {
+      prompt: "ignored when messages provided",
+      messages: [
+        { role: "system", content: "stable prefix\n\nevaluator_stage:\nGrade Y." },
+        { role: "user", content: "dynamic context" },
+        {
+          role: "assistant",
+          content: "thinking",
+          toolCalls: [{ id: "tc-1", type: "function", name: "READ", arguments: "{}" }],
+        },
+        { role: "tool", toolCallId: "tc-1", name: "READ", content: "ok" },
+      ],
+      promptSegments: [
+        { content: "stable prefix", stable: true },
+        { content: "dynamic context", stable: false },
+        { content: "evaluator_stage:\nGrade Y.", stable: true },
+      ],
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    } as never);
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    const call = generateText.mock.calls[0][0] as {
+      system?: unknown;
+      messages: Array<{ role: string; content: unknown }>;
+    };
+
+    // Same invariants as the planner test: the system parameter is dropped
+    // (its content already lives inside the structured user content), and
+    // cache_control reaches the wire on stable parts.
+    expect(call.system).toBeUndefined();
+    const allTextParts: Array<Record<string, unknown>> = [];
+    for (const message of call.messages) {
+      if (Array.isArray(message.content)) {
+        for (const part of message.content as Array<Record<string, unknown>>) {
+          if (part.type === "text") allTextParts.push(part);
+        }
+      }
+    }
+    const cacheControlled = allTextParts.filter((part) => part.cache_control);
+    expect(cacheControlled.length).toBeGreaterThan(0);
+    expect(cacheControlled.length).toBeLessThanOrEqual(4);
+    const cachedTexts = cacheControlled.map((p) => p.text);
+    // Both the runtime stable prefix and the now-stable evaluator instructions
+    // are eligible for cache_control. Either (or both) should be marked,
+    // depending on coalescing — at minimum, one of them must be.
+    expect(
+      cachedTexts.some(
+        (t) =>
+          typeof t === "string" &&
+          (t.includes("stable prefix") || t.includes("evaluator_stage"))
+      )
+    ).toBe(true);
+  }, 60_000);
+
   it("coalesces cache_control to at most 4 breakpoints when many stable segments are provided", async () => {
     // Anthropic returns 400 if a request carries more than 4 cache_control
     // breakpoints. A realistic v5 planner call has 5-9 stable segments
