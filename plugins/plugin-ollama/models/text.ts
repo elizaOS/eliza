@@ -243,12 +243,20 @@ function serializeStructuredGenerateTextResult(result: { text: string; output: u
  * parsing Ollama response bodies again.
  */
 function buildNativeResultCast(result: Awaited<ReturnType<typeof generateText>>, modelName: string): string {
-  const payload: GenerateTextResult = {
+  // Mirror plugin-openai: include normalized usage on the native payload so
+  // trajectory/cost recorders that read from useModel's return value (not just
+  // MODEL_USED events) see token counts. Falls through to undefined when
+  // Ollama does not surface usage.
+  // Cast through `unknown`: GenerateTextResult.usage is the strict proto
+  // `TokenUsage` (with `$typeName`), while normalizeTokenUsage returns a
+  // structurally-compatible value. Same pattern as the streaming path.
+  const payload = {
     text: result.text,
     toolCalls: mapAiSdkToolCallsToCore(result.toolCalls as unknown[] | undefined),
     finishReason: String(result.finishReason ?? ""),
+    usage: normalizeTokenUsage(result.usage) ?? undefined,
     providerMetadata: { modelName },
-  };
+  } as unknown as GenerateTextResult;
   return payload as unknown as string;
 }
 
@@ -286,13 +294,22 @@ function buildOllamaStreamTextResult(args: {
 }): TextStreamResult {
   const streamResult = streamText(args.streamParams);
 
-  const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
-    const fullText = await streamResult.text;
-    const normalized =
-      normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-    emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-    return normalized as unknown as TokenUsage | undefined;
-  });
+  // Important: if `streamResult.usage` / `streamResult.text` reject (stream
+  // failure mid-flight), bare `Promise.resolve(...).then(...)` chains produce
+  // unhandled rejections. We swallow rejection here and rely on the textStream
+  // generator's catch block to surface the underlying error to the consumer.
+  const usagePromise = Promise.resolve(streamResult.usage)
+    .then(async (usage) => {
+      const fullText = await streamResult.text;
+      const normalized =
+        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
+      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
+      return normalized as unknown as TokenUsage | undefined;
+    })
+    .catch(() => undefined);
+  // Defensively attach a noop catch so even if no consumer awaits this, a
+  // rejected `streamResult.text` does not surface as unhandled.
+  const textPromise = Promise.resolve(streamResult.text).catch(() => "");
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
     let completed = false;
@@ -319,9 +336,10 @@ function buildOllamaStreamTextResult(args: {
 
   return {
     textStream: textStreamWithUsage(),
-    text: Promise.resolve(streamResult.text),
+    text: textPromise,
     usage: usagePromise,
-    finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+    finishReason: Promise.resolve(streamResult.finishReason)
+      .catch(() => undefined) as Promise<string | undefined>,
   };
 }
 
@@ -367,17 +385,21 @@ function buildOllamaStreamWithToolsResult(args: {
 }): OllamaStreamTextWithToolsResult {
   const streamResult = streamText(args.streamParams);
 
-  const toolCallsPromise = Promise.resolve(streamResult.toolCalls).then((calls) =>
-    mapAiSdkToolCallsToCore(calls as unknown[] | undefined)
-  );
+  // Same rationale as buildOllamaStreamTextResult: keep these settled-or-empty
+  // so a stream failure does not produce unhandled rejections in the consumer.
+  const toolCallsPromise = Promise.resolve(streamResult.toolCalls)
+    .then((calls) => mapAiSdkToolCallsToCore(calls as unknown[] | undefined))
+    .catch(() => [] as ToolCall[]);
 
-  const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
-    const fullText = await streamResult.text;
-    const normalized =
-      normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-    emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-    return normalized as unknown as TokenUsage | undefined;
-  });
+  const usagePromise = Promise.resolve(streamResult.usage)
+    .then(async (usage) => {
+      const fullText = await Promise.resolve(streamResult.text).catch(() => "");
+      const normalized =
+        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
+      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
+      return normalized as unknown as TokenUsage | undefined;
+    })
+    .catch(() => undefined);
 
   const isNativePlannerType =
     args.modelType === RESPONSE_HANDLER_MODEL_TYPE ||
@@ -389,9 +411,9 @@ function buildOllamaStreamWithToolsResult(args: {
         if (first) {
           return stringifyPlannerToolArgs(first.arguments);
         }
-        return Promise.resolve(streamResult.text).then((t) => t);
+        return Promise.resolve(streamResult.text).catch(() => "");
       })
-    : Promise.resolve(streamResult.text).then((t) => t);
+    : Promise.resolve(streamResult.text).catch(() => "");
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
     let completed = false;
@@ -431,7 +453,8 @@ function buildOllamaStreamWithToolsResult(args: {
     textStream: textStreamWithUsage(),
     text: textPromise,
     usage: usagePromise,
-    finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+    finishReason: Promise.resolve(streamResult.finishReason)
+      .catch(() => undefined) as Promise<string | undefined>,
     toolCalls: toolCallsPromise,
   };
 }
