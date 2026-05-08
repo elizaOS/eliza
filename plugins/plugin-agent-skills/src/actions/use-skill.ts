@@ -196,7 +196,13 @@ export const useSkillAction: Action = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const opts = (options ?? {}) as UseSkillOptions;
+		const rawOptions = (options ?? {}) as UseSkillOptions & {
+			parameters?: UseSkillOptions;
+		};
+		const opts =
+			rawOptions.parameters && typeof rawOptions.parameters === "object"
+				? rawOptions.parameters
+				: rawOptions;
 		const rawSlug = typeof opts.slug === "string" ? opts.slug.trim() : "";
 		if (!rawSlug) {
 			const errorText =
