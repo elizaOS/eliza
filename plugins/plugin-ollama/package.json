@@ -38,7 +38,7 @@
     "@ai-sdk/ui-utils": "^1.2.8",
     "ai": "^6.0.174",
     "js-tiktoken": "^1.0.18",
-    "ollama-ai-provider": "^1.2.0"
+    "ollama-ai-provider-v2": "^3.5.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -102,6 +102,12 @@
         "description": "Name or tag of the Ollama model used to generate text embeddings.",
         "required": false,
         "default": "nomic-embed-text:latest",
+        "sensitive": false
+      },
+      "OLLAMA_DISABLE_STRUCTURED_OUTPUT": {
+        "type": "string",
+        "description": "When set to 1/true/yes/on, JSON-schema structured text (responseSchema) is disabled and calls use plain generation. Use if local models misbehave with Ollama format=json.",
+        "required": false,
         "sensitive": false
       },
       "SMALL_MODEL": {
