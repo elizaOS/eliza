@@ -1,16 +1,11 @@
-import { randomUUID } from "node:crypto";
-import {
-  createUniqueUuid,
-  EventType,
-  type IAgentRuntime,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+import { createHash, randomUUID } from "node:crypto";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
+const DEFAULT_ROUND_TRIP_CAP = 32;
 
 /**
  * SubAgentRouter takes terminal-significant ACPX session events
@@ -40,7 +35,10 @@ export class SubAgentRouter {
   private acp: AcpService | null = null;
   private unsubscribe: (() => void) | undefined;
   private readonly delivered = new Set<string>();
+  private readonly roundTripCounts = new Map<string, number>();
+  private readonly capExceededSessions = new Set<string>();
   private started = false;
+  private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -63,6 +61,9 @@ export class SubAgentRouter {
       this.log("info", "router disabled via ACPX_SUB_AGENT_ROUTER_DISABLED");
       return;
     }
+    const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
+    const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
     const acp = this.runtime.getService(
       "ACP_SUBPROCESS_SERVICE",
     ) as AcpService | null;
@@ -89,6 +90,8 @@ export class SubAgentRouter {
     this.acp = null;
     this.started = false;
     this.delivered.clear();
+    this.roundTripCounts.clear();
+    this.capExceededSessions.clear();
   }
 
   private async handleEvent(
@@ -120,11 +123,38 @@ export class SubAgentRouter {
       return;
     }
 
-    const subAgentEntityId = createUniqueUuid(
-      this.runtime,
-      `${SUB_AGENT_ENTITY_NAMESPACE}:${sessionId}`,
+    const nextCount = (this.roundTripCounts.get(sessionId) ?? 0) + 1;
+    this.roundTripCounts.set(sessionId, nextCount);
+    const capExceeded = nextCount > this.roundTripCap;
+    if (capExceeded) {
+      if (this.capExceededSessions.has(sessionId)) {
+        this.log("debug", "round-trip cap already surfaced; suppressing", {
+          sessionId,
+          event,
+          count: nextCount,
+        });
+        return;
+      }
+      this.capExceededSessions.add(sessionId);
+      this.log("warn", "sub-agent round-trip cap exceeded; force-stopping", {
+        sessionId,
+        count: nextCount,
+        cap: this.roundTripCap,
+      });
+      await acp.stopSession(sessionId).catch((err) =>
+        this.log("warn", "force-stop after cap failed", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
+    const subAgentEntityId = deriveUuidFromString(
+      `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:${sessionId}`,
     );
-    const text = composeNarration(event, origin.label, session, data);
+    const text = capExceeded
+      ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+      : composeNarration(event, origin.label, session, data);
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -141,9 +171,12 @@ export class SubAgentRouter {
           subAgent: true,
           subAgentSessionId: sessionId,
           subAgentLabel: origin.label,
-          subAgentEvent: event,
-          subAgentStatus: session.status,
+          subAgentEvent: capExceeded ? "round_trip_cap_exceeded" : event,
+          subAgentStatus: capExceeded ? "stopped" : session.status,
           subAgentAgentType: session.agentType,
+          subAgentRoundTrip: nextCount,
+          subAgentRoundTripCap: this.roundTripCap,
+          ...(capExceeded ? { subAgentCapExceeded: true } : {}),
           ...(origin.userId ? { originUserId: origin.userId } : {}),
           ...(origin.parentMessageId
             ? { originMessageId: origin.parentMessageId }
@@ -181,7 +214,11 @@ export class SubAgentRouter {
           event,
         },
       );
-      await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      const emit = this.runtime.emitEvent.bind(this.runtime) as (
+        name: string,
+        payload: { source: string; message: Memory; runtime: IAgentRuntime },
+      ) => Promise<void>;
+      await emit("MESSAGE_RECEIVED", {
         runtime: this.runtime,
         message: memory,
         source: ACPX_ROUTER_SOURCE,
@@ -322,4 +359,19 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   }
   const env = process.env[key];
   return typeof env === "string" && env.length > 0 ? env : undefined;
+}
+
+/**
+ * Deterministic UUIDv5-like derivation from a string. Same input → same
+ * UUID. Local replacement for `createUniqueUuid` from @elizaos/core so
+ * this service stays type-only on core (no runtime dist dependency).
+ */
+function deriveUuidFromString(input: string): UUID {
+  const digest = createHash("sha1").update(input).digest("hex");
+  const bytes = digest.slice(0, 32).split("");
+  // Set version (5) and variant bits per RFC 4122.
+  bytes[12] = "5";
+  bytes[16] = ((parseInt(bytes[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const hex = bytes.join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}` as UUID;
 }
