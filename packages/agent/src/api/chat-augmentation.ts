@@ -22,7 +22,10 @@ import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { getDocumentsService } from "./documents-service-loader.js";
+import {
+  getDocumentsService,
+  type DocumentsServiceLike,
+} from "./documents-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
 

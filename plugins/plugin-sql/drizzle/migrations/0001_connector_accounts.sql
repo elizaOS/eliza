@@ -10,7 +10,7 @@ CREATE TABLE "connector_accounts" (
 	"role" text DEFAULT 'OWNER' NOT NULL,
 	"purpose" jsonb DEFAULT '["messaging"]'::jsonb NOT NULL,
 	"access_gate" text DEFAULT 'open' NOT NULL,
-	"status" text DEFAULT 'active' NOT NULL,
+	"status" text DEFAULT 'connected' NOT NULL,
 	"scopes" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"capabilities" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"profile" jsonb DEFAULT '{}'::jsonb NOT NULL,

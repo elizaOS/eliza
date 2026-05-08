@@ -75,9 +75,16 @@ import {
 } from "discord.js";
 import {
 	DEFAULT_ACCOUNT_ID,
+	listEnabledDiscordAccounts,
 	normalizeAccountId,
+	type ResolvedDiscordAccount,
 	resolveDefaultDiscordAccountId,
+	resolveDiscordAccount,
 } from "./accounts";
+import {
+	DiscordAccountClientPool,
+	type DiscordAccountClientState,
+} from "./account-client-pool";
 import { createCompatRuntime, type ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer, MessageDebouncer } from "./debouncer";

@@ -176,7 +176,7 @@ function buildDocumentMetadata(
 function buildFragmentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
-  agentId: UUID,
+  _documentAgentId: UUID,
   index: number,
   agentId: UUID,
   timestamp: number,
