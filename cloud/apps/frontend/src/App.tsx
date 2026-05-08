@@ -8,7 +8,7 @@ import {
   Suspense,
   useEffect,
 } from "react";
-import { matchPath, Route, Routes, useLocation } from "react-router-dom";
+import { matchPath, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import RootLayout from "./RootLayout";
 
 /**
@@ -105,7 +105,6 @@ const ContainerAgentDetailPage = lazyWithPreload(
 
 const ChatBuildLayout = lazyWithPreload(() => import("./dashboard/chat-build/Layout"));
 const ChatPage = lazyWithPreload(() => import("./dashboard/chat/Page"));
-const BuildPage = lazyWithPreload(() => import("./dashboard/build/Page"));
 
 const ApiExplorerLayout = lazyWithPreload(() => import("./dashboard/api-explorer/Layout"));
 const ApiExplorerPage = lazyWithPreload(() => import("./dashboard/api-explorer/Page"));
@@ -171,10 +170,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, BillingSuccessPage.preload),
   },
   { path: "/dashboard/billing", preload: preloadAll(DashboardLayout.preload, BillingPage.preload) },
-  {
-    path: "/dashboard/build",
-    preload: preloadAll(DashboardLayout.preload, ChatBuildLayout.preload, BuildPage.preload),
-  },
   {
     path: "/dashboard/chat",
     preload: preloadAll(DashboardLayout.preload, ChatBuildLayout.preload, ChatPage.preload),
@@ -389,6 +384,11 @@ function DashboardRouteElement() {
   );
 }
 
+function LegacyBuildRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/dashboard/chat${location.search}`} replace />;
+}
+
 function App() {
   useLinkChunkPreload();
   return (
@@ -565,6 +565,8 @@ function App() {
          * DashboardLayout so the sidebar/header don't unmount when the user
          * jumps between dashboard tabs.
          */}
+        <Route path="dashboard/build/*" element={<LegacyBuildRedirect />} />
+
         <Route path="dashboard" element={<DashboardRouteElement />}>
           <Route index element={<DashboardIndex />} />
 
@@ -601,7 +603,6 @@ function App() {
 
           <Route element={<ChatBuildLayout />}>
             <Route path="chat" element={<ChatPage />} />
-            <Route path="build" element={<BuildPage />} />
           </Route>
 
           <Route path="api-explorer" element={<ApiExplorerLayout />}>

@@ -1,6 +1,6 @@
 /**
  * Chat header component for the /chat page.
- * Supports switching to build mode and sidebar toggle.
+ * Supports agent selection, sharing controls, and sidebar toggle.
  *
  * @param props - Chat header configuration
  * @param props.onToggleSidebar - Optional callback to toggle sidebar visibility
@@ -11,7 +11,6 @@
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   Copy,
   GitFork,
   Globe,
@@ -19,11 +18,9 @@ import {
   Lock,
   Menu,
   MessageSquare,
-  Plus,
-  Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { useChatStore } from "@/lib/stores/chat-store";
@@ -114,7 +111,6 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
   const navigate = useNavigate();
-  const pathname = useLocation().pathname;
   const { authenticated: isAuthenticated } = useSessionAuth();
   const {
     selectedCharacterId,
@@ -129,10 +125,6 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
   const [isPublic, setIsPublic] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
-
-  // Derive mode from pathname
-  const mode = pathname.includes("/build") ? "build" : "chat";
-  const isBuildPage = mode === "build";
 
   // Find selected agent
   const selectedAgent = availableCharacters.find((a) => a.id === selectedCharacterId);
@@ -260,58 +252,19 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
     const params = new URLSearchParams();
     params.set("characterId", characterId);
 
-    // Only handle room selection when in chat mode
-    if (mode === "chat") {
-      const characterRooms = rooms
-        .filter((room) => room.characterId === characterId)
-        .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+    const characterRooms = rooms
+      .filter((room) => room.characterId === characterId)
+      .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
 
-      if (characterRooms.length > 0) {
-        const mostRecentRoom = characterRooms[0];
-        setRoomId(mostRecentRoom.id);
-        params.set("roomId", mostRecentRoom.id);
-      } else {
-        setRoomId(null);
-      }
+    if (characterRooms.length > 0) {
+      const mostRecentRoom = characterRooms[0];
+      setRoomId(mostRecentRoom.id);
+      params.set("roomId", mostRecentRoom.id);
     } else {
       setRoomId(null);
     }
 
-    const path = mode === "build" ? "/dashboard/build" : "/dashboard/chat";
-    navigate(`${path}?${params.toString()}`);
-  };
-
-  const handleCreateNewAgent = () => {
-    setSelectedCharacterId(null);
-    setRoomId(null);
-    navigate("/dashboard/build");
-  };
-
-  const handleModeChange = (newMode: "chat" | "build") => {
-    if (newMode === mode) return;
-    if (newMode === "chat" && !selectedCharacterId) return;
-
-    const params = new URLSearchParams();
-    if (selectedCharacterId) {
-      params.set("characterId", selectedCharacterId);
-
-      // When switching to chat mode, open most recent conversation if one exists
-      if (newMode === "chat") {
-        const characterRooms = rooms
-          .filter((room) => room.characterId === selectedCharacterId)
-          .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
-
-        if (characterRooms.length > 0) {
-          const mostRecentRoom = characterRooms[0];
-          setRoomId(mostRecentRoom.id);
-          params.set("roomId", mostRecentRoom.id);
-        }
-      }
-    }
-
-    const path = newMode === "build" ? "/dashboard/build" : "/dashboard/chat";
-    const url = params.toString() ? `${path}?${params.toString()}` : path;
-    navigate(url);
+    navigate(`/dashboard/chat?${params.toString()}`);
   };
 
   // ==========================================================================
@@ -352,10 +305,10 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-[#FF5800]/20 border border-[#FF5800]/30 flex items-center justify-center">
-                  <Plus className="h-3 w-3 text-[#FF5800]" />
+                <div className="w-6 h-6 rounded-full bg-white/10 border border-white/15 flex items-center justify-center">
+                  <MessageSquare className="h-3 w-3 text-white/60" />
                 </div>
-                <span className="text-sm text-white">Create New Agent</span>
+                <span className="text-sm text-white">Select Agent</span>
               </div>
               <ChevronDown className="h-4 w-4 text-white/60" />
             </>
@@ -363,24 +316,8 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 bg-[#0A0A0A] border-white/10">
-        <DropdownMenuItem
-          onClick={handleCreateNewAgent}
-          className={cn(
-            "flex items-center gap-2 px-3 py-2 cursor-pointer",
-            "hover:bg-white/5 focus:bg-white/5",
-          )}
-        >
-          <div className="w-6 h-6 rounded-full bg-[#FF5800]/20 border border-[#FF5800]/30 flex items-center justify-center">
-            <Plus className="h-3 w-3 text-[#FF5800]" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-white">Create New Agent</span>
-          </div>
-        </DropdownMenuItem>
-
-        {availableCharacters.length > 0 && (
+        {availableCharacters.length > 0 ? (
           <>
-            <div className="border-t border-white/10 my-1" />
             {availableCharacters.map((character) => (
               <DropdownMenuItem
                 key={character.id}
@@ -395,13 +332,17 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
               </DropdownMenuItem>
             ))}
           </>
+        ) : (
+          <DropdownMenuItem disabled className="px-3 py-2 text-white/40">
+            No agents available
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 
   // ==========================================================================
-  // RENDER: Owner Controls (Share + Mode Toggle)
+  // RENDER: Owner Controls (Share)
   // ==========================================================================
   const renderOwnerControls = () => (
     <div className="flex items-center gap-2">
@@ -470,36 +411,6 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {/* Mode Toggle */}
-      <div className="flex items-center rounded-none border border-white/10 bg-black/40">
-        <button
-          onClick={() => handleModeChange("chat")}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-none transition-colors border-0",
-            mode === "chat"
-              ? "bg-[#471E08] text-white"
-              : "bg-[#1F1F1F] text-[#ADADAD] hover:text-white",
-          )}
-          data-testid="chat-mode-btn"
-        >
-          <MessageSquare className="h-4 w-4" />
-          <span className="hidden md:inline">Chat</span>
-        </button>
-        <button
-          onClick={() => handleModeChange("build")}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-none transition-colors border-0",
-            mode === "build"
-              ? "bg-[#2D1505] text-white"
-              : "bg-[#1F1F1F] text-[#ADADAD] hover:text-white",
-          )}
-          data-testid="edit-mode-btn"
-        >
-          <Wrench className={cn("h-4 w-4", mode === "build" ? "text-[#FF5800]" : "text-white")} />
-          <span className="hidden md:inline">Edit</span>
-        </button>
-      </div>
     </div>
   );
 
@@ -569,20 +480,8 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
           </BrandButton>
         )}
 
-        {/* Back to Dashboard - only on build page */}
-        {isBuildPage && (
-          <Link
-            to="/dashboard"
-            className="flex items-center justify-center size-10 border border-transparent hover:border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 rounded-2xl transition-colors"
-            aria-label="Back to dashboard"
-          >
-            <ChevronLeft className="size-5" />
-          </Link>
-        )}
-
-        {/* Agent Display: Dropdown for owners OR on build page (allows unauthenticated users to create agents) */}
-        {/* On chat page, non-owners see static display with creator attribution */}
-        {isOwner || isBuildPage ? renderOwnerAgentPicker() : renderStaticAgentDisplay()}
+        {/* Agent Display: Dropdown for owners; non-owners see static display with creator attribution */}
+        {isOwner ? renderOwnerAgentPicker() : renderStaticAgentDisplay()}
       </div>
 
       {/* Right-side Controls - Only show when an agent is selected */}

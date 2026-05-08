@@ -186,7 +186,7 @@ export function MyAgentsClient() {
   });
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/build");
+    navigate("/dashboard/chat");
   }, [navigate]);
 
   // Handler for removing saved agents from the list

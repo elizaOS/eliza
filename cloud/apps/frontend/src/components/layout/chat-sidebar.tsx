@@ -19,7 +19,6 @@ import {
   MoreHorizontal,
   Plus,
   Trash2,
-  Wrench,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -338,7 +337,7 @@ export function ChatSidebar({ className, isOpen = false, onToggle }: ChatSidebar
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <div className="text-sm font-medium text-white truncate">
-              {selectedCharacter?.name || "Create New Agent"}
+              {selectedCharacter?.name || "Select Agent"}
             </div>
             {selectedCharacter && !isOwner && selectedCharacter.creatorUsername && (
               <span className="text-[10px] text-white/40 truncate">
@@ -360,15 +359,6 @@ export function ChatSidebar({ className, isOpen = false, onToggle }: ChatSidebar
                 side="bottom"
                 sideOffset={8}
               >
-                <DropdownMenuItem
-                  asChild
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 focus:bg-white/10 cursor-pointer transition-colors"
-                >
-                  <a href={`/dashboard/build?characterId=${selectedCharacterId}`}>
-                    <Wrench className="h-4 w-4" />
-                    Edit Agent
-                  </a>
-                </DropdownMenuItem>
                 {isPublic !== null && (
                   <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white/10 transition-colors">
                     <div className="flex items-center gap-2">
