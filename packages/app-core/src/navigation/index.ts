@@ -548,3 +548,5 @@ export function titleForTab(tab: Tab): string {
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");
   }
 }
+
+export { getMainTabApp, type MainTabApp } from "./main-tab";
