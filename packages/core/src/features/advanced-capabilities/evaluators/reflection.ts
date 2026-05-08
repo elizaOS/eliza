@@ -905,16 +905,3 @@ export const reflectionAction: Action = {
 	handler: handler as Action["handler"],
 };
 
-/**
- * @deprecated Re-exported as an evaluator only so legacy registrations don't
- * break during migration. New code should register `reflectionAction`.
- */
-export const reflectionEvaluator: Evaluator = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? false,
-	examples: (spec.examples ?? []) as EvaluationExample[],
-	validate: reflectionValidate,
-	handler,
-};

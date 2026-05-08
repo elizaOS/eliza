@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
+import { checkSenderRole } from "../../roles";
 import {
 	type Content,
 	type CustomMetadata,
@@ -16,7 +17,7 @@ import { splitChunks } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
-import { addKnowledgeFromFilePath, loadDocsFromPath } from "./docs-loader";
+import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
 import {
 	createDocumentMemory,
 	extractTextFromDocument,
@@ -24,24 +25,26 @@ import {
 } from "./document-processor.ts";
 import type {
 	AddDocumentOptions,
+	DocumentAddedFrom,
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	DocumentVisibilityScope,
 	DocumentsConfig,
 	LoadResult,
 	StoredDocument,
 } from "./types.ts";
 import {
-	createKnowledgeNoteFilename,
-	deriveKnowledgeTitle,
+	createDocumentNoteFilename,
+	deriveDocumentTitle,
 	generateContentBasedId,
 	isBinaryContentType,
-	isTextBackedKnowledgeContent,
+	isTextBackedDocumentContent,
 	looksLikeBase64,
-	stripKnowledgeFilenameExtension,
+	stripDocumentFilenameExtension,
 } from "./utils.ts";
 
 /**
- * Controls how SEARCH_DOCUMENTS combines vector and keyword scores.
+ * Controls how document search combines vector and keyword scores.
  *
  * - "hybrid"  — (default) vector cosine + BM25, weighted 0.6/0.4.
  *               Falls back to "keyword" automatically when no TEXT_EMBEDDING
@@ -55,6 +58,67 @@ export type SearchMode = "hybrid" | "vector" | "keyword";
 const HYBRID_VECTOR_WEIGHT = 0.6;
 /** Weight given to the normalized BM25 score in hybrid mode. */
 const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
+const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
+	"global",
+	"owner-private",
+	"user-private",
+	"agent-private",
+]);
+const DOCUMENT_ADDED_FROM_VALUES = new Set<DocumentAddedFrom>([
+	"chat",
+	"upload",
+	"url",
+	"file",
+	"agent-autonomous",
+	"runtime-internal",
+	"lifeops",
+	"default-seed",
+	"character",
+]);
+
+function normalizeDocumentScope(
+	scope: AddDocumentOptions["scope"] | undefined,
+): DocumentVisibilityScope {
+	return scope && DOCUMENT_SCOPES.has(scope) ? scope : "global";
+}
+
+function getCharacterDocumentSources(runtime: IAgentRuntime): string[] {
+	const character = runtime.character as {
+		documents?: unknown[];
+		knowledge?: unknown[];
+	};
+	const sources = character.documents ?? character.knowledge ?? [];
+	return sources
+		.map((item) => {
+			const itemAny = item as {
+				item?: {
+					case?: string;
+					value?: string | { path?: string; directory?: string };
+				};
+				path?: string;
+				directory?: string;
+			};
+			if (
+				itemAny?.item?.case === "path" &&
+				typeof itemAny.item.value === "string"
+			) {
+				return itemAny.item.value;
+			}
+			if (
+				itemAny?.item?.case === "directory" &&
+				typeof itemAny.item.value === "object" &&
+				itemAny.item.value !== null
+			) {
+				return itemAny.item.value.path || itemAny.item.value.directory || null;
+			}
+			if (typeof itemAny?.path === "string") return itemAny.path;
+			if (typeof itemAny?.directory === "string") return itemAny.directory;
+			if (typeof item === "string") return item;
+			return null;
+		})
+		.filter((item): item is string => item !== null && item.trim().length > 0);
+}
 
 function describeEmbeddingConfig(config: {
 	EMBEDDING_PROVIDER?: string;
@@ -68,17 +132,17 @@ function describeEmbeddingConfig(config: {
 	return `${config.EMBEDDING_PROVIDER || "auto"} embeddings with ${config.TEXT_EMBEDDING_MODEL} (${dimensionLabel})`;
 }
 
-export class KnowledgeService extends Service {
-	static readonly serviceType = "knowledge";
+export class DocumentService extends Service {
+	static readonly serviceType = "documents";
 	public override config: Metadata = {};
 	capabilityDescription =
-		"Provides Retrieval Augmented Generation capabilities, including knowledge upload and querying.";
+		"Provides Retrieval Augmented Generation capabilities, including document upload and querying.";
 
-	private knowledgeProcessingSemaphore: Semaphore;
+	private documentProcessingSemaphore: Semaphore;
 
 	constructor(runtime?: IAgentRuntime, _config?: Partial<DocumentsConfig>) {
 		super(runtime);
-		this.knowledgeProcessingSemaphore = new Semaphore(10);
+		this.documentProcessingSemaphore = new Semaphore(10);
 	}
 
 	private async loadInitialDocuments(): Promise<void> {
@@ -88,17 +152,17 @@ export class KnowledgeService extends Service {
 		try {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 
-			const knowledgePathSetting = this.runtime.getSetting("KNOWLEDGE_PATH");
-			const knowledgePath =
-				typeof knowledgePathSetting === "string"
-					? knowledgePathSetting
+			const documentsPathSetting = this.runtime.getSetting("DOCUMENTS_PATH");
+			const documentsPath =
+				typeof documentsPathSetting === "string"
+					? documentsPathSetting
 					: undefined;
 
-			const result: LoadResult = await loadDocsFromPath(
-				this as KnowledgeService,
+			const result: LoadResult = await loadDocumentsFromPath(
+				this as DocumentService,
 				this.runtime.agentId,
 				undefined,
-				knowledgePath,
+				documentsPath,
 			);
 
 			if (result.successful > 0) {
@@ -109,33 +173,34 @@ export class KnowledgeService extends Service {
 		}
 	}
 
-	static async start(runtime: IAgentRuntime): Promise<KnowledgeService> {
-		logger.info(`Starting Knowledge service for agent: ${runtime.agentId}`);
+	static async start(runtime: IAgentRuntime): Promise<DocumentService> {
+		logger.info(`Starting Documents service for agent: ${runtime.agentId}`);
 
 		const validatedConfig = validateModelConfig(runtime);
-		const ctxEnabled = validatedConfig.CTX_KNOWLEDGE_ENABLED;
-		const knowledgePathSetting = runtime.getSetting("KNOWLEDGE_PATH");
-		const hasConfiguredKnowledge =
+		const ctxEnabled = validatedConfig.CTX_DOCUMENTS_ENABLED;
+		const documentsPathSetting = runtime.getSetting("DOCUMENTS_PATH");
+		const characterDocuments = getCharacterDocumentSources(runtime);
+		const hasConfiguredDocuments =
 			validatedConfig.LOAD_DOCS_ON_STARTUP ||
-			(typeof knowledgePathSetting === "string" &&
-				knowledgePathSetting.trim().length > 0) ||
-			(runtime.character?.knowledge?.length ?? 0) > 0;
+			(typeof documentsPathSetting === "string" &&
+				documentsPathSetting.trim().length > 0) ||
+			characterDocuments.length > 0;
 
 		if (ctxEnabled) {
 			logger.info(
-				`Contextual knowledge enabled: ${describeEmbeddingConfig(validatedConfig)}, ${validatedConfig.TEXT_PROVIDER} text generation`,
+				`Contextual documents enabled: ${describeEmbeddingConfig(validatedConfig)}, ${validatedConfig.TEXT_PROVIDER} text generation`,
 			);
 			logger.info(`Text model: ${validatedConfig.TEXT_MODEL}`);
-		} else if (hasConfiguredKnowledge) {
+		} else if (hasConfiguredDocuments) {
 			logger.debug(
-				`Knowledge service running in embedding-only mode with ${describeEmbeddingConfig(validatedConfig)}`,
+				`Documents service running in embedding-only mode with ${describeEmbeddingConfig(validatedConfig)}`,
 			);
 			logger.debug(
-				"To enable contextual enrichment: Set CTX_KNOWLEDGE_ENABLED=true and configure TEXT_PROVIDER/TEXT_MODEL",
+				"To enable contextual enrichment: Set CTX_DOCUMENTS_ENABLED=true and configure TEXT_PROVIDER/TEXT_MODEL",
 			);
 		}
 
-		const service = new KnowledgeService(runtime);
+		const service = new DocumentService(runtime);
 		service.config = validatedConfig;
 
 		if (service.config.LOAD_DOCS_ON_STARTUP) {
@@ -144,80 +209,279 @@ export class KnowledgeService extends Service {
 			});
 		}
 
-		if (
-			service.runtime.character?.knowledge &&
-			service.runtime.character.knowledge.length > 0
-		) {
-			const stringKnowledge = service.runtime.character.knowledge
-				.map((item) => {
-					const itemAny = item as {
-						item?: {
-							case?: string;
-							value?:
-								| string
-								| {
-										path?: string;
-										directory?: string;
-								  };
-						};
-						path?: string;
-						directory?: string;
-					};
-					if (
-						itemAny?.item?.case === "path" &&
-						typeof itemAny.item.value === "string"
-					) {
-						return itemAny.item.value;
-					}
-					if (
-						itemAny?.item?.case === "directory" &&
-						typeof itemAny.item.value === "object" &&
-						itemAny.item.value !== null
-					) {
-						return (
-							itemAny.item.value.path || itemAny.item.value.directory || null
-						);
-					}
-					if (typeof itemAny?.path === "string") {
-						return itemAny.path;
-					}
-					if (typeof itemAny?.directory === "string") {
-						return itemAny.directory;
-					}
-					if (typeof item === "string") {
-						return item;
-					}
-					return null;
-				})
-				.filter((item): item is string => item !== null);
-			await service.processCharacterKnowledge(stringKnowledge).catch((err) => {
-				logger.error({ error: err }, "Error processing character knowledge");
-			});
+		await service.backfillDocumentScopes().catch((err) => {
+			logger.error({ error: err }, "Error backfilling document scopes");
+		});
+
+		if (characterDocuments.length > 0) {
+			await service
+				.processCharacterDocuments(characterDocuments)
+				.catch((err) => {
+					logger.error({ error: err }, "Error processing character documents");
+				});
 		}
 
 		return service;
 	}
 
 	static async stop(runtime: IAgentRuntime): Promise<void> {
-		logger.info(`Stopping Knowledge service for agent: ${runtime.agentId}`);
-		const service = runtime.getService(KnowledgeService.serviceType);
+		logger.info(`Stopping Documents service for agent: ${runtime.agentId}`);
+		const service = runtime.getService(DocumentService.serviceType);
 		if (!service) {
 			logger.warn(
-				`KnowledgeService not found for agent ${runtime.agentId} during stop.`,
+				`DocumentService not found for agent ${runtime.agentId} during stop.`,
 			);
 		}
-		if (service instanceof KnowledgeService) {
+		if (service instanceof DocumentService) {
 			await service.stop();
 		}
 	}
 
 	async stop(): Promise<void> {
 		logger.info(
-			`Knowledge service stopping for agent: ${this.runtime.character?.name}`,
+			`Documents service stopping for agent: ${this.runtime.character?.name}`,
 		);
 	}
 
-	async addKnowledge(options: AddDocumentOptions): Promise<{
+	private isDocumentMemory(memory: Memory): boolean {
+		return memory.metadata?.type === MemoryType.DOCUMENT;
+	}
+
+	private isDocumentFragmentMemory(memory: Memory): boolean {
+		return memory.metadata?.type === MemoryType.FRAGMENT;
+	}
+
+	private async getSenderDocumentRole(
+		message?: Memory,
+	): Promise<"OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME"> {
+		if (!message?.entityId) {
+			return "RUNTIME";
+		}
+		if (message.entityId === this.runtime.agentId) {
+			return "AGENT";
+		}
+
+		const role = await checkSenderRole(this.runtime, message).catch(() => null);
+		if (role?.role === "OWNER" || role?.role === "ADMIN") {
+			return role.role;
+		}
+		return "USER";
+	}
+
+	async canAccessDocument(memory: Memory, message?: Memory): Promise<boolean> {
+		if (!message?.entityId || message.entityId === this.runtime.agentId) {
+			return true;
+		}
+
+		const senderRole = await this.getSenderDocumentRole(message);
+		if (senderRole === "OWNER") return true;
+
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		const scope = normalizeDocumentScope(
+			metadata.scope as AddDocumentOptions["scope"] | undefined,
+		);
+
+		if (scope === "global") return true;
+		if (scope === "owner-private" || scope === "agent-private") return false;
+
+		const senderId = message.entityId;
+		const scopedToEntityId =
+			typeof metadata.scopedToEntityId === "string"
+				? metadata.scopedToEntityId
+				: undefined;
+		const addedBy =
+			typeof metadata.addedBy === "string" ? metadata.addedBy : undefined;
+
+		return (
+			scope === "user-private" &&
+			(scopedToEntityId === senderId ||
+				addedBy === senderId ||
+				memory.entityId === senderId)
+		);
+	}
+
+	private async filterVisibleMemories(
+		memories: Memory[],
+		message?: Memory,
+	): Promise<Memory[]> {
+		const visible: Memory[] = [];
+		for (const memory of memories) {
+			if (await this.canAccessDocument(memory, message)) {
+				visible.push(memory);
+			}
+		}
+		return visible;
+	}
+
+	async getDocumentById(
+		documentId: UUID,
+		message?: Memory,
+	): Promise<Memory | null> {
+		const memory = await this.runtime.getMemoryById(documentId);
+		if (!memory || !this.isDocumentMemory(memory)) {
+			return null;
+		}
+		return (await this.canAccessDocument(memory, message)) ? memory : null;
+	}
+
+	async listDocuments(
+		message?: Memory,
+		options: {
+			limit?: number;
+			offset?: number;
+			query?: string;
+			scope?: DocumentVisibilityScope;
+			scopedToEntityId?: UUID;
+			addedBy?: UUID;
+			timeRangeStart?: number;
+			timeRangeEnd?: number;
+			tags?: string[];
+		} = {},
+	): Promise<Memory[]> {
+		const limit = Math.max(1, Math.min(options.limit ?? 25, 100));
+		const offset = Math.max(0, options.offset ?? 0);
+		const memories = await this.runtime.getMemories({
+			tableName: DOCUMENTS_TABLE,
+			agentId: this.runtime.agentId,
+			count: Math.max((limit + offset) * 4, 50),
+		});
+		const documents = await this.filterVisibleMemories(
+			memories.filter((memory) => this.isDocumentMemory(memory)),
+			message,
+		);
+		const query = options.query?.trim().toLowerCase();
+		const filtered = documents.filter((memory) => {
+			const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+			if (options.scope && metadata.scope !== options.scope) return false;
+			if (
+				options.scopedToEntityId &&
+				metadata.scopedToEntityId !== options.scopedToEntityId
+			) {
+				return false;
+			}
+			if (options.addedBy && metadata.addedBy !== options.addedBy) return false;
+
+			if (options.tags && options.tags.length > 0) {
+				const docTags = Array.isArray(metadata.tags)
+					? (metadata.tags as unknown[]).filter(
+							(value): value is string => typeof value === "string",
+						)
+					: [];
+				const wanted = options.tags;
+				if (!wanted.every((tag) => docTags.includes(tag))) return false;
+			}
+
+			const docTimestamp =
+				typeof metadata.timestamp === "number"
+					? metadata.timestamp
+					: typeof memory.createdAt === "number"
+						? memory.createdAt
+						: 0;
+			if (
+				typeof options.timeRangeStart === "number" &&
+				docTimestamp < options.timeRangeStart
+			) {
+				return false;
+			}
+			if (
+				typeof options.timeRangeEnd === "number" &&
+				docTimestamp > options.timeRangeEnd
+			) {
+				return false;
+			}
+
+			if (query) {
+				const haystack = [
+					memory.content?.text,
+					metadata.title,
+					metadata.filename,
+					metadata.originalFilename,
+					metadata.source,
+				]
+					.filter((value): value is string => typeof value === "string")
+					.join("\n")
+					.toLowerCase();
+				if (!haystack.includes(query)) return false;
+			}
+
+			return true;
+		});
+		return filtered.slice(offset, offset + limit);
+	}
+
+	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
+		const document = await this.getDocumentById(documentId, message);
+		if (!document) {
+			throw new Error(`Document ${documentId} not found`);
+		}
+
+		const memories = await this.runtime.getMemories({
+			tableName: DOCUMENTS_TABLE,
+			agentId: this.runtime.agentId,
+			count: 10_000,
+		});
+		const relatedFragments = memories.filter((memory) => {
+			const metadata = memory.metadata as Record<string, unknown> | undefined;
+			return (
+				this.isDocumentFragmentMemory(memory) &&
+				metadata?.documentId === documentId
+			);
+		});
+
+		for (const fragment of relatedFragments) {
+			if (fragment.id) {
+				await this.runtime.deleteMemory(fragment.id as UUID);
+			}
+		}
+		await this.runtime.deleteMemory(documentId);
+	}
+
+	private async backfillDocumentScopes(): Promise<void> {
+		const backfillTable = async (tableName: string): Promise<void> => {
+			let offset = 0;
+			while (true) {
+				const memories = await this.runtime.getMemories({
+					tableName,
+					agentId: this.runtime.agentId,
+					count: 500,
+					offset,
+				});
+				if (memories.length === 0) return;
+
+				for (const memory of memories) {
+					if (!memory.id) continue;
+					const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+					if (typeof metadata.scope === "string") continue;
+					await this.runtime.updateMemory({
+						id: memory.id,
+						metadata: {
+							...metadata,
+							scope: "global",
+							scopedToEntityId: undefined,
+							addedBy: memory.entityId ?? this.runtime.agentId,
+							addedByRole: "RUNTIME",
+							addedFrom:
+								metadata.source === "eliza-default-documents"
+									? "default-seed"
+									: "runtime-internal",
+							addedAt:
+								typeof memory.createdAt === "number"
+									? memory.createdAt
+									: Date.now(),
+						},
+					});
+				}
+
+				if (memories.length < 500) return;
+				offset += memories.length;
+			}
+		};
+
+		await backfillTable(DOCUMENTS_TABLE);
+		await backfillTable("document_fragments");
+	}
+
+	async addDocument(options: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
 		fragmentCount: number;
@@ -244,7 +508,7 @@ export class KnowledgeService extends Service {
 				logger.info(`"${options.originalFilename}" already exists - skipping`);
 
 				const fragments = await this.runtime.getMemories({
-					tableName: "knowledge",
+					tableName: DOCUMENTS_TABLE,
 				});
 
 				const relatedFragments = fragments.filter(
@@ -281,6 +545,11 @@ export class KnowledgeService extends Service {
 		content,
 		roomId,
 		entityId,
+		scope,
+		scopedToEntityId,
+		addedBy,
+		addedByRole,
+		addedFrom,
 		metadata,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
@@ -382,6 +651,29 @@ export class KnowledgeService extends Service {
 				);
 			}
 
+			const documentScope = normalizeDocumentScope(scope);
+			const targetEntityId =
+				documentScope === "user-private"
+					? (scopedToEntityId ?? entityId ?? agentId)
+					: documentScope === "owner-private"
+						? ((this.runtime.getSetting("ELIZA_ADMIN_ENTITY_ID") as
+								| UUID
+								| undefined) ??
+							entityId ??
+							agentId)
+						: agentId;
+			const scopedEntityId =
+				documentScope === "global" ? undefined : targetEntityId;
+			const scopedMetadata = {
+				...metadata,
+				scope: documentScope,
+				scopedToEntityId: scopedEntityId,
+				addedBy: addedBy ?? entityId ?? agentId,
+				addedByRole: addedByRole ?? "RUNTIME",
+				addedFrom: addedFrom ?? "runtime-internal",
+				addedAt: Date.now(),
+			};
+
 			const documentMemory = createDocumentMemory({
 				text: documentContentToStore,
 				agentId,
@@ -393,7 +685,7 @@ export class KnowledgeService extends Service {
 					? fileBuffer.length
 					: Buffer.byteLength(extractedText, "utf8"),
 				documentId: clientDocumentId,
-				customMetadata: metadata,
+				customMetadata: scopedMetadata,
 			});
 
 			const memoryWithScope = {
@@ -401,10 +693,10 @@ export class KnowledgeService extends Service {
 				id: clientDocumentId,
 				agentId: agentId,
 				roomId: roomId || agentId,
-				entityId: entityId || agentId,
+				entityId: targetEntityId,
 			};
 
-			await this.runtime.createMemory(memoryWithScope, "documents");
+			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
 
 			const fragmentCount = await processFragmentsSynchronously({
 				runtime: this.runtime,
@@ -413,7 +705,7 @@ export class KnowledgeService extends Service {
 				agentId,
 				contentType,
 				roomId: roomId || agentId,
-				entityId: entityId || agentId,
+				entityId: targetEntityId,
 				worldId: worldId || agentId,
 				documentTitle: originalFilename,
 				documentMetadata:
@@ -435,18 +727,18 @@ export class KnowledgeService extends Service {
 		}
 	}
 
-	async checkExistingKnowledge(knowledgeId: UUID): Promise<boolean> {
-		const existingDocument = await this.runtime.getMemoryById(knowledgeId);
+	async checkExistingDocument(documentId: UUID): Promise<boolean> {
+		const existingDocument = await this.runtime.getMemoryById(documentId);
 		return !!existingDocument;
 	}
 
-	async getKnowledge(
+	async searchDocuments(
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
 	): Promise<StoredDocument[]> {
 		if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-			logger.warn("Invalid or empty message content for knowledge query");
+			logger.warn("Invalid or empty message content for document query");
 			return [];
 		}
 
@@ -469,28 +761,29 @@ export class KnowledgeService extends Service {
 		}
 
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(queryText, filterScope);
+			return this._keywordSearch(queryText, filterScope, message);
 		}
 
 		if (effectiveMode === "vector") {
-			return this._vectorSearch(queryText, filterScope);
+			return this._vectorSearch(queryText, filterScope, message);
 		}
 
 		// hybrid: vector + BM25 combined
-		return this._hybridSearch(queryText, filterScope);
+		return this._hybridSearch(queryText, filterScope, message);
 	}
 
 	/** Pure vector (cosine-similarity) search — original behaviour. */
 	private async _vectorSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+		message?: Memory,
 	): Promise<StoredDocument[]> {
 		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
 			text: queryText,
 		});
 
 		const fragments = await this.runtime.searchMemories({
-			tableName: "knowledge",
+			tableName: DOCUMENTS_TABLE,
 			embedding,
 			query: queryText,
 			...filterScope,
@@ -498,7 +791,12 @@ export class KnowledgeService extends Service {
 			match_threshold: 0.1,
 		});
 
-		return fragments
+		const visibleFragments = await this.filterVisibleMemories(
+			fragments.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
+			message,
+		);
+
+		return visibleFragments
 			.filter((fragment) => fragment.id !== undefined)
 			.map((fragment) => ({
 				id: fragment.id as UUID,
@@ -516,15 +814,22 @@ export class KnowledgeService extends Service {
 	private async _keywordSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+		message?: Memory,
 	): Promise<StoredDocument[]> {
 		const allFragments = await this.runtime.getMemories({
-			tableName: "knowledge",
+			tableName: DOCUMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			...filterScope,
 			count: 1000,
 		});
 
-		const valid = allFragments.filter(
+		const visibleFragments = await this.filterVisibleMemories(
+			allFragments.filter((fragment) =>
+				this.isDocumentFragmentMemory(fragment),
+			),
+			message,
+		);
+		const valid = visibleFragments.filter(
 			(f) => f.id !== undefined && f.content?.text,
 		);
 		if (valid.length === 0) return [];
@@ -558,6 +863,7 @@ export class KnowledgeService extends Service {
 	private async _hybridSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+		message?: Memory,
 	): Promise<StoredDocument[]> {
 		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
 			text: queryText,
@@ -565,7 +871,7 @@ export class KnowledgeService extends Service {
 
 		// Fetch a larger candidate set so BM25 can re-rank meaningfully
 		const candidates = await this.runtime.searchMemories({
-			tableName: "knowledge",
+			tableName: DOCUMENTS_TABLE,
 			embedding,
 			query: queryText,
 			...filterScope,
@@ -573,7 +879,11 @@ export class KnowledgeService extends Service {
 			match_threshold: 0.05,
 		});
 
-		const valid = candidates.filter(
+		const visibleCandidates = await this.filterVisibleMemories(
+			candidates.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
+			message,
+		);
+		const valid = visibleCandidates.filter(
 			(f) => f.id !== undefined && f.content?.text,
 		);
 		if (valid.length === 0) return [];
@@ -648,7 +958,7 @@ export class KnowledgeService extends Service {
 			};
 			const updatedMetadata: CustomMetadata = {
 				...(existingMemory.metadata as CustomMetadata),
-				knowledgeUsed: true,
+				documentsUsed: true,
 				ragUsage: JSON.stringify(ragUsageData),
 				timestamp: existingMemory.metadata?.timestamp ?? Date.now(),
 				type: MemoryType.CUSTOM,
@@ -755,12 +1065,12 @@ export class KnowledgeService extends Service {
 		}
 	}
 
-	async processCharacterKnowledge(items: string[]): Promise<void> {
+	async processCharacterDocuments(items: string[]): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
-		logger.info(`Processing ${items.length} character knowledge items`);
+		logger.info(`Processing ${items.length} character documents items`);
 
 		const processingPromises = items.map(async (item) => {
-			await this.knowledgeProcessingSemaphore.acquire();
+			await this.documentProcessingSemaphore.acquire();
 			try {
 				const trimmedItem = item.trim();
 				if (trimmedItem.length === 0) {
@@ -768,7 +1078,7 @@ export class KnowledgeService extends Service {
 				}
 
 				if (existsSync(trimmedItem) && statSync(trimmedItem).isDirectory()) {
-					await loadDocsFromPath(
+					await loadDocumentsFromPath(
 						this,
 						this.runtime.agentId as UUID,
 						this.runtime.agentId as UUID,
@@ -776,9 +1086,14 @@ export class KnowledgeService extends Service {
 						{
 							roomId: this.runtime.agentId as UUID,
 							entityId: this.runtime.agentId as UUID,
+							scope: "global",
+							scopedToEntityId: undefined,
+							addedBy: this.runtime.agentId as UUID,
+							addedByRole: "AGENT",
+							addedFrom: "character",
 							metadata: {
 								source: "character",
-								characterKnowledgeDirectory: trimmedItem,
+								characterDocumentDirectory: trimmedItem,
 							},
 						},
 					);
@@ -786,24 +1101,29 @@ export class KnowledgeService extends Service {
 				}
 
 				if (existsSync(trimmedItem) && statSync(trimmedItem).isFile()) {
-					await addKnowledgeFromFilePath({
+					await addDocumentFromFilePath({
 						service: this,
 						agentId: this.runtime.agentId as UUID,
 						worldId: this.runtime.agentId as UUID,
 						roomId: this.runtime.agentId as UUID,
 						entityId: this.runtime.agentId as UUID,
 						filePath: trimmedItem,
+						scope: "global",
+						scopedToEntityId: undefined,
+						addedBy: this.runtime.agentId as UUID,
+						addedByRole: "AGENT",
+						addedFrom: "character",
 						metadata: {
 							source: "character",
-							characterKnowledgePath: trimmedItem,
+							characterDocumentPath: trimmedItem,
 						},
 					});
 					return;
 				}
 
-				const title = deriveKnowledgeTitle(trimmedItem, "Character knowledge");
-				const filename = createKnowledgeNoteFilename(title);
-				const knowledgeId = generateContentBasedId(
+				const title = deriveDocumentTitle(trimmedItem, "Character document");
+				const filename = createDocumentNoteFilename(title);
+				const documentId = generateContentBasedId(
 					trimmedItem,
 					this.runtime.agentId,
 					{
@@ -812,21 +1132,27 @@ export class KnowledgeService extends Service {
 					},
 				) as UUID;
 
-				if (await this.checkExistingKnowledge(knowledgeId)) {
+				if (await this.checkExistingDocument(documentId)) {
 					return;
 				}
 
-				await this._internalAddKnowledge(
+				await this._internalAddDocument(
 					{
-						id: knowledgeId,
+						id: documentId,
 						content: {
 							text: trimmedItem,
 						} as Content,
 						metadata: {
 							type: MemoryType.DOCUMENT,
-							documentId: knowledgeId,
+							documentId: documentId,
 							timestamp: Date.now(),
 							source: "character",
+							scope: "global",
+							scopedToEntityId: undefined,
+							addedBy: this.runtime.agentId,
+							addedByRole: "AGENT",
+							addedFrom: "character",
+							addedAt: Date.now(),
 							title,
 							filename,
 							originalFilename: filename,
@@ -845,27 +1171,29 @@ export class KnowledgeService extends Service {
 					},
 				);
 			} catch (error) {
-				logger.error({ error }, "Error processing character knowledge");
+				logger.error({ error }, "Error processing character documents");
 			} finally {
-				this.knowledgeProcessingSemaphore.release();
+				this.documentProcessingSemaphore.release();
 			}
 		});
 
 		await Promise.all(processingPromises);
 	}
 
-	async updateKnowledgeDocument(options: {
+	async updateDocument(options: {
 		documentId: UUID;
 		content: string;
+		message?: Memory;
 	}): Promise<{
 		documentId: UUID;
 		fragmentCount: number;
 	}> {
-		const existingDocument = await this.runtime.getMemoryById(
+		const existingDocument = await this.getDocumentById(
 			options.documentId,
+			options.message,
 		);
 		if (!existingDocument) {
-			throw new Error(`Knowledge document ${options.documentId} not found`);
+			throw new Error(`Document ${options.documentId} not found`);
 		}
 
 		const existingMetadata = (existingDocument.metadata ??
@@ -877,15 +1205,15 @@ export class KnowledgeService extends Service {
 				: typeof existingMetadata.originalFilename === "string" &&
 						existingMetadata.originalFilename.trim().length > 0
 					? existingMetadata.originalFilename.trim()
-					: createKnowledgeNoteFilename(
-							deriveKnowledgeTitle(options.content, "Knowledge note"),
+					: createDocumentNoteFilename(
+							deriveDocumentTitle(options.content, "Document note"),
 						);
 		const fileExt =
 			typeof existingMetadata.fileExt === "string" &&
 			existingMetadata.fileExt.trim().length > 0
 				? existingMetadata.fileExt.trim()
 				: (() => {
-						const stripped = stripKnowledgeFilenameExtension(filename);
+						const stripped = stripDocumentFilenameExtension(filename);
 						return stripped === filename
 							? "txt"
 							: filename.slice(stripped.length + 1);
@@ -914,7 +1242,7 @@ export class KnowledgeService extends Service {
 				typeof existingMetadata.title === "string" &&
 				existingMetadata.title.trim().length > 0
 					? existingMetadata.title.trim()
-					: deriveKnowledgeTitle(options.content, "Knowledge note"),
+					: deriveDocumentTitle(options.content, "Document note"),
 			fileExt,
 			fileType:
 				typeof existingMetadata.fileType === "string" &&
@@ -923,7 +1251,7 @@ export class KnowledgeService extends Service {
 					: contentType,
 			contentType,
 			fileSize: Buffer.byteLength(options.content, "utf8"),
-			textBacked: isTextBackedKnowledgeContent(contentType, filename),
+			textBacked: isTextBackedDocumentContent(contentType, filename),
 			timestamp: Date.now(),
 			editedAt: Date.now(),
 		};
@@ -940,14 +1268,17 @@ export class KnowledgeService extends Service {
 		});
 
 		const existingFragments = await this.runtime.getMemories({
-			tableName: "knowledge",
+			tableName: DOCUMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			roomId: existingDocument.roomId,
-			limit: 10_000,
+			count: 10_000,
 		});
 		const relatedFragments = existingFragments.filter((fragment) => {
 			const metadata = fragment.metadata as Record<string, unknown> | undefined;
-			return metadata?.documentId === options.documentId;
+			return (
+				this.isDocumentFragmentMemory(fragment) &&
+				metadata?.documentId === options.documentId
+			);
 		});
 
 		for (const fragment of relatedFragments) {
@@ -981,7 +1312,7 @@ export class KnowledgeService extends Service {
 		};
 	}
 
-	async _internalAddKnowledge(
+	async _internalAddDocument(
 		item: StoredDocument,
 		options = {
 			targetTokens: 1500,
@@ -1009,6 +1340,36 @@ export class KnowledgeService extends Service {
 				item.metadata.source.trim().length > 0
 					? item.metadata.source.trim()
 					: "unknown",
+			scope: normalizeDocumentScope(
+				item.metadata?.scope as AddDocumentOptions["scope"] | undefined,
+			),
+			scopedToEntityId:
+				typeof item.metadata?.scopedToEntityId === "string"
+					? item.metadata.scopedToEntityId
+					: undefined,
+			addedBy:
+				typeof item.metadata?.addedBy === "string"
+					? item.metadata.addedBy
+					: finalScope.entityId,
+			addedByRole:
+				item.metadata?.addedByRole === "OWNER" ||
+				item.metadata?.addedByRole === "ADMIN" ||
+				item.metadata?.addedByRole === "USER" ||
+				item.metadata?.addedByRole === "AGENT" ||
+				item.metadata?.addedByRole === "RUNTIME"
+					? item.metadata.addedByRole
+					: "RUNTIME",
+			addedFrom:
+				typeof item.metadata?.addedFrom === "string" &&
+				DOCUMENT_ADDED_FROM_VALUES.has(
+					item.metadata.addedFrom as DocumentAddedFrom,
+				)
+					? (item.metadata.addedFrom as DocumentAddedFrom)
+					: "runtime-internal",
+			addedAt:
+				typeof item.metadata?.addedAt === "number"
+					? item.metadata.addedAt
+					: Date.now(),
 		} satisfies DocumentMemoryMetadata;
 
 		const documentMemory: Memory = {
@@ -1029,7 +1390,7 @@ export class KnowledgeService extends Service {
 				id: item.id,
 			});
 		} else {
-			await this.runtime.createMemory(documentMemory, "documents");
+			await this.runtime.createMemory(documentMemory, DOCUMENTS_TABLE);
 		}
 
 		const fragments = await this.splitAndCreateFragments(
@@ -1045,7 +1406,7 @@ export class KnowledgeService extends Service {
 			} catch (error) {
 				logger.error(
 					{ error },
-					`KnowledgeService: Error processing fragment ${fragment.id} for document ${item.id}`,
+					`DocumentService: Error processing fragment ${fragment.id} for document ${item.id}`,
 				);
 			}
 		}
@@ -1055,7 +1416,7 @@ export class KnowledgeService extends Service {
 		try {
 			await this.runtime.addEmbeddingToMemory(fragment);
 
-			await this.runtime.createMemory(fragment, "knowledge");
+			await this.runtime.createMemory(fragment, DOCUMENTS_TABLE);
 		} catch (error) {
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
 			throw error;

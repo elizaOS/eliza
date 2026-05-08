@@ -45,15 +45,6 @@ export interface MessageProcessingOptions
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
 	 */
 	keepExistingResponses?: boolean;
-	/**
-	 * Called after the planner commits to executing registered actions (mode === "actions"),
-	 * immediately before `processActions`. Omit for simple single-shot replies (mode === "simple").
-	 * Use for channel typing indicators so users do not see "typing" during planning-only turns.
-	 */
-	onBeforeActionExecution?: (ctx: {
-		runtime: IAgentRuntime;
-		message: Memory;
-	}) => void | Promise<void>;
 }
 
 /**

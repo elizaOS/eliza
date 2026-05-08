@@ -2,7 +2,6 @@
  * Experience learning bundled with advanced capabilities.
  */
 
-export { recordExperienceAction } from "./actions/record-experience.ts";
 export { searchExperiencesAction } from "./actions/search-experiences.ts";
 export { experienceEvaluator } from "./evaluators/experienceEvaluator.ts";
 export { experienceProvider } from "./providers/experienceProvider.ts";

@@ -1,20 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { v4 as uuidv4 } from "uuid";
-
-interface WorkingMemoryEntry {
-	actionName: string;
-	result: ActionResult;
-	timestamp: number;
-}
-
 import Handlebars from "handlebars";
+import { v4 as uuidv4 } from "uuid";
 import {
 	withCanonicalActionDocs,
 	withCanonicalEvaluatorDocs,
 	withCanonicalProviderDocs,
 } from "./action-docs";
-import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
@@ -22,7 +12,6 @@ import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
-import { createTaskClipboardService } from "./features/working-memory/taskClipboardService";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -34,8 +23,6 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
-import { checkSenderRole } from "./roles";
-import { satisfiesRoleGate } from "./runtime/context-gates";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
@@ -52,7 +39,6 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
-	type StreamingContext,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -61,21 +47,27 @@ import {
 import {
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
-	withActionStep,
 	withEvaluatorStep,
 	withProviderStep,
 } from "./trajectory-utils";
 import {
 	type Action,
-	type ActionContext,
 	type ActionMode,
 	type ActionResult,
 	type Agent,
+	type AppendConnectorAccountAuditEventParams,
 	ChannelType,
 	type Character,
 	type Component,
+	type ConnectorAccountAuditEventRecord,
+	type ConnectorAccountCredentialRefRecord,
+	type ConnectorAccountRef,
+	type ConnectorAccountRecord,
+	type ConsumeOAuthFlowStateParams,
 	type Content,
 	type ControlMessage,
+	type CreateOAuthFlowStateParams,
+	type DeleteConnectorAccountParams,
 	type Entity,
 	type Evaluator,
 	type EventHandler,
@@ -85,13 +77,16 @@ import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
+	type GetConnectorAccountCredentialRefParams,
+	type GetConnectorAccountParams,
 	getModelFallbackChain,
 	type HandlerCallback,
-	type HandlerOptions,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
 	type IMessagingAdapter,
 	type JsonValue,
+	type ListConnectorAccountCredentialRefsParams,
+	type ListConnectorAccountsParams,
 	type Log,
 	type LogBody,
 	type Memory,
@@ -105,6 +100,7 @@ import {
 	type ModelResultMap,
 	ModelType,
 	type ModelTypeName,
+	type OAuthFlowRecord,
 	type PairingAllowlistEntry,
 	type PairingChannel,
 	type PairingRequest,
@@ -115,6 +111,9 @@ import {
 	type PipelineHookSpec,
 	type Plugin,
 	type PluginOwnership,
+	type PostConnector,
+	type PostConnectorMetadata,
+	type PostConnectorRegistration,
 	type PromptSegment,
 	type Provider,
 	type ProviderResult,
@@ -126,6 +125,7 @@ import {
 	type RuntimeEventStorage,
 	type RuntimeSettings,
 	type SendHandlerFunction,
+	type SetConnectorAccountCredentialRefParams,
 	type Service,
 	type ServiceClass,
 	type ServiceTypeName,
@@ -137,16 +137,16 @@ import {
 	type TaskWorker,
 	type TextGenerationModelType,
 	type TextStreamResult,
+	type UpsertConnectorAccountParams,
 	type UUID,
 	type World,
 } from "./types";
-import type { AgentContext, RoleGateRole } from "./types/contexts";
+import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
-	outgoingPipelineHookContext,
 	PIPELINE_HOOK_DEBUG_LOG_MS,
 	PIPELINE_HOOK_ERROR_LOG_MS,
 	PIPELINE_HOOK_WARN_MS,
@@ -177,15 +177,6 @@ import type {
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { parseJSONObjectFromText, stringToUuid } from "./utils";
-import {
-	collectActionResultSizeWarnings,
-	getActionResultActionName,
-	getActionResultReference,
-	MAX_ACTION_RESULT_ERROR_CHARS,
-	MAX_ACTION_RESULT_TEXT_CHARS,
-	stringifyActionResultError,
-	trimActionResultForPromptState,
-} from "./utils/action-results";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { resolveProviderContexts } from "./utils/context-catalog";
@@ -196,8 +187,6 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
-import { resolveStateDir } from "./utils/state-dir";
-import { ActionStreamFilter } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -369,149 +358,6 @@ function isTextStreamResult(
 	);
 }
 
-function callbackContentHasVisibleOutput(content: Content): boolean {
-	if (typeof content.text === "string" && content.text.trim().length > 0) {
-		return true;
-	}
-	return Array.isArray(content.attachments) && content.attachments.length > 0;
-}
-
-function suppressesVisibleActionResult(actionResult: ActionResult | undefined) {
-	return actionResult?.data?.suppressVisibleCallback === true;
-}
-
-const ACTION_RESULT_CLIPBOARD_FLAGS = [
-	"addToClipboard",
-	"copyToClipboard",
-	"persistToClipboard",
-	"saveToClipboard",
-] as const;
-const ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS = [
-	"suppressActionResultClipboard",
-	"suppressClipboard",
-] as const;
-const TERMINAL_ACTION_RESULT_NAMES = new Set([
-	"REPLY",
-	"RESPOND",
-	"IGNORE",
-	"STOP",
-	"NONE",
-]);
-const ACTION_RESULT_CLIPBOARD_TEXT_PATTERN =
-	/\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\b(?:to|in|into|on)?\s*(?:the\s*)?clipboard\b/i;
-const CLIPBOARD_ACTION_RESULT_TEXT_PATTERN =
-	/\bclipboard\b[\s\S]{0,80}\b(copy|save|store|keep|persist)\b/i;
-const ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN =
-	/\b(?:do\s+not|don't|dont|never|without)\b[\s\S]{0,80}\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\bclipboard\b/i;
-
-type ActionResultClipboardStatus = {
-	text: string;
-};
-
-function isTruthyClipboardFlag(value: unknown): boolean {
-	if (value === true) {
-		return true;
-	}
-	if (typeof value === "string") {
-		return /^(true|1|yes|y|on)$/i.test(value.trim());
-	}
-	return false;
-}
-
-function normalizeActionResultName(value: string): string {
-	return value
-		.trim()
-		.replace(/[\s-]+/g, "_")
-		.toUpperCase();
-}
-
-function isTerminalActionResultName(actionName: string): boolean {
-	return TERMINAL_ACTION_RESULT_NAMES.has(
-		normalizeActionResultName(actionName),
-	);
-}
-
-function contentHasTruthyFlag(
-	content: Content,
-	flags: readonly string[],
-): boolean {
-	return flags.some((flag) => isTruthyClipboardFlag(content[flag]));
-}
-
-function actionResultDataHasTruthyFlag(
-	actionResult: ActionResult | undefined,
-	flags: readonly string[],
-): boolean {
-	return flags.some((flag) =>
-		isTruthyClipboardFlag(actionResult?.data?.[flag]),
-	);
-}
-
-function messageRequestsActionResultClipboard(message: Memory): boolean {
-	if (contentHasTruthyFlag(message.content, ACTION_RESULT_CLIPBOARD_FLAGS)) {
-		return true;
-	}
-
-	const text = message.content.text;
-	if (typeof text !== "string" || !text.trim()) {
-		return false;
-	}
-
-	if (ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN.test(text)) {
-		return false;
-	}
-
-	return (
-		ACTION_RESULT_CLIPBOARD_TEXT_PATTERN.test(text) ||
-		CLIPBOARD_ACTION_RESULT_TEXT_PATTERN.test(text)
-	);
-}
-
-function actionResultRequestsClipboard(
-	actionResult: ActionResult | undefined,
-): boolean {
-	return actionResultDataHasTruthyFlag(
-		actionResult,
-		ACTION_RESULT_CLIPBOARD_FLAGS,
-	);
-}
-
-function suppressesActionResultClipboard(
-	action: Action,
-	actionResult: ActionResult | undefined,
-): boolean {
-	return (
-		action.suppressActionResultClipboard === true ||
-		actionResultDataHasTruthyFlag(
-			actionResult,
-			ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS,
-		)
-	);
-}
-
-function stringFromContent(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function resolveActionResultClipboardTitle(
-	message: Memory,
-	action: Action,
-	actionResult: ActionResult | undefined,
-): string {
-	return (
-		stringFromContent(actionResult?.data?.clipboardTitle) ??
-		stringFromContent(message.content.clipboardTitle) ??
-		stringFromContent(message.content.title) ??
-		`${action.name} result`
-	);
-}
-
-function safeActionResultFilePart(value: string | undefined): string {
-	const normalized =
-		value?.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
-	return normalized.slice(0, 80) || "unknown";
-}
-
 function getSearchCategoryKey(category: string): string {
 	return category.trim().toLowerCase();
 }
@@ -563,13 +409,107 @@ function labelFromMessageConnectorSource(source: string): string {
 	return label || "Message Connector";
 }
 
+const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
+
+function normalizeConnectorAccountId(accountId: unknown): string | undefined {
+	return typeof accountId === "string" && accountId.trim()
+		? accountId.trim()
+		: undefined;
+}
+
+function connectorRouteKey(source: string, accountId?: string): string {
+	return accountId
+		? `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}${accountId}`
+		: source;
+}
+
+function connectorKeySource(key: string): string {
+	return key.split(CONNECTOR_ACCOUNT_KEY_SEPARATOR, 1)[0] ?? key;
+}
+
+function cloneConnectorAccountRef(
+	account: ConnectorAccountRef,
+	source: string,
+): ConnectorAccountRef {
+	return {
+		...account,
+		source: account.source || source,
+		accountId: normalizeConnectorAccountId(account.accountId),
+		capabilities: account.capabilities
+			? account.capabilities.map((capability) => ({
+					...capability,
+					targetKinds: capability.targetKinds
+						? [...capability.targetKinds]
+						: undefined,
+					scopes: capability.scopes ? [...capability.scopes] : undefined,
+					metadata: capability.metadata
+						? { ...capability.metadata }
+						: undefined,
+				}))
+			: undefined,
+		metadata: account.metadata ? { ...account.metadata } : undefined,
+	};
+}
+
+function normalizeConnectorAccountRef(
+	source: string,
+	account?: ConnectorAccountRef,
+	accountId?: string,
+): ConnectorAccountRef | undefined {
+	const normalizedAccountId =
+		normalizeConnectorAccountId(accountId) ??
+		normalizeConnectorAccountId(account?.accountId);
+	if (!account && !normalizedAccountId) {
+		return undefined;
+	}
+	return cloneConnectorAccountRef(
+		{
+			...account,
+			source: account?.source?.trim() || source,
+			accountId: normalizedAccountId,
+		},
+		source,
+	);
+}
+
 function cloneMessageConnector(connector: MessageConnector): MessageConnector {
 	return {
 		...connector,
+		account: connector.account
+			? cloneConnectorAccountRef(connector.account, connector.source)
+			: undefined,
 		capabilities: [...connector.capabilities],
 		supportedTargetKinds: [...connector.supportedTargetKinds],
 		contexts: [...connector.contexts],
 		metadata: connector.metadata ? { ...connector.metadata } : undefined,
+		contentShaping: connector.contentShaping
+			? {
+					...connector.contentShaping,
+					constraints: connector.contentShaping.constraints
+						? { ...connector.contentShaping.constraints }
+						: undefined,
+				}
+			: undefined,
+	};
+}
+
+function clonePostConnector(connector: PostConnector): PostConnector {
+	return {
+		...connector,
+		account: connector.account
+			? cloneConnectorAccountRef(connector.account, connector.source)
+			: undefined,
+		capabilities: [...connector.capabilities],
+		contexts: [...connector.contexts],
+		metadata: connector.metadata ? { ...connector.metadata } : undefined,
+		contentShaping: connector.contentShaping
+			? {
+					...connector.contentShaping,
+					constraints: connector.contentShaping.constraints
+						? { ...connector.contentShaping.constraints }
+						: undefined,
+				}
+			: undefined,
 	};
 }
 
@@ -577,8 +517,13 @@ function normalizeMessageConnector(
 	source: string,
 	metadata: MessageConnectorMetadata = {},
 ): MessageConnector {
+	const accountId =
+		normalizeConnectorAccountId(metadata.accountId) ??
+		normalizeConnectorAccountId(metadata.account?.accountId);
 	const connector: MessageConnector = {
 		source,
+		accountId,
+		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
 		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
 		capabilities: metadata.capabilities
 			? [...metadata.capabilities]
@@ -600,6 +545,56 @@ function normalizeMessageConnector(
 		connector.getChatContext = metadata.getChatContext;
 	if (metadata.getUserContext)
 		connector.getUserContext = metadata.getUserContext;
+	if (metadata.listServers) connector.listServers = metadata.listServers;
+	if (metadata.fetchMessages) connector.fetchMessages = metadata.fetchMessages;
+	if (metadata.searchMessages)
+		connector.searchMessages = metadata.searchMessages;
+	if (metadata.reactHandler) connector.reactHandler = metadata.reactHandler;
+	if (metadata.editHandler) connector.editHandler = metadata.editHandler;
+	if (metadata.deleteHandler) connector.deleteHandler = metadata.deleteHandler;
+	if (metadata.pinHandler) connector.pinHandler = metadata.pinHandler;
+	if (metadata.joinHandler) connector.joinHandler = metadata.joinHandler;
+	if (metadata.leaveHandler) connector.leaveHandler = metadata.leaveHandler;
+	if (metadata.getUser) connector.getUser = metadata.getUser;
+	if (metadata.contentShaping)
+		connector.contentShaping = {
+			...metadata.contentShaping,
+			constraints: metadata.contentShaping.constraints
+				? { ...metadata.contentShaping.constraints }
+				: undefined,
+		};
+
+	return connector;
+}
+
+function normalizePostConnector(
+	source: string,
+	metadata: PostConnectorMetadata = {},
+): PostConnector {
+	const accountId =
+		normalizeConnectorAccountId(metadata.accountId) ??
+		normalizeConnectorAccountId(metadata.account?.accountId);
+	const connector: PostConnector = {
+		source,
+		accountId,
+		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
+		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
+		capabilities: metadata.capabilities ? [...metadata.capabilities] : ["post"],
+		contexts: metadata.contexts ? [...metadata.contexts] : [],
+	};
+
+	if (metadata.description) connector.description = metadata.description;
+	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
+	if (metadata.postHandler) connector.postHandler = metadata.postHandler;
+	if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed;
+	if (metadata.searchPosts) connector.searchPosts = metadata.searchPosts;
+	if (metadata.contentShaping)
+		connector.contentShaping = {
+			...metadata.contentShaping,
+			constraints: metadata.contentShaping.constraints
+				? { ...metadata.contentShaping.constraints }
+				: undefined,
+		};
 
 	return connector;
 }
@@ -646,6 +641,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
+	private postConnectors = new Map<string, PostConnector>();
 	private searchCategories = new Map<string, SearchCategoryRegistration>();
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
@@ -698,17 +694,6 @@ export class AgentRuntime implements IAgentRuntime {
 		| undefined;
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
-	private currentActionContext?: {
-		// Track current action execution context
-		actionName: string;
-		actionId: UUID;
-		prompts: Array<{
-			modelType: string;
-			prompt: string;
-			timestamp: number;
-		}>;
-	};
-	private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
 	public messageService: IMessageService | null = null; // Lazily initialized
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
@@ -772,7 +757,7 @@ export class AgentRuntime implements IAgentRuntime {
 		enableSecretsManager?: boolean;
 		/** Enable plugin introspection, install/eject/sync. */
 		enablePluginManager?: boolean;
-		enableKnowledge?: boolean;
+		enableDocuments?: boolean;
 		enableRelationships?: boolean;
 		enableTrajectories?: boolean;
 		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
@@ -793,10 +778,10 @@ export class AgentRuntime implements IAgentRuntime {
 				postExamples: [],
 				topics: [],
 				adjectives: [],
-				knowledge: [],
+				documents: [],
 				plugins: [],
 				secrets: {},
-			};
+			} as Character;
 			this.isAnonymousCharacter = true;
 		}
 
@@ -814,7 +799,7 @@ export class AgentRuntime implements IAgentRuntime {
 			enablePluginManager: opts.enablePluginManager,
 		};
 		this.nativeFeatureOptions = {
-			documents: opts.enableKnowledge,
+			documents: opts.enableDocuments,
 			relationships: opts.enableRelationships,
 			trajectories: opts.enableTrajectories,
 		};
@@ -880,17 +865,6 @@ export class AgentRuntime implements IAgentRuntime {
 			"Initialized",
 		);
 		this.currentRunId = undefined; // Initialize run ID tracker
-
-		// Set max working memory entries from settings or environment
-		if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
-			this.maxWorkingMemoryEntries =
-				parseInt(String(opts.settings.MAX_WORKING_MEMORY_ENTRIES), 10) || 50;
-		} else {
-			this.maxWorkingMemoryEntries = getNumberEnv(
-				"MAX_WORKING_MEMORY_ENTRIES",
-				50,
-			) as number;
-		}
 
 		installRuntimePluginLifecycle(this);
 	}
@@ -963,10 +937,10 @@ export class AgentRuntime implements IAgentRuntime {
 		return serviceType;
 	}
 
-	private nativeRuntimeFeatureSettingKey(feature: NativeRuntimeFeature): string {
-		return feature === "documents"
-			? "ENABLE_KNOWLEDGE"
-			: `ENABLE_${feature.toUpperCase()}`;
+	private nativeRuntimeFeatureSettingKey(
+		feature: NativeRuntimeFeature,
+	): string {
+		return `ENABLE_${feature.toUpperCase()}`;
 	}
 
 	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
@@ -993,7 +967,7 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): NativeRuntimeFeature | null {
 		switch (serviceType) {
-			case "knowledge":
+			case "documents":
 				return "documents";
 			case "relationships":
 				return "relationships";
@@ -1038,15 +1012,15 @@ export class AgentRuntime implements IAgentRuntime {
 		this.setSetting(this.nativeRuntimeFeatureSettingKey(feature), enabled);
 	}
 
-	async enableKnowledge(): Promise<void> {
+	async enableDocuments(): Promise<void> {
 		await this.setNativeRuntimeFeatureEnabled("documents", true);
 	}
 
-	async disableKnowledge(): Promise<void> {
+	async disableDocuments(): Promise<void> {
 		await this.setNativeRuntimeFeatureEnabled("documents", false);
 	}
 
-	isKnowledgeEnabled(): boolean {
+	isDocumentsEnabled(): boolean {
 		return this.hasNativeRuntimeFeature("documents");
 	}
 
@@ -2485,18 +2459,34 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerAction(action: Action) {
 		const canonical = withCanonicalActionDocs(action);
-		if (this.actions.find((a) => a.name === canonical.name)) {
+		Object.assign(action, canonical);
+		if (this.actions.find((a) => a.name === action.name)) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, action: canonical.name },
+				{ src: "agent", agentId: this.agentId, action: action.name },
 				"Action already registered, skipping",
 			);
 		} else {
-			this.actions.push(canonical);
+			this.actions.push(action);
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, action: canonical.name },
+				{ src: "agent", agentId: this.agentId, action: action.name },
 				"Action registered",
 			);
 		}
+	}
+
+	unregisterAction(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.actions.findIndex(
+			(action) => action.name === normalized,
+		);
+		if (index === -1) return false;
+		this.actions.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, action: normalized },
+			"Action unregistered",
+		);
+		return true;
 	}
 
 	getAllActions(): Action[] {
@@ -2560,1049 +2550,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerEvaluator(evaluator: Evaluator) {
 		this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
-	}
-
-	// Helper functions for immutable action plan updates
-	private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
-		return { ...plan, ...updates };
-	}
-
-	private updateActionStep<T, S>(
-		plan: T & { steps: S[] },
-		index: number,
-		stepUpdates: Partial<S>,
-	): T & { steps: S[] } {
-		// Add bounds checking
-		if (!plan.steps || index < 0 || index >= plan.steps.length) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					index,
-					stepsCount: plan.steps?.length || 0,
-				},
-				"Invalid step index",
-			);
-			return plan;
-		}
-		return {
-			...plan,
-			steps: plan.steps.map((step: S, i: number) =>
-				i === index ? { ...step, ...stepUpdates } : step,
-			),
-		};
-	}
-
-	private async writeActionResultSnapshot(params: {
-		message: Memory;
-		actionId: UUID;
-		actionName: string;
-		field: "text" | "error";
-		content: string;
-	}): Promise<string | undefined> {
-		try {
-			const directory = join(
-				resolveStateDir(),
-				"action-results",
-				safeActionResultFilePart(params.message.roomId),
-				safeActionResultFilePart(params.message.id),
-			);
-			await mkdir(directory, { recursive: true });
-			const filePath = join(
-				directory,
-				`${Date.now()}-${safeActionResultFilePart(
-					params.actionName,
-				)}-${safeActionResultFilePart(params.actionId)}-${params.field}.txt`,
-			);
-			await writeFile(filePath, params.content, "utf8");
-			return filePath;
-		} catch (error) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					action: params.actionName,
-					actionId: params.actionId,
-					field: params.field,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Failed to persist oversized action result snapshot",
-			);
-			return undefined;
-		}
-	}
-
-	private async prepareActionResultForPromptState(
-		actionResult: ActionResult,
-		message: Memory,
-		actionId: UUID,
-	): Promise<ActionResult> {
-		const actionName = getActionResultActionName(actionResult);
-		for (const warning of collectActionResultSizeWarnings(actionResult)) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					messageId: message.id,
-					roomId: message.roomId,
-					action: warning.actionName,
-					actionId,
-					field: warning.field,
-					rawCharLength: warning.rawCharLength,
-					estimatedTokens: warning.estimatedTokens,
-					thresholdTokens: warning.thresholdTokens,
-				},
-				"Action result exceeds prompt-size warning threshold",
-			);
-		}
-
-		const references: { text?: string; error?: string } = {};
-		if (
-			typeof actionResult.text === "string" &&
-			actionResult.text.trim().length > MAX_ACTION_RESULT_TEXT_CHARS
-		) {
-			references.text =
-				getActionResultReference(actionResult, "text") ??
-				(await this.writeActionResultSnapshot({
-					message,
-					actionId,
-					actionName,
-					field: "text",
-					content: actionResult.text,
-				}));
-		}
-
-		const errorText = stringifyActionResultError(actionResult.error);
-		if (
-			typeof errorText === "string" &&
-			errorText.trim().length > MAX_ACTION_RESULT_ERROR_CHARS
-		) {
-			references.error =
-				getActionResultReference(actionResult, "error") ??
-				(await this.writeActionResultSnapshot({
-					message,
-					actionId,
-					actionName,
-					field: "error",
-					content: errorText,
-				}));
-		}
-
-		return trimActionResultForPromptState(actionResult, references);
-	}
-
-	private async maybeStoreActionResultClipboard(params: {
-		message: Memory;
-		action: Action;
-		actionId: UUID;
-		actionText: string;
-		actionResult?: ActionResult;
-	}): Promise<ActionResultClipboardStatus | null> {
-		const requested =
-			messageRequestsActionResultClipboard(params.message) ||
-			actionResultRequestsClipboard(params.actionResult);
-
-		if (!requested) {
-			return null;
-		}
-
-		if (
-			isTerminalActionResultName(params.action.name) ||
-			suppressesActionResultClipboard(params.action, params.actionResult)
-		) {
-			return null;
-		}
-
-		if (!params.actionText.trim()) {
-			return {
-				text: `No ${params.action.name} result text was available to copy to clipboard.`,
-			};
-		}
-
-		const entityId =
-			typeof params.message.entityId === "string"
-				? params.message.entityId
-				: undefined;
-
-		try {
-			const service = createTaskClipboardService(this as IAgentRuntime);
-			const { item, replaced, snapshot } = await service.addItem(
-				{
-					title: resolveActionResultClipboardTitle(
-						params.message,
-						params.action,
-						params.actionResult,
-					),
-					content: params.actionText,
-					sourceType: "action_result",
-					sourceId: params.actionId,
-					sourceLabel: params.action.name,
-				},
-				entityId,
-			);
-			if (params.actionResult) {
-				params.actionResult.data = {
-					...params.actionResult.data,
-					actionResultClipboard: {
-						id: item.id,
-						title: item.title,
-						replaced,
-						count: snapshot.items.length,
-						maxItems: snapshot.maxItems,
-					},
-				};
-			}
-			const verb = replaced ? "Updated" : "Copied";
-			return {
-				text: `${verb} ${params.action.name} result to clipboard item ${item.id}: ${item.title}. Clipboard usage: ${snapshot.items.length}/${snapshot.maxItems}.`,
-			};
-		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					action: params.action.name,
-					actionId: params.actionId,
-					error: reason,
-				},
-				"Failed to store action result in task clipboard",
-			);
-			return {
-				text: `Could not copy ${params.action.name} result to clipboard: ${reason}`,
-			};
-		}
-	}
-
-	private async resolveProcessActionUserRoles(
-		message: Memory,
-	): Promise<RoleGateRole[]> {
-		if (
-			typeof message.entityId === "string" &&
-			message.entityId === this.agentId
-		) {
-			return ["OWNER"];
-		}
-
-		try {
-			const result = await checkSenderRole(this as IAgentRuntime, message);
-			if (result?.role) {
-				return [result.role as RoleGateRole];
-			}
-		} catch (error) {
-			this.logger.debug(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"processActions sender role lookup failed; defaulting to USER",
-			);
-		}
-
-		return ["USER"];
-	}
-
-	async processActions(
-		message: Memory,
-		responses: Memory[],
-		state?: State,
-		callback?: HandlerCallback,
-		processOptions?: {
-			onStreamChunk?: StreamChunkCallback;
-		},
-	): Promise<void> {
-		setTrajectoryPurpose("action");
-		// Check if action planning is enabled
-		const actionPlanningEnabled = this.isActionPlanningEnabled();
-
-		// Determine if we have multiple actions to execute
-		let allActions: string[] = [];
-		let responsesToProcess = responses;
-
-		if (actionPlanningEnabled) {
-			// Multi-action mode: collect all actions
-			for (const response of responses) {
-				if (response.content?.actions && response.content.actions.length > 0) {
-					allActions.push(...response.content.actions);
-				}
-			}
-		} else {
-			// Single-action mode: only take the first action from the first response with actions
-			for (const response of responses) {
-				if (response.content?.actions && response.content.actions.length > 0) {
-					allActions = [response.content.actions[0]];
-					// Create a modified response with only the first action
-					responsesToProcess = [
-						{
-							...response,
-							content: {
-								...response.content,
-								actions: [response.content.actions[0]],
-							},
-						},
-					];
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							selectedAction: response.content.actions[0],
-							skippedActions: response.content.actions.slice(1),
-						},
-						"Action planning disabled, limiting to first action",
-					);
-					break;
-				}
-			}
-		}
-
-		// Skip processing if no actions and respect single-action mode
-		const hasMultipleActions = allActions.length > 1 && actionPlanningEnabled;
-		const parentRunId = this.getCurrentRunId();
-		const runId = this.createRunId();
-		const processActionUserRoles =
-			await this.resolveProcessActionUserRoles(message);
-
-		// Create action plan if multiple actions
-		let actionPlan:
-			| {
-					runId: UUID;
-					totalSteps: number;
-					currentStep: number;
-					steps: Array<{
-						action: string;
-						status: "pending" | "completed" | "failed";
-						result?: ActionResult;
-						error?: string;
-					}>;
-					thought: string;
-					startTime: number;
-			  }
-			| undefined;
-
-		const firstResponse = responses[0];
-		const thought =
-			firstResponse?.content?.thought ||
-			`Executing ${allActions.length} actions: ${allActions.join(", ")}`;
-
-		if (hasMultipleActions) {
-			// Extract thought from response content
-
-			actionPlan = {
-				runId,
-				totalSteps: allActions.length,
-				currentStep: 0,
-				steps: allActions.map((action) => ({
-					action,
-					status: "pending" as const,
-				})),
-				thought,
-				startTime: Date.now(),
-			};
-		}
-
-		let actionIndex = 0;
-		// Track which action names have already been executed in this
-		// processActions invocation. The LLM sometimes emits the same action
-		// twice in `actions` (e.g. ["SEND_MESSAGE", "CALENDAR",
-		// "CALENDAR"] when the user has multiple sub-intents the LLM
-		// can't split into per-action params). Without dedupe the second run
-		// uses the same params as the first → identical output → discord
-		// dedup layer rejects it as a duplicate callback. Two identical
-		// action+params runs in one turn is never useful, so collapse them.
-		const executedActionKeys = new Set<string>();
-
-		for (const response of responsesToProcess) {
-			if (!response.content?.actions || response.content.actions.length === 0) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"No action found in response",
-				);
-				continue;
-			}
-			const actions = response.content.actions;
-			const actionParamsByName = parseActionParams(response.content?.params);
-
-			const actionResults: ActionResult[] = [];
-			let accumulatedState = state;
-
-			const actionByName = new Map<string, Action>();
-			for (const action of this.actions) {
-				if (!actionByName.has(action.name)) {
-					actionByName.set(action.name, action);
-				}
-			}
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					actions: this.actions.map((a) => a.name),
-				},
-				"Available actions",
-			);
-
-			for (const responseAction of actions) {
-				// Update current step in plan immutably
-				if (actionPlan) {
-					actionPlan = this.updateActionPlan(actionPlan, {
-						currentStep: actionIndex + 1,
-					});
-				}
-
-				// Compose state with previous action results and plan
-				accumulatedState = await this.composeState(message, [
-					"RECENT_MESSAGES",
-					"ACTION_STATE", // This will include the action plan
-				]);
-
-				// Add action plan to state if it exists
-				if (actionPlan && accumulatedState.data) {
-					accumulatedState.data.actionPlan = actionPlan;
-					accumulatedState.data.actionResults = actionResults;
-				}
-
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: responseAction },
-					"Processing action",
-				);
-				const action = actionByName.get(responseAction.trim());
-				if (!action) {
-					const errorMsg = `Action not found: ${responseAction}`;
-					this.logger.error(
-						{ src: "agent", agentId: this.agentId, action: responseAction },
-						"Action not found",
-					);
-
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "failed",
-							error: errorMsg,
-						});
-					}
-
-					const actionMemory: Memory = {
-						id: uuidv4() as UUID,
-						entityId: message.entityId,
-						roomId: message.roomId,
-						worldId: message.worldId,
-						content: {
-							thought: errorMsg,
-							source: "auto",
-							type: "action_result",
-							actionName: responseAction,
-							actionStatus: "failed",
-							runId,
-						},
-					};
-					await this.createMemory(actionMemory, "messages");
-					actionIndex++;
-					continue;
-				}
-				if (!action.handler) {
-					this.logger.error(
-						{ src: "agent", agentId: this.agentId, action: action.name },
-						"Action has no handler",
-					);
-
-					// Update plan with error immutably
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "failed",
-							error: "No handler",
-						});
-					}
-
-					actionIndex++;
-					continue;
-				}
-				if (
-					action.roleGate &&
-					!satisfiesRoleGate(processActionUserRoles, action.roleGate)
-				) {
-					const errorMsg = `Action ${action.name} is not allowed for the current role`;
-					this.logger.warn(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							action: action.name,
-							roleGate: action.roleGate,
-							userRoles: processActionUserRoles,
-						},
-						"Skipping role-gated action",
-					);
-
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "failed",
-							error: errorMsg,
-						});
-					}
-
-					const actionMemory: Memory = {
-						id: uuidv4() as UUID,
-						entityId: message.entityId,
-						roomId: message.roomId,
-						worldId: message.worldId,
-						content: {
-							thought: errorMsg,
-							source: "auto",
-							type: "action_result",
-							actionName: action.name,
-							actionStatus: "failed",
-							runId,
-						},
-					};
-					await this.createMemory(actionMemory, "messages");
-					actionIndex++;
-					continue;
-				}
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: action.name },
-					"Executing action",
-				);
-
-				// Validate and attach action parameters (optional)
-				const options: HandlerOptions = {};
-				if (action.parameters && action.parameters.length > 0) {
-					const responseActionKey = responseAction.trim().toUpperCase();
-					const actionKey = action.name.trim().toUpperCase();
-					const extractedParams =
-						actionParamsByName.get(responseActionKey) ??
-						actionParamsByName.get(actionKey);
-					const validation = validateActionParams(action, extractedParams);
-					if (!validation.valid) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								action: action.name,
-								errors: validation.errors,
-							},
-							"Skipping action with invalid parameters",
-						);
-						if (actionPlan?.steps?.[actionIndex]) {
-							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-								status: "failed",
-								error: validation.errors.join("; "),
-							});
-						}
-						actionIndex++;
-						continue;
-					}
-
-					if (validation.params) options.parameters = validation.params;
-				}
-
-				// Dedupe: same action name + identical params bucket means
-				// repeating the run would emit identical output. Skip the
-				// repeat instead of letting the discord callback layer reject
-				// it as a duplicate. Key includes the JSON of params so that
-				// distinct invocations with different params still go through.
-				const actionDedupeKey = `${action.name.trim().toUpperCase()}::${
-					options.parameters
-						? JSON.stringify(options.parameters)
-						: "<no-params>"
-				}`;
-				if (executedActionKeys.has(actionDedupeKey)) {
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							action: action.name,
-							dedupeKey: actionDedupeKey,
-						},
-						"Skipping duplicate action invocation in same turn",
-					);
-					actionIndex++;
-					continue;
-				}
-				executedActionKeys.add(actionDedupeKey);
-
-				const actionId = uuidv4() as UUID;
-				// Separate ID for streamed response message (independent from action badge)
-				const responseMessageId = uuidv4() as UUID;
-
-				this.currentActionContext = {
-					actionName: action.name,
-					actionId,
-					prompts: [],
-				};
-
-				// Create action context with plan information
-				const actionContext: ActionContext = {
-					previousResults: actionResults,
-					getPreviousResult: (actionName: string) => {
-						return actionResults.find(
-							(r) => r.data && r.data.actionName === actionName,
-						);
-					},
-				};
-
-				// Add plan information to options if multiple actions
-				options.actionContext = actionContext;
-
-				if (actionPlan) {
-					options.actionPlan = {
-						totalSteps: actionPlan.totalSteps,
-						currentStep: actionPlan.currentStep,
-						steps: actionPlan.steps,
-						thought: actionPlan.thought,
-					};
-				}
-
-				// Pass streaming callback to action handlers
-				if (processOptions?.onStreamChunk) {
-					options.onStreamChunk = processOptions.onStreamChunk;
-				}
-
-				await this.emitEvent(EventType.ACTION_STARTED, {
-					messageId: actionId,
-					roomId: message.roomId,
-					world: message.worldId,
-					content: {
-						text: `Executing action: ${action.name}`,
-						actions: [action.name],
-						actionStatus: "executing",
-						actionId: actionId,
-						runId: runId,
-						type: "agent_action",
-						thought: thought,
-						source: message.content?.source,
-					},
-				});
-
-				const storedCallbackData: Content[] = [];
-				let visibleCallbackIndex: number | null = null;
-
-				const storageCallback = async (response: Content) => {
-					// Use responseMessageId for the text response (separate from action badge)
-					response.responseId = responseMessageId;
-					if (callbackContentHasVisibleOutput(response)) {
-						if (visibleCallbackIndex === null) {
-							visibleCallbackIndex = storedCallbackData.length;
-							storedCallbackData.push(response);
-						} else {
-							storedCallbackData[visibleCallbackIndex] = response;
-						}
-						return [];
-					}
-					storedCallbackData.push(response);
-					return [];
-				};
-
-				// Create streaming context using responseMessageId (separate from actionId)
-				// This ensures streamed text goes to its own message, independent from action badge
-				//
-				// Actions may have multiple useModel calls (e.g., JSON extraction + text generation).
-				// onStreamEnd is called after each useModel stream completes, allowing us to reset
-				// the filter so content type detection from one call doesn't affect the next.
-				let actionStreamingContext:
-					| (StreamingContext & { onStreamEnd: () => void })
-					| undefined;
-				if (processOptions?.onStreamChunk) {
-					let currentFilter: ActionStreamFilter | null = null;
-					const onStreamChunk = processOptions.onStreamChunk;
-					// Track locally accumulated filtered text for this action stream.
-					// Note: upstream `accumulated` is discarded because ActionStreamFilter may
-					// transform/drop content, making upstream accumulated inconsistent with
-					// the actual deltas the consumer receives.
-					let filteredAccumulated = "";
-
-					actionStreamingContext = {
-						messageId: responseMessageId,
-						onStreamChunk: async (
-							chunk: string,
-							msgId?: string,
-							_accumulated?: string,
-						) => {
-							if (!currentFilter) {
-								currentFilter = new ActionStreamFilter();
-							}
-							const textToStream = currentFilter.push(chunk);
-							if (textToStream && onStreamChunk) {
-								filteredAccumulated += textToStream;
-								await this.applyPipelineHooks(
-									"model_stream_chunk",
-									modelStreamChunkPipelineHookContext({
-										source: "process_actions",
-										chunk: textToStream,
-										messageId: msgId,
-										roomId: message.roomId,
-										runId,
-										responseId: responseMessageId,
-										accumulated: filteredAccumulated,
-									}),
-								);
-								await onStreamChunk(textToStream, msgId, filteredAccumulated);
-							}
-						},
-						onStreamEnd: () => {
-							const textSnapshot = filteredAccumulated;
-							void this.applyPipelineHooks(
-								"model_stream_end",
-								modelStreamEndPipelineHookContext({
-									source: "process_actions",
-									roomId: message.roomId,
-									runId,
-									responseId: responseMessageId,
-									messageId: responseMessageId,
-									text: textSnapshot,
-								}),
-							).catch((err) => {
-								this.logger.debug(
-									{
-										src: "agent",
-										agentId: this.agentId,
-										error: err instanceof Error ? err.message : String(err),
-									},
-									"model_stream_end pipeline hook failed",
-								);
-							});
-							// Reset filter and local accumulator for next useModel call
-							currentFilter = null;
-							filteredAccumulated = "";
-						},
-					};
-				}
-
-				// Execute action with its own streaming context
-				const actionRuntime = this as unknown as IAgentRuntime;
-				const result = await withActionStep(actionRuntime, action.name, () =>
-					runWithStreamingContext(actionStreamingContext, () =>
-						action.handler(
-							actionRuntime,
-							message,
-							accumulatedState,
-							options,
-							storageCallback,
-							responses,
-						),
-					),
-				);
-
-				// Handle void, null, true, false returns
-				const isVoidReturn =
-					result === undefined ||
-					result === null ||
-					typeof result === "boolean";
-
-				// Only create ActionResult if we have a proper result
-				let actionResult: ActionResult | undefined;
-
-				if (!isVoidReturn) {
-					// Ensure we have an ActionResult with required success field
-					if (
-						typeof result === "object" &&
-						result !== null &&
-						("values" in result || "data" in result || "text" in result)
-					) {
-						const resultData =
-							typeof result.data === "object" &&
-							result.data !== null &&
-							!Array.isArray(result.data)
-								? result.data
-								: {};
-						// Ensure success field exists with default true
-						actionResult = {
-							...result,
-							data: {
-								actionName: action.name,
-								...resultData,
-							},
-							success: "success" in result ? result.success : true, // Default to true if not specified
-						} as ActionResult;
-					} else {
-						// For non-ActionResult returns, serialize the result
-						// Type narrowing: after the above checks, result is a primitive or unknown object
-						const resultValue: string | number | boolean | null =
-							typeof result === "string"
-								? result
-								: typeof result === "number"
-									? result
-									: typeof result === "boolean"
-										? result
-										: result === null
-											? null
-											: stringifyStructuredForPrompt({ result });
-						actionResult = {
-							success: true,
-							data: {
-								actionName: action.name,
-								result: resultValue,
-							},
-						};
-					}
-
-					actionResult = await this.prepareActionResultForPromptState(
-						actionResult,
-						message,
-						actionId,
-					);
-					actionResults.push(actionResult);
-
-					// Merge returned values into state
-					if (actionResult.values && accumulatedState) {
-						const accumulatedStateData = accumulatedState.data;
-						const rawActionResults = accumulatedStateData?.actionResults;
-						const existingActionResults: ActionResult[] = Array.isArray(
-							rawActionResults,
-						)
-							? rawActionResults
-							: [];
-						accumulatedState = {
-							...accumulatedState,
-							values: { ...accumulatedState.values, ...actionResult.values },
-							data: {
-								...accumulatedState.data,
-								actionResults: [...existingActionResults, actionResult],
-								actionPlan,
-							},
-						};
-					}
-
-					// Store in working memory (in state data) with cleanup
-					if (accumulatedState?.data) {
-						if (!accumulatedState.data.workingMemory)
-							accumulatedState.data.workingMemory = {};
-
-						// Add new entry first, then clean up if we exceed the limit
-						const responseAction = actionResult.data?.actionName || action.name;
-						const memoryKey = `action_${responseAction}_${uuidv4()}`;
-						const memoryEntry: WorkingMemoryEntry = {
-							actionName: action.name,
-							result: actionResult,
-							timestamp: Date.now(),
-						};
-						const workingMemory = accumulatedState.data.workingMemory as Record<
-							string,
-							WorkingMemoryEntry
-						>;
-						workingMemory[memoryKey] = memoryEntry;
-
-						// Clean up old entries if we now exceed the limit
-						const entries = Object.entries(workingMemory);
-						if (entries.length > this.maxWorkingMemoryEntries) {
-							let overflow = entries.length - this.maxWorkingMemoryEntries;
-							while (overflow > 0) {
-								let oldestKey: string | null = null;
-								let oldestTimestamp = Number.POSITIVE_INFINITY;
-								for (const [key, entry] of Object.entries(workingMemory)) {
-									const timestamp = entry?.timestamp ?? 0;
-									if (timestamp < oldestTimestamp) {
-										oldestTimestamp = timestamp;
-										oldestKey = key;
-									}
-								}
-								if (!oldestKey) break;
-								delete workingMemory[oldestKey];
-								overflow--;
-							}
-						}
-					}
-
-					// Update plan with success immutably
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "completed",
-							result: actionResult,
-						});
-					}
-				}
-
-				const isSuccess = actionResult?.success !== false;
-				const statusText = isSuccess ? "completed" : "failed";
-				const actionText =
-					typeof actionResult?.text === "string"
-						? actionResult.text.trim()
-						: "";
-				const visibleCallbackText = storedCallbackData.find((content) =>
-					callbackContentHasVisibleOutput(content),
-				)?.text;
-				const actionTextForClipboard =
-					actionText ||
-					(typeof visibleCallbackText === "string"
-						? visibleCallbackText.trim()
-						: "");
-				const suppressVisibleActionText =
-					suppressesVisibleActionResult(actionResult);
-				const clipboardStatus = await this.maybeStoreActionResultClipboard({
-					message,
-					action,
-					actionId,
-					actionText: actionTextForClipboard,
-					actionResult,
-				});
-				const visibleActionText = suppressVisibleActionText
-					? ""
-					: (actionResult?.text ?? "");
-
-				await this.emitEvent(EventType.ACTION_COMPLETED, {
-					messageId: actionId,
-					roomId: message.roomId,
-					world: message.worldId,
-					content: {
-						// Use action's actual text, not status message (prevents overwriting streamed content)
-						text: visibleActionText,
-						actions: [action.name],
-						actionStatus: statusText,
-						actionId: actionId,
-						type: "agent_action",
-						thought: thought,
-						actionResult: actionResult,
-						source: message.content?.source, // Include original message source
-					},
-				});
-
-				if (callback) {
-					const visibleActionCallbackIndex = storedCallbackData.findIndex(
-						(content) => callbackContentHasVisibleOutput(content),
-					);
-					if (actionText && !suppressVisibleActionText) {
-						if (visibleActionCallbackIndex === -1) {
-							storedCallbackData.push({
-								text: clipboardStatus
-									? `${actionText}\n\n${clipboardStatus.text}`
-									: actionText,
-								source: "action",
-								action: action.name,
-							});
-						} else if (clipboardStatus) {
-							const visibleCallback =
-								storedCallbackData[visibleActionCallbackIndex];
-							if (
-								visibleCallback &&
-								typeof visibleCallback.text === "string" &&
-								visibleCallback.text.trim()
-							) {
-								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
-							} else {
-								storedCallbackData.push({
-									text: clipboardStatus.text,
-									source: "action",
-									action: action.name,
-								});
-							}
-						}
-					} else if (clipboardStatus) {
-						if (visibleActionCallbackIndex === -1) {
-							storedCallbackData.push({
-								text: clipboardStatus.text,
-								source: "action",
-								action: action.name,
-							});
-						} else {
-							const visibleCallback =
-								storedCallbackData[visibleActionCallbackIndex];
-							if (
-								visibleCallback &&
-								typeof visibleCallback.text === "string" &&
-								visibleCallback.text.trim()
-							) {
-								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
-							}
-						}
-					}
-				}
-
-				if (callback) {
-					for (const content of storedCallbackData) {
-						await this.applyPipelineHooks(
-							"outgoing_before_deliver",
-							outgoingPipelineHookContext(content, {
-								source: "action",
-								roomId: message.roomId,
-								message,
-								actionName: action.name,
-								responseId: content.responseId,
-							}),
-						);
-						await callback(content);
-					}
-				}
-
-				// Only persist action memories when the handler returned a real user-facing
-				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				if (actionText && !suppressVisibleActionText) {
-					const actionMemory: Memory = {
-						id: actionId,
-						entityId: this.agentId,
-						roomId: message.roomId,
-						worldId: message.worldId,
-						content: {
-							text: actionText,
-							source: "action",
-							type: "action_result",
-							actionName: action.name,
-							actionStatus: statusText,
-							runId,
-							...(actionPlan
-								? {
-										planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-										planThought: actionPlan.thought,
-									}
-								: {}),
-							...(actionResult?.data
-								? {
-										data: actionResult.data as import("./types/proto.js").JsonObject,
-									}
-								: {}),
-						},
-					};
-					await this.createMemory(actionMemory, "messages");
-				}
-
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: action.name },
-					"Action completed",
-				);
-
-				// log to database with collected prompts
-				const logResult = actionResult
-					? {
-							success: actionResult.success,
-							text: actionResult.text,
-							error: actionResult.error,
-						}
-					: undefined;
-				await this.adapter.createLogs([
-					{
-						entityId: message.entityId,
-						roomId: message.roomId,
-						type: "action",
-						body: {
-							action: action.name,
-							actionId,
-							message: message.content.text,
-							messageId: message.id,
-							result: logResult,
-							isVoidReturn,
-							prompts: this.currentActionContext?.prompts || [],
-							promptCount: this.currentActionContext?.prompts?.length || 0,
-							runId,
-							parentRunId,
-							...(actionPlan && {
-								planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-								planThought: actionPlan.thought,
-							}),
-						},
-					},
-				]);
-
-				// Clear action context
-				this.currentActionContext = undefined;
-
-				actionIndex++;
-			}
-
-			// Store accumulated results for evaluators and providers
-			if (message.id) {
-				this.stateCache.set(`${message.id}_action_results`, {
-					values: { actionResults },
-					data: { actionResults, actionPlan },
-					text: stringifyStructuredForPrompt({ actionResults }),
-				});
-			}
-		}
 	}
 
 	getActionResults(messageId: UUID): ActionResult[] {
@@ -3822,7 +2769,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const isDuring =
 			mode === "ALWAYS_DURING" ||
 			mode === "CONTEXT_DURING" ||
-			mode === "MESSAGE_DURING";
+			mode === "RESPONSE_HANDLER_DURING";
 		if (isDuring) {
 			await Promise.all(validated.map(runOne));
 		} else {
@@ -5024,17 +3971,6 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string | undefined,
 		response: unknown,
 	): void {
-		// Log prompts to action context (except embeddings)
-		if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-			if (this.currentActionContext) {
-				this.currentActionContext.prompts.push({
-					modelType: modelKey,
-					prompt: promptContent,
-					timestamp: Date.now(),
-				});
-			}
-		}
-
 		// Log to database
 		const responseValue =
 			Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -5057,12 +3993,6 @@ export class AgentRuntime implements IAgentRuntime {
 						executionTime: elapsedTime,
 						provider:
 							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-						actionContext: this.currentActionContext
-							? {
-									actionName: this.currentActionContext.actionName,
-									actionId: this.currentActionContext.actionId,
-								}
-							: undefined,
 						response: responseValue,
 					},
 					type: `useModel:${modelKey}`,
@@ -8930,7 +7860,7 @@ ${section_end}`;
 			label: "Web search",
 			description:
 				"Search current web pages and discovery surfaces through IWebSearchService.",
-			contexts: ["knowledge", "browser"],
+			contexts: ["documents", "browser"],
 			filters: [
 				{
 					name: "query",
@@ -9067,16 +7997,29 @@ ${section_end}`;
 	}
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void {
-		if (this.sendHandlers.has(source)) {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) {
+			throw new Error("Send handler registration requires a source");
+		}
+		const routeKey = connectorRouteKey(normalized);
+		if (this.sendHandlers.has(routeKey)) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+				},
 				"Send handler already registered, overwriting",
 			);
 		}
-		this.sendHandlers.set(source, handler);
-		this.messageConnectors.set(source, normalizeMessageConnector(source));
+		this.sendHandlers.set(routeKey, handler);
+		this.messageConnectors.set(routeKey, normalizeMessageConnector(normalized));
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, handlerSource: source },
+			{
+				src: "agent",
+				agentId: this.agentId,
+				handlerSource: normalized,
+			},
 			"Send handler registered",
 		);
 	}
@@ -9087,41 +8030,165 @@ ${section_end}`;
 		if (!source) {
 			throw new Error("Message connector registration requires a source");
 		}
-		if (this.messageConnectors.has(source) || this.sendHandlers.has(source)) {
+		const accountId =
+			normalizeConnectorAccountId(registration.accountId) ??
+			normalizeConnectorAccountId(registration.account?.accountId);
+		const routeKey = connectorRouteKey(source, accountId);
+		if (
+			this.messageConnectors.has(routeKey) ||
+			this.sendHandlers.has(routeKey)
+		) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
 				"Message connector already registered, overwriting",
 			);
 		}
 
-		this.registerSendHandler(source, registration.sendHandler);
+		if (registration.sendHandler) {
+			this.sendHandlers.set(routeKey, registration.sendHandler);
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
+				"Send handler registered",
+			);
+		}
 		this.messageConnectors.set(
-			source,
-			normalizeMessageConnector(source, registration),
+			routeKey,
+			normalizeMessageConnector(source, {
+				...registration,
+				accountId,
+			}),
 		);
+	}
+
+	unregisterMessageConnector(source: string, accountId?: string): boolean {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) return false;
+		const normalizedAccountId = normalizeConnectorAccountId(accountId);
+		let removedConnector = false;
+		let removedHandler = false;
+		if (normalizedAccountId) {
+			const routeKey = connectorRouteKey(normalized, normalizedAccountId);
+			removedConnector = this.messageConnectors.delete(routeKey);
+			removedHandler = this.sendHandlers.delete(routeKey);
+		} else {
+			for (const [routeKey, connector] of this.messageConnectors) {
+				if (connector.source === normalized) {
+					removedConnector =
+						this.messageConnectors.delete(routeKey) || removedConnector;
+				}
+			}
+			for (const routeKey of Array.from(this.sendHandlers.keys())) {
+				if (connectorKeySource(routeKey) === normalized) {
+					removedHandler = this.sendHandlers.delete(routeKey) || removedHandler;
+				}
+			}
+		}
+		if (removedConnector || removedHandler) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+					accountId: normalizedAccountId,
+				},
+				"Message connector unregistered",
+			);
+		}
+		return removedConnector || removedHandler;
 	}
 
 	getMessageConnectors(): MessageConnector[] {
 		return Array.from(this.messageConnectors.values())
-			.filter((connector) => this.sendHandlers.has(connector.source))
 			.map(cloneMessageConnector)
+			.sort(
+				(a, b) =>
+					a.source.localeCompare(b.source) ||
+					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
+			);
+	}
+
+	registerPostConnector(registration: PostConnectorRegistration): void {
+		const source =
+			typeof registration.source === "string" ? registration.source.trim() : "";
+		if (!source) {
+			throw new Error("Post connector registration requires a source");
+		}
+		if (this.postConnectors.has(source)) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				"Post connector already registered, overwriting",
+			);
+		}
+		this.postConnectors.set(
+			source,
+			normalizePostConnector(source, registration),
+		);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, handlerSource: source },
+			"Post connector registered",
+		);
+	}
+
+	unregisterPostConnector(source: string): boolean {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) return false;
+		const removed = this.postConnectors.delete(normalized);
+		if (removed) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, handlerSource: normalized },
+				"Post connector unregistered",
+			);
+		}
+		return removed;
+	}
+
+	getPostConnectors(): PostConnector[] {
+		return Array.from(this.postConnectors.values())
+			.map(clonePostConnector)
 			.sort((a, b) => a.source.localeCompare(b.source));
 	}
 
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
-	): Promise<void> {
-		const handler = this.sendHandlers.get(target.source);
+	): Promise<Memory | undefined> {
+		const source =
+			typeof target.source === "string" ? target.source.trim() : "";
+		const accountId = normalizeConnectorAccountId(target.accountId);
+		const handler =
+			this.sendHandlers.get(connectorRouteKey(source, accountId)) ??
+			this.sendHandlers.get(connectorRouteKey(source));
 		if (!handler) {
-			const errorMsg = `No send handler registered for source: ${target.source}`;
+			const errorMsg = accountId
+				? `No send handler registered for source: ${source} accountId: ${accountId}`
+				: `No send handler registered for source: ${source}`;
 			this.logger.error(
-				{ src: "agent", agentId: this.agentId, handlerSource: target.source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
 				"Send handler not found",
 			);
 			throw new Error(errorMsg);
 		}
-		await handler(this as unknown as IAgentRuntime, target, content);
+		const result = await handler(
+			this as unknown as IAgentRuntime,
+			target,
+			content,
+		);
+		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
@@ -9235,6 +8302,88 @@ ${section_end}`;
 
 	async deletePairingAllowlistEntry(id: UUID): Promise<void> {
 		return await this.adapter.deletePairingAllowlistEntries([id]);
+	}
+
+	// Connector account storage passthroughs
+	async listConnectorAccounts(
+		params: ListConnectorAccountsParams = {},
+	): Promise<ConnectorAccountRecord[]> {
+		return await this.adapter.listConnectorAccounts({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async getConnectorAccount(
+		params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null> {
+		return await this.adapter.getConnectorAccount({
+			...params,
+			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
+		});
+	}
+
+	async upsertConnectorAccount(
+		params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord> {
+		return await this.adapter.upsertConnectorAccount({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async deleteConnectorAccount(
+		params: DeleteConnectorAccountParams,
+	): Promise<boolean> {
+		return await this.adapter.deleteConnectorAccount({
+			...params,
+			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
+		});
+	}
+
+	async setConnectorAccountCredentialRef(
+		params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord> {
+		return await this.adapter.setConnectorAccountCredentialRef(params);
+	}
+
+	async getConnectorAccountCredentialRef(
+		params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null> {
+		return await this.adapter.getConnectorAccountCredentialRef(params);
+	}
+
+	async listConnectorAccountCredentialRefs(
+		params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		return await this.adapter.listConnectorAccountCredentialRefs(params);
+	}
+
+	async appendConnectorAccountAuditEvent(
+		params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord> {
+		return await this.adapter.appendConnectorAccountAuditEvent({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async createOAuthFlowState(
+		params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord> {
+		return await this.adapter.createOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async consumeOAuthFlowState(
+		params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.consumeOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
 	}
 
 	// ── Batch pass-throughs required by IDatabaseAdapter ────────────────

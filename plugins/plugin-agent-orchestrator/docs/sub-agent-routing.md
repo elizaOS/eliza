@@ -1,7 +1,10 @@
 # Sub-agent routing
 
 > Canonical orchestration path for ACPX sub-agents. Replaces the
-> autonomous-coordinator model from `plugin-agent-orchestrator/swarm-*`.
+> autonomous-coordinator model from the legacy `swarm-*` services that
+> ship in this same package (`src/services/swarm-coordinator.ts`,
+> `src/services/swarm-decision-loop.ts`, etc.) but are now dormant for
+> ACP-spawned sessions.
 
 ## Goals
 
@@ -42,15 +45,18 @@ Subscribes to `AcpService.onSessionEvent`. On `task_complete`, `error`, or
 
 1. Reads `session.metadata` for origin keys.
 2. Constructs a synthetic `Memory` with:
-   - `entityId` = a stable per-session sub-agent UUID
-     (`createUniqueUuid(runtime, "acpx:sub-agent:<sessionId>")`),
+   - `entityId` = a deterministic per-session sub-agent UUID derived locally
+     via SHA1 of `<runtime.agentId>:acpx:sub-agent:<sessionId>` (no runtime
+     dependency on `@elizaos/core`'s `createUniqueUuid` so the router stays
+     type-only on core),
    - `agentId`  = `runtime.agentId`,
    - `roomId`   = origin `roomId`,
    - `content.source` = `"sub_agent"`,
    - `content.inReplyTo` = origin `messageId`,
    - `content.metadata.subAgent*` carries the structured event
      (`subAgentSessionId`, `subAgentLabel`, `subAgentEvent`,
-     `subAgentStatus`, `subAgentAgentType`, `originUserId`,
+     `subAgentStatus`, `subAgentAgentType`, `subAgentRoundTrip`,
+     `subAgentRoundTripCap`, `subAgentCapExceeded`, `originUserId`,
      `originMessageId`, `originSource`).
 3. Persists the memory via `runtime.createMemory(..., "messages")`.
 4. Delivers via `runtime.messageService.handleMessage(runtime, memory)`.
@@ -80,6 +86,20 @@ reported a new state".
 (useful for tests, headless backfills, or staging where you want spawning
 without runtime injection).
 
+#### Round-trip cap
+
+To prevent ping-pong loops where the main agent and a sub-agent endlessly
+ask each other to keep going, the router tracks per-session inject count.
+When the count exceeds `ACPX_SUB_AGENT_ROUND_TRIP_CAP` (default 32) the
+router force-stops the session and emits a single
+`round_trip_cap_exceeded` memory carrying `subAgentRoundTrip`,
+`subAgentRoundTripCap`, and `subAgentCapExceeded: true`. Subsequent events
+from the same capped session are suppressed.
+
+Set `ACPX_SUB_AGENT_ROUND_TRIP_CAP=N` in the runtime config to override.
+The default of 32 is generous; a typical sub-agent task hits 1–5
+round-trips before terminal completion.
+
 ### `activeSubAgentsProvider` (new — `providers/active-sub-agents.ts`)
 
 Cache-friendly view of live sub-agent sessions. Filters to:
@@ -88,10 +108,20 @@ Cache-friendly view of live sub-agent sessions. Filters to:
 - sessions not in a terminal status (`stopped`, `completed`, `error`,
   `errored`, `cancelled`).
 
-The text is **structural only** — id, label, agentType, status, last two
-workdir segments. No timestamps, no message excerpts. Sorted by `sessionId`
-so the rendered text is byte-stable across turns when the active set is
-unchanged.
+The text is **structural only** — id, label, agentType, bucketed status,
+last two workdir segments. No timestamps, no message excerpts. Sorted by
+`sessionId` so the rendered text is byte-stable across turns when the
+active set is unchanged.
+
+Status bucketing: `ready`, `running`, `busy`, `tool_running`, and
+`authenticating` all collapse to the literal string `"active"` in the
+provider text. `blocked` is preserved as a distinct value (the planner
+needs to know a session is waiting for input). Terminal statuses
+(`stopped`, `completed`, `error`, `errored`, `cancelled`) cause the
+session to be filtered out entirely. This keeps the cached provider
+segment byte-identical across transient status flips like
+`ready → tool_running → ready`, which would otherwise invalidate the
+prefix cache on every tool call.
 
 This is the live status channel. The synthetic Memory posted by the router
 is the per-event channel.
@@ -139,6 +169,7 @@ the most recent turn stays warm.
   new `task_complete`. The sub-agent has to actually do work first, which
   bounds re-entry.
 - Dedup prevents accidental double-injection from event re-emission.
+- The round-trip cap (above) is the hard ceiling for ping-pong loops.
 
 ## Migration from swarm-coordinator
 

@@ -24,7 +24,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "simple",
 			label: "Simple",
 			description:
-				"Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from its own knowledge.",
+				"Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from general context.",
 			sensitivity: "public",
 			cacheStable: true,
 			cacheScope: "global",
@@ -53,7 +53,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "documents",
 			label: "Documents",
 			description:
-				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search/recall prior documents and uploaded files (knowledge base, RAG).",
+				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search and recall prior documents and uploaded files.",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			roleGate: { minRole: "USER" },
@@ -296,7 +296,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "agent_internal",
 			label: "Agent Internal",
 			description:
-				"Scratchpad, self-management, and internal autonomous tasks not intended for users.",
+				"Self-management and internal autonomous tasks not intended for users.",
 			sensitivity: "system",
 			cacheScope: "none",
 			aliases: ["internal", "self"],

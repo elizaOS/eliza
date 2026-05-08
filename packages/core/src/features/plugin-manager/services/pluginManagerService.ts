@@ -110,7 +110,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		"game-api",
 		"inference",
 		"autonomy",
-		"knowledge",
+		"documents",
 		"experience",
 		"goals",
 		"todo",

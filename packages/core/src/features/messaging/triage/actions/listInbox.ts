@@ -19,7 +19,7 @@ export const listInboxAction: Action = {
 	contexts: ["messaging", "email", "connectors"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"List unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'.",
+		"Read-only list of unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use TRIAGE_MESSAGES so reply-worthy messages are identified before drafting.",
 	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
 	parameters: [
 		{

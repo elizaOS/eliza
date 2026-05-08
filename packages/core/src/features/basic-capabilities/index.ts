@@ -77,6 +77,7 @@ import {
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
+import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import core capabilities (trust, secrets, plugin-manager)
 import {
 	pluginManagerCapability,
@@ -1273,6 +1274,7 @@ export const basicProviders = [
  */
 export const basicActions = [
 	withCanonicalActionDocs(actions.choiceAction),
+	withCanonicalActionDocs(generateMediaAction),
 	withCanonicalActionDocs(actions.replyAction),
 	withCanonicalActionDocs(actions.ignoreAction),
 	withCanonicalActionDocs(actions.noneAction),
@@ -1308,7 +1310,7 @@ export const basicCapabilities = {
 /**
  * Configuration for basic capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
- * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  *
  * @see basic-capabilities for basic capability definitions

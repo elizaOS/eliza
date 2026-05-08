@@ -13,8 +13,6 @@
 import {
 	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
 	CHANNEL_SECRETS,
-	resolveSecretKeyAlias,
-	SECRET_KEY_ALIASES,
 } from "./constants/secrets";
 import type { Character } from "./types";
 
@@ -24,15 +22,11 @@ import type { Character } from "./types";
 
 /**
  * Mapping of model provider names to their corresponding API key environment variables.
- * Re-exported from constants/secrets for backward compatibility.
  * @see {@link ./constants/secrets} for the comprehensive list
  */
 export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
 
-/**
- * Re-export CHANNEL_SECRETS and alias utilities from constants
- */
-export { CHANNEL_SECRETS, resolveSecretKeyAlias, SECRET_KEY_ALIASES };
+export { CHANNEL_SECRETS };
 
 /**
  * Common secret keys that are typically imported from environment variables.

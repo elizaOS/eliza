@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+	getConnectorAccountManager,
+	InMemoryConnectorAccountStorage,
+} from "../../connectors/account-manager";
 import type {
 	Action,
 	HandlerCallback,
@@ -41,7 +45,7 @@ describe("executePlannedToolCall", () => {
 	it("matches action names exactly only", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const runtime = makeRuntime([
-			makeAction({ name: "SEARCH_KNOWLEDGE", handler }),
+			makeAction({ name: "DOCUMENT", handler }),
 		]);
 
 		const result = await executePlannedToolCall(
@@ -165,6 +169,98 @@ describe("executePlannedToolCall", () => {
 
 		expect(result.success).toBe(false);
 		expect(String(result.error)).toContain("not allowed");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("denies execution when connector account policy is not satisfied", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "SEND_CONNECTOR_MESSAGE",
+			connectorAccountPolicy: {
+				provider: "gmail",
+				roles: ["owner"],
+				purposes: ["messaging"],
+				accessGates: ["open"],
+				accountIdParam: "accountId",
+			},
+			parameters: [
+				{
+					name: "accountId",
+					description: "Connector account id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+		const runtime = makeRuntime([action]);
+		const storage = new InMemoryConnectorAccountStorage();
+		const manager = getConnectorAccountManager(runtime, storage);
+		await manager.upsertAccount("gmail", {
+			id: "member-account",
+			role: "member",
+			purpose: "messaging",
+			accessGate: "open",
+			status: "connected",
+		});
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{
+				name: "SEND_CONNECTOR_MESSAGE",
+				params: { accountId: "member-account" },
+			},
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain(
+			"No account member-account satisfies",
+		);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("does not trust content.metadata.accountId for connector account selection", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "SEND_CONNECTOR_MESSAGE",
+			connectorAccountPolicy: {
+				provider: "gmail",
+				roles: ["owner"],
+				purposes: ["messaging"],
+				accessGates: ["open"],
+				accountIdParam: "accountId",
+			},
+			handler,
+		});
+		const runtime = makeRuntime([action]);
+		const storage = new InMemoryConnectorAccountStorage();
+		const manager = getConnectorAccountManager(runtime, storage);
+		await manager.upsertAccount("gmail", {
+			id: "owner-account",
+			role: "owner",
+			purpose: "messaging",
+			accessGate: "open",
+			status: "connected",
+		});
+		const message = {
+			...makeMessage(),
+			content: {
+				text: "send this",
+				metadata: { accountId: "owner-account" },
+			},
+		} as Memory;
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message },
+			{ name: "SEND_CONNECTOR_MESSAGE", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain(
+			"Missing connector account parameter",
+		);
 		expect(handler).not.toHaveBeenCalled();
 	});
 });

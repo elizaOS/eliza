@@ -178,20 +178,6 @@ export const relationshipExtractionAction: Action = {
 	handler: relationshipExtractionHandler as Action["handler"],
 };
 
-/**
- * @deprecated Re-exported as an evaluator only so legacy registrations don't
- * break during migration. New code should register `relationshipExtractionAction`.
- */
-export const relationshipExtractionEvaluator: Evaluator = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? false,
-	examples: toEvaluationExamples(spec.examples),
-	validate: relationshipExtractionValidate,
-	handler: relationshipExtractionHandler,
-};
-
 function extractPlatformIdentities(text: string): PlatformIdentity[] {
 	const now = Date.now();
 	const identities = new Map<string, PlatformIdentity>();

@@ -1,4 +1,5 @@
-import type { Action } from "../../../types/index.ts";
+import type { Action, IAgentRuntime } from "../../../types/index.ts";
+import { getResearchService } from "../services/researchService.ts";
 
 /**
  * Parent umbrella action for the research system.
@@ -9,8 +10,9 @@ import type { Action } from "../../../types/index.ts";
 export const researchAction: Action = {
 	name: "RESEARCH",
 	contexts: ["research", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
-		"Manage the current user's research threads. Can create, continue, read, list, edit, or delete research inquiries. The sub-planner chooses the appropriate sub-action.",
+		"Route research-thread requests for the current user to the create, continue, read, list, edit, or delete research operation.",
 	similes: ["RESEARCH_THREAD", "INQUIRY", "INVESTIGATE"],
 
 	subActions: [
@@ -25,14 +27,20 @@ export const researchAction: Action = {
 	subPlanner: {
 		name: "research_subplanner",
 		description:
-			"Explodes CREATE_RESEARCH, CONTINUE_RESEARCH, READ_RESEARCH, LIST_RESEARCH, EDIT_RESEARCH, DELETE_RESEARCH so the planner can chain multi-step research-thread operations.",
+			"Selects and sequences CREATE_RESEARCH, CONTINUE_RESEARCH, READ_RESEARCH, LIST_RESEARCH, EDIT_RESEARCH, and DELETE_RESEARCH for multi-step research requests.",
 	},
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return Boolean(getResearchService(runtime));
+	},
 
-	// Handler is bypassed when subActions is present — sub-planner takes over.
+	// Handler is bypassed when subActions is present.
 	handler: async () => {
-		return { success: true, text: "research sub-planner invoked" };
+		return {
+			success: true,
+			text: "Research request routed to the matching research operation.",
+			data: { routed: true, subActions: researchAction.subActions ?? [] },
+		};
 	},
 
 	parameters: [],

@@ -299,9 +299,9 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "knowledge",
+		context: "documents",
 		patterns: [
-			/\b(uploaded|document|file|pdf|knowledge|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
+			/\b(uploaded|document|file|pdf|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
 			/\b(what is|what was|where is|tell me about|explain)\b/u,
 		],
 	},

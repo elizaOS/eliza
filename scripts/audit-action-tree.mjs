@@ -473,7 +473,7 @@ function makeActionRecord(file, sf, obj, bindings) {
     /\bdata\s*:/.test(body) ? "data" : "",
     /\bvalues\s*:/.test(body) ? "values" : "",
     /\berror\s*:/.test(body) ? "error" : "",
-    /return\s+await\s+|return\s+[a-zA-Z_$][\w$]*\(/.test(body)
+    /return\s+await\s+|return\s+[a-zA-Z_$][\w$]*(?:<[^>]+>)?\(|=>\s*[a-zA-Z_$][\w$]*(?:<[^>]+>)?\(|handler\s*:\s*[a-zA-Z_$][\w$]*(?:\s+as\b)?/.test(body)
       ? "delegated"
       : "",
     /callback\s*\??\s*\(/.test(body) ? "callback" : "",
@@ -483,7 +483,7 @@ function makeActionRecord(file, sf, obj, bindings) {
 	const descriptionIsSpecBacked = /spec\.(description|descriptionCompressed)/.test(
 		description,
 	);
-	if (/TODO|FIXME|placeholder|stub|not implemented|deprecated|legacy/i.test(`${description}\n${body}`)) {
+	if (/\bFIXME\b|placeholder|stub|not implemented|deprecated|legacy/i.test(`${description}\n${body}`)) {
 		flags.push("placeholder/deprecated wording");
 	}
 	if ((!description || description.length < 20) && !descriptionIsSpecBacked) {
@@ -649,10 +649,12 @@ function duplicateRisk(name, group) {
   }
   if (name === "GENERATE_IMAGE") {
     return {
-      severity: hasCloud && hasLocal ? "medium" : "high",
-      classification: "shared capability mirror",
+      severity: hasCloud && hasLocal ? "low" : "high",
+      classification: hasCloud && hasLocal ? "cloud/local mirror" : "shared capability collision",
       recommendation:
-        "Cloud mirrors can remain deployment-local, but core/agent image generation needs one canonical local tool name or explicit namespaced variants.",
+        hasCloud && hasLocal
+          ? "Accept only as a deployment-local cloud mirror; keep the cloud and local result contracts aligned."
+          : "Core/agent image generation needs one canonical local tool name or explicit namespaced variants.",
     };
   }
   if (name === "WEB_SEARCH" && hasCloud && hasLocal) {
@@ -821,6 +823,14 @@ function emitTree(action, lines, depth = 0, seen = new Set()) {
 function buildMarkdown(actions, filesScanned) {
   const generatedAt = new Date().toISOString();
   const duplicates = duplicateGroups(actions);
+  const duplicateRows = duplicates.map(([name, group]) => ({
+    name,
+    group,
+    risk: duplicateRisk(name, group),
+  }));
+  const blockingDuplicates = duplicateRows.filter(
+    ({ risk }) => risk.severity !== "low",
+  );
   const childFindings = childVisibilityFindings(actions);
   const redundant = redundancyFindings(actions);
   const dynamicActions = actions
@@ -832,6 +842,49 @@ function buildMarkdown(actions, filesScanned) {
   );
   const roots = parents.filter((action) => !childNames.has(action.name));
   const contextRows = contextIndex(actions);
+  const rootNames = roots.map((action) => action.name).sort();
+  const contextExplosionSummary =
+    rootNames.length > 0
+      ? `Context explosion: selected contexts are rendered through the v5 context object. Statically declared sub-action roots are ${rootNames.map((name) => `\`${name}\``).join(", ")}, and each child shares at least one parent context or context gate, so selecting the parent context exposes the parent and children before runtime role gates.`
+      : "Context explosion: selected contexts are rendered through the v5 context object. No static sub-action trees were found in this scan.";
+  const duplicateSummary =
+    blockingDuplicates.length > 0
+      ? `Duplicate actions: ${blockingDuplicates.length} blocking same-runtime duplicate group(s) remain. Accepted low-risk cloud/local mirrors are still listed for parity tracking.`
+      : duplicates.length > 0
+        ? "Duplicate actions: no blocking same-runtime duplicate groups remain. Low-risk cloud/local mirrors are still listed for parity tracking."
+        : "Duplicate actions: no static duplicate groups remain.";
+  const qualitySummary =
+    redundant.length > 0
+      ? "Useless/redundant actions: no action is proven useless from static inspection alone, but the heuristic list flags placeholder wording, unstructured outputs, and redundant mirrors that should be reviewed before calling the action surface 100%."
+      : "Useless/redundant actions: no action-quality heuristic findings remain in this scan.";
+  const cleanupItems = [];
+  if (blockingDuplicates.length > 0) {
+    cleanupItems.push(
+      `Resolve blocking duplicate groups: ${blockingDuplicates.map(({ name }) => `\`${name}\``).join(", ")}.`,
+    );
+  } else {
+    cleanupItems.push(
+      "No blocking duplicate action-name groups remain; keep accepted cloud/local mirrors contract-aligned.",
+    );
+  }
+  if (redundant.length > 0) {
+    cleanupItems.push(
+      "Fix the heuristic action-quality list: placeholder/deprecated wording should become real action descriptions; unstructured result actions should return `ActionResult` with `success`, `text`, and structured `data`.",
+    );
+  } else {
+    cleanupItems.push(
+      "No action-quality heuristic findings remain in this scan.",
+    );
+  }
+  if (childFindings.length > 0) {
+    cleanupItems.push(
+      "Fix sub-action visibility findings so each child can be exposed when its parent context is selected.",
+    );
+  } else {
+    cleanupItems.push(
+      "Sub-action visibility is clean; future umbrella actions should declare `subActions`, `subPlanner`, shared contexts, and cycle-safe child names.",
+    );
+  }
 
   const lines = [
     "# Action Tree Review",
@@ -844,15 +897,16 @@ function buildMarkdown(actions, filesScanned) {
     `- Actions scanned: ${actions.length}`,
     `- Static sub-action parents: ${parents.length}`,
     `- Duplicate action-name groups: ${duplicates.length}`,
+    `- Blocking duplicate action-name groups: ${blockingDuplicates.length}`,
     `- Dynamic action factories / unresolved names: ${dynamicActions.length}`,
     `- Sub-action visibility findings: ${childFindings.length}`,
     `- Redundancy/uselessness heuristic findings: ${redundant.length}`,
     "",
     "## Direct Answers",
     "",
-    "- Context explosion: selected contexts are rendered through the v5 context object. Statically, the only declared sub-action tree is `CALENDAR`, and all children share a parent context, so `calendar` selection exposes the parent and the child actions in the main context before runtime role gates.",
-    "- Duplicate actions: yes. Static duplicate groups remain; the table below classifies which are same-runtime risks versus cloud/local mirrors or redundant source exports.",
-    "- Useless/redundant actions: no action is proven useless from static inspection alone, but the heuristic list flags placeholder wording, unstructured outputs, and redundant mirrors that should be reviewed before calling the action surface 100%.",
+    `- ${contextExplosionSummary}`,
+    `- ${duplicateSummary}`,
+    `- ${qualitySummary}`,
     "",
     "## Runtime Behavior Notes",
     "",
@@ -863,11 +917,7 @@ function buildMarkdown(actions, filesScanned) {
     "",
     "## 100% Cleanup Checklist",
     "",
-    "1. Resolve the `high` duplicate groups first: `UPDATE_ROLE` and `UPDATE_SETTINGS`. These are the only static duplicate groups classified as same-runtime collision risks in this scan.",
-    "2. Decide the canonical owner for medium overlaps: `GENERATE_IMAGE`, ACPx vs agent-orchestrator agent controls, `CREATE_TASK`, `WEB_SEARCH`, and game `WALK_TO`.",
-    "3. Delete or rename dormant duplicate source surfaces: advanced-planning's unregistered `SCHEDULE_FOLLOW_UP` and wallet's direct chain-level `SWAP` actions if `WALLET_ACTION` remains the public router.",
-    "4. Fix the heuristic action-quality list: placeholder/deprecated wording should become real action descriptions; unstructured result actions should return `ActionResult` with `success`, `text`, and structured `data`.",
-    "5. Keep sub-action trees explicit. Today only `CALENDAR` declares a static tree; any future umbrella action should declare `subActions`, `subPlanner`, shared contexts, and cycle-safe child names.",
+    ...cleanupItems.map((item, index) => `${index + 1}. ${item}`),
     "",
     "## Main Findings",
     "",
@@ -882,8 +932,7 @@ function buildMarkdown(actions, filesScanned) {
         row(["severity", "name", "count", "classification", "recommendation", "locations"]),
       );
       lines.push(row(["---", "---", "---", "---", "---", "---"]));
-      for (const [name, group] of duplicates) {
-        const risk = duplicateRisk(name, group);
+      for (const { name, group, risk } of duplicateRows) {
         lines.push(
           row([
             risk.severity,

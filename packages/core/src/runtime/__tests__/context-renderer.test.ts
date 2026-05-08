@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ContextObject } from "../../types/context-object";
-import { renderContextObject } from "../context-renderer";
+import {
+	buildStageChatMessages,
+	cachePrefixSegments,
+	renderContextObject,
+} from "../context-renderer";
 
 describe("context renderer", () => {
 	it("renders provider and tool prefixes before append-only events", () => {
@@ -103,5 +107,65 @@ describe("context renderer", () => {
 		for (const segment of rendered.promptSegments) {
 			expect(segment.content).not.toMatch(/^tool:\s*[A-Z_]/);
 		}
+	});
+
+	it("builds one cacheable system prefix and one dynamic user block for stage calls", () => {
+		const messages = buildStageChatMessages({
+			contextSegments: [
+				{
+					content:
+						"Character system.\n\n# About Test Agent\nBio.\n\nuser_role: ADMIN",
+					label: "system",
+					stable: true,
+				},
+				{
+					content: "selected_contexts: calendar",
+					label: "system",
+					stable: true,
+				},
+				{
+					content: "current_message: Can you check my calendar?",
+					label: "message",
+					stable: false,
+				},
+			],
+			stageLabel: "planner_stage",
+			instructions: "Plan the next action.",
+			dynamicBlocks: ["runtime_hint: current turn only"],
+			stepMessages: [{ role: "assistant", content: "previous result" }],
+		});
+
+		expect(messages.map((message) => message.role)).toEqual([
+			"system",
+			"user",
+			"assistant",
+		]);
+		expect(messages[0]?.content).toBe(
+			[
+				"Character system.\n\n# About Test Agent\nBio.\n\nuser_role: ADMIN",
+				"selected_contexts: calendar",
+				"planner_stage:\nPlan the next action.",
+			].join("\n\n"),
+		);
+		expect(messages[1]?.content).toBe(
+			[
+				"message:\ncurrent_message: Can you check my calendar?",
+				"runtime_hint: current turn only",
+			].join("\n\n"),
+		);
+	});
+
+	it("uses the longest stable prefix for provider cache keys", () => {
+		expect(
+			cachePrefixSegments([
+				{ content: "system", stable: true },
+				{ content: "stable provider", stable: true },
+				{ content: "current message", stable: false },
+				{ content: "late stable should not count", stable: true },
+			]),
+		).toEqual([
+			{ content: "system", stable: true },
+			{ content: "stable provider", stable: true },
+		]);
 	});
 });

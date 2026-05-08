@@ -61,7 +61,11 @@ function makeRuntime(opts: {
 	}> = [];
 	const runtime = {
 		agentId: AGENT_ID,
-		character: { name: "Test Agent", system: "You are concise." },
+		character: {
+			name: "Test Agent",
+			system: "You are concise.",
+			bio: "I help with practical tasks.",
+		},
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
@@ -279,9 +283,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			ModelType.ACTION_PLANNER, // planner iteration 1
 			ModelType.RESPONSE_HANDLER, // evaluator iteration 1
 		]);
+		const messageHandlerParams = calls[0]?.params as
+			| {
+					messages?: Array<{ role?: string; content?: string }>;
+					promptSegments?: Array<{ content?: string; stable?: boolean }>;
+			  }
+			| undefined;
 		const plannerParams = calls[1]?.params as
 			| {
-					messages?: unknown[];
+					messages?: Array<{ role?: string; content?: string }>;
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
@@ -292,7 +302,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			| undefined;
 		const evaluatorParams = calls[2]?.params as
 			| {
-					messages?: unknown[];
+					messages?: Array<{ role?: string; content?: string }>;
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
@@ -301,6 +311,24 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					};
 			  }
 			| undefined;
+		const expectedIdentity =
+			"You are concise.\n\n# About Test Agent\nI help with practical tasks.\n\nuser_role: USER";
+		for (const params of [
+			messageHandlerParams,
+			plannerParams,
+			evaluatorParams,
+		]) {
+			expect(params?.messages?.[0]?.role).toBe("system");
+			expect(params?.messages?.[0]?.content?.startsWith(expectedIdentity)).toBe(
+				true,
+			);
+			expect(params?.messages?.[1]?.role).toBe("user");
+			expect(params?.messages?.[1]?.content).not.toContain("user_role:");
+		}
+		expect(messageHandlerParams?.promptSegments?.[0]).toMatchObject({
+			stable: true,
+			content: expect.stringContaining(expectedIdentity),
+		});
 		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
 		expect(evaluatorParams?.messages?.length).toBeGreaterThan(1);
 		expect(plannerParams?.promptSegments?.length).toBeGreaterThan(1);
@@ -334,7 +362,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				kind: string;
 				tool?: { success: boolean };
 				evaluation?: { success: boolean; decision: string };
-				model?: { usage?: Record<string, unknown> };
+				model?: {
+					messages?: Array<{ role?: string; content?: string }>;
+					usage?: Record<string, unknown>;
+				};
 			}>;
 			metrics: {
 				totalCacheReadTokens: number;
@@ -362,6 +393,19 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(stageKinds).toContain("planner");
 		expect(stageKinds).toContain("tool");
 		expect(stageKinds).toContain("evaluation");
+
+		const recordedModelStages = trajectory.stages.filter(
+			(stage) => stage.model?.messages,
+		);
+		expect(recordedModelStages.length).toBeGreaterThanOrEqual(3);
+		for (const stage of recordedModelStages) {
+			expect(stage.model?.messages?.[0]?.role).toBe("system");
+			expect(
+				stage.model?.messages?.[0]?.content?.startsWith(expectedIdentity),
+			).toBe(true);
+			expect(stage.model?.messages?.[1]?.role).toBe("user");
+			expect(stage.model?.messages?.[1]?.content).not.toContain("user_role:");
+		}
 
 		// Tool stage records the success
 		const toolStage = trajectory.stages.find((s) => s.kind === "tool");

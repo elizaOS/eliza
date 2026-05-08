@@ -3,7 +3,6 @@
  *
  * This module provides implementations of {@link IStreamExtractor}:
  * - PassthroughExtractor - Simple passthrough (no filtering)
- * - ActionStreamFilter - Content-type aware filter (for action handlers)
  * - StructuredFieldStreamExtractor - Extract top-level structured fields safely
  *
  * For the interface definition, see types/streaming.ts.
@@ -94,84 +93,6 @@ export class PassthroughExtractor implements IStreamExtractor {
 
 	reset(): void {
 		// Nothing to reset
-	}
-}
-
-// ============================================================================
-// ActionStreamFilter - For action handler response filtering
-// ============================================================================
-
-/** Detected content type from first character */
-type ContentType = "structured" | "text";
-
-/**
- * Filters action handler output for streaming.
- * Used by runtime.ts processActions() for each action's useModel calls.
- *
- * Auto-detects content type from first non-whitespace character:
- * - structured (starts with { or [) -> don't stream
- * - Plain text → Stream immediately
- */
-export class ActionStreamFilter implements IStreamExtractor {
-	private buffer = "";
-	private decided = false;
-	private contentType: ContentType | null = null;
-	private finished = false;
-
-	get done(): boolean {
-		return this.finished;
-	}
-
-	reset(): void {
-		this.buffer = "";
-		this.decided = false;
-		this.contentType = null;
-		this.finished = false;
-	}
-
-	push(chunk: string): string {
-		validateChunkSize(chunk);
-		this.buffer += chunk;
-
-		// Decide content type on first non-whitespace character
-		if (!this.decided) {
-			const contentType = this.detectContentType();
-			if (contentType) {
-				this.contentType = contentType;
-				this.decided = true;
-			} else {
-				return "";
-			}
-		}
-
-		// Route based on content type
-		switch (this.contentType) {
-			case "structured":
-				return "";
-
-			case "text":
-				return this.handlePlainText();
-
-			default:
-				return "";
-		}
-	}
-
-	/** Detect content type from first non-whitespace character */
-	private detectContentType(): ContentType | null {
-		const trimmed = this.buffer.trimStart();
-		if (trimmed.length === 0) return null;
-
-		const firstChar = trimmed[0];
-		if (firstChar === "{" || firstChar === "[") return "structured";
-		return "text";
-	}
-
-	/** Handle plain text - stream everything */
-	private handlePlainText(): string {
-		const toStream = this.buffer;
-		this.buffer = "";
-		return toStream;
 	}
 }
 

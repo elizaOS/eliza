@@ -40,7 +40,14 @@ export type MemoryType = (typeof MemoryType)[keyof typeof MemoryType];
  * - `room`: The memory is scoped to a specific room or channel.
  * This is used in `MemoryMetadata` to control how memories are stored and retrieved based on context.
  */
-export type MemoryScope = "shared" | "private" | "room";
+export type MemoryScope =
+	| "shared"
+	| "private"
+	| "room"
+	| "global"
+	| "owner-private"
+	| "user-private"
+	| "agent-private";
 
 /**
  * Base interface for all memory metadata types.
@@ -366,7 +373,11 @@ export interface MessageMetadata
 	provider?: string;
 	/** Chat type */
 	chatType?: MessageChatType;
-	/** Account ID for multi-account channels */
+	/**
+	 * Trusted connector account ID for multi-account channels.
+	 * Inbound connectors should set this on Memory.metadata, not
+	 * Content.metadata, because content metadata may be user-supplied.
+	 */
 	accountId?: string;
 
 	/** Thread context */
