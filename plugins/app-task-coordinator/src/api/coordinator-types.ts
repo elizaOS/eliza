@@ -42,6 +42,7 @@ export interface TaskContext {
   idleCheckCount: number;
   taskDelivered: boolean;
   completionSummary?: string;
+  validationSummary?: string;
   lastSeenDecisionIndex: number;
   lastInputSentAt?: number;
   stoppedAt?: number;
@@ -61,5 +62,6 @@ export interface TaskCompletionSummary {
   originalTask: string;
   status: string;
   completionSummary: string;
+  validationSummary?: string;
   [key: string]: unknown;
 }

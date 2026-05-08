@@ -152,6 +152,13 @@ export function shouldSuppressCodexExecPtyManagerEvent(options: {
   return options.event === "blocked" || options.event === "login_required";
 }
 
+export function shouldSuppressCodexExecHookEvent(options: {
+  codexExecMode: boolean;
+  event: string;
+}): boolean {
+  return options.codexExecMode && options.event === "session_end";
+}
+
 /**
  * Portable safety floor injected into every spawned coding-agent's memory
  * file. Locks the agent to its allocated workspace dir so it never wanders
@@ -1586,6 +1593,19 @@ export class PTYService {
     event: string,
     data: Record<string, unknown>,
   ): void {
+    if (
+      shouldSuppressCodexExecHookEvent({
+        codexExecMode:
+          this.sessionMetadata.get(sessionId)?.codexExecMode === true,
+        event,
+      })
+    ) {
+      this.log(
+        `Ignoring Codex exec hook ${event} for ${sessionId}; process exit fast-path owns completion`,
+      );
+      return;
+    }
+
     // Log high-frequency events (tool_running, permission) at debug level;
     // completion events at info level.
     const summary =
