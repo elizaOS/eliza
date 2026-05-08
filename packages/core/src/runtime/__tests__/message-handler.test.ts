@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { V5_MESSAGE_HANDLER_SCHEMA } from "../../prompts/message-handler";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
@@ -72,13 +73,38 @@ describe("v5 message handler routing", () => {
 		const parsed = parseMessageHandlerOutput(`{
   "processMessage": "RESPOND",
   "thought": "Direct.",
-  "plan": { "contexts": ["simple"], "reply": "Done." }
+  "plan": { "contexts": ["simple"], "reply": "Done.", "requiresTool": false }
 }`);
 		expect(parsed).toMatchObject({
 			processMessage: "RESPOND",
 			thought: "Direct.",
-			plan: { contexts: ["simple"], reply: "Done." },
+			plan: { contexts: ["simple"], reply: "Done.", requiresTool: false },
 		});
+	});
+
+	it("keeps requiresTool optional in the Stage 1 tool schema", () => {
+		const planSchema = V5_MESSAGE_HANDLER_SCHEMA.properties?.plan as {
+			required?: string[];
+		};
+
+		expect(planSchema.required).toEqual(["contexts"]);
+	});
+
+	it("plans against general when Stage 1 marks an otherwise simple route as tool-required", () => {
+		const output = {
+			processMessage: "RESPOND" as const,
+			action: "RESPOND" as const,
+			thought: "Needs a tool.",
+			plan: { contexts: [SIMPLE_CONTEXT_ID], requiresTool: true },
+			contexts: [SIMPLE_CONTEXT_ID],
+		};
+
+		const route = routeMessageHandlerOutput(output);
+
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
 	});
 
 	it("coerces legacy simple:true with empty contexts to ['simple']", () => {
