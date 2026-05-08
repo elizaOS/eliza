@@ -16,7 +16,27 @@
  * - swarm-decision-loop.ts  (blocked, turn-complete, LLM decisions)
  * - swarm-idle-watchdog.ts  (idle session scanning)
  *
+ * ## Status (2026-05-07): legacy autonomous-coordinator path
+ *
+ * This coordinator is the LEGACY orchestration path. It is bound only to
+ * `PTYService` and is naturally dormant for sessions spawned via
+ * `@elizaos/plugin-acpx`. The canonical path is now:
+ *
+ *   AcpService session events → SubAgentRouter
+ *     → synthetic Memory posted to runtime.messageService.handleMessage
+ *     → main agent's planner decides REPLY / SEND_TO_AGENT / both
+ *     → activeSubAgentsProvider supplies cache-stable session context
+ *
+ * Prefer the runtime-driven path. New work should not extend this
+ * coordinator. The blocking-prompt and turn-complete logic here will be
+ * retired once all PTY-spawned call sites migrate to AcpService.
+ *
+ * See `plugins/plugin-acpx/docs/sub-agent-routing.md` for the new design.
+ *
  * @module services/swarm-coordinator
+ * @deprecated New sessions should use plugin-acpx's SubAgentRouter; this
+ *   coordinator remains only for back-compat with PTY-spawned sessions
+ *   that have not yet migrated.
  */
 
 import { promises as fs } from "node:fs";
