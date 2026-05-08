@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { splitAgentSpecsParam } from "../actions/coding-task-handlers.js";
 import { pushDefaultRules } from "../services/pty-auto-response.js";
-import { shouldSuppressCodexExecPtyManagerEvent } from "../services/pty-service.js";
+import {
+  shouldSuppressCodexExecHookEvent,
+  shouldSuppressCodexExecPtyManagerEvent,
+} from "../services/pty-service.js";
 import {
   type SessionIOContext,
   stopSession as stopSessionIO,
@@ -346,6 +349,29 @@ describe("shouldSuppressCodexExecPtyManagerEvent", () => {
         codexExecMode: false,
         event: "blocked",
         data: { source: "pty_manager" },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldSuppressCodexExecHookEvent", () => {
+  it("lets Codex exec process exit own final completion instead of hook session_end", () => {
+    expect(
+      shouldSuppressCodexExecHookEvent({
+        codexExecMode: true,
+        event: "session_end",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSuppressCodexExecHookEvent({
+        codexExecMode: true,
+        event: "task_complete",
+      }),
+    ).toBe(false);
+    expect(
+      shouldSuppressCodexExecHookEvent({
+        codexExecMode: false,
+        event: "session_end",
       }),
     ).toBe(false);
   });

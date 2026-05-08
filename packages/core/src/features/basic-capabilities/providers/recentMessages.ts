@@ -18,6 +18,36 @@ import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
 const spec = requireProviderSpec("RECENT_MESSAGES");
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
 const MAX_RECENT_INTERACTIONS = 20;
+const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set(["swarm_synthesis"]);
+
+function isInternalBridgeMessage(memory: Memory): boolean {
+	const source =
+		typeof memory.content?.source === "string"
+			? memory.content.source.trim()
+			: "";
+	return INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source);
+}
+
+function normalizeDialogueText(memory: Memory): string {
+	return typeof memory.content?.text === "string"
+		? memory.content.text.replace(/\s+/g, " ").trim()
+		: "";
+}
+
+function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
+	const deduped: Memory[] = [];
+	for (const message of messages) {
+		const previous = deduped.at(-1);
+		if (
+			previous?.entityId === message.entityId &&
+			normalizeDialogueText(previous) === normalizeDialogueText(message)
+		) {
+			continue;
+		}
+		deduped.push(message);
+	}
+	return deduped;
+}
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	const metadata = memory.metadata as CustomMetadata | undefined;
@@ -206,8 +236,12 @@ export const recentMessagesProvider: Provider = {
 				(msg) => msg.content && msg.content.type === "action_result",
 			);
 
-			const dialogueMessages = recentMessagesData.filter(
-				(msg) => !(msg.content && msg.content.type === "action_result"),
+			const dialogueMessages = dedupeConsecutiveDialogueMessages(
+				recentMessagesData.filter(
+					(msg) =>
+						!(msg.content && msg.content.type === "action_result") &&
+						!isInternalBridgeMessage(msg),
+				),
 			);
 
 			// Room entity lookups only include current participants. Historical room

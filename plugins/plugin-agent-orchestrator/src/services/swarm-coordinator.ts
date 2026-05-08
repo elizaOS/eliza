@@ -65,6 +65,7 @@ import {
   executeDecision as execDecision,
   handleBlocked,
   handleTurnComplete,
+  shouldIgnoreStoppedEventDuringCompletion,
 } from "./swarm-decision-loop.js";
 import { SwarmHistory } from "./swarm-history.js";
 import { scanIdleSessions } from "./swarm-idle-watchdog.js";
@@ -130,6 +131,8 @@ export interface TaskCompletionSummary {
   originalTask: string;
   status: string;
   completionSummary: string;
+  /** Validator-accepted user-facing summary, when a completion validator ran. */
+  validationSummary?: string;
   /** Subagent's working directory — used by synthesis to read the final
    *  assistant response from the Claude Code session jsonl after the PTY
    *  session has been cleaned up. */
@@ -183,6 +186,8 @@ export interface TaskContext {
   taskDelivered: boolean;
   /** Summary of what the agent accomplished, populated on completion. */
   completionSummary?: string;
+  /** Validator-accepted summary to use as final-answer evidence. */
+  validationSummary?: string;
   /** Index into sharedDecisions[]: tracks which decisions this agent has already seen. */
   lastSeenDecisionIndex: number;
   /** Timestamp of last coordinator-sent input. Used to suppress stall/turn-complete
@@ -657,6 +662,9 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       taskDelivered: raw.taskDelivered === true,
       ...(typeof raw.completionSummary === "string"
         ? { completionSummary: raw.completionSummary }
+        : {}),
+      ...(typeof raw.validationSummary === "string"
+        ? { validationSummary: raw.validationSummary }
         : {}),
       lastSeenDecisionIndex:
         typeof raw.lastSeenDecisionIndex === "number"
@@ -1875,6 +1883,9 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       lastSeenDecisionIndex: taskCtx.lastSeenDecisionIndex,
       lastInputSentAt: taskCtx.lastInputSentAt,
       stoppedAt: taskCtx.stoppedAt,
+      metadata: {
+        validationSummary: taskCtx.validationSummary ?? null,
+      },
     });
     if (!taskCtx.taskNodeId) {
       return;
@@ -1892,6 +1903,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       repo: taskCtx.repo ?? null,
       metadata: {
         completionSummary: taskCtx.completionSummary ?? null,
+        validationSummary: taskCtx.validationSummary ?? null,
       },
     });
 
@@ -1915,6 +1927,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
           releasedAt: new Date().toISOString(),
           metadata: {
             completionSummary: taskCtx.completionSummary ?? null,
+            validationSummary: taskCtx.validationSummary ?? null,
           },
         });
       }
@@ -2858,6 +2871,28 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
         const coalesceTimer = setTimeout(() => {
           this.turnCompleteCoalesceTimers.delete(sessionId);
           const currentTask = this.tasks.get(sessionId);
+          if (
+            currentTask?.completionSummary &&
+            !this.ptyService?.getSession(sessionId)
+          ) {
+            currentTask.status = "completed";
+            this.log(
+              `Skipping coalesced turn-complete for "${currentTask.label}": PTY is gone after captured completion`,
+            );
+            void this.syncTaskContext(currentTask)
+              .catch((err) => {
+                this.log(
+                  `Failed to sync completed task after coalesced turn-complete: ${err}`,
+                );
+              })
+              .then(() => checkAllTasksComplete(this))
+              .catch((err) => {
+                this.log(
+                  `Failed to finish swarm after coalesced completion: ${err}`,
+                );
+              });
+            return;
+          }
           // Accept both "active" and "tool_running" as live pre-validation
           // states. Subagents that use tools (curl, file ops, etc.) sit in
           // "tool_running" almost continuously, so by the time task_complete
@@ -2935,6 +2970,18 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       }
 
       case "stopped": {
+        if (
+          shouldIgnoreStoppedEventDuringCompletion({
+            task: taskCtx,
+            hasInFlightDecision: this.inFlightDecisions.has(sessionId),
+            hasPendingTurnComplete: this.pendingTurnComplete.has(sessionId),
+          })
+        ) {
+          this.log(
+            `Ignoring stopped event for ${taskCtx.label}; completion is already being finalized`,
+          );
+          break;
+        }
         // Don't downgrade "completed" or "error" to "stopped": the async
         // stopSession fires after executeDecision already marked the task.
         if (taskCtx.status !== "completed" && taskCtx.status !== "error") {
