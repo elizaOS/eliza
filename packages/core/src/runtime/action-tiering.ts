@@ -26,6 +26,8 @@ export type TierActionResultsInput = {
 	results: ActionRetrievalResult[];
 	tierAThreshold?: number;
 	tierBThreshold?: number;
+	maxTierAParents?: number;
+	maxTierBParents?: number;
 	protocolActions?: readonly Tier0ProtocolAction[];
 };
 
@@ -47,6 +49,8 @@ export function tierActionResults(
 ): TieredActionSurface {
 	const tierAThreshold = input.tierAThreshold ?? 0.7;
 	const tierBThreshold = input.tierBThreshold ?? 0.3;
+	const maxTierAParents = normalizedLimit(input.maxTierAParents ?? 8);
+	const maxTierBParents = normalizedLimit(input.maxTierBParents ?? 16);
 	const protocolActions = [
 		...(input.protocolActions ?? TIER0_PROTOCOL_ACTIONS),
 	];
@@ -80,6 +84,20 @@ export function tierActionResults(
 	tierAParents.sort(compareTieredParents);
 	tierBParents.sort(compareTieredParents);
 	tierCParents.sort(compareTieredParents);
+
+	if (tierAParents.length > maxTierAParents) {
+		tierBParents.push(
+			...tierAParents
+				.splice(maxTierAParents)
+				.map((parent) => parentOnlyTieredParent(parent)),
+		);
+		tierBParents.sort(compareTieredParents);
+	}
+
+	if (tierBParents.length > maxTierBParents) {
+		tierCParents.push(...tierBParents.splice(maxTierBParents));
+		tierCParents.sort(compareTieredParents);
+	}
 
 	const exposedParentNames = sortedUnique([
 		...tierAParents.map((parent) => parent.name),
@@ -119,6 +137,13 @@ export function tierActionResults(
 			),
 		}),
 	};
+}
+
+function normalizedLimit(value: number): number {
+	if (!Number.isFinite(value)) {
+		return Number.MAX_SAFE_INTEGER;
+	}
+	return Math.max(0, Math.floor(value));
 }
 
 export function stableActionSurfaceHash(input: {
@@ -162,6 +187,14 @@ function emptyResult(parent: ActionCatalogParent): ActionRetrievalResult {
 		rrfScore: 0,
 		stageScores: {},
 		matchedBy: [],
+	};
+}
+
+function parentOnlyTieredParent(parent: TieredParentAction): TieredParentAction {
+	return {
+		...parent,
+		childNames: [],
+		childNormalizedNames: [],
 	};
 }
 

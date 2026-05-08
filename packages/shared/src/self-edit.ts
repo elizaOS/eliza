@@ -23,7 +23,7 @@
  * @module self-edit
  */
 
-import { isTruthyEnvValue } from "./env-utils.ts";
+import { isTruthyEnvValue } from "./env-utils.js";
 
 /**
  * Env var the operator sets to opt in to self-edit. Defaults off.

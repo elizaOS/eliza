@@ -3,7 +3,7 @@
  * Enable with ELIZA_SETTINGS_DEBUG=1 (and Vite: same env at build time, or VITE_ELIZA_SETTINGS_DEBUG=1).
  */
 
-import { isTruthyEnvValue } from "./env-utils.ts";
+import { isTruthyEnvValue } from "./env-utils.js";
 
 /** Keys whose values are always redacted in debug dumps. */
 const SENSITIVE_KEY_RE =

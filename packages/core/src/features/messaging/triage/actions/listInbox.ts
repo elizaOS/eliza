@@ -81,7 +81,10 @@ export const listInboxAction: Action = {
 			const store = service.getStore();
 
 			const cached = store.listMessages();
-			let messages = cached.filter((m) => !params.sources?.includes(m.source));
+			const requestedSources = params.sources;
+			let messages = requestedSources
+				? cached.filter((m) => requestedSources.includes(m.source))
+				: cached;
 
 			if (messages.length === 0) {
 				messages = await service.triage(runtime, {

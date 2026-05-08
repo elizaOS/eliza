@@ -196,10 +196,12 @@ function scoreCandidateRegex(
 				pattern.namespace && pattern.namespace === parent.normalizedName;
 			const nameHit = searchableNames.some((name) => pattern.regex.test(name));
 			if (namespaceHit || nameHit) {
-				scores.set(parent.normalizedName, 0.8);
-				break;
+				scores.set(
+					parent.normalizedName,
+					Math.max(scores.get(parent.normalizedName) ?? 0, pattern.score),
+				);
 			}
-		}
+	}
 	}
 
 	return scores;
@@ -296,8 +298,10 @@ function scoreEmbeddingTieBreaker(
 function buildCandidatePatterns(candidateActions: string[]): Array<{
 	regex: RegExp;
 	namespace?: string;
+	score: number;
 }> {
-	const patterns: Array<{ regex: RegExp; namespace?: string }> = [];
+	const patterns: Array<{ regex: RegExp; namespace?: string; score: number }> =
+		[];
 
 	for (const candidateAction of candidateActions) {
 		const normalized = normalizeActionName(candidateAction);
@@ -311,17 +315,22 @@ function buildCandidatePatterns(candidateActions: string[]): Array<{
 					`^${escapeRegex(normalized).replace(/\\\*/g, ".*")}$`,
 				),
 				namespace: normalized.split("_")[0],
+				score: 0.8,
 			});
 			continue;
 		}
 
-		patterns.push({ regex: new RegExp(`^${escapeRegex(normalized)}$`) });
+		patterns.push({
+			regex: new RegExp(`^${escapeRegex(normalized)}$`),
+			score: 0.95,
+		});
 
 		const [namespace] = normalized.split("_");
-		if (namespace && namespace !== normalized) {
+		if (namespace && namespace === normalized) {
 			patterns.push({
 				regex: new RegExp(`^${escapeRegex(namespace)}(?:_|$)`),
 				namespace,
+				score: 0.8,
 			});
 		}
 	}

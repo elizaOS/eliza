@@ -55,10 +55,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
-const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
+const testRuntimeEnv = buildTestRuntimeEnv(process.env, { repoRoot });
+const bunCmd = testRuntimeEnv.npm_execpath || testRuntimeEnv.BUN || "bun";
 
 // ---------------------------------------------------------------------------
 // CLI flag parsing
@@ -319,7 +321,7 @@ function resolveScriptCommand(scriptName, scripts, seen = new Set()) {
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
-    env: process.env,
+    env: testRuntimeEnv,
     stdio: "pipe",
     encoding: "utf8",
     ...options,
@@ -642,9 +644,9 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
     const child = spawn(bunCmd, ["run", scriptName], {
       cwd,
       env: {
-        ...process.env,
-        NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
         PWD: cwd,
         ...extraEnv,
       },
@@ -703,8 +705,8 @@ function runCloudTests() {
     const child = spawn(bunCmd, ["run", "test"], {
       cwd: cloudDir,
       env: {
-        ...process.env,
-        NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
         PWD: cloudDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
