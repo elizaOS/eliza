@@ -1,4 +1,5 @@
 import {
+  type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
@@ -11,7 +12,7 @@ import {
 import { updateIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
-import { getLinearAccountId } from "./account-options";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import {
   getPriorityNumberValue,
   getRecordValue,
@@ -19,253 +20,28 @@ import {
   getStringValue,
   parseLinearPromptResponse,
 } from "./parseLinearPrompt.js";
+import { validateLinearActionIntent } from "./validate-linear-intent";
 
 const LINEAR_MODEL_TIMEOUT_MS = 15_000;
 const LINEAR_LOOKUP_LIMIT = 100;
 
 export async function handleUpdateIssue(
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    _options?: HandlerOptions,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> {
-    try {
-      const linearService = runtime.getService<LinearService>("linear");
-      if (!linearService) {
-        throw new Error("Linear service not available");
-      }
-      const accountId = getLinearAccountId(runtime, _options);
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  _options?: HandlerOptions,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  try {
+    const linearService = runtime.getService<LinearService>("linear");
+    if (!linearService) {
+      throw new Error("Linear service not available");
+    }
+    const accountId = getLinearAccountId(runtime, _options);
 
-      const content = message.content.text;
-      if (!content) {
-        const errorMessage = "Please provide update instructions for the issue.";
-        await callback?.({
-          text: errorMessage,
-          source: message.content.source,
-        });
-        return {
-          text: errorMessage,
-          success: false,
-        };
-      }
-
-      const prompt = updateIssueTemplate.replace("{{userMessage}}", content);
-
-      const response = await Promise.race([
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: prompt,
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Linear update extraction timeout")),
-            LINEAR_MODEL_TIMEOUT_MS
-          )
-        ),
-      ]);
-
-      if (!response) {
-        throw new Error("Failed to extract update information");
-      }
-
-      let issueId: string;
-      const updates: Partial<LinearIssueInput> = {};
-
-      try {
-        const parsed = parseLinearPromptResponse(response);
-        if (Object.keys(parsed).length === 0) {
-          throw new Error("No fields found in model response");
-        }
-
-        issueId = getStringValue(parsed.issueId) ?? "";
-        if (!issueId) {
-          throw new Error("Issue ID not found in parsed response");
-        }
-
-        const parsedUpdates = getRecordValue(parsed.updates) ?? {};
-        const title = getStringValue(parsedUpdates.title);
-        if (title) {
-          updates.title = title;
-        }
-
-        const description = getStringValue(parsedUpdates.description);
-        if (description) {
-          updates.description = description;
-        }
-
-        const priority = getPriorityNumberValue(parsedUpdates.priority);
-        if (priority) {
-          updates.priority = priority;
-        }
-
-        const teamKey = getStringValue(parsedUpdates.teamKey);
-        if (teamKey) {
-          const teams = await linearService.getTeams(accountId);
-          const team = teams
-            .slice(0, LINEAR_LOOKUP_LIMIT)
-            .find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
-          if (team) {
-            updates.teamId = team.id;
-            logger.info(`Moving issue to team: ${team.name} (${team.key})`);
-          } else {
-            logger.warn(`Team with key ${teamKey} not found`);
-          }
-        }
-
-        const assignee = getStringValue(parsedUpdates.assignee);
-        if (assignee) {
-          const cleanAssignee = assignee.replace(/^@/, "");
-          const users = await linearService.getUsers(accountId);
-          const user = users
-            .slice(0, LINEAR_LOOKUP_LIMIT)
-            .find(
-              (u) =>
-                u.email === cleanAssignee ||
-                u.name.toLowerCase().includes(cleanAssignee.toLowerCase())
-            );
-          if (user) {
-            updates.assigneeId = user.id;
-          } else {
-            logger.warn(`User ${cleanAssignee} not found`);
-          }
-        }
-
-        const status = getStringValue(parsedUpdates.status);
-        if (status) {
-          const issue = await linearService.getIssue(issueId, accountId);
-          const issueTeam = await issue.team;
-          const teamId = updates.teamId || issueTeam?.id;
-          if (!teamId) {
-            logger.warn("Could not determine team for status update");
-          } else {
-            const states = await linearService.getWorkflowStates(teamId, accountId);
-
-            const state = states
-              .slice(0, LINEAR_LOOKUP_LIMIT)
-              .find(
-                (s) =>
-                  s.name.toLowerCase() === status.toLowerCase() ||
-                  s.type.toLowerCase() === status.toLowerCase()
-              );
-
-            if (state) {
-              updates.stateId = state.id;
-              logger.info(`Changing status to: ${state.name}`);
-            } else {
-              logger.warn(`Status ${status} not found for team`);
-            }
-          }
-        }
-
-        const parsedLabels = getStringArrayValue(parsedUpdates.labels);
-        if (parsedLabels !== undefined) {
-          const teamId = updates.teamId;
-          const labels = await linearService.getLabels(teamId, accountId);
-          const labelIds: string[] = [];
-
-          for (const labelName of parsedLabels.slice(0, LINEAR_LOOKUP_LIMIT)) {
-            const label = labels
-              .slice(0, LINEAR_LOOKUP_LIMIT)
-              .find((l) => l.name.toLowerCase() === labelName.toLowerCase());
-            if (label) {
-              labelIds.push(label.id);
-            }
-          }
-
-          updates.labelIds = labelIds;
-        }
-      } catch (parseError) {
-        logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
-
-        const issueMatch = content.match(/(\w+-\d+)/);
-        if (!issueMatch) {
-          const errorMessage = "Please specify an issue ID (e.g., ENG-123) to update.";
-          await callback?.({
-            text: errorMessage,
-            source: message.content.source,
-          });
-          return {
-            text: errorMessage,
-            success: false,
-          };
-        }
-
-        issueId = issueMatch[1];
-
-        const titleMatch = content.match(/title to ["'](.+?)["']/i);
-        if (titleMatch) {
-          updates.title = titleMatch[1];
-        }
-
-        const priorityMatch = content.match(/priority (?:to |as )?(\w+)/i);
-        if (priorityMatch) {
-          const priorityMap: Record<string, number> = {
-            urgent: 1,
-            high: 2,
-            normal: 3,
-            medium: 3,
-            low: 4,
-          };
-          const priority = priorityMap[priorityMatch[1].toLowerCase()];
-          if (priority) {
-            updates.priority = priority;
-          }
-        }
-      }
-
-      if (Object.keys(updates).length === 0) {
-        const errorMessage =
-          "No valid updates found. Please specify what to update (e.g., \"Update issue ENG-123 title to 'New Title'\")";
-        await callback?.({
-          text: errorMessage,
-          source: message.content.source,
-        });
-        return {
-          text: errorMessage,
-          success: false,
-        };
-      }
-
-      const updatedIssue = await linearService.updateIssue(issueId, updates, accountId);
-
-      const updateSummary = [];
-      if (updates.title) updateSummary.push(`title: "${updates.title}"`);
-      if (updates.priority)
-        updateSummary.push(
-          `priority: ${["", "urgent", "high", "normal", "low"][updates.priority]}`
-        );
-      if (updates.teamId) updateSummary.push(`moved to team`);
-      if (updates.assigneeId) updateSummary.push(`assigned to user`);
-      if (updates.stateId) updateSummary.push(`status changed`);
-      if (updates.labelIds) updateSummary.push(`labels updated`);
-
-      const successMessage = `✅ Updated issue ${updatedIssue.identifier}: ${updateSummary.join(", ")}\n\nView it at: ${updatedIssue.url}`;
-      await callback?.({
-        text: successMessage,
-        source: message.content.source,
-      });
-
-      return {
-        text: `Updated issue ${updatedIssue.identifier}: ${updateSummary.join(", ")}`,
-        success: true,
-        data: {
-          issueId: updatedIssue.id,
-          identifier: updatedIssue.identifier,
-          updates: updates
-            ? Object.fromEntries(
-                Object.entries(updates).map(([key, value]) => [
-                  key,
-                  value instanceof Date ? value.toISOString() : value,
-                ])
-              )
-            : undefined,
-          url: updatedIssue.url,
-          accountId,
-        },
-      };
-    } catch (error) {
-      logger.error("Failed to update issue:", error);
-      const errorMessage = `❌ Failed to update issue: ${error instanceof Error ? error.message : "Unknown error"}`;
+    const content = message.content.text;
+    if (!content) {
+      const errorMessage = "Please provide update instructions for the issue.";
       await callback?.({
         text: errorMessage,
         source: message.content.source,
@@ -275,4 +51,273 @@ export async function handleUpdateIssue(
         success: false,
       };
     }
+
+    const prompt = updateIssueTemplate.replace("{{userMessage}}", content);
+
+    const response = await Promise.race([
+      runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: prompt,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Linear update extraction timeout")),
+          LINEAR_MODEL_TIMEOUT_MS
+        )
+      ),
+    ]);
+
+    if (!response) {
+      throw new Error("Failed to extract update information");
+    }
+
+    let issueId: string;
+    const updates: Partial<LinearIssueInput> = {};
+
+    try {
+      const parsed = parseLinearPromptResponse(response);
+      if (Object.keys(parsed).length === 0) {
+        throw new Error("No fields found in model response");
+      }
+
+      issueId = getStringValue(parsed.issueId) ?? "";
+      if (!issueId) {
+        throw new Error("Issue ID not found in parsed response");
+      }
+
+      const parsedUpdates = getRecordValue(parsed.updates) ?? {};
+      const title = getStringValue(parsedUpdates.title);
+      if (title) {
+        updates.title = title;
+      }
+
+      const description = getStringValue(parsedUpdates.description);
+      if (description) {
+        updates.description = description;
+      }
+
+      const priority = getPriorityNumberValue(parsedUpdates.priority);
+      if (priority) {
+        updates.priority = priority;
+      }
+
+      const teamKey = getStringValue(parsedUpdates.teamKey);
+      if (teamKey) {
+        const teams = await linearService.getTeams(accountId);
+        const team = teams
+          .slice(0, LINEAR_LOOKUP_LIMIT)
+          .find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
+        if (team) {
+          updates.teamId = team.id;
+          logger.info(`Moving issue to team: ${team.name} (${team.key})`);
+        } else {
+          logger.warn(`Team with key ${teamKey} not found`);
+        }
+      }
+
+      const assignee = getStringValue(parsedUpdates.assignee);
+      if (assignee) {
+        const cleanAssignee = assignee.replace(/^@/, "");
+        const users = await linearService.getUsers(accountId);
+        const user = users
+          .slice(0, LINEAR_LOOKUP_LIMIT)
+          .find(
+            (u) =>
+              u.email === cleanAssignee ||
+              u.name.toLowerCase().includes(cleanAssignee.toLowerCase())
+          );
+        if (user) {
+          updates.assigneeId = user.id;
+        } else {
+          logger.warn(`User ${cleanAssignee} not found`);
+        }
+      }
+
+      const status = getStringValue(parsedUpdates.status);
+      if (status) {
+        const issue = await linearService.getIssue(issueId, accountId);
+        const issueTeam = await issue.team;
+        const teamId = updates.teamId || issueTeam?.id;
+        if (!teamId) {
+          logger.warn("Could not determine team for status update");
+        } else {
+          const states = await linearService.getWorkflowStates(teamId, accountId);
+
+          const state = states
+            .slice(0, LINEAR_LOOKUP_LIMIT)
+            .find(
+              (s) =>
+                s.name.toLowerCase() === status.toLowerCase() ||
+                s.type.toLowerCase() === status.toLowerCase()
+            );
+
+          if (state) {
+            updates.stateId = state.id;
+            logger.info(`Changing status to: ${state.name}`);
+          } else {
+            logger.warn(`Status ${status} not found for team`);
+          }
+        }
+      }
+
+      const parsedLabels = getStringArrayValue(parsedUpdates.labels);
+      if (parsedLabels !== undefined) {
+        const teamId = updates.teamId;
+        const labels = await linearService.getLabels(teamId, accountId);
+        const labelIds: string[] = [];
+
+        for (const labelName of parsedLabels.slice(0, LINEAR_LOOKUP_LIMIT)) {
+          const label = labels
+            .slice(0, LINEAR_LOOKUP_LIMIT)
+            .find((l) => l.name.toLowerCase() === labelName.toLowerCase());
+          if (label) {
+            labelIds.push(label.id);
+          }
+        }
+
+        updates.labelIds = labelIds;
+      }
+    } catch (parseError) {
+      logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
+
+      const issueMatch = content.match(/(\w+-\d+)/);
+      if (!issueMatch) {
+        const errorMessage = "Please specify an issue ID (e.g., ENG-123) to update.";
+        await callback?.({
+          text: errorMessage,
+          source: message.content.source,
+        });
+        return {
+          text: errorMessage,
+          success: false,
+        };
+      }
+
+      issueId = issueMatch[1];
+
+      const titleMatch = content.match(/title to ["'](.+?)["']/i);
+      if (titleMatch) {
+        updates.title = titleMatch[1];
+      }
+
+      const priorityMatch = content.match(/priority (?:to |as )?(\w+)/i);
+      if (priorityMatch) {
+        const priorityMap: Record<string, number> = {
+          urgent: 1,
+          high: 2,
+          normal: 3,
+          medium: 3,
+          low: 4,
+        };
+        const priority = priorityMap[priorityMatch[1].toLowerCase()];
+        if (priority) {
+          updates.priority = priority;
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      const errorMessage =
+        "No valid updates found. Please specify what to update (e.g., \"Update issue ENG-123 title to 'New Title'\")";
+      await callback?.({
+        text: errorMessage,
+        source: message.content.source,
+      });
+      return {
+        text: errorMessage,
+        success: false,
+      };
+    }
+
+    const updatedIssue = await linearService.updateIssue(issueId, updates, accountId);
+
+    const updateSummary = [];
+    if (updates.title) updateSummary.push(`title: "${updates.title}"`);
+    if (updates.priority)
+      updateSummary.push(`priority: ${["", "urgent", "high", "normal", "low"][updates.priority]}`);
+    if (updates.teamId) updateSummary.push(`moved to team`);
+    if (updates.assigneeId) updateSummary.push(`assigned to user`);
+    if (updates.stateId) updateSummary.push(`status changed`);
+    if (updates.labelIds) updateSummary.push(`labels updated`);
+
+    const successMessage = `✅ Updated issue ${updatedIssue.identifier}: ${updateSummary.join(", ")}\n\nView it at: ${updatedIssue.url}`;
+    await callback?.({
+      text: successMessage,
+      source: message.content.source,
+    });
+
+    return {
+      text: `Updated issue ${updatedIssue.identifier}: ${updateSummary.join(", ")}`,
+      success: true,
+      data: {
+        issueId: updatedIssue.id,
+        identifier: updatedIssue.identifier,
+        updates: updates
+          ? Object.fromEntries(
+              Object.entries(updates).map(([key, value]) => [
+                key,
+                value instanceof Date ? value.toISOString() : value,
+              ])
+            )
+          : undefined,
+        url: updatedIssue.url,
+        accountId,
+      },
+    };
+  } catch (error) {
+    logger.error("Failed to update issue:", error);
+    const errorMessage = `❌ Failed to update issue: ${error instanceof Error ? error.message : "Unknown error"}`;
+    await callback?.({
+      text: errorMessage,
+      source: message.content.source,
+    });
+    return {
+      text: errorMessage,
+      success: false,
+    };
   }
+}
+
+export const updateIssueAction: Action = {
+  name: "UPDATE_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
+  description: "Update an existing Linear issue (title, priority, assignee, status, labels, team)",
+  descriptionCompressed: "update Linear issue",
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue id or identifier to update.",
+      required: false,
+      schema: { type: "string" },
+    },
+    linearAccountIdParameter,
+  ],
+  similes: ["update-linear-issue", "edit-linear-issue", "modify-linear-issue"],
+
+  examples: [
+    [
+      {
+        name: "User",
+        content: {
+          text: "Update ENG-123 priority to high",
+        },
+      },
+      {
+        name: "Assistant",
+        content: {
+          text: "I'll update issue ENG-123 in Linear.",
+          actions: ["UPDATE_LINEAR_ISSUE"],
+        },
+      },
+    ],
+  ],
+
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    validateLinearActionIntent(runtime, message, state, {
+      keywords: ["update", "edit", "modify", "linear", "issue"],
+      regexAlternation: "update|edit|modify|linear|issue",
+    }),
+
+  handler: handleUpdateIssue,
+};

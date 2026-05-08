@@ -228,7 +228,10 @@ function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), VISION_ACTION_TIMEOUT_MS),
+      setTimeout(
+        () => reject(new Error(`${label} timed out`)),
+        VISION_ACTION_TIMEOUT_MS,
+      ),
     ),
   ]);
 }
@@ -427,8 +430,7 @@ async function runDescribe(
     const cameraInfo = visionService.getCameraInfo();
 
     if (!scene) {
-      const thought =
-        "Camera is connected but no scene has been analyzed yet.";
+      const thought = "Camera is connected but no scene has been analyzed yet.";
       const text = `Camera "${cameraInfo?.name}" is connected, but I haven't analyzed any scenes yet. Please wait a moment.`;
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
@@ -569,8 +571,7 @@ async function runDescribe(
       await callback({ thought, text, actions: ["VISION"] });
     }
 
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
       text: "Error analyzing scene",
@@ -600,8 +601,7 @@ async function runCapture(
   if (!visionService || !visionService.isActive()) {
     const thought =
       "Vision service is not available or no camera is connected.";
-    const text =
-      "I cannot capture an image right now. No camera is available.";
+    const text = "I cannot capture an image right now. No camera is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
@@ -730,8 +730,7 @@ async function runCapture(
   } catch (error) {
     logger.error("[VISION/capture] Error capturing image:", error);
     const thought = "An error occurred while trying to capture an image.";
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const text = `Error capturing image: ${errorMessage}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -858,10 +857,8 @@ async function runSetMode(
     };
   } catch (error) {
     logger.error("[VISION/set_mode] Error changing vision mode:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
-    const thought =
-      "An error occurred while trying to change the vision mode.";
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const thought = "An error occurred while trying to change the vision mode.";
     const text = `Error changing vision mode: ${errorMessage}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -1100,8 +1097,7 @@ async function runIdentifyPerson(
 
     if (people.length === 0) {
       const thought = "No tracked people found.";
-      const text =
-        "I can see someone but I'm still processing their identity.";
+      const text = "I can see someone but I'm still processing their identity.";
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
         await callback({ thought, text, actions: ["VISION"] });
@@ -1423,7 +1419,8 @@ export const visionAction: Action = {
   ): Promise<ActionResult> => {
     const params = readActionParams(_options);
     const explicitOp = normalizeOp(params.op ?? params.subaction);
-    const inferredOp = explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
+    const inferredOp =
+      explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
 
     if (!inferredOp) {
       const text = `VISION could not determine the operation. Specify one of: ${VISION_OPS.join(", ")}.`;

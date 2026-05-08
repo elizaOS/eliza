@@ -1232,10 +1232,13 @@ export class XService extends Service {
 
     const messages: Array<{
       id: string;
+      conversationId: string;
       senderId: string;
       senderUsername: string | null;
       text: string;
       createdAt: string | null;
+      isInbound: boolean;
+      participantIds: string[];
     }> = [];
     for await (const event of iterator) {
       if (event.event_type && event.event_type !== "MessageCreate") {

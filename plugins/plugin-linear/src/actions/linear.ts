@@ -246,7 +246,8 @@ export const linearAction: Action = {
 
     const dispatch = route.run ?? route.action?.handler?.bind(route.action);
     const result = dispatch
-      ? ((await dispatch(runtime, message, state, options, callback)) ?? ({ success: true } as ActionResult))
+      ? ((await dispatch(runtime, message, state, options, callback)) ??
+        ({ success: true } as ActionResult))
       : ({ success: true } as ActionResult);
     return {
       ...result,

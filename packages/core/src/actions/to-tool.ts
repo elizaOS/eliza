@@ -78,6 +78,24 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 					type: "array",
 					items: { type: "string" },
 				},
+				contextSlices: {
+					type: "array",
+					description:
+						"Optional retrieval slice ids that would help answer this turn. Use only ids or short stable handles when visible in context.",
+					items: { type: "string" },
+				},
+				candidateActions: {
+					type: "array",
+					description:
+						"Optional action-like names or short operation phrases that should be used as retrieval hints for the action catalogue.",
+					items: { type: "string" },
+				},
+				parentActionHints: {
+					type: "array",
+					description:
+						"Optional explicit parent action names when confident. These are high-precision hints, not guesses.",
+					items: { type: "string" },
+				},
 				reply: { type: "string" },
 			},
 			required: ["contexts"],
@@ -123,10 +141,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. Set processMessage to RESPOND/IGNORE/STOP. List plan.contexts to engage; for trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. Set processMessage to RESPOND/IGNORE/STOP. List plan.contexts to engage; for trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally include action-retrieval hints in plan.candidateActions / plan.parentActionHints / plan.contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. processMessage is implicit RESPOND for DMs. List plan.contexts to engage; for trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. processMessage is implicit RESPOND for DMs. List plan.contexts to engage; for trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally include action-retrieval hints in plan.candidateActions / plan.parentActionHints / plan.contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const PLAN_ACTIONS_DESCRIPTION =
 	"Stage 2 — invoke an action by name with parameters. Use multiple times in sequence to build up a turn's work. Action names and parameter schemas are listed under available_actions in the conversation; the system prompt only describes the protocol. For router-style actions (e.g. LINEAR_ISSUE, SHOPIFY) pass the routed sub-operation in `subaction`. Use REPLY to emit a user-facing reply; IGNORE / STOP to terminate the turn.";

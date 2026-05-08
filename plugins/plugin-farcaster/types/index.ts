@@ -1,6 +1,8 @@
 import type { Media, Memory, MessagePayload } from "@elizaos/core";
 import type { Cast as NeynarCast, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = zod.z ?? zod;
 
 export interface Profile {
   fid: number;
@@ -95,7 +97,7 @@ export const FarcasterConfigSchema = z.object({
   FARCASTER_HUB_URL: z.string().min(1, "FARCASTER_HUB_URL is not set"),
 });
 
-export type FarcasterConfig = z.infer<typeof FarcasterConfigSchema>;
+export type FarcasterConfig = zod.infer<typeof FarcasterConfigSchema>;
 
 export enum FarcasterEventTypes {
   POST_GENERATED = "FARCASTER_POST_GENERATED",

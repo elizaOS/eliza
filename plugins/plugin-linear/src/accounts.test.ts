@@ -19,6 +19,7 @@ describe("Linear account resolution", () => {
     expect(readLinearAccounts(rt)).toEqual([
       expect.objectContaining({
         accountId: "default",
+        role: "OWNER",
         apiKey: "linear-key",
         workspaceId: "workspace",
       }),
@@ -38,7 +39,21 @@ describe("Linear account resolution", () => {
     expect(resolveLinearAccountId(rt, { accountId: "work" })).toBe("work");
     expect(resolveLinearAccount(accounts, "work")).toMatchObject({
       accountId: "work",
+      role: "OWNER",
       apiKey: "work-key",
     });
+  });
+
+  it("defaults to the first configured account only when no accountId is requested", () => {
+    const rt = runtime({
+      LINEAR_ACCOUNTS: JSON.stringify({
+        work: { apiKey: "work-key", workspaceId: "workspace" },
+      }),
+    });
+    const accounts = readLinearAccounts(rt);
+
+    expect(resolveLinearAccountId(rt)).toBe("work");
+    expect(resolveLinearAccount(accounts, "missing")).toBeNull();
+    expect(resolveLinearAccountId(rt, { accountId: "missing" })).toBe("missing");
   });
 });

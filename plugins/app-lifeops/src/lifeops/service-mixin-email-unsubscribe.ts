@@ -1,163 +1,147 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-
+// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
 import crypto from "node:crypto";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
-import {
-  createGmailFilterForSender,
-  extractListUnsubscribeOptions,
-  fetchGmailSubscriptionHeaders,
-  type GmailSubscriptionMessageHeaders,
-  parseMailtoUnsubscribe,
-  performGmailHttpUnsubscribe,
-  sendMailtoUnsubscribeEmail,
-  trashGmailThread,
-} from "./email-unsubscribe-gmail.js";
 import type {
   EmailSubscriptionScanResult,
   EmailSubscriptionSender,
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,
   EmailUnsubscribeRequest,
+  EmailUnsubscribeStatus,
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
-  EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
 import {
-  resolveGoogleExecutionTarget,
-  resolveGoogleGrants,
-} from "./google-connector-gateway.js";
-import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
+  accountIdForGrant,
+  requireGoogleServiceMethod,
+} from "./google-plugin-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   fail,
-  normalizeOptionalBoolean,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  hasGoogleGmailManageCapability,
-  hasGoogleGmailSendCapability,
-  hasGoogleGmailTriageCapability,
-} from "./service-normalize-calendar.js";
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
-const MAX_SAMPLE_SUBJECTS = 5;
 
-function pickUnsubscribeMethod(args: {
+function headerValue(
+  headers: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  if (!headers) return null;
+  const exact = headers[key];
+  if (typeof exact === "string" && exact.trim()) return exact.trim();
+  const lowered = key.toLowerCase();
+  for (const [candidate, value] of Object.entries(headers)) {
+    if (candidate.toLowerCase() === lowered && typeof value === "string") {
+      return value.trim() || null;
+    }
+  }
+  return null;
+}
+
+function senderDomain(email: string | null): string | null {
+  if (!email) return null;
+  const at = email.lastIndexOf("@");
+  return at >= 0 ? email.slice(at + 1).toLowerCase() : null;
+}
+
+function listUnsubscribeEntries(value: string | null): string[] {
+  if (!value) return [];
+  const bracketed = [...value.matchAll(/<([^>]+)>/g)]
+    .map((match) => match[1]?.trim() ?? "")
+    .filter(Boolean);
+  if (bracketed.length > 0) {
+    return bracketed;
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim().replace(/^<|>$/g, ""))
+    .filter(Boolean);
+}
+
+function listUnsubscribeOptions(value: string | null): {
   httpUrl: string | null;
   mailto: string | null;
-  oneClickPost: boolean;
-}): EmailUnsubscribeMethod {
-  if (args.httpUrl && args.oneClickPost) {
+} {
+  let httpUrl: string | null = null;
+  let mailto: string | null = null;
+  for (const entry of listUnsubscribeEntries(value)) {
+    if (!httpUrl && /^https?:\/\//i.test(entry)) {
+      httpUrl = entry;
+    }
+    if (!mailto && /^mailto:/i.test(entry)) {
+      mailto = entry;
+    }
+  }
+  return { httpUrl, mailto };
+}
+
+function unsubscribeMethod(args: {
+  listUnsubscribe: string | null;
+  listUnsubscribePost: string | null;
+}): EmailSubscriptionSender["unsubscribeMethod"] {
+  const options = listUnsubscribeOptions(args.listUnsubscribe);
+  if (options.mailto) return "mailto";
+  if (!options.httpUrl) return "manual_only";
+  if (/one-click/i.test(args.listUnsubscribePost ?? "")) {
     return "http_one_click";
   }
-  if (args.httpUrl) {
-    return "http_post";
-  }
-  if (args.mailto) {
-    return "mailto";
-  }
-  return "manual_only";
+  return "http_get";
 }
 
-function deriveSenderDomain(email: string): string | null {
-  const at = email.lastIndexOf("@");
-  if (at < 0) {
+function parseMailtoUnsubscribe(value: string): {
+  recipient: string;
+  subject: string | null;
+  body: string | null;
+} | null {
+  const trimmed = value.trim().replace(/^<|>$/g, "");
+  if (!/^mailto:/i.test(trimmed)) {
     return null;
   }
-  const domain = email
-    .slice(at + 1)
-    .trim()
-    .toLowerCase();
-  return domain.length > 0 ? domain : null;
-}
-
-function aggregateSenders(
-  headers: readonly GmailSubscriptionMessageHeaders[],
-): EmailSubscriptionSender[] {
-  const senders = new Map<string, EmailSubscriptionSender>();
-  for (const header of headers) {
-    if (!header.fromEmail) {
-      continue;
-    }
-    const key = header.fromEmail;
-    const existing = senders.get(key);
-    const options = extractListUnsubscribeOptions(header);
-    const method = pickUnsubscribeMethod(options);
-    if (!existing) {
-      senders.set(key, {
-        senderEmail: header.fromEmail,
-        senderDisplay: header.fromDisplay,
-        senderDomain: deriveSenderDomain(header.fromEmail),
-        listId: header.listId,
-        messageCount: 1,
-        firstSeenAt: header.receivedAt,
-        latestSeenAt: header.receivedAt,
-        unsubscribeMethod: method,
-        unsubscribeHttpUrl: options.httpUrl,
-        unsubscribeMailto: options.mailto,
-        listUnsubscribePost: header.listUnsubscribePost,
-        sampleSubjects: [header.subject],
-        latestMessageId: header.messageId,
-        latestThreadId: header.threadId,
-        allMessageIds: [header.messageId],
-        allThreadIds: [header.threadId],
-      });
-      continue;
-    }
-    existing.messageCount += 1;
-    existing.allMessageIds.push(header.messageId);
-    existing.allThreadIds.push(header.threadId);
-    if (header.receivedAt < existing.firstSeenAt) {
-      existing.firstSeenAt = header.receivedAt;
-    }
-    if (header.receivedAt > existing.latestSeenAt) {
-      existing.latestSeenAt = header.receivedAt;
-      existing.latestMessageId = header.messageId;
-      existing.latestThreadId = header.threadId;
-    }
-    if (!existing.unsubscribeHttpUrl && options.httpUrl) {
-      existing.unsubscribeHttpUrl = options.httpUrl;
-    }
-    if (!existing.unsubscribeMailto && options.mailto) {
-      existing.unsubscribeMailto = options.mailto;
-    }
-    if (!existing.listUnsubscribePost && header.listUnsubscribePost) {
-      existing.listUnsubscribePost = header.listUnsubscribePost;
-    }
-    const resolvedMethod = pickUnsubscribeMethod({
-      httpUrl: existing.unsubscribeHttpUrl,
-      mailto: existing.unsubscribeMailto,
-      oneClickPost: /one-click/i.test(existing.listUnsubscribePost ?? ""),
-    });
-    existing.unsubscribeMethod = resolvedMethod;
-    if (
-      existing.sampleSubjects.length < MAX_SAMPLE_SUBJECTS &&
-      !existing.sampleSubjects.includes(header.subject)
-    ) {
-      existing.sampleSubjects.push(header.subject);
-    }
+  const rest = trimmed.slice("mailto:".length);
+  const [addressPart, queryPart = ""] = rest.split("?", 2);
+  const recipient = decodeURIComponent(addressPart.trim());
+  if (!recipient) {
+    return null;
   }
-
-  return Array.from(senders.values())
-    .sort((a, b) => {
-      if (a.messageCount !== b.messageCount) {
-        return b.messageCount - a.messageCount;
-      }
-      return b.latestSeenAt.localeCompare(a.latestSeenAt);
-    })
-    .slice(0, MAX_SENDERS_RETURNED);
+  const params = new URLSearchParams(queryPart);
+  const subject = params.get("subject");
+  const body = params.get("body");
+  return {
+    recipient,
+    subject: subject?.trim() ? subject : null,
+    body: body?.trim() ? body : null,
+  };
 }
 
-function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
-  return grant.cloudConnectionId ?? grant.id;
+async function performHttpUnsubscribe(args: {
+  url: string;
+  oneClick: boolean;
+}): Promise<{
+  ok: boolean;
+  status: number;
+  finalUrl: string;
+  method: Extract<EmailUnsubscribeMethod, "http_one_click" | "http_get">;
+}> {
+  const parsed = new URL(args.url);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    fail(400, "Unsubscribe URL must be http or https.");
+  }
+  const response = await fetch(parsed.toString(), {
+    method: args.oneClick ? "POST" : "GET",
+    headers: args.oneClick
+      ? { "Content-Type": "application/x-www-form-urlencoded" }
+      : undefined,
+    body: args.oneClick ? "List-Unsubscribe=One-Click" : undefined,
+    redirect: "follow",
+  });
+  return {
+    ok: response.ok,
+    status: response.status,
+    finalUrl: response.url || parsed.toString(),
+    method: args.oneClick ? "http_one_click" : "http_get",
+  };
 }
 
 /** @internal */
@@ -165,71 +149,13 @@ export function withEmailUnsubscribe<
   TBase extends Constructor<LifeOpsServiceBase>,
 >(Base: TBase) {
   class LifeOpsEmailUnsubscribeMixin extends Base {
-    async accessTokenForGrant(grant: LifeOpsConnectorGrant): Promise<string> {
-      if (resolveGoogleExecutionTarget(grant) === "cloud") {
-        fail(
-          409,
-          "Gmail unsubscribe management is not available for cloud-managed Google connections yet. Reconnect Google in local mode to manage filters and unsubscribe mail.",
-        );
-      }
-      const tokenRef =
-        grant.tokenRef ?? fail(409, "Google Gmail token reference is missing.");
-      const token = await ensureFreshGoogleAccessToken(tokenRef);
-      return token.accessToken;
-    }
-
-    async readSubscriptionHeadersForGrant(args: {
-      grant: LifeOpsConnectorGrant;
-      query: string;
-      maxMessages: number;
-    }): Promise<GmailSubscriptionMessageHeaders[]> {
-      if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
-        return (
-          await this.googleManagedClient.getGmailSubscriptionHeaders({
-            side: args.grant.side,
-            grantId: managedGoogleGrantId(args.grant),
-            query: args.query,
-            maxResults: args.maxMessages,
-          })
-        ).headers;
-      }
-      return fetchGmailSubscriptionHeaders({
-        accessToken: await this.accessTokenForGrant(args.grant),
-        query: args.query,
-        maxMessages: args.maxMessages,
-      });
-    }
-
-    async sendMailtoForGrant(args: {
-      grant: LifeOpsConnectorGrant;
-      mailto: NonNullable<ReturnType<typeof parseMailtoUnsubscribe>>;
-    }): Promise<void> {
-      if (!hasGoogleGmailSendCapability(args.grant)) {
-        fail(403, "Mailto unsubscribe requires Gmail send access.");
-      }
-      if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
-        await this.googleManagedClient.sendGmailMessage({
-          side: args.grant.side,
-          grantId: managedGoogleGrantId(args.grant),
-          to: [args.mailto.recipient],
-          subject: args.mailto.subject ?? "unsubscribe",
-          bodyText: args.mailto.body ?? "unsubscribe",
-        });
-        return;
-      }
-      await sendMailtoUnsubscribeEmail({
-        accessToken: await this.accessTokenForGrant(args.grant),
-        mailto: args.mailto,
-      });
-    }
-
     async scanEmailSubscriptions(
       requestUrl: URL,
       request: EmailUnsubscribeScanRequest = {},
     ): Promise<EmailSubscriptionScanResult> {
       const query =
         normalizeOptionalString(request.query) ??
-        "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
+        "(category:promotions OR category:updates OR unsubscribe) newer_than:180d";
       const maxMessages = Math.max(
         10,
         Math.min(
@@ -239,81 +165,83 @@ export function withEmailUnsubscribe<
             : DEFAULT_SCAN_MAX_MESSAGES,
         ),
       );
-      const allGrants = (
-        await this.repository.listConnectorGrants(this.agentId())
-      ).filter((grant) => grant.provider === "google");
-      let grants = resolveGoogleGrants({ grants: allGrants }).filter((grant) =>
-        hasGoogleGmailTriageCapability(grant),
-      );
-      if (grants.length === 0) {
-        grants = [
-          await this.requireGoogleGmailGrant(
-            requestUrl,
-            undefined,
-            undefined,
-            undefined,
-          ),
-        ];
-      }
-
-      const results = await Promise.allSettled(
-        grants.map(async (grant) => ({
-          grant,
-          headers: await this.readSubscriptionHeadersForGrant({
-            grant,
-            query,
-            maxMessages,
-          }),
-        })),
-      );
-
-      const headers: GmailSubscriptionMessageHeaders[] = [];
-      let successfulScans = 0;
-      let firstFailure: unknown = null;
-      for (let index = 0; index < results.length; index += 1) {
-        const result = results[index];
-        if (result.status === "fulfilled") {
-          successfulScans += 1;
-          headers.push(...result.value.headers);
+      const search = await this.getGmailSearch(requestUrl, {
+        query,
+        maxResults: maxMessages,
+        includeSpamTrash: true,
+      });
+      const senders = new Map<string, EmailSubscriptionSender>();
+      for (const message of search.messages) {
+        const headers =
+          message.metadata && typeof message.metadata === "object"
+            ? (message.metadata.headers as Record<string, unknown> | undefined)
+            : undefined;
+        const listUnsubscribe = headerValue(headers, "List-Unsubscribe");
+        const listUnsubscribePost = headerValue(
+          headers,
+          "List-Unsubscribe-Post",
+        );
+        if (!message.fromEmail && !listUnsubscribe) {
           continue;
         }
-        firstFailure ??= result.reason;
-        const grant = grants[index];
-        this.logLifeOpsWarn(
-          "email_subscription_scan",
-          `gmail scan unavailable: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
-          {
-            grantId: grant?.id,
-            side: grant?.side,
-            mode: grant?.mode,
-          },
-        );
+        const senderEmail = message.fromEmail ?? message.from;
+        const existing = senders.get(senderEmail);
+        const options = listUnsubscribeOptions(listUnsubscribe);
+        const method = unsubscribeMethod({
+          listUnsubscribe,
+          listUnsubscribePost,
+        });
+        if (!existing) {
+          senders.set(senderEmail, {
+            senderEmail,
+            senderDisplay: message.from,
+            senderDomain: senderDomain(senderEmail),
+            listId: headerValue(headers, "List-Id"),
+            messageCount: 1,
+            firstSeenAt: message.receivedAt,
+            latestSeenAt: message.receivedAt,
+            unsubscribeMethod: method,
+            unsubscribeHttpUrl: options.httpUrl,
+            unsubscribeMailto: options.mailto,
+            listUnsubscribePost,
+            sampleSubjects: [message.subject],
+            latestMessageId: message.id,
+            latestThreadId: message.threadId,
+            allMessageIds: [message.id],
+            allThreadIds: [message.threadId],
+          });
+          continue;
+        }
+        existing.messageCount += 1;
+        existing.latestSeenAt = message.receivedAt;
+        existing.latestMessageId = message.id;
+        existing.latestThreadId = message.threadId;
+        existing.allMessageIds.push(message.id);
+        existing.allThreadIds.push(message.threadId);
+        if (existing.sampleSubjects.length < 5) {
+          existing.sampleSubjects.push(message.subject);
+        }
       }
-      if (successfulScans === 0 && firstFailure) {
-        fail(
-          409,
-          `Gmail subscription scan failed: ${firstFailure instanceof Error ? firstFailure.message : String(firstFailure)}`,
-        );
-      }
-      const senders = aggregateSenders(headers);
-      const syncedAt = new Date().toISOString();
+      const senderList = [...senders.values()]
+        .sort((left, right) => right.messageCount - left.messageCount)
+        .slice(0, MAX_SENDERS_RETURNED);
       return {
-        syncedAt,
+        syncedAt: search.syncedAt ?? new Date().toISOString(),
         query,
         summary: {
-          scannedMessageCount: headers.length,
-          uniqueSenderCount: senders.length,
-          oneClickEligibleCount: senders.filter(
+          scannedMessageCount: search.messages.length,
+          uniqueSenderCount: senderList.length,
+          oneClickEligibleCount: senderList.filter(
             (sender) => sender.unsubscribeMethod === "http_one_click",
           ).length,
-          mailtoOnlyCount: senders.filter(
+          mailtoOnlyCount: senderList.filter(
             (sender) => sender.unsubscribeMethod === "mailto",
           ).length,
-          manualOnlyCount: senders.filter(
+          manualOnlyCount: senderList.filter(
             (sender) => sender.unsubscribeMethod === "manual_only",
           ).length,
         },
-        senders,
+        senders: senderList,
       };
     }
 
@@ -324,162 +252,140 @@ export function withEmailUnsubscribe<
       const senderEmail = requireNonEmptyString(
         request.senderEmail,
         "senderEmail",
-      )
-        .trim()
-        .toLowerCase();
-      const confirmed =
-        normalizeOptionalBoolean(request.confirmed, "confirmed") ?? false;
-      if (!confirmed) {
-        fail(409, "Email unsubscribe requires explicit confirmation.");
+      ).toLowerCase();
+      if (request.confirmed !== true) {
+        fail(409, "Email unsubscribe requires confirmed=true.");
       }
-      const blockAfter =
-        normalizeOptionalBoolean(request.blockAfter, "blockAfter") ?? false;
-      const trashExisting =
-        normalizeOptionalBoolean(request.trashExisting, "trashExisting") ??
-        false;
 
-      const grant = await this.requireGoogleGmailGrant(
-        requestUrl,
-        undefined,
-        undefined,
-        undefined,
-      );
-      const headers = await this.readSubscriptionHeadersForGrant({
-        grant,
-        query: `from:${senderEmail}`,
-        maxMessages: 25,
+      const grant = await this.requireGoogleGmailGrant(requestUrl);
+      const accountId = accountIdForGrant(grant);
+      const scan = await this.scanEmailSubscriptions(requestUrl, {
+        query: `from:${senderEmail} (unsubscribe OR list:*) newer_than:365d`,
+        maxMessages: 100,
       });
-      const senderHeaders = headers.filter(
-        (header) => header.fromEmail === senderEmail,
-      );
-      if (senderHeaders.length === 0) {
-        fail(
-          404,
-          `No recent Gmail messages from ${senderEmail} were found to unsubscribe.`,
-        );
-      }
-      const senders = aggregateSenders(senderHeaders);
-      const sender = senders.find(
-        (candidate) => candidate.senderEmail === senderEmail,
-      );
-      if (!sender) {
-        fail(404, `Unable to resolve subscription details for ${senderEmail}.`);
-      }
+      const sender =
+        scan.senders.find(
+          (candidate) => candidate.senderEmail.toLowerCase() === senderEmail,
+        ) ??
+        ({
+          senderEmail,
+          senderDisplay: senderEmail,
+          senderDomain: senderDomain(senderEmail),
+          listId: normalizeOptionalString(request.listId),
+          messageCount: 0,
+          firstSeenAt: new Date().toISOString(),
+          latestSeenAt: new Date().toISOString(),
+          unsubscribeMethod: "manual_only",
+          unsubscribeHttpUrl: null,
+          unsubscribeMailto: null,
+          listUnsubscribePost: null,
+          sampleSubjects: [],
+          latestMessageId: "",
+          latestThreadId: "",
+          allMessageIds: [],
+          allThreadIds: [],
+        } as EmailSubscriptionSender);
 
-      let status: EmailUnsubscribeStatus = "blocked_no_mechanism";
+      let method: EmailUnsubscribeMethod = sender.unsubscribeMethod;
+      let status: EmailUnsubscribeStatus = "manual_required";
       let httpStatusCode: number | null = null;
       let httpFinalUrl: string | null = null;
-      let errorMessage: string | null = null;
-      let method: EmailUnsubscribeMethod = sender.unsubscribeMethod;
-
-      if (sender.unsubscribeHttpUrl) {
-        try {
-          const result = await performGmailHttpUnsubscribe({
-            url: sender.unsubscribeHttpUrl,
-            preferOneClickPost: method === "http_one_click",
-          });
-          httpStatusCode = result.status;
-          httpFinalUrl = result.finalUrl;
-          status = result.ok ? "succeeded" : "failed";
-          if (!result.ok) {
-            errorMessage = `HTTP ${result.status} ${result.statusText}`;
-          }
-        } catch (error) {
-          status = "failed";
-          errorMessage = error instanceof Error ? error.message : String(error);
-        }
-      } else if (sender.unsubscribeMailto) {
-        const parsed = parseMailtoUnsubscribe(sender.unsubscribeMailto);
-        if (!parsed) {
-          status = "failed";
-          errorMessage = "Could not parse mailto: unsubscribe header.";
-        } else {
-          try {
-            await this.sendMailtoForGrant({ grant, mailto: parsed });
-            status = "succeeded";
-            method = "mailto";
-          } catch (error) {
-            status = "failed";
-            errorMessage =
-              error instanceof Error ? error.message : String(error);
-          }
-        }
-      } else {
-        status = "manual_required";
-        method = "manual_only";
-        errorMessage =
-          "No List-Unsubscribe header found. Manual unsubscribe required via the sender's website.";
-      }
-
       let filterCreated = false;
       let filterId: string | null = null;
-      const canManageGmail =
-        resolveGoogleExecutionTarget(grant) !== "cloud" &&
-        hasGoogleGmailManageCapability(grant);
-      if (
-        blockAfter &&
-        canManageGmail &&
-        (status === "succeeded" || status === "manual_required")
-      ) {
-        try {
-          const filterResult = await createGmailFilterForSender({
-            accessToken: await this.accessTokenForGrant(grant),
+      let threadsTrashed = 0;
+      let errorMessage: string | null = null;
+
+      try {
+        if (sender.unsubscribeHttpUrl) {
+          const http = await performHttpUnsubscribe({
+            url: sender.unsubscribeHttpUrl,
+            oneClick: sender.unsubscribeMethod === "http_one_click",
+          });
+          method = http.method;
+          httpStatusCode = http.status;
+          httpFinalUrl = http.finalUrl;
+          status = http.ok ? "succeeded" : "failed";
+          if (!http.ok) {
+            errorMessage = `HTTP unsubscribe returned ${http.status}.`;
+          }
+        } else if (sender.unsubscribeMailto) {
+          const mailto = parseMailtoUnsubscribe(sender.unsubscribeMailto);
+          if (!mailto) {
+            fail(400, "List-Unsubscribe mailto target is invalid.");
+          }
+          const sendMailtoUnsubscribeEmail = requireGoogleServiceMethod(
+            this.runtime,
+            "sendMailtoUnsubscribeEmail",
+          );
+          await sendMailtoUnsubscribeEmail({ accountId, mailto });
+          method = "mailto";
+          status = "succeeded";
+        }
+
+        if (request.blockAfter || request.trashExisting) {
+          if (!grant.capabilities.includes("google.gmail.manage")) {
+            fail(
+              403,
+              "Blocking or trashing subscription email requires Gmail manage access.",
+            );
+          }
+        }
+
+        if (request.blockAfter) {
+          const createGmailFilterForSender = requireGoogleServiceMethod(
+            this.runtime,
+            "createGmailFilterForSender",
+          );
+          const filter = await createGmailFilterForSender({
+            accountId,
             fromAddress: senderEmail,
             trash: true,
           });
           filterCreated = true;
-          filterId = filterResult.filterId;
-        } catch (error) {
-          this.logLifeOpsWarn(
-            "email_unsubscribe_filter",
-            `Filter creation failed for ${senderEmail}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          filterId = filter.filterId;
+          status = "succeeded";
         }
-      } else if (blockAfter && !canManageGmail) {
-        this.logLifeOpsWarn(
-          "email_unsubscribe_filter",
-          "Skipped Gmail filter creation because the connected Google grant does not include local Gmail manage access.",
-          {
-            grantId: grant.id,
-            mode: grant.mode,
-            side: grant.side,
-          },
-        );
-      }
 
-      let threadsTrashed = 0;
-      if (
-        trashExisting &&
-        canManageGmail &&
-        (status === "succeeded" || filterCreated)
-      ) {
-        const accessToken = await this.accessTokenForGrant(grant);
-        const uniqueThreadIds = Array.from(new Set(sender.allThreadIds));
-        for (const threadId of uniqueThreadIds) {
-          try {
-            await trashGmailThread({ accessToken, threadId });
+        if (request.trashExisting) {
+          const trashGmailThread = requireGoogleServiceMethod(
+            this.runtime,
+            "trashGmailThread",
+          );
+          const threadIds = [...new Set(sender.allThreadIds.filter(Boolean))];
+          for (const threadId of threadIds) {
+            await trashGmailThread({ accountId, threadId });
             threadsTrashed += 1;
-          } catch (error) {
-            this.logLifeOpsWarn(
-              "email_unsubscribe_trash",
-              `Failed to trash thread ${threadId}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
+          }
+          if (threadIds.length > 0) {
+            status = "succeeded";
           }
         }
+
+        if (
+          status === "manual_required" &&
+          !sender.unsubscribeHttpUrl &&
+          !sender.unsubscribeMailto &&
+          !request.blockAfter &&
+          !request.trashExisting
+        ) {
+          status = "blocked_no_mechanism";
+        }
+      } catch (cause) {
+        status = "failed";
+        errorMessage =
+          cause instanceof Error && cause.message.trim()
+            ? cause.message
+            : String(cause);
       }
 
+      const now = new Date().toISOString();
       const record: EmailUnsubscribeRecord = {
         id: crypto.randomUUID(),
         agentId: this.agentId(),
         senderEmail,
         senderDisplay: sender.senderDisplay,
         senderDomain: sender.senderDomain,
-        listId:
-          sender.listId ?? normalizeOptionalString(request.listId) ?? null,
+        listId: normalizeOptionalString(request.listId) ?? sender.listId,
         method,
         status,
         httpStatusCode,
@@ -489,14 +395,16 @@ export function withEmailUnsubscribe<
         threadsTrashed,
         errorMessage,
         metadata: {
+          connectorAccountId: accountId,
+          grantId: grant.id,
           messageCount: sender.messageCount,
-          sampleSubjects: sender.sampleSubjects,
-          unsubscribeHttpUrl: sender.unsubscribeHttpUrl,
-          unsubscribeMailto: sender.unsubscribeMailto,
-          listUnsubscribePost: sender.listUnsubscribePost,
+          latestMessageId: sender.latestMessageId,
+          latestThreadId: sender.latestThreadId,
+          blockAfter: request.blockAfter === true,
+          trashExisting: request.trashExisting === true,
         },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
       await this.repository.createEmailUnsubscribe(record);
       return { record };
@@ -518,31 +426,9 @@ export function withEmailUnsubscribe<
         return `- ${sender.senderDisplay} <${sender.senderEmail}>: ${sender.messageCount} msgs, ${sender.unsubscribeMethod}`;
       });
       return [
-        `Found ${result.summary.uniqueSenderCount} subscription senders from ${result.summary.scannedMessageCount} messages.`,
-        `${result.summary.oneClickEligibleCount} support one-click unsubscribe; ${result.summary.mailtoOnlyCount} need a mailto; ${result.summary.manualOnlyCount} require manual unsubscribe.`,
+        `Found ${result.summary.uniqueSenderCount} senders across ${result.summary.scannedMessageCount} messages.`,
         ...top,
       ].join("\n");
-    }
-
-    summarizeEmailUnsubscribeResult(result: EmailUnsubscribeResult): string {
-      const record = result.record;
-      const blocked = record.filterCreated
-        ? " Gmail filter created to auto-trash future mail from this sender."
-        : "";
-      const trashed =
-        record.threadsTrashed > 0
-          ? ` ${record.threadsTrashed} existing thread${record.threadsTrashed === 1 ? "" : "s"} trashed.`
-          : "";
-      switch (record.status) {
-        case "succeeded":
-          return `Unsubscribed from ${record.senderDisplay} via ${record.method}.${blocked}${trashed}`;
-        case "manual_required":
-          return `${record.senderDisplay} has no unsubscribe header. Manual unsubscribe is required via the sender's website.${blocked}${trashed}`;
-        case "blocked_no_mechanism":
-          return `Unsubscribe blocked for ${record.senderDisplay}: no unsubscribe mechanism available.`;
-        default:
-          return `Unsubscribe from ${record.senderDisplay} failed${record.errorMessage ? `: ${record.errorMessage}` : "."}`;
-      }
     }
   }
 

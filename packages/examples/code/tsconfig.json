@@ -17,18 +17,9 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "types": [
-      "node",
-      "vitest/globals"
-    ]
+    "types": ["node", "vitest/globals"]
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/__tests__/**"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/__tests__/**"],
   "extends": "../../../tsconfig.workspace-paths.json"
 }

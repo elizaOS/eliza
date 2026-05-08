@@ -9,14 +9,8 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "server.ts",
-    "action-scanner.ts"
-  ],
+  "include": ["server.ts", "action-scanner.ts"],
   "extends": "../../../tsconfig.workspace-paths.json"
 }

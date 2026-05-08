@@ -42,8 +42,9 @@ export function ConnectorAccountPurposeSelector({
   accountLabel,
 }: ConnectorAccountPurposeSelectorProps) {
   const resolved = getConnectorPurposeOption(value).value;
-  const [pendingValue, setPendingValue] =
-    useState<ConnectorAccountRole | null>(null);
+  const [pendingValue, setPendingValue] = useState<ConnectorAccountRole | null>(
+    null,
+  );
   const [typedValue, setTypedValue] = useState("");
   const [confirmBusy, setConfirmBusy] = useState(false);
   const generatedId = useId();

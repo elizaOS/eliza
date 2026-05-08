@@ -14,7 +14,7 @@ import {
   type LinearAccountConfig,
   normalizeLinearAccountId,
   readLinearAccounts,
-  resolveLinearAccount,
+  resolveLinearDefaultAccount,
 } from "../accounts";
 import type {
   ActivityDetailObject,
@@ -52,7 +52,7 @@ export class LinearService extends Service {
           runtime.getSetting("LINEAR_DEFAULT_ACCOUNT_ID") ?? runtime.getSetting("LINEAR_ACCOUNT_ID")
         )
       : DEFAULT_LINEAR_ACCOUNT_ID;
-    const defaultAccount = resolveLinearAccount(accounts, requestedDefault) ?? accounts[0] ?? null;
+    const defaultAccount = resolveLinearDefaultAccount(accounts, requestedDefault);
 
     if (!defaultAccount) {
       throw new LinearAuthenticationError("Linear API key is required");
@@ -93,32 +93,31 @@ export class LinearService extends Service {
   }
 
   hasAccount(accountId?: string): boolean {
-    const normalized = normalizeLinearAccountId(accountId);
-    return Boolean(
-      this.clients.get(normalized) ??
-        this.clients.get(this.defaultAccountId) ??
-        Array.from(this.clients.values())[0]
-    );
+    return Boolean(this.getAccountState(accountId, false));
   }
 
   getDefaultTeamKey(accountId?: string): string | undefined {
     return this.getAccountState(accountId).config.defaultTeamKey;
   }
 
-  private getAccountState(accountId?: string): LinearClientState {
+  private getAccountState(accountId?: string): LinearClientState;
+  private getAccountState(
+    accountId: string | undefined,
+    throwOnMissing: false
+  ): LinearClientState | null;
+  private getAccountState(accountId?: string, throwOnMissing = true): LinearClientState | null {
     const normalized = normalizeLinearAccountId(accountId);
-    const state =
-      this.clients.get(normalized) ??
-      this.clients.get(this.defaultAccountId) ??
-      Array.from(this.clients.values())[0];
-    if (!state) {
+    const state = accountId
+      ? (this.clients.get(normalized) ?? null)
+      : (this.clients.get(this.defaultAccountId) ?? Array.from(this.clients.values())[0] ?? null);
+    if (!state && throwOnMissing) {
       throw new LinearAuthenticationError("Linear API key is required");
     }
     return state;
   }
 
   private getClient(accountId?: string): LinearClient {
-    return this.getAccountState(accountId).client;
+    return this.getAccountState(accountId)?.client as LinearClient;
   }
 
   private logActivity(

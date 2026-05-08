@@ -52,6 +52,9 @@ export function parseMessageHandlerOutput(
 		? plan.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
 	const reply = typeof plan.reply === "string" ? plan.reply : undefined;
+	const contextSlices = normalizeStringHints(plan.contextSlices, 12);
+	const candidateActions = normalizeStringHints(plan.candidateActions, 12);
+	const parentActionHints = normalizeStringHints(plan.parentActionHints, 6);
 
 	// Backward-compatibility shim: legacy `plan.simple === true` (or root-level
 	// `simple: true`) with empty contexts is treated as `["simple"]`. New
@@ -65,15 +68,53 @@ export function parseMessageHandlerOutput(
 
 	const extract = parseExtract(parsed.extract);
 
+	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
+		contexts,
+		reply,
+	};
+	if (contextSlices.length > 0) {
+		normalizedPlan.contextSlices = contextSlices;
+	}
+	if (candidateActions.length > 0) {
+		normalizedPlan.candidateActions = candidateActions;
+	}
+	if (parentActionHints.length > 0) {
+		normalizedPlan.parentActionHints = parentActionHints;
+	}
+
 	return {
 		processMessage,
-		plan: {
-			contexts,
-			reply,
-		},
+		plan: normalizedPlan,
 		thought: typeof parsed.thought === "string" ? parsed.thought : "",
 		...(extract ? { extract } : {}),
 	};
+}
+
+function normalizeStringHints(raw: unknown, maxItems: number): string[] {
+	if (!Array.isArray(raw) || maxItems <= 0) {
+		return [];
+	}
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of raw) {
+		if (typeof item !== "string") {
+			continue;
+		}
+		const value = item.trim();
+		if (!value) {
+			continue;
+		}
+		const dedupeKey = value.toLowerCase();
+		if (seen.has(dedupeKey)) {
+			continue;
+		}
+		seen.add(dedupeKey);
+		result.push(value);
+		if (result.length >= maxItems) {
+			break;
+		}
+	}
+	return result;
 }
 
 function parseExtract(raw: unknown): MessageHandlerExtract | undefined {

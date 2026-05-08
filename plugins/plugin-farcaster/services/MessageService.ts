@@ -6,6 +6,7 @@ import {
   DEFAULT_FARCASTER_ACCOUNT_ID,
   getFarcasterFid,
   normalizeFarcasterAccountId,
+  readFarcasterAccountId,
 } from "../utils/config";
 
 type MessageMetadata = Record<string, string | number | boolean | null | undefined>;
@@ -34,6 +35,7 @@ interface SendMessageOptions {
   roomId: string;
   text: string;
   type: string;
+  accountId?: string;
   replyToId?: string;
   metadata?: MessageMetadata;
 }
@@ -111,6 +113,15 @@ export class FarcasterMessageService implements IMessageService {
 
   async sendMessage(options: SendMessageOptions): Promise<Message> {
     try {
+      const requestedAccountId = normalizeFarcasterAccountId(
+        options.accountId ?? readFarcasterAccountId(options.metadata) ?? this.getAccountId()
+      );
+      if (requestedAccountId !== this.getAccountId()) {
+        throw new Error(
+          `Farcaster account '${requestedAccountId}' is not available in this service instance`
+        );
+      }
+
       const { text, type, roomId, replyToId, agentId } = options;
 
       let inReplyTo: { hash: string; fid: number } | undefined;

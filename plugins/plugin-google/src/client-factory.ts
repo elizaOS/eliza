@@ -1,4 +1,12 @@
-import { type calendar_v3, type drive_v3, type gmail_v1, google, type meet_v2 } from "googleapis";
+import {
+  type calendar_v3,
+  type docs_v1,
+  type drive_v3,
+  type gmail_v1,
+  google,
+  type meet_v2,
+  type sheets_v4,
+} from "googleapis";
 import { MissingGoogleCredentialResolver } from "./auth.js";
 import { type GoogleCapability, scopesForGoogleCapabilities } from "./scopes.js";
 import {
@@ -41,6 +49,24 @@ export class GoogleApiClientFactory {
   ): Promise<drive_v3.Drive> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
     return google.drive({ version: "v3", auth });
+  }
+
+  async docs(
+    account: GoogleAccountRef,
+    capabilities: readonly GoogleCapability[],
+    reason: string
+  ): Promise<docs_v1.Docs> {
+    const auth = await this.resolveAuthClient(account, capabilities, reason);
+    return google.docs({ version: "v1", auth });
+  }
+
+  async sheets(
+    account: GoogleAccountRef,
+    capabilities: readonly GoogleCapability[],
+    reason: string
+  ): Promise<sheets_v4.Sheets> {
+    const auth = await this.resolveAuthClient(account, capabilities, reason);
+    return google.sheets({ version: "v4", auth });
   }
 
   async meet(

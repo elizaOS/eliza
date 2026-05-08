@@ -1,7 +1,7 @@
 /**
  * Eliza-runtime client for Eliza Cloud's Plaid bridge endpoints.
  *
- * Pattern matches GoogleManagedClient: read the cloud apiKey from
+ * Pattern matches the LifeOps managed-client convention: read the cloud apiKey from
  * loadElizaConfig() / ELIZAOS_CLOUD_API_KEY, hit the cloud at
  * /api/v1/eliza/plaid/*, and surface a typed PlaidManagedClientError on
  * non-2xx responses so callers can show actionable messages.

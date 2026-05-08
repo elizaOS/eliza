@@ -91,7 +91,7 @@ describe("OpenRouter native text plumbing", () => {
     expect(call.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
-  it("forwards openrouter.promptCacheKey from providerOptions to generateText", async () => {
+  it("forwards cache providerOptions to generateText without dropping provider-specific blocks", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
@@ -111,7 +111,10 @@ describe("OpenRouter native text plumbing", () => {
     await handleTextSmall(createRuntime(), {
       prompt: "prompt with caching",
       providerOptions: {
-        openrouter: { promptCacheKey: "v5:abc123" },
+        openrouter: { promptCacheKey: "v5:abc123", prompt_cache_key: "v5:abc123" },
+        anthropic: { cacheControl: { type: "ephemeral" } },
+        openai: { promptCacheKey: "v5:abc123", promptCacheRetention: "24h" },
+        gateway: { caching: "auto" },
       },
     } as never);
 
@@ -121,6 +124,13 @@ describe("OpenRouter native text plumbing", () => {
     const openrouterOpts = providerOptions.openrouter as Record<string, unknown>;
     expect(openrouterOpts).toBeDefined();
     expect(openrouterOpts.promptCacheKey).toBe("v5:abc123");
+    expect(openrouterOpts.prompt_cache_key).toBe("v5:abc123");
+    expect(providerOptions.anthropic).toEqual({ cacheControl: { type: "ephemeral" } });
+    expect(providerOptions.openai).toEqual({
+      promptCacheKey: "v5:abc123",
+      promptCacheRetention: "24h",
+    });
+    expect(providerOptions.gateway).toEqual({ caching: "auto" });
   });
 
   it("does not inject empty providerOptions when none are provided", async () => {

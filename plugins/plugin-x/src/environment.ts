@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { z } from "zod";
+import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
 /**

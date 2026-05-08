@@ -5,6 +5,7 @@ import { TelegramService } from './service';
 function createRuntime() {
   return {
     agentId: 'agent-1',
+    character: { name: 'Agent One' },
     registerMessageConnector: vi.fn(),
     registerSendHandler: vi.fn(),
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -215,5 +216,113 @@ describe('Telegram message connector adapter', () => {
       { accountId: 'acct-a', channelId: '-100111' },
       { accountId: 'acct-b', channelId: '-100222' },
     ]);
+  });
+
+  it('does not use legacy unscoped known chats for non-default accounts', async () => {
+    const runtime = createRuntime();
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      defaultAccountId: 'acct-a',
+      accountStates: new Map([
+        ['acct-a', { accountId: 'acct-a' }],
+        ['acct-b', { accountId: 'acct-b' }],
+      ]),
+      knownChats: new Map([
+        [
+          '-100111',
+          {
+            id: -100111,
+            type: 'supergroup',
+            title: 'Legacy Default Room',
+          },
+        ],
+      ]),
+    });
+
+    const context = {
+      runtime,
+      accountId: 'acct-b',
+      target: { source: 'telegram', accountId: 'acct-b' },
+    };
+    const result = await service.getConnectorChatContext(
+      { source: 'telegram', accountId: 'acct-b', channelId: '-100111' },
+      context,
+    );
+
+    expect(result?.summary).toBeUndefined();
+    expect(result?.label).toBe('-100111');
+    expect(result?.metadata).toMatchObject({ accountId: 'acct-b' });
+  });
+
+  it('starts non-default accounts when the default account has no token', async () => {
+    const runtime = {
+      ...createRuntime(),
+      character: {
+        name: 'Agent One',
+        settings: {
+          telegram: {
+            accounts: {
+              default: { enabled: true },
+              'acct-b': { enabled: true, botToken: 'token-b' },
+            },
+          },
+        },
+      },
+      getSetting: vi.fn().mockReturnValue(undefined),
+    } as unknown as IAgentRuntime;
+    const initializeBot = vi
+      .spyOn(
+        TelegramService.prototype as unknown as {
+          initializeBot: (state: unknown) => Promise<void>;
+        },
+        'initializeBot',
+      )
+      .mockResolvedValue(undefined);
+    const fakeBot = {
+      botInfo: { username: 'acct_b_bot' },
+      launch: vi.fn(),
+      on: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      telegram: { getMe: vi.fn().mockResolvedValue({ id: 2 }) },
+      use: vi.fn(),
+    };
+    const createAccountRuntime = vi
+      .spyOn(
+        TelegramService.prototype as unknown as {
+          createAccountRuntime: (account: unknown) => unknown;
+        },
+        'createAccountRuntime',
+      )
+      .mockImplementation((account: unknown) => {
+        const scopedAccount = account as { accountId: string };
+        return {
+          accountId: scopedAccount.accountId,
+          account,
+          bot: fakeBot,
+          messageManager: { sendMessage: vi.fn() },
+        };
+      });
+
+    const service = await TelegramService.start(runtime);
+
+    expect(createAccountRuntime).toHaveBeenCalledTimes(1);
+    expect(createAccountRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acct-b', botToken: 'token-b' }),
+    );
+    expect(initializeBot).toHaveBeenCalledTimes(1);
+    expect(
+      Array.from(
+        (
+          service as unknown as {
+            accountStates: Map<string, unknown>;
+          }
+        ).accountStates.keys(),
+      ),
+    ).toEqual(['acct-b']);
+
+    initializeBot.mockRestore();
+    createAccountRuntime.mockRestore();
   });
 });

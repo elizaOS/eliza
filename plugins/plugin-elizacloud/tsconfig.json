@@ -21,8 +21,10 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/core": ["../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../packages/core/dist/*"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"]
     }
   },
   "include": ["./**/*.ts"],

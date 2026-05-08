@@ -1,5 +1,5 @@
 /**
- * AES-256-GCM encryption helpers for Google OAuth tokens at rest.
+ * AES-256-GCM encryption helpers for LifeOps connector tokens at rest.
  *
  * Tokens used to be persisted as plaintext JSON files (mode 0600). That meant
  * any process or backup with read access to the credentials directory could

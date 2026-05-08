@@ -44,7 +44,7 @@ type ResponsesApiResponse = Record<string, unknown> & {
     input_tokens?: number;
     output_tokens?: number;
     total_tokens?: number;
-  };
+  } & Record<string, unknown>;
 };
 
 /**
@@ -70,6 +70,53 @@ type ChatAttachment = {
 
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
+};
+
+type GenerateTextParamsWithNativeOptions = GenerateTextParamsWithAttachments & {
+  messages?: unknown[];
+  tools?: unknown;
+  toolChoice?: unknown;
+  responseSchema?: unknown;
+  providerOptions?: Record<string, unknown>;
+};
+
+type NativeTokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedPromptTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+};
+
+type NativeGenerateTextResult = {
+  text: string;
+  toolCalls: unknown[];
+  finishReason?: string;
+  usage?: NativeTokenUsage;
+  providerMetadata?: unknown;
+};
+
+type NativeToolCall = {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+};
+
+type ChatCompletionsResponse = Record<string, unknown> & {
+  error?: {
+    message?: string;
+  };
+  choices?: Array<{
+    text?: string;
+    finish_reason?: string;
+    message?: {
+      content?: unknown;
+      tool_calls?: unknown[];
+    };
+  }>;
+  usage?: Record<string, unknown>;
 };
 
 function buildUserContent(params: GenerateTextParamsWithAttachments) {
@@ -103,6 +150,415 @@ function isReasoningModel(modelName: string): boolean {
 function supportsStopSequences(modelName: string): boolean {
   const lower = modelName.toLowerCase();
   return !RESPONSES_ROUTED_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function recordAt(value: Record<string, unknown>, key: string): Record<string, unknown> {
+  return asRecord(value[key]);
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseJsonIfPossible(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value ?? {};
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function stringifyMessageContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (content == null) {
+    return "";
+  }
+  return typeof content === "object" ? JSON.stringify(content) : String(content);
+}
+
+function hasNativeTransportOptions(params: GenerateTextParamsWithNativeOptions): boolean {
+  return Boolean(
+    params.messages ||
+      params.tools ||
+      params.toolChoice ||
+      params.responseSchema ||
+      params.providerOptions
+  );
+}
+
+function shouldReturnNativeResult(params: GenerateTextParamsWithNativeOptions): boolean {
+  return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
+}
+
+function buildNativeMessages(
+  params: GenerateTextParamsWithNativeOptions,
+  promptText: string,
+  systemPrompt?: string
+): Array<Record<string, unknown>> {
+  if (Array.isArray(params.messages) && params.messages.length > 0) {
+    const messages = params.messages.map((message) =>
+      isRecord(message)
+        ? { ...message }
+        : { role: "user", content: stringifyMessageContent(message) }
+    );
+    const first = asRecord(messages[0]);
+    if (systemPrompt && first.role !== "system") {
+      return [{ role: "system", content: systemPrompt }, ...messages];
+    }
+    return messages;
+  }
+
+  const messages: Array<Record<string, unknown>> = [];
+  if (systemPrompt) {
+    messages.push({ role: "system", content: systemPrompt });
+  }
+  messages.push({ role: "user", content: promptText });
+  return messages;
+}
+
+function unwrapJsonSchema(value: unknown): unknown {
+  const record = asRecord(value);
+  return record.schema ?? record.jsonSchema ?? value;
+}
+
+function normalizeNativeTools(tools: unknown): unknown[] | undefined {
+  if (!tools) {
+    return undefined;
+  }
+
+  if (Array.isArray(tools)) {
+    return tools;
+  }
+
+  const toolSet = asRecord(tools);
+  const normalized: unknown[] = [];
+  for (const [name, rawTool] of Object.entries(toolSet)) {
+    const tool = asRecord(rawTool);
+    const inputSchema = unwrapJsonSchema(
+      tool.inputSchema ?? tool.parameters ?? tool.schema ?? { type: "object" }
+    );
+    normalized.push({
+      type: "function",
+      function: {
+        name,
+        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
+        parameters: inputSchema,
+      },
+    });
+  }
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeNativeToolChoice(toolChoice: unknown): unknown {
+  if (!toolChoice) {
+    return undefined;
+  }
+
+  if (
+    typeof toolChoice === "string" &&
+    (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required")
+  ) {
+    return toolChoice;
+  }
+
+  const choice = asRecord(toolChoice);
+  if (choice.type === "function") {
+    return toolChoice;
+  }
+  if (choice.type === "tool") {
+    const toolName = firstString(choice.toolName, choice.name);
+    return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
+  }
+
+  const functionChoice = asRecord(choice.function);
+  const toolName = firstString(choice.toolName, choice.name, functionChoice.name);
+  return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
+}
+
+function buildNativeResponseFormat(responseSchema: unknown): unknown {
+  if (!responseSchema) {
+    return undefined;
+  }
+
+  const schemaRecord = asRecord(responseSchema);
+  if (schemaRecord.responseFormat) {
+    return schemaRecord.responseFormat;
+  }
+
+  const schemaOptions =
+    "schema" in schemaRecord
+      ? {
+          schema: schemaRecord.schema,
+          name: firstString(schemaRecord.name) ?? "structured_response",
+          description: firstString(schemaRecord.description),
+        }
+      : { schema: responseSchema, name: "structured_response", description: undefined };
+
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: schemaOptions.name,
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+      schema: schemaOptions.schema,
+    },
+  };
+}
+
+function resolvePromptCacheKey(providerOptions: Record<string, unknown>): string | undefined {
+  const eliza = recordAt(providerOptions, "eliza");
+  const openrouter = recordAt(providerOptions, "openrouter");
+  const openai = recordAt(providerOptions, "openai");
+  const cerebras = recordAt(providerOptions, "cerebras");
+
+  return firstString(
+    providerOptions.promptCacheKey,
+    providerOptions.prompt_cache_key,
+    eliza.promptCacheKey,
+    eliza.prompt_cache_key,
+    openrouter.promptCacheKey,
+    openrouter.prompt_cache_key,
+    openai.promptCacheKey,
+    openai.prompt_cache_key,
+    cerebras.promptCacheKey,
+    cerebras.prompt_cache_key
+  );
+}
+
+function resolveNativeProviderOptions(
+  params: GenerateTextParamsWithNativeOptions
+): Record<string, unknown> | undefined {
+  const raw = asRecord(params.providerOptions);
+  if (Object.keys(raw).length === 0) {
+    return undefined;
+  }
+
+  const { agentName: _agentName, eliza: _eliza, ...rest } = raw;
+  const providerOptions: Record<string, unknown> = { ...rest };
+  const promptCacheKey = resolvePromptCacheKey(raw);
+
+  if (promptCacheKey) {
+    providerOptions.openai = {
+      ...recordAt(providerOptions, "openai"),
+      promptCacheKey,
+      prompt_cache_key: promptCacheKey,
+    };
+    providerOptions.openrouter = {
+      ...recordAt(providerOptions, "openrouter"),
+      promptCacheKey,
+      prompt_cache_key: promptCacheKey,
+    };
+    providerOptions.cerebras = {
+      ...recordAt(providerOptions, "cerebras"),
+      prompt_cache_key: promptCacheKey,
+    };
+  }
+
+  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
+}
+
+function applyOpenRouterPassthroughFields(
+  requestBody: Record<string, unknown>,
+  providerOptions: Record<string, unknown> | undefined
+): void {
+  if (!providerOptions) {
+    return;
+  }
+
+  const openrouter = recordAt(providerOptions, "openrouter");
+  if (Object.keys(openrouter).length > 0) {
+    const provider = openrouter.provider;
+    if (provider !== undefined) {
+      requestBody.provider = provider;
+    }
+    for (const key of ["models", "route", "transforms", "reasoning"] as const) {
+      if (openrouter[key] !== undefined) {
+        requestBody[key] = openrouter[key];
+      }
+    }
+  }
+
+  const gateway = providerOptions.gateway;
+  if (gateway !== undefined) {
+    requestBody.gateway = gateway;
+  }
+}
+
+function buildNativeRequestBody(
+  params: GenerateTextParamsWithNativeOptions,
+  modelName: string,
+  promptText: string,
+  systemPrompt?: string
+): Record<string, unknown> {
+  const providerOptions = resolveNativeProviderOptions(params);
+  const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
+  const tools = normalizeNativeTools(params.tools);
+  const toolChoice = normalizeNativeToolChoice(params.toolChoice);
+  const responseFormat = buildNativeResponseFormat(params.responseSchema);
+  const requestBody: Record<string, unknown> = {
+    model: modelName,
+    messages: buildNativeMessages(params, promptText, systemPrompt),
+    max_tokens: params.maxTokens ?? 8192,
+  };
+
+  if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
+    requestBody.temperature = params.temperature;
+  }
+  if (tools) {
+    requestBody.tools = tools;
+  }
+  if (toolChoice) {
+    requestBody.tool_choice = toolChoice;
+  }
+  if (responseFormat) {
+    requestBody.response_format = responseFormat;
+  }
+  if (providerOptions) {
+    requestBody.providerOptions = providerOptions;
+    requestBody.provider_options = providerOptions;
+  }
+  if (promptCacheKey) {
+    requestBody.promptCacheKey = promptCacheKey;
+    requestBody.prompt_cache_key = promptCacheKey;
+  }
+
+  applyOpenRouterPassthroughFields(requestBody, providerOptions);
+  return requestBody;
+}
+
+function extractTextFromContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((item) => {
+      if (typeof item === "string") return item;
+      const record = asRecord(item);
+      return firstString(record.text, record.output_text, record.content) ?? "";
+    })
+    .join("");
+}
+
+function extractChatCompletionText(data: ChatCompletionsResponse): string {
+  const firstChoice = data.choices?.[0];
+  if (!firstChoice) {
+    return "";
+  }
+  return firstString(firstChoice.text, extractTextFromContent(firstChoice.message?.content)) ?? "";
+}
+
+function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[] {
+  const rawCalls = data.choices?.[0]?.message?.tool_calls ?? [];
+  if (!Array.isArray(rawCalls)) {
+    return [];
+  }
+
+  return rawCalls
+    .map<NativeToolCall | undefined>((rawCall) => {
+      const call = asRecord(rawCall);
+      const fn = recordAt(call, "function");
+      const toolName = firstString(call.name, call.toolName, fn.name);
+      if (!toolName) {
+        return undefined;
+      }
+      return {
+        type: "tool-call",
+        toolCallId: firstString(call.id, call.toolCallId) ?? `call_${toolName}`,
+        toolName,
+        input: parseJsonIfPossible(call.input ?? call.arguments ?? fn.arguments ?? {}),
+      };
+    })
+    .filter((call): call is NativeToolCall => call !== undefined);
+}
+
+function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
+  const root = asRecord(usage);
+  if (Object.keys(root).length === 0) {
+    return undefined;
+  }
+
+  const inputTokenDetails = recordAt(root, "inputTokenDetails");
+  const promptTokenDetails = recordAt(root, "prompt_tokens_details");
+  const inputTokenDetailsSnake = recordAt(root, "input_tokens_details");
+  const promptTokens =
+    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens) ?? 0;
+  const completionTokens =
+    firstNumber(
+      root.outputTokens,
+      root.output_tokens,
+      root.completionTokens,
+      root.completion_tokens
+    ) ?? 0;
+  const cacheReadInputTokens = firstNumber(
+    root.cacheReadInputTokens,
+    root.cache_read_input_tokens,
+    root.cachedInputTokens,
+    root.cached_input_tokens,
+    root.cachedTokens,
+    root.cached_tokens,
+    inputTokenDetails.cacheReadTokens,
+    inputTokenDetails.cachedInputTokens,
+    inputTokenDetails.cachedTokens,
+    promptTokenDetails.cached_tokens,
+    inputTokenDetailsSnake.cache_read_input_tokens,
+    inputTokenDetailsSnake.cached_tokens
+  );
+  const cacheCreationInputTokens = firstNumber(
+    root.cacheCreationInputTokens,
+    root.cache_creation_input_tokens,
+    root.cacheWriteInputTokens,
+    root.cache_write_input_tokens,
+    inputTokenDetails.cacheCreationInputTokens,
+    inputTokenDetails.cacheCreationTokens,
+    inputTokenDetails.cacheWriteTokens,
+    inputTokenDetailsSnake.cache_creation_input_tokens
+  );
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens:
+      firstNumber(root.totalTokens, root.total_tokens) ?? promptTokens + completionTokens,
+    cachedPromptTokens: cacheReadInputTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
+  };
 }
 
 type TextModelType =
@@ -211,6 +667,7 @@ async function generateTextWithModel(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const { modelName, prompt, systemPrompt } = buildGenerateParams(runtime, modelType, params);
+  const paramsWithNative = params as GenerateTextParamsWithNativeOptions;
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
 
@@ -222,6 +679,17 @@ async function generateTextWithModel(
 
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
   logger.log(prompt);
+
+  if (hasNativeTransportOptions(paramsWithNative)) {
+    const nativeResult = await generateNativeChatCompletion(runtime, modelType, paramsWithNative, {
+      modelName,
+      prompt,
+      systemPrompt,
+    });
+    return shouldReturnNativeResult(paramsWithNative)
+      ? (nativeResult as unknown as string)
+      : nativeResult.text;
+  }
 
   const reasoning = isReasoningModel(modelName);
   const input: Array<{
@@ -300,6 +768,83 @@ async function generateTextWithModel(
   }
 
   return text;
+}
+
+async function generateNativeChatCompletion(
+  runtime: IAgentRuntime,
+  modelType: TextModelType,
+  params: GenerateTextParamsWithNativeOptions,
+  context: {
+    modelName: string;
+    prompt: string;
+    systemPrompt?: string;
+  }
+): Promise<NativeGenerateTextResult> {
+  const requestBody = buildNativeRequestBody(
+    params,
+    context.modelName,
+    context.prompt,
+    context.systemPrompt
+  );
+  const response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+    headers: {
+      "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
+      "X-Eliza-Model-Type": modelType,
+    },
+    json: requestBody,
+  });
+  const responseText = await response.text();
+  let data: ChatCompletionsResponse = {};
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText) as ChatCompletionsResponse;
+    } catch (parseErr) {
+      logger.error(
+        `[ELIZAOS_CLOUD] Failed to parse chat completions JSON: ${
+          parseErr instanceof Error ? parseErr.message : String(parseErr)
+        }`
+      );
+    }
+  }
+
+  if (!response.ok) {
+    const errorBody = typeof data === "object" && data ? data.error : undefined;
+    const errorMessage =
+      typeof errorBody?.message === "string" && errorBody.message.trim()
+        ? errorBody.message.trim()
+        : `elizaOS Cloud error ${response.status}`;
+    const requestError = new Error(errorMessage) as Error & {
+      status?: number;
+      error?: unknown;
+    };
+    requestError.status = response.status;
+    if (errorBody) {
+      requestError.error = errorBody;
+    }
+    throw requestError;
+  }
+
+  const usage = convertNativeUsage(data.usage);
+  if (usage) {
+    emitModelUsageEvent(runtime, modelType, context.prompt, usage);
+  }
+
+  const text = extractChatCompletionText(data);
+  const toolCalls = extractNativeToolCalls(data);
+  if (!text.trim() && toolCalls.length === 0) {
+    throw new Error("elizaOS Cloud returned no text or tool calls");
+  }
+
+  return {
+    text,
+    toolCalls,
+    finishReason: data.choices?.[0]?.finish_reason,
+    usage,
+    providerMetadata: {
+      modelName: context.modelName,
+      usage: data.usage,
+    },
+  };
 }
 
 export async function handleTextSmall(

@@ -454,6 +454,9 @@
         "MORNING_CHECK_IN",
         "NIGHT_CHECKIN",
         "NIGHT_CHECK_IN",
+        "RUN_CHECKIN",
+        "RUN_MORNING_CHECKIN",
+        "RUN_NIGHT_CHECKIN",
         "DAILY_BRIEF"
       ],
       "exampleCalls": [
@@ -3225,6 +3228,37 @@
               "todos": "example",
               "includeCompleted": false,
               "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "UPDATE_LINEAR_ISSUE",
+      "description": "Update an existing Linear issue (title, priority, assignee, status, labels, team)",
+      "parameters": [
+        {
+          "name": "issueId",
+          "description": "Linear issue id or identifier to update.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "update Linear issue",
+      "similes": [
+        "update-linear-issue",
+        "edit-linear-issue",
+        "modify-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use UPDATE_LINEAR_ISSUE with the provided parameters.",
+          "actions": ["UPDATE_LINEAR_ISSUE"],
+          "params": {
+            "UPDATE_LINEAR_ISSUE": {
+              "issueId": "example"
             }
           }
         }

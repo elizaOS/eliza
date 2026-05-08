@@ -48,6 +48,9 @@ rules:
 - LifeOps browser, browser bridge, browser companion, browser extension, browser tab, or browser settings requests must include browser; include settings or connectors as secondary contexts when the user asks for configuration/connection state
 - otherwise list every relevant context id; planning will run and tools will be selected from those contexts
 - include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
+- plan.candidateActions is OPTIONAL. When planning is needed, include up to 12 action-like retrieval hints inferred from the request, such as "send_email", "calendar_create_event", "search_documents", or "play_music". These can be speculative BM25/regex hints; they are not tool calls.
+- plan.parentActionHints is OPTIONAL. Include up to 6 parent action names only when the parent action is explicit or highly likely. Prefer omitting over guessing.
+- plan.contextSlices is OPTIONAL. Include up to 12 stable retrieval slice ids or handles only when they are visible in the provided context; do not invent slice ids.
 - thought is internal routing rationale and is not shown to the user
 - extract is OPTIONAL. Populate it ONLY when the user's message states a durable fact about the user, a person they know, or a relationship between two entities. Examples worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn". Do NOT extract: questions, requests, ephemeral state, agent self-talk, or anything already obvious from the agent persona.
 - extract.facts entries are short factual statements in the user's voice ("the user's birthday is 1990-03-05"). Keep each entry under ~120 chars and self-contained.

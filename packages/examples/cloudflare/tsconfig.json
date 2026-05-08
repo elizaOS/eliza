@@ -3,12 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "@cloudflare/workers-types"
-    ],
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,12 +14,7 @@
     "isolatedModules": true,
     "esModuleInterop": true
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "test-client.ts"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "test-client.ts"],
   "extends": "../../../tsconfig.workspace-paths.json"
 }

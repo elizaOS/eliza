@@ -33,6 +33,54 @@ enum TIMELINE_TYPE {
   Following = "following",
 }
 
+type ActionableTweet = Tweet & {
+  id: string;
+  userId: string;
+  username: string;
+  name: string;
+  conversationId: string;
+  text: string;
+  timestamp: number;
+};
+
+type TweetDecision = {
+  tweet: ActionableTweet;
+  actionResponse: ActionResponse;
+  tweetState: State;
+  roomId: UUID;
+};
+
+function normalizeTweet(tweet: Tweet): ActionableTweet | null {
+  if (
+    typeof tweet.id !== "string" ||
+    tweet.id.length === 0 ||
+    typeof tweet.userId !== "string" ||
+    tweet.userId.length === 0
+  ) {
+    return null;
+  }
+
+  const username =
+    typeof tweet.username === "string" && tweet.username.length > 0
+      ? tweet.username
+      : "unknown";
+
+  return {
+    ...tweet,
+    id: tweet.id,
+    userId: tweet.userId,
+    username,
+    name: tweet.name ?? username,
+    conversationId: tweet.conversationId ?? tweet.id,
+    text: tweet.text ?? "",
+    timestamp: tweet.timestamp ?? Date.now(),
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class TwitterTimelineClient {
   client: ClientBase;
   twitterClient: Client;
@@ -111,7 +159,7 @@ export class TwitterTimelineClient {
     this.isRunning = false;
   }
 
-  async getTimeline(count: number): Promise<Tweet[]> {
+  async getTimeline(count: number): Promise<ActionableTweet[]> {
     const twitterUsername = this.client.profile?.username;
     const homeTimeline =
       this.timelineType === TIMELINE_TYPE.Following
@@ -119,14 +167,17 @@ export class TwitterTimelineClient {
         : await this.twitterClient.fetchHomeTimeline(count, []);
 
     // The timeline methods now return Tweet objects directly from v2 API
-    return homeTimeline.filter((tweet) => tweet.username !== twitterUsername); // do not perform action on self-tweets
+    return homeTimeline
+      .map((tweet) => normalizeTweet(tweet))
+      .filter((tweet): tweet is ActionableTweet => tweet !== null)
+      .filter((tweet) => tweet.username !== twitterUsername); // do not perform action on self-tweets
   }
 
-  createTweetId(runtime: IAgentRuntime, tweet: Tweet) {
+  createTweetId(runtime: IAgentRuntime, tweet: ActionableTweet) {
     return createUniqueUuid(runtime, tweet.id);
   }
 
-  formMessage(runtime: IAgentRuntime, tweet: Tweet): Memory {
+  formMessage(runtime: IAgentRuntime, tweet: ActionableTweet): Memory {
     return {
       id: this.createTweetId(runtime, tweet),
       agentId: runtime.agentId,
@@ -166,7 +217,7 @@ export class TwitterTimelineClient {
       10,
     );
 
-    const tweetDecisions = [];
+    const tweetDecisions: TweetDecision[] = [];
     for (const tweet of tweets) {
       try {
         // Check if already processed using utility
@@ -203,7 +254,8 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
             prompt: actionRespondPrompt,
           },
         );
-        const parsedResponse = parseActionResponseFromText(actionResponse);
+        const parsedResponse =
+          parseActionResponseFromText(actionResponse).actions;
 
         // Ensure a valid action response was generated
         if (!parsedResponse) {
@@ -221,12 +273,15 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         // Limit the number of actions per cycle
         if (tweetDecisions.length >= maxActionsPerCycle) break;
       } catch (error) {
-        logger.error(`Error processing tweet ${tweet.id}:`, error);
+        logger.error(
+          `Error processing tweet ${tweet.id}:`,
+          errorMessage(error),
+        );
       }
     }
 
     // Rank by the quality of the response
-    const rankByActionRelevance = (arr) => {
+    const rankByActionRelevance = (arr: TweetDecision[]): TweetDecision[] => {
       return arr.sort((a, b) => {
         const countTrue = (obj: typeof a.actionResponse) =>
           Object.values(obj).filter(Boolean).length;
@@ -253,8 +308,8 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
 
     logger.info(`Processing ${prioritizedTweets.length} tweets with actions`);
     if (prioritizedTweets.length > 0) {
-      const actionSummary = prioritizedTweets.map((td) => {
-        const actions = [];
+      const actionSummary = prioritizedTweets.map((td: TweetDecision) => {
+        const actions: string[] = [];
         if (td.actionResponse.like) actions.push("LIKE");
         if (td.actionResponse.retweet) actions.push("RETWEET");
         if (td.actionResponse.quote) actions.push("QUOTE");
@@ -269,12 +324,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
   }
 
   private async processTimelineActions(
-    tweetDecisions: {
-      tweet: Tweet;
-      actionResponse: ActionResponse;
-      tweetState: State;
-      roomId: UUID;
-    }[],
+    tweetDecisions: TweetDecision[],
   ): Promise<
     {
       tweetId: string;
@@ -282,7 +332,11 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       executedActions: string[];
     }[]
   > {
-    const results = [];
+    const results: {
+      tweetId: string;
+      actionResponse: ActionResponse;
+      executedActions: string[];
+    }[] = [];
 
     for (const {
       tweet,
@@ -291,7 +345,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       roomId,
     } of tweetDecisions) {
       const tweetId = this.createTweetId(this.runtime, tweet);
-      const executedActions = [];
+      const executedActions: string[] = [];
 
       // Ensure room exists before creating memory
       await this.runtime.ensureRoomExists({
@@ -357,7 +411,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
 
         results.push({ tweetId: tweet.id, actionResponse, executedActions });
       } catch (error) {
-        logger.error(`Error processing actions for tweet ${tweet.id}:`, error);
+        logger.error(
+          `Error processing actions for tweet ${tweet.id}:`,
+          errorMessage(error),
+        );
       }
     }
 
@@ -365,7 +422,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
   }
 
   private async ensureTweetWorldContext(
-    tweet: Tweet,
+    tweet: ActionableTweet,
     _roomId: UUID,
     _worldId: UUID,
     _entityId: UUID,
@@ -380,12 +437,15 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         conversationId: tweet.conversationId,
       });
     } catch (error) {
-      logger.error(`Failed to ensure context for tweet ${tweet.id}:`, error);
+      logger.error(
+        `Failed to ensure context for tweet ${tweet.id}:`,
+        errorMessage(error),
+      );
       // Don't fail the entire timeline processing
     }
   }
 
-  async handleLikeAction(tweet: Tweet) {
+  async handleLikeAction(tweet: ActionableTweet) {
     try {
       if (this.isDryRun) {
         logger.log(`[DRY RUN] Would have liked tweet ${tweet.id}`);
@@ -394,11 +454,11 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       await this.twitterClient.likeTweet(tweet.id);
       logger.log(`Liked tweet ${tweet.id}`);
     } catch (error) {
-      logger.error(`Error liking tweet ${tweet.id}:`, error);
+      logger.error(`Error liking tweet ${tweet.id}:`, errorMessage(error));
     }
   }
 
-  async handleRetweetAction(tweet: Tweet) {
+  async handleRetweetAction(tweet: ActionableTweet) {
     try {
       if (this.isDryRun) {
         logger.log(`[DRY RUN] Would have retweeted tweet ${tweet.id}`);
@@ -407,11 +467,11 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       await this.twitterClient.retweet(tweet.id);
       logger.log(`Retweeted tweet ${tweet.id}`);
     } catch (error) {
-      logger.error(`Error retweeting tweet ${tweet.id}:`, error);
+      logger.error(`Error retweeting tweet ${tweet.id}:`, errorMessage(error));
     }
   }
 
-  async handleQuoteAction(tweet: Tweet) {
+  async handleQuoteAction(tweet: ActionableTweet) {
     try {
       const message = this.formMessage(this.runtime, tweet);
 
@@ -469,7 +529,7 @@ ${tweet.text}`;
         if (tweetResult) {
           logger.log("Successfully posted quote tweet");
         } else {
-          logger.error("Quote tweet creation failed:", body);
+          logger.error("Quote tweet creation failed:", JSON.stringify(body));
         }
 
         // Create memory for our response
@@ -505,11 +565,11 @@ ${tweet.text}`;
         await createMemorySafe(this.runtime, responseMemory, "messages");
       }
     } catch (error) {
-      logger.error("Error in quote tweet generation:", error);
+      logger.error("Error in quote tweet generation:", errorMessage(error));
     }
   }
 
-  async handleReplyAction(tweet: Tweet) {
+  async handleReplyAction(tweet: ActionableTweet) {
     try {
       const message = this.formMessage(this.runtime, tweet);
 
@@ -586,7 +646,7 @@ ${tweet.text}`;
         }
       }
     } catch (error) {
-      logger.error("Error in reply tweet generation:", error);
+      logger.error("Error in reply tweet generation:", errorMessage(error));
     }
   }
 }

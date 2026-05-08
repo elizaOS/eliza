@@ -121,6 +121,63 @@ describe("OpenAI native text plumbing", () => {
     });
   }, 180_000);
 
+  it("preserves Cerebras cache keys while stripping OpenAI-only cache retention", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 4, outputTokens: 1 },
+    });
+
+    const runtime = createRuntime();
+    vi.mocked(runtime.getSetting).mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+        OPENAI_SMALL_MODEL: "gpt-oss-120b",
+      };
+      return settings[key];
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(runtime, {
+      prompt: "cache",
+      providerOptions: {
+        openai: { promptCacheKey: "v5:abc", promptCacheRetention: "24h" },
+        cerebras: { promptCacheKey: "v5:abc", prompt_cache_key: "v5:abc" },
+        gateway: { caching: "auto" },
+      },
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.providerOptions).toEqual({
+      cerebras: { promptCacheKey: "v5:abc", prompt_cache_key: "v5:abc" },
+      gateway: { caching: "auto" },
+      openai: { promptCacheKey: "v5:abc" },
+    });
+  });
+
+  it("defaults small and response handler models to gpt-5.4-mini while preserving explicit overrides", async () => {
+    const { getResponseHandlerModel, getSmallModel } = await import("../utils/config");
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+
+    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-5.4-mini");
+
+    const overrideRuntime = {
+      getSetting: vi.fn((key: string) => {
+        const settings: Record<string, string> = {
+          OPENAI_SMALL_MODEL: "custom-small",
+          OPENAI_RESPONSE_HANDLER_MODEL: "custom-response",
+        };
+        return settings[key];
+      }),
+    } as unknown as IAgentRuntime;
+    expect(getSmallModel(overrideRuntime)).toBe("custom-small");
+    expect(getResponseHandlerModel(overrideRuntime)).toBe("custom-response");
+  });
+
   it("passes the effective system separately without duplicating the leading system message", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",

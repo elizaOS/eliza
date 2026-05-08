@@ -311,6 +311,44 @@ describe("Custom Errors", () => {
 });
 
 describe("Twitch message connector accounts", () => {
+  test("registers one connector for each started account", () => {
+    const runtime = makeMockRuntime({
+      registerMessageConnector: vi.fn(),
+      registerSendHandler: vi.fn(),
+      logger: { info: vi.fn() },
+    });
+    const service = Object.create(TwitchService.prototype) as TwitchService;
+    const primary = Object.create(TwitchService.prototype) as TwitchService;
+    const secondary = Object.create(TwitchService.prototype) as TwitchService;
+    (primary as any).settings = {
+      accountId: "primary",
+      username: "bot_one",
+      channel: "one",
+      additionalChannels: [],
+    };
+    (primary as any).joinedChannels = new Set(["one"]);
+    (secondary as any).settings = {
+      accountId: "secondary",
+      username: "bot_two",
+      channel: "two",
+      additionalChannels: [],
+    };
+    (secondary as any).joinedChannels = new Set(["two"]);
+    (service as any).accountServices = new Map([
+      ["primary", primary],
+      ["secondary", secondary],
+    ]);
+
+    TwitchService.registerSendHandlers(runtime, service);
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledTimes(2);
+    expect(
+      (runtime.registerMessageConnector as any).mock.calls.map(
+        ([registration]: any[]) => registration.accountId,
+      ),
+    ).toEqual(["primary", "secondary"]);
+  });
+
   test("registers accountId and routes sends through that account", async () => {
     const runtime = makeMockRuntime({
       registerMessageConnector: vi.fn(),

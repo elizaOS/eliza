@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { BlueSkyService } from "../services/bluesky";
 import {
 	listBlueSkyAccountIds,
 	resolveDefaultBlueSkyAccountId,
@@ -39,5 +40,72 @@ describe("BlueSky account config", () => {
 		const config = validateBlueSkyConfig(rt);
 		expect(config.accountId).toBe("support");
 		expect(config.handle).toBe("support.example.com");
+	});
+
+	it("registers message and post connectors for each initialized account", () => {
+		const rt = {
+			agentId: "agent-1",
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+			registerMessageConnector: vi.fn(),
+			registerPostConnector: vi.fn(),
+		} as unknown as IAgentRuntime & {
+			registerPostConnector: ReturnType<typeof vi.fn>;
+		};
+		const service = new BlueSkyService() as unknown as {
+			agents: Map<string, unknown>;
+		};
+		const messageService = (accountId: string) => ({
+			getAccountId: () => accountId,
+			handleSendMessage: vi.fn(),
+			resolveConnectorTargets: vi.fn(),
+			listRecentConnectorTargets: vi.fn(),
+			listConnectorRooms: vi.fn(),
+			getConnectorChatContext: vi.fn(),
+			getConnectorUserContext: vi.fn(),
+			fetchConnectorMessages: vi.fn(),
+		});
+		const postService = (accountId: string) => ({
+			getAccountId: () => accountId,
+			handleSendPost: vi.fn(),
+			fetchFeed: vi.fn(),
+			searchPosts: vi.fn(),
+		});
+
+		service.agents.set("agent-1", {
+			defaultAccountId: "default",
+			managers: new Map([
+				["default", {}],
+				["support", {}],
+			]),
+			messageServices: new Map([
+				["default", messageService("default")],
+				["support", messageService("support")],
+			]),
+			postServices: new Map([
+				["default", postService("default")],
+				["support", postService("support")],
+			]),
+		});
+
+		BlueSkyService.registerSendHandlers(
+			rt,
+			service as unknown as BlueSkyService,
+		);
+
+		expect(rt.registerMessageConnector).toHaveBeenCalledTimes(2);
+		expect(rt.registerPostConnector).toHaveBeenCalledTimes(2);
+		expect(
+			(rt.registerMessageConnector as ReturnType<typeof vi.fn>).mock.calls.map(
+				([registration]) => registration.accountId,
+			),
+		).toEqual(["default", "support"]);
+		expect(
+			rt.registerPostConnector.mock.calls.map(
+				([registration]) => registration.accountId,
+			),
+		).toEqual(["default", "support"]);
 	});
 });

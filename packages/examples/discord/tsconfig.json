@@ -3,11 +3,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -15,16 +11,9 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "*.ts",
-    "__tests__/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
+  "include": ["*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules"],
   "extends": "../../../tsconfig.workspace-paths.json"
 }

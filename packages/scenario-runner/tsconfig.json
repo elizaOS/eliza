@@ -43,6 +43,9 @@
       ],
       "@elizaos/app-core/components/pages/PageScopedChatPane": [
         "../app-core/src/components/pages/PageScopedChatPane.tsx"
+      ],
+      "@elizaos/app-lifeops/lifeops/runtime": [
+        "./src/shims/elizaos-app-lifeops-runtime.ts"
       ]
     }
   },

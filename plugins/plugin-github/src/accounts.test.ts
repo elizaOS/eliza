@@ -70,6 +70,20 @@ describe("GitHub account resolution", () => {
     });
   });
 
+  it("does not fall back to role defaults when an explicit accountId is missing", () => {
+    const accounts = readGitHubAccounts(
+      runtime({
+        GITHUB_AGENT_PAT: "legacy-agent",
+      }),
+    );
+    const selection = resolveGitHubAccountSelection(
+      { accountId: "missing", as: "agent" },
+      "agent",
+    );
+
+    expect(resolveGitHubAccount(accounts, selection)).toBeNull();
+  });
+
   it("does not read token-shaped fields from account metadata", () => {
     const accounts = readGitHubAccounts(
       runtime({

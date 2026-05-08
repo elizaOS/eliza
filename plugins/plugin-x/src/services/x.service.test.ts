@@ -17,7 +17,8 @@ function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
 
 function serviceWithRuntime(settings: Record<string, string>): XService {
   const service = new XService();
-  service.runtime = runtimeWithSettings(settings);
+  (service as unknown as { runtime: IAgentRuntime }).runtime =
+    runtimeWithSettings(settings);
   return service;
 }
 
@@ -63,7 +64,9 @@ describe("XService account status", () => {
       TWITTER_SCOPES: "tweet.read users.read dm.read",
     });
 
-    await expect(service.getAccountStatus("oauth-account")).resolves.toMatchObject({
+    await expect(
+      service.getAccountStatus("oauth-account"),
+    ).resolves.toMatchObject({
       accountId: "oauth-account",
       configured: true,
       connected: true,

@@ -23,6 +23,7 @@ describe("Shopify account resolution", () => {
     expect(readShopifyAccounts(rt)).toEqual([
       expect.objectContaining({
         accountId: "default",
+        role: "OWNER",
         storeDomain: "store.myshopify.com",
         accessToken: "shpat_legacy",
       }),
@@ -44,7 +45,26 @@ describe("Shopify account resolution", () => {
     expect(resolveShopifyAccountId(rt, { accountId: "merch" })).toBe("merch");
     expect(resolveShopifyAccount(accounts, "merch")).toMatchObject({
       accountId: "merch",
+      role: "OWNER",
       storeDomain: "merch.myshopify.com",
     });
+  });
+
+  it("defaults to the first configured account only when no accountId is requested", () => {
+    const rt = runtime({
+      SHOPIFY_ACCOUNTS: JSON.stringify({
+        merch: {
+          storeDomain: "merch.myshopify.com",
+          accessToken: "shpat_merch",
+        },
+      }),
+    });
+    const accounts = readShopifyAccounts(rt);
+
+    expect(resolveShopifyAccountId(rt)).toBe("merch");
+    expect(resolveShopifyAccount(accounts, "missing")).toBeNull();
+    expect(resolveShopifyAccountId(rt, { accountId: "missing" })).toBe(
+      "missing",
+    );
   });
 });

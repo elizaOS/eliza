@@ -138,6 +138,8 @@ export interface GoogleChatReaction {
 
 /** Options for sending a message */
 export interface GoogleChatMessageSendOptions {
+  /** Connector account identifier */
+  accountId?: string;
   /** Target space name */
   space?: string;
   /** Thread name for replying in thread */

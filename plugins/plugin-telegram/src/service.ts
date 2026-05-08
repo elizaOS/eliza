@@ -473,19 +473,19 @@ export class TelegramService extends Service {
 
     const service = new TelegramService(runtime);
 
-    // If bot is not initialized (no token), return the service without further initialization
+    for (const account of listEnabledTelegramAccounts(runtime)) {
+      if (!service.getAccountState(account.accountId)) {
+        service.setDefaultAccountState(service.createAccountRuntime(account));
+      }
+    }
+
+    // If no account has an initialized bot, return the service without further initialization.
     if (!service.bot) {
       logger.warn(
         { src: 'plugin:telegram', agentId: runtime.agentId },
         'Service started without bot functionality',
       );
       return service;
-    }
-
-    for (const account of listEnabledTelegramAccounts(runtime)) {
-      if (!service.getAccountState(account.accountId)) {
-        service.setDefaultAccountState(service.createAccountRuntime(account));
-      }
     }
 
     const maxRetries = 5;
@@ -1355,7 +1355,7 @@ export class TelegramService extends Service {
       accountId,
       metadata: { accountId },
       chat,
-      botUsername: this.bot?.botInfo?.username,
+      botUsername: this.getAccountState(accountId)?.bot.botInfo?.username,
     } as TelegramWorldPayload & {
       accountId: string;
       metadata: { accountId: string };
@@ -1554,9 +1554,9 @@ export class TelegramService extends Service {
         // For groups and supergroups, try to get member information
         try {
           // Get chat administrators (this is what's available through the Bot API)
-          const admins = await this.bot?.telegram.getChatAdministrators(
-            chat.id,
-          );
+          const admins = await this.getAccountState(
+            accountId,
+          )?.bot.telegram.getChatAdministrators(chat.id);
 
           if (admins && admins.length > 0) {
             for (const admin of admins) {
@@ -1841,7 +1841,9 @@ export class TelegramService extends Service {
   ): Promise<Chat | null> {
     const known =
       this.knownChats.get(this.scopedTelegramKey(String(chatId), accountId)) ??
-      this.knownChats.get(String(chatId));
+      (normalizeTelegramAccountId(accountId) === DEFAULT_ACCOUNT_ID
+        ? this.knownChats.get(String(chatId))
+        : undefined);
     if (known) {
       return known;
     }

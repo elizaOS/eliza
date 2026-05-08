@@ -2,6 +2,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
 
+export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "deepseek/deepseek-v4-pro";
+
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined") {
     return undefined;
@@ -96,7 +98,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
-    (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
+    (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string)
   );
 }
 
@@ -114,7 +116,7 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL") ??
     getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
-    getNanoModel(runtime)
+    getSmallModel(runtime)
   );
 }
 
@@ -124,7 +126,7 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "ELIZAOS_CLOUD_PLANNER_MODEL") ??
     getSetting(runtime, "ACTION_PLANNER_MODEL") ??
     getSetting(runtime, "PLANNER_MODEL") ??
-    getMediumModel(runtime)
+    getLargeModel(runtime)
   );
 }
 

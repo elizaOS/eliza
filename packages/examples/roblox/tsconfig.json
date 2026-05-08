@@ -2,36 +2,21 @@
   "compilerOptions": {
     "declaration": false,
     "esModuleInterop": true,
-    "lib": [
-      "ES2022"
-    ],
+    "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,
     "outDir": "./dist",
     "paths": {
-      "@elizaos/core": [
-        "./../../core/dist/index.node.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "./../../core/dist/*"
-      ]
+      "@elizaos/core": ["./../../core/dist/index.node.d.ts"],
+      "@elizaos/core/*": ["./../../core/dist/*"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": [
-      "bun-types",
-      "node"
-    ]
+    "types": ["bun-types", "node"]
   },
-  "exclude": [
-    "node_modules",
-    "dist"
-  ],
-  "include": [
-    "*.ts",
-    "**/*.ts"
-  ]
+  "exclude": ["node_modules", "dist"],
+  "include": ["*.ts", "**/*.ts"]
 }

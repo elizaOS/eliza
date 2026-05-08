@@ -365,12 +365,12 @@ function renderPlannerModelInput(params: {
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
 	const availableActionsBlock = renderAvailableActionsBlock(params.context);
 	const contextSegments = availableActionsBlock
-			? [
-					...renderedContext.promptSegments,
-					{
-						content: availableActionsBlock,
-						stable: false,
-					} satisfies PromptSegment,
+		? [
+				...renderedContext.promptSegments,
+				{
+					content: availableActionsBlock,
+					stable: false,
+				} satisfies PromptSegment,
 			]
 		: renderedContext.promptSegments;
 	const promptSegments = normalizePromptSegments([
@@ -395,11 +395,17 @@ function renderPlannerModelInput(params: {
 }
 
 function normalizePlannerToolName(name: string): string {
-	return name.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+	return name
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
 }
 
 function isPlannerWrapperTool(name: string): boolean {
-	return normalizePlannerToolName(name) === normalizePlannerToolName(PLAN_ACTIONS_TOOL_NAME);
+	return (
+		normalizePlannerToolName(name) ===
+		normalizePlannerToolName(PLAN_ACTIONS_TOOL_NAME)
+	);
 }
 
 function compactToolParameters(parameters: unknown): unknown {
@@ -716,6 +722,9 @@ async function callPlanner(params: {
 			cacheProviderOptions({
 				prefixHash,
 				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: renderedInput.promptSegments,
+				provider: params.provider,
+				hasTools,
 			}),
 			modelInputBudget,
 		),

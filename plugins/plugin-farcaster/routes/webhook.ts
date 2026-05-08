@@ -1,4 +1,15 @@
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse, UUID } from "@elizaos/core";
+import type { FarcasterAgentManager } from "../managers/AgentManager";
+import { FARCASTER_SERVICE_NAME, type NeynarWebhookData } from "../types";
+import { readFarcasterAccountId } from "../utils/config";
+
+type FarcasterWebhookService = {
+  getManagerForAccount?: (
+    accountId: string | undefined,
+    agentId?: UUID
+  ) => FarcasterAgentManager | undefined;
+  getManagersForAgent?: (agentId?: UUID) => Map<string, FarcasterAgentManager>;
+};
 
 export const farcasterWebhookRoutes: Route[] = [
   {
@@ -7,28 +18,26 @@ export const farcasterWebhookRoutes: Route[] = [
     path: "/webhook",
     handler: async (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
-        const webhookData = req.body as { type?: string };
+        const webhookData = req.body as unknown as NeynarWebhookData;
         const eventType = webhookData.type;
 
-        const farcasterService = runtime?.getService?.("farcaster") as {
-          managers?: {
-            get?: (id: string) => {
-              interactions?: {
-                mode?: string;
-                processWebhookData?: (data: { type?: string }) => Promise<void>;
-              };
-            };
-          };
-        };
+        const farcasterService = runtime?.getService?.(FARCASTER_SERVICE_NAME) as
+          | FarcasterWebhookService
+          | undefined;
+        const accountId = readFarcasterAccountId(webhookData);
 
-        if (farcasterService) {
-          const agentManager = farcasterService.managers?.get?.(runtime.agentId ?? "");
-
-          if (agentManager?.interactions) {
-            if (agentManager.interactions.mode === "webhook") {
-              await agentManager.interactions.processWebhookData?.(webhookData);
-            }
+        if (farcasterService && accountId) {
+          const manager = farcasterService.getManagerForAccount?.(accountId, runtime.agentId);
+          if (manager?.interactions.mode === "webhook") {
+            await manager.interactions.processWebhookData(webhookData);
           }
+        } else if (farcasterService) {
+          const managers = farcasterService.getManagersForAgent?.(runtime.agentId) ?? new Map();
+          await Promise.all(
+            Array.from(managers.values())
+              .filter((manager) => manager.interactions.mode === "webhook")
+              .map((manager) => manager.interactions.processWebhookData(webhookData))
+          );
         }
 
         res.status(200).json({
