@@ -114,6 +114,7 @@ export const spawnAgentAction = {
           worldId: message.worldId,
           userId: message.entityId,
           label,
+          source: content.source,
           keepAliveAfterComplete,
         },
       });

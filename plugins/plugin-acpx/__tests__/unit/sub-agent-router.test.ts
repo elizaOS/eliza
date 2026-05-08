@@ -238,4 +238,58 @@ describe("SubAgentRouter", () => {
 
     expect(handleMessage).not.toHaveBeenCalled();
   });
+
+  it("caps round-trips at ACPX_SUB_AGENT_ROUND_TRIP_CAP and force-stops", async () => {
+    const stopSession = vi.fn(async () => undefined);
+    const acpWithStop = {
+      ...acp.service,
+      stopSession,
+    } as unknown as Parameters<typeof makeRuntime>[0]["acp"];
+    const { runtime, handleMessage } = makeRuntime({
+      acp: acpWithStop,
+      setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "3" },
+    });
+    await SubAgentRouter.start(runtime);
+
+    // 4 distinct task_complete payloads — first 3 deliver, 4th is the cap.
+    for (let i = 0; i < 4; i++) {
+      acp.emit(SESSION_ID, "task_complete", { response: `iter-${i}` });
+      await new Promise((r) => setImmediate(r));
+    }
+
+    expect(handleMessage).toHaveBeenCalledTimes(4);
+    expect(stopSession).toHaveBeenCalledWith(SESSION_ID);
+    const last = handleMessage.mock.calls[3]?.[1];
+    if (!last) throw new Error("expected 4th memory");
+    const meta = last.content?.metadata as Record<string, unknown>;
+    expect(meta?.subAgentCapExceeded).toBe(true);
+    expect(meta?.subAgentEvent).toBe("round_trip_cap_exceeded");
+    expect(meta?.subAgentRoundTrip).toBe(4);
+    expect(meta?.subAgentRoundTripCap).toBe(3);
+    expect(last.content?.text).toContain("round-trip cap exceeded");
+  });
+
+  it("does not re-fire cap notice if more events arrive after cap exceeded", async () => {
+    const stopSession = vi.fn(async () => undefined);
+    const acpWithStop = {
+      ...acp.service,
+      stopSession,
+    } as unknown as Parameters<typeof makeRuntime>[0]["acp"];
+    const { runtime, handleMessage } = makeRuntime({
+      acp: acpWithStop,
+      setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "first" });
+    await new Promise((r) => setImmediate(r));
+    acp.emit(SESSION_ID, "task_complete", { response: "second" });
+    await new Promise((r) => setImmediate(r));
+    acp.emit(SESSION_ID, "task_complete", { response: "third" });
+    await new Promise((r) => setImmediate(r));
+
+    // first delivers, second triggers cap-exceeded notice (and stop), third is suppressed.
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(stopSession).toHaveBeenCalledTimes(1);
+  });
 });

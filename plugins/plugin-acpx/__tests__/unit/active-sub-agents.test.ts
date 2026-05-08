@@ -117,4 +117,55 @@ describe("activeSubAgentsProvider", () => {
     expect(result.text).toContain("STOP_AGENT");
     expect(result.text).toContain("REPLY");
   });
+
+  it("buckets transient statuses into 'active' for cache stability", async () => {
+    const transient = [
+      "ready",
+      "running",
+      "busy",
+      "tool_running",
+      "authenticating",
+    ];
+    for (const status of transient) {
+      const service = serviceMock({
+        listSessions: () => [sub({ status })],
+      });
+      const runtime = runtimeWith(service);
+      const result = await activeSubAgentsProvider.get(
+        runtime,
+        memory(),
+        state,
+      );
+      expect(result.text).toContain("status=active");
+      expect(result.text).not.toContain(`status=${status}`);
+    }
+  });
+
+  it("preserves 'blocked' status (distinct from 'active' for the planner)", async () => {
+    const service = serviceMock({
+      listSessions: () => [sub({ status: "blocked" })],
+    });
+    const runtime = runtimeWith(service);
+    const result = await activeSubAgentsProvider.get(runtime, memory(), state);
+    expect(result.text).toContain("status=blocked");
+  });
+
+  it("renders identical text when only transient status flips occur", async () => {
+    const sessionA = sub({ status: "ready" });
+    const sessionB = sub({ status: "tool_running" });
+    const sessionC = sub({ status: "busy" });
+    const runs = [sessionA, sessionB, sessionC].map(async (s) => {
+      const service = serviceMock({ listSessions: () => [s] });
+      const runtime = runtimeWith(service);
+      const result = await activeSubAgentsProvider.get(
+        runtime,
+        memory(),
+        state,
+      );
+      return result.text;
+    });
+    const texts = await Promise.all(runs);
+    expect(texts[0]).toBe(texts[1]);
+    expect(texts[1]).toBe(texts[2]);
+  });
 });

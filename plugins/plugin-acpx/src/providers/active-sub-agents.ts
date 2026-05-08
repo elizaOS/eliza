@@ -10,6 +10,25 @@ const TERMINAL_STATUSES = new Set([
   "cancelled",
 ]);
 
+// Transient statuses that bucket together as "active" for the planner-visible
+// view. We do NOT distinguish ready vs busy vs tool_running vs running vs
+// authenticating because that distinction would invalidate the cached
+// provider segment on every tool call. The planner only needs to know:
+// "is this session active and addressable, or is it blocked-and-waiting".
+const ACTIVE_STATUS_BUCKET = new Set([
+  "ready",
+  "running",
+  "busy",
+  "tool_running",
+  "authenticating",
+]);
+
+function bucketStatus(status: string): string {
+  if (ACTIVE_STATUS_BUCKET.has(status)) return "active";
+  if (status === "blocked") return "blocked";
+  return status;
+}
+
 const PROVIDER_NAME = "ACTIVE_SUB_AGENTS";
 
 /**
@@ -100,7 +119,8 @@ function hasOrigin(session: SessionInfo): boolean {
 function formatLine(session: SessionInfo): string {
   const label = labelOf(session);
   const tail = workdirTail(session.workdir);
-  return `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${session.status} workdir=…${tail}`;
+  const bucket = bucketStatus(session.status);
+  return `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket} workdir=…${tail}`;
 }
 
 function labelOf(session: SessionInfo): string {
