@@ -2150,6 +2150,42 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private getCharacterEnvSetting(
+		key: string,
+	): string | boolean | number | undefined {
+		const env = (this.character as { env?: unknown }).env;
+		if (!env || typeof env !== "object" || Array.isArray(env)) {
+			return undefined;
+		}
+
+		const envRecord = env as Record<string, unknown>;
+		const vars =
+			envRecord.vars &&
+			typeof envRecord.vars === "object" &&
+			!Array.isArray(envRecord.vars)
+				? (envRecord.vars as Record<string, unknown>)
+				: undefined;
+
+		const directValue = envRecord[key];
+		if (
+			typeof directValue === "string" ||
+			typeof directValue === "boolean" ||
+			typeof directValue === "number"
+		) {
+			return directValue;
+		}
+
+		const varsValue = vars?.[key];
+		if (
+			typeof varsValue === "string" ||
+			typeof varsValue === "boolean" ||
+			typeof varsValue === "number"
+		) {
+			return varsValue;
+		}
+		return undefined;
+	}
+
 	getSetting(key: string): string | boolean | number | null {
 		const settings = this.character.settings;
 		const secrets = this.character.secrets;
@@ -2178,6 +2214,7 @@ export class AgentRuntime implements IAgentRuntime {
 			settings?.[key] ??
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
+			this.getCharacterEnvSetting(key) ??
 			this.settings[key];
 
 		// Handle each type appropriately
