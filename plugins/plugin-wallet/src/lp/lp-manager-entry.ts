@@ -1,7 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { manageLpPositionsAction } from "../chains/solana/dex/manage-lp-positions.ts";
-import { LpManagementAgentAction } from "./actions/LpManagementAgentAction.ts";
+import { liquidityAction } from "./actions/liquidity.ts";
 import { realTokenTestsSuite } from "./e2e/real-token-tests.ts";
 import { lpManagerScenariosSuite } from "./e2e/scenarios.ts";
 import { ConcentratedLiquidityService } from "./services/ConcentratedLiquidityService.ts";
@@ -211,7 +210,7 @@ const lpManagerPlugin: Plugin = {
   name: LP_MANAGER_PLUGIN_NAME,
   description:
     "Unified Liquidity Pool manager for Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
-  actions: [LpManagementAgentAction, manageLpPositionsAction],
+  actions: [liquidityAction],
   services: [
     LpManagementService,
     VaultService,
@@ -289,9 +288,11 @@ export * from "./types.ts";
 export {
   ConcentratedLiquidityService,
   DexInteractionService,
-  LpManagementAgentAction,
+  liquidityAction,
   LpManagementService,
   UserLpProfileService,
   VaultService,
   YieldOptimizationService,
 };
+// Back-compat alias for older imports.
+export { liquidityAction as LpManagementAgentAction };

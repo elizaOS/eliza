@@ -208,8 +208,12 @@ function normalizeParams(
   const params = {
     ...contentParams,
     ...(handlerParams || {}),
-  } as LpActionParams;
+  } as LpActionParams & { op?: LpManagementSubaction };
 
+  // Accept op as alias for subaction (LIQUIDITY parent uses op).
+  if (!params.subaction && params.op) {
+    params.subaction = params.op;
+  }
   if (!params.subaction && params.intent) {
     params.subaction = subactionFromLegacyIntent(params.intent);
   }
@@ -581,20 +585,20 @@ async function handleLpOperation(
   }
 }
 
-export const LpManagementAgentAction: Action = {
-  name: "lp_management",
+export const liquidityAction: Action = {
+  name: "LIQUIDITY",
   contexts: ["finance", "crypto", "wallet", "automation"],
   contextGate: { anyOf: ["finance", "crypto", "wallet", "automation"] },
   roleGate: { minRole: "USER" },
   description:
-    "Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
+    "Single LP/liquidity management action. op=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
   descriptionCompressed:
-    "Manage LP positions by subaction, chain, dex, pool, position, amount, range, token filters.",
+    "Manage LP positions by op, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
     {
-      name: "subaction",
+      name: "op",
       description:
-        "LP operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
+        "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
       required: true,
       schema: {
         type: "string",
@@ -675,11 +679,21 @@ export const LpManagementAgentAction: Action = {
   ],
 
   similes: [
+    "lp_management",
     "LP_MANAGEMENT",
     "LIQUIDITY_POOL_MANAGEMENT",
     "LP_MANAGER",
     "MANAGE_LP",
     "MANAGE_LIQUIDITY",
+    "MANAGE_LP_POSITIONS",
+    "manage_positions",
+    "manage_raydium_positions",
+    "AUTOMATE_REBALANCING",
+    "AUTOMATE_POSITIONS",
+    "START_MANAGING_POSITIONS",
+    "AUTOMATE_RAYDIUM_REBALANCING",
+    "AUTOMATE_RAYDIUM_POSITIONS",
+    "START_MANAGING_RAYDIUM_POSITIONS",
   ],
 
   examples: [] as ActionExample[][],
@@ -691,6 +705,7 @@ export const LpManagementAgentAction: Action = {
   ): Promise<boolean> => {
     if (!message?.content) return false;
     if ((message.content as LpActionParams).subaction) return true;
+    if ((message.content as LpActionParams & { op?: string }).op) return true;
     if (
       selectedContextMatches(state, [
         "finance",
@@ -757,7 +772,7 @@ export const LpManagementAgentAction: Action = {
     if (!params) {
       return {
         success: true,
-        text: "Use lp_management with subaction=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
+        text: "Use LIQUIDITY with op=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
       };
     }
 
@@ -789,10 +804,10 @@ export const LpManagementAgentAction: Action = {
           text: errorMessage,
         };
       }
-      console.error(`[LpManagementAgentAction] Error: ${errorMessage}`);
+      console.error(`[LIQUIDITY] Error: ${errorMessage}`);
       return {
         success: false,
-        text: `LP management failed: ${errorMessage}`,
+        text: `Liquidity operation failed: ${errorMessage}`,
       };
     }
   },

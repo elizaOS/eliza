@@ -1,4 +1,10 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import { createSlackConnectorAccountProvider } from "./connector-account-provider";
 import { slackEmojisProvider } from "./providers/slackEmojis";
 import { slackPinsProvider } from "./providers/slackPins";
 
@@ -11,6 +17,22 @@ const slackPlugin: Plugin = {
   actions: [],
   providers: [slackPinsProvider, slackEmojisProvider],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register with the ConnectorAccountManager so the generic HTTP CRUD +
+    // OAuth surface can list, create, patch, delete, and run OAuth v2 install
+    // flows for Slack workspaces.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createSlackConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:slack",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Slack provider with ConnectorAccountManager",
+      );
+    }
+
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
     const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
     const signingSecret = runtime.getSetting("SLACK_SIGNING_SECRET") as string;
@@ -130,6 +152,7 @@ export type {
   SlackConfig,
   SlackThreadConfig,
 } from "./config";
+export { createSlackConnectorAccountProvider } from "./connector-account-provider";
 // Formatting exports
 export {
   buildSlackMessagePermalink,

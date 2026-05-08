@@ -11,11 +11,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-	BlueBubblesConfig,
-	DmPolicy,
-	GroupPolicy,
-} from "./types";
+import type { BlueBubblesConfig, DmPolicy, GroupPolicy } from "./types";
 
 /**
  * Default account identifier used when no specific account is configured.

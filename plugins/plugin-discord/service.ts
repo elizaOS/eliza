@@ -1151,17 +1151,6 @@ export class DiscordService extends Service implements IDiscordService {
 	constructor(runtime: IAgentRuntime) {
 		super(runtime);
 
-		// Resolve the account this service instance speaks for. In single-account
-		// mode this is DEFAULT_ACCOUNT_ID; in multi-account mode the first
-		// configured account wins (the pool will own per-account services).
-		this.accountId = (() => {
-			try {
-				return normalizeAccountId(resolveDefaultDiscordAccountId(runtime));
-			} catch {
-				return DEFAULT_ACCOUNT_ID;
-			}
-		})();
-
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
 		this.discordSettings = getDiscordSettings(runtime);
 
@@ -2858,32 +2847,6 @@ export class DiscordService extends Service implements IDiscordService {
 			accountId: options?.accountId ?? this.accountId,
 		};
 		return buildMemoryFromMessageExtracted(this as any, message, merged);
-	}
-
-	/**
-	 * Resolve which connector account an outbound send should use.
-	 *
-	 * Priority:
-	 *   1. `target.accountId` — explicit override from the action / send call.
-	 *      Actions that reply to an inbound message thread the inbound
-	 *      `Memory.metadata.accountId` into `target.accountId` here.
-	 *   2. This service instance's default account.
-	 *
-	 * `Content.metadata` is intentionally NOT consulted — per
-	 * `MessageMetadata` docs, content metadata may be user-supplied and
-	 * cannot be trusted for routing.
-	 */
-	private resolveOutboundAccountId(
-		target: TargetInfo,
-		_content: Content,
-	): string {
-		const fromTarget =
-			typeof target.accountId === "string" && target.accountId.trim()
-				? normalizeAccountId(target.accountId)
-				: undefined;
-		if (fromTarget) return fromTarget;
-
-		return this.accountId;
 	}
 
 	/**
