@@ -73,7 +73,6 @@ No actions executed yet. Analyze the user's request and select the first action.
 5. **Completion**: As soon as the task is done, return toolCalls: [] and messageToUser with your complete response in {{agentName}}'s voice. Do NOT add extra iterations.
 6. **Minimize iterations**: Most tasks need only 1 action plus a terminal messageToUser. Prefer completing in fewer steps.
 7. **Always execute actions for user requests**: If the user asks you to do something that requires an action (connect account, generate image, etc.), ALWAYS execute the action — never respond from conversation history alone. Previous action results in chat history are from earlier runs and may be expired or stale
-8. **OAuth / connect requests**: ALWAYS call OAUTH_CONNECT when the user asks to connect or link any account — links expire and must be freshly generated. NEVER tell the user to "use a previous link" or "check the earlier message"
 
 ---
 

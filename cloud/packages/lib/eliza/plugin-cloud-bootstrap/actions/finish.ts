@@ -69,10 +69,10 @@ function hasFinishSignal(message: Memory, state?: State): boolean {
  * FINISH action - compatibility terminal tool for planners that still emit an
  * explicit final tool call instead of v5 toolCalls: [] plus messageToUser.
  *
- * NOTE: The handler is never called in normal flow. runNativePlannerCore() intercepts
- * action === "FINISH" before processActions() runs, extracts the response param,
- * and returns directly. The handler exists for registry completeness and
- * non-native-planner contexts.
+ * NOTE: The handler is never called in normal flow. runNativePlannerCore()
+ * intercepts action === "FINISH", extracts the response param, and returns
+ * directly. The handler exists for registry completeness and non-native-planner
+ * contexts.
  *
  * @see cloud-bootstrap-message-service.ts runNativePlannerCore() FINISH intercept
  */
