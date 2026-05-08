@@ -200,7 +200,9 @@ export const useSkillAction: Action = {
 			parameters?: UseSkillOptions;
 		};
 		const opts =
-			rawOptions.parameters && typeof rawOptions.parameters === "object"
+			rawOptions.parameters &&
+			typeof rawOptions.parameters === "object" &&
+			!Array.isArray(rawOptions.parameters)
 				? rawOptions.parameters
 				: rawOptions;
 		const rawSlug = typeof opts.slug === "string" ? opts.slug.trim() : "";
