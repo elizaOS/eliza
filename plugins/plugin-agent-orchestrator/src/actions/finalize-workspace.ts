@@ -25,7 +25,13 @@ export const finalizeWorkspaceAction: Action = {
   contextGate: { anyOf: ["code", "tasks", "automation", "agent_internal"] },
   roleGate: { minRole: "USER" },
 
-  similes: ["FINALIZE_WORKSPACE", "COMMIT_AND_PR", "CREATE_PR", "SUBMIT_CHANGES", "FINISH_WORKSPACE"],
+  similes: [
+    "FINALIZE_WORKSPACE",
+    "COMMIT_AND_PR",
+    "CREATE_PR",
+    "SUBMIT_CHANGES",
+    "FINISH_WORKSPACE",
+  ],
 
   description:
     "Finalize workspace changes by committing, pushing, and optionally creating a pull request. " +

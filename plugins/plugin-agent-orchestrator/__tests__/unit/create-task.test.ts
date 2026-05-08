@@ -8,7 +8,7 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("CREATE_TASK", () => {
+describe("ACPX_CREATE_TASK", () => {
   it("validates explicit payload and declines LifeOps", async () => {
     expect(
       await createTaskAction.validate(

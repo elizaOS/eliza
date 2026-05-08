@@ -15,11 +15,7 @@
  * @module services/skill-recommender
  */
 
-import {
-  type IAgentRuntime,
-  type Logger,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, type Logger, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 

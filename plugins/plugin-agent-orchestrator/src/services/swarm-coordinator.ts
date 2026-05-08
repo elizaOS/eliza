@@ -20,7 +20,7 @@
  *
  * This coordinator is the LEGACY orchestration path. It is bound only to
  * `PTYService` and is naturally dormant for sessions spawned via
- * `@elizaos/plugin-acpx`. The canonical path is now:
+ * `@elizaos/plugin-agent-orchestrator`. The canonical path is now:
  *
  *   AcpService session events → SubAgentRouter
  *     → synthetic Memory posted to runtime.messageService.handleMessage
@@ -52,7 +52,7 @@ import { logger } from "@elizaos/core";
  * with only those bookkeeping entries, so `false` lets callers skip the
  * noisy "task finished, code is at …" prompt for ephemeral lookups.
  */
-async function hasSubagentArtifacts(workspacePath: string): Promise<boolean> {
+async function _hasSubagentArtifacts(workspacePath: string): Promise<boolean> {
   try {
     const entries = await fs.readdir(workspacePath);
     return entries.some(
@@ -64,6 +64,7 @@ async function hasSubagentArtifacts(workspacePath: string): Promise<boolean> {
     return false;
   }
 }
+
 import { buildAgentCredentials } from "./agent-credentials.js";
 import { cleanForFailoverContext, extractDevServerUrl } from "./ansi-utils.js";
 import {

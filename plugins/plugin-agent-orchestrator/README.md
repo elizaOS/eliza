@@ -1,233 +1,174 @@
 # @elizaos/plugin-agent-orchestrator
 
-Orchestrate CLI task agents (Claude Code, Codex, Gemini CLI, Aider, Pi) via PTY sessions and git workspaces for open-ended background work.
+[![npm version](https://img.shields.io/npm/v/@elizaos/plugin-agent-orchestrator.svg)](https://www.npmjs.com/package/@elizaos/plugin-agent-orchestrator)
+[![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Built for [Eliza](https://github.com/eliza-ai/eliza). The plugin registers elizaOS-compatible actions and services so any Eliza agent can delegate substantial work to sub-agents while continuing the user conversation. The full experience, including live xterm views, PTY output streaming, and swarm monitoring, is available through the Eliza frontend and server.
+An **acpx-backed task and subagent plugin** for ElizaOS. It wraps the [`acpx`](https://github.com/0xouroboros/acp) CLI to spawn local coding agents (codex, claude, gemini, ...) as background sessions and exposes them through ElizaOS actions. Drop-in compatible with `@elizaos/plugin-agent-orchestrator`'s action surface, but uses structured Agent Client Protocol (ACP) events under the hood instead of PTY scraping.
 
-## Features
+> Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that uses `acpx` to run coding agents as subprocesses on the same host as the runtime.
 
-- **Open-ended task delegation**: Use task agents for anything beyond a simple reply, including coding, research, drafting, debugging, repo work, and multi-step execution
-- **PTY session management**: Spawn, control, and monitor task agents running in pseudo-terminals
-- **Current task status**: Surface active sessions, coordinator task state, and pending confirmations so the main agent can keep the user updated
-- **Subscription-aware framework preference**: Prefer Claude Code or Codex when Eliza knows the user is logged in with Anthropic or OpenAI-backed subscriptions
-- **Git workspace provisioning**: Clone repos, create worktrees, manage branches, commits, pushes, and pull requests
-- **Multi-agent support**: Claude Code, Codex, Gemini CLI, Aider, Pi, or generic shell flows through the same orchestration surface
+## Why
 
-## Prerequisites
+`plugin-agent-orchestrator` runs each coding agent (codex, claude, gemini, ...) inside a pseudo-terminal and parses ANSI escape codes, prompt regexes, and stall heuristics. It works, but it inherits every quirk of every agent's terminal UI.
 
-This plugin spawns CLI task agents in PTY sessions. You need at least one supported framework installed locally:
+`plugin-acpx` swaps the transport: it spawns each agent through `acpx`, which speaks the [Agent Client Protocol](https://agentclientprotocol.com/) and emits a typed JSON-RPC stream:
 
-| Framework | Install | Docs |
-|-----------|---------|------|
-| **Claude Code** | `npm install -g @anthropic-ai/claude-code` | [claude.ai/claude-code](https://claude.ai/claude-code) |
-| **Codex** | `npm install -g @openai/codex` | [github.com/openai/codex](https://github.com/openai/codex) |
-| **Gemini CLI** | `npm install -g @google/gemini-cli` | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
-| **Aider** | `pip install aider-chat` | [aider.chat](https://aider.chat) |
-| **Pi** | install the `pi` CLI available on your host | provider-specific |
+- structured `tool_call` / `tool_call_update` events instead of ANSI scraping
+- cooperative cancellation via `session/cancel`
+- crash recovery via `session/load`
+- parallel sessions in the same workspace
+- `agent_message_chunk` for streaming text instead of pty buffer reads
+- works for codex, claude, gemini today; cursor/copilot/droid/qwen via acpx 0.7+
 
-Each framework also needs its own auth. API keys still work, but the orchestrator can also detect subscription-backed CLI logins:
-
-- `ANTHROPIC_API_KEY` or a Claude Code subscription login for Claude Code
-- `OPENAI_API_KEY` or a Codex login for Codex
-- `GOOGLE_GENERATIVE_AI_API_KEY` or `GOOGLE_API_KEY` for Gemini CLI
-
-The provider surface exposes the currently available frameworks and the preferred default. If the user does not specify a framework, the plugin picks the best available option automatically.
+The plugin keeps the same action names so existing flows continue to work.
 
 ## Installation
 
 ```bash
 npm install @elizaos/plugin-agent-orchestrator
+npm install -g acpx@latest
+acpx --version
 ```
 
-The following peer dependencies will be installed automatically:
+You also need at least one ACP-compatible agent CLI installed (`codex`, `claude`, or `gemini`) and authenticated.
 
-- `pty-manager` — PTY session management
-- `git-workspace-service` — git workspace provisioning
-- `coding-agent-adapters` — CLI agent adapter layer
+## Quick start
 
-## Usage
+```ts
+import acpPlugin from "@elizaos/plugin-agent-orchestrator";
 
-### Register the Plugin
-
-```typescript
-import taskAgentPlugin from "@elizaos/plugin-agent-orchestrator";
-
-// Add to your Eliza or elizaOS agent configuration
-const agent = {
-  plugins: [taskAgentPlugin],
-  // ... other config
+export default {
+  plugins: [acpPlugin],
 };
 ```
 
-`codingAgentPlugin` is still exported as a compatibility alias, but `taskAgentPlugin` is the canonical export.
+Once loaded, the plugin registers `AcpxSubprocessService` (`AcpService` for short, also aliased as `PTY_SERVICE` for back-compat with `plugin-agent-orchestrator` consumers), six actions, and one provider.
 
-### Canonical Actions
+## Actions
 
-| Action | Description |
-|--------|-------------|
-| `START_CODING_TASK` | Create an asynchronous task-agent job for substantial work |
-| `SPAWN_AGENT` | Spawn a task agent session immediately |
-| `SEND_TO_AGENT` | Send input or keys to a running task agent |
-| `LIST_AGENTS` | List active sessions and current task status |
-| `STOP_AGENT` | Terminate an agent session |
-| `PROVISION_WORKSPACE` | Clone a repo or create a worktree |
-| `FINALIZE_WORKSPACE` | Commit, push, and optionally create PR |
+| Action | Purpose |
+| --- | --- |
+| `SPAWN_AGENT` | Start a long-lived acpx coding-agent session. Returns `data.agents[]`. |
+| `SEND_TO_AGENT` | Send a prompt to a running session, await completion. |
+| `LIST_AGENTS` | List active and persisted sessions. |
+| `STOP_AGENT` | Cooperatively cancel + close a session. |
+| `CREATE_TASK` | One-shot: spawn + prompt + return. Used by nyx-style task agents. |
+| `CANCEL_TASK` | Cancel an in-flight task. |
 
-Legacy action names such as `CREATE_TASK`, `SPAWN_CODING_AGENT`, `SEND_TO_CODING_AGENT`, `LIST_CODING_AGENTS`, and `STOP_CODING_AGENT` remain supported as aliases.
+`CREATE_TASK` returns a shape compatible with `plugin-agent-orchestrator`:
 
-### Example Conversation
-
-```
-User: This is bigger than a simple reply. Create a background task to inspect the repo, fix the auth bug, and open a PR.
-Agent: Starting a task agent for the repo work...
-       Session ID: abc123, Status: running
-
-User: What task agents are running?
-Agent: Active task agents:
-       1. Claude Code (abc123...) - running
-          Working in: /workspace
-
-User: Tell it to accept the changes
-Agent: Sent "y" to the task agent.
-
-User: Create a PR for the fix
-Agent: Workspace finalized!
-       Commit: a1b2c3d4
-       PR #42: https://github.com/user/repo/pull/42
+```ts
+{
+  data: {
+    agents: [{ id, sessionId, agentType, name, workdir }],
+  },
+  text: "...",
+}
 ```
 
-## Services
+## Provider
 
-### PTYService
+`availableAgentsProvider` exposes installed/auth-status/agent-type info to the runtime state, so the model can pick the right agent type at call time.
 
-Manages PTY sessions for task agents.
+## Service
 
-```typescript
-import { PTYService } from "@elizaos/plugin-agent-orchestrator";
+`AcpxSubprocessService` (exported as `AcpService` for short) is the core. It wraps acpx subprocess lifecycle, NDJSON parsing, session state, and event emission.
 
-// Access via runtime
-const ptyService = runtime.getService("PTY_SERVICE") as PTYService;
+```ts
+import { AcpService } from "@elizaos/plugin-agent-orchestrator";
 
-// Spawn a session
-const session = await ptyService.spawnSession({
-  agentType: "claude",
-  workdir: "/path/to/project",
-  initialTask: "Fix the auth bug",
+const acp = runtime.getService("PTY_SERVICE") as AcpService;
+// or: runtime.getService("ACP_SERVICE") as AcpService;
+
+const { sessionId } = await acp.spawnSession({
+  agentType: "codex",
+  workdir: "/tmp/my-task",
+  approvalPreset: "permissive",
 });
 
-// Send input
-await ptyService.sendToSession(session.id, "y");
-
-// Check status
-const info = ptyService.getSession(session.id);
-console.log(info.status); // "running" | "blocked" | "completed"
-
-// Stop session
-await ptyService.stopSession(session.id);
+const result = await acp.sendPrompt(sessionId, "what is 7 + 8?");
+console.log(result.finalText);     // "15"
+console.log(result.stopReason);    // "end_turn"
+console.log(result.durationMs);    // 4864
 ```
 
-### CodingWorkspaceService
+### Subscribing to events
 
-Manages git workspaces for task-agent jobs.
-
-```typescript
-import { CodingWorkspaceService } from "@elizaos/plugin-agent-orchestrator";
-
-// Access via runtime
-const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE");
-
-// Clone a repo
-const workspace = await workspaceService.provisionWorkspace({
-  repoUrl: "https://github.com/user/repo.git",
-  branch: "feature/my-feature",
+```ts
+acp.onSessionEvent((sessionId, eventName, data) => {
+  // eventName: "ready" | "message" | "tool_running" | "task_complete" | "stopped" | "error" | "blocked" | "login_required" | "reconnected"
+  // data shape depends on eventName, see SessionEventName in src/services/types.ts
 });
+```
 
-// Create worktree for parallel work
-const worktree = await workspaceService.provisionWorkspace({
-  useWorktree: true,
-  parentWorkspaceId: workspace.id,
-  branch: "bugfix/issue-123",
-});
+The `task_complete` event matches `plugin-agent-orchestrator`'s shape:
 
-// Commit and push
-await workspaceService.commit(workspace.id, {
-  message: "fix: resolve auth issue",
-  all: true,
-});
-await workspaceService.push(workspace.id, { setUpstream: true });
-
-// Create PR
-const pr = await workspaceService.createPR(workspace.id, {
-  title: "Fix auth issue",
-  body: "Resolves #123",
-});
+```ts
+{ response: string, durationMs: number, stopReason: "end_turn" | "error" | string }
 ```
 
 ## Configuration
 
-Configure via runtime settings and Eliza config:
+All configuration is via environment variables. Sensible defaults; most users only need `ELIZA_ACP_CLI` if `acpx` is not on `PATH`. The `ELIZA_ACP_*` prefix is named after the protocol; the package itself wraps the `acpx` CLI.
 
-```typescript
-// PTY Service config
-runtime.setSetting("PTY_SERVICE_CONFIG", {
-  maxSessions: 5,
-  idleTimeoutMs: 30 * 60 * 1000,
-  debug: true,
-});
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path. |
+| `ELIZA_ACP_DEFAULT_AGENT` | `codex` | Default agent type. |
+| `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
+| `ELIZA_ACP_PROMPT_TIMEOUT_MS` | `1800000` (30m) | Per-prompt timeout. |
+| `ELIZA_ACP_AUTH_TIMEOUT_MS` | `120000` | Auth handshake timeout. |
+| `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acpx` | Where to persist session state when no runtime DB. |
+| `ELIZA_ACP_WORKSPACE_ROOT` | runtime cwd | Base directory for spawned agent workdirs. |
+| `ELIZA_ACP_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
+| `ELIZA_ACP_MAX_SESSIONS` | unlimited | Concurrent session cap. |
+| `ELIZA_ACP_REGISTER_AS_PTY_SERVICE` | `true` | Register service under `PTY_SERVICE` alias for back-compat. |
 
-// Workspace Service config
-runtime.setSetting("CODING_WORKSPACE_CONFIG", {
-  baseDir: "~/.eliza/workspaces",
-  credentials: {
-    github: { token: process.env.GITHUB_TOKEN },
-  },
-  debug: true,
-});
+## Persistence
 
-// Optional fixed default when you do not want auto-selection
-runtime.setSetting("PARALLAX_DEFAULT_AGENT_TYPE", "codex");
+Session state is persisted with a tiered backend:
 
-// Selection strategy: "heuristic" | "fixed"
-runtime.setSetting("PARALLAX_AGENT_SELECTION_STRATEGY", "heuristic");
-```
+1. If `runtime.databaseAdapter` exposes SQL methods, sessions live in `acp_sessions` table.
+2. Otherwise, JSON file at `$ELIZA_ACP_STATE_DIR/sessions.json` (atomic writes via temp+rename).
+3. Last resort: in-memory `Map` (warns that sessions won't survive restart).
 
-To bias the preferred framework toward the user's paid subscription, Eliza can store a provider hint in `~/.eliza/eliza.json`:
+## End-to-end smoke test
 
-```json
-{
-  "agents": {
-    "defaults": {
-      "subscriptionProvider": "anthropic-subscription"
-    }
-  }
-}
-```
-
-Supported subscription hints currently include Anthropic and OpenAI-backed flows, which map to Claude Code and Codex when those CLIs are installed and authenticated.
-
-## Testing
-
-Run the standard suite:
+The repo ships with a real e2e smoke at `tests/e2e/acp-codex-smoke.mjs`:
 
 ```bash
-bun test
+npm install -g acpx@latest
+# authenticate codex first
+npm run build
+node tests/e2e/acp-codex-smoke.mjs
 ```
 
-Run the opt-in live smoke tests against real Claude Code and Codex sessions:
+It spawns a real codex session, sends "what is 7 + 8?", and verifies `task_complete` fires with response `"15"`. Useful as a sanity check before integrating into a real runtime.
 
-```bash
-bun run test:live
-```
+## Compatibility with `@elizaos/plugin-agent-orchestrator`
 
-The live suite creates temporary workspaces, asks the real CLIs to complete small file-writing and browser-backed tasks, and verifies both task execution and task-status visibility. It also has Claude Code and Codex create a simple counter app, emit `APP_CREATE_DONE`, pass parent-side typecheck/lint/test verification, and register the generated app through the unified `APP` `load_from_directory` mode. Set `ELIZA_LIVE_CODEX_MODEL` or `ELIZA_LIVE_CLAUDE_MODEL` to pin a live-test model when needed. If Codex reports that its configured model requires a newer CLI, the counter-app smoke attempts one `npm install -g --prefix <active-codex-prefix> @openai/codex@latest` update through the npm binary colocated with `codex`, then retries once. If Claude Code reports logged-in status but `claude -p` returns 401, the smoke emits `AUTH_REQUIRED` with a `claude setup-token` instruction instead of surfacing a raw provider failure.
+You can run both plugins side-by-side. The actions don't conflict by name; they are dispatched by description matching, not name collision. To make `runtime.getService("PTY_SERVICE")` return the acpx subprocess service, set `ELIZA_ACP_REGISTER_AS_PTY_SERVICE=true` (default) and don't load `plugin-agent-orchestrator`. To use both, set `ELIZA_ACP_REGISTER_AS_PTY_SERVICE=false` and let the orchestrator own the `PTY_SERVICE` alias.
 
-## Dependencies
+## Status
 
-- `pty-manager` - PTY session management with stall detection and auto-response
-- `coding-agent-adapters` - Adapter layer for Claude Code, Codex, Gemini CLI, Aider CLIs
-- `git-workspace-service` - Git workspace provisioning, credential management, and PR creation
-- `pty-console` - Terminal bridge for xterm.js frontend integration
+`0.1.0`. Alpha, but every layer is implemented and tested:
+
+- 9 test files, 38 unit tests, 100% passing
+- real e2e smoke against `acpx` + codex passes
+- nyx-compatible `CREATE_TASK` + `PTY_SERVICE` alias
+
+What's deferred to later versions:
+
+- `provision_workspace` / `finalize_workspace` (use git directly for now)
+- `manage_issues` / GitHub integration
+- swarm-coordinator (sibling-to-sibling agent comms)
+- aider, pi, replit-agent (waiting for acpx coverage)
+
+## Contributing
+
+PRs welcome. Run `npm run typecheck && npm test` before opening.
 
 ## License
 
-MIT
+MIT. See [LICENSE](./LICENSE).

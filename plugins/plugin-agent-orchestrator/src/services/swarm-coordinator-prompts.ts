@@ -496,7 +496,8 @@ function normalizeCoordinationResponse(
 export function parseCoordinationResponse(
   llmOutput: string,
 ): CoordinationLLMResponse | null {
-  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(llmOutput);
+  const parsedJson =
+    parseJsonObjectResponse<Record<string, unknown>>(llmOutput);
   const normalizedJson = normalizeCoordinationResponse(parsedJson);
   if (normalizedJson) return normalizedJson;
 

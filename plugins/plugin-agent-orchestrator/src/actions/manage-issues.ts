@@ -159,7 +159,10 @@ export const manageIssuesAction: Action = {
 
     const params = options?.parameters;
     const content = message.content as Record<string, unknown>;
-    const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
+    const text = ((content.text as string) ?? "").slice(
+      0,
+      ISSUE_BODY_MAX_CHARS,
+    );
 
     const operation =
       (params?.operation as string) ??
@@ -316,8 +319,8 @@ async function handleOperation(
         const labels = parseLabels(params.labels);
         const issues = (
           await service.listIssues(repo, {
-          state: stateFilter as "open" | "closed" | "all",
-          labels: labels.length > 0 ? labels : undefined,
+            state: stateFilter as "open" | "closed" | "all",
+            labels: labels.length > 0 ? labels : undefined,
           })
         ).slice(0, ISSUE_RESULT_LIMIT);
         if (callback) {
