@@ -42,37 +42,6 @@ const BINARY_EXTENSIONS = new Set([
   ".dll",
   ".so",
 ]);
-const UPSTREAM_COMPATIBILITY_FILES = [
-  {
-    path: "packages/shared/src/env-utils.impl.d.ts",
-    sourceSibling: "packages/shared/src/env-utils.impl.ts",
-    contents:
-      "export declare function isTruthyEnvValue(value: string | undefined | null): boolean;\n",
-  },
-  {
-    path: "packages/shared/src/env-utils.impl.js",
-    sourceSibling: "packages/shared/src/env-utils.impl.ts",
-    contents: `/**
- * Shared environment variable utilities (JavaScript module so Node ESM can resolve
- * \`./env-utils.impl.js\` when workspace packages load TypeScript sources directly).
- */
-
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
-
-/**
- * Returns true when value is a commonly-accepted truthy env string
- * (\`1\`, \`true\`, \`yes\`, \`on\` — case-insensitive, trimmed).
- * @param {string | undefined | null} value
- * @returns {boolean}
- */
-export function isTruthyEnvValue(value) {
-  if (value == null) return false;
-  return TRUTHY.has(String(value).trim().toLowerCase());
-}
-`,
-  },
-] as const;
-
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -403,30 +372,6 @@ export function ensurePackageJsonWorkspaces(
   return true;
 }
 
-export function ensureUpstreamCompatibilityFiles(
-  submoduleRoot: string,
-): string[] {
-  const created: string[] = [];
-
-  for (const file of UPSTREAM_COMPATIBILITY_FILES) {
-    const targetPath = path.join(submoduleRoot, file.path);
-    if (fs.existsSync(targetPath)) {
-      continue;
-    }
-
-    const sourceSiblingPath = path.join(submoduleRoot, file.sourceSibling);
-    if (!fs.existsSync(sourceSiblingPath)) {
-      continue;
-    }
-
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, file.contents, "utf8");
-    created.push(file.path);
-  }
-
-  return created;
-}
-
 export function buildMetadata(options: {
   cliVersion: string;
   language?: string;
@@ -598,7 +543,6 @@ export function hydrateGitSubmoduleWorkspace(options: {
     path.join(submoduleRoot, "package.json"),
     options.upstream.requiredWorkspaces ?? [],
   );
-  ensureUpstreamCompatibilityFiles(submoduleRoot);
 }
 
 export function initializeGitSubmodule(options: {
