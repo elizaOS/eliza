@@ -265,6 +265,13 @@ describe("Anthropic native text plumbing", () => {
       tools?: unknown;
     };
 
+    // The runtime stable prefix + stage instructions live inside the structured
+    // user content (with cache_control on stable parts). Sending them ALSO via
+    // the system parameter would double the prompt cost on cache misses and
+    // contribute nothing on hits (the system parameter cannot carry
+    // cache_control). Assert the system parameter is dropped on this path.
+    expect(call.system).toBeUndefined();
+
     // The trajectory's assistant/tool pair must reach the wire untouched.
     const assistantTurn = call.messages.find((m) => m.role === "assistant");
     const toolTurn = call.messages.find((m) => m.role === "tool");
@@ -292,7 +299,7 @@ describe("Anthropic native text plumbing", () => {
     // The stable runtime prefix must be one of the cached blocks.
     const stableTextValues = cacheControlled.map((p) => p.text);
     expect(stableTextValues.some((t) => typeof t === "string" && t.includes("stable prefix"))).toBe(
-      true,
+      true
     );
 
     // Tools must still reach the wire and trigger native tool-calling.

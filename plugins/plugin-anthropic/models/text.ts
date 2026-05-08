@@ -182,9 +182,7 @@ function buildSegmentedUserContent(
   const content: AnthropicUserContentPart[] = [];
   const segments = params.promptSegments ?? [];
   const breakpointIndices =
-    cacheControl !== undefined
-      ? selectCacheBreakpointIndices(segments)
-      : new Set<number>();
+    cacheControl !== undefined ? selectCacheBreakpointIndices(segments) : new Set<number>();
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
@@ -234,8 +232,7 @@ function buildPlannerWireMessages(
   wireMessages: ModelMessage[],
   userContent: UserContent | string
 ): ModelMessage[] {
-  const tail =
-    wireMessages[0]?.role === "user" ? wireMessages.slice(1) : wireMessages;
+  const tail = wireMessages[0]?.role === "user" ? wireMessages.slice(1) : wireMessages;
   return [{ role: "user", content: userContent }, ...tail];
 }
 
@@ -513,10 +510,7 @@ async function generateTextWithModel(
     ? wireMessages && wireMessages.length > 0
       ? segmentedPrompt
         ? {
-            messages: buildPlannerWireMessages(
-              wireMessages,
-              userContent ?? resolved.prompt
-            ),
+            messages: buildPlannerWireMessages(wireMessages, userContent ?? resolved.prompt),
           }
         : { messages: wireMessages }
       : {
@@ -535,10 +529,23 @@ async function generateTextWithModel(
           },
         ],
       };
+  // On the segmented + messages path, `buildPlannerWireMessages` injects the
+  // structured user content (which carries the runtime stable prefix with
+  // cache_control on stable parts) at the head of the wire. The same stable
+  // content already lives inside `systemPrompt` because
+  // `resolveEffectiveSystemPrompt` extracts it from `messages[0]` (which the
+  // planner built from those very segments). Sending it again as a flat
+  // `system: string` would (a) double the prompt cost on cache misses and (b)
+  // contribute nothing on cache hits since the system parameter cannot carry
+  // `cache_control` by itself. Drop it on this path — character / runtime
+  // identity is preserved inside the structured user content via
+  // `staticPrefix.systemPrompt` / `staticPrefix.characterPrompt` segments.
+  const wireSystemPrompt =
+    segmentedPrompt && paramsWithAttachments.messages ? undefined : systemPrompt;
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
-    system: systemPrompt,
+    system: wireSystemPrompt,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
     frequencyPenalty: resolved.frequencyPenalty,
