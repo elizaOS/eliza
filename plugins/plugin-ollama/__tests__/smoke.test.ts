@@ -5,9 +5,15 @@ vi.mock("ai", () => ({
   embed: vi.fn(),
   generateObject: vi.fn(),
   generateText: vi.fn(),
+  streamText: vi.fn(() => ({
+    textStream: (async function* () {})(),
+    text: Promise.resolve(""),
+    usage: Promise.resolve(undefined),
+    finishReason: Promise.resolve(undefined),
+  })),
 }));
 
-vi.mock("ollama-ai-provider", () => ({
+vi.mock("ollama-ai-provider-v2", () => ({
   createOllama: vi.fn(() => {
     const ollama = vi.fn((model: string) => ({ model }));
     return Object.assign(ollama, {

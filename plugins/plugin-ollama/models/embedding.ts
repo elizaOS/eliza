@@ -1,7 +1,14 @@
+/**
+ * Embeddings via Ollama + AI SDK `embed`.
+ *
+ * **Why v2 provider:** `createOllama` from `ollama-ai-provider-v2` registers embedding models on
+ * the same supported AI SDK surface as chat (`models/text.ts`). Mixed v1/v2 providers in one
+ * agent were a common source of `Unsupported model version v1` during dependency bumps.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { type EmbeddingModel, embed } from "ai";
-import { createOllama } from "ollama-ai-provider";
+import { createOllama } from "ollama-ai-provider-v2";
 
 import { getBaseURL, getEmbeddingModel } from "../utils/config";
 import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
@@ -43,8 +50,7 @@ export async function handleTextEmbedding(
 
     try {
       const embedParams = {
-        // ollama-ai-provider still exposes older AI SDK model interfaces.
-        model: ollama.embedding(modelName) as unknown as EmbeddingModel,
+        model: ollama.embedding(modelName) as EmbeddingModel,
         value: embeddingText,
       };
 

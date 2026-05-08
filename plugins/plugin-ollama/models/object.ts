@@ -1,3 +1,11 @@
+/**
+ * JSON object generation via Ollama + AI SDK `generateObject`.
+ *
+ * **Why `ollama-ai-provider-v2`:** Same stack as `text.ts`—AI SDK 5/6 requires model spec v2;
+ * the legacy Ollama provider exposed v1 and failed at runtime. Object generation is less
+ * exposed than chat in typical agents, but keeping one provider major line avoids “works for
+ * chat, breaks for JSON object” surprises in monorepo upgrades.
+ */
 import type {
   IAgentRuntime,
   ModelTypeName,
@@ -6,7 +14,7 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import { generateObject, type LanguageModel } from "ai";
-import { createOllama } from "ollama-ai-provider";
+import { createOllama } from "ollama-ai-provider-v2";
 
 import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
@@ -30,8 +38,7 @@ async function generateOllamaObject(
 ): Promise<Record<string, string | number | boolean | null>> {
   try {
     const generateParams = {
-      // ollama-ai-provider still exposes older AI SDK model interfaces.
-      model: ollama(model) as unknown as LanguageModel,
+      model: ollama(model) as LanguageModel,
       output: "no-schema" as const,
       prompt: params.prompt,
       temperature: params.temperature,
