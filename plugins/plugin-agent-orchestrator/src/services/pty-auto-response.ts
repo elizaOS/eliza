@@ -26,6 +26,8 @@ const CODEX_KEEP_CURRENT_MODEL_NEVER_PROMPT_RE =
   /keep\s+current\s+model\s*\(never\s+show\s+again\)|hide\s+future\s+rate\s+limit\s+reminders\s+about\s+switching\s+models/i;
 const CODEX_KEEP_CURRENT_MODEL_PROMPT_RE =
   /^(?![\s\S]*(?:never\s+show\s+again|hide\s+future\s+rate\s+limit\s+reminders))(?=[\s\S]*\bkeep\s+current\s+model\b)(?=[\s\S]*(?:efficient\s+model|less\s+capable|faster|rate\s+limit|switching\s+models))/i;
+const CODEX_DEFAULT_ACCOUNT_SELECTION_PROMPT_RE =
+  /(?:organization|account|team)\s+selection|select\s+(?:an?\s+)?(?:organization|account|team)\b/i;
 
 /**
  * Push session-specific auto-response rules that depend on runtime config.
@@ -74,6 +76,16 @@ export async function pushDefaultRules(
       keys: ["1", "enter"],
       description:
         "Retry Codex workspace trust approval with option 1 ('Yes, continue') until the prompt clears",
+      safe: true,
+    });
+    rules.push({
+      pattern: CODEX_DEFAULT_ACCOUNT_SELECTION_PROMPT_RE,
+      type: "config",
+      response: "",
+      responseType: "keys" as const,
+      keys: ["enter"],
+      description:
+        "Accept Codex's default organization/account selection for non-interactive subscription sessions",
       safe: true,
     });
   }
