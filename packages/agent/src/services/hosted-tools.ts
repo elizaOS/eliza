@@ -2,7 +2,7 @@ import { resolveCloudApiBaseUrl } from "../cloud/base-url.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceTab,
-} from "./browser-workspace-types.js";
+} from "@elizaos/plugin-browser/workspace/browser-workspace-types";
 
 export interface HostedSearchResponse {
   answer: string;

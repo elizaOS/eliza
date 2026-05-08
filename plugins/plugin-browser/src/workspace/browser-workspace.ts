@@ -20,11 +20,18 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 // ── Re-export types ──────────────────────────────────────────────────
+export { BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES } from "./browser-workspace-types.js";
 export type {
+  AcquireBrowserWorkspaceConnectorSessionRequest,
   BrowserWorkspaceBridgeConfig,
   BrowserWorkspaceClipboardAction,
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
+  BrowserWorkspaceConnectorAuthState,
+  BrowserWorkspaceConnectorCompanionRef,
+  BrowserWorkspaceConnectorSessionHandle,
+  BrowserWorkspaceConnectorSessionKind,
+  BrowserWorkspaceConnectorSessionRef,
   BrowserWorkspaceConsoleAction,
   BrowserWorkspaceCookieAction,
   BrowserWorkspaceDialogAction,
@@ -59,8 +66,13 @@ export type {
 } from "./browser-workspace-types.js";
 
 import type {
+  AcquireBrowserWorkspaceConnectorSessionRequest,
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
+  BrowserWorkspaceConnectorAuthState,
+  BrowserWorkspaceConnectorCompanionRef,
+  BrowserWorkspaceConnectorSessionHandle,
+  BrowserWorkspaceConnectorSessionRef,
   BrowserWorkspaceMode,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
@@ -90,11 +102,14 @@ import {
 } from "./browser-workspace-desktop.js";
 // ── Re-export helpers ────────────────────────────────────────────────
 import {
+  assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceCommand,
+  resolveBrowserWorkspaceCommandPartition,
+  resolveConnectorBrowserWorkspacePartition,
   sleep,
 } from "./browser-workspace-helpers.js";
 
@@ -144,6 +159,11 @@ import {
 } from "./browser-workspace-web.js";
 
 const AGENT_BROWSER_WORKSPACE_PARTITION = "persist:eliza-browser-agent";
+const CONNECTOR_MANUAL_STATES = new Set<BrowserWorkspaceConnectorAuthState>([
+  "auth_pending",
+  "needs_reauth",
+  "manual_handoff",
+]);
 
 // ────────────────────────────────────────────────────────────────────
 // Public API functions
@@ -153,6 +173,208 @@ export function getBrowserWorkspaceMode(
   env: NodeJS.ProcessEnv = process.env,
 ): BrowserWorkspaceMode {
   return isBrowserWorkspaceBridgeConfigured(env) ? "desktop" : "web";
+}
+
+export function resolveBrowserWorkspaceConnectorPartition(
+  provider: string,
+  accountId: string,
+): string {
+  return resolveConnectorBrowserWorkspacePartition(provider, accountId);
+}
+
+function normalizeConnectorAuthState(
+  value: BrowserWorkspaceConnectorAuthState | undefined,
+  fallback: BrowserWorkspaceConnectorAuthState,
+): BrowserWorkspaceConnectorAuthState {
+  switch (value) {
+    case "unknown":
+    case "ready":
+    case "auth_pending":
+    case "needs_reauth":
+    case "manual_handoff":
+      return value;
+    default:
+      return fallback;
+  }
+}
+
+function connectorSessionRequiresManualHandoff(
+  state: BrowserWorkspaceConnectorAuthState,
+): boolean {
+  return CONNECTOR_MANUAL_STATES.has(state);
+}
+
+function createConnectorSessionRef(
+  ref: BrowserWorkspaceConnectorSessionRef,
+): BrowserWorkspaceConnectorSessionRef {
+  return {
+    kind: ref.kind,
+    handleId: ref.handleId,
+    partition: ref.partition,
+    tabId: ref.tabId,
+    browser: ref.browser,
+    companionId: ref.companionId,
+    profileId: ref.profileId,
+    profileLabel: ref.profileLabel,
+  };
+}
+
+function createConnectorSessionHandle(args: {
+  provider: string;
+  accountId: string;
+  authState: BrowserWorkspaceConnectorAuthState;
+  ref: BrowserWorkspaceConnectorSessionRef;
+  created: boolean;
+  message?: string | null;
+}): BrowserWorkspaceConnectorSessionHandle {
+  const sessionRef = createConnectorSessionRef(args.ref);
+  return {
+    provider: args.provider,
+    accountId: args.accountId,
+    authState: args.authState,
+    requiresManualHandoff: connectorSessionRequiresManualHandoff(
+      args.authState,
+    ),
+    sessionRef,
+    partition: sessionRef.partition,
+    tabId: sessionRef.tabId,
+    companionId: sessionRef.companionId,
+    browser: sessionRef.browser,
+    profileId: sessionRef.profileId,
+    profileLabel: sessionRef.profileLabel,
+    created: args.created,
+    message: args.message ?? null,
+  };
+}
+
+function createBrowserBridgeConnectorSessionHandle(args: {
+  provider: string;
+  accountId: string;
+  companion: BrowserWorkspaceConnectorCompanionRef;
+  authState: BrowserWorkspaceConnectorAuthState;
+  message?: string | null;
+}): BrowserWorkspaceConnectorSessionHandle {
+  const browser = args.companion.browser?.trim() || null;
+  const companionId = args.companion.companionId?.trim() || null;
+  const profileId = args.companion.profileId?.trim() || null;
+  const profileLabel = args.companion.profileLabel?.trim() || null;
+  return createConnectorSessionHandle({
+    provider: args.provider,
+    accountId: args.accountId,
+    authState: args.authState,
+    created: false,
+    message: args.message,
+    ref: {
+      kind: "browser-bridge-companion",
+      handleId: [
+        "browser-bridge",
+        browser ?? "browser",
+        companionId ?? profileId ?? "profile",
+        args.provider,
+        args.accountId,
+      ].join(":"),
+      partition: null,
+      tabId: null,
+      browser,
+      companionId,
+      profileId,
+      profileLabel,
+    },
+  });
+}
+
+async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
+  operation: string,
+): Promise<void> {
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  const tabs = await listBrowserWorkspaceTabs(env);
+  const tab = tabs.find((entry) => entry.id === id) ?? null;
+  assertBrowserWorkspaceConnectorSecretsNotExported(tab?.partition, operation);
+}
+
+export async function acquireBrowserWorkspaceConnectorSession(
+  request: AcquireBrowserWorkspaceConnectorSessionRequest,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<BrowserWorkspaceConnectorSessionHandle> {
+  const provider = request.provider.trim();
+  const accountId = request.accountId.trim();
+  if (!provider) {
+    throw new Error("Eliza browser connector session requires provider.");
+  }
+  if (!accountId) {
+    throw new Error("Eliza browser connector session requires accountId.");
+  }
+
+  const companion = request.companion ?? null;
+  if (companion?.profileId || companion?.companionId) {
+    const authState = normalizeConnectorAuthState(
+      request.authState,
+      "manual_handoff",
+    );
+    return createBrowserBridgeConnectorSessionHandle({
+      provider,
+      accountId,
+      companion,
+      authState,
+      message:
+        request.manualHandoffReason ??
+        "Use the paired browser companion profile to finish login, MFA, or CAPTCHA if required.",
+    });
+  }
+
+  const partition = resolveBrowserWorkspaceConnectorPartition(
+    provider,
+    accountId,
+  );
+  const reuse = request.reuse !== false;
+  const tabs = reuse ? await listBrowserWorkspaceTabs(env) : [];
+  const existing = tabs.find((tab) => tab.partition === partition) ?? null;
+  let tab = existing;
+  let created = false;
+
+  if (!tab) {
+    tab = await openBrowserWorkspaceTab(
+      {
+        kind: "internal",
+        partition,
+        show: request.show ?? true,
+        title: request.title,
+        url: request.url,
+      },
+      env,
+    );
+    created = true;
+  } else if (request.show === true) {
+    tab = await showBrowserWorkspaceTab(tab.id, env);
+  }
+
+  const authState = normalizeConnectorAuthState(
+    request.authState,
+    created ? "auth_pending" : "ready",
+  );
+  return createConnectorSessionHandle({
+    provider,
+    accountId,
+    authState,
+    created,
+    message:
+      request.manualHandoffReason ??
+      (connectorSessionRequiresManualHandoff(authState)
+        ? "Manual login, MFA, or CAPTCHA may be required in this isolated connector browser session."
+        : null),
+    ref: {
+      kind: "internal-browser",
+      handleId: `internal-browser:${partition}`,
+      partition,
+      tabId: tab.id,
+      browser: null,
+      companionId: null,
+      profileId: null,
+      profileLabel: null,
+    },
+  });
 }
 
 export async function getBrowserWorkspaceSnapshot(
@@ -428,7 +650,10 @@ export async function executeBrowserWorkspaceCommand(
     case "open": {
       const tab = await openBrowserWorkspaceTab(
         {
-          partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
+          partition: resolveBrowserWorkspaceCommandPartition(
+            command,
+            AGENT_BROWSER_WORKSPACE_PARTITION,
+          ),
           show: command.show,
           title: command.title,
           url: command.url,
@@ -672,6 +897,11 @@ export async function executeBrowserWorkspaceCommand(
           command,
         )) as BrowserWorkspaceCommandResult;
       }
+      await assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
+        command,
+        env,
+        "state",
+      );
       if (command.stateAction === "load") {
         const filePath = command.filePath?.trim() || command.outputPath?.trim();
         if (!filePath) {
@@ -753,7 +983,10 @@ export async function executeBrowserWorkspaceCommand(
           subaction: command.subaction,
           tab: await openBrowserWorkspaceTab(
             {
-              partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
+              partition: resolveBrowserWorkspaceCommandPartition(
+                command,
+                AGENT_BROWSER_WORKSPACE_PARTITION,
+              ),
               show: command.show ?? true,
               title: command.title,
               url: command.url,
@@ -802,7 +1035,10 @@ export async function executeBrowserWorkspaceCommand(
         subaction: command.subaction,
         tab: await openBrowserWorkspaceTab(
           {
-            partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
+            partition: resolveBrowserWorkspaceCommandPartition(
+              command,
+              AGENT_BROWSER_WORKSPACE_PARTITION,
+            ),
             show: true,
             title: command.title,
             url: command.url,

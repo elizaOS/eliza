@@ -4,6 +4,20 @@ export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
 
 export type BrowserWorkspaceTabKind = "internal" | "standard";
 
+export const BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES = [
+  "unknown",
+  "ready",
+  "auth_pending",
+  "needs_reauth",
+  "manual_handoff",
+] as const;
+export type BrowserWorkspaceConnectorAuthState =
+  (typeof BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES)[number];
+
+export type BrowserWorkspaceConnectorSessionKind =
+  | "internal-browser"
+  | "browser-bridge-companion";
+
 export type BrowserWorkspaceOperation =
   | "list"
   | "open"
@@ -193,11 +207,59 @@ export interface BrowserWorkspaceBridgeConfig {
   token: string | null;
 }
 
+export interface BrowserWorkspaceConnectorCompanionRef {
+  browser?: string | null;
+  companionId?: string | null;
+  profileId?: string | null;
+  profileLabel?: string | null;
+}
+
+export interface AcquireBrowserWorkspaceConnectorSessionRequest {
+  provider: string;
+  accountId: string;
+  url?: string;
+  title?: string;
+  show?: boolean;
+  reuse?: boolean;
+  authState?: BrowserWorkspaceConnectorAuthState;
+  manualHandoffReason?: string | null;
+  companion?: BrowserWorkspaceConnectorCompanionRef | null;
+}
+
+export interface BrowserWorkspaceConnectorSessionRef {
+  kind: BrowserWorkspaceConnectorSessionKind;
+  handleId: string;
+  partition: string | null;
+  tabId: string | null;
+  browser: string | null;
+  companionId: string | null;
+  profileId: string | null;
+  profileLabel: string | null;
+}
+
+export interface BrowserWorkspaceConnectorSessionHandle {
+  provider: string;
+  accountId: string;
+  authState: BrowserWorkspaceConnectorAuthState;
+  requiresManualHandoff: boolean;
+  sessionRef: BrowserWorkspaceConnectorSessionRef;
+  partition: string | null;
+  tabId: string | null;
+  companionId: string | null;
+  browser: string | null;
+  profileId: string | null;
+  profileLabel: string | null;
+  created: boolean;
+  message: string | null;
+}
+
 export interface OpenBrowserWorkspaceTabRequest {
   url?: string;
   title?: string;
   show?: boolean;
   partition?: string;
+  connectorProvider?: string;
+  connectorAccountId?: string;
   kind?: BrowserWorkspaceTabKind;
   width?: number;
   height?: number;
@@ -255,6 +317,8 @@ export interface BrowserWorkspaceCommand {
   script?: string;
   show?: boolean;
   partition?: string;
+  connectorProvider?: string;
+  connectorAccountId?: string;
   selector?: string;
   text?: string;
   value?: string;

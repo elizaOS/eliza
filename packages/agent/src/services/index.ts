@@ -1,9 +1,8 @@
 export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
-export * from "./browser-capture.js";
-export * from "./browser-workspace.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
+export * from "./media-generation.js";
 export {
   EscalationService,
   type EscalationState,

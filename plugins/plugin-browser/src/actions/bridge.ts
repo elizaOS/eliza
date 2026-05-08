@@ -23,17 +23,17 @@ import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "./contracts.js";
+} from "../contracts.js";
 import {
   buildBrowserBridgeCompanionPackage,
   getBrowserBridgeCompanionPackageStatus,
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
-} from "./packaging.js";
+} from "../packaging.js";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
-} from "./service.js";
+} from "../service.js";
 
 const INSTALL_NAME = "BROWSER_BRIDGE_INSTALL";
 const REVEAL_FOLDER_NAME = "BROWSER_BRIDGE_REVEAL_FOLDER";

@@ -9,7 +9,7 @@ import {
   type BrowserWorkspaceWaitState,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-browser/workspace";
 import type {
   Action,
   ActionExample,

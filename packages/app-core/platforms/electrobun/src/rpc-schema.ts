@@ -17,7 +17,7 @@ import type {
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
 	OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent/services/browser-workspace-types";
+} from "@elizaos/plugin-browser/workspace/browser-workspace-types";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================

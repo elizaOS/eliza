@@ -28,9 +28,10 @@
     }
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/plugin-browser": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

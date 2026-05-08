@@ -8,9 +8,6 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
-import { browserAutofillLoginAction } from "../actions/browser-autofill-login.js";
-import { browserSessionAction } from "../actions/browser-session.js";
-import { codeAction } from "../actions/code-umbrella.js";
 import {
   disconnectConnectorAction,
   listConnectorsAction,
@@ -31,15 +28,9 @@ import {
   readEntityAction,
   resolveMergeCandidateAction,
   searchEntityAction,
-  updateContactAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
-import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
-import {
-  clearLogsAction,
-  exportLogsAction,
-  queryLogsAction,
-} from "../actions/logs.js";
+import { clearLogsAction, queryLogsAction } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import {
   createMemoryAction,
@@ -58,15 +49,7 @@ import {
   reloadRuntimeConfigAction,
   restartRuntimeAction,
 } from "../actions/runtime.js";
-import {
-  scratchpadAddAction,
-  scratchpadDeleteAction,
-  scratchpadReadAction,
-  scratchpadReplaceAction,
-  scratchpadSearchAction,
-} from "../actions/scratchpad.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
-import { sendAdminMessageAction } from "../actions/send-admin-message.js";
 import { setUserNameAction } from "../actions/set-user-name.js";
 import {
   toggleAutoTrainingAction,
@@ -84,19 +67,10 @@ import {
   reopenCodingTaskAction,
 } from "../actions/tasks-coding.js";
 import { terminalAction } from "../actions/terminal.js";
-import {
-  annotateTrajectoryAction,
-  exportTrajectoryDatasetAction,
-  queryTrajectoriesAction,
-} from "../actions/trajectories.js";
+import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { updateOwnerNameAction } from "../actions/update-owner-name.js";
 import { webSearchAction } from "../actions/web-search.js";
-import {
-  createWorkflowAction,
-  deleteWorkflowAction,
-  promoteTaskToWorkflowAction,
-  toggleWorkflowActiveAction,
-} from "../actions/workflow/index.js";
+import { workflowAction } from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
@@ -120,11 +94,8 @@ import { createUserNameProvider } from "../providers/user-name.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
-import { createTriggerTaskAction } from "../triggers/action.js";
-import { deleteTriggerTaskAction } from "../triggers/delete-trigger.js";
-import { runTriggerNowAction } from "../triggers/run-trigger.js";
+import { AgentMediaGenerationService } from "../services/media-generation.js";
 import { registerTriggerTaskWorker } from "../triggers/runtime.js";
-import { updateTriggerTaskAction } from "../triggers/update-trigger.js";
 
 import { setCustomActionsRuntime } from "./custom-actions.js";
 
@@ -167,6 +138,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     services: [
       AgentEventService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
+      AgentMediaGenerationService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
@@ -273,25 +245,14 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     actions: [
       restartAction,
-      sendAdminMessageAction,
       terminalAction,
-      createTriggerTaskAction,
-      updateTriggerTaskAction,
-      deleteTriggerTaskAction,
-      runTriggerNowAction,
-      createWorkflowAction,
-      deleteWorkflowAction,
-      toggleWorkflowActiveAction,
-      promoteTaskToWorkflowAction,
+      workflowAction,
       manageTasksAction,
       ...pageActionGroupActions,
       setUserNameAction,
       skillCommandAction,
       webSearchAction,
       extractPageAction,
-      browserSessionAction,
-      browserAutofillLoginAction,
-      launchpadLaunchAction,
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,
@@ -300,7 +261,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       resolveMergeCandidateAction,
       getRelationshipActivityAction,
       createContactAction,
-      updateContactAction,
       deleteContactAction,
       updateOwnerNameAction,
       readMessagesAction,
@@ -315,7 +275,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       readPluginConfigAction,
       // Observability / introspection actions
       queryLogsAction,
-      exportLogsAction,
       clearLogsAction,
       getRuntimeStatusAction,
       describeRegisteredActionsAction,
@@ -326,20 +285,12 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       executeDatabaseQueryAction,
       searchVectorsAction,
       queryTrajectoriesAction,
-      exportTrajectoryDatasetAction,
-      annotateTrajectoryAction,
       createMemoryAction,
       recallMemoryFilteredAction,
       forgetMemoryAction,
       editMemoryAction,
-      scratchpadAddAction,
-      scratchpadReadAction,
-      scratchpadSearchAction,
-      scratchpadReplaceAction,
-      scratchpadDeleteAction,
       archiveCodingTaskAction,
       reopenCodingTaskAction,
-      codeAction,
     ],
   };
 
