@@ -21,7 +21,6 @@
  */
 
 import type { Plugin, Route } from "@elizaos/core";
-import { browserAction } from "./actions/browser-action.js";
 import { fileAction } from "./actions/file-action.js";
 import { manageWindowAction } from "./actions/manage-window.js";
 import { terminalAction } from "./actions/terminal-action.js";
@@ -72,7 +71,6 @@ export const computerUsePlugin: Plugin = {
 
   actions: [
     useComputerAction,
-    browserAction,
     manageWindowAction,
     fileAction,
     terminalAction,
