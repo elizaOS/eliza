@@ -20,7 +20,7 @@
     "cli": "bun src/index.tsx",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . || true",
-    "typecheck": "tsc --noEmit || true"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.5",

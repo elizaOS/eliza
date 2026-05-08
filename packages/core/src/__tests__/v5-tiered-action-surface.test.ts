@@ -164,6 +164,13 @@ function plannerUserContent(runtime: IAgentRuntime): string {
 	);
 }
 
+function availableActionsSection(runtime: IAgentRuntime): string {
+	const prompt = plannerUserContent(runtime);
+	const marker = "# Available Actions";
+	const index = prompt.indexOf(marker);
+	return index >= 0 ? prompt.slice(index) : prompt;
+}
+
 describe("v5 tiered action surface", () => {
 	let originalTieredEnv: string | undefined;
 	let originalTrajectoryEnv: string | undefined;
@@ -229,7 +236,7 @@ describe("v5 tiered action surface", () => {
 			responseId: RESPONSE_ID,
 		});
 
-		const prompt = plannerUserContent(runtime);
+		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
@@ -268,7 +275,7 @@ describe("v5 tiered action surface", () => {
 			responseId: RESPONSE_ID,
 		});
 
-		const prompt = plannerUserContent(runtime);
+		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("CALENDAR");
 		expect(prompt).not.toContain("CREATE_EVENT");
 		expect(prompt).not.toContain("CHAT_MESSAGE");

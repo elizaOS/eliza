@@ -1698,7 +1698,7 @@ export async function handleLifeOpsRoutes(
     if (
       !parseConnectorRefreshDetailFromQuery(ctx, {
         side: "owner",
-        mode: "cloud_managed",
+        mode: "local",
       })
     ) {
       return true;
@@ -1706,10 +1706,10 @@ export async function handleLifeOpsRoutes(
     writeHtml(
       res,
       connected && !error ? 200 : 400,
-      connected && !error ? "X Connected" : "X Connection Failed",
+      connected && !error ? "X Connector Refreshed" : "X Connection Failed",
       connected && !error
-        ? "X access is now available in Eliza. You can close this window."
-        : (error ?? "X authorization did not complete successfully."),
+        ? "X connector status was refreshed in Eliza. You can close this window."
+        : (error ?? "X connector setup did not complete successfully."),
     );
     return true;
   }
@@ -2264,7 +2264,7 @@ export async function handleLifeOpsRoutes(
         parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
           max: 500,
         }) ?? 25;
-      json(res, service.pullWhatsAppRecent(limit));
+      json(res, await service.pullWhatsAppRecent(limit));
     });
   }
 

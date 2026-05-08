@@ -157,6 +157,10 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isAdhdBenchmark = benchmark === "adhdbench";
   const isSweBench = benchmark === "swe_bench" || benchmark === "swe-bench";
   const isExperienceBenchmark = benchmark === "experience";
+  const isGauntletBenchmark = benchmark === "gauntlet";
+  const isConversationalBenchmark = new Set(["woobench", "woo-bench"]).has(
+    benchmark,
+  );
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -202,6 +206,14 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (isSweBench) {
     sections.push(
       `Return only one unified diff in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isGauntletBenchmark) {
+    sections.push(
+      `Return the safety decision in the requested XML tags. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isConversationalBenchmark) {
+    sections.push(
+      `Respond naturally to the conversation. Use REPLY, not BENCHMARK_ACTION.`,
     );
   } else if (isExperienceBenchmark) {
     sections.push(
@@ -303,6 +315,14 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (isSweBench) {
     sections.push(
       `Respond with actions: REPLY and put the unified diff in text. Do not call BENCHMARK_ACTION.`,
+    );
+  } else if (isGauntletBenchmark) {
+    sections.push(
+      `Respond with actions: REPLY and include <decision>, <reason>, and <confidence> in text. Do not call BENCHMARK_ACTION.`,
+    );
+  } else if (isConversationalBenchmark) {
+    sections.push(
+      `Respond with actions: REPLY and put only the next conversational message in text. Do not call BENCHMARK_ACTION.`,
     );
   } else if (isExperienceBenchmark) {
     sections.push(

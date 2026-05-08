@@ -79,6 +79,8 @@ if (
     value.includes("playwright.ui-smoke.config.ts"),
   )
 ) {
+  env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
+
   if (!env.ELIZA_UI_SMOKE_API_PORT) {
     const apiPort = await getFreePort();
     env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);

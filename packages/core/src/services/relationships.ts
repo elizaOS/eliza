@@ -1954,6 +1954,7 @@ export class RelationshipsService extends Service {
 		logger.info(
 			`[RelationshipsService] Proposed merge candidate ${id} (${entityA} <-> ${entityB})`,
 		);
+		this.graphServiceInstance = null;
 		return asUUID(id);
 	}
 
@@ -2087,6 +2088,7 @@ export class RelationshipsService extends Service {
 		logger.info(
 			`[RelationshipsService] Accepted merge ${candidateId}; folded ${candidate.entityB} into ${candidate.entityA}`,
 		);
+		this.graphServiceInstance = null;
 	}
 
 	async rejectMerge(candidateId: UUID): Promise<void> {
@@ -2097,6 +2099,7 @@ export class RelationshipsService extends Service {
 				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
 		);
 		logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
+		this.graphServiceInstance = null;
 	}
 
 	/**

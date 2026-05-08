@@ -9,10 +9,11 @@ import { withSignal } from "./service-mixin-signal.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withX } from "./service-mixin-x.js";
+import { withXRead } from "./service-mixin-x-read.js";
 
-const TestMessagingService = withX(withWhatsApp(
-  withSignal(withTelegram(LifeOpsServiceBase)),
-));
+const TestMessagingService = withX(
+  withXRead(withWhatsApp(withSignal(withTelegram(LifeOpsServiceBase)))),
+);
 
 function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
   const settings = new Map<string, unknown>();
@@ -52,7 +53,7 @@ function legacyGrant(
         ? ["signal.read", "signal.send"]
         : provider === "x"
           ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
-        : ["telegram.read", "telegram.send"],
+          : ["telegram.read", "telegram.send"],
     tokenRef: `${provider}-legacy-token`,
     mode: "local",
     executionTarget: "local",
@@ -330,6 +331,89 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     expect(createPostForAccount.mock.calls[0]?.[0]).toBe("acct-x-requested");
   });
 
+  it("translates X DM memories from the plugin runtime service", async () => {
+    const runtimeMessages = [
+      {
+        id: "memory-x-dm-1",
+        roomId: "conversation-1",
+        entityId: "x-user-1",
+        content: { text: "plugin managed hello" },
+        metadata: {
+          x: {
+            dmEventId: "dm-1",
+            conversationId: "conversation-1",
+            senderId: "x-user-1",
+            senderUsername: "alice",
+            isInbound: true,
+          },
+        },
+        createdAt: Date.now() - 2_000,
+      },
+      {
+        id: "memory-x-dm-2",
+        roomId: "conversation-1",
+        entityId: "owner",
+        content: { text: "plugin managed reply" },
+        metadata: {
+          x: {
+            dmEventId: "dm-2",
+            conversationId: "conversation-1",
+            senderId: "owner",
+            senderUsername: "owner",
+            isInbound: false,
+          },
+        },
+        createdAt: Date.now() - 1_000,
+      },
+    ];
+    const fetchDirectMessagesForAccount = vi.fn(async () => runtimeMessages);
+    const service = serviceWithLegacyGrants({
+      services: { x: { fetchDirectMessagesForAccount } },
+      grants: { x: legacyGrant("x") },
+    });
+    const stored = [];
+    service.repository.upsertXDm = vi.fn(async (dm) => {
+      const index = stored.findIndex(
+        (existing) => existing.externalDmId === dm.externalDmId,
+      );
+      if (index >= 0) {
+        stored[index] = dm;
+      } else {
+        stored.push(dm);
+      }
+    });
+    service.repository.listXDms = vi.fn(async (_agentId, opts = {}) =>
+      stored.slice(0, opts.limit ?? stored.length),
+    );
+
+    await expect(service.syncXDms({ limit: 10 })).resolves.toEqual({
+      synced: 2,
+    });
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("acct-x-owner", {
+      participantId: undefined,
+      limit: 10,
+    });
+    expect(stored).toHaveLength(2);
+    expect(stored[0]).toMatchObject({
+      externalDmId: "dm-1",
+      conversationId: "conversation-1",
+      senderHandle: "alice",
+      text: "plugin managed hello",
+      isInbound: true,
+      metadata: { source: "plugin-x-runtime" },
+    });
+
+    await expect(service.readXInboundDms({ limit: 10 })).resolves.toMatchObject(
+      [
+        {
+          externalDmId: "dm-1",
+          isInbound: true,
+          text: "plugin managed hello",
+        },
+      ],
+    );
+  });
+
   it("does not read or send Signal from legacy LifeOps token refs", async () => {
     const service = serviceWithLegacyGrants({
       grants: { signal: legacyGrant("signal") },
@@ -493,6 +577,88 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       to: "+15550000001",
       content: "hello",
       replyToMessageId: undefined,
+    });
+  });
+
+  it("delegates WhatsApp recent message pulls to the runtime service", async () => {
+    const fetchConnectorMessages = vi.fn(async () => [
+      {
+        id: "memory-whatsapp-1",
+        roomId: "+15550000001",
+        entityId: "+15550000001",
+        createdAt: 1_780_000_000_000,
+        content: { text: "hello from whatsapp" },
+        metadata: {
+          messageIdFull: "wamid.1",
+          whatsapp: {
+            from: "+15550000001",
+            chatId: "+15550000001",
+            type: "text",
+          },
+        },
+      },
+    ]);
+    const service = serviceWithLegacyGrants({
+      services: {
+        whatsapp: {
+          connected: true,
+          sendMessage: vi.fn(async () => ({
+            messages: [{ id: "wamid.sent" }],
+          })),
+          fetchConnectorMessages,
+        },
+      },
+    });
+
+    await expect(service.pullWhatsAppRecent(5)).resolves.toMatchObject({
+      count: 1,
+      messages: [
+        {
+          id: "wamid.1",
+          from: "+15550000001",
+          channelId: "+15550000001",
+          type: "text",
+          text: "hello from whatsapp",
+        },
+      ],
+    });
+    expect(fetchConnectorMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "whatsapp",
+        accountId: "default",
+      }),
+      expect.objectContaining({ accountId: "default", limit: 5 }),
+    );
+  });
+
+  it("delegates WhatsApp webhooks to plugin-whatsapp and rejects LifeOps parsing fallback", async () => {
+    const handleWebhook = vi.fn(async () => undefined);
+    const service = serviceWithLegacyGrants({
+      services: {
+        whatsapp: {
+          connected: true,
+          handleWebhook,
+        },
+      },
+    });
+
+    await expect(
+      service.ingestWhatsAppWebhook({ object: "whatsapp_business_account" }),
+    ).resolves.toEqual({ ingested: 0, messages: [] });
+    expect(handleWebhook).toHaveBeenCalledWith({
+      object: "whatsapp_business_account",
+    });
+
+    const withoutWebhook = serviceWithLegacyGrants({
+      services: { whatsapp: { connected: true } },
+    });
+    await expect(
+      withoutWebhook.ingestWhatsAppWebhook({
+        object: "whatsapp_business_account",
+      }),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
     });
   });
 

@@ -156,7 +156,15 @@ def main() -> int:
     elif args.provider == "mock":
         prompts = _fallback_prompts(args.max_examples)
     else:
-        prompts = _load_prompts_from_hf(args.dataset, args.max_examples)
+        try:
+            prompts = _load_prompts_from_hf(args.dataset, args.max_examples)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "could not load HF dataset %s (%s); using embedded smoke prompts",
+                args.dataset,
+                exc,
+            )
+            prompts = _fallback_prompts(args.max_examples)
     if not prompts:
         raise SystemExit("no prompts loaded")
     log.info("loaded %d harmless prompts", len(prompts))

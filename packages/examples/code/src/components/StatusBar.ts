@@ -6,8 +6,11 @@ import { useStore } from "../lib/store.js";
 export class StatusBar implements Component {
   private cwd = getCwd();
   private lastCwdCheck = Date.now();
+  private width = 80;
 
-  render(width: number, _height: number): string[] {
+  invalidate(): void {}
+
+  render(width: number): string[] {
     this.width = width;
 
     // Periodically update CWD

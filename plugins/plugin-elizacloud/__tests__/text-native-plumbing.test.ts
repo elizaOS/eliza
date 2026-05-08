@@ -33,6 +33,7 @@ function runtime(settings: Record<string, string | undefined> = {}): IAgentRunti
       bio: [],
     },
     getSetting: (key: string) => settings[key],
+    emitEvent: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 

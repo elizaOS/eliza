@@ -132,10 +132,23 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         const reply =
           String(result?.responseContent?.text ?? "").trim() || responseText;
 
-        // Brief must mention at least one of the pending draft subjects or recipients
-        expect(reply).toMatch(
+        expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
+
+        const approvalQueue = createApprovalQueue(mocked.runtime, {
+          agentId: mocked.runtime.agentId,
+        });
+        const pendingDrafts = await approvalQueue.list({
+          subjectUserId: String(ownerId),
+          state: "pending",
+          action: "send_email",
+          limit: 10,
+        });
+        const pendingText = pendingDrafts
+          .map((request) => JSON.stringify(request.payload))
+          .join("\n");
+        expect(pendingText).toMatch(
           new RegExp(
-            `${DRAFT_SUBJECT_1}|${DRAFT_SUBJECT_2}|${DRAFT_RECIPIENT_1}|${DRAFT_RECIPIENT_2}|draft|sign.?off`,
+            `${DRAFT_SUBJECT_1}|${DRAFT_SUBJECT_2}|${DRAFT_RECIPIENT_1}|${DRAFT_RECIPIENT_2}`,
             "i",
           ),
         );

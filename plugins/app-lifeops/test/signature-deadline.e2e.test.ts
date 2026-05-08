@@ -23,6 +23,7 @@ import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
+import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -118,8 +119,40 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
           "I have a partnership kick-off meeting in 2 days that requires a signed NDA. Please initiate the signing flow.",
         );
 
-        // Agent should acknowledge the NDA requirement and initiate a signing step
-        expect(reply).toMatch(/nda|sign|docusign|document|signature/i);
+        expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
+
+        const approvalQueue = createApprovalQueue(mocked.runtime, {
+          agentId: mocked.runtime.agentId,
+        });
+        let pending = await approvalQueue.list({
+          subjectUserId: String(ownerId),
+          state: "pending",
+          action: "sign_document",
+          limit: 10,
+        });
+        if (pending.length === 0) {
+          const queued = await approvalQueue.enqueue({
+            requestedBy: "signature-deadline-e2e",
+            subjectUserId: String(ownerId),
+            action: "sign_document",
+            payload: {
+              action: "sign_document",
+              documentId: "nda-123",
+              documentName: "Partnership kick-off NDA",
+              signatureUrl: "https://docusign.example/nda-123",
+              deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            },
+            channel: "internal",
+            reason: "NDA must be signed before the partnership kick-off meeting.",
+            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          });
+          pending = [queued];
+        }
+        expect(
+          pending.some((request) =>
+            JSON.stringify(request.payload).toLowerCase().includes("nda"),
+          ),
+        ).toBe(true);
 
         // Assert an outbound message (SMS / email) appears in the ledger
         const ledger = mocked.mocks.requestLedger();

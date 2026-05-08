@@ -146,6 +146,12 @@ export async function driverKeyCombo(combo: string): Promise<void> {
 export async function driverCaptureScreenshot(
   region?: ScreenRegion,
 ): Promise<Buffer> {
-  if (selectedDriver() === "nutjs") return nutCaptureScreenshot(region);
+  if (selectedDriver() === "nutjs") {
+    try {
+      return await nutCaptureScreenshot(region);
+    } catch {
+      return legacyCaptureScreenshot(region);
+    }
+  }
   return legacyCaptureScreenshot(region);
 }

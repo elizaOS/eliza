@@ -1,5 +1,8 @@
 import type { Action, ActionResult } from "@elizaos/core";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
+import { editAction } from "./edit.js";
+import { readAction } from "./read.js";
+import { writeAction } from "./write.js";
 
 export const fileAction: Action = {
   name: "FILE",
@@ -11,7 +14,7 @@ export const fileAction: Action = {
     "Sub-actions: READ (read file contents), WRITE (write full file contents), EDIT (replace a string within a file).",
   descriptionCompressed: "File read/write/edit at absolute path.",
   similes: ["READ_FILE", "WRITE_FILE", "EDIT_FILE", "FILE_OPERATION", "FILE_IO"],
-  subActions: ["READ", "WRITE", "EDIT"],
+  subActions: [readAction, writeAction, editAction],
   subPlanner: {
     name: "file_subplanner",
     description: "Select READ, WRITE, or EDIT based on the file operation the user is requesting.",

@@ -18,7 +18,7 @@ class OpenAIProvider(LLMProvider):
         self,
         api_key: str | None = None,
         model: str = "gpt-4",
-        base_url: str = "https://api.openai.com/v1",
+        base_url: str | None = None,
     ) -> None:
         """
         Initialize the OpenAI provider.
@@ -35,7 +35,7 @@ class OpenAIProvider(LLMProvider):
                 "or pass api_key parameter."
             )
         self.model = model
-        self.base_url = base_url
+        self.base_url = (base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
 
     async def generate(
         self,

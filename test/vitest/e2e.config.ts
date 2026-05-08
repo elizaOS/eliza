@@ -53,11 +53,10 @@ export const credentialDependentE2EPaths = [
   "eliza/packages/app-core/test/live-agent/telegram-connector.live.e2e.test.ts",
 ];
 
-export const liveAndRealE2EInclude = [
-  "eliza/apps/**/*.{live,real}.e2e.test.{ts,tsx}",
-  "eliza/apps/**/*-{live,real}.e2e.test.{ts,tsx}",
-  "eliza/packages/**/*.{live,real}.e2e.test.{ts,tsx}",
-  "eliza/packages/**/*-{live,real}.e2e.test.{ts,tsx}",
+export const vitestE2EInclude = [
+  "eliza/apps/**/*.e2e.test.{ts,tsx}",
+  "eliza/packages/**/*.e2e.test.{ts,tsx}",
+  "eliza/plugins/**/*.e2e.test.{ts,tsx}",
 ];
 
 export const baselineE2EExcludedPaths = [
@@ -67,11 +66,24 @@ export const baselineE2EExcludedPaths = [
   ...credentialDependentE2EPaths,
 ];
 
+export const nonVitestE2EExcludedPaths = [
+  // Bun test and Playwright suites are executed by package/cloud scripts.
+  "eliza/plugins/plugin-n8n-workflow/__tests__/e2e/**/*.e2e.test.ts",
+  "eliza/packages/elizaos/templates/**",
+  "eliza/.claude/**",
+];
+
+export const liveAndRealE2EInclude = vitestE2EInclude;
+
 export default defineConfig({
   ...baseConfig,
   test: {
     ...baseConfig.test,
-    include: liveAndRealE2EInclude,
-    exclude: [...(baseConfig.test?.exclude ?? []), ...baselineE2EExcludedPaths],
+    include: vitestE2EInclude,
+    exclude: [
+      ...(baseConfig.test?.exclude ?? []),
+      ...nonVitestE2EExcludedPaths,
+      ...baselineE2EExcludedPaths,
+    ],
   },
 });

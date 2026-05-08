@@ -12,8 +12,8 @@
     "codegen": "node src/_generate-router.mjs",
     "typecheck": "tsc --noEmit",
     "test:audit": "node test/_audit-coverage.mjs",
-    "test:e2e": "bun test --max-concurrency=1 --preload ./test/e2e/preload.ts test/e2e --timeout 120000",
-    "test:e2e:foundation": "bun test --preload ./test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+    "test:e2e": "TEST_SERVER_SCRIPT=dev bun test --max-concurrency=1 --preload ../../packages/tests/e2e/preload.ts test/e2e --timeout 120000",
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload ../../packages/tests/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.37",

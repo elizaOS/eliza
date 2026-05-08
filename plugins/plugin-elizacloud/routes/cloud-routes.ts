@@ -75,6 +75,35 @@ const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
   validateCloudBaseUrl,
 };
 
+async function readRouteJsonBody(
+  req: http.IncomingMessage,
+): Promise<Record<string, unknown>> {
+  const preParsed = (req as http.IncomingMessage & { body?: unknown }).body;
+  if (
+    preParsed &&
+    typeof preParsed === "object" &&
+    !Array.isArray(preParsed)
+  ) {
+    return preParsed as Record<string, unknown>;
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+
+  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+  if (!rawBody) {
+    return {};
+  }
+
+  const parsed = JSON.parse(rawBody) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid JSON body");
+  }
+  return parsed as Record<string, unknown>;
+}
+
 /**
  * Monotonic counter incremented on every `POST /api/cloud/disconnect`.
  *
@@ -364,16 +393,8 @@ export async function handleCloudRoute(
   // Cloud (bypassing the backend's login/status handler) and needs to push
   // the API key to the backend so billing/compat routes can authenticate.
   if (method === "POST" && pathname === "/api/cloud/login/persist") {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    }
     try {
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
-        apiKey?: unknown;
-        organizationId?: unknown;
-        userId?: unknown;
-      };
+      const body = await readRouteJsonBody(req);
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
         sendJson(res, 400, { ok: false, error: "apiKey is required" });
         return true;

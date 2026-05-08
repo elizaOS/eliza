@@ -48,6 +48,7 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "signal",
   "browser-workspace",
   "bluebubbles",
+  "imessage",
   "github",
   "discord",
   "slack",
@@ -239,6 +240,13 @@ function envVarsFor(
     out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
     out.ELIZA_BLUEBUBBLES_URL = baseUrls.bluebubbles;
     out.BLUEBUBBLES_SERVER_URL = baseUrls.bluebubbles;
+    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
+    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
+  }
+  if (envs.includes("imessage")) {
+    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
+    out.ELIZA_BLUEBUBBLES_URL = baseUrls.imessage;
+    out.BLUEBUBBLES_SERVER_URL = baseUrls.imessage;
     out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
     out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
   }
@@ -3153,7 +3161,7 @@ function createDynamicProviderState(
       state: createBrowserWorkspaceMockState(opts),
     };
   }
-  if (environmentName === "BlueBubbles") {
+  if (environmentName === "BlueBubbles" || environmentName === "iMessage") {
     return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {

@@ -44,8 +44,8 @@
     },
     {
       "connector": "imessage",
-      "providers": ["BlueBubbles / Blooio"],
-      "requiredAxes": ["core", "helper-disconnected"]
+      "providers": ["iMessage connector plugin"],
+      "requiredAxes": ["core", "plugin-unavailable"]
     },
     {
       "connector": "twilio-sms",
@@ -304,7 +304,7 @@
       "id": "connector.imessage.certify-core",
       "connector": "imessage",
       "axis": "core",
-      "providers": ["BlueBubbles / Blooio"],
+      "providers": ["iMessage connector plugin"],
       "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"],
       "requiredFinalCheckTypes": [
@@ -314,13 +314,13 @@
       ]
     },
     {
-      "id": "connector.imessage.certify-helper-disconnected",
+      "id": "connector.imessage.certify-plugin-unavailable",
       "connector": "imessage",
-      "axis": "helper-disconnected",
+      "axis": "plugin-unavailable",
       "degraded": true,
-      "providers": ["BlueBubbles / Blooio"],
+      "providers": ["iMessage connector plugin"],
       "actions": ["MESSAGE", "MESSAGE"],
-      "capabilities": ["helper-health-surfacing", "repair-request"],
+      "capabilities": ["plugin-health-surfacing", "repair-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
     },

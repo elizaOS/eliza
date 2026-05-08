@@ -21,7 +21,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =

@@ -29,7 +29,7 @@ const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
 ];
 
 const SIGNAL_PLUGIN_SETUP_MESSAGE =
-  "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local signal-cli credentials.";
+  "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local Signal credentials.";
 
 const SIGNAL_PAIRING_MIGRATED_MESSAGE =
   "Signal pairing has moved to @elizaos/plugin-signal. Use the Signal connector setup routes (/api/signal/pair, /api/signal/status, and /api/signal/disconnect); LifeOps no longer owns Signal device-link credentials.";

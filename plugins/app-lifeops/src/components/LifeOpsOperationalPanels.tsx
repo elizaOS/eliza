@@ -2,7 +2,7 @@ import {
   Badge,
   Button,
   client,
-  isCloudStatusAuthenticated,
+  dispatchFocusConnector,
   useApp,
 } from "@elizaos/app-core";
 import type {
@@ -560,14 +560,7 @@ export function LifeOpsSchedulePanel() {
 }
 
 export function LifeOpsXPanel() {
-  const {
-    elizaCloudConnected,
-    elizaCloudLoginBusy,
-    elizaCloudLoginError,
-    elizaCloudStatusReason,
-    handleCloudLogin,
-    t,
-  } = useApp();
+  const { setActionNotice, setTab, t } = useApp();
   const ownerX = useLifeOpsXConnector("owner");
   const agentX = useLifeOpsXConnector("agent");
   const status = ownerX.status;
@@ -576,32 +569,33 @@ export function LifeOpsXPanel() {
   const agentConnected = agentStatus?.connected === true;
   const ownerIdentity = readXIdentity(status?.identity ?? null, "");
   const agentIdentity = readXIdentity(agentStatus?.identity ?? null, "");
-  const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
-  const cloudAuthenticated = isCloudStatusAuthenticated(
-    elizaCloudConnected,
-    elizaCloudStatusReason,
-  );
-  const ownerNeedsCloudLogin =
-    !cloudAuthenticated && status?.hasCredentials !== true;
-  const agentNeedsCloudLogin = !cloudAuthenticated;
-  const actionPending =
-    ownerX.actionPending || agentX.actionPending || elizaCloudLoginBusy;
+  const actionPending = ownerX.actionPending || agentX.actionPending;
+
+  const openXConnectorSettings = useCallback(() => {
+    setTab("connectors");
+    dispatchFocusConnector("x");
+    setActionNotice(
+      "X account setup is managed in Connectors. Configure plugin-x there, then refresh LifeOps.",
+      "info",
+      4200,
+    );
+  }, [setActionNotice, setTab]);
 
   const handleOwnerConnect = useCallback(() => {
-    if (ownerNeedsCloudLogin) {
-      void handleCloudLogin();
+    if (!connected) {
+      openXConnectorSettings();
       return;
     }
-    void ownerX.connect(mode);
-  }, [handleCloudLogin, mode, ownerNeedsCloudLogin, ownerX.connect]);
+    void ownerX.connect("local");
+  }, [connected, openXConnectorSettings, ownerX.connect]);
 
   const handleAgentConnect = useCallback(() => {
-    if (agentNeedsCloudLogin) {
-      void handleCloudLogin();
+    if (!agentConnected) {
+      openXConnectorSettings();
       return;
     }
-    void agentX.connect("cloud_managed");
-  }, [agentNeedsCloudLogin, agentX.connect, handleCloudLogin]);
+    void agentX.connect("local");
+  }, [agentConnected, agentX.connect, openXConnectorSettings]);
 
   return (
     <PanelShell
@@ -694,17 +688,13 @@ export function LifeOpsXPanel() {
           onClick={handleOwnerConnect}
           disabled={actionPending}
           title={
-            ownerNeedsCloudLogin
-              ? t("lifeopspanels.connectCloudFirst", {
-                  defaultValue: "Connect Eliza Cloud first",
+            connected
+              ? t("lifeopspanels.reconnectOwnerX", {
+                  defaultValue: "Reconnect Owner X",
                 })
-              : connected
-                ? t("lifeopspanels.reconnectOwnerX", {
-                    defaultValue: "Reconnect Owner X",
-                  })
-                : t("lifeopspanels.connectOwnerX", {
-                    defaultValue: "Connect Owner X",
-                  })
+              : t("lifeopspanels.connectOwnerX", {
+                  defaultValue: "Connect Owner X",
+                })
           }
         >
           {actionPending ? (
@@ -721,17 +711,13 @@ export function LifeOpsXPanel() {
           onClick={handleAgentConnect}
           disabled={actionPending}
           title={
-            agentNeedsCloudLogin
-              ? t("lifeopspanels.connectCloudFirst", {
-                  defaultValue: "Connect Eliza Cloud first",
+            agentConnected
+              ? t("lifeopspanels.reconnectAgentX", {
+                  defaultValue: "Reconnect Agent X",
                 })
-              : agentConnected
-                ? t("lifeopspanels.reconnectAgentX", {
-                    defaultValue: "Reconnect Agent X",
-                  })
-                : t("lifeopspanels.connectAgentX", {
-                    defaultValue: "Connect Agent X",
-                  })
+              : t("lifeopspanels.connectAgentX", {
+                  defaultValue: "Connect Agent X",
+                })
           }
         >
           {actionPending ? (
@@ -757,22 +743,9 @@ export function LifeOpsXPanel() {
         ) : null}
       </div>
 
-      {ownerX.pendingAuthUrl || agentX.pendingAuthUrl ? (
-        <a
-          href={ownerX.pendingAuthUrl ?? agentX.pendingAuthUrl ?? ""}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs font-medium text-accent hover:underline"
-        >
-          {t("lifeopspanels.openXAuth", {
-            defaultValue: "Open X authorization",
-          })}
-        </a>
-      ) : null}
-
-      {ownerX.error || agentX.error || elizaCloudLoginError ? (
+      {ownerX.error || agentX.error ? (
         <div className="text-xs text-danger">
-          {ownerX.error ?? agentX.error ?? elizaCloudLoginError}
+          {ownerX.error ?? agentX.error}
         </div>
       ) : null}
     </PanelShell>

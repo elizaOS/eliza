@@ -1472,13 +1472,15 @@ function buildV5PlannerActionSurface(params: {
 				!exposedActionNames.has(normalizeActionIdentifier(action.name)),
 		)
 	) {
+		let addedFallbackAction = false;
 		for (const result of retrieval.results.slice(0, 3)) {
 			if (result.score <= 0) {
 				continue;
 			}
 			exposedActionNames.add(normalizeActionIdentifier(result.name));
+			addedFallbackAction = true;
 		}
-		if (exposedActionNames.size > 0) {
+		if (addedFallbackAction) {
 			fallback = "top-ranked-parent-fallback";
 		}
 	}

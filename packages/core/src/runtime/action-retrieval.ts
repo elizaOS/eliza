@@ -60,6 +60,10 @@ export function retrieveActions(
 		input.catalog.parents,
 		input.embedding,
 	);
+	const isBareSingleTokenQuery =
+		parentActionHints.length === 0 &&
+		candidateActions.length === 0 &&
+		queryTokens.length <= 1;
 
 	const stageRankings: Partial<
 		Record<RetrievalStageName, Map<string, number>>
@@ -103,9 +107,11 @@ export function retrieveActions(
 			Math.max(
 				exact,
 				regex,
-				bm25 > 0 ? 0.28 + bm25 * 0.49 : 0,
+				bm25 > 0
+					? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49)
+					: 0,
 				embedding > 0 ? 0.25 + embedding * 0.45 : 0,
-				rrf > 0 ? 0.2 + rrf * 0.5 : 0,
+				rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
 			),
 		);
 

@@ -211,12 +211,10 @@ describe("executePlannedToolCall", () => {
 			},
 		);
 
-		expect(result.success).toBe(false);
-		expect(String(result.error)).toContain(
-			"No account member-account satisfies",
-		);
-		expect(handler).not.toHaveBeenCalled();
-	});
+	expect(result.success).toBe(false);
+	expect(String(result.error)).toContain("role TEAM is not allowed");
+	expect(handler).not.toHaveBeenCalled();
+});
 
 	it("does not trust content.metadata.accountId for connector account selection", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
