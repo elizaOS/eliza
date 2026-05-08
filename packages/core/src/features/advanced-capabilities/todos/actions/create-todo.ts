@@ -37,8 +37,9 @@ function extractTitle(
 export const createTodoAction: Action = {
 	name: "CREATE_TODO",
 	contexts: ["todos", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
-		"Create a new todo item for the current user. Requires a title. Optionally takes notes and a due date.",
+		"Create a todo item for the current user with a required title plus optional notes and due date.",
 	similes: ["ADD_TODO", "NEW_TODO", "MAKE_TODO"],
 
 	validate: async (

@@ -522,7 +522,8 @@ async function buildBridgeDetails(
   return bridgeOptions;
 }
 
-const spec = requireActionSpec("CROSS_CHAIN_TRANSFER");
+const legacySpec = requireActionSpec("CROSS_CHAIN_TRANSFER");
+const spec = { ...legacySpec, name: "WALLET" };
 
 export const bridgeAction = {
   name: spec.name,

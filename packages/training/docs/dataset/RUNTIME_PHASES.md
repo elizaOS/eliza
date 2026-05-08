@@ -270,7 +270,7 @@ records are phase 2 (response). We have very thin coverage of phase 3.
 
 ## Phase 4 — `evaluation` (post-turn evaluators)
 
-**When the runtime calls it:** AFTER processActions returns. The runtime
+**When the runtime calls it:** AFTER planned tool execution returns. The runtime
 walks the registered `Evaluator[]` list, runs each evaluator's
 `validate()` gate, and for those that pass it runs `evaluator.handler()`.
 Each handler typically makes an LLM call to extract structured

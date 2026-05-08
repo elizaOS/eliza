@@ -156,7 +156,7 @@ export const blockUntilTaskCompleteAction: Action = {
     "FOCUS_UNTIL_TASK_DONE",
   ],
   description:
-    "Create a website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (e.g. 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, the todo is created first; an optional unlockDurationMinutes re-locks the same hosts after the gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking') — those belong to OWNER_WEBSITE_BLOCK.",
+    "Create a LifeOps-managed website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (for example, 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, create that todo first; optional unlockDurationMinutes re-locks the same hosts after the todo gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking'); those belong to OWNER_WEBSITE_BLOCK.",
   descriptionCompressed:
     "block-websites-until-todo-complete: websites + todoId|todoName + optional unlockDurationMinutes",
   contexts: ["screen_time", "browser", "tasks", "automation"],

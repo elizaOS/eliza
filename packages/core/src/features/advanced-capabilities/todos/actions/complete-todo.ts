@@ -25,7 +25,8 @@ function extractId(message: Memory, options?: HandlerOptions): string | null {
 export const completeTodoAction: Action = {
 	name: "COMPLETE_TODO",
 	contexts: ["todos", "agent_internal"],
-	description: "Mark a todo item as completed.",
+	roleGate: { minRole: "USER" },
+	description: "Mark one existing todo item as completed by id.",
 	similes: ["DONE_TODO", "FINISH_TODO", "MARK_COMPLETE"],
 
 	validate: async (

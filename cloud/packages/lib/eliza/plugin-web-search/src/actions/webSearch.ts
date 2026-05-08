@@ -178,8 +178,8 @@ async function extractSearchParams(
 
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
-  contexts: ["web", "knowledge", "finance", "crypto"],
-  contextGate: { anyOf: ["web", "knowledge", "finance", "crypto"] },
+  contexts: ["web", "documents", "finance", "crypto"],
+  contextGate: { anyOf: ["web", "documents", "finance", "crypto"] },
   roleGate: { minRole: "USER" },
   similes: [
     "SEARCH_WEB",

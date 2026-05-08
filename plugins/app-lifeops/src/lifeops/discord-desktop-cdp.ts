@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Prefer @elizaos/plugin-discord service
+// delegation or @elizaos/plugin-browser session handles. CDP remains only for
+// owner-account Discord Desktop sends that bot APIs cannot represent.
 import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import {

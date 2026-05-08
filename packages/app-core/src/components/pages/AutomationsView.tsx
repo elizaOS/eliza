@@ -156,8 +156,8 @@ const AUTOMATION_DRAFT_SYSTEM_ADDENDUM =
   "You are in an automation-creation room. The user wants to create one " +
   "automation. Decide whether it should be a task or a workflow and call " +
   "the matching action exactly once:\n" +
-  '- Task: a simple prompt that runs on a schedule or from an event, for example "every morning summarize my inbox" or "when I get a GitHub notification, make a todo". Use CREATE_TRIGGER_TASK with a clear displayName, instructions, and any needed schedule.\n' +
-  '- Workflow: a multi-step n8n pipeline with deterministic steps and integrations, for example "when a Slack message matches X, post to Discord and log it". Create an n8n workflow via the n8n actions.\n' +
+  '- Task: a simple prompt that runs on a schedule or from an event, for example "every morning summarize my inbox" or "when I get a GitHub notification, make a todo". Use WORKFLOW with op="create_trigger" and a clear displayName, instructions, and any needed schedule.\n' +
+  '- Workflow: a multi-step n8n pipeline with deterministic steps and integrations, for example "when a Slack message matches X, post to Discord and log it". Use WORKFLOW with op="create" and a clear seedPrompt.\n' +
   "Ask one short clarifying question only if the shape is genuinely " +
   "ambiguous; otherwise create immediately. After creation, briefly " +
   "confirm what you made and how it starts.";

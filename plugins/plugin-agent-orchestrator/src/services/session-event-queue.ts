@@ -63,7 +63,8 @@ export class SessionEventQueue {
           break;
         }
 
-        const event = queue.shift()!;
+        const event = queue.shift();
+        if (!event) break;
 
         try {
           await this.handler(event);

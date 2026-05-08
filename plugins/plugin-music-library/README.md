@@ -140,12 +140,15 @@ const prefs = await musicLibrary.getUserPreferences(userId);
 ### Actions
 
 Available actions:
-- `SAVE_PLAYLIST` - Save a new playlist
-- `LOAD_PLAYLIST` - Load a playlist
-- `LIST_PLAYLISTS` - List all playlists for a user
-- `DELETE_PLAYLIST` - Delete a playlist
-- `SEARCH_YOUTUBE` - Search YouTube for music
-- `PLAY_MUSIC_QUERY` - Smart music query parser
+- `MUSIC_LIBRARY` - Consolidated planner-facing action.
+  - `op=playlist`, `subaction=save|load|delete|add` - Manage playlists.
+  - `op=search-youtube` - Search YouTube for music.
+  - `op=play-query` - Smart music query parser.
+  - `op=download` - Download music to the local library.
+
+Legacy planner action names such as `PLAYLIST_OP`, `PLAYLIST`,
+`SEARCH_YOUTUBE`, `PLAY_MUSIC_QUERY`, and `DOWNLOAD_MUSIC` are retained as
+similes for `MUSIC_LIBRARY`.
 
 ## Integration with Other Plugins
 

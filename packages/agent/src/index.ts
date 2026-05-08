@@ -142,7 +142,6 @@ export {
 } from "./services/relationships-graph.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
-export * from "./triggers/action.js";
 export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";

@@ -29,7 +29,7 @@ import type {
   CharacterData,
   CharacterHistoryEntry,
   ExperienceRecord,
-  KnowledgeDocument,
+  DocumentRecord,
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useApp } from "../../state/useApp";
@@ -37,7 +37,7 @@ import { useApp } from "../../state/useApp";
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { getBrandIcon } from "../conversations/brand-icons";
-import { KnowledgeView } from "../pages/KnowledgeView";
+import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
@@ -75,7 +75,7 @@ type LearnedSkillsResponse = {
 const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
   overview: "/character",
   personality: "/character/personality",
-  knowledge: "/character/knowledge",
+  documents: "/character/documents",
   skills: "/character/skills",
   experience: "/character/experience",
   relationships: "/character/relationships",
@@ -93,7 +93,7 @@ const CHARACTER_SECTION_META: Record<
   personality: {
     icon: PencilLine,
   },
-  knowledge: {
+  documents: {
     icon: BookOpen,
   },
   skills: {
@@ -111,11 +111,11 @@ function getSectionFromLocation(tab: string): CharacterHubSection {
   if (typeof window === "undefined") return "overview";
   const pathname = window.location.pathname.toLowerCase();
   if (pathname.endsWith("/personality")) return "personality";
-  if (pathname.endsWith("/knowledge")) return "knowledge";
+  if (pathname.endsWith("/documents")) return "documents";
   if (pathname.endsWith("/skills")) return "skills";
   if (pathname.endsWith("/experience")) return "experience";
   if (pathname.endsWith("/relationships")) return "relationships";
-  if (tab === "knowledge") return "knowledge";
+  if (tab === "documents") return "documents";
   return "overview";
 }
 
@@ -133,20 +133,20 @@ function updateCharacterSectionPath(
   );
 }
 
-const DEFAULT_KNOWLEDGE_FILENAMES = new Set([
+const DEFAULT_DOCUMENT_FILENAMES = new Set([
   "eliza-overview.txt",
   "eliza-history.txt",
   "eliza-cloud-basics.txt",
 ]);
 
-function isDefaultKnowledgeDocument(document: KnowledgeDocument): boolean {
+function isDefaultDocumentRecord(document: DocumentRecord): boolean {
   const normalizedFilename = document.filename.trim().toLowerCase();
   return (
     document.source === "bundled" ||
     document.source === "character" ||
     document.provenance.kind === "bundled" ||
     document.provenance.kind === "character" ||
-    DEFAULT_KNOWLEDGE_FILENAMES.has(normalizedFilename)
+    DEFAULT_DOCUMENT_FILENAMES.has(normalizedFilename)
   );
 }
 
@@ -260,11 +260,11 @@ export function CharacterHubView({
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
     getSectionFromLocation(tab),
   );
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<
-    KnowledgeDocument[]
-  >(() => readHubCache<KnowledgeDocument[]>("knowledge-docs", []));
-  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
-  const [selectedKnowledgeDocumentId, setSelectedKnowledgeDocumentId] =
+  const [documentRecords, setDocumentRecords] = useState<
+    DocumentRecord[]
+  >(() => readHubCache<DocumentRecord[]>("documents", []));
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [selectedDocumentId, setSelectedDocumentId] =
     useState<string | null>(null);
   const [historyEntries, setHistoryEntries] = useState<CharacterHistoryEntry[]>(
     () => readHubCache<CharacterHistoryEntry[]>("history", []),
@@ -469,19 +469,19 @@ export function CharacterHubView({
     let cancelled = false;
 
     void client
-      .listKnowledgeDocuments({ limit: 100 })
+      .listDocuments({ limit: 100 })
       .then((response) => {
         if (cancelled) return;
         const docs = response.documents ?? [];
-        setKnowledgeDocuments(docs);
-        writeHubCache("knowledge-docs", docs);
+        setDocumentRecords(docs);
+        writeHubCache("documents", docs);
       })
       .catch(() => {
-        /* ignored — KnowledgeView shows its own error when active */
+        /* ignored — DocumentsView shows its own error when active */
       })
       .finally(() => {
         if (!cancelled) {
-          setKnowledgeLoading(false);
+          setDocumentsLoading(false);
         }
       });
 
@@ -523,17 +523,17 @@ export function CharacterHubView({
     let cancelled = false;
 
     void client
-      .listKnowledgeDocuments({ limit: 100 })
+      .listDocuments({ limit: 100 })
       .then((response) => {
         if (!cancelled) {
-          setKnowledgeDocuments(response.documents);
-          setSelectedKnowledgeDocumentId(
+          setDocumentRecords(response.documents);
+          setSelectedDocumentId(
             (current) => current ?? response.documents[0]?.id ?? null,
           );
         }
       })
       .catch(() => {
-        // The embedded knowledge view owns the richer error UI.
+        // The embedded documents view owns the richer error UI.
       });
 
     return () => {
@@ -541,12 +541,12 @@ export function CharacterHubView({
     };
   }, []);
 
-  const customKnowledgeDocuments = useMemo(
+  const customDocumentRecords = useMemo(
     () =>
-      knowledgeDocuments.filter(
-        (document) => !isDefaultKnowledgeDocument(document),
+      documentRecords.filter(
+        (document) => !isDefaultDocumentRecord(document),
       ),
-    [knowledgeDocuments],
+    [documentRecords],
   );
 
   const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
@@ -564,7 +564,7 @@ export function CharacterHubView({
     const activeSkills = learnedSkills.filter(
       (skill) => skill.status !== "disabled",
     );
-    const recentDocs = [...customKnowledgeDocuments]
+    const recentDocs = [...customDocumentRecords]
       .sort(
         (left, right) =>
           latestTimestamp(right.createdAt) - latestTimestamp(left.createdAt),
@@ -761,12 +761,12 @@ export function CharacterHubView({
         isEmpty: recentRelationshipActivity.length === 0,
       },
       {
-        section: "knowledge",
+        section: "documents",
         title: "Knowledge",
         meta:
-          customKnowledgeDocuments.length > 0
-            ? `${customKnowledgeDocuments.length} doc${
-                customKnowledgeDocuments.length === 1 ? "" : "s"
+          customDocumentRecords.length > 0
+            ? `${customDocumentRecords.length} doc${
+                customDocumentRecords.length === 1 ? "" : "s"
               }`
             : null,
         body:
@@ -778,7 +778,7 @@ export function CharacterHubView({
                 </li>
               ))}
             </ul>
-          ) : knowledgeDocuments.length > 0 ? (
+          ) : documentRecords.length > 0 ? (
             emptyHint(
               "Just the default knowledge so far. Upload notes, docs, or links to teach me what matters.",
             )
@@ -787,8 +787,8 @@ export function CharacterHubView({
               "Things I should read and remember. Upload notes, docs, or links.",
             )
           ),
-        isLoading: knowledgeLoading && knowledgeDocuments.length === 0,
-        isEmpty: knowledgeDocuments.length === 0,
+        isLoading: documentsLoading && documentRecords.length === 0,
+        isEmpty: documentRecords.length === 0,
       },
       {
         section: "skills",
@@ -847,15 +847,15 @@ export function CharacterHubView({
     ];
   }, [
     bioText,
-    customKnowledgeDocuments,
+    customDocumentRecords,
     d.name,
     d.style,
     experienceLoading,
     experienceRecords,
     historyEntries,
     historyLoading,
-    knowledgeDocuments.length,
-    knowledgeLoading,
+    documentRecords.length,
+    documentsLoading,
     learnedSkills,
     learnedSkillsLoading,
     normalizedMessageExamples.length,
@@ -873,9 +873,9 @@ export function CharacterHubView({
   const navigateToSection = useCallback(
     (section: CharacterHubSection) => {
       setActiveSection(section);
-      if (section === "knowledge") {
-        if (tab !== "knowledge") {
-          setTab("knowledge");
+      if (section === "documents") {
+        if (tab !== "documents") {
+          setTab("documents");
         } else {
           updateCharacterSectionPath(section);
         }
@@ -1155,22 +1155,20 @@ export function CharacterHubView({
       );
     }
 
-    if (activeSection === "knowledge") {
+    if (activeSection === "documents") {
       return (
-        <section className="rounded-2xl border border-border/40 bg-bg/70 p-0">
-          <KnowledgeView
-            embedded
-            fileInputId="character-hub-knowledge-upload"
-            onDocumentsChange={(docs) => {
-              setKnowledgeDocuments(docs);
-              writeHubCache("knowledge-docs", docs);
-              setKnowledgeLoading(false);
-            }}
-            onSelectedDocumentIdChange={setSelectedKnowledgeDocumentId}
-            selectedDocumentId={selectedKnowledgeDocumentId}
-            showSelectorRail={false}
-          />
-        </section>
+        <DocumentsView
+          embedded
+          fileInputId="character-hub-documents-upload"
+          onDocumentsChange={(docs) => {
+            setDocumentRecords(docs);
+            writeHubCache("documents", docs);
+            setDocumentsLoading(false);
+          }}
+          onSelectedDocumentIdChange={setSelectedDocumentId}
+          selectedDocumentId={selectedDocumentId}
+          showSelectorRail={false}
+        />
       );
     }
 

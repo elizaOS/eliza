@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Canonical Signal messaging should go
+// through @elizaos/plugin-signal runtime services; this direct signal-cli HTTP
+// client remains for legacy owner-device receive/send fallback.
 import { randomUUID } from "node:crypto";
 import { logger } from "@elizaos/core";
 import type { LifeOpsSignalInboundMessage } from "@elizaos/shared";

@@ -14,7 +14,7 @@ import { createMcpToolAction } from "./dynamic-tool-actions";
 
 // ─── SEARCH_ACTIONS ─────────────────────────────────────────────────────────
 
-const MCP_CONTEXTS = ["connectors", "automation", "knowledge"];
+const MCP_CONTEXTS = ["connectors", "automation", "documents"];
 const SEARCH_ACTION_KEYWORDS = [
   "search",
   "find",

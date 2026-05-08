@@ -20,7 +20,7 @@ import {
 
 export const triageMessagesAction: Action = {
 	name: "TRIAGE_MESSAGES",
-	contexts: ["messaging", "email", "knowledge"],
+	contexts: ["messaging", "email", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description:
 		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp), score each one with deterministic contact+urgency heuristics, and return a priority-ranked list.",
@@ -52,7 +52,7 @@ export const triageMessagesAction: Action = {
 		message: Memory,
 		state?: State,
 	): Promise<boolean> =>
-		validateMessageAction(message, state, ["messaging", "email", "knowledge"]),
+		validateMessageAction(message, state, ["messaging", "email", "documents"]),
 
 	handler: async (
 		runtime: IAgentRuntime,

@@ -402,6 +402,31 @@ function normalizeLifeInputText(value: string): string {
     .trim();
 }
 
+function shouldRouteToRelationshipAction(value: string): boolean {
+  const normalized = normalizeIntentText(value);
+  return (
+    /\bfollow\s+up\s+with\b/u.test(normalized) ||
+    /\bhow\s+long\b[\s\S]*\b(since|last)\b[\s\S]*\b(talked|spoke|called|texted|messaged)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+function shouldRouteToDeviceIntentAction(value: string): boolean {
+  const normalized = normalizeIntentText(value);
+  const asksForReminder =
+    /\b(remind|reminder|routine|alarm|notify|notification|nudge)\b/u.test(
+      normalized,
+    );
+  const targetsDevice =
+    /\bbroadcast\b/u.test(normalized) ||
+    /\ball\s+(?:my\s+)?devices\b/u.test(normalized) ||
+    /\b(?:to|on)\s+(?:my\s+)?(?:mobile|phone|mac|desktop)\b/u.test(
+      normalized,
+    );
+  return asksForReminder && targetsDevice;
+}
+
 function normalizeTitle(value: string): string {
   return normalizeIntentText(value);
 }
@@ -1931,7 +1956,7 @@ function formatWeeklyGoalReview(args: {
 
 // LIFE belongs to the LifeOps surface (home chat / page-lifeops /
 // app-lifeops direct rooms). On foreign page-* scopes the action set is
-// scoped to that surface (page-automations → CREATE_TRIGGER_TASK,
+// scoped to that surface (page-automations → WORKFLOW,
 // page-browser → browser actions, etc.). When LIFE stays eligible on those
 // scopes its long description contaminates the ACTION_PLANNER candidate
 // list, driving the LLM to mimic the life-param-extractor structured schema and
@@ -1972,14 +1997,22 @@ export const lifeAction: Action & {
     "NEW_GOAL",
   ],
   description:
-    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR and CHECKIN.",
+    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR and CHECKIN. " +
+    " Relationship follow-ups and days-since-contact questions belong to RELATIONSHIP. Device-targeted or broadcast reminders for phone/mobile/all devices belong to DEVICE_INTENT.",
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
   contexts: ["tasks", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    if (looksLikeCodingTaskRequest(messageText(message))) {
+    const text = messageText(message);
+    if (looksLikeCodingTaskRequest(text)) {
+      return false;
+    }
+    if (shouldRouteToRelationshipAction(text)) {
+      return false;
+    }
+    if (shouldRouteToDeviceIntentAction(text)) {
       return false;
     }
     if (await isForeignPageScope(runtime, message)) {
@@ -1987,15 +2020,9 @@ export const lifeAction: Action & {
     }
   },
   handler: async (runtime, message, state, options) => {
-    // Defense-in-depth at dispatch time: validate() above excludes LIFE
-    // from the ACTION_PLANNER candidate list on foreign page-* scopes, but
-    // runtime.processActions dispatches by name/simile WITHOUT re-calling
-    // validate. When the LLM emits LIFE or a LIFE simile directly, the
-    // handler still fires. This guard mirrors validate()'s scope check so
-    // LIFE stays a no-op on foreign page-* scopes regardless of how it got
-    // dispatched. Returns empty text so the runtime callback does not
-    // render a user-visible message — any streamed tokens from the outer
-    // LLM reply already landed before this handler runs.
+    // Defense-in-depth: validate() excludes LIFE from planner candidates on
+    // foreign page-* scopes, and this handler keeps direct tool execution a
+    // no-op if a stale or malformed plan still reaches it.
     if (await isForeignPageScope(runtime, message)) {
       return {
         success: false,
@@ -2115,7 +2142,7 @@ export const lifeAction: Action & {
     // Pre-routing: pick the subaction. When reusing a deferred draft we
     // inherit its operation. When the planner supplied an explicit subaction
     // we trust it. Otherwise dispatch through resolveActionArgs (the
-    // shared LLM pre-routing substrate). The legacy extractLifeOperationWithLlm
+    // shared LLM pre-routing substrate). The text extractor
     // stays available as a fallback for richer "missing field" diagnostics.
     const operationPlan: ResolvedLifeOperationPlan =
       reuseDeferredDraft && deferredDraft
@@ -2280,7 +2307,7 @@ export const lifeAction: Action & {
             : deferredDefinitionDraft?.request.title) ?? params.title,
         );
 
-        // ── Legacy parameter enhancement (fills gaps) ─────
+        // Parameter enhancement fills gaps when structured planner input is incomplete.
         // Skip when native options.parameters already contain the complete
         // definition-create shape, or when reusing a confirmed deferred draft.
         // TODO(native-parameters): delete this extractor once planners supply

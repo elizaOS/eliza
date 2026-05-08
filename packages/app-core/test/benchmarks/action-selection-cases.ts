@@ -328,24 +328,21 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "x-read-dms",
     userMessage: "check my twitter DMs",
     expectedAction: "X",
-    acceptableActions: ["READ_DMS"],
-    expectedParams: { intent: "read_dms" },
+    expectedParams: { subaction: "read_dms" },
     tags: ["x", "standard"],
   },
   {
     id: "x-read-feed",
     userMessage: "what's on my X timeline?",
     expectedAction: "X",
-    acceptableActions: ["READ_FEED"],
-    expectedParams: { intent: "read_feed" },
+    expectedParams: { subaction: "read_feed" },
     tags: ["x", "standard"],
   },
   {
     id: "x-search",
     userMessage: "search twitter for posts about elizaOS",
     expectedAction: "X",
-    acceptableActions: ["SEARCH"],
-    expectedParams: { intent: "search" },
+    expectedParams: { subaction: "search" },
     tags: ["x", "standard"],
   },
 
@@ -416,7 +413,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "browser-manage-settings",
     userMessage: "show me my LifeOps browser settings",
-    expectedAction: "MANAGE_LIFEOPS_BROWSER",
+    expectedAction: "MANAGE_BROWSER_BRIDGE",
+    acceptableActions: ["MANAGE_LIFEOPS_BROWSER"],
     tags: ["browser", "standard"],
   },
   {

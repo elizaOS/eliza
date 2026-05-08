@@ -24,6 +24,62 @@ describe("v5 planner loop skeleton", () => {
 		]);
 	});
 
+	it("parses OpenAI-compatible function tool call records from text", () => {
+		const output = parsePlannerOutput(`{
+  "toolCalls": [
+    {
+      "function": "AUTOFILL",
+      "arguments": { "domain": "github.com", "field": "password" }
+    }
+  ]
+}`);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "AUTOFILL",
+				params: { domain: "github.com", field: "password" },
+			},
+		]);
+	});
+
+	it("parses function-prefixed action records with parameters from text", () => {
+		const output = parsePlannerOutput(`{
+  "action": "functions.DRAFT_REPLY",
+  "parameters": {
+    "messageId": "gmail:1",
+    "body": "Thanks."
+  }
+}`);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "DRAFT_REPLY",
+				params: { messageId: "gmail:1", body: "Thanks." },
+			},
+		]);
+	});
+
+	it("parses fenced JSON arrays of tool calls from markdown output", () => {
+		const output = parsePlannerOutput(`**Tool Calls**
+
+\`\`\`json
+[
+  {
+    "name": "COMPUTER_USE",
+    "arguments": { "subaction": "screenshot" }
+  }
+]
+\`\`\`
+`);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "COMPUTER_USE",
+				params: { subaction: "screenshot" },
+			},
+		]);
+	});
+
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
@@ -153,6 +209,67 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall).not.toHaveBeenCalled();
 		expect(evaluate).not.toHaveBeenCalled();
 		expect(result.finalMessage).toBe("Final answer.");
+	});
+
+	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
+		let plannerCallCount = 0;
+		const runtime = {
+			useModel: vi.fn(async () => {
+				plannerCallCount++;
+				if (plannerCallCount === 1) {
+					return {
+						text: "",
+						toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
+					};
+				}
+				if (plannerCallCount === 2) {
+					return {
+						text: "We need to call FOLLOW_UP now: to=functions.FOLLOW_UP",
+						toolCalls: [],
+					};
+				}
+				return {
+					text: "",
+					toolCalls: [{ id: "call-2", name: "FOLLOW_UP", arguments: {} }],
+				};
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "tool ok",
+		}));
+		let evaluationCount = 0;
+		const evaluate = vi.fn(async () => {
+			evaluationCount++;
+			if (evaluationCount < 3) {
+				return {
+					success: false,
+					decision: "CONTINUE" as const,
+					thought: "More tool work remains.",
+				};
+			}
+			return {
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Done.",
+			};
+		});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenLastCalledWith(
+			{ id: "call-2", name: "FOLLOW_UP", params: {} },
+			expect.objectContaining({ iteration: 3 }),
+		);
+		expect(result.finalMessage).toBe("Done.");
+		expect(result.finalMessage).not.toContain("to=functions");
 	});
 
 	it("throws when the same tool failure repeats beyond the configured limit", async () => {

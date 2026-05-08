@@ -293,7 +293,10 @@ export async function createRealTestRuntime(
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
 
-    if (options?.withLLM) {
+    if (
+      options?.withLLM &&
+      process.env.ELIZA_DISABLE_LOCAL_EMBEDDING_PLUGIN !== "1"
+    ) {
       try {
         const { default: localEmbeddingPlugin } = await import(
           "@elizaos/plugin-local-embedding"

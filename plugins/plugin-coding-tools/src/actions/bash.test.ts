@@ -1,39 +1,28 @@
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import {
-  SandboxService,
-  SessionCwdService,
-  ShellTaskService,
-} from "../services/index.js";
-import {
-  SANDBOX_SERVICE,
-  SESSION_CWD_SERVICE,
-  SHELL_TASK_SERVICE,
-} from "../types.js";
+import { SandboxService, SessionCwdService } from "../services/index.js";
+import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { bashAction } from "./bash.js";
 
 interface RuntimeOptions {
-  workspaceRoots?: string;
+  blockedPaths?: string;
   bashTimeoutMs?: number;
-  bashBgBudgetMs?: number;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
   session: SessionCwdService;
-  tasks: ShellTaskService;
 }> {
   const settings: Record<string, unknown> = {};
-  if (opts.workspaceRoots)
-    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
+  if (opts.blockedPaths)
+    settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
   if (opts.bashTimeoutMs !== undefined)
     settings.CODING_TOOLS_BASH_TIMEOUT_MS = opts.bashTimeoutMs;
-  if (opts.bashBgBudgetMs !== undefined)
-    settings.CODING_TOOLS_BASH_BG_BUDGET_MS = opts.bashBgBudgetMs;
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -44,12 +33,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
-  const tasks = await ShellTaskService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(SESSION_CWD_SERVICE, session);
-  services.set(SHELL_TASK_SERVICE, tasks);
 
-  return { runtime, sandbox, session, tasks };
+  return { runtime, sandbox, session };
 }
 
 function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
@@ -64,89 +51,75 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
 }
 
 describe("bashAction", () => {
-  let started: ShellTaskService | undefined;
-
-  beforeEach(() => {
-    started = undefined;
-  });
-
-  afterEach(async () => {
-    if (started) await started.stop();
-  });
-
   it("runs a simple foreground command (echo hello)", async () => {
-    const tmpRoot = path.resolve(os.tmpdir());
-    const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
-    started = tasks;
-
-    const result = await bashAction.handler?.(
+    const { runtime } = await makeRuntime();
+    const result = await bashAction.handler!(
       runtime,
       makeMessage(),
       undefined,
       { command: "echo hello" },
     );
-
     expect(result.success).toBe(true);
     expect(typeof result.text).toBe("string");
     expect(result.text).toContain("hello");
     expect(result.text).toContain("[exit 0]");
   });
 
-  it("returns a timeout failure when the command exceeds its budget", async () => {
+  it("rejects a cwd under the blocklist", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
-    const { runtime, tasks } = await makeRuntime({
-      workspaceRoots: tmpRoot,
-      bashBgBudgetMs: 60_000,
-    });
-    started = tasks;
+    const blocked = path.join(tmpRoot, `blocked-${Date.now()}`);
+    await fs.mkdir(blocked, { recursive: true });
+    try {
+      const { runtime } = await makeRuntime({ blockedPaths: blocked });
+      const result = await bashAction.handler!(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "pwd", cwd: blocked },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("path_blocked");
+    } finally {
+      await fs.rm(blocked, { recursive: true, force: true });
+    }
+  });
 
-    const result = await bashAction.handler?.(
+  it("returns a timeout failure when the command exceeds its budget", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await bashAction.handler!(
       runtime,
       makeMessage(),
       undefined,
       { command: "sleep 5", timeout: 200 },
     );
-
     expect(result.success).toBe(false);
     expect(result.text).toContain("timeout");
   });
 
-  it("respects an explicit cwd inside the sandbox roots", async () => {
+  it("respects an explicit cwd", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
-    const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
-    started = tasks;
-
-    const result = await bashAction.handler?.(
+    const { runtime } = await makeRuntime();
+    const result = await bashAction.handler!(
       runtime,
       makeMessage(),
       undefined,
       { command: "pwd", cwd: tmpRoot },
     );
-
     expect(result.success).toBe(true);
     expect(result.text).toContain(tmpRoot);
   });
 
-  it("returns immediately with a task_id when run_in_background is true", async () => {
-    const tmpRoot = path.resolve(os.tmpdir());
-    const { runtime, tasks } = await makeRuntime({ workspaceRoots: tmpRoot });
-    started = tasks;
-
-    const startResult = await bashAction.handler?.(
+  it("returns command_failed when the command exits non-zero", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await bashAction.handler!(
       runtime,
       makeMessage(),
       undefined,
-      { command: "sleep 0.2", run_in_background: true },
+      { command: "exit 7" },
     );
-
-    expect(startResult.success).toBe(true);
-    const data = startResult.data as Record<string, unknown> | undefined;
-    expect(data).toBeDefined();
-    const taskId = data?.task_id as string | undefined;
-    expect(typeof taskId).toBe("string");
-    expect(startResult.text).toContain("Started background task");
-
-    const final = await tasks.waitFor(taskId!, 5_000);
-    expect(final?.status).toBe("completed");
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("command_failed");
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.exit_code).toBe(7);
   });
 });

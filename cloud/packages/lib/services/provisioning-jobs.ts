@@ -191,9 +191,47 @@ export class ProvisioningJobService {
    */
   async triggerImmediate(env?: {
     CRON_SECRET?: string;
+    CONTAINER_CONTROL_PLANE_TOKEN?: string;
+    CONTAINER_CONTROL_PLANE_URL?: string;
+    CONTAINER_SIDECAR_URL?: string;
+    DATABASE_URL?: string;
+    HETZNER_CONTAINER_CONTROL_PLANE_URL?: string;
     NEXT_PUBLIC_API_URL?: string;
     NEXT_PUBLIC_APP_URL?: string;
   }): Promise<void> {
+    const controlPlaneBaseUrl =
+      env?.CONTAINER_CONTROL_PLANE_URL ??
+      env?.CONTAINER_SIDECAR_URL ??
+      env?.HETZNER_CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_SIDECAR_URL ??
+      process.env.HETZNER_CONTAINER_CONTROL_PLANE_URL;
+    const controlPlaneToken =
+      env?.CONTAINER_CONTROL_PLANE_TOKEN ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN;
+    const databaseUrl = env?.DATABASE_URL ?? process.env.DATABASE_URL;
+
+    if (controlPlaneBaseUrl && controlPlaneToken && databaseUrl) {
+      try {
+        const target = new URL(controlPlaneBaseUrl);
+        target.pathname = "/api/v1/cron/process-provisioning-jobs";
+        target.search = "?limit=5";
+        await fetch(target, {
+          method: "POST",
+          headers: {
+            "x-container-control-plane-token": controlPlaneToken,
+            "x-eliza-cloud-database-url": databaseUrl,
+            "user-agent": "agent-provision-trigger/1.0",
+          },
+          signal: AbortSignal.timeout(120_000),
+        });
+        return;
+      } catch (err) {
+        logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
     const baseUrl =
       env?.NEXT_PUBLIC_API_URL ??

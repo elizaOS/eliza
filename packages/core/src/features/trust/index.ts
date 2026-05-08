@@ -10,7 +10,6 @@ import { evaluateTrustAction } from "./actions/evaluateTrust.ts";
 import { recordTrustInteractionAction } from "./actions/recordTrustInteraction.ts";
 import { requestElevationAction } from "./actions/requestElevation.ts";
 import { updateRoleAction } from "./actions/roles.ts";
-import { updateSettingsAction } from "./actions/settings.ts";
 import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
 import { trustChangeEvaluator } from "./evaluators/trustChangeEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
@@ -138,7 +137,6 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 
 		actions: [
 			updateRoleAction,
-			updateSettingsAction,
 			recordTrustInteractionAction,
 			evaluateTrustAction,
 			requestElevationAction,

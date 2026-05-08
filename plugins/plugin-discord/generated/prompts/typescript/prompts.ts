@@ -98,7 +98,7 @@ Respond with JSON only, no markdown:
 
 export const DATE_RANGE_TEMPLATE = dateRangeTemplate;
 
-export const getUserInfoTemplate = `# Getting Discord user information
+export const getUserTemplate = `# Getting Discord user information
 {{recentMessages}}
 
 # Instructions: {{senderName}} is requesting information about a Discord user. Extract:
@@ -107,7 +107,7 @@ export const getUserInfoTemplate = `# Getting Discord user information
 
 Examples:
 - "who is @john?" -> userIdentifier: "john", detailed: false
-- "tell me about user 123456789" -> userIdentifier: "123456789", detailed: false  
+- "tell me about user 123456789" -> userIdentifier: "123456789", detailed: false
 - "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
 - "who am I?" -> userIdentifier: "self", detailed: false
 
@@ -117,7 +117,7 @@ Respond with JSON only, no markdown:
   "detailed": false
 }`;
 
-export const GET_USER_INFO_TEMPLATE = getUserInfoTemplate;
+export const GET_USER_TEMPLATE = getUserTemplate;
 
 export const joinChannelTemplate = `# Messages we are searching for channel join information
 {{recentMessages}}
@@ -254,14 +254,15 @@ Respond with JSON only, no markdown:
 
 export const SEARCH_MESSAGES_TEMPLATE = searchMessagesTemplate;
 
-export const sendDmTemplate = `# Messages we are searching for DM information
+export const sendMessageTemplate = `# Messages we are searching for Discord message target information
 {{recentMessages}}
 
-# Instructions: {{senderName}} is requesting to send a direct message to a specific Discord user. Your goal is to determine:
-1. The recipient they want to message (could be a username, user ID, or mentioned user)
+# Instructions: {{senderName}} is requesting to send a Discord message. Your goal is to determine:
+1. The target they want to message (could be a channel, thread, username, user ID, or mentioned user)
 2. The message content they want to send
 
-Extract the recipient identifier and the message content from their request.
+Extract the target identifier and the message content from their request.
+- If they mention a channel like #general or <#channelid>, extract that
 - If they mention a user like @username or <@userid>, extract that
 - If they provide a username or display name, extract that
 - If they provide a user ID (long number), extract that
@@ -269,11 +270,11 @@ Extract the recipient identifier and the message content from their request.
 
 Respond with JSON only, no markdown:
 {
-  "recipientIdentifier": "username|user-id|@mention",
+  "targetIdentifier": "channel|thread|username|user-id|@mention",
   "messageContent": "the message to send"
 }`;
 
-export const SEND_DM_TEMPLATE = sendDmTemplate;
+export const SEND_MESSAGE_TEMPLATE = sendMessageTemplate;
 
 export const summarizationTemplate = `# Summarized so far (we are adding to this)
 {{currentSummary}}
@@ -294,22 +295,4 @@ export const transcriptionTemplate = `# Transcription of media file
 # Instructions: Return only the full transcript of the media file without any additional prompt or commentary.`;
 
 export const TRANSCRIPTION_TEMPLATE = transcriptionTemplate;
-
-export const unpinMessageTemplate = `# Unpinning a Discord message
-{{recentMessages}}
-
-# Instructions: {{senderName}} wants to unpin a message. Extract which message they want to unpin.
-
-Examples:
-- "unpin that message" -> messageRef: "last_pinned"
-- "unpin the last pinned message" -> messageRef: "last_pinned"
-- "unpin john's message" -> messageRef: "john"
-- "unpin message about the meeting" -> messageRef: "meeting"
-
-Respond with JSON only, no markdown:
-{
-  "messageRef": "last_pinned|message-id|search-text"
-}`;
-
-export const UNPIN_MESSAGE_TEMPLATE = unpinMessageTemplate;
 

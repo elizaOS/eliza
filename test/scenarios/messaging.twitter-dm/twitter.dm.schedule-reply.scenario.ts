@@ -13,9 +13,9 @@ export default scenario({
   id: "twitter.dm.schedule-reply",
   title: "Schedule a Twitter/X DM reply for later delivery",
   domain: "messaging.twitter-dm",
-  tags: ["messaging", "twitter", "routing", "trigger"],
-  description:
-    "A future-dated X DM reply should create a real trigger task instead of trying to send immediately through REPLY_X_DM.",
+	tags: ["messaging", "twitter", "routing", "trigger"],
+	description:
+		"A future-dated X DM reply should create a real trigger task instead of trying to send immediately through SEND_MESSAGE.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -90,9 +90,9 @@ export default scenario({
         if (trigger.triggerType !== "once") {
           return `expected once trigger, got ${trigger.triggerType}`;
         }
-        if (!trigger.instructions.includes("REPLY_X_DM")) {
-          return "expected trigger instructions to route through REPLY_X_DM";
-        }
+		if (!trigger.instructions.includes("SEND_MESSAGE")) {
+			return "expected trigger instructions to route through SEND_MESSAGE";
+		}
         if (!trigger.instructions.includes(`recipient: ${data.recipient}`)) {
           return "expected trigger instructions to include the DM recipient";
         }

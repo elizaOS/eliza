@@ -7,8 +7,30 @@
 export { addContactAction } from "./addContact.ts";
 export { createTaskAction } from "./createTask.ts";
 export { followRoomAction } from "./followRoom.ts";
-export { generateImageAction } from "./imageGeneration.ts";
+export { generateMediaAction } from "./generateMedia.ts";
+export { messageAction } from "./message.ts";
+export {
+	deleteMessageAction,
+	editMessageAction,
+	getUserAction,
+	joinChannelAction,
+	leaveChannelAction,
+	listChannelsAction,
+	listServersAction,
+	messageConnectorActions,
+	pinMessageAction,
+	reactToMessageAction,
+	readMessagesAction,
+	searchMessagesAction,
+} from "./messageConnectorActions.ts";
 export { muteRoomAction } from "./muteRoom.ts";
+export { postAction } from "./post.ts";
+export {
+	postConnectorActions,
+	readFeedAction,
+	searchPostsAction,
+	sendPostAction,
+} from "./postConnectorActions.ts";
 export { removeContactAction } from "./removeContact.ts";
 export { updateRoleAction } from "./roles.ts";
 export { scheduleFollowUpAction } from "./scheduleFollowUp.ts";

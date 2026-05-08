@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
+
+const require = createRequire(import.meta.url);
+const nextCliPath = require.resolve("next/dist/bin/next");
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const finalDistDir = ".next";
 const tempDistDir = ".next-build";
@@ -37,9 +44,9 @@ let exitCode = 1;
 
 try {
   exitCode = await new Promise((resolve) => {
-    const child = spawn("next", ["build"], {
+    const child = spawn(process.execPath, [nextCliPath, "build"], {
+      cwd: pkgRoot,
       env: { ...process.env, NEXT_DIST_DIR: tempDistDir },
-      shell: process.platform === "win32",
       stdio: "inherit",
     });
 

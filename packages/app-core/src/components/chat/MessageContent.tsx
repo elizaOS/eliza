@@ -69,7 +69,7 @@ const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
 
 const HIDDEN_TAG_BLOCK_RE =
-  /<(think|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
 /**
  * Strip partial/incomplete hidden tags at the end of a streaming text chunk.
@@ -86,7 +86,7 @@ export function normalizeDisplayText(text: string): string {
   let normalized =
     text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
 
-  // Hide hidden reasoning/tool scratchpad blocks from chat bubbles.
+  // Hide hidden reasoning/tool blocks from chat bubbles.
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
 
   // During streaming, a chunk may end mid-tag (e.g. "<thi").
@@ -295,7 +295,7 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
 
   if (analysisMode) {
     const XML_RE =
-      /<(thought|analysis|reasoning|scratchpad|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
+      /<(thought|analysis|reasoning|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
     let m: RegExpExecArray | null = XML_RE.exec(targetText);
     while (m !== null) {
       regions.push({

@@ -141,23 +141,23 @@ declare module "@elizaos/plugin-shell";
 declare module "@elizaos/signal-native";
 declare module "qrcode";
 
-declare module "@elizaos/app-knowledge/routes" {
-  export type KnowledgeRouteContext = unknown;
-  export type KnowledgeRouteHelpers = unknown;
-  export const handleKnowledgeRoutes: (
+declare module "@elizaos/app-documents/routes" {
+  export type DocumentRouteContext = unknown;
+  export type DocumentRouteHelpers = unknown;
+  export const handleDocumentsRoutes: (
     context: unknown,
   ) => Promise<boolean> | boolean;
 }
 
-declare module "@elizaos/app-knowledge/service-loader" {
+declare module "@elizaos/app-documents/service-loader" {
   import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 
-  export type KnowledgeLoadFailReason =
+  export type DocumentsLoadFailReason =
     | "timeout"
     | "runtime_unavailable"
     | "not_registered";
-  export interface KnowledgeServiceLike {
-    addKnowledge(options: {
+  export interface DocumentServiceLike {
+    addDocument(options: {
       agentId?: UUID;
       worldId: UUID;
       roomId: UUID;
@@ -172,7 +172,7 @@ declare module "@elizaos/app-knowledge/service-loader" {
       storedDocumentMemoryId: UUID;
       fragmentCount: number;
     }>;
-    getKnowledge(
+    searchDocuments(
       message: Memory,
       options?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
     ): Promise<
@@ -195,7 +195,7 @@ declare module "@elizaos/app-knowledge/service-loader" {
       roomId?: UUID;
       unique?: boolean;
     }): Promise<number>;
-    updateKnowledgeDocument?(options: {
+    updateDocument?(options: {
       documentId: UUID;
       content: string;
     }): Promise<{
@@ -204,14 +204,14 @@ declare module "@elizaos/app-knowledge/service-loader" {
     }>;
     deleteMemory(memoryId: UUID): Promise<void>;
   }
-  export interface KnowledgeServiceResult {
-    service: KnowledgeServiceLike | null;
-    reason?: KnowledgeLoadFailReason;
+  export interface DocumentsServiceResult {
+    service: DocumentServiceLike | null;
+    reason?: DocumentsLoadFailReason;
   }
-  export const getKnowledgeService: (
+  export const getDocumentsService: (
     runtime: AgentRuntime | null,
-  ) => Promise<KnowledgeServiceResult>;
-  export const getKnowledgeTimeoutMs: () => number;
+  ) => Promise<DocumentsServiceResult>;
+  export const getDocumentsServiceTimeoutMs: () => number;
 }
 
 declare module "@elizaos/app-training/core/context-types" {

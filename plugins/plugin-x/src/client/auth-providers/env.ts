@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";
+import { resolveRequestedXAccountId } from "../accounts";
 import type { OAuth1Credentials, TwitterOAuth1Provider } from "./types";
 
 /**
@@ -21,6 +22,11 @@ export class EnvAuthProvider implements TwitterOAuth1Provider {
   ) {}
 
   async getOAuth1Credentials(): Promise<OAuth1Credentials> {
+    const accountId = resolveRequestedXAccountId(
+      this.runtime,
+      this.state,
+      this.state?.accountId,
+    );
     const apiKey =
       this.state?.TWITTER_API_KEY ??
       getSetting(this.runtime, "TWITTER_API_KEY");
@@ -47,7 +53,7 @@ export class EnvAuthProvider implements TwitterOAuth1Provider {
       !accessTokenSecret
     ) {
       throw new Error(
-        `Missing required Twitter env credentials: ${missing.join(", ")}`,
+        `Missing required Twitter env credentials for accountId=${accountId}: ${missing.join(", ")}`,
       );
     }
 

@@ -7,8 +7,3 @@ export {
   type RipgrepResult,
   type RipgrepMode,
 } from "./ripgrep-service.js";
-export {
-  ShellTaskService,
-  type ShellTaskRecord,
-  type SpawnOptions,
-} from "./shell-task-service.js";

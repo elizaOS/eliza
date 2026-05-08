@@ -363,6 +363,7 @@ export function createBenchmarkPlugin(): Plugin {
     actions: [
       {
         name: "BENCHMARK_ACTION",
+        roleGate: { minRole: "USER" },
         similes: [
           "EXECUTE",
           "DO",

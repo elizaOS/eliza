@@ -1,7 +1,7 @@
 /**
- * RuntimeFactory - ASSISTANT Mode Integration Tests
+ * RuntimeFactory - CHAT Mode Integration Tests
  *
- * Tests the production RuntimeFactory in ASSISTANT mode with MCP and web search.
+ * Tests the production RuntimeFactory in CHAT mode with MCP and web search.
  * This is a self-contained test file with its own setup/teardown.
  *
  * Run with: bun test tests/runtime/integration/runtime-factory/assistant-mode.test.ts
@@ -47,16 +47,16 @@ const timings: Record<string, number> = {};
 const skipLiveModelSuite = !hasDatabaseUrl || !hasRuntimeModelCredentials;
 
 // ============================================================================
-// ASSISTANT Mode with MCP Tests
+// CHAT Mode with MCP Tests
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () => {
+describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (MCP)", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
 
   beforeAll(async () => {
     console.log("\n" + "=".repeat(60));
-    console.log("SETTING UP ASSISTANT MODE (MCP) TEST ENVIRONMENT");
+    console.log("SETTING UP CHAT MODE (MCP) TEST ENVIRONMENT");
     console.log("=".repeat(60));
 
     // Verify database connection
@@ -71,8 +71,8 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () 
 
     // Create test data with unique identifiers
     testData = await createTestDataSet(connectionString, {
-      organizationName: "ASSISTANT MCP Test Org",
-      userName: "ASSISTANT MCP Test User",
+      organizationName: "CHAT MCP Test Org",
+      userName: "CHAT MCP Test User",
       userEmail: `assistant-mcp-test-${Date.now()}@eliza.test`,
       creditBalance: 1000.0,
       includeCharacter: true,
@@ -87,7 +87,7 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () 
   }, 60000);
 
   afterAll(async () => {
-    console.log("\nCleaning up ASSISTANT Mode (MCP) test...");
+    console.log("\nCleaning up CHAT Mode (MCP) test...");
     if (runtime) {
       await invalidateRuntime(runtime.agentId as string).catch((err) =>
         console.warn(`Runtime cleanup warning: ${err}`),
@@ -98,14 +98,14 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () 
         console.warn(`Data cleanup warning: ${err}`),
       );
     }
-    logTimings("ASSISTANT Mode (MCP) Tests", timings);
+    logTimings("CHAT Mode (MCP) Tests", timings);
   });
 
-  it("should create runtime in ASSISTANT mode with MCP", async () => {
+  it("should create runtime in CHAT mode with MCP", async () => {
     startTimer("assistant_runtime_create");
 
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       characterId: testData.character?.id,
       webSearchEnabled: false, // Isolate MCP testing
     });
@@ -116,7 +116,7 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () 
 
     expect(runtime).toBeDefined();
     expect(runtime.character?.name).toBe("Mira");
-    console.log(`\nASSISTANT runtime created in ${timings.assistantRuntimeCreate}ms`);
+    console.log(`\nCHAT runtime created in ${timings.assistantRuntimeCreate}ms`);
   }, 60000);
 
   it("should have MCP service initialized", async () => {
@@ -148,20 +148,20 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (MCP)", () 
     timings.assistantMessage = endTimer("assistant_message");
 
     expect(result.didRespond).toBe(true);
-    console.log(`\nASSISTANT message processed in ${timings.assistantMessage}ms`);
+    console.log(`\nCHAT message processed in ${timings.assistantMessage}ms`);
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
-  it("should cleanup ASSISTANT runtime", async () => {
+  it("should cleanup CHAT runtime", async () => {
     await invalidateRuntime(runtime.agentId as string);
   });
 });
 
 // ============================================================================
-// ASSISTANT Mode with Web Search Tests
+// CHAT Mode with Web Search Tests
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (Web Search)", () => {
+describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode (Web Search)", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
   let localConnectionString: string;
@@ -170,7 +170,7 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (Web Search
 
   beforeAll(async () => {
     console.log("\n" + "=".repeat(60));
-    console.log("SETTING UP ASSISTANT MODE (WEB SEARCH) TEST ENVIRONMENT");
+    console.log("SETTING UP CHAT MODE (WEB SEARCH) TEST ENVIRONMENT");
     console.log("=".repeat(60));
 
     // Verify database connection
@@ -185,8 +185,8 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (Web Search
 
     // Create test data with unique identifiers
     localTestData = await createTestDataSet(localConnectionString, {
-      organizationName: "ASSISTANT WebSearch Test Org",
-      userName: "ASSISTANT WebSearch Test User",
+      organizationName: "CHAT WebSearch Test Org",
+      userName: "CHAT WebSearch Test User",
       userEmail: `assistant-websearch-test-${Date.now()}@eliza.test`,
       creditBalance: 1000.0,
       includeCharacter: true,
@@ -201,7 +201,7 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (Web Search
   }, 60000);
 
   afterAll(async () => {
-    console.log("\nCleaning up ASSISTANT Mode (Web Search) test...");
+    console.log("\nCleaning up CHAT Mode (Web Search) test...");
     if (runtime) {
       await invalidateRuntime(runtime.agentId as string).catch((err) =>
         console.warn(`Runtime cleanup warning: ${err}`),
@@ -212,14 +212,14 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - ASSISTANT Mode (Web Search
         console.warn(`Data cleanup warning: ${err}`),
       );
     }
-    logTimings("ASSISTANT Mode (Web Search) Tests", localTimings);
+    logTimings("CHAT Mode (Web Search) Tests", localTimings);
   });
 
   it("should create runtime with web search enabled", async () => {
     startTimer("websearch_runtime_create");
 
     const userContext = buildUserContext(localTestData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: true,
     });
 

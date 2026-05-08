@@ -25,8 +25,7 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 
 function extractId(message: Memory, options?: HandlerOptions): string | null {
 	const params = readParams(options);
-	const raw =
-		params.id ?? message.content.id ?? message.content.researchId;
+	const raw = params.id ?? message.content.id ?? message.content.researchId;
 	return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
@@ -42,6 +41,7 @@ function extractQuery(
 export const continueResearchAction: Action = {
 	name: "CONTINUE_RESEARCH",
 	contexts: ["research", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
 		"Append a new finding to an existing research thread. Requires the research id and a follow-up query.",
 	similes: ["APPEND_RESEARCH", "ADD_RESEARCH_FINDING", "EXTEND_RESEARCH"],
@@ -96,7 +96,12 @@ export const continueResearchAction: Action = {
 					: agentId;
 
 			const service = getResearchService(runtime);
-			const research = await service.continue(agentId, userId, id as UUID, query);
+			const research = await service.continue(
+				agentId,
+				userId,
+				id as UUID,
+				query,
+			);
 
 			const successMsg = `Continued research "${research.title}" (id: ${research.id}). Findings: ${research.findings.length}.`;
 			if (callback) {

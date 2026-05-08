@@ -32,7 +32,7 @@ export interface CharacterOverviewWidget {
 
 const WIDGET_ICONS = {
   personality: PencilLine,
-  knowledge: BookOpen,
+  documents: BookOpen,
   skills: Sparkles,
   experience: Brain,
   relationships: Network,
@@ -40,7 +40,7 @@ const WIDGET_ICONS = {
 
 const WIDGET_TONE = {
   personality: "text-accent",
-  knowledge: "text-status-info",
+  documents: "text-status-info",
   skills: "text-accent",
   experience: "text-status-success",
   relationships: "text-status-warning",

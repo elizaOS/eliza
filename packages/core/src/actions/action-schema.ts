@@ -16,7 +16,7 @@ export interface JsonSchema {
 	properties?: Record<string, JsonSchema>;
 	required?: string[];
 	items?: JsonSchema;
-	additionalProperties?: false;
+	additionalProperties?: boolean | JsonSchema;
 	minimum?: number;
 	maximum?: number;
 	pattern?: string;

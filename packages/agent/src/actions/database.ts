@@ -57,7 +57,7 @@ interface QueryResultShape {
 
 export const listDatabaseTablesAction: Action = {
   name: "LIST_DATABASE_TABLES",
-  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  contexts: ["admin", "agent_internal", "documents", "memory"],
   roleGate: { minRole: "OWNER" },
   similes: ["LIST_TABLES", "SHOW_TABLES", "DB_TABLES"],
   description:
@@ -162,7 +162,7 @@ interface GetTableDataParams {
 
 export const getTableDataAction: Action = {
   name: "GET_TABLE_DATA",
-  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  contexts: ["admin", "agent_internal", "documents", "memory"],
   roleGate: { minRole: "OWNER" },
   similes: ["READ_TABLE", "SELECT_TABLE", "BROWSE_TABLE"],
   description:
@@ -348,7 +348,7 @@ function detectMutation(sql: string): string | null {
 
 export const executeDatabaseQueryAction: Action = {
   name: "EXECUTE_DATABASE_QUERY",
-  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  contexts: ["admin", "agent_internal", "documents", "memory"],
   roleGate: { minRole: "OWNER" },
   similes: ["RUN_QUERY", "SQL_QUERY", "DB_QUERY"],
   description:
@@ -486,7 +486,7 @@ const VECTOR_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "vectors",
   label: "Vector store",
   description: "Search semantically similar memory/vector rows.",
-  contexts: ["admin", "knowledge"],
+  contexts: ["admin", "documents"],
   filters: [
     {
       name: "table",
@@ -499,7 +499,7 @@ const VECTOR_SEARCH_CATEGORY: SearchCategoryRegistration = {
         { label: "memories", value: "memories" },
         { label: "facts", value: "facts" },
         { label: "documents", value: "documents" },
-        { label: "knowledge", value: "knowledge" },
+        { label: "documents", value: "documents" },
       ],
     },
     {
@@ -532,7 +532,7 @@ export function registerVectorSearchCategory(runtime: IAgentRuntime): void {
 
 export const searchVectorsAction: Action = {
   name: "SEARCH_VECTORS",
-  contexts: ["admin", "agent_internal", "knowledge", "memory"],
+  contexts: ["admin", "agent_internal", "documents", "memory"],
   roleGate: { minRole: "OWNER" },
   similes: ["VECTOR_SEARCH", "EMBEDDING_SEARCH", "SIMILARITY_SEARCH"],
   description:

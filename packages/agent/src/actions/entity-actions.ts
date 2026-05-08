@@ -158,7 +158,7 @@ const ENTITY_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "entities",
   label: "Rolodex",
   description: "Search contacts and cross-platform identities.",
-  contexts: ["social_posting", "knowledge"],
+  contexts: ["social_posting", "documents"],
   filters: [
     {
       name: "platform",
@@ -190,7 +190,7 @@ export function registerEntitySearchCategory(runtime: IAgentRuntime): void {
 
 export const searchEntityAction: Action = {
   name: "SEARCH_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "SEARCH_ENTITY",
@@ -376,7 +376,7 @@ type ReadEntityParams = {
 
 export const readEntityAction: Action = {
   name: "READ_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "READ_ENTITY",
@@ -640,7 +640,7 @@ function isLikelyUuid(value: string | undefined): value is UUID {
 
 export const linkEntityAction: Action = {
   name: "LINK_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "LINK_ENTITY",
@@ -881,7 +881,7 @@ type ResolveMergeCandidateParams = {
 
 export const resolveMergeCandidateAction: Action = {
   name: "MERGE_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge", "admin"],
+  contexts: ["contacts", "messaging", "documents", "admin"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "RESOLVE_MERGE_CANDIDATE",
@@ -1056,7 +1056,7 @@ function clampActivityOffset(value: number | undefined): number {
 
 export const getRelationshipActivityAction: Action = {
   name: "CONTACT_ACTIVITY",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "GET_RELATIONSHIP_ACTIVITY",
@@ -1270,7 +1270,7 @@ type CreateContactParams = {
 
 export const createContactAction: Action = {
   name: "CREATE_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: ["ADD_CONTACT", "NEW_CONTACT", "SAVE_CONTACT", "STORE_CONTACT"],
   description:
@@ -1386,165 +1386,6 @@ export const createContactAction: Action = {
 };
 
 // ---------------------------------------------------------------------------
-// UPDATE_CONTACT
-// ---------------------------------------------------------------------------
-
-type UpdateContactParams = {
-  id?: string;
-  name?: string;
-  email?: string;
-  phone?: string;
-  notes?: string;
-};
-
-export const updateContactAction: Action = {
-  name: "UPDATE_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
-  roleGate: { minRole: "ADMIN" },
-  similes: [
-    "EDIT_CONTACT",
-    "MODIFY_CONTACT",
-    "PATCH_CONTACT",
-    "CHANGE_CONTACT",
-  ],
-  description:
-    "Update an existing contact's name, email, phone, or notes. " +
-    "Requires the entity id (from SEARCH_CONTACT or CREATE_CONTACT). " +
-    "Returns the updated record.",
-  descriptionCompressed:
-    "update exist contact name, email, phone, notes require entity id return updated record",
-
-  validate: async () => true,
-
-  handler: async (runtime, _message, _state, options) => {
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as UpdateContactParams;
-
-    const id = typeof params.id === "string" ? params.id.trim() : "";
-    if (!id) {
-      return {
-        text: "UPDATE_CONTACT requires an id parameter.",
-        success: false,
-        values: { success: false, error: "INVALID_PARAMETERS" },
-        data: { actionName: "UPDATE_CONTACT" },
-      };
-    }
-
-    let existing: Entity | null = null;
-    try {
-      existing = await runtime.getEntityById(id as UUID);
-    } catch {
-      // fall through to null check
-    }
-
-    if (!existing) {
-      return {
-        text: `Contact ${id} was not found.`,
-        success: false,
-        values: { success: false, error: "NOT_FOUND" },
-        data: { actionName: "UPDATE_CONTACT", id },
-      };
-    }
-
-    const updated: Entity = { ...existing };
-
-    if (typeof params.name === "string" && params.name.trim()) {
-      const newName = params.name.trim();
-      updated.names = [
-        newName,
-        ...(existing.names ?? []).filter((n) => n !== newName),
-      ];
-    }
-
-    const existingMeta: Metadata =
-      existing.metadata && typeof existing.metadata === "object"
-        ? { ...(existing.metadata as Metadata) }
-        : {};
-
-    if (typeof params.email === "string" && params.email.trim())
-      existingMeta.email = params.email.trim();
-    if (typeof params.phone === "string" && params.phone.trim())
-      existingMeta.phone = params.phone.trim();
-    if (typeof params.notes === "string" && params.notes.trim())
-      existingMeta.notes = params.notes.trim();
-
-    updated.metadata = existingMeta;
-
-    try {
-      await runtime.updateEntity(updated);
-      return {
-        text: `Updated contact ${id}.`,
-        success: true,
-        values: { success: true, id },
-        data: {
-          actionName: "UPDATE_CONTACT",
-          id,
-          names: updated.names,
-          metadata: existingMeta,
-        },
-      };
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error("[UPDATE_CONTACT] Error:", errMsg);
-      return {
-        text: `Failed to update contact: ${errMsg}`,
-        success: false,
-        values: { success: false, error: "UPDATE_FAILED" },
-        data: { actionName: "UPDATE_CONTACT", id },
-      };
-    }
-  },
-
-  parameters: [
-    {
-      name: "id",
-      description: "Entity id of the contact to update (required).",
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "name",
-      description: "New display name (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "email",
-      description: "New email address (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "phone",
-      description: "New phone number (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "notes",
-      description: "Updated notes (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Update Jill Park's email to jill@newco.com." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Updated contact 9f1c3a22-...",
-          action: "UPDATE_CONTACT",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
-
-// ---------------------------------------------------------------------------
 // DELETE_CONTACT
 // ---------------------------------------------------------------------------
 
@@ -1559,7 +1400,7 @@ type RuntimeWithDeleteEntities = IAgentRuntime & {
 
 export const deleteContactAction: Action = {
   name: "DELETE_CONTACT",
-  contexts: ["contacts", "messaging", "knowledge"],
+  contexts: ["contacts", "messaging", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: ["REMOVE_CONTACT", "ERASE_CONTACT", "DROP_CONTACT"],
   description:

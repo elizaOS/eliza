@@ -523,7 +523,7 @@ function ViewRouter({
         );
       case "character":
       case "character-select":
-      case "knowledge":
+      case "documents":
         return (
           <TabContentView chatScope="page-character">
             <CharacterEditor
@@ -751,7 +751,7 @@ export function App() {
   const isChat = tab === "chat";
   const isChatWorkspace = isChat || isConnectors;
   const isCharacterPage =
-    tab === "character" || tab === "character-select" || tab === "knowledge";
+    tab === "character" || tab === "character-select" || tab === "documents";
   const isWallets = tab === "inventory";
   const isHeartbeats = tab === "triggers" || tab === "automations";
   const isSettingsPage = tab === "settings" || tab === "voice";

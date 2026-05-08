@@ -448,16 +448,7 @@ async function getAIMove(session: GameSession): Promise<number> {
   const state = game.getState();
 
   // Environment input -> Eliza message (full pipeline via messageService.handleMessage)
-  const boardCells = state.board.map((c) => c || "_").join(",");
-  const available = getAvailableMoves(state.board).join(",");
-  const prompt = [
-    "TIC_TAC_TOE_ENV_UPDATE:",
-    `BOARD_CELLS: ${boardCells}`,
-    `YOU_ARE: ${state.currentPlayer}`,
-    `AVAILABLE_MOVES: ${available}`,
-    "",
-    "Return ONLY the best move as a number 0-8.",
-  ].join("\n");
+  const prompt = createMovePrompt(state);
 
   const message = createMessageMemory({
     id: randomUUID() as UUID,
@@ -498,6 +489,33 @@ async function getAIMove(session: GameSession): Promise<number> {
     return fallback[0];
   }
 
+  return move;
+}
+
+function createMovePrompt(state: GameState): string {
+  const boardCells = state.board.map((c) => c || "_").join(",");
+  const available = getAvailableMoves(state.board).join(",");
+  return [
+    "TIC_TAC_TOE_ENV_UPDATE:",
+    `BOARD_CELLS: ${boardCells}`,
+    `YOU_ARE: ${state.currentPlayer}`,
+    `AVAILABLE_MOVES: ${available}`,
+    "",
+    "Return ONLY the best move as a number 0-8.",
+  ].join("\n");
+}
+
+async function getBenchmarkAIMove(session: GameSession): Promise<number> {
+  const state = session.game.getState();
+  const raw = await ticTacToeModelHandler(session.runtime, {
+    prompt: createMovePrompt(state),
+  });
+  const text = typeof raw === "string" ? raw : "";
+  const move = parseMoveFromAgentText(text);
+  if (move === null) {
+    const fallback = getAvailableMoves(state.board);
+    return fallback[0];
+  }
   return move;
 }
 
@@ -630,7 +648,7 @@ async function runBenchmark(session: GameSession): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     session.game.reset();
     while (!session.game.getState().gameOver) {
-      const move = await getAIMove(session);
+      const move = await getBenchmarkAIMove(session);
       session.game.makeMove(move);
     }
   }

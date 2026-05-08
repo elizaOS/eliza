@@ -15,26 +15,16 @@ import {
 } from "../services/ShopifyService.js";
 import type { InventoryLevel, Location } from "../types.js";
 import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
+import {
   confirmationRequired,
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatInventoryLevel(level: InventoryLevel): string {
   const qty = level.available !== null ? String(level.available) : "untracked";
@@ -174,6 +164,7 @@ export const manageInventoryAction: Action = {
       required: false,
       schema: { type: "boolean", default: false },
     },
+    shopifyAccountIdParameter,
   ],
 
   validate: async (
@@ -191,7 +182,8 @@ export const manageInventoryAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    const accountId = getShopifyAccountId(runtime, options);
+    if (!svc?.isConnected(accountId)) {
       await callback?.({
         text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       });
@@ -212,7 +204,7 @@ export const manageInventoryAction: Action = {
 
     try {
       if (intent.action === "locations") {
-        const locations = await svc.listLocations();
+        const locations = await svc.listLocations(accountId);
         if (locations.length === 0) {
           await callback?.({ text: "No locations found in the store." });
           return { success: true, text: "No locations" };
@@ -228,7 +220,7 @@ export const manageInventoryAction: Action = {
         const result = await svc.listProducts({
           query: intent.productQuery,
           first: 3,
-        });
+        }, accountId);
         if (result.products.length === 0) {
           await callback?.({
             text: `No product found matching "${intent.productQuery}".`,
@@ -251,7 +243,7 @@ export const manageInventoryAction: Action = {
         const variantNumericId = firstVariant.id.split("/").pop();
         const inventoryItemId = `gid://shopify/InventoryItem/${variantNumericId}`;
 
-        const levels = await svc.checkInventory(inventoryItemId);
+        const levels = await svc.checkInventory(inventoryItemId, accountId);
         if (levels.length === 0) {
           await callback?.({
             text: `No inventory tracking found for "${product.title}".`,
@@ -270,7 +262,7 @@ export const manageInventoryAction: Action = {
         const result = await svc.listProducts({
           query: intent.productQuery,
           first: 3,
-        });
+        }, accountId);
         if (result.products.length === 0) {
           await callback?.({
             text: `No product found matching "${intent.productQuery}".`,
@@ -291,9 +283,9 @@ export const manageInventoryAction: Action = {
         const inventoryItemId = `gid://shopify/InventoryItem/${variantNumericId}`;
 
         // Get current levels to find a location
-        const levels = await svc.checkInventory(inventoryItemId);
+        const levels = await svc.checkInventory(inventoryItemId, accountId);
         const locationId =
-          levels[0]?.location.id ?? (await svc.listLocations())[0]?.id;
+          levels[0]?.location.id ?? (await svc.listLocations(accountId))[0]?.id;
         const locationName =
           levels[0]?.location.name ?? "first active location";
         if (!locationId) {
@@ -327,14 +319,14 @@ export const manageInventoryAction: Action = {
             locationId,
             delta: intent.delta,
             reason: intent.reason ?? "correction",
-          });
+          }, accountId);
         } else {
           await svc.adjustInventory({
             inventoryItemId,
             locationId,
             delta: intent.delta,
             reason: intent.reason ?? "correction",
-          });
+          }, accountId);
         }
 
         await callback?.({

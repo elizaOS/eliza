@@ -33,9 +33,9 @@ export const webSearchAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["CODING_WEB_SEARCH", "DEV_WEB_SEARCH", "CODE_SEARCH_WEB"],
   description:
-    "Record a coding-agent web search request (query plus optional allowed_domains / blocked_domains filters) so a downstream coding sub-agent can satisfy it. This plugin does not host its own search backend; it returns an unconfigured-provider notice and the structured request. For hosted generic web search use the global WEB_SEARCH action when that plugin is available.",
+    "Create a structured coding-agent web search request with a query and optional allowed_domains / blocked_domains filters. The result records the request for a downstream coding sub-agent to execute and returns the normalized filters in data; use the global WEB_SEARCH action when immediate hosted search results are required in the current action call.",
   descriptionCompressed:
-    "code-web-search:request query+allowed_domains+blocked_domains (no built-in provider)",
+    "code-web-search:record request query+allowed_domains+blocked_domains",
   parameters: [
     {
       name: "query",
@@ -95,7 +95,8 @@ export const webSearchAction: Action = {
 
     const data: Record<string, unknown> = {
       actionName: ACTION_NAME,
-      stub: true,
+      delegatedRequest: true,
+      mode: "delegated_request",
       query,
       ...(allowedDomains ? { allowed_domains: allowedDomains } : {}),
       ...(blockedDomains ? { blocked_domains: blockedDomains } : {}),

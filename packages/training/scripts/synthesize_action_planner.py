@@ -108,7 +108,7 @@ PARAM_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "PLAY_TRACK": [{"title": "{track}"}],
     "STOP_MUSIC": [{}],
     "SET_VOLUME": [{"level": "{volume}"}],
-    "POST_TWEET": [{"text": "{tweet_text}"}],
+    "SEND_POST": [{"text": "{tweet_text}"}],
     "REPLY_TO_TWEET": [{"to": "{tweet_id}", "text": "{tweet_text}"}],
 }
 

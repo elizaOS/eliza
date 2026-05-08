@@ -85,6 +85,8 @@ async function buildRuntime(
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-grep-"));
+  blockedPath = path.join(tmpRoot, "_blocked");
+  await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
   const subDir = path.join(fooDir, "sub");
   await fs.mkdir(subDir, { recursive: true });

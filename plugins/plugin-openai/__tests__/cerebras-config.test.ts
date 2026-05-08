@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { handleTextEmbedding } from "../models/embedding";
 import { getApiKey, getBaseURL } from "../utils/config";
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
@@ -10,7 +11,7 @@ function buildRuntime(settings: Record<string, string | undefined>): IAgentRunti
 }
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 const ENV_KEYS = [
@@ -18,6 +19,8 @@ const ENV_KEYS = [
   "OPENAI_BASE_URL",
   "CEREBRAS_API_KEY",
   "OPENAI_API_KEY",
+  "OPENAI_EMBEDDING_URL",
+  "OPENAI_EMBEDDING_DIMENSIONS",
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>();
@@ -104,5 +107,50 @@ describe("plugin-openai Cerebras config", () => {
 
     expect(getBaseURL(runtime)).toBe("https://api.openrouter.ai/api/v1");
     expect(getApiKey(runtime)).toBe("sk-openrouter-fake");
+  });
+
+  it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_EMBEDDING_DIMENSIONS: "1536",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("remote embeddings should not be called"));
+
+    const first = await handleTextEmbedding(runtime, { text: "remember the launch code" });
+    const second = await handleTextEmbedding(runtime, { text: "remember the launch code" });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(first).toHaveLength(1536);
+    expect(first).toEqual(second);
+    expect(first.some((value) => value !== 0)).toBe(true);
+  });
+
+  it("uses the remote embedding API when an explicit embedding endpoint is configured", async () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      OPENAI_EMBEDDING_URL: "https://embeddings.example/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_EMBEDDING_DIMENSIONS: "1536",
+    });
+    const embedding = new Array(1536).fill(0.01);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ embedding }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(handleTextEmbedding(runtime, { text: "remote embedding" })).resolves.toEqual(
+      embedding,
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://embeddings.example/v1/embeddings",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

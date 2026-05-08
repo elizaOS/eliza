@@ -12,6 +12,7 @@ import {
 import { searchIssuesTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import {
   getBooleanValue,
   getNumberValue,
@@ -50,6 +51,7 @@ export const searchIssuesAction: Action = {
       required: false,
       schema: { type: "number" as const },
     },
+    linearAccountIdParameter,
   ],
 
   examples: [
@@ -118,6 +120,7 @@ export const searchIssuesAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -169,7 +172,7 @@ export const searchIssuesAction: Action = {
               for (const assignee of assignees) {
                 if (assignee.toLowerCase() === "me") {
                   try {
-                    const currentUser = await linearService.getCurrentUser();
+                    const currentUser = await linearService.getCurrentUser(accountId);
                     processedAssignees.push(currentUser.email);
                   } catch {
                     logger.warn('Could not resolve "me" to current user');
@@ -231,7 +234,9 @@ export const searchIssuesAction: Action = {
       }
 
       if (!filters.team) {
-        const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
+        const defaultTeamKey =
+          linearService.getDefaultTeamKey(accountId) ??
+          (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
         if (defaultTeamKey) {
           const searchingAllIssues =
             content.toLowerCase().includes("all") &&
@@ -248,7 +253,7 @@ export const searchIssuesAction: Action = {
 
       filters.limit = params?.limit ?? filters.limit ?? 10;
 
-      const issues = await linearService.searchIssues(filters);
+      const issues = await linearService.searchIssues(filters, accountId);
 
       if (issues.length === 0) {
         const noResultsMessage = "No issues found matching your search criteria.";
@@ -261,9 +266,10 @@ export const searchIssuesAction: Action = {
           success: true,
           data: {
             issues: [],
-            filters: filters ? { ...filters } : undefined,
-            count: 0,
-          },
+          filters: filters ? { ...filters } : undefined,
+          count: 0,
+          accountId,
+        },
         };
       }
 
@@ -313,6 +319,7 @@ export const searchIssuesAction: Action = {
           ),
           filters: filters ? { ...filters } : undefined,
           count: issues.length,
+          accountId,
         },
       };
     } catch (error) {

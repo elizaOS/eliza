@@ -181,7 +181,11 @@ export async function handleConnectorRoutes(
 
   // ── DELETE /api/connectors/:name ─────────────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/connectors/")) {
-    const name = decodeURIComponent(pathname.slice("/api/connectors/".length));
+    const remainder = pathname.slice("/api/connectors/".length);
+    if (remainder.includes("/")) {
+      return false;
+    }
+    const name = decodeURIComponent(remainder);
     if (!name || isBlockedObjectKey(name)) {
       error(res, "Missing or invalid connector name", 400);
       return true;

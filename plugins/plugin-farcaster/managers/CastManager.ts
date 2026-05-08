@@ -15,6 +15,7 @@ import {
 } from "../types";
 import { lastCastCacheKey } from "../utils";
 import { standardCastHandlerCallback } from "../utils/callbacks";
+import { DEFAULT_FARCASTER_ACCOUNT_ID, normalizeFarcasterAccountId } from "../utils/config";
 
 interface FarcasterCastParams {
   client: FarcasterClient;
@@ -35,6 +36,13 @@ export class FarcasterCastManager {
     this.runtime = opts.runtime;
     this.config = opts.config;
     this.fid = this.config.FARCASTER_FID;
+  }
+
+  private getAccountId(): string {
+    return normalizeFarcasterAccountId(
+      (this.config as FarcasterConfig & { accountId?: string }).accountId ??
+        DEFAULT_FARCASTER_ACCOUNT_ID
+    );
   }
 
   async start(): Promise<void> {
@@ -98,6 +106,7 @@ export class FarcasterCastManager {
           platform: FARCASTER_SOURCE,
           kind: "public_post_generation",
           fid: this.fid,
+          accountId: this.getAccountId(),
         },
       },
       async () => {
@@ -128,13 +137,15 @@ export class FarcasterCastManager {
             userId: this.runtime.agentId,
             roomId,
             source: FARCASTER_SOURCE,
-          });
+            accountId: this.getAccountId(),
+          } as EventPayload);
 
           await this.runtime.emitEvent(
-            FarcasterEventTypes.CAST_GENERATED as string,
+            FarcasterEventTypes.POST_GENERATED as string,
             {
               runtime: this.runtime,
               source: FARCASTER_SOURCE,
+              accountId: this.getAccountId(),
             } as EventPayload
           );
         } catch (error) {

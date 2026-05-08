@@ -1,7 +1,7 @@
 /**
- * RuntimeFactory - BUILD Mode Integration Tests
+ * RuntimeFactory - CHAT Mode Integration Tests
  *
- * Tests the production RuntimeFactory in BUILD mode (character building).
+ * Tests the production RuntimeFactory in CHAT mode (character building).
  * This is a self-contained test file with its own setup/teardown.
  *
  * Run with: bun test tests/runtime/integration/runtime-factory/build-mode.test.ts
@@ -46,10 +46,10 @@ let testUser: TestUserContext;
 const timings: Record<string, number> = {};
 const skipLiveModelSuite = !hasDatabaseUrl || !hasRuntimeModelCredentials;
 
-describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
+describe.skipIf(skipLiveModelSuite)("RuntimeFactory - CHAT Mode", () => {
   beforeAll(async () => {
     console.log("\n" + "=".repeat(60));
-    console.log("SETTING UP BUILD MODE TEST ENVIRONMENT");
+    console.log("SETTING UP CHAT MODE TEST ENVIRONMENT");
     console.log("=".repeat(60));
 
     // Verify database connection
@@ -64,8 +64,8 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
 
     // Create test data with unique identifiers
     testData = await createTestDataSet(connectionString, {
-      organizationName: "BUILD Mode Test Org",
-      userName: "BUILD Mode Test User",
+      organizationName: "CHAT Mode Test Org",
+      userName: "CHAT Mode Test User",
       userEmail: `build-mode-test-${Date.now()}@eliza.test`,
       creditBalance: 1000.0,
       includeCharacter: true,
@@ -80,7 +80,7 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
   }, 60000);
 
   afterAll(async () => {
-    console.log("\nCleaning up BUILD mode test...");
+    console.log("\nCleaning up CHAT mode test...");
     if (runtime) {
       await invalidateRuntime(runtime.agentId as string).catch((err) =>
         console.warn(`Runtime cleanup warning: ${err}`),
@@ -91,14 +91,14 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
         console.warn(`Data cleanup warning: ${err}`),
       );
     }
-    logTimings("BUILD Mode Tests", timings);
+    logTimings("CHAT Mode Tests", timings);
   });
 
-  it("should create runtime in BUILD mode", async () => {
+  it("should create runtime in CHAT mode", async () => {
     startTimer("build_runtime_create");
 
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.BUILD,
+      agentMode: AgentMode.CHAT,
       characterId: testData.character?.id,
       webSearchEnabled: false,
     });
@@ -108,10 +108,10 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
     timings.buildRuntimeCreate = endTimer("build_runtime_create");
 
     expect(runtime).toBeDefined();
-    console.log(`\nBUILD runtime created in ${timings.buildRuntimeCreate}ms`);
+    console.log(`\nCHAT runtime created in ${timings.buildRuntimeCreate}ms`);
   }, 60000);
 
-  it("should process BUILD mode message", async () => {
+  it("should process CHAT mode message", async () => {
     testUser = await createTestUser(runtime, "BuildTestUser");
 
     startTimer("build_message");
@@ -125,11 +125,11 @@ describe.skipIf(skipLiveModelSuite)("RuntimeFactory - BUILD Mode", () => {
     timings.buildMessage = endTimer("build_message");
 
     expect(result.didRespond).toBe(true);
-    console.log(`\nBUILD message processed in ${timings.buildMessage}ms`);
+    console.log(`\nCHAT message processed in ${timings.buildMessage}ms`);
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
-  it("should cleanup BUILD runtime", async () => {
+  it("should cleanup CHAT runtime", async () => {
     await invalidateRuntime(runtime.agentId as string);
   });
 });

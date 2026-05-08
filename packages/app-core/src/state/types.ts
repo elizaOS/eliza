@@ -711,7 +711,7 @@ export interface AppState {
 
   // Sub-tabs
   appsSubTab: "browse" | "running" | "games";
-  agentSubTab: "character" | "inventory" | "knowledge";
+  agentSubTab: "character" | "inventory" | "documents";
   pluginsSubTab: "features" | "connectors" | "plugins";
   databaseSubTab: "tables" | "media" | "vectors";
 
@@ -766,7 +766,10 @@ export interface AppActions {
   dismissSystemWarning: (message: string) => void;
 
   // Chat
-  handleChatSend: (channelType?: ConversationChannelType) => Promise<void>;
+  handleChatSend: (
+    channelType?: ConversationChannelType,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   handleChatStop: () => void;
   handleChatRetry: (assistantMsgId: string) => void;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;

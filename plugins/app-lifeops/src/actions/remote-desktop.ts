@@ -7,8 +7,8 @@ import type {
 } from "@elizaos/core";
 import {
   detectRemoteDesktopBackend,
-  endRemoteSession as legacyEndRemoteSession,
-  getSessionStatus as legacyGetSessionStatus,
+  endRemoteSession as endStoredRemoteSession,
+  getSessionStatus as getStoredSessionStatus,
   type RemoteDesktopSession,
 } from "../lifeops/remote-desktop.js";
 import {
@@ -197,7 +197,7 @@ async function handleStatus(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "status" },
     };
   }
-  const session = await legacyGetSessionStatus(sessionId);
+  const session = await getStoredSessionStatus(sessionId);
   if (!session) {
     return {
       text: `No session found with id ${sessionId}.`,
@@ -224,7 +224,7 @@ async function handleEnd(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "end" },
     };
   }
-  const existing = await legacyGetSessionStatus(sessionId);
+  const existing = await getStoredSessionStatus(sessionId);
   if (!existing) {
     return {
       text: `No session found with id ${sessionId}.`,
@@ -233,7 +233,7 @@ async function handleEnd(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "end", sessionId },
     };
   }
-  await legacyEndRemoteSession(sessionId);
+  await endStoredRemoteSession(sessionId);
   return {
     text: `Remote session ${sessionId} ended.`,
     success: true,
@@ -319,7 +319,7 @@ export const remoteDesktopAction: Action & {
     "revoke (revoke an active session by id via RemoteSessionService).",
   descriptionCompressed:
     "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId)",
-  contexts: ["browser", "automation", "settings", "admin"],
+  contexts: ["browser", "automation", "settings", "admin", "terminal"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 

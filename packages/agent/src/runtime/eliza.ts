@@ -172,7 +172,7 @@ import discordLocalPlugin from "./discord-local-plugin.js";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {
-  runtimeKnowledgeEnabled,
+  runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
 } from "./native-runtime-features.js";
 import {
@@ -186,6 +186,19 @@ import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence
 
 const require = createRequire(import.meta.url);
 
+function isPluginSqlResolutionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("Cannot find module '@elizaos/plugin-sql'") ||
+    message.includes('Cannot find module "@elizaos/plugin-sql"') ||
+    (message.includes("@elizaos/plugin-sql") &&
+      (message.includes("ResolveMessage") ||
+        message.includes("Module not found") ||
+        message.includes("could not resolve") ||
+        message.includes("Could not resolve")))
+  );
+}
+
 async function loadRequiredPluginSql(): Promise<
   typeof import("@elizaos/plugin-sql")
 > {
@@ -194,13 +207,13 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/typescript/index.ts",
+      "../../../../plugins/plugin-sql/typescript/index.node.ts",
     );
-    if (!existsSync(sourceEntry)) {
+    if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
       throw err;
     }
-    logger.warn(
-      `[eliza] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${sourceEntry} (orig err: ${err instanceof Error ? err.message : String(err)})`,
+    logger.debug(
+      `[eliza] Loading @elizaos/plugin-sql from workspace source at ${sourceEntry}`,
     );
     return (await import(
       pathToFileURL(sourceEntry).href
@@ -2809,6 +2822,17 @@ export async function startEliza(
   // vault, then resolve any vault://KEY sentinels in `config.env` so the
   // legacy hydration loop below sees real values.
   {
+    try {
+      const { hydrateWalletKeysFromNodePlatformSecureStore } = await import(
+        "@elizaos/app-core/security/hydrate-wallet-keys-from-platform-store"
+      );
+      await hydrateWalletKeysFromNodePlatformSecureStore();
+    } catch (err) {
+      logger.warn(
+        `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     const { runVaultBootstrap } = await import(
       "@elizaos/app-core/services/vault-bootstrap"
     );
@@ -3764,7 +3788,7 @@ export async function startEliza(
     }
 
     try {
-      if (runtimeKnowledgeEnabled(runtime)) {
+      if (runtimeDocumentsEnabled(runtime)) {
         await seedBundledDocuments(runtime);
       } else {
         logger.info(

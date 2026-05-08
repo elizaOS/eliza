@@ -3,6 +3,7 @@ import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client";
 import type { CastId, FarcasterConfig } from "../types";
 import { createCastMemory, neynarCastToCast } from "./index";
+import { DEFAULT_FARCASTER_ACCOUNT_ID, normalizeFarcasterAccountId } from "./config";
 
 export function standardCastHandlerCallback({
   client,
@@ -23,6 +24,10 @@ export function standardCastHandlerCallback({
 }): HandlerCallback {
   const callback: HandlerCallback = async (content: Content): Promise<Memory[]> => {
     try {
+      const accountId = normalizeFarcasterAccountId(
+        (config as FarcasterConfig & { accountId?: string }).accountId ??
+          DEFAULT_FARCASTER_ACCOUNT_ID
+      );
       if (config.FARCASTER_DRY_RUN) {
         runtime.logger.info(`[Farcaster] Dry run: would have cast: ${content.text}`);
         return [];
@@ -45,6 +50,7 @@ export function standardCastHandlerCallback({
           senderId: runtime.agentId,
           runtime,
           cast: neynarCastToCast(cast),
+          accountId,
         });
 
         if (i === 0) {

@@ -27,6 +27,7 @@ import type { IMessageService } from "./message-service";
 import type {
 	IMessagingAdapter,
 	SendHandlerFunction,
+	SendHandlerResult,
 	TargetInfo,
 } from "./messaging";
 import type {
@@ -81,13 +82,104 @@ export type MessageTargetKind =
 	| "phone"
 	| (string & {});
 
-export type MessageConnectorCapability = "send_message" | (string & {});
+export type MessageConnectorCapability =
+	| "send_message"
+	| "read_messages"
+	| "search_messages"
+	| "list_channels"
+	| "list_servers"
+	| "react_message"
+	| "edit_message"
+	| "delete_message"
+	| "pin_message"
+	| "join_channel"
+	| "leave_channel"
+	| "get_user"
+	| (string & {});
+
+export type PostConnectorCapability =
+	| "post"
+	| "read_feed"
+	| "search_posts"
+	| (string & {});
+
+export const ConnectorAccountPurpose = {
+	OWNER: "OWNER",
+	AGENT: "AGENT",
+	TEAM: "TEAM",
+} as const;
+export type ConnectorAccountPurpose =
+	(typeof ConnectorAccountPurpose)[keyof typeof ConnectorAccountPurpose];
+
+export const ConnectorAccountRole = ConnectorAccountPurpose;
+export type ConnectorAccountRole = ConnectorAccountPurpose;
+
+export const ConnectorAuthMethod = {
+	OAUTH: "OAUTH",
+	API_KEY: "API_KEY",
+	BOT_TOKEN: "BOT_TOKEN",
+	WEBHOOK: "WEBHOOK",
+	SESSION: "SESSION",
+	NONE: "NONE",
+} as const;
+export type ConnectorAuthMethod =
+	| (typeof ConnectorAuthMethod)[keyof typeof ConnectorAuthMethod]
+	| (string & {});
+
+export const ConnectorAccountHealth = {
+	UNKNOWN: "UNKNOWN",
+	HEALTHY: "HEALTHY",
+	DEGRADED: "DEGRADED",
+	REAUTH_REQUIRED: "REAUTH_REQUIRED",
+	DISABLED: "DISABLED",
+	ERROR: "ERROR",
+} as const;
+export type ConnectorAccountHealth =
+	| (typeof ConnectorAccountHealth)[keyof typeof ConnectorAccountHealth]
+	| (string & {});
+
+export interface ConnectorAccountCapability {
+	name: MessageConnectorCapability | PostConnectorCapability | (string & {});
+	enabled?: boolean;
+	targetKinds?: MessageTargetKind[];
+	scopes?: string[];
+	metadata?: Metadata;
+}
+
+export interface ConnectorAccountRef {
+	source: string;
+	accountId?: string;
+	purpose?: ConnectorAccountPurpose;
+	role?: ConnectorAccountRole;
+	label?: string;
+	authMethod?: ConnectorAuthMethod;
+	health?: ConnectorAccountHealth;
+	capabilities?: ConnectorAccountCapability[];
+	ownerEntityId?: UUID | string;
+	teamId?: UUID | string;
+	metadata?: Metadata;
+}
+
+export interface ConnectorContentShaping {
+	systemPromptFragment?: string;
+	template?: string;
+	postProcess?: (text: string) => string;
+	constraints?: {
+		maxLength?: number;
+		supportsMarkdown?: boolean;
+		supportsThreads?: boolean;
+		supportsAttachments?: boolean;
+		[key: string]: JsonValue | undefined;
+	};
+}
 
 export interface MessageConnectorQueryContext {
 	runtime: IAgentRuntime;
 	roomId?: UUID;
 	entityId?: UUID;
 	source?: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
 	target?: TargetInfo;
 	contexts?: AgentContext[];
 	metadata?: Metadata;
@@ -127,8 +219,63 @@ export interface MessageConnectorUserContext {
 	metadata?: Metadata;
 }
 
+export interface MessageConnectorFetchMessagesParams {
+	target: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface MessageConnectorSearchMessagesParams {
+	query: string;
+	target?: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface MessageConnectorMessageOpParams {
+	target: TargetInfo;
+	messageId: string;
+}
+
+export interface MessageConnectorReactionParams
+	extends MessageConnectorMessageOpParams {
+	emoji: string;
+}
+
+export interface MessageConnectorEditParams
+	extends MessageConnectorMessageOpParams {
+	content: Content;
+}
+
+export interface MessageConnectorPinParams
+	extends MessageConnectorMessageOpParams {
+	pin?: boolean;
+}
+
+export interface MessageConnectorChannelOpParams {
+	roomId?: UUID;
+	channelId?: string;
+	serverId?: string;
+	alias?: string;
+	invite?: string;
+	target?: TargetInfo;
+}
+
+export interface MessageConnectorGetUserParams {
+	userId?: UUID | string;
+	username?: string;
+	handle?: string;
+	target?: TargetInfo;
+}
+
 export interface MessageConnector {
 	source: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
 	label: string;
 	capabilities: MessageConnectorCapability[];
 	supportedTargetKinds: MessageTargetKind[];
@@ -159,6 +306,46 @@ export interface MessageConnector {
 		| Promise<MessageConnectorUserContext | null>
 		| MessageConnectorUserContext
 		| null;
+	listServers?: (
+		context: MessageConnectorQueryContext,
+	) => Promise<World[]> | World[];
+	fetchMessages?: (
+		context: MessageConnectorQueryContext,
+		params: MessageConnectorFetchMessagesParams,
+	) => Promise<Memory[]> | Memory[];
+	searchMessages?: (
+		context: MessageConnectorQueryContext,
+		params: MessageConnectorSearchMessagesParams,
+	) => Promise<Memory[]> | Memory[];
+	reactHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorReactionParams,
+	) => Promise<void>;
+	editHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorEditParams,
+	) => Promise<Memory> | Promise<void>;
+	deleteHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorMessageOpParams,
+	) => Promise<void>;
+	pinHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorPinParams,
+	) => Promise<void>;
+	joinHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorChannelOpParams,
+	) => Promise<Room> | Promise<void>;
+	leaveHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorChannelOpParams,
+	) => Promise<void>;
+	getUser?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorGetUserParams,
+	) => Promise<unknown>;
+	contentShaping?: ConnectorContentShaping;
 }
 
 export type MessageConnectorMetadata = Partial<
@@ -169,7 +356,66 @@ export type MessageConnectorMetadata = Partial<
 
 export type MessageConnectorRegistration = MessageConnectorMetadata & {
 	source: string;
-	sendHandler: SendHandlerFunction;
+	sendHandler?: SendHandlerFunction;
+};
+
+export interface PostConnectorQueryContext {
+	runtime: IAgentRuntime;
+	roomId?: UUID;
+	entityId?: UUID;
+	source?: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
+	contexts?: AgentContext[];
+	metadata?: Metadata;
+}
+
+export interface PostConnectorFeedParams {
+	feed?: string;
+	target?: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface PostConnectorSearchParams {
+	query: string;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface PostConnector {
+	source: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
+	label: string;
+	capabilities: PostConnectorCapability[];
+	description?: string;
+	contexts: AgentContext[];
+	metadata?: Metadata;
+	postHandler?: (runtime: IAgentRuntime, content: Content) => SendHandlerResult;
+	fetchFeed?: (
+		context: PostConnectorQueryContext,
+		params: PostConnectorFeedParams,
+	) => Promise<Memory[]> | Memory[];
+	searchPosts?: (
+		context: PostConnectorQueryContext,
+		params: PostConnectorSearchParams,
+	) => Promise<Memory[]> | Memory[];
+	contentShaping?: ConnectorContentShaping;
+}
+
+export type PostConnectorMetadata = Partial<
+	Omit<PostConnector, "source" | "label">
+> & {
+	label?: string;
+};
+
+export type PostConnectorRegistration = PostConnectorMetadata & {
+	source: string;
 };
 
 /**
@@ -219,9 +465,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
-	enableKnowledge(): Promise<void>;
-	disableKnowledge(): Promise<void>;
-	isKnowledgeEnabled(): boolean;
+	enableDocuments(): Promise<void>;
+	disableDocuments(): Promise<void>;
+	isDocumentsEnabled(): boolean;
 	enableRelationships(): Promise<void>;
 	disableRelationships(): Promise<void>;
 	isRelationshipsEnabled(): boolean;
@@ -305,16 +551,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 */
 	isCheckShouldRespondEnabled(): boolean;
 
-	processActions(
-		message: Memory,
-		responses: Memory[],
-		state?: State,
-		callback?: HandlerCallback,
-		options?: {
-			onStreamChunk?: StreamChunkCallback;
-		},
-	): Promise<void>;
-
 	getActionResults(messageId: UUID): ActionResult[];
 
 	evaluate(
@@ -349,6 +585,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	registerProvider(provider: Provider): void;
 
 	registerAction(action: Action): void;
+	unregisterAction(name: string): boolean;
 
 	/**
 	 * Get all registered actions.
@@ -697,8 +934,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
 	registerMessageConnector(registration: MessageConnectorRegistration): void;
+	unregisterMessageConnector(source: string, accountId?: string): boolean;
 	getMessageConnectors(): MessageConnector[];
-	sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+	registerPostConnector(registration: PostConnectorRegistration): void;
+	unregisterPostConnector(source: string): boolean;
+	getPostConnectors(): PostConnector[];
+	sendMessageToTarget(
+		target: TargetInfo,
+		content: Content,
+	): Promise<Memory | undefined>;
 
 	/**
 	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.

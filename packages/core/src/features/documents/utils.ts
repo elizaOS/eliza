@@ -278,15 +278,15 @@ export function isBinaryContentType(
 	return binaryExtensions.includes(fileExt);
 }
 
-const KNOWLEDGE_TITLE_MAX_LENGTH = 80;
+const DOCUMENT_TITLE_MAX_LENGTH = 80;
 
-function truncateKnowledgeLabel(value: string): string {
-	return value.length > KNOWLEDGE_TITLE_MAX_LENGTH
-		? `${value.slice(0, KNOWLEDGE_TITLE_MAX_LENGTH - 1).trimEnd()}…`
+function truncateDocumentLabel(value: string): string {
+	return value.length > DOCUMENT_TITLE_MAX_LENGTH
+		? `${value.slice(0, DOCUMENT_TITLE_MAX_LENGTH - 1).trimEnd()}…`
 		: value;
 }
 
-export function stripKnowledgeFilenameExtension(filename: string): string {
+export function stripDocumentFilenameExtension(filename: string): string {
 	const trimmed = filename.trim();
 	if (!trimmed) return "";
 
@@ -295,9 +295,9 @@ export function stripKnowledgeFilenameExtension(filename: string): string {
 	return trimmed.slice(0, lastDot);
 }
 
-export function deriveKnowledgeTitle(
+export function deriveDocumentTitle(
 	content: string,
-	fallback = "Knowledge note",
+	fallback = "Document note",
 ): string {
 	const lines = content
 		.replace(/\r\n/g, "\n")
@@ -313,14 +313,14 @@ export function deriveKnowledgeTitle(
 			.replace(/^\d+[.)]\s+/, "")
 			.trim();
 		if (candidate.length > 0) {
-			return truncateKnowledgeLabel(candidate);
+			return truncateDocumentLabel(candidate);
 		}
 	}
 
 	return fallback;
 }
 
-export function createKnowledgeNoteFilename(
+export function createDocumentNoteFilename(
 	title: string,
 	extension = "txt",
 ): string {
@@ -334,21 +334,21 @@ export function createKnowledgeNoteFilename(
 		.slice(0, 64);
 
 	const basename =
-		normalizedTitle.length > 0 ? normalizedTitle : "knowledge-note";
+		normalizedTitle.length > 0 ? normalizedTitle : "document-note";
 	const normalizedExtension = extension.replace(/^\./, "").trim();
 	return normalizedExtension.length > 0
 		? `${basename}.${normalizedExtension}`
 		: basename;
 }
 
-export function isTextBackedKnowledgeContent(
+export function isTextBackedDocumentContent(
 	contentType: string,
 	filename: string,
 ): boolean {
 	return !isBinaryContentType(contentType, filename);
 }
 
-export function normalizeKnowledgeSourceValue(
+export function normalizeDocumentSourceValue(
 	source: unknown,
 ):
 	| "upload"
@@ -374,7 +374,7 @@ export function normalizeKnowledgeSourceValue(
 			return "url";
 		case "youtube":
 			return "youtube";
-		case "eliza-default-knowledge":
+		case "eliza-default-documents":
 			return "bundled";
 		default:
 			return "unknown";
@@ -400,7 +400,7 @@ export async function fetchUrlContent(
 		const response = await fetch(url, {
 			signal: controller.signal,
 			headers: {
-				"User-Agent": "Eliza-Knowledge-Plugin/1.0",
+				"User-Agent": "Eliza-Documents-Plugin/1.0",
 			},
 		});
 		clearTimeout(timeoutId);

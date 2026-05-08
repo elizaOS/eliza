@@ -1,10 +1,56 @@
-import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import {
+	ChannelType,
+	type Content,
+	type IAgentRuntime,
+	logger,
+	type Memory,
+	Service,
+	type UUID,
+} from "@elizaos/core";
 import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
 import { BLUESKY_SERVICE_NAME } from "../types";
-import { hasBlueSkyEnabled, validateBlueSkyConfig } from "../utils/config";
+import {
+	DEFAULT_BLUESKY_ACCOUNT_ID,
+	normalizeBlueSkyAccountId,
+	resolveDefaultBlueSkyAccountId,
+	hasBlueSkyEnabled,
+	validateBlueSkyConfig,
+} from "../utils/config";
 import { BlueSkyMessageService } from "./message";
 import { BlueSkyPostService } from "./post";
+
+type BlueSkyMessageConnectorRegistration = Parameters<
+	IAgentRuntime["registerMessageConnector"]
+>[0] & {
+	fetchMessages?: BlueSkyMessageService["fetchConnectorMessages"];
+	contentShaping?: {
+		systemPromptFragment?: string;
+		constraints?: Record<string, unknown>;
+	};
+};
+
+type BlueSkyPostConnectorRegistration = {
+	source: string;
+	label?: string;
+	description?: string;
+	capabilities?: string[];
+	contexts?: string[];
+	metadata?: Record<string, unknown>;
+	postHandler: (runtime: IAgentRuntime, content: Content) => Promise<Memory>;
+	fetchFeed?: BlueSkyPostService["fetchFeed"];
+	searchPosts?: BlueSkyPostService["searchPosts"];
+	contentShaping?: {
+		systemPromptFragment?: string;
+		constraints?: Record<string, unknown>;
+	};
+};
+
+type RuntimeWithPostConnector = IAgentRuntime & {
+	registerPostConnector?: (
+		registration: BlueSkyPostConnectorRegistration,
+	) => void;
+};
 
 export class BlueSkyService extends Service {
 	private static instance: BlueSkyService;
@@ -31,6 +77,7 @@ export class BlueSkyService extends Service {
 		}
 
 		const config = validateBlueSkyConfig(runtime);
+		const accountId = config.accountId;
 		const client = new BlueSkyClient({
 			service: config.service,
 			handle: config.handle,
@@ -42,11 +89,11 @@ export class BlueSkyService extends Service {
 		service.managers.set(runtime.agentId, manager);
 		service.messageServices.set(
 			runtime.agentId,
-			new BlueSkyMessageService(client, runtime),
+			new BlueSkyMessageService(client, runtime, accountId),
 		);
 		service.postServices.set(
 			runtime.agentId,
-			new BlueSkyPostService(client, runtime),
+			new BlueSkyPostService(client, runtime, accountId),
 		);
 
 		await manager.start();
@@ -72,6 +119,9 @@ export class BlueSkyService extends Service {
 		serviceInstance: BlueSkyService,
 	): void {
 		const messageService = serviceInstance?.getMessageService(runtime.agentId);
+		const accountId =
+			messageService?.getAccountId() ??
+			normalizeBlueSkyAccountId(resolveDefaultBlueSkyAccountId(runtime));
 		if (!messageService) {
 			runtime.logger.warn(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
@@ -80,15 +130,22 @@ export class BlueSkyService extends Service {
 			return;
 		}
 
+		const postService = serviceInstance?.getPostService(runtime.agentId);
+		if (postService) {
+			BlueSkyService.registerPostConnector(runtime, postService);
+		}
+
 		const sendHandler = messageService.handleSendMessage.bind(messageService);
 		if (typeof runtime.registerMessageConnector === "function") {
-			runtime.registerMessageConnector({
+			const registration: BlueSkyMessageConnectorRegistration = {
 				source: "bluesky",
+				accountId,
 				label: "BlueSky",
 				description:
 					"BlueSky DM connector for sending private messages to conversations.",
 				capabilities: [
 					"send_message",
+					"fetch_messages",
 					"resolve_targets",
 					"list_rooms",
 					"chat_context",
@@ -97,6 +154,7 @@ export class BlueSkyService extends Service {
 				supportedTargetKinds: ["thread", "user"],
 				contexts: ["social", "connectors"],
 				metadata: {
+					accountId,
 					service: BLUESKY_SERVICE_NAME,
 				},
 				resolveTargets:
@@ -108,8 +166,19 @@ export class BlueSkyService extends Service {
 					messageService.getConnectorChatContext.bind(messageService),
 				getUserContext:
 					messageService.getConnectorUserContext.bind(messageService),
+				fetchMessages:
+					messageService.fetchConnectorMessages.bind(messageService),
+				contentShaping: {
+					systemPromptFragment:
+						"For BlueSky DMs, keep messages direct and conversational. Avoid public-feed conventions like hashtags unless the user asked.",
+					constraints: {
+						supportsMarkdown: false,
+						channelType: ChannelType.DM,
+					},
+				},
 				sendHandler,
-			});
+			};
+			runtime.registerMessageConnector(registration);
 			runtime.logger.info(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
 				"Registered BlueSky DM connector",
@@ -118,6 +187,49 @@ export class BlueSkyService extends Service {
 		}
 
 		runtime.registerSendHandler("bluesky", sendHandler);
+	}
+
+	private static registerPostConnector(
+		runtime: IAgentRuntime,
+		postService: BlueSkyPostService,
+	): void {
+		const withPostConnector = runtime as RuntimeWithPostConnector;
+		if (typeof withPostConnector.registerPostConnector !== "function") {
+			return;
+		}
+		const accountId =
+			postService.getAccountId?.() ?? DEFAULT_BLUESKY_ACCOUNT_ID;
+
+		withPostConnector.registerPostConnector({
+			source: "bluesky",
+			accountId,
+			label: "BlueSky",
+			description:
+				"BlueSky public feed connector for publishing posts, reading the timeline, and searching posts.",
+			capabilities: ["post", "fetch_feed", "search_posts"],
+			contexts: ["social", "social_posting", "connectors"],
+			metadata: {
+				accountId,
+				service: BLUESKY_SERVICE_NAME,
+			},
+			postHandler: postService.handleSendPost.bind(postService),
+			fetchFeed: postService.fetchFeed.bind(postService),
+			searchPosts: postService.searchPosts.bind(postService),
+			contentShaping: {
+				systemPromptFragment:
+					"For BlueSky posts, write a public post under 300 characters. Handles, links, and facets are supported by the connector; do not exceed the platform limit.",
+				constraints: {
+					maxLength: 300,
+					supportsMarkdown: false,
+					channelType: ChannelType.FEED,
+				},
+			},
+		});
+
+		runtime.logger.info(
+			{ src: "plugin:bluesky", agentId: runtime.agentId },
+			"Registered BlueSky post connector",
+		);
 	}
 
 	async stop(): Promise<void> {

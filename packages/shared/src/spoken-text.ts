@@ -10,7 +10,7 @@ function stripThinkingAndMarkup(input: string): string {
   let text = input;
   text = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, " ");
   text = text.replace(
-    /<(analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
     " ",
   );
   text = text.replace(/```[\s\S]*?```/g, " ");

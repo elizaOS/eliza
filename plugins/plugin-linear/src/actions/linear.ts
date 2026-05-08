@@ -7,6 +7,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { hasLinearAccountConfig } from "../accounts";
+import { linearAccountIdParameter } from "./account-options";
 import { clearActivityAction } from "./clearActivity";
 import { createCommentAction } from "./createComment";
 import { createIssueAction } from "./createIssue";
@@ -156,8 +158,7 @@ function selectRoute(
 }
 
 function hasLinearAccess(runtime: IAgentRuntime): boolean {
-  const apiKey = runtime.getSetting("LINEAR_API_KEY");
-  return typeof apiKey === "string" && apiKey.trim().length > 0;
+  return hasLinearAccountConfig(runtime);
 }
 
 export const linearAction: Action = {
@@ -205,6 +206,7 @@ export const linearAction: Action = {
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
+    linearAccountIdParameter,
   ],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     if (!hasLinearAccess(runtime)) return false;
@@ -227,7 +229,7 @@ export const linearAction: Action = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: { actionName: "LINEAR", availableOps: ops },
       };
     }

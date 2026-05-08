@@ -637,7 +637,6 @@ export {
   PROTOCOL_FEE_BPS,
   PROTOCOL_FEE_COLLECTOR,
   SwapModule,
-  UNISWAP_V3_BASE,
   UniswapV3QuoterV2Abi,
   UniswapV3RouterAbi,
 } from "./swap/index.js";

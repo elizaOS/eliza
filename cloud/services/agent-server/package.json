@@ -15,8 +15,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-openai": "^1.6.0",
-    "@elizaos/plugin-sql": "^1.7.1",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "elysia": "^1.1.0",
     "ioredis": "^5.10.1",
     "zod": "^4.4.3"

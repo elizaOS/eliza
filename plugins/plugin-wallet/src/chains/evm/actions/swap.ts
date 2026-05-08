@@ -7,7 +7,8 @@ import {
   isConfirmed,
 } from "./helpers";
 
-const spec = requireActionSpec("EVM_SWAP");
+const legacySpec = requireActionSpec("EVM_SWAP");
+const spec = { ...legacySpec, name: "WALLET" };
 
 import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import {

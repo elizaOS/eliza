@@ -262,6 +262,29 @@ export async function executeApprovedRequest(args: {
     };
   }
 
+  if (args.request.action === "execute_workflow") {
+    const payload = args.request.payload;
+    if (payload.action !== "execute_workflow") {
+      throw new Error(
+        `[approval] action/payload mismatch: action=execute_workflow, payload.action=${payload.action}`,
+      );
+    }
+    await args.queue.markExecuting(args.request.id);
+    const done = await args.queue.markDone(args.request.id);
+    const text = `Approved workflow ${payload.workflowId}.`;
+    await args.callback?.({ text });
+    return {
+      text,
+      success: true,
+      data: {
+        requestId: done.id,
+        state: done.state,
+        action: done.action,
+        workflowId: payload.workflowId,
+      },
+    };
+  }
+
   logger.info(
     `[OwnerResolveRequest] approved ${args.request.id} without executor`,
   );
@@ -389,10 +412,21 @@ export const resolveRequestAction: Action & {
   ],
   description:
     "Owner-only. Approve or reject a pending action queued for human confirmation (send_email, send_message, " +
-    "book_travel, voice_call, etc.). Picks the target request from the queue based on user intent (multilingual).",
+    "book_travel, voice_call, etc.). Call this even when the owner omits the request id; the handler inspects " +
+    "the pending queue, picks the target request from user intent when possible, or asks a follow-up.",
   descriptionCompressed:
-    "approve|reject pending request from queue: send_email send_message book_travel voice_call multilingual",
-  contexts: ["email", "messaging", "calendar", "tasks", "contacts", "payments"],
+    "approve|reject pending request from queue, requestId optional: send_email send_message book_travel voice_call multilingual",
+  contexts: [
+    "email",
+    "messaging",
+    "calendar",
+    "tasks",
+    "contacts",
+    "payments",
+    "automation",
+    "admin",
+    "general",
+  ],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   parameters: [
@@ -405,7 +439,7 @@ export const resolveRequestAction: Action & {
     {
       name: "requestId",
       description:
-        "Approval request id to approve or reject. Supply this when the planner can identify the pending request directly.",
+        "Approval request id to approve or reject. Optional: omit it when the user references the pending request in natural language.",
       required: false,
       schema: { type: "string" as const },
     },

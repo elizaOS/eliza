@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { DEFAULT_X_ACCOUNT_ID, normalizeXAccountId } from "../accounts";
 
 export interface StoredOAuth2Tokens {
   access_token: string;
@@ -22,9 +23,12 @@ export class RuntimeCacheTokenStore implements TokenStore {
   private readonly key: string;
   constructor(
     private readonly runtime: IAgentRuntime,
+    accountId: string = DEFAULT_X_ACCOUNT_ID,
     key?: string,
   ) {
-    this.key = key ?? `twitter/oauth2/tokens/${runtime.agentId}`;
+    this.key =
+      key ??
+      `twitter/oauth2/tokens/${runtime.agentId}/${normalizeXAccountId(accountId)}`;
   }
 
   async load(): Promise<StoredOAuth2Tokens | null> {
@@ -56,9 +60,16 @@ export class RuntimeCacheTokenStore implements TokenStore {
 export class FileTokenStore implements TokenStore {
   constructor(private readonly path: string) {}
 
-  static defaultPath(): string {
+  static defaultPath(accountId: string = DEFAULT_X_ACCOUNT_ID): string {
     // Explicit warning is logged by the provider when this fallback is used.
-    return join(homedir(), ".eliza", "twitter", "oauth2.tokens.json");
+    return join(
+      homedir(),
+      ".eliza",
+      "twitter",
+      "accounts",
+      normalizeXAccountId(accountId),
+      "oauth2.tokens.json",
+    );
   }
 
   async load(): Promise<StoredOAuth2Tokens | null> {
@@ -100,18 +111,19 @@ export class FileTokenStore implements TokenStore {
 
 export function chooseDefaultTokenStore(
   runtime: IAgentRuntime | undefined,
+  accountId: string = DEFAULT_X_ACCOUNT_ID,
 ): TokenStore {
   if (
     runtime &&
     typeof runtime.getCache === "function" &&
     typeof runtime.setCache === "function"
   ) {
-    return new RuntimeCacheTokenStore(runtime);
+    return new RuntimeCacheTokenStore(runtime, accountId);
   }
 
   logger.warn(
     "Twitter OAuth token persistence: runtime cache API not available; falling back to local token file. " +
       "This file contains sensitive tokens—protect it and rotate tokens if compromised.",
   );
-  return new FileTokenStore(FileTokenStore.defaultPath());
+  return new FileTokenStore(FileTokenStore.defaultPath(accountId));
 }

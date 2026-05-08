@@ -4,34 +4,6 @@
 
 import type { OnboardingTour } from "./types";
 
-export const BUILD_TOUR: OnboardingTour = {
-  id: "build",
-  pathPattern: "/dashboard/build",
-  minWidth: 1024, // Only show on desktop (lg breakpoint) where split pane is visible
-  steps: [
-    {
-      target: "[data-onboarding='build-assistant']",
-      title: "AI Assistant",
-      description:
-        "Chat with the AI to describe your agent's personality, capabilities, and behavior. The assistant will help you configure your agent.",
-      placement: "right",
-    },
-    {
-      target: "[data-onboarding='build-editor']",
-      title: "Character Editor",
-      description:
-        "View and fine-tune your agent's configuration in real-time. Changes you make here are reflected immediately.",
-      placement: "left",
-    },
-    {
-      target: "[data-onboarding='build-save']",
-      title: "Save Your Agent",
-      description: "Once you're happy with your agent, click here to save it and start chatting!",
-      placement: "bottom",
-    },
-  ],
-};
-
 export const APPS_TOUR: OnboardingTour = {
   id: "apps",
   pathPattern: "/dashboard/apps",
@@ -67,7 +39,7 @@ export const APPS_TOUR: OnboardingTour = {
   ],
 };
 
-export const ALL_TOURS: OnboardingTour[] = [BUILD_TOUR, APPS_TOUR];
+export const ALL_TOURS: OnboardingTour[] = [APPS_TOUR];
 
 export function getTourById(id: string): OnboardingTour | undefined {
   return ALL_TOURS.find((tour) => tour.id === id);

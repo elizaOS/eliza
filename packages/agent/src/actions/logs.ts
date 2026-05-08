@@ -2,7 +2,6 @@
  * Log inspection actions — let the agent introspect its own log buffer.
  *
  * SEARCH_LOGS (was QUERY_LOGS)  → GET /api/logs (filterable)
- * EXPORT_LOGS                  → POST /api/logs/export (json or csv)
  * DELETE_LOGS (was CLEAR_LOGS) → DELETE /api/logs
  */
 
@@ -201,129 +200,6 @@ export const queryLogsAction: Action = {
       },
     ],
   ],
-};
-
-interface ExportLogsParams {
-  format?: "json" | "csv";
-  filter?: {
-    source?: string;
-    level?: LogLevel;
-    tags?: string[];
-    since?: string;
-    limit?: number;
-  };
-}
-
-export const exportLogsAction: Action = {
-  name: "EXPORT_LOGS",
-  contexts: ["admin", "agent_internal", "settings", "files"],
-  roleGate: { minRole: "OWNER" },
-  similes: ["DOWNLOAD_LOGS", "DUMP_LOGS", "SAVE_LOGS"],
-  description:
-    "Export the agent's log buffer to JSON or CSV via POST /api/logs/export.",
-  descriptionCompressed: "POST /api/logs/export json or csv buffer dump owner",
-  validate: async () => true,
-  handler: async (
-    _runtime,
-    _message,
-    _state,
-    options,
-  ): Promise<ActionResult> => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | ExportLogsParams
-      | undefined;
-    const format = params?.format === "csv" ? "csv" : "json";
-    const filter = params?.filter ?? {};
-
-    const body: Record<string, unknown> = { format };
-    if (typeof filter.source === "string" && filter.source.trim()) {
-      body.source = filter.source.trim();
-    }
-    if (filter.level && LOG_LEVELS.includes(filter.level)) {
-      body.level = filter.level;
-    }
-    if (Array.isArray(filter.tags)) {
-      const tags = filter.tags
-        .map((t) => (typeof t === "string" ? t.trim() : ""))
-        .filter(Boolean);
-      if (tags.length > 0) body.tags = tags;
-    }
-    if (typeof filter.since === "string" && filter.since.trim()) {
-      body.since = filter.since;
-    }
-    if (typeof filter.limit === "number" && Number.isFinite(filter.limit)) {
-      body.limit = filter.limit;
-    }
-
-    try {
-      const resp = await fetch(`${getApiBase()}/api/logs/export`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        return {
-          success: false,
-          text: `Failed to export logs: HTTP ${resp.status}${text ? ` — ${text}` : ""}`,
-        };
-      }
-      const contentType = resp.headers.get("content-type") ?? "";
-      const disposition = resp.headers.get("content-disposition") ?? "";
-      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
-      const filename = filenameMatch?.[1] ?? `logs.${format}`;
-      const buffer = Buffer.from(await resp.arrayBuffer());
-
-      let entryCount: number | undefined;
-      if (contentType.includes("application/json")) {
-        const parsed = JSON.parse(buffer.toString("utf-8")) as {
-          entries?: unknown[];
-        };
-        entryCount = Array.isArray(parsed.entries)
-          ? parsed.entries.length
-          : undefined;
-      }
-
-      return {
-        success: true,
-        text: `Exported ${entryCount ?? "log"} entries as ${format} (${buffer.byteLength} bytes).`,
-        values: {
-          format,
-          bytes: buffer.byteLength,
-          ...(entryCount !== undefined ? { count: entryCount } : {}),
-        },
-        data: {
-          actionName: "EXPORT_LOGS",
-          format,
-          filename,
-          contentType,
-          bytes: buffer.byteLength,
-          base64: buffer.toString("base64"),
-        },
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[export-logs] failed: ${msg}`);
-      return { success: false, text: `Failed to export logs: ${msg}` };
-    }
-  },
-  parameters: [
-    {
-      name: "format",
-      description: "Export format: json or csv.",
-      required: true,
-      schema: { type: "string" as const, enum: ["json", "csv"] },
-    },
-    {
-      name: "filter",
-      description:
-        "Optional log filter (same shape as SEARCH_LOGS parameters).",
-      required: false,
-      schema: { type: "object" as const },
-    },
-  ],
-  examples: [],
 };
 
 export const clearLogsAction: Action = {

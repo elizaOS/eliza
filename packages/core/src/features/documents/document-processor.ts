@@ -34,13 +34,13 @@ function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
 }
 
-function getCtxKnowledgeEnabled(runtime?: IAgentRuntime): boolean {
+function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
 	let result: boolean;
 	let _source: string;
 	let rawValue: string | undefined;
 
 	if (runtime) {
-		const settingValue = runtime.getSetting("CTX_KNOWLEDGE_ENABLED");
+		const settingValue = runtime.getSetting("CTX_DOCUMENTS_ENABLED");
 		rawValue =
 			typeof settingValue === "string"
 				? settingValue
@@ -48,7 +48,7 @@ function getCtxKnowledgeEnabled(runtime?: IAgentRuntime): boolean {
 		const cleanValue = rawValue?.trim().toLowerCase();
 		result = cleanValue === "true";
 	} else {
-		rawValue = process.env.CTX_KNOWLEDGE_ENABLED;
+		rawValue = process.env.CTX_DOCUMENTS_ENABLED;
 		const cleanValue = rawValue?.toString().trim().toLowerCase();
 		result = cleanValue === "true";
 	}
@@ -360,7 +360,7 @@ async function processAndSaveFragments({
 					metadata: fragmentMetadata,
 				};
 
-				await runtime.createMemory(fragmentMemory, "knowledge");
+				await runtime.createMemory(fragmentMemory, "documents");
 				savedCount++;
 			} catch (saveError) {
 				const errorMessage =
@@ -674,7 +674,7 @@ async function getContextualizedChunks(
 ): Promise<
 	Array<{ contextualizedText: string; index: number; success: boolean }>
 > {
-	const ctxEnabled = getCtxKnowledgeEnabled(runtime);
+	const ctxEnabled = getCtxDocumentsEnabled(runtime);
 
 	if (ctxEnabled && fullDocumentText) {
 		return await generateContextsInBatch(

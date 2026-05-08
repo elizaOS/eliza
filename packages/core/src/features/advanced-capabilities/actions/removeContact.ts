@@ -64,7 +64,7 @@ function readRemoveContactInput(
 
 export const removeContactAction: Action = {
 	name: spec.name,
-	contexts: ["contacts", "messaging", "knowledge"],
+	contexts: ["contacts", "messaging", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
@@ -83,7 +83,7 @@ export const removeContactAction: Action = {
 		if (
 			hasService &&
 			hasActionContextOrKeyword(message, state, {
-				contexts: ["contacts", "messaging", "knowledge"],
+				contexts: ["contacts", "messaging", "documents"],
 				keywordKeys: ["action.removeContact.request"],
 			})
 		) {

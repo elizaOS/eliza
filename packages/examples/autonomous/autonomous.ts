@@ -11,6 +11,7 @@ import {
   logger,
   MemoryType,
   parseJSONObjectFromText,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -249,12 +250,12 @@ async function main(): Promise<void> {
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [inmemorydbPlugin, shellPlugin, localAiPlugin],
+    plugins: [inmemorydbPlugin, shellPlugin, localAiPlugin] as Plugin[],
     logLevel: "info",
   });
   await runtime.initialize();
 
-  const shellService = runtime.getService<ShellService>("shell");
+  const shellService = runtime.getService("shell") as ShellService | null;
   if (!shellService) {
     throw new Error("Shell service not available (plugin-shell not loaded?)");
   }

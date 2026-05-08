@@ -24,7 +24,6 @@ import {
 	recordTrustInteractionAction,
 	requestElevationAction,
 	updateRoleAction as trustUpdateRoleAction,
-	updateSettingsAction as trustUpdateSettingsAction,
 } from "./trust/actions/index.ts";
 import {
 	adminTrustProvider,
@@ -44,7 +43,6 @@ const trustCapability = {
 	] as Provider[],
 	actions: [
 		trustUpdateRoleAction,
-		trustUpdateSettingsAction,
 		recordTrustInteractionAction,
 		evaluateTrustAction,
 		requestElevationAction,
@@ -179,29 +177,22 @@ const pluginManagerCapability = {
 
 export type {
 	DocumentsPluginConfig,
-	FetchedKnowledgeUrl,
-	FetchedKnowledgeUrlKind,
-	FetchKnowledgeFromUrlOptions,
-	// Legacy alias
-	KnowledgePluginConfig,
-} from "./documents/index.ts";
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
+	FetchDocumentFromUrlOptions,
+} from "./documents/index";
 export {
 	createDocumentsPlugin,
-	createKnowledgePlugin,
+	documentAction,
 	documentActions,
+	DocumentService,
 	documentsPlugin,
 	documentsPluginCore,
 	documentsPluginHeadless,
 	documentsProvider,
-	fetchKnowledgeFromUrl,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
-	knowledgeActions,
-	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
-	knowledgeProvider,
-} from "./documents/index.ts";
+} from "./documents/index";
 export type {
 	TrajectoryExportOptions,
 	TrajectoryListItem,

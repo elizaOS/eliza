@@ -310,7 +310,7 @@ export interface ServerState {
 
 /**
  * Extension of the core Media attachment shape that carries raw image bytes for
- * action handlers (e.g. POST_TWEET) while the message is in-memory.
+ * action handlers (e.g. POST operation=send) while the message is in-memory.
  */
 export interface ChatAttachmentWithData extends Media {
   /** Raw base64 image data -- never written to the database. */

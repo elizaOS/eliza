@@ -11,11 +11,6 @@
  *   - TOGGLE_CAPABILITY      → config.ui.capabilities.{wallet|browser|computerUse}
  *   - TOGGLE_AUTO_TRAINING   → app-training loadTrainingConfig/saveTrainingConfig
  *
- * Voice/TTS configuration is owned by the upstream `setVoiceConfigAction`
- * (`@elizaos/core` advanced-capabilities/personality), which already lists
- * `UPDATE_VOICE_CONFIG` as a simile. We deliberately do not duplicate it
- * here — both action names route to the upstream handler.
- *
  * All four actions gate on owner access and refuse to act otherwise.
  *
  * @module actions/settings-actions
@@ -578,15 +573,6 @@ export const toggleCapabilityAction: Action = {
     ],
   ] as ActionExample[][],
 };
-
-// UPDATE_VOICE_CONFIG is intentionally NOT defined here. The upstream
-// `setVoiceConfigAction` (`@elizaos/core` advanced-capabilities/personality)
-// already owns the canonical TTS-voice persistence path and lists
-// `UPDATE_VOICE_CONFIG`, `SET_VOICE`, `UPDATE_VOICE`, and similar names as
-// similes. Defining a second action here would create a duplicate handler
-// and conflict with the existing simile resolution. If the upstream action
-// is ever removed, port its handler into this file and re-introduce
-// `updateVoiceConfigAction`.
 
 // ── TOGGLE_AUTO_TRAINING ─────────────────────────────────────────────────
 

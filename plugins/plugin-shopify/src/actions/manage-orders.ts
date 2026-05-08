@@ -15,26 +15,16 @@ import {
 } from "../services/ShopifyService.js";
 import type { Order } from "../types.js";
 import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
+import {
   confirmationRequired,
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatOrder(o: Order): string {
   const total = o.totalPriceSet.shopMoney;
@@ -160,6 +150,7 @@ export const manageOrdersAction: Action = {
       required: false,
       schema: { type: "boolean", default: false },
     },
+    shopifyAccountIdParameter,
   ],
 
   validate: async (
@@ -177,7 +168,8 @@ export const manageOrdersAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    const accountId = getShopifyAccountId(runtime, options);
+    if (!svc?.isConnected(accountId)) {
       await callback?.({
         text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       });
@@ -199,7 +191,7 @@ export const manageOrdersAction: Action = {
     try {
       if (intent.action === "list") {
         const queryStr = intent.query ?? undefined;
-        const result = await svc.listOrders({ query: queryStr, first: 10 });
+        const result = await svc.listOrders({ query: queryStr, first: 10 }, accountId);
         if (result.orders.length === 0) {
           await callback?.({
             text: queryStr
@@ -222,7 +214,7 @@ export const manageOrdersAction: Action = {
         const result = await svc.listOrders({
           query: `name:#${cleanName}`,
           first: 1,
-        });
+        }, accountId);
         if (result.orders.length === 0) {
           await callback?.({ text: `Order #${cleanName} not found.` });
           return { success: false, error: "Order not found" };
@@ -251,7 +243,7 @@ export const manageOrdersAction: Action = {
         const result = await svc.listOrders({
           query: `name:#${cleanName}`,
           first: 1,
-        });
+        }, accountId);
         if (result.orders.length === 0) {
           await callback?.({ text: `Order #${cleanName} not found.` });
           return { success: false, error: "Order not found" };
@@ -267,7 +259,7 @@ export const manageOrdersAction: Action = {
           await callback?.({ text: preview });
           return confirmationRequired(preview, { intent, orderId: order.id });
         }
-        const fulfillment = await svc.fulfillOrder(order.id);
+        const fulfillment = await svc.fulfillOrder(order.id, accountId);
         await callback?.({
           text: `Order ${order.name} fulfilled (status: ${fulfillment.status}).`,
         });

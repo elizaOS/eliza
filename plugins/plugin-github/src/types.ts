@@ -141,14 +141,18 @@ export interface GitHubOctokitClient {
  * via this interface and never read environment variables directly.
  */
 export interface IGitHubService {
-  getOctokit(as: GitHubIdentity): GitHubOctokitClient | null;
+  getOctokit(
+    selector:
+      | GitHubIdentity
+      | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
+  ): GitHubOctokitClient | null;
 }
 
 export const GITHUB_SERVICE_TYPE = "github";
 
 export const GitHubActions = {
-  GITHUB_ISSUE_OP: "GITHUB_ISSUE_OP",
-  GITHUB_PR_OP: "GITHUB_PR_OP",
+  GITHUB_ISSUE_OP: "GITHUB_ISSUE",
+  GITHUB_PR_OP: "GITHUB_PR",
   GITHUB_NOTIFICATION_TRIAGE: "GITHUB_NOTIFICATION_TRIAGE",
 } as const;
 
@@ -183,5 +187,6 @@ export interface RateLimitError {
 /** Parameters shared by every action invocation. */
 export interface BaseActionOptions {
   as?: GitHubIdentity;
+  accountId?: string;
   confirmed?: boolean;
 }

@@ -83,10 +83,10 @@
       "descriptionCompressed": "Upcoming follow-ups/reminders for contacts."
     },
     {
-      "name": "KNOWLEDGE",
-      "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
+      "name": "DOCUMENTS",
+      "description": "Provides relevant snippets and recent entries from the agent document store",
       "dynamic": true,
-      "descriptionCompressed": "Relevant knowledge from KB via semantic search."
+      "descriptionCompressed": "Relevant snippets and recent stored documents."
     },
     {
       "name": "PROVIDERS",

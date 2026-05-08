@@ -1,7 +1,7 @@
 /**
  * Execution facade for autonomy: runs the same post-LLM steps as the message
- * pipeline (processActions, memory creation, evaluators) given batcher result
- * fields and a synthetic autonomy message.
+ * pipeline (planned tool execution, memory creation, evaluators) given batcher
+ * result fields and a synthetic autonomy message.
  *
  * WHY: The batcher delivers the Reason phase output; we must run Run actions +
  * Evaluate without duplicating message.ts. One facade keeps schema and semantics
@@ -10,7 +10,10 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { createUniqueUuid } from "../../entities.ts";
+import { executePlannedToolCall } from "../../runtime/execute-planned-tool-call.ts";
 import type {
+	ActionResult,
+	AgentContext,
 	Content,
 	HandlerCallback,
 	IAgentRuntime,
@@ -21,11 +24,10 @@ import { outgoingPipelineHookContext } from "../../types/pipeline-hooks.ts";
 import { stringToUuid } from "../../utils.ts";
 
 /**
- * Normalize batcher result fields into Content shape expected by processActions
- * and the message pipeline. WHY: The dispatcher returns namespace-stripped
- * fields; processActions expects Content (thought, actions array, text, simple,
- * providers). We accept array or comma-separated string for actions/providers
- * so we tolerate both schema encodings.
+ * Normalize batcher result fields into the message pipeline Content shape.
+ * WHY: The dispatcher returns namespace-stripped fields. We accept array or
+ * comma-separated string for actions/providers so we tolerate both schema
+ * encodings.
  */
 function fieldsToContent(fields: Record<string, unknown>): Content {
 	const actionsRaw = fields.actions;
@@ -43,7 +45,7 @@ function fieldsToContent(fields: Record<string, unknown>): Content {
 		}
 		return [];
 	})();
-	// WHY: Empty actions would break processActions expectations; IGNORE is the safe no-op.
+	// WHY: Empty actions should still produce a safe no-op.
 	const finalActions =
 		normalizedActions.length > 0 ? normalizedActions : ["IGNORE"];
 
@@ -67,10 +69,28 @@ function fieldsToContent(fields: Record<string, unknown>): Content {
 	};
 }
 
+function fieldsToActiveContexts(
+	fields: Record<string, unknown>,
+): AgentContext[] {
+	const raw = fields.contexts ?? fields.context ?? fields.primaryContext;
+	const contexts = new Set<AgentContext>(["general"]);
+	const values = Array.isArray(raw)
+		? raw
+		: typeof raw === "string"
+			? raw.split(/[\n,;]/)
+			: [];
+	for (const value of values) {
+		if (typeof value === "string" && value.trim()) {
+			contexts.add(value.trim().toLowerCase() as AgentContext);
+		}
+	}
+	return [...contexts];
+}
+
 /**
  * Run the same post-LLM steps as the message pipeline for an autonomy response:
- * build response content and messages, save to memory, process actions, run
- * evaluators. Call this from the autonomy batcher section's onResult.
+ * build response content and messages, save to memory, execute planned tools,
+ * run evaluators. Call this from the autonomy batcher section's onResult.
  *
  * @param runtime - Agent runtime
  * @param autonomousMessage - Synthetic message representing the autonomy prompt (entityId = autonomy entity, roomId = autonomous room, content.metadata isAutonomous etc.)
@@ -91,7 +111,6 @@ export async function runAutonomyPostResponse(
 	}
 
 	const responseId = stringToUuid(uuidv4());
-	// WHY: processActions expects Memory[] with content; one item matches the message pipeline's single-shot response shape.
 	const responseMessages: Memory[] = [
 		{
 			id: responseId,
@@ -103,14 +122,14 @@ export async function runAutonomyPostResponse(
 		},
 	];
 
-	// WHY: Same provider list as message pipeline before processActions/evaluate so action names and evaluator context are available.
+	// WHY: Same provider list as message pipeline before planned tool execution/evaluate so action names and evaluator context are available.
 	const state: State = await runtime.composeState(autonomousMessage, [
 		"ACTIONS",
 		"RECENT_MESSAGES",
 		"EVALUATORS",
 	]);
 
-	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = processActions).
+	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = planned tools).
 	const isSimple =
 		responseContent.actions?.length === 1 &&
 		String(responseContent.actions[0]).toUpperCase() === "REPLY";
@@ -155,22 +174,32 @@ export async function runAutonomyPostResponse(
 	if (mode === "simple" && callback) {
 		await callback(responseContent);
 	} else if (mode === "actions") {
-		await runtime.processActions(
-			autonomousMessage,
-			responseMessages,
-			state,
-			async (content) => {
-				runtime.logger.debug(
-					{ src: "autonomy:facade", content },
-					"Autonomy action callback",
-				);
-				if (callback) {
-					return callback(content);
-				}
-				return [];
-			},
-			{},
-		);
+		const previousResults: ActionResult[] = [];
+		const activeContexts = fieldsToActiveContexts(fields);
+		for (const actionName of responseContent.actions ?? []) {
+			const result = await executePlannedToolCall(
+				runtime,
+				{
+					message: autonomousMessage,
+					state,
+					activeContexts,
+					previousResults,
+					callback: async (content) => {
+						runtime.logger.debug(
+							{ src: "autonomy:facade", content },
+							"Autonomy action callback",
+						);
+						if (callback) {
+							return callback(content);
+						}
+						return [];
+					},
+					responses: responseMessages,
+				},
+				{ name: actionName },
+			);
+			previousResults.push(result);
+		}
 	}
 
 	// WHY: didRespond gates some evaluators; autonomy "responded" when there is text or non-IGNORE actions.

@@ -42,7 +42,7 @@ export const emoteAction: Action = {
     "chat text on its own. Only call it when you set the required emote " +
     "parameter to a valid emote ID. If you also want speech, chain it " +
     "before, after, or alongside other actions in the same turn " +
-    "(for example with REPLY, SEND_MESSAGE, or stream actions).",
+    "(for example with REPLY, MESSAGE operation=send, or stream actions).",
   descriptionCompressed:
     "Play one-shot VRM avatar emote animation. Silent visual side-action.",
 

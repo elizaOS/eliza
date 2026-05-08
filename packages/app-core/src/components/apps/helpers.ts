@@ -45,7 +45,7 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
-  "@elizaos/app-knowledge",
+  "@elizaos/app-documents",
   "@elizaos/app-screenshare",
   "@elizaos/app-task-coordinator",
   // MiladyOS-only system apps (declared `androidOnly: true` in their

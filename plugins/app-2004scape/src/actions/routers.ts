@@ -169,7 +169,7 @@ function pickSubactionFromParams(
   params: ParamsRecord,
 ): unknown {
   if (params.subaction != null) return params.subaction;
-  if (routerName === "SKILL_OP" && params.skill != null) {
+  if (routerName === "SKILL" && params.skill != null) {
     const key = String(params.skill).trim().toLowerCase();
     return SKILL_TO_SUBACTION[key] ?? params.skill;
   }
@@ -250,7 +250,7 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
             : `Unknown ${definition.name} failure.`;
         const text = `${definition.name} failed: ${message}`;
         callback?.({ text, action: definition.name });
-        return { success: false, text, error: message };
+        return routerError(definition.name, text);
       }
     },
   };
@@ -326,7 +326,7 @@ export const rs2004WalkToAction: Action = {
         error instanceof Error ? error.message : "Unknown walk failure.";
       const text = `RS_2004_WALK_TO failed: ${message}`;
       callback?.({ text, action: "RS_2004_WALK_TO" });
-      return { success: false, text, error: message };
+      return routerError("RS_2004_WALK_TO", text);
     }
   },
 };

@@ -17,9 +17,7 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 		: {};
 }
 
-function resolveStatusFilter(
-	value: unknown,
-): ResearchStatus | "all" {
+function resolveStatusFilter(value: unknown): ResearchStatus | "all" {
 	if (value === "resolved" || value === "archived" || value === "all") {
 		return value;
 	}
@@ -40,10 +38,14 @@ function optionalPositiveInt(value: unknown): number | undefined {
 export const listResearchAction: Action = {
 	name: "LIST_RESEARCH",
 	contexts: ["research", "agent_internal"],
-	description: "List research threads for the current user.",
+	roleGate: { minRole: "USER" },
+	description:
+		"List research threads for the current user, optionally filtered by status and limited by count.",
 	similes: ["SHOW_RESEARCH", "GET_RESEARCH_LIST", "MY_RESEARCH"],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return Boolean(getResearchService(runtime));
+	},
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -69,7 +71,8 @@ export const listResearchAction: Action = {
 			const threads = await service.list(agentId, userId, listOpts);
 
 			if (threads.length === 0) {
-				const statusLabel = listOpts.status === "all" ? "" : `${listOpts.status} `;
+				const statusLabel =
+					listOpts.status === "all" ? "" : `${listOpts.status} `;
 				const emptyMsg = `No ${statusLabel}research threads found.`;
 				if (callback) {
 					await callback({

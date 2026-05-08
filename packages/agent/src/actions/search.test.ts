@@ -221,16 +221,16 @@ describe("SEARCH action", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("searches knowledge through the knowledge category", async () => {
-    const runtime = createRuntime();
-    const getKnowledge = vi.fn(async () => [
-      {
-        id: "knowledge-1",
-        content: { text: "Stored knowledge result" },
-        similarity: 0.82,
-      },
-    ]);
-    runtime.__services.set("knowledge", { getKnowledge });
+	it("searches knowledge through the knowledge category", async () => {
+		const runtime = createRuntime();
+		const searchDocuments = vi.fn(async () => [
+			{
+				id: "knowledge-1",
+				content: { text: "Stored knowledge result" },
+				similarity: 0.82,
+			},
+		]);
+		runtime.__services.set("documents", { searchDocuments });
 
     const result = await searchAction.handler(
       runtime,
@@ -238,23 +238,23 @@ describe("SEARCH action", () => {
       undefined,
       {
         parameters: {
-          category: "knowledge",
+          category: "documents",
           query: "stored result",
           limit: 1,
         },
       },
-    );
+		);
 
-    expect(result?.success).toBe(true);
-    expect(getKnowledge).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.objectContaining({ text: "stored result" }),
-      }),
+		expect(result?.success).toBe(true);
+		expect(searchDocuments).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({ text: "stored result" }),
+			}),
       undefined,
     );
     expect(result?.data).toMatchObject({
       actionName: "SEARCH",
-      category: "knowledge",
+      category: "documents",
     });
   });
 
@@ -307,7 +307,7 @@ describe("SEARCH action", () => {
       return new Response(
         JSON.stringify({
           query: "budget",
-          table: "knowledge",
+          table: "documents",
           limit: 3,
           count: 1,
           results: [
@@ -318,7 +318,7 @@ describe("SEARCH action", () => {
               roomId: null,
               entityId: null,
               createdAt: null,
-              tableName: "knowledge",
+              tableName: "document_fragments",
             },
           ],
         }),
@@ -338,7 +338,7 @@ describe("SEARCH action", () => {
         parameters: {
           category: "vector",
           query: "budget",
-          filters: { table: "knowledge", threshold: 0.2 },
+          filters: { table: "documents", threshold: 0.2 },
           limit: 3,
         },
       },
@@ -350,7 +350,7 @@ describe("SEARCH action", () => {
     const body = JSON.parse(String(requestInit?.body));
     expect(body).toMatchObject({
       query: "budget",
-      table: "knowledge",
+      table: "documents",
       threshold: 0.2,
       limit: 3,
     });

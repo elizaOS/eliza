@@ -31,37 +31,11 @@ export type EvaluatorDoc = {
 
 export const coreActionsSpec = {
   version: "1.0.0",
-  actions: [
-    {
-      name: "SEND_CAST",
-      description: "Posts a cast (message) on Farcaster",
-      similes: ["POST_CAST", "FARCASTER_POST", "CAST", "SHARE_ON_FARCASTER", "ANNOUNCE"],
-      parameters: [],
-    },
-    {
-      name: "REPLY_TO_CAST",
-      description: "Replies to a cast on Farcaster",
-      similes: ["REPLY_CAST", "RESPOND_CAST", "ANSWER_CAST", "COMMENT_CAST"],
-      parameters: [],
-    },
-  ],
+  actions: [],
 } as const;
 export const allActionsSpec = {
   version: "1.0.0",
-  actions: [
-    {
-      name: "SEND_CAST",
-      description: "Posts a cast (message) on Farcaster",
-      similes: ["POST_CAST", "FARCASTER_POST", "CAST", "SHARE_ON_FARCASTER", "ANNOUNCE"],
-      parameters: [],
-    },
-    {
-      name: "REPLY_TO_CAST",
-      description: "Replies to a cast on Farcaster",
-      similes: ["REPLY_CAST", "RESPOND_CAST", "ANSWER_CAST", "COMMENT_CAST"],
-      parameters: [],
-    },
-  ],
+  actions: [],
 } as const;
 export const coreProvidersSpec = {
   version: "1.0.0",

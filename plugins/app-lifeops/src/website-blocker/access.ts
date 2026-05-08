@@ -1,6 +1,6 @@
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { checkSenderRole, type RoleCheckResult } from "./roles.ts";
+import { checkSenderRole, type RoleCheckResult } from "./roles.js";
 
 export const SELFCONTROL_ACCESS_ERROR =
   "Website blocking is restricted to OWNER users.";

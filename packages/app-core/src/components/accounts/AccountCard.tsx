@@ -19,20 +19,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
   Spinner,
   StatusBadge,
 } from "@elizaos/ui";
-import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
-import {
-  type FormEvent,
-  type KeyboardEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { useCallback, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useApp } from "../../state";
+import { EditableAccountLabel } from "./EditableAccountLabel";
 
 export interface AccountCardProps {
   account: AccountWithCredentialFlag;
@@ -184,43 +178,8 @@ export function AccountCard({
   refreshBusy = false,
 }: AccountCardProps) {
   const { t } = useApp();
-  const [labelEditing, setLabelEditing] = useState(false);
-  const [labelDraft, setLabelDraft] = useState(account.label);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-
-  useEffect(() => {
-    if (!labelEditing) setLabelDraft(account.label);
-  }, [account.label, labelEditing]);
-
-  const submitLabel = useCallback(
-    async (event?: FormEvent) => {
-      event?.preventDefault();
-      const trimmed = labelDraft.trim();
-      setLabelEditing(false);
-      if (!trimmed || trimmed === account.label) {
-        setLabelDraft(account.label);
-        return;
-      }
-      try {
-        await onPatch({ label: trimmed });
-      } catch {
-        setLabelDraft(account.label);
-      }
-    },
-    [account.label, labelDraft, onPatch],
-  );
-
-  const handleLabelKey = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setLabelDraft(account.label);
-      setLabelEditing(false);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      void submitLabel();
-    }
-  };
 
   const handleConfirmDelete = useCallback(async () => {
     setDeleteBusy(true);
@@ -248,36 +207,17 @@ export function AccountCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <StatusBadge label={health.label} tone={health.tone} withDot />
-          {labelEditing ? (
-            <form onSubmit={submitLabel} className="min-w-0 flex-1">
-              <Input
-                value={labelDraft}
-                onChange={(e) => setLabelDraft(e.target.value)}
-                onBlur={() => void submitLabel()}
-                onKeyDown={handleLabelKey}
-                autoFocus
-                className="h-7 max-w-[240px] text-sm"
-                aria-label={t("accounts.label.edit", {
-                  defaultValue: "Account label",
-                })}
-              />
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setLabelEditing(true)}
-              title={t("accounts.label.editTooltip", {
-                defaultValue: "Click to rename",
-              })}
-              className="inline-flex min-w-0 items-center gap-1 truncate rounded text-sm font-medium text-txt hover:text-accent"
-            >
-              <span className="truncate">{account.label}</span>
-              <Pencil
-                className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                aria-hidden
-              />
-            </button>
-          )}
+          <EditableAccountLabel
+            value={account.label}
+            onSubmit={(label) => onPatch({ label })}
+            disabled={saving}
+            inputAriaLabel={t("accounts.label.edit", {
+              defaultValue: "Account label",
+            })}
+            editTitle={t("accounts.label.editTooltip", {
+              defaultValue: "Click to rename",
+            })}
+          />
           <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
             {account.source === "oauth"
               ? t("accounts.source.oauth", { defaultValue: "OAuth" })

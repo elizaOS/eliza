@@ -1,5 +1,4 @@
 import type { Plugin } from "@elizaos/core";
-import { farcasterActions } from "./actions";
 import { farcasterProviders } from "./providers";
 import { farcasterWebhookRoutes } from "./routes/webhook";
 import { FarcasterService } from "./services/FarcasterService";
@@ -27,7 +26,7 @@ export const farcasterPlugin: Plugin = {
   name: "farcaster",
   description: "Farcaster client plugin for sending and receiving casts",
   services: [FarcasterService],
-  actions: farcasterActions,
+  actions: [],
   providers: farcasterProviders,
   routes: farcasterWebhookRoutes,
 };

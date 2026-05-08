@@ -692,7 +692,7 @@ export const calendarAction: Action & {
     "negotiate_list_active, negotiate_list_proposals.",
   descriptionCompressed:
     "calendar+calendly+availability+prefs+negotiation: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs calendly-(list-event-types availability upcoming single-use-link) negotiate-(start propose respond finalize cancel list-active list-proposals)",
-  contexts: ["calendar", "contacts", "tasks"],
+  contexts: ["calendar", "contacts", "tasks", "connectors", "web"],
   roleGate: { minRole: "OWNER" },
   subActions: [
     googleCalendarAction,

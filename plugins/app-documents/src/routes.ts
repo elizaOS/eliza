@@ -8,36 +8,42 @@ import {
 } from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
-  __setKnowledgeUrlFetchImplForTests,
-  fetchKnowledgeFromUrl,
+  __setDocumentUrlFetchImplForTests,
+  fetchDocumentFromUrl,
   isYouTubeUrl,
 } from "@elizaos/core";
 import {
-  getKnowledgeDocumentDeleteability,
-  getKnowledgeDocumentEditability,
-  getKnowledgeDocumentProvenance,
-  getKnowledgeDocumentTitleFromMetadata,
-  presentKnowledgeDocument,
+  getDocumentDeleteability,
+  getDocumentEditability,
+  getDocumentProvenance,
+  getDocumentTitleFromMetadata,
+  presentDocument,
 } from "./document-presenter.js";
 import {
-  handleScratchpadTopicRoutes,
-  ScratchpadTopicService,
-} from "./scratchpad-topics.js";
-import {
-  getKnowledgeService,
-  type KnowledgeServiceLike,
+  getDocumentsService,
+  type DocumentServiceLike,
 } from "./service-loader.js";
 
-export type KnowledgeRouteHelpers = RouteHelpers;
+export type DocumentRouteHelpers = RouteHelpers;
 
-export interface KnowledgeRouteContext extends RouteRequestContext {
+export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
 }
 
 const FRAGMENT_COUNT_BATCH_SIZE = 500;
-const KNOWLEDGE_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
+const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
+const DOCUMENT_SCOPES = new Set([
+  "global",
+  "owner-private",
+  "user-private",
+  "agent-private",
+]);
+const DOCUMENT_ID_ROUTE_PATTERN =
+  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const DOCUMENT_FRAGMENTS_ROUTE_PATTERN =
+  /^\/api\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/fragments$/i;
 
 function isTextBackedContentType(
   contentType: string,
@@ -75,8 +81,82 @@ function hasUuidIdAndCreatedAt(
   return hasUuidId(memory) && typeof memory.createdAt === "number";
 }
 
-async function countKnowledgeFragmentsForDocument(
-  knowledgeService: KnowledgeServiceLike,
+function normalizeScope(value: unknown):
+  | "global"
+  | "owner-private"
+  | "user-private"
+  | "agent-private"
+  | undefined {
+  return typeof value === "string" && DOCUMENT_SCOPES.has(value)
+    ? (value as
+        | "global"
+        | "owner-private"
+        | "user-private"
+        | "agent-private")
+    : undefined;
+}
+
+function getDocumentTimestamp(memory: Memory): number {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const metadataTimestamp = metadata?.timestamp;
+  if (typeof metadataTimestamp === "number") return metadataTimestamp;
+  return typeof memory.createdAt === "number" ? memory.createdAt : 0;
+}
+
+function memoryMatchesDocumentFilters(memory: Memory, url: URL): boolean {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const scope = url.searchParams.get("scope");
+  if (scope && metadata?.scope !== scope) return false;
+
+  const scopedToEntityId = url.searchParams.get("scopedToEntityId");
+  if (scopedToEntityId && metadata?.scopedToEntityId !== scopedToEntityId) {
+    return false;
+  }
+
+  const addedBy = url.searchParams.get("addedBy");
+  if (addedBy && metadata?.addedBy !== addedBy) return false;
+
+  const query = (url.searchParams.get("q") ?? url.searchParams.get("query"))
+    ?.trim()
+    .toLowerCase();
+  if (query) {
+    const haystack = [
+      memory.content?.text,
+      metadata?.title,
+      metadata?.filename,
+      metadata?.originalFilename,
+      metadata?.source,
+      metadata?.url,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n")
+      .toLowerCase();
+    if (!haystack.includes(query)) return false;
+  }
+
+  const timeRangeStart = Date.parse(
+    url.searchParams.get("timeRangeStart") ?? "",
+  );
+  if (
+    Number.isFinite(timeRangeStart) &&
+    getDocumentTimestamp(memory) < timeRangeStart
+  ) {
+    return false;
+  }
+
+  const timeRangeEnd = Date.parse(url.searchParams.get("timeRangeEnd") ?? "");
+  if (
+    Number.isFinite(timeRangeEnd) &&
+    getDocumentTimestamp(memory) > timeRangeEnd
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+async function countDocumentFragmentsForDocument(
+  documentsService: DocumentServiceLike,
   roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<number> {
@@ -84,23 +164,23 @@ async function countKnowledgeFragmentsForDocument(
   let fragmentCount = 0;
 
   while (true) {
-    const knowledgeBatch = await knowledgeService.getMemories({
-      tableName: "knowledge",
+    const fragmentBatch = await documentsService.getMemories({
+      tableName: "document_fragments",
       roomId,
       count: FRAGMENT_COUNT_BATCH_SIZE,
       offset,
     });
 
-    if (knowledgeBatch.length === 0) {
+    if (fragmentBatch.length === 0) {
       break;
     }
 
-    fragmentCount += knowledgeBatch.filter((memory) => {
+    fragmentCount += fragmentBatch.filter((memory) => {
       const metadata = memory.metadata as Record<string, unknown> | undefined;
       return metadata?.documentId === documentId;
     }).length;
 
-    if (knowledgeBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
+    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
       break;
     }
 
@@ -110,8 +190,8 @@ async function countKnowledgeFragmentsForDocument(
   return fragmentCount;
 }
 
-async function mapKnowledgeFragmentsByDocumentId(
-  knowledgeService: KnowledgeServiceLike,
+async function mapDocumentFragmentsByDocumentId(
+  documentsService: DocumentServiceLike,
   roomId: UUID | undefined,
   documentIds: readonly UUID[],
 ): Promise<Map<UUID, number>> {
@@ -125,18 +205,18 @@ async function mapKnowledgeFragmentsByDocumentId(
 
   let offset = 0;
   while (true) {
-    const knowledgeBatch = await knowledgeService.getMemories({
-      tableName: "knowledge",
+    const fragmentBatch = await documentsService.getMemories({
+      tableName: "document_fragments",
       roomId,
       count: FRAGMENT_COUNT_BATCH_SIZE,
       offset,
     });
 
-    if (knowledgeBatch.length === 0) {
+    if (fragmentBatch.length === 0) {
       break;
     }
 
-    for (const memory of knowledgeBatch) {
+    for (const memory of fragmentBatch) {
       const metadata = memory.metadata as Record<string, unknown> | undefined;
       const documentId = metadata?.documentId;
       if (
@@ -148,7 +228,7 @@ async function mapKnowledgeFragmentsByDocumentId(
       }
     }
 
-    if (knowledgeBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
+    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
       break;
     }
     offset += FRAGMENT_COUNT_BATCH_SIZE;
@@ -157,8 +237,8 @@ async function mapKnowledgeFragmentsByDocumentId(
   return fragmentCounts;
 }
 
-async function listKnowledgeFragmentsForDocument(
-  knowledgeService: KnowledgeServiceLike,
+async function listDocumentFragmentsForDocument(
+  documentsService: DocumentServiceLike,
   roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<UUID[]> {
@@ -166,21 +246,21 @@ async function listKnowledgeFragmentsForDocument(
   const fragmentIds: UUID[] = [];
 
   while (true) {
-    const knowledgeBatch = await knowledgeService.getMemories({
-      tableName: "knowledge",
+    const fragmentBatch = await documentsService.getMemories({
+      tableName: "document_fragments",
       roomId,
       count: FRAGMENT_COUNT_BATCH_SIZE,
       offset,
     });
 
-    for (const memory of knowledgeBatch) {
+    for (const memory of fragmentBatch) {
       const metadata = memory.metadata as Record<string, unknown> | undefined;
       if (metadata?.documentId === documentId && hasUuidId(memory)) {
         fragmentIds.push(memory.id);
       }
     }
 
-    if (knowledgeBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
+    if (fragmentBatch.length < FRAGMENT_COUNT_BATCH_SIZE) {
       break;
     }
 
@@ -192,10 +272,10 @@ async function listKnowledgeFragmentsForDocument(
 
 // Re-export the URL fetch test hook for backwards compatibility with previous
 // callers that imported it from this module.
-export const __setPinnedFetchImplForTests = __setKnowledgeUrlFetchImplForTests;
+export const __setPinnedFetchImplForTests = __setDocumentUrlFetchImplForTests;
 
-export async function handleKnowledgeRoutes(
-  ctx: KnowledgeRouteContext,
+export async function handleDocumentsRoutes(
+  ctx: DocumentRouteContext,
 ): Promise<boolean> {
   const {
     req,
@@ -209,22 +289,22 @@ export async function handleKnowledgeRoutes(
     readJsonBody,
   } = ctx;
 
-  if (!pathname.startsWith("/api/knowledge")) return false;
+  if (!pathname.startsWith("/api/documents")) return false;
 
-  const { service: knowledgeService, reason } =
-    await getKnowledgeService(runtime);
-  if (!knowledgeService) {
+  const { service: documentsService, reason } =
+    await getDocumentsService(runtime);
+  if (!documentsService) {
     if (reason === "timeout") {
       res.setHeader("Retry-After", "5");
       error(
         res,
-        "Knowledge service is still loading. Please retry shortly.",
+        "Documents service is still loading. Please retry shortly.",
         503,
       );
     } else {
       error(
         res,
-        "Knowledge service is not available. Agent may not be running.",
+        "Documents service is not available. Agent may not be running.",
         503,
       );
     }
@@ -237,44 +317,15 @@ export async function handleKnowledgeRoutes(
   }
   const agentId = runtime.agentId as UUID;
 
-  if (pathname.startsWith("/api/knowledge/scratchpad")) {
-    return handleScratchpadTopicRoutes(
-      ctx,
-      new ScratchpadTopicService(runtime, knowledgeService),
-    );
-  }
-
-  // ── GET /api/knowledge ──────────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/knowledge") {
-    const documentCount = await knowledgeService.countMemories({
+  // ── GET /api/documents/stats ────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/documents/stats") {
+    const documentCount = await documentsService.countMemories({
       tableName: "documents",
       unique: false,
     });
 
-    const fragmentCount = await knowledgeService.countMemories({
-      tableName: "knowledge",
-      unique: false,
-    });
-
-    json(res, {
-      ok: true,
-      available: true,
-      agentId,
-      documentCount,
-      fragmentCount,
-    });
-    return true;
-  }
-
-  // ── GET /api/knowledge/stats ────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/knowledge/stats") {
-    const documentCount = await knowledgeService.countMemories({
-      tableName: "documents",
-      unique: false,
-    });
-
-    const fragmentCount = await knowledgeService.countMemories({
-      tableName: "knowledge",
+    const fragmentCount = await documentsService.countMemories({
+      tableName: "document_fragments",
       unique: false,
     });
 
@@ -286,30 +337,30 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── GET /api/knowledge/documents ────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/knowledge/documents") {
+  // ── GET /api/documents ────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/documents") {
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 100);
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
 
-    const documents = await knowledgeService.getMemories({
+    const rawDocuments = await documentsService.getMemories({
       tableName: "documents",
-      count: limit,
-      offset: offset > 0 ? offset : undefined,
+      count: Math.max(limit + offset, limit, 100),
     });
-    const total = await knowledgeService.countMemories({
-      tableName: "documents",
-      unique: false,
-    });
+    const filteredDocuments = rawDocuments.filter((memory) =>
+      memoryMatchesDocumentFilters(memory, url),
+    );
+    const documents = filteredDocuments.slice(offset, offset + limit);
+    const total = filteredDocuments.length;
 
     const documentIds = documents.filter(hasUuidId).map((doc) => doc.id);
-    const fragmentCounts = await mapKnowledgeFragmentsByDocumentId(
-      knowledgeService,
+    const fragmentCounts = await mapDocumentFragmentsByDocumentId(
+      documentsService,
       undefined,
       documentIds,
     );
 
     const cleanedDocuments = documents.map((doc) =>
-      presentKnowledgeDocument(
+      presentDocument(
         doc,
         hasUuidId(doc) ? (fragmentCounts.get(doc.id) ?? 0) : 0,
       ),
@@ -324,8 +375,8 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── GET /api/knowledge/documents/:id ────────────────────────────────────
-  const docIdMatch = /^\/api\/knowledge\/documents\/([^/]+)$/.exec(pathname);
+  // ── GET /api/documents/:id ────────────────────────────────────
+  const docIdMatch = DOCUMENT_ID_ROUTE_PATTERN.exec(pathname);
   if (method === "GET" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
 
@@ -343,14 +394,14 @@ export async function handleKnowledgeRoutes(
       return true;
     }
 
-    const fragmentCount = await countKnowledgeFragmentsForDocument(
-      knowledgeService,
+    const fragmentCount = await countDocumentFragmentsForDocument(
+      documentsService,
       undefined,
       documentId,
     );
 
     json(res, {
-      document: presentKnowledgeDocument(document, fragmentCount, {
+      document: presentDocument(document, fragmentCount, {
         includeContent: true,
       }),
     });
@@ -365,18 +416,18 @@ export async function handleKnowledgeRoutes(
       return true;
     }
 
-    const editability = getKnowledgeDocumentEditability(document);
+    const editability = getDocumentEditability(document);
     if (!editability.canEditText) {
       error(
         res,
-        editability.reason || "This knowledge document cannot be edited.",
+        editability.reason || "This document cannot be edited.",
         400,
       );
       return true;
     }
 
     const body = await readJsonBody<{ content?: string }>(req, res, {
-      maxBytes: KNOWLEDGE_UPLOAD_MAX_BODY_BYTES,
+      maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
 
@@ -385,12 +436,12 @@ export async function handleKnowledgeRoutes(
       return true;
     }
 
-    if (typeof knowledgeService.updateKnowledgeDocument !== "function") {
-      error(res, "Knowledge document editing is unavailable", 503);
+    if (typeof documentsService.updateDocument !== "function") {
+      error(res, "Document editing is unavailable", 503);
       return true;
     }
 
-    const result = await knowledgeService.updateKnowledgeDocument({
+    const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
     });
@@ -403,7 +454,7 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── DELETE /api/knowledge/documents/:id ─────────────────────────────────
+  // ── DELETE /api/documents/:id ─────────────────────────────────
   if (method === "DELETE" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
     const existingDocument = await runtime.getMemoryById(documentId);
@@ -412,28 +463,28 @@ export async function handleKnowledgeRoutes(
       return true;
     }
 
-    const deleteability = getKnowledgeDocumentDeleteability(existingDocument);
+    const deleteability = getDocumentDeleteability(existingDocument);
     if (!deleteability.canDelete) {
       error(
         res,
-        deleteability.reason || "This knowledge document cannot be deleted.",
+        deleteability.reason || "This document cannot be deleted.",
         400,
       );
       return true;
     }
 
-    const fragmentIds = await listKnowledgeFragmentsForDocument(
-      knowledgeService,
+    const fragmentIds = await listDocumentFragmentsForDocument(
+      documentsService,
       undefined,
       documentId,
     );
 
     for (const fragmentId of fragmentIds) {
-      await knowledgeService.deleteMemory(fragmentId);
+      await documentsService.deleteMemory(fragmentId);
     }
 
     // Then delete the document itself
-    await knowledgeService.deleteMemory(documentId);
+    await documentsService.deleteMemory(documentId);
 
     json(res, {
       ok: true,
@@ -442,17 +493,20 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  type KnowledgeUploadDocumentBody = {
+  type DocumentUploadBody = {
     content: string;
     filename: string;
     contentType?: string;
     metadata?: Record<string, unknown>;
     roomId?: string;
+    entityId?: string;
+    scope?: string;
+    scopedToEntityId?: string;
   };
 
-  async function addKnowledgeDocument(
-    service: KnowledgeServiceLike,
-    document: KnowledgeUploadDocumentBody,
+  async function addDocumentFromBody(
+    service: DocumentServiceLike,
+    document: DocumentUploadBody,
   ): Promise<{
     documentId: UUID;
     fragmentCount: number;
@@ -481,7 +535,7 @@ export async function handleKnowledgeRoutes(
             ModelType.IMAGE_DESCRIPTION,
             {
               imageUrl: dataUri,
-              prompt: `Describe this image in detail for a knowledge base. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
+              prompt: `Describe this image in detail for a document store. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
             },
           );
           const descText =
@@ -508,21 +562,46 @@ export async function handleKnowledgeRoutes(
       contentType = "text/markdown";
     }
 
-    const result = await service.addKnowledge({
+    const scope = normalizeScope(document.scope ?? document.metadata?.scope);
+    const scopedToEntityId =
+      typeof document.scopedToEntityId === "string" &&
+      document.scopedToEntityId.trim().length > 0
+        ? (document.scopedToEntityId.trim() as UUID)
+        : typeof document.metadata?.scopedToEntityId === "string" &&
+            document.metadata.scopedToEntityId.trim().length > 0
+          ? (document.metadata.scopedToEntityId.trim() as UUID)
+          : undefined;
+    const ownerEntityId =
+      scope === "user-private"
+        ? (scopedToEntityId ??
+          (typeof document.entityId === "string" &&
+          document.entityId.trim().length > 0
+            ? (document.entityId.trim() as UUID)
+            : agentId))
+        : agentId;
+
+    const result = await service.addDocument({
       agentId,
       worldId: agentId,
       roomId:
         typeof document.roomId === "string" && document.roomId.trim().length > 0
           ? (document.roomId.trim() as UUID)
           : agentId,
-      entityId: agentId,
+      entityId: ownerEntityId,
       clientDocumentId: "" as UUID, // Will be generated
       contentType,
       originalFilename: document.filename,
       content,
+      scope,
+      scopedToEntityId,
+      addedBy: ownerEntityId,
+      addedByRole: "USER",
+      addedFrom: "upload",
       metadata: {
         ...document.metadata,
         source: "upload",
+        scope,
+        scopedToEntityId,
         filename: document.filename,
         originalFilename: document.filename,
         fileType: originalContentType,
@@ -545,11 +624,11 @@ export async function handleKnowledgeRoutes(
     };
   }
 
-  // ── POST /api/knowledge/documents ───────────────────────────────────────
+  // ── POST /api/documents ───────────────────────────────────────
   // Upload document from base64 content or text
-  if (method === "POST" && pathname === "/api/knowledge/documents") {
-    const body = await readJsonBody<KnowledgeUploadDocumentBody>(req, res, {
-      maxBytes: KNOWLEDGE_UPLOAD_MAX_BODY_BYTES,
+  if (method === "POST" && pathname === "/api/documents") {
+    const body = await readJsonBody<DocumentUploadBody>(req, res, {
+      maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
 
@@ -564,9 +643,9 @@ export async function handleKnowledgeRoutes(
       warnings?: string[];
     };
     try {
-      result = await addKnowledgeDocument(knowledgeService, body);
+      result = await addDocumentFromBody(documentsService, body);
     } catch (err) {
-      error(res, `Failed to add knowledge document: ${String(err)}`, 500);
+      error(res, `Failed to add document: ${String(err)}`, 500);
       return true;
     }
 
@@ -579,12 +658,12 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── POST /api/knowledge/documents/bulk ──────────────────────────────────
-  if (method === "POST" && pathname === "/api/knowledge/documents/bulk") {
+  // ── POST /api/documents/bulk ──────────────────────────────────
+  if (method === "POST" && pathname === "/api/documents/bulk") {
     const body = await readJsonBody<{
-      documents?: KnowledgeUploadDocumentBody[];
+      documents?: DocumentUploadBody[];
     }>(req, res, {
-      maxBytes: KNOWLEDGE_UPLOAD_MAX_BODY_BYTES,
+      maxBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
     });
     if (!body) return true;
 
@@ -628,15 +707,15 @@ export async function handleKnowledgeRoutes(
         continue;
       }
 
-      const normalizedDocument: KnowledgeUploadDocumentBody = {
+      const normalizedDocument: DocumentUploadBody = {
         ...document,
         content: document.content,
         filename: document.filename.trim(),
       };
 
       try {
-        const uploadResult = await addKnowledgeDocument(
-          knowledgeService,
+        const uploadResult = await addDocumentFromBody(
+          documentsService,
           normalizedDocument,
         );
         results.push({
@@ -670,12 +749,14 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── POST /api/knowledge/documents/url ───────────────────────────────────
+  // ── POST /api/documents/url ───────────────────────────────────
   // Upload document from URL (including YouTube auto-transcription)
-  if (method === "POST" && pathname === "/api/knowledge/documents/url") {
+  if (method === "POST" && pathname === "/api/documents/url") {
     const body = await readJsonBody<{
       url: string;
       metadata?: Record<string, unknown>;
+      scope?: string;
+      scopedToEntityId?: string;
     }>(req, res);
     if (!body) return true;
 
@@ -689,9 +770,9 @@ export async function handleKnowledgeRoutes(
     // Fetch and process the URL content using the shared helper from
     // @elizaos/core, which handles YouTube transcripts, filename derivation,
     // and binary-vs-text disambiguation.
-    let fetchedContent: Awaited<ReturnType<typeof fetchKnowledgeFromUrl>>;
+    let fetchedContent: Awaited<ReturnType<typeof fetchDocumentFromUrl>>;
     try {
-      fetchedContent = await fetchKnowledgeFromUrl(urlToFetch);
+      fetchedContent = await fetchDocumentFromUrl(urlToFetch);
     } catch (fetchErr) {
       error(res, `Failed to fetch URL content: ${String(fetchErr)}`, 400);
       return true;
@@ -700,19 +781,38 @@ export async function handleKnowledgeRoutes(
     const { content, mimeType, filename } = fetchedContent;
     const contentType = mimeType;
 
-    const result = await knowledgeService.addKnowledge({
+    const scope = normalizeScope(body.scope ?? body.metadata?.scope);
+    const scopedToEntityId =
+      typeof body.scopedToEntityId === "string" &&
+      body.scopedToEntityId.trim().length > 0
+        ? (body.scopedToEntityId.trim() as UUID)
+        : typeof body.metadata?.scopedToEntityId === "string" &&
+            body.metadata.scopedToEntityId.trim().length > 0
+          ? (body.metadata.scopedToEntityId.trim() as UUID)
+          : undefined;
+    const ownerEntityId =
+      scope === "user-private" ? (scopedToEntityId ?? agentId) : agentId;
+
+    const result = await documentsService.addDocument({
       agentId,
       worldId: agentId,
       roomId: agentId,
-      entityId: agentId,
+      entityId: ownerEntityId,
       clientDocumentId: "" as UUID,
       contentType,
       originalFilename: filename,
       content,
+      scope,
+      scopedToEntityId,
+      addedBy: ownerEntityId,
+      addedByRole: "USER",
+      addedFrom: "url",
       metadata: {
         ...body.metadata,
         url: urlToFetch,
         source: isYouTubeUrl(urlToFetch) ? "youtube" : "url",
+        scope,
+        scopedToEntityId,
         filename,
         originalFilename: filename,
         fileType: contentType,
@@ -732,8 +832,8 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── GET /api/knowledge/search ───────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/knowledge/search") {
+  // ── GET /api/documents/search ───────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/documents/search") {
     const query = url.searchParams.get("q");
     if (!query?.trim()) {
       error(res, "Search query (q) is required");
@@ -757,10 +857,20 @@ export async function handleKnowledgeRoutes(
       createdAt: Date.now(),
     };
 
-    const results = await knowledgeService.getKnowledge(searchMessage);
+    const results = await documentsService.searchDocuments(searchMessage);
 
     // Filter by threshold and limit
     const filteredResults = results
+      .filter((result) => {
+        const memory: Memory = {
+          id: result.id,
+          agentId,
+          roomId: agentId,
+          content: result.content,
+          metadata: result.metadata,
+        };
+        return memoryMatchesDocumentFilters(memory, url);
+      })
       .filter((r) => (r.similarity ?? 0) >= threshold)
       .slice(0, limit)
       .map((r) => {
@@ -770,12 +880,12 @@ export async function handleKnowledgeRoutes(
           text: r.content?.text || "",
           similarity: r.similarity,
           documentId: meta?.documentId,
-          documentTitle: getKnowledgeDocumentTitleFromMetadata(
+          documentTitle: getDocumentTitleFromMetadata(
             meta,
             r.content?.text,
           ),
           documentProvenance: meta
-            ? getKnowledgeDocumentProvenance(meta)
+            ? getDocumentProvenance(meta)
             : undefined,
           position: meta?.position,
         };
@@ -790,10 +900,8 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // ── GET /api/knowledge/fragments/:documentId ────────────────────────────
-  const fragmentsMatch = /^\/api\/knowledge\/fragments\/([^/]+)$/.exec(
-    pathname,
-  );
+  // ── GET /api/documents/:documentId ────────────────────────────
+  const fragmentsMatch = DOCUMENT_FRAGMENTS_ROUTE_PATTERN.exec(pathname);
   if (method === "GET" && fragmentsMatch) {
     const documentId = decodeURIComponent(fragmentsMatch[1]) as UUID;
 
@@ -806,8 +914,8 @@ export async function handleKnowledgeRoutes(
     let fragmentOffset = 0;
 
     while (true) {
-      const fragmentBatch = await knowledgeService.getMemories({
-        tableName: "knowledge",
+      const fragmentBatch = await documentsService.getMemories({
+        tableName: "document_fragments",
         count: FRAGMENT_COUNT_BATCH_SIZE,
         offset: fragmentOffset,
       });
@@ -865,6 +973,6 @@ export async function handleKnowledgeRoutes(
     return true;
   }
 
-  // Route not matched within /api/knowledge prefix
+  // Route not matched within /api/documents prefix
   return false;
 }

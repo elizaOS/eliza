@@ -9,6 +9,8 @@
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
 export * from "./character";
+export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -16,11 +18,11 @@ export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export {
-	__setKnowledgeUrlFetchImplForTests,
-	type FetchedKnowledgeUrl,
-	type FetchedKnowledgeUrlKind,
-	type FetchKnowledgeFromUrlOptions,
-	fetchKnowledgeFromUrl,
+	__setDocumentUrlFetchImplForTests,
+	type FetchedDocumentUrl,
+	type FetchedDocumentUrlKind,
+	type FetchDocumentFromUrlOptions,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./features/documents/index";
 export * from "./lifeops-passive-connectors";
@@ -51,8 +53,15 @@ export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
 export * from "./types/message-service";
 export type { JsonObject, JsonValue } from "./types/proto";
 // Keep proto JSON helpers as explicit runtime exports so browser plugin

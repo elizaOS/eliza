@@ -1,6 +1,6 @@
 import type http from "node:http";
 import type { Plugin, Route } from "@elizaos/core";
-import { polymarketActions } from "./actions";
+import { PredictionMarketService, polymarketActions } from "./actions";
 import { polymarketStatusProvider } from "./provider";
 import { handlePolymarketRoute } from "./routes";
 
@@ -65,6 +65,7 @@ export const polymarketPlugin: Plugin = {
   description:
     "Native Polymarket market discovery, orderbook quote, position, and readiness routes/actions",
   actions: polymarketActions,
+  services: [PredictionMarketService],
   providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
 };

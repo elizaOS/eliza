@@ -58,7 +58,7 @@ export const coreActionsSpec = {
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "WALLET_GOV_OP",
+      name: "WALLET_GOV",
       description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
       descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [
@@ -103,7 +103,7 @@ export const allActionsSpec = {
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "WALLET_GOV_OP",
+      name: "WALLET_GOV",
       description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
       descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [

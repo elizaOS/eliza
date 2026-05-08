@@ -14,6 +14,7 @@ import {
 	lifeOpsPassiveConnectorsEnabled,
 	type Media,
 	type Memory,
+	MemoryType,
 	type Service,
 	ServiceType,
 	stringToUuid,
@@ -49,7 +50,11 @@ import {
 	type StatusReactionScope,
 	shouldShowStatusReaction,
 } from "./status-reactions";
-import type { DiscordSettings, IDiscordService } from "./types";
+import {
+	DiscordEventTypes,
+	type DiscordSettings,
+	type IDiscordService,
+} from "./types";
 import { createTypingController } from "./typing";
 import {
 	canSendMessage,
@@ -192,6 +197,7 @@ export class MessageManager {
 	private getChannelType: (channel: Channel) => Promise<ChannelType>;
 	private discordSettings: DiscordSettings;
 	private discordService: IDiscordService;
+	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
@@ -221,8 +227,10 @@ export class MessageManager {
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
+		this.accountId = discordService.accountId ?? "default";
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(this.runtime);
+		this.discordSettings =
+			discordService.discordSettings ?? getDiscordSettings(this.runtime);
 		const reactionScopeSetting = this.runtime.getSetting(
 			"DISCORD_STATUS_REACTIONS",
 		) as string | undefined;
@@ -645,10 +653,13 @@ export class MessageManager {
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
 				userId: message.author.id as unknown as UUID,
-				metadata: buildDiscordWorldMetadata(
-					this.runtime,
-					message.guild?.ownerId ?? undefined,
-				),
+				metadata: {
+					...buildDiscordWorldMetadata(
+						this.runtime,
+						message.guild?.ownerId ?? undefined,
+					),
+					accountId: this.accountId,
+				},
 			});
 
 			if (
@@ -1021,6 +1032,10 @@ export class MessageManager {
 										: undefined,
 							},
 							roomId,
+							metadata: {
+								type: MemoryType.MESSAGE,
+								accountId: this.accountId,
+							},
 							createdAt: m.createdTimestamp,
 						};
 						memories.push(memory);
@@ -1087,12 +1102,19 @@ export class MessageManager {
 							{ src: "plugin:discord", agentId: this.runtime.agentId },
 							"Using event-based message handling",
 						);
-						await this.runtime.emitEvent([EventType.MESSAGE_RECEIVED], {
-							runtime: this.runtime,
-							message: newMessage,
-							callback,
-							source: "discord",
-						});
+						await this.runtime.emitEvent(
+							[
+								DiscordEventTypes.MESSAGE_RECEIVED,
+								EventType.MESSAGE_RECEIVED,
+							] as string[],
+							{
+								runtime: this.runtime,
+								message: newMessage,
+								callback,
+								source: "discord",
+								accountId: this.accountId,
+							} as any,
+						);
 					}
 				})();
 

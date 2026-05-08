@@ -117,7 +117,7 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Creation Performance", () => {
     expect(avg).toBeGreaterThan(0);
   }, 120000);
 
-  test("should measure ASSISTANT mode runtime creation", async () => {
+  test("should measure CHAT mode runtime creation", async () => {
     const runs = 3;
     const times: number[] = [];
 
@@ -125,7 +125,7 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Creation Performance", () => {
       const timer = new HRTimer(`assistantRuntime-${i}`);
       const runtime = await createTestRuntime({
         testData,
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
       const result = timer.stop();
@@ -137,15 +137,15 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Creation Performance", () => {
     const min = Math.min(...times);
     const max = Math.max(...times);
 
-    console.log("\nASSISTANT Runtime Creation:");
+    console.log("\nCHAT Runtime Creation:");
     console.log(`   Runs: ${runs}`);
     console.log(`   Average: ${avg.toFixed(1)}ms`);
     console.log(`   Min: ${min.toFixed(1)}ms`);
     console.log(`   Max: ${max.toFixed(1)}ms`);
 
-    // Target: <5000ms for ASSISTANT runtime (includes MCP init)
+    // Target: <5000ms for CHAT runtime (includes MCP init)
     if (avg > 5000) {
-      console.warn(`ASSISTANT runtime avg (${avg.toFixed(0)}ms) exceeds 5s target`);
+      console.warn(`CHAT runtime avg (${avg.toFixed(0)}ms) exceeds 5s target`);
     }
 
     expect(avg).toBeGreaterThan(0);

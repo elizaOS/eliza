@@ -13,7 +13,7 @@ import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minec
 import { WAYPOINTS_SERVICE_TYPE, type WaypointsService } from "../services/waypoints-service.js";
 import { emit, mergedInput, readString, withMinecraftTimeout } from "./helpers.js";
 
-const ACTION_NAME = "MC_WAYPOINT_OP";
+const ACTION_NAME = "MC_WAYPOINT";
 
 type WaypointOp = "set" | "delete" | "goto";
 

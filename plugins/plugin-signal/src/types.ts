@@ -156,6 +156,8 @@ export interface SignalSettings {
 }
 
 export interface SignalMessageSendOptions {
+  /** Connector account ID to send from. Defaults to the configured default account. */
+  accountId?: string;
   attachments?: string[];
   quote?: { timestamp: number; author: string };
   expiresInSeconds?: number;

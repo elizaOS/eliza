@@ -1,6 +1,8 @@
 export * from "./useActivityEvents";
 export * from "./useBugReport";
 export * from "./useChatAvatarVoiceBridge";
+export * from "./useConnectorAccounts";
+export * from "./useConnectorSendAsAccount";
 export * from "./useContextMenu";
 export { COMMON_SHORTCUTS, useShortcutsHelp } from "./useKeyboardShortcuts";
 export * from "./useMediaQuery";

@@ -228,6 +228,7 @@ export interface ATProtocolProfileViewExtended {
 export interface BlueSkyEventPayload {
 	runtime: IAgentRuntime;
 	source: "bluesky";
+	accountId?: string;
 }
 
 export interface BlueSkyNotificationEventPayload extends BlueSkyEventPayload {

@@ -1,5 +1,5 @@
 /**
- * Chat domain methods — chat, conversations, knowledge, memory, MCP,
+ * Chat domain methods — chat, conversations, documents, memory, MCP,
  * share ingest, workbench, trajectories, database.
  */
 
@@ -20,14 +20,14 @@ import type {
   DatabaseConfigResponse,
   DatabaseStatus,
   ImageAttachment,
-  KnowledgeBulkUploadResult,
-  KnowledgeDocumentDetail,
-  KnowledgeDocumentsResponse,
-  KnowledgeDocumentUpdateResult,
-  KnowledgeFragmentsResponse,
-  KnowledgeSearchResponse,
-  KnowledgeStats,
-  KnowledgeUploadResult,
+  DocumentBulkUploadResult,
+  DocumentDetail,
+  DocumentFragmentsResponse,
+  DocumentSearchResponse,
+  DocumentStats,
+  DocumentUpdateResult,
+  DocumentUploadResult,
+  DocumentsResponse,
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
@@ -41,14 +41,6 @@ import type {
   MemoryStatsResponse,
   QueryResult,
   QuickContextResponse,
-  ScratchpadCreateTopicRequest,
-  ScratchpadDeleteTopicResponse,
-  ScratchpadReplaceTopicRequest,
-  ScratchpadSearchResponse,
-  ScratchpadSummaryPreviewRequest,
-  ScratchpadSummaryPreviewResponse,
-  ScratchpadTopicResponse,
-  ScratchpadTopicsListResponse,
   ShareIngestItem,
   ShareIngestPayload,
   TableInfo,
@@ -162,6 +154,9 @@ declare module "./client-base" {
       count: number;
     }>;
     sendInboxMessage(data: {
+      accountId?: string;
+      channel?: string;
+      metadata?: Record<string, unknown>;
       roomId: string;
       source: string;
       text: string;
@@ -240,65 +235,55 @@ declare module "./client-base" {
     cleanupEmptyConversations(options?: {
       keepId?: string;
     }): Promise<{ deleted: string[] }>;
-    getKnowledgeStats(): Promise<KnowledgeStats>;
-    listKnowledgeDocuments(options?: {
+    getDocumentStats(): Promise<DocumentStats>;
+    listDocuments(options?: {
       limit?: number;
       offset?: number;
-    }): Promise<KnowledgeDocumentsResponse>;
-    getKnowledgeDocument(
-      documentId: string,
-    ): Promise<{ document: KnowledgeDocumentDetail }>;
-    updateKnowledgeDocument(
+      scope?: string;
+      scopedToEntityId?: string;
+      addedBy?: string;
+      query?: string;
+      timeRangeStart?: string;
+      timeRangeEnd?: string;
+    }): Promise<DocumentsResponse>;
+    getDocument(documentId: string): Promise<{ document: DocumentDetail }>;
+    updateDocument(
       documentId: string,
       data: { content: string },
-    ): Promise<KnowledgeDocumentUpdateResult>;
-    deleteKnowledgeDocument(
+    ): Promise<DocumentUpdateResult>;
+    deleteDocument(
       documentId: string,
     ): Promise<{ ok: boolean; deletedFragments: number }>;
-    uploadKnowledgeDocument(data: {
+    uploadDocument(data: {
       content: string;
       filename: string;
       contentType?: string;
       metadata?: Record<string, unknown>;
-    }): Promise<KnowledgeUploadResult>;
-    uploadKnowledgeDocumentsBulk(data: {
+      scope?: string;
+      scopedToEntityId?: string;
+    }): Promise<DocumentUploadResult>;
+    uploadDocumentsBulk(data: {
       documents: Array<{
         content: string;
         filename: string;
         contentType?: string;
         metadata?: Record<string, unknown>;
+        scope?: string;
+        scopedToEntityId?: string;
       }>;
-    }): Promise<KnowledgeBulkUploadResult>;
-    uploadKnowledgeFromUrl(
+    }): Promise<DocumentBulkUploadResult>;
+    uploadDocumentFromUrl(
       url: string,
       metadata?: Record<string, unknown>,
-    ): Promise<KnowledgeUploadResult>;
-    searchKnowledge(
+      options?: { scope?: string; scopedToEntityId?: string },
+    ): Promise<DocumentUploadResult>;
+    searchDocuments(
       query: string,
-      options?: { threshold?: number; limit?: number },
-    ): Promise<KnowledgeSearchResponse>;
-    getKnowledgeFragments(
+      options?: { threshold?: number; limit?: number; scope?: string; scopedToEntityId?: string },
+    ): Promise<DocumentSearchResponse>;
+    getDocumentFragments(
       documentId: string,
-    ): Promise<KnowledgeFragmentsResponse>;
-    listScratchpadTopics(): Promise<ScratchpadTopicsListResponse>;
-    createScratchpadTopic(
-      data: ScratchpadCreateTopicRequest,
-    ): Promise<ScratchpadTopicResponse>;
-    getScratchpadTopic(topicId: string): Promise<ScratchpadTopicResponse>;
-    replaceScratchpadTopic(
-      topicId: string,
-      data: ScratchpadReplaceTopicRequest,
-    ): Promise<ScratchpadTopicResponse>;
-    deleteScratchpadTopic(
-      topicId: string,
-    ): Promise<ScratchpadDeleteTopicResponse>;
-    searchScratchpadTopics(
-      query: string,
-      options?: { limit?: number },
-    ): Promise<ScratchpadSearchResponse>;
-    previewScratchpadSummary(
-      data: ScratchpadSummaryPreviewRequest,
-    ): Promise<ScratchpadSummaryPreviewResponse>;
+    ): Promise<DocumentFragmentsResponse>;
     rememberMemory(text: string): Promise<MemoryRememberResponse>;
     searchMemory(
       query: string,
@@ -843,86 +828,89 @@ ElizaClient.prototype.cleanupEmptyConversations = async function (
   });
 };
 
-ElizaClient.prototype.getKnowledgeStats = async function (this: ElizaClient) {
-  return this.fetch("/api/knowledge/stats");
+ElizaClient.prototype.getDocumentStats = async function (this: ElizaClient) {
+  return this.fetch("/api/documents/stats");
 };
 
-ElizaClient.prototype.listKnowledgeDocuments = async function (
+ElizaClient.prototype.listDocuments = async function (
   this: ElizaClient,
   options?,
 ) {
   const params = new URLSearchParams();
   if (options?.limit) params.set("limit", String(options.limit));
   if (options?.offset) params.set("offset", String(options.offset));
+  if (options?.scope) params.set("scope", options.scope);
+  if (options?.scopedToEntityId) {
+    params.set("scopedToEntityId", options.scopedToEntityId);
+  }
+  if (options?.addedBy) params.set("addedBy", options.addedBy);
+  if (options?.query) params.set("q", options.query);
+  if (options?.timeRangeStart) params.set("timeRangeStart", options.timeRangeStart);
+  if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
   const query = params.toString();
-  return this.fetch(`/api/knowledge/documents${query ? `?${query}` : ""}`);
+  return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
 };
 
-ElizaClient.prototype.getKnowledgeDocument = async function (
+ElizaClient.prototype.getDocument = async function (
   this: ElizaClient,
   documentId,
 ) {
-  return this.fetch(
-    `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
-  );
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}`);
 };
 
-ElizaClient.prototype.updateKnowledgeDocument = async function (
+ElizaClient.prototype.updateDocument = async function (
   this: ElizaClient,
   documentId,
   data,
 ) {
-  return this.fetch(
-    `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    },
-  );
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 };
 
-ElizaClient.prototype.deleteKnowledgeDocument = async function (
+ElizaClient.prototype.deleteDocument = async function (
   this: ElizaClient,
   documentId,
 ) {
-  return this.fetch(
-    `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
-    { method: "DELETE" },
-  );
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+  });
 };
 
-ElizaClient.prototype.uploadKnowledgeDocument = async function (
+ElizaClient.prototype.uploadDocument = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/knowledge/documents", {
+  return this.fetch("/api/documents", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.uploadKnowledgeDocumentsBulk = async function (
+ElizaClient.prototype.uploadDocumentsBulk = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/knowledge/documents/bulk", {
+  return this.fetch("/api/documents/bulk", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.uploadKnowledgeFromUrl = async function (
+ElizaClient.prototype.uploadDocumentFromUrl = async function (
   this: ElizaClient,
   url,
   metadata?,
+  options?,
 ) {
-  return this.fetch("/api/knowledge/documents/url", {
+  return this.fetch("/api/documents/url", {
     method: "POST",
-    body: JSON.stringify({ url, metadata }),
+    body: JSON.stringify({ url, metadata, ...options }),
   });
 };
 
-ElizaClient.prototype.searchKnowledge = async function (
+ElizaClient.prototype.searchDocuments = async function (
   this: ElizaClient,
   query,
   options?,
@@ -931,85 +919,18 @@ ElizaClient.prototype.searchKnowledge = async function (
   if (options?.threshold !== undefined)
     params.set("threshold", String(options.threshold));
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  return this.fetch(`/api/knowledge/search?${params}`);
+  if (options?.scope) params.set("scope", options.scope);
+  if (options?.scopedToEntityId) {
+    params.set("scopedToEntityId", options.scopedToEntityId);
+  }
+  return this.fetch(`/api/documents/search?${params}`);
 };
 
-ElizaClient.prototype.getKnowledgeFragments = async function (
+ElizaClient.prototype.getDocumentFragments = async function (
   this: ElizaClient,
   documentId,
 ) {
-  return this.fetch(
-    `/api/knowledge/fragments/${encodeURIComponent(documentId)}`,
-  );
-};
-
-ElizaClient.prototype.listScratchpadTopics = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/knowledge/scratchpad/topics");
-};
-
-ElizaClient.prototype.createScratchpadTopic = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/knowledge/scratchpad/topics", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.getScratchpadTopic = async function (
-  this: ElizaClient,
-  topicId,
-) {
-  return this.fetch(
-    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
-  );
-};
-
-ElizaClient.prototype.replaceScratchpadTopic = async function (
-  this: ElizaClient,
-  topicId,
-  data,
-) {
-  return this.fetch(
-    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify(data),
-    },
-  );
-};
-
-ElizaClient.prototype.deleteScratchpadTopic = async function (
-  this: ElizaClient,
-  topicId,
-) {
-  return this.fetch(
-    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
-    { method: "DELETE" },
-  );
-};
-
-ElizaClient.prototype.searchScratchpadTopics = async function (
-  this: ElizaClient,
-  query,
-  options?,
-) {
-  const params = new URLSearchParams({ q: query });
-  if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  return this.fetch(`/api/knowledge/scratchpad/search?${params}`);
-};
-
-ElizaClient.prototype.previewScratchpadSummary = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/knowledge/scratchpad/summary-preview", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/fragments`);
 };
 
 ElizaClient.prototype.rememberMemory = async function (
@@ -1039,7 +960,13 @@ ElizaClient.prototype.quickContext = async function (
 ) {
   const params = new URLSearchParams({ q: query });
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  return this.fetch(`/api/context/quick?${params}`);
+  const response = await this.fetch<
+    QuickContextResponse & { knowledge?: QuickContextResponse["documents"] }
+  >(`/api/context/quick?${params}`);
+  return {
+    ...response,
+    documents: response.documents ?? response.knowledge ?? [],
+  };
 };
 
 ElizaClient.prototype.getMemoryFeed = async function (

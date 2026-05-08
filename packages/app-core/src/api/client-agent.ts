@@ -241,6 +241,108 @@ export interface AccountOAuthStartResult {
 }
 
 // ---------------------------------------------------------------------------
+// Connector account routes — UI-facing connector multi-account management.
+// Connector config still uses `/api/connectors`; account inventory lives under
+// `/api/connectors/:provider/accounts`.
+// ---------------------------------------------------------------------------
+
+export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM";
+export type ConnectorAccountPurpose = ConnectorAccountRole;
+
+export type ConnectorAccountPrivacy =
+  | "owner_only"
+  | "team_visible"
+  | "semi_public"
+  | "public";
+
+export type ConnectorAccountStatus =
+  | "connected"
+  | "pending"
+  | "needs-reauth"
+  | "disconnected"
+  | "error"
+  | "unknown";
+
+export interface ConnectorAccountRecord {
+  id: string;
+  provider: string;
+  connectorId: string;
+  label: string;
+  handle?: string | null;
+  externalId?: string | null;
+  avatarUrl?: string | null;
+  status?: ConnectorAccountStatus;
+  statusDetail?: string | null;
+  role?: ConnectorAccountRole;
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  isDefault?: boolean;
+  enabled?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+  lastSyncedAt?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountsListResponse {
+  provider: string;
+  connectorId: string;
+  defaultAccountId?: string | null;
+  accounts: ConnectorAccountRecord[];
+}
+
+export interface ConnectorAccountCreateInput {
+  label?: string;
+  role?: ConnectorAccountRole;
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountUpdateInput {
+  label?: string;
+  role?: ConnectorAccountRole;
+  purpose?: ConnectorAccountPurpose;
+  privacy?: ConnectorAccountPrivacy;
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorAccountActionResult {
+  ok: boolean;
+  account?: ConnectorAccountRecord;
+  accounts?: ConnectorAccountRecord[];
+  defaultAccountId?: string | null;
+  authUrl?: string;
+  status?: ConnectorAccountStatus | string;
+  error?: string;
+}
+
+export interface ConnectorAccountAuditEventRecord {
+  id: string;
+  accountId?: string | null;
+  agentId?: string;
+  provider: string;
+  actorId?: string | null;
+  action: string;
+  outcome: "success" | "failure" | string;
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+}
+
+export interface ConnectorAccountAuditEventsQuery {
+  accountId?: string;
+  action?: string;
+  outcome?: "success" | "failure";
+  limit?: number;
+}
+
+export interface ConnectorAccountAuditEventsResponse {
+  provider: string;
+  events: ConnectorAccountAuditEventRecord[];
+}
+
+// ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
 
@@ -393,6 +495,45 @@ declare module "./client-base" {
     deleteConnector(
       name: string,
     ): Promise<{ connectors: Record<string, ConnectorConfig> }>;
+    listConnectorAccounts(
+      provider: string,
+      connectorId: string,
+    ): Promise<ConnectorAccountsListResponse>;
+    addConnectorAccount(
+      provider: string,
+      connectorId: string,
+      body?: ConnectorAccountCreateInput,
+    ): Promise<ConnectorAccountActionResult>;
+    patchConnectorAccount(
+      provider: string,
+      connectorId: string,
+      accountId: string,
+      body: ConnectorAccountUpdateInput,
+    ): Promise<ConnectorAccountRecord>;
+    testConnectorAccount(
+      provider: string,
+      connectorId: string,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    refreshConnectorAccount(
+      provider: string,
+      connectorId: string,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    deleteConnectorAccount(
+      provider: string,
+      connectorId: string,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    makeDefaultConnectorAccount(
+      provider: string,
+      connectorId: string,
+      accountId: string,
+    ): Promise<ConnectorAccountActionResult>;
+    listConnectorAccountAuditEvents(
+      provider: string,
+      query?: ConnectorAccountAuditEventsQuery,
+    ): Promise<ConnectorAccountAuditEventsResponse>;
     getTriggers(): Promise<{ triggers: TriggerSummary[] }>;
     getTrigger(id: string): Promise<{ trigger: TriggerSummary }>;
     createTrigger(
@@ -1306,6 +1447,300 @@ ElizaClient.prototype.deleteConnector = async function (
   return this.fetch(`/api/connectors/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
+};
+
+function connectorAccountsPath(
+  provider: string,
+  _connectorId: string,
+  accountId?: string,
+  action?: "test" | "refresh" | "default",
+): string {
+  const base = `/api/connectors/${encodeURIComponent(provider)}/accounts`;
+  if (!accountId) return base;
+  const withAccount = `${base}/${encodeURIComponent(accountId)}`;
+  return action ? `${withAccount}/${action}` : withAccount;
+}
+
+function normalizeConnectorAccountRole(
+  value: unknown,
+): ConnectorAccountRole | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const normalized = value.trim().toUpperCase();
+  switch (normalized) {
+    case "OWNER":
+      return "OWNER";
+    case "AGENT":
+    case "SERVICE":
+      return "AGENT";
+    case "TEAM":
+    case "ADMIN":
+    case "MEMBER":
+    case "VIEWER":
+      return "TEAM";
+    default:
+      return undefined;
+  }
+}
+
+function normalizeConnectorStatus(value: unknown): ConnectorAccountStatus {
+  switch (value) {
+    case "connected":
+    case "pending":
+    case "needs-reauth":
+    case "disconnected":
+    case "error":
+      return value;
+    case "disabled":
+    case "revoked":
+      return "disconnected";
+    default:
+      return "unknown";
+  }
+}
+
+function normalizeConnectorAccountRecord(
+  provider: string,
+  connectorId: string,
+  raw: unknown,
+): ConnectorAccountRecord {
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const role =
+    normalizeConnectorAccountRole(record.role) ??
+    normalizeConnectorAccountRole(record.purpose) ??
+    "OWNER";
+  const label =
+    typeof record.label === "string" && record.label.trim()
+      ? record.label
+      : typeof record.displayHandle === "string" && record.displayHandle.trim()
+        ? record.displayHandle
+        : typeof record.handle === "string" && record.handle.trim()
+          ? record.handle
+          : typeof record.externalId === "string" && record.externalId.trim()
+            ? record.externalId
+            : String(record.id ?? "unknown");
+  return {
+    ...(record as Partial<ConnectorAccountRecord>),
+    id: String(record.id ?? ""),
+    provider:
+      typeof record.provider === "string" && record.provider
+        ? record.provider
+        : provider,
+    connectorId,
+    label,
+    handle:
+      typeof record.handle === "string"
+        ? record.handle
+        : typeof record.displayHandle === "string"
+          ? record.displayHandle
+          : null,
+    externalId:
+      typeof record.externalId === "string" ? record.externalId : null,
+    status: normalizeConnectorStatus(record.status),
+    role,
+    purpose: role,
+    isDefault: record.isDefault === true,
+    enabled: record.enabled !== false,
+    metadata:
+      record.metadata && typeof record.metadata === "object"
+        ? (record.metadata as Record<string, unknown>)
+        : undefined,
+  };
+}
+
+function normalizeConnectorAccountsListResponse(
+  provider: string,
+  connectorId: string,
+  raw: unknown,
+): ConnectorAccountsListResponse {
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const accounts = Array.isArray(record.accounts)
+    ? record.accounts.map((item) =>
+        normalizeConnectorAccountRecord(provider, connectorId, item),
+      )
+    : [];
+  const defaultAccountId =
+    typeof record.defaultAccountId === "string"
+      ? record.defaultAccountId
+      : (accounts.find((account) => account.isDefault)?.id ?? null);
+  return {
+    provider:
+      typeof record.provider === "string" && record.provider
+        ? record.provider
+        : provider,
+    connectorId,
+    defaultAccountId,
+    accounts,
+  };
+}
+
+function normalizeConnectorAccountActionResult(
+  provider: string,
+  connectorId: string,
+  raw: unknown,
+): ConnectorAccountActionResult {
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const account =
+    record.account ?? (typeof record.id === "string" ? record : null);
+  return {
+    ...(record as Partial<ConnectorAccountActionResult>),
+    ok:
+      typeof record.ok === "boolean"
+        ? record.ok
+        : record.deleted === true || (!("error" in record) && account !== null),
+    account: account
+      ? normalizeConnectorAccountRecord(provider, connectorId, account)
+      : undefined,
+    accounts: Array.isArray(record.accounts)
+      ? record.accounts.map((item) =>
+          normalizeConnectorAccountRecord(provider, connectorId, item),
+        )
+      : undefined,
+    defaultAccountId:
+      typeof record.defaultAccountId === "string"
+        ? record.defaultAccountId
+        : null,
+    status:
+      typeof record.status === "string"
+        ? normalizeConnectorStatus(record.status)
+        : undefined,
+    error: typeof record.error === "string" ? record.error : undefined,
+  };
+}
+
+function connectorAccountAuditPath(
+  provider: string,
+  query: ConnectorAccountAuditEventsQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.accountId) params.set("accountId", query.accountId);
+  if (query.action) params.set("action", query.action);
+  if (query.outcome) params.set("outcome", query.outcome);
+  if (typeof query.limit === "number") {
+    params.set("limit", String(query.limit));
+  }
+  const qs = params.toString();
+  return `/api/connectors/${encodeURIComponent(provider)}/audit/events${
+    qs ? `?${qs}` : ""
+  }`;
+}
+
+ElizaClient.prototype.listConnectorAccounts = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId),
+  );
+  return normalizeConnectorAccountsListResponse(
+    provider,
+    connectorId,
+    response,
+  );
+};
+
+ElizaClient.prototype.addConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  body = {},
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.patchConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  accountId,
+  body,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId, accountId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+  return normalizeConnectorAccountRecord(provider, connectorId, response);
+};
+
+ElizaClient.prototype.testConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  accountId,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId, accountId, "test"),
+    { method: "POST" },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.refreshConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  accountId,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId, accountId, "refresh"),
+    { method: "POST" },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.deleteConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  accountId,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId, accountId),
+    { method: "DELETE" },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.makeDefaultConnectorAccount = async function (
+  this: ElizaClient,
+  provider,
+  connectorId,
+  accountId,
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountsPath(provider, connectorId, accountId, "default"),
+    { method: "POST" },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.listConnectorAccountAuditEvents = async function (
+  this: ElizaClient,
+  provider,
+  query = {},
+) {
+  return this.fetch<ConnectorAccountAuditEventsResponse>(
+    connectorAccountAuditPath(provider, query),
+  );
 };
 
 ElizaClient.prototype.getTriggers = async function (this: ElizaClient) {

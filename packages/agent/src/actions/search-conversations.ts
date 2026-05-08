@@ -29,7 +29,7 @@ const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
   label: "Conversations",
   description:
     "Search stored conversation messages across connected platforms.",
-  contexts: ["social_posting", "knowledge"],
+  contexts: ["social_posting", "documents"],
   filters: [
     {
       name: "source",
@@ -97,7 +97,7 @@ function formatResultsWithLineNumbers(
 
 export const searchConversationsAction: Action = {
   name: "SEARCH_CONVERSATIONS",
-  contexts: ["messaging", "social_posting", "knowledge"],
+  contexts: ["messaging", "social_posting", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "SEARCH_CHATS",

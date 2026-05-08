@@ -57,6 +57,10 @@ type ScenarioRoomDefinition = {
 };
 
 type ScenarioComputerUseService = {
+  getCapabilities: () => Record<
+    string,
+    { available: boolean; tool: string }
+  >;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeBrowserAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeFileAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -824,6 +828,16 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
   };
 
   return {
+    getCapabilities() {
+      return {
+        screenshot: { available: true, tool: "scenario-screenshot" },
+        computerUse: { available: true, tool: "scenario-desktop" },
+        windowList: { available: true, tool: "scenario-window-list" },
+        browser: { available: true, tool: "scenario-browser" },
+        terminal: { available: true, tool: "scenario-terminal" },
+        fileSystem: { available: true, tool: "scenario-file-system" },
+      };
+    },
     executeDesktopAction: run,
     executeBrowserAction: run,
     executeFileAction: run,

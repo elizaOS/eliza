@@ -7,20 +7,21 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { publishNote, publishProfile } from "./actions/index.js";
+import { publishProfile } from "./actions/index.js";
 import { identityContextProvider } from "./providers/index.js";
 import { NostrService } from "./service.js";
 import { DEFAULT_NOSTR_RELAYS } from "./types.js";
 
+export * from "./accounts.js";
 // Export types
 export * from "./types.js";
 // Export service / providers / actions
-// NOSTR_SEND_DM was a standalone action that duplicated the MessageConnector
-// path. The Nostr DM connector (registered by NostrService.registerSendHandlers)
-// is now the canonical send path; SEND_MESSAGE routes through it. Public
-// publishing actions (publishNote, publishProfile) stay since they're not
-// DM-shaped.
-export { identityContextProvider, NostrService, publishNote, publishProfile };
+// The former DM-specific standalone action duplicated the MessageConnector
+// path. The Nostr DM connector registered by NostrService.registerSendHandlers
+// is now the canonical send path through MESSAGE operation=send. Public note
+// publishing routes through POST operation=send via the Nostr PostConnector.
+// Profile publishing remains a Nostr-specific non-post action.
+export { identityContextProvider, NostrService, publishProfile };
 
 /**
  * Nostr plugin definition
@@ -31,7 +32,7 @@ const nostrPlugin: Plugin = {
 
   services: [NostrService],
 
-  actions: [publishNote, publishProfile],
+  actions: [publishProfile],
 
   providers: [identityContextProvider],
 

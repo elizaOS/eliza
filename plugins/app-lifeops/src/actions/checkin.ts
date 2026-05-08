@@ -124,7 +124,7 @@ export const checkinAction: Action & {
     "X/socials, GitHub, follow-ups, inbox/calendar loose ends for tomorrow).",
   descriptionCompressed:
     "daily checkin: morning(start-of-day overdue meetings priority-inbox socials github calendar followups wins) night(end-of-day wins outstanding loose-ends-tomorrow)",
-  contexts: ["tasks", "calendar", "contacts", "messaging", "health"],
+  contexts: ["tasks", "calendar", "contacts", "messaging", "health", "memory"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async () => true,

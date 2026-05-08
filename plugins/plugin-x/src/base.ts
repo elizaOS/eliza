@@ -9,9 +9,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  createTwitterAuthProvider,
-  getTwitterAuthMode,
-} from "./client/auth-providers/factory";
+  resolveRequestedXAccountId,
+  resolveTwitterAccountConfig,
+} from "./client/accounts";
+import { createTwitterAuthProvider } from "./client/auth-providers/factory";
 import {
   Client,
   type QueryTweetsResponse,
@@ -20,7 +21,6 @@ import {
 } from "./client/index";
 import type { TwitterClientState, TwitterInteractionPayload } from "./types";
 import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
-import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
 /**
@@ -158,8 +158,8 @@ class RequestQueue {
  * @extends EventEmitter
  */
 export class ClientBase {
-  static _twitterClients: { [accountIdentifier: string]: Client } = {};
   twitterClient: Client;
+  accountId: string;
   runtime: IAgentRuntime;
   lastCheckedTweetId: bigint | null = null;
   temperature = 0.5;
@@ -250,32 +250,27 @@ export class ClientBase {
   constructor(runtime: IAgentRuntime, state: TwitterClientState) {
     this.runtime = runtime;
     this.state = state;
-
-    // Use a stable identifier for client reuse per auth mode.
-    const mode = getTwitterAuthMode(runtime, state);
-    const reuseKey =
-      mode === "env"
-        ? (state?.TWITTER_API_KEY ?? getSetting(runtime, "TWITTER_API_KEY"))
-        : mode === "oauth"
-          ? (state?.TWITTER_CLIENT_ID ??
-            getSetting(runtime, "TWITTER_CLIENT_ID"))
-          : (state?.TWITTER_BROKER_URL ??
-            getSetting(runtime, "TWITTER_BROKER_URL"));
-
-    if (reuseKey && ClientBase._twitterClients[reuseKey]) {
-      this.twitterClient = ClientBase._twitterClients[reuseKey];
-    } else {
-      this.twitterClient = new Client();
-      if (reuseKey) {
-        ClientBase._twitterClients[reuseKey] = this.twitterClient;
-      }
-    }
+    this.accountId = resolveRequestedXAccountId(
+      runtime,
+      state,
+      state.accountId,
+    );
+    this.twitterClient = new Client();
   }
 
   async init() {
     // First ensure the agent exists in the database
     // await this.runtime.ensureAgentExists(this.runtime.character);
 
+    this.state = await resolveTwitterAccountConfig(this.runtime, {
+      accountId: this.accountId,
+      state: this.state,
+    });
+    this.accountId = resolveRequestedXAccountId(
+      this.runtime,
+      this.state,
+      this.state.accountId,
+    );
     const provider = createTwitterAuthProvider(this.runtime, this.state);
 
     const maxRetries = process.env.MAX_RETRIES
@@ -286,11 +281,15 @@ export class ClientBase {
 
     while (retryCount < maxRetries) {
       try {
-        logger.log("Initializing Twitter API v2 client");
+        logger.log(
+          `Initializing Twitter API v2 client for accountId=${this.accountId}`,
+        );
         await this.twitterClient.authenticate(provider);
 
         if (await this.twitterClient.isLoggedIn()) {
-          logger.info("Successfully authenticated with Twitter API v2");
+          logger.info(
+            `Successfully authenticated with Twitter API v2 for accountId=${this.accountId}`,
+          );
           break;
         } else {
           // Authentication succeeded but verification failed - treat as auth failure
@@ -536,7 +535,11 @@ export class ClientBase {
               content: content,
               agentId: this.runtime.agentId,
               roomId,
-              metadata: buildTwitterMessageMetadata(tweet, entityId),
+              metadata: buildTwitterMessageMetadata(
+                tweet,
+                entityId,
+                this.accountId,
+              ),
               createdAt: getEpochMs(tweet.timestamp),
             },
             "messages",
@@ -655,7 +658,11 @@ export class ClientBase {
           content: content,
           agentId: this.runtime.agentId,
           roomId,
-          metadata: buildTwitterMessageMetadata(tweet, entityId),
+          metadata: buildTwitterMessageMetadata(
+            tweet,
+            entityId,
+            this.accountId,
+          ),
           createdAt: getEpochMs(tweet.timestamp),
         },
         "messages",

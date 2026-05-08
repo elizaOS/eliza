@@ -21,7 +21,7 @@ import {
   withMinecraftTimeout,
 } from "./helpers.js";
 
-const ACTION_NAME = "MC_LOCOMOTE_OP";
+const ACTION_NAME = "MC_LOCOMOTE";
 
 type LocomoteOp = "goto" | "stop" | "look" | "control" | "waypoint-goto";
 

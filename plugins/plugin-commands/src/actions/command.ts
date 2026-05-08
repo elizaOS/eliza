@@ -276,7 +276,7 @@ export const commandAction: Action = {
 	contextGate: { anyOf: ["general", "settings", "agent_internal"] },
 	roleGate: { minRole: "USER" },
 	similes: [
-		"COMMAND_OP",
+		"COMMAND",
 		"SLASH_COMMAND",
 		"HELP_COMMAND",
 		"STATUS_COMMAND",

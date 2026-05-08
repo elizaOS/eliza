@@ -7,25 +7,18 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
+export * from "./accounts.js";
 // Service
 export { TwitchService } from "./service.js";
-
 // Types
 export * from "./types.js";
 
-// Actions
-// TWITCH_SEND_MESSAGE was a standalone action that duplicated the
-// MessageConnector path. The connector (registered by TwitchService.
-// registerSendHandlers) is now the canonical send path; SEND_MESSAGE
-// routes through it. Channel management lives in TWITCH_CHANNEL_OP.
-import { twitchChannelAction } from "./actions/channelRouter.js";
+// Twitch send/list/join/leave operations route through the MESSAGE action via
+// the MessageConnector registered by TwitchService.registerSendHandlers.
 
-export { twitchChannelAction };
-
-import { twitchChannelsProvider } from "./providers/twitchChannels.js";
 import { userContextProvider } from "./providers/userContext.js";
 
-export { twitchChannelsProvider, userContextProvider };
+export { userContextProvider };
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
@@ -40,9 +33,9 @@ const twitchPlugin: Plugin = {
 
   services: [TwitchService],
 
-  actions: [twitchChannelAction],
+  actions: [],
 
-  providers: [userContextProvider, twitchChannelsProvider],
+  providers: [userContextProvider],
 
   tests: [],
 

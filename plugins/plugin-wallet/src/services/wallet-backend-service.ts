@@ -6,6 +6,7 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
+import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import type {
   WalletChainHandler,
   WalletChainHandlerMetadata,
@@ -135,6 +136,23 @@ export class WalletBackendService extends Service {
         };
       }
 
+      if (params.subaction === "gov") {
+        try {
+          const result = await handler.execute(params, this.createContext());
+          return {
+            ok: true,
+            handler: this.toMetadata(handler),
+            result,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: "EXECUTION_FAILED",
+            detail: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
       return {
         ok: true,
         handler: this.toMetadata(handler),
@@ -232,6 +250,17 @@ export class WalletBackendService extends Service {
   private validateRequiredParams(
     params: WalletRouterParams,
   ): WalletRouterFailure | null {
+    if (params.subaction === "gov") {
+      const detail = validateWalletGovParams(params);
+      return detail
+        ? {
+            ok: false,
+            error: "INVALID_PARAMS",
+            detail,
+          }
+        : null;
+    }
+
     if (!params.amount) {
       return {
         ok: false,

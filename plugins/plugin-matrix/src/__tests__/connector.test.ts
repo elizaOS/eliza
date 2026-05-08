@@ -7,9 +7,14 @@ describe("Matrix message connector", () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "MATRIX_DEFAULT_ACCOUNT_ID" ? "work" : null
+      ),
+      character: { settings: {} },
       getRoom: vi.fn(),
     } as unknown as IAgentRuntime;
     const service = Object.create(MatrixService.prototype) as MatrixService;
+    (service as unknown as { settings: { accountId: string } }).settings = { accountId: "work" };
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, roomId: "!room:matrix.org" });
@@ -19,6 +24,7 @@ describe("Matrix message connector", () => {
     expect(runtime.registerMessageConnector).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "matrix",
+        accountId: "work",
         label: "Matrix",
         capabilities: expect.arrayContaining(["send_message", "list_rooms"]),
         supportedTargetKinds: expect.arrayContaining(["room", "thread"]),
@@ -28,7 +34,7 @@ describe("Matrix message connector", () => {
     const registration = vi.mocked(runtime.registerMessageConnector).mock.calls[0][0];
     await registration.sendHandler(
       runtime,
-      { source: "matrix", channelId: "!room:matrix.org" } as TargetInfo,
+      { source: "matrix", accountId: "work", channelId: "!room:matrix.org" } as TargetInfo,
       { text: "hello" } as Content
     );
 

@@ -125,9 +125,10 @@ type TextModelType =
 type AnthropicTextPart = {
   type: "text";
   text: string;
-  cache_control?: {
-    type: "ephemeral";
-    ttl?: "5m" | "1h";
+  providerOptions?: {
+    anthropic?: {
+      cacheControl?: AnthropicCacheControl;
+    };
   };
 };
 type AnthropicFilePart = {
@@ -169,10 +170,7 @@ function buildSegmentedUserContent(
       text: segment.content,
     };
     if (segment.stable && cacheControl) {
-      textPart.cache_control = {
-        type: cacheControl.type,
-        ...(cacheControl.ttl ? { ttl: cacheControl.ttl } : {}),
-      };
+      textPart.providerOptions = { anthropic: { cacheControl } };
     }
     content.push(textPart);
   }
@@ -200,6 +198,25 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
     }
   }
   return { type: "ephemeral" };
+}
+
+function buildCacheableSystemPrompt(
+  systemPrompt: string | undefined,
+  cacheControl: AnthropicCacheControl | undefined
+): NativeTextParams["system"] {
+  if (!systemPrompt) {
+    return undefined;
+  }
+  if (!cacheControl) {
+    return systemPrompt;
+  }
+  return {
+    role: "system",
+    content: systemPrompt,
+    providerOptions: {
+      anthropic: { cacheControl },
+    },
+  };
 }
 
 function normalizeAnthropicUsage(
@@ -420,6 +437,7 @@ async function generateTextWithModel(
     Array.isArray(paramsWithAttachments.promptSegments) &&
     paramsWithAttachments.promptSegments.length > 0;
   const cacheControl = providerOptions.anthropic?.cacheControl;
+  const system = buildCacheableSystemPrompt(systemPrompt, cacheControl);
   const userContent =
     segmentedPrompt || (paramsWithAttachments.attachments?.length ?? 0) > 0
       ? segmentedPrompt
@@ -427,7 +445,7 @@ async function generateTextWithModel(
         : buildUserContent(paramsWithAttachments)
       : undefined;
   const anthropicOptions =
-    providerOptions.anthropic && segmentedPrompt
+    providerOptions.anthropic && (segmentedPrompt || system)
       ? {
           ...providerOptions.anthropic,
           cacheControl: undefined,
@@ -468,7 +486,7 @@ async function generateTextWithModel(
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
-    system: systemPrompt,
+    system,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
     frequencyPenalty: resolved.frequencyPenalty,

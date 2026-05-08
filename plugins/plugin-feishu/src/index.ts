@@ -1,5 +1,4 @@
 import type { Plugin } from "@elizaos/core";
-import { SEND_MESSAGE_ACTION, sendMessageAction } from "./actions";
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import { CHAT_STATE_PROVIDER, chatStateProvider } from "./providers";
@@ -60,8 +59,6 @@ export {
 	FEISHU_SERVICE_NAME,
 	FeishuService,
 	MessageManager,
-	SEND_MESSAGE_ACTION,
-	sendMessageAction,
 };
 
 export default feishuPlugin;

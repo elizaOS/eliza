@@ -103,6 +103,10 @@ const BROWSER_BRIDGE_KEYWORDS = [
   "connect",
   "disconnect",
   "status",
+  "settings",
+  "setting",
+  "configuration",
+  "config",
   "folder",
   "load unpacked",
   "chrome://extensions",
@@ -372,7 +376,7 @@ function inferSubactionFromMessage(text: string): BrowserBridgeSubaction {
     return "open_manager";
   }
   if (
-    /\b(refresh|reload|reconnect|status|update|sync|update status|connection state)\b/.test(
+    /\b(refresh|reload|reconnect|status|settings?|config(?:uration)?|update|sync|update status|connection state)\b/.test(
       normalized,
     )
   ) {
@@ -467,6 +471,9 @@ async function runOpenManager(): Promise<ActionResult> {
 
 async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
   const status = getBrowserBridgeCompanionPackageStatus();
+  let settings:
+    | Awaited<ReturnType<BrowserBridgeRouteService["getBrowserSettings"]>>
+    | null = null;
   let companions: BrowserBridgeCompanionStatus[] = [];
   const service = runtime.getService<BrowserBridgeRouteService>(
     BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
@@ -484,15 +491,22 @@ async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
         actionName: ACTION_NAME,
         subaction: "refresh",
         status,
+        settings,
         companions,
       },
     };
   }
+  settings = await service.getBrowserSettings();
   companions = (await service.listBrowserCompanions()).slice(0, 25);
   const connected = companions.length > 0;
-  const text = connected
-    ? `Refreshed Agent Browser Bridge connection status: ${companions.length} paired companion(s).`
-    : "Refreshed Agent Browser Bridge connection status: no paired companions.";
+  const text = [
+    "Refreshed Agent Browser Bridge settings.",
+    `Tracking: ${settings.trackingMode}.`,
+    `Browser control: ${settings.allowBrowserControl ? "on" : "off"}.`,
+    connected
+      ? `Companions: ${companions.length} paired.`
+      : "Companions: none paired.",
+  ].join(" ");
   return {
     text,
     success: true,
@@ -500,12 +514,15 @@ async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
       success: true,
       subaction: "refresh",
       connected,
+      trackingMode: settings.trackingMode,
+      allowBrowserControl: settings.allowBrowserControl,
       companionCount: companions.length,
     },
     data: {
       actionName: ACTION_NAME,
       subaction: "refresh",
       status,
+      settings,
       companions,
     },
   };
@@ -547,15 +564,18 @@ export const manageBrowserBridgeAction: Action = {
   description: JSON.stringify({
     manage_browser_bridge: {
       purpose:
-        "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Covers install (build + reveal + open chrome://extensions), reveal_folder, open_manager, and refresh (live connection state).",
+        "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Use refresh for showing settings/status/connection state. Use install for setup. Use reveal_folder for the build folder. Use open_manager only when the owner explicitly asks to open chrome://extensions or the extension manager.",
       subactions: ["install", "reveal_folder", "open_manager", "refresh"],
-      params: { subaction: "Optional; inferred from message text if omitted." },
+      params: {
+        subaction:
+          "Optional; inferred from message text if omitted. show/settings/status => refresh; open chrome extensions/extension manager => open_manager.",
+      },
       provider_state:
         "Prefer provider state for passive companion status; use this action's `refresh` subaction for an explicit live refresh.",
     },
   }),
   descriptionCompressed:
-    "owner-only manage browser bridge companion: install / reveal_folder / open_manager / refresh.",
+    "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
@@ -614,7 +634,7 @@ export const manageBrowserBridgeAction: Action = {
     {
       name: "subaction",
       description:
-        "Bridge management op. install: build extension + reveal folder + open chrome://extensions. reveal_folder: open the build folder in Finder. open_manager: open chrome://extensions. refresh: re-read companion connection state. Inferred from the message text if omitted.",
+        "Bridge management op. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
       required: false,
       schema: {
         type: "string" as const,

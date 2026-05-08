@@ -33,7 +33,7 @@ import type {
 } from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { useLifeOpsHealthConnectors } from "../hooks/useLifeOpsHealthConnectors";
-import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
+import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.js";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 

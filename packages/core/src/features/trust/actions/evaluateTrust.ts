@@ -74,7 +74,7 @@ export const evaluateTrustAction: ElizaAction = {
 		_state,
 		_options,
 		_callback,
-	): Promise<ActionResult | undefined> => {
+	): Promise<ActionResult> => {
 		const trustEngine = runtime.getService("trust-engine") as unknown as {
 			evaluateTrust: (
 				entityId: unknown,

@@ -108,6 +108,7 @@ const STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
   { type: "POST", path: "/api/browser-bridge/companions/pair" },
   { type: "POST", path: "/api/browser-bridge/companions/auto-pair" },
   { type: "GET", path: "/api/browser-bridge/companions" },
+  { type: "POST", path: "/api/browser-bridge/companions/revoke", public: true },
   { type: "GET", path: "/api/browser-bridge/packages" },
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
   { type: "POST", path: "/api/browser-bridge/companions/sync", public: true },
@@ -123,6 +124,7 @@ const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> =
     { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
     { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
     { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
+    { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
     {
       type: "POST",
       path: "/api/browser-bridge/companions/sessions/:id/progress",

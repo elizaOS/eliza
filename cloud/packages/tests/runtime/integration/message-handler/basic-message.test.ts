@@ -94,7 +94,7 @@ describe.skipIf(skipLiveModelSuite)("Message Handler - Basic Message Processing"
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: "chat" as any,
       webSearchEnabled: false,
     });
 

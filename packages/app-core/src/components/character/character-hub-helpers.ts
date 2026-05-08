@@ -1,7 +1,7 @@
 import type {
   CharacterHistoryEntry,
   ExperienceRecord,
-  KnowledgeDocument,
+  DocumentRecord,
   RelationshipsActivityItem,
 } from "../../api";
 import type {
@@ -13,7 +13,7 @@ import type {
 export const CHARACTER_HUB_SECTIONS = [
   "overview",
   "personality",
-  "knowledge",
+  "documents",
   "skills",
   "experience",
   "relationships",
@@ -29,7 +29,7 @@ export function getCharacterHubSectionLabel(
       return "Overview";
     case "personality":
       return "Personality";
-    case "knowledge":
+    case "documents":
       return "Knowledge";
     case "skills":
       return "Skills";
@@ -120,7 +120,7 @@ export function mapExperienceRecordToHubRecord(
 
 export function buildCharacterOverviewItems(options: {
   history: CharacterHistoryEntry[];
-  documents: KnowledgeDocument[];
+  documents: DocumentRecord[];
   experiences: ExperienceRecord[];
   relationshipActivity: RelationshipsActivityItem[];
 }): CharacterHubActivityItem[] {
@@ -137,10 +137,10 @@ export function buildCharacterOverviewItems(options: {
     }),
   );
 
-  const knowledgeItems: CharacterHubActivityItem[] = options.documents.map(
+  const documentItems: CharacterHubActivityItem[] = options.documents.map(
     (document) => ({
-      id: `knowledge:${document.id}`,
-      kind: "knowledge",
+      id: `documents:${document.id}`,
+      kind: "documents",
       title: document.filename,
       description:
         document.source === "learned"
@@ -177,7 +177,7 @@ export function buildCharacterOverviewItems(options: {
 
   return [
     ...historyItems,
-    ...knowledgeItems,
+    ...documentItems,
     ...experienceItems,
     ...relationshipItems,
   ].sort((left, right) => {

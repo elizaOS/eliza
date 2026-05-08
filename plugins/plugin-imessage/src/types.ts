@@ -111,6 +111,8 @@ export interface IMessageListMessagesOptions {
  * Options for sending a message
  */
 export interface IMessageSendOptions {
+  /** Connector account ID. iMessage currently supports only the local default account. */
+  accountId?: string;
   /** Media URL or path to attach */
   mediaUrl?: string;
   /** Max bytes for media */

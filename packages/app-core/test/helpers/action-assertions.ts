@@ -33,7 +33,7 @@ export interface ActionInvocation {
   params?: Record<string, unknown>;
   /** The full result data payload from the action, if any. */
   result?: unknown;
-  /** Run ID grouping related action invocations in a single processActions pass. */
+  /** Run ID grouping related action invocations in a single execution pass. */
   runId?: string;
   /** Unix timestamp (ms) when the memory was created. */
   timestamp?: number;
@@ -81,8 +81,7 @@ function formatInvocations(invocations: ActionInvocation[]): string {
  * `ActionInvocation` objects sorted by timestamp ascending (oldest first).
  *
  * The runtime persists action results as memories in the "messages" table
- * with `content.type === "action_result"`. See `runtime.ts processActions()`
- * for the persistence logic.
+ * with `content.type === "action_result"`.
  */
 export async function getActionInvocations(
   runtime: AgentRuntime,

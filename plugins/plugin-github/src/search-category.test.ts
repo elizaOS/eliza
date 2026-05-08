@@ -52,6 +52,7 @@ describe("GitHub search category", () => {
         "state",
         "author",
         "as",
+        "accountId",
         "limit",
       ]),
     );

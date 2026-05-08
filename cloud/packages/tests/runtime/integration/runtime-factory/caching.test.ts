@@ -85,7 +85,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should cache runtime on first creation", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -101,7 +101,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should return cached runtime on second call", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -179,7 +179,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
   });
 
   it("should benchmark runtime creation times", async () => {
-    const modes = [AgentMode.CHAT, AgentMode.ASSISTANT, AgentMode.BUILD];
+    const modes = [AgentMode.CHAT];
     const benchmarks: Record<string, number> = {};
 
     for (const mode of modes) {
@@ -202,9 +202,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       localTimings[`benchmark_${mode}`] = time;
     }
 
-    // All modes should create in under 10 seconds
+    // Chat runtime should create in under 10 seconds
     expect(benchmarks[AgentMode.CHAT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.ASSISTANT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.BUILD]).toBeLessThan(10000);
   }, 180000);
 });

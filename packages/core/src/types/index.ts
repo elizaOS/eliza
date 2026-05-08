@@ -16,7 +16,7 @@ export * from "./database";
 export * from "./environment";
 export * from "./events";
 export * from "./hook";
-export * from "./knowledge";
+export * from "./documents";
 export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";

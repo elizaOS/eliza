@@ -47,7 +47,7 @@ def test_no_collision_with_bootstrap() -> None:
         "SEND_MESSAGE", "ADD_CONTACT", "REMOVE_CONTACT", "UPDATE_CONTACT",
         "UPDATE_CONTACT_INFO", "SEARCH_CONTACTS", "FOLLOW_ROOM", "UNFOLLOW_ROOM",
         "MUTE_ROOM", "UNMUTE_ROOM", "RESET_SESSION", "STATUS", "UPDATE_SETTINGS",
-        "UPDATE_ROLE", "GENERATE_IMAGE", "SCHEDULE_FOLLOW_UP",
+        "UPDATE_ROLE", "GENERATE_MEDIA", "SCHEDULE_FOLLOW_UP",
     }
     distractor_names = {s.name for s in ALL_DISTRACTOR_SPECS}
     collision = bootstrap_names & distractor_names

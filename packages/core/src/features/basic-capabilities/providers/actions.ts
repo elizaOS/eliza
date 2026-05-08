@@ -1,4 +1,5 @@
 import { formatActionNames, formatActions } from "../../../actions.ts";
+import { evaluateConnectorAccountPolicies } from "../../../connectors/account-manager.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	Action,
@@ -373,10 +374,15 @@ export const actionsProvider: Provider = {
 			}
 
 			const result = await action.validate(runtime, message, state);
-			if (result) {
-				return action;
+			if (!result) {
+				return null;
 			}
-			return null;
+			const accountPolicy = await evaluateConnectorAccountPolicies(
+				runtime,
+				action,
+				{ message },
+			);
+			return accountPolicy.allowed ? action : null;
 		});
 
 		const resolvedActions = await Promise.all(actionPromises);

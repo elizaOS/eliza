@@ -11,8 +11,8 @@ import {
   parseSelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.ts";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+} from "../website-blocker/engine.js";
+import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.js";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;

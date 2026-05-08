@@ -45,6 +45,8 @@ async function buildRuntime(): Promise<RuntimeBundle> {
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-ls-"));
+  blockedPath = path.join(tmpRoot, "_blocked");
+  await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
   const barDir = path.join(tmpRoot, "bar");
   await fs.mkdir(fooDir, { recursive: true });

@@ -15,7 +15,7 @@
     "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

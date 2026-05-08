@@ -11,6 +11,7 @@ import { manageCustomersAction } from "./manage-customers.js";
 import { manageInventoryAction } from "./manage-inventory.js";
 import { manageOrdersAction } from "./manage-orders.js";
 import { manageProductsAction } from "./manage-products.js";
+import { hasShopifyConfig, shopifyAccountIdParameter } from "./account-options.js";
 
 // SHOPIFY covers mutating ops only. Read-only catalog browsing lives in
 // SEARCH_SHOPIFY_STORE so the planner doesn't need to disambiguate "browse"
@@ -102,9 +103,10 @@ export const shopifyAction: Action = {
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
+    shopifyAccountIdParameter,
   ],
   validate: async (runtime, message) => {
-    if (!runtime.getSetting("SHOPIFY_ACCESS_TOKEN")) return false;
+    if (!hasShopifyConfig(runtime)) return false;
     return selectRoute(message) !== null;
   },
   handler: async (
@@ -122,7 +124,7 @@ export const shopifyAction: Action = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: { actionName: "SHOPIFY", availableOps: ops },
       };
     }

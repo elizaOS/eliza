@@ -305,7 +305,7 @@ export async function generateText(
 		return await withStandaloneTrajectory(
 			runtime,
 			{
-				source: "knowledge",
+				source: "documents",
 				metadata: {
 					provider,
 					model: modelName,
@@ -387,8 +387,8 @@ async function generateAnthropicText(
 				userPrompt: prompt,
 				maxTokens,
 				temperature: 0.3,
-				purpose: "knowledge",
-				actionType: "knowledge.anthropic.generate_text",
+				purpose: "documents",
+				actionType: "documents.anthropic.generate_text",
 				invoke: () =>
 					aiGenerateText({
 						model: modelInstance,
@@ -440,8 +440,8 @@ async function generateOpenAIText(
 		userPrompt: prompt,
 		maxTokens,
 		temperature: 0.3,
-		purpose: "knowledge",
-		actionType: "knowledge.openai.generate_text",
+		purpose: "documents",
+		actionType: "documents.openai.generate_text",
 		invoke: () =>
 			aiGenerateText({
 				model: modelInstance,
@@ -477,8 +477,8 @@ async function generateGoogleText(
 		userPrompt: prompt,
 		maxTokens,
 		temperature: 0.3,
-		purpose: "knowledge",
-		actionType: "knowledge.google.generate_text",
+		purpose: "documents",
+		actionType: "documents.google.generate_text",
 		invoke: () =>
 			aiGenerateText({
 				model: modelInstance,
@@ -633,8 +633,8 @@ async function generateClaudeWithCaching(
 		userPrompt: serializeMessages(messages as ModelMessage[]),
 		maxTokens,
 		temperature: 0.3,
-		purpose: "knowledge",
-		actionType: "knowledge.openrouter.generate_text.claude_cached",
+		purpose: "documents",
+		actionType: "documents.openrouter.generate_text.claude_cached",
 		invoke: () =>
 			aiGenerateText({
 				model: modelInstance,
@@ -680,8 +680,8 @@ async function generateGeminiWithCaching(
 		userPrompt: geminiPrompt,
 		maxTokens,
 		temperature: 0.3,
-		purpose: "knowledge",
-		actionType: "knowledge.openrouter.generate_text.gemini_cached",
+		purpose: "documents",
+		actionType: "documents.openrouter.generate_text.gemini_cached",
 		invoke: () =>
 			aiGenerateText({
 				model: modelInstance,
@@ -722,8 +722,8 @@ async function generateStandardOpenRouterText(
 		userPrompt: prompt,
 		maxTokens,
 		temperature: 0.3,
-		purpose: "knowledge",
-		actionType: "knowledge.openrouter.generate_text",
+		purpose: "documents",
+		actionType: "documents.openrouter.generate_text",
 		invoke: () =>
 			aiGenerateText({
 				model: modelInstance,
