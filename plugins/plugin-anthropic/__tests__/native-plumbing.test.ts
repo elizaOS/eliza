@@ -124,6 +124,68 @@ describe("Anthropic native text plumbing", () => {
     expect(call.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
+  it("uses segmented dynamic user content on messages plus promptSegments while keeping cacheable system", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      toolCalls: [{ toolName: "READ", input: { path: "x" } }],
+      finishReason: "tool-calls",
+      usage: { inputTokens: 20, outputTokens: 3 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleActionPlanner } = await import("../models/text");
+    const tools = { READ: { description: "Read a file", inputSchema: { type: "object" } } };
+    await handleActionPlanner(createRuntime(), {
+      prompt: "ignored when messages are provided",
+      messages: [
+        { role: "system", content: "stable prefix\n\nplanner_stage:\nDo X." },
+        { role: "user", content: "dynamic context" },
+        {
+          role: "assistant",
+          content: "thinking",
+          toolCalls: [{ id: "tc-1", type: "function", name: "READ", arguments: "{}" }],
+        },
+        { role: "tool", toolCallId: "tc-1", name: "READ", content: "ok" },
+      ],
+      promptSegments: [
+        { content: "stable prefix", stable: true },
+        { content: "dynamic context", stable: false },
+        { content: "planner_stage:\nDo X.", stable: true },
+      ],
+      tools,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as {
+      system?: unknown;
+      messages: Array<{ role: string; content: unknown }>;
+      tools?: unknown;
+    };
+
+    expect(call.system).toEqual({
+      role: "system",
+      content: "stable prefix\n\nplanner_stage:\nDo X.",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    });
+    expect(call.messages[0]).toEqual({
+      role: "user",
+      content: [{ type: "text", text: "dynamic context" }],
+    });
+    expect(JSON.stringify(call.messages[0].content)).not.toContain("stable prefix");
+    expect(JSON.stringify(call.messages[0].content)).not.toContain("planner_stage");
+    expect(call.messages.find((message) => message.role === "assistant")).toBeDefined();
+    expect(call.messages.find((message) => message.role === "tool")).toBeDefined();
+    expect(call.tools).toBe(tools);
+  }, 60_000);
+
   it("emits cache metadata on planned stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

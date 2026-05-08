@@ -52,6 +52,14 @@ export function parseMessageHandlerOutput(
 		? plan.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
 	const reply = typeof plan.reply === "string" ? plan.reply : undefined;
+	const requiresTool =
+		typeof plan.requiresTool === "boolean" ? plan.requiresTool : undefined;
+	const simple =
+		typeof plan.simple === "boolean"
+			? plan.simple
+			: typeof (parsed as { simple?: unknown }).simple === "boolean"
+				? ((parsed as { simple?: boolean }).simple as boolean)
+				: undefined;
 	const contextSlices = normalizeStringHints(plan.contextSlices, 12);
 	const candidateActions = normalizeStringHints(plan.candidateActions, 12);
 	const parentActionHints = normalizeStringHints(plan.parentActionHints, 6);
@@ -59,10 +67,8 @@ export function parseMessageHandlerOutput(
 	// Backward-compatibility shim: legacy `plan.simple === true` (or root-level
 	// `simple: true`) with empty contexts is treated as `["simple"]`. New
 	// callers should emit `contexts: ["simple"]` directly.
-	const legacySimpleFlag =
-		plan.simple === true || (parsed as { simple?: unknown }).simple === true;
 	const contexts =
-		rawContexts.length === 0 && legacySimpleFlag
+		rawContexts.length === 0 && simple === true
 			? [SIMPLE_CONTEXT_ID]
 			: rawContexts;
 
@@ -72,6 +78,12 @@ export function parseMessageHandlerOutput(
 		contexts,
 		reply,
 	};
+	if (requiresTool !== undefined) {
+		normalizedPlan.requiresTool = requiresTool;
+	}
+	if (simple !== undefined) {
+		normalizedPlan.simple = simple;
+	}
 	if (contextSlices.length > 0) {
 		normalizedPlan.contextSlices = contextSlices;
 	}
@@ -166,13 +178,27 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const allContexts = [...(output.plan?.contexts ?? [])];
+	const legacyContexts = (output as { contexts?: AgentContext[] }).contexts;
+	const allContexts = [...(output.plan?.contexts ?? legacyContexts ?? [])];
+	const requiresTool = output.plan?.requiresTool === true;
+	const explicitlyNonSimple =
+		output.plan?.simple === false ||
+		(output as { simple?: unknown }).simple === false;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
-	// is empty), Stage 1 owns the reply and we never enter the planner.
+	// is empty), Stage 1 owns the reply and we never enter the planner, unless
+	// the route explicitly says this turn needs a tool.
 	const nonSimpleContexts = allContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
+
+	if ((requiresTool || explicitlyNonSimple) && nonSimpleContexts.length === 0) {
+		return {
+			type: "planning_needed",
+			output,
+			contexts: ["general"],
+		};
+	}
 
 	if (nonSimpleContexts.length === 0) {
 		return {

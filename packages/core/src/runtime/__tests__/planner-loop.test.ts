@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { v5PlannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
@@ -83,6 +84,22 @@ describe("v5 planner loop skeleton", () => {
 				params: { subaction: "screenshot" },
 			},
 		]);
+	});
+
+	it("treats non-JSON planner text as a terminal message", () => {
+		const output = parsePlannerOutput("Done from the model.");
+
+		expect(output.toolCalls).toEqual([]);
+		expect(output.messageToUser).toBe("Done from the model.");
+	});
+
+	it("instructs planners to use exposed tools for unresolved current work", () => {
+		expect(v5PlannerTemplate).toContain(
+			"task is not complete while the user still needs live/current/external data",
+		);
+		expect(v5PlannerTemplate).toContain(
+			"prior attachments, memory, or conversation snippets are not a substitute",
+		);
 	});
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
@@ -214,6 +231,101 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall).not.toHaveBeenCalled();
 		expect(evaluate).not.toHaveBeenCalled();
 		expect(result.finalMessage).toBe("Final answer.");
+	});
+
+	it("retries premature terminal output when a non-terminal tool call is required", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(`{
+  "thought": "I can answer directly.",
+  "messageToUser": "Looks fine.",
+  "toolCalls": []
+}`)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "LOOKUP",
+							arguments: { query: "status" },
+						},
+					],
+				}),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "checked",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "Checked.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(retryParams.messages?.[1]?.content).toContain(
+			"previous planner response was not valid",
+		);
+		expect(executeToolCall).toHaveBeenCalledWith(
+			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
+			expect.objectContaining({ iteration: 2 }),
+		);
+		expect(result.finalMessage).toBe("Checked.");
+	});
+
+	it("returns a user-visible failure when required tool retries are exhausted", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => `{
+  "thought": "I can answer directly.",
+  "messageToUser": "Looks fine.",
+  "toolCalls": []
+}`),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxPlannerIterations: 1 },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("continued");
+		expect(result.finalMessage).toContain("did not select an available tool");
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				maxPlannerIterations: 1,
+			}),
+			"Planner exhausted retries before satisfying a required tool call",
+		);
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {

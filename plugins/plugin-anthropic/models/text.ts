@@ -2,6 +2,7 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ModelTypeName,
+  PromptSegment,
   TextStreamResult,
 } from "@elizaos/core";
 import {
@@ -151,7 +152,16 @@ function isOpus4Model(modelName: ModelName): boolean {
 function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
   const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
 
-  for (const attachment of params.attachments ?? []) {
+  appendAttachments(content, params.attachments);
+
+  return content;
+}
+
+function appendAttachments(
+  content: AnthropicUserContentPart[],
+  attachments: ChatAttachment[] | undefined
+): void {
+  for (const attachment of attachments ?? []) {
     content.push({
       type: "file",
       data: attachment.data,
@@ -159,8 +169,6 @@ function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserCo
       ...(attachment.filename ? { filename: attachment.filename } : {}),
     });
   }
-
-  return content;
 }
 
 function buildSegmentedUserContent(
@@ -168,14 +176,26 @@ function buildSegmentedUserContent(
   anthropicOptions?: ProviderOptions["anthropic"],
   fallbackCacheControl?: AnthropicCacheControl
 ): UserContent {
-  const content: AnthropicUserContentPart[] = [];
   const segmentCacheControls = buildSegmentCacheControls(
     params,
     anthropicOptions,
     fallbackCacheControl
   );
+  return buildSegmentedUserContentFromSegments(
+    params.promptSegments ?? [],
+    params.attachments,
+    segmentCacheControls
+  );
+}
 
-  for (const [index, segment] of (params.promptSegments ?? []).entries()) {
+function buildSegmentedUserContentFromSegments(
+  segments: readonly PromptSegment[],
+  attachments: ChatAttachment[] | undefined,
+  segmentCacheControls: Map<number, AnthropicCacheControl> = new Map()
+): UserContent {
+  const content: AnthropicUserContentPart[] = [];
+
+  for (const [index, segment] of segments.entries()) {
     const textPart: AnthropicTextPart = {
       type: "text",
       text: segment.content,
@@ -187,16 +207,30 @@ function buildSegmentedUserContent(
     content.push(textPart);
   }
 
-  for (const attachment of params.attachments ?? []) {
-    content.push({
-      type: "file",
-      data: attachment.data,
-      mediaType: attachment.mediaType,
-      ...(attachment.filename ? { filename: attachment.filename } : {}),
-    });
-  }
+  appendAttachments(content, attachments);
 
   return content;
+}
+
+function buildSegmentedUserContentForMessages(
+  params: GenerateTextParamsWithProviderOptions
+): UserContent | undefined {
+  const dynamicSegments = (params.promptSegments ?? []).filter((segment) => !segment.stable);
+  if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
+    return undefined;
+  }
+  return buildSegmentedUserContentFromSegments(dynamicSegments, params.attachments);
+}
+
+function buildPlannerWireMessages(
+  wireMessages: ModelMessage[],
+  userContent: UserContent | string
+): ModelMessage[] {
+  if (wireMessages[0]?.role === "user") {
+    const [first, ...tail] = wireMessages;
+    return [{ ...first, content: userContent }, ...tail];
+  }
+  return [{ role: "user", content: userContent }, ...wireMessages];
 }
 
 function buildSegmentCacheControls(
@@ -564,9 +598,15 @@ async function generateTextWithModel(
     paramsWithAttachments.messages,
     systemPrompt
   );
+  const segmentedMessageUserContent =
+    segmentedPrompt && paramsWithAttachments.messages
+      ? buildSegmentedUserContentForMessages(paramsWithAttachments)
+      : undefined;
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+      ? segmentedMessageUserContent
+        ? { messages: buildPlannerWireMessages(wireMessages, segmentedMessageUserContent) }
+        : { messages: wireMessages }
       : {
           messages: [
             {

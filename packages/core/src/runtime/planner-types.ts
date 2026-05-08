@@ -132,6 +132,11 @@ export interface PlannerLoopParams {
 	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
 	toolChoice?: ToolChoice;
 	/**
+	 * When true, terminal planner output is only valid after at least one
+	 * non-terminal tool has executed for the current turn.
+	 */
+	requireNonTerminalToolCall?: boolean;
+	/**
 	 * Trajectory recorder for v5 observability. When supplied, the planner
 	 * loop records one stage per planner call, tool execution, and evaluator
 	 * call. When omitted the loop is unaffected.

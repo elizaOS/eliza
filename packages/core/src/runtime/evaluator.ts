@@ -81,6 +81,8 @@ export async function runEvaluator(
 		cacheProviderOptions({
 			prefixHash,
 			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			promptSegments: renderedInput.promptSegments,
+			provider: params.provider,
 		}),
 		modelInputBudget,
 	);
@@ -257,7 +259,7 @@ function renderEvaluatorModelInput(params: {
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
-		{ content: `evaluator_stage:\n${instructions}`, stable: false },
+		{ content: `evaluator_stage:\n${instructions}`, stable: true },
 	]);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
