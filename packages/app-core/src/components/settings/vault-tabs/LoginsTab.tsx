@@ -56,7 +56,7 @@ export function LoginsTab() {
   // Per-domain "agent may autofill without prompting" map. Backed by
   // `creds.<domain>.:autoallow` in the vault — the same flag the
   // user-driven autofill consent path uses, and the only authorization
-  // the BROWSER_AUTOFILL_LOGIN agent action will accept.
+  // the BROWSER action (autofill-login subaction) will accept.
   const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>({});
 
   const loadAutoallowFor = useCallback(

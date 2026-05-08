@@ -48,9 +48,6 @@ type ConnectorActionParams = {
   side?: "owner" | "agent";
   mode?: "local" | "cloud_managed" | "remote";
   // Connector-specific params (passed through to underlying service methods).
-  phone?: string;
-  apiId?: number;
-  apiHash?: string;
   recentLimit?: number;
   query?: string;
   sendTarget?: string;
@@ -70,6 +67,9 @@ type ConnectorDispatchContext = {
 type GmailTriageResult = Awaited<ReturnType<LifeOpsService["getGmailTriage"]>>;
 type CalendarFeedResult = Awaited<
   ReturnType<LifeOpsService["getCalendarFeed"]>
+>;
+type RegistrySendVerificationResult = NonNullable<
+  Awaited<ReturnType<typeof sendVerificationThroughRegistry>>
 >;
 
 type GoogleVerifyProbeSkipped = {
@@ -730,38 +730,17 @@ async function dispatchTelegram(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      if (side === "agent") {
-        const status = await service.getTelegramConnectorStatus(side);
-        return {
-          success: status.connected,
-          text: status.connected
-            ? "Agent Telegram is connected through @elizaos/plugin-telegram."
-            : "Agent Telegram is managed by @elizaos/plugin-telegram. Configure and enable the Telegram bot connector, then check status again.",
-          data: {
-            actionName: ACTION_NAME,
-            connector: "telegram",
-            subaction,
-            status,
-          },
-        };
-      }
-      if (!params.phone) {
-        return missingParamResult("telegram", subaction, ["phone"]);
-      }
-      const response = await service.startTelegramAuth({
-        side,
-        phone: params.phone,
-        apiId: params.apiId,
-        apiHash: params.apiHash,
-      });
+      const status = await service.getTelegramConnectorStatus(side);
       return {
-        success: true,
-        text: `Telegram auth started (state=${response.state}). Submit the SMS code to finish connecting.`,
+        success: status.connected,
+        text: status.connected
+          ? `Telegram is connected through @elizaos/plugin-telegram (side=${side}).`
+          : `Telegram connection is managed by @elizaos/plugin-telegram (side=${side}). Configure the Telegram connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "telegram",
           subaction,
-          response,
+          status,
         },
       };
     }
@@ -837,30 +816,17 @@ async function dispatchSignal(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      if (side === "agent") {
-        const status = await service.getSignalConnectorStatus(side);
-        return {
-          success: status.connected,
-          text: status.connected
-            ? "Agent Signal is connected through @elizaos/plugin-signal."
-            : "Agent Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal plugin, then check status again.",
-          data: {
-            actionName: ACTION_NAME,
-            connector: "signal",
-            subaction,
-            status,
-          },
-        };
-      }
-      const response = await service.startSignalPairing(side);
+      const status = await service.getSignalConnectorStatus(side);
       return {
-        success: true,
-        text: `Signal pairing started (sessionId=${response.sessionId}). Scan the QR code from Signal mobile to link.`,
+        success: status.connected,
+        text: status.connected
+          ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
+          : `Signal pairing is managed by @elizaos/plugin-signal (side=${side}). Configure the Signal connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
           subaction,
-          response,
+          status,
         },
       };
     }
@@ -921,8 +887,10 @@ async function dispatchSignalVerify(
   }
   const sendText =
     params.sendMessage ?? "LifeOps Signal connector verification ping.";
-  let send: Awaited<ReturnType<LifeOpsService["sendSignalMessage"]>> | null =
-    null;
+  let send:
+    | Awaited<ReturnType<LifeOpsService["sendSignalMessage"]>>
+    | RegistrySendVerificationResult
+    | null = null;
   let sendError: string | null = null;
   if (params.sendTarget) {
     try {
@@ -1487,26 +1455,6 @@ export const connectorAction: Action & {
         type: "string" as const,
         enum: ["local", "cloud_managed", "remote"],
       },
-    },
-    {
-      name: "phone",
-      description:
-        "Telegram connect only — full phone number with country code.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "apiId",
-      description: "Telegram connect only — optional Telegram apiId override.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "apiHash",
-      description:
-        "Telegram connect only — optional Telegram apiHash override.",
-      required: false,
-      schema: { type: "string" as const },
     },
     {
       name: "recentLimit",

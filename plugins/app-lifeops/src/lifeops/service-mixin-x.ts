@@ -26,6 +26,7 @@ import {
   createXPostWithRuntimeService,
   fetchXDirectMessagesWithRuntimeService,
   getXAccountStatusWithRuntimeService,
+  resolveRuntimeConnectorAccountId,
   sendXConversationMessageWithRuntimeService,
   sendXDirectMessageWithRuntimeService,
 } from "./runtime-service-delegates.js";
@@ -51,10 +52,12 @@ export interface LifeOpsXService {
   resolveXGrant(
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
+    requestedAccountId?: string | null,
   ): Promise<LifeOpsConnectorGrant | null>;
   getXConnectorStatus(
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
+    requestedAccountId?: string | null,
   ): Promise<LifeOpsXConnectorStatus>;
   startXConnector(
     request: StartLifeOpsXConnectorRequest,
@@ -68,7 +71,11 @@ export interface LifeOpsXService {
   createXPost(
     request: CreateLifeOpsXPostRequest,
   ): Promise<LifeOpsXPostResponse>;
-  getXDmDigest(opts?: { limit?: number; conversationId?: string }): Promise<{
+  getXDmDigest(opts?: {
+    accountId?: string;
+    limit?: number;
+    conversationId?: string;
+  }): Promise<{
     generatedAt: string;
     conversationId: string | null;
     unreadCount: number;
@@ -88,6 +95,7 @@ export interface LifeOpsXService {
     confirmSend?: boolean;
     mode?: LifeOpsConnectorMode;
     side?: LifeOpsConnectorSide;
+    accountId?: string;
   }): Promise<{ ok: boolean; status: number | null; error?: string }>;
   sendXConversationMessage(request: {
     conversationId: string;
@@ -95,6 +103,7 @@ export interface LifeOpsXService {
     confirmSend?: boolean;
     mode?: LifeOpsConnectorMode;
     side?: LifeOpsConnectorSide;
+    accountId?: string;
   }): Promise<{ ok: boolean; status: number | null; error?: string }>;
   createXDirectMessageGroup(request: {
     participantIds: string[];
@@ -102,6 +111,7 @@ export interface LifeOpsXService {
     confirmSend?: boolean;
     mode?: LifeOpsConnectorMode;
     side?: LifeOpsConnectorSide;
+    accountId?: string;
   }): Promise<{
     ok: boolean;
     status: number | null;
@@ -134,17 +144,24 @@ function createSyntheticXGrant(
   mode: LifeOpsConnectorMode,
   side: LifeOpsConnectorSide = "owner",
   capabilities: LifeOpsXConnectorCapability[] = [...LIFEOPS_X_CAPABILITIES],
+  accountId?: string | null,
 ): LifeOpsConnectorGrant {
   return createLifeOpsConnectorGrant({
     agentId,
     provider: "x",
+    connectorAccountId: accountId ?? undefined,
     side,
     identity: {},
     grantedScopes: [],
     capabilities,
     tokenRef: null,
     mode,
-    metadata: { source: "plugin-x-runtime" },
+    metadata: {
+      source: "plugin-x-runtime",
+      ...(accountId
+        ? { accountId, connectorAccountId: accountId }
+        : {}),
+    },
     lastRefreshAt: new Date().toISOString(),
   });
 }
@@ -203,6 +220,27 @@ function xDelegationFailureStatus(reason: string): number {
   return reason.includes("not registered") ? 409 : 502;
 }
 
+function xRequestedAccountId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    normalizeOptionalString(record.accountId) ??
+    normalizeOptionalString(record.connectorAccountId)
+  );
+}
+
+function xGrantRuntimeAccountId(
+  grant: LifeOpsConnectorGrant | null | undefined,
+  requestedAccountId?: string | null,
+): string {
+  return resolveRuntimeConnectorAccountId({
+    accountId: requestedAccountId,
+    grant,
+  });
+}
+
 function xRuntimeAvailableCapabilities(
   side: LifeOpsConnectorSide,
   runtimeCapabilities: readonly string[] | undefined,
@@ -225,6 +263,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     async resolveXGrant(
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      requestedAccountId?: string | null,
     ): Promise<LifeOpsConnectorGrant | null> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
@@ -243,7 +282,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (mode === "local") {
         const runtimeStatus = await getXAccountStatusWithRuntimeService({
           runtime: this.runtime,
-          accountId: "default",
+          accountId: requestedAccountId,
         });
         const localCapabilities =
           runtimeStatus.status === "handled" && runtimeStatus.value.connected
@@ -260,6 +299,9 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           mode,
           side,
           localCapabilities,
+          runtimeStatus.status === "handled"
+            ? runtimeStatus.value.accountId
+            : requestedAccountId,
         );
       }
       return null;
@@ -268,6 +310,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      requestedAccountId?: string | null,
     ): Promise<LifeOpsXConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
@@ -275,13 +318,15 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const mode =
         normalizeOptionalConnectorMode(requestedMode, "mode") ?? defaultMode;
       const availableModes = xAvailableModes();
+      const grant = await this.resolveXGrant(mode, side, requestedAccountId);
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const runtimeStatus = await getXAccountStatusWithRuntimeService({
         runtime: this.runtime,
-        accountId: "default",
+        grant,
+        accountId,
       });
       const runtimeConnected =
         runtimeStatus.status === "handled" && runtimeStatus.value.connected;
-      const grant = await this.resolveXGrant(mode, side);
       const availableLocalCapabilities =
         runtimeStatus.status === "handled"
           ? xRuntimeAvailableCapabilities(
@@ -336,10 +381,15 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
+      const requestedAccountId = xRequestedAccountId(request);
       const runtimeStatus = await getXAccountStatusWithRuntimeService({
         runtime: this.runtime,
-        accountId: "default",
+        accountId: requestedAccountId,
       });
+      const accountId =
+        runtimeStatus.status === "handled"
+          ? runtimeStatus.value.accountId
+          : requestedAccountId;
       const capabilities =
         runtimeStatus.status === "handled" && runtimeStatus.value.connected
           ? xRuntimeAvailableCapabilities(
@@ -369,7 +419,12 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           runtimeStatus.status === "handled"
             ? (runtimeStatus.value.identity ?? {})
             : {},
-        metadata: { source: "plugin-x-runtime" },
+        metadata: {
+          source: "plugin-x-runtime",
+          ...(accountId
+            ? { accountId, connectorAccountId: accountId }
+            : {}),
+        },
       });
       return {
         provider: "x",
@@ -394,7 +449,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         mode,
         side,
       );
-      return this.getXConnectorStatus(mode, side);
+      return this.getXConnectorStatus(mode, side, xRequestedAccountId(request));
     }
 
     async upsertXConnector(
@@ -420,28 +475,42 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalRecord(request.identity, "identity") ?? {};
       const metadata =
         normalizeOptionalRecord(request.metadata, "metadata") ?? {};
+      const requestedAccountId =
+        xRequestedAccountId(request) ?? xRequestedAccountId(metadata);
+      const grantMetadata = {
+        ...metadata,
+        ...(requestedAccountId
+          ? {
+              accountId: requestedAccountId,
+              connectorAccountId: requestedAccountId,
+            }
+          : {}),
+      };
       const grant = existing
         ? {
             ...existing,
+            connectorAccountId:
+              requestedAccountId ?? existing.connectorAccountId,
             identity,
             grantedScopes: scopes,
             capabilities,
             metadata: {
               ...existing.metadata,
-              ...metadata,
+              ...grantMetadata,
             },
             updatedAt: new Date().toISOString(),
           }
         : createLifeOpsConnectorGrant({
             agentId: this.agentId(),
             provider: "x",
+            connectorAccountId: requestedAccountId ?? undefined,
             side,
             identity,
             grantedScopes: scopes,
             capabilities,
             tokenRef: null,
             mode,
-            metadata,
+            metadata: grantMetadata,
             lastRefreshAt: new Date().toISOString(),
           });
       await this.repository.upsertConnectorGrant(grant);
@@ -453,11 +522,11 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           capabilities,
         },
       );
-      return this.getXConnectorStatus(mode, side);
+      return this.getXConnectorStatus(mode, side, requestedAccountId);
     }
 
     async getXDmDigest(
-      opts: { limit?: number; conversationId?: string } = {},
+      opts: { accountId?: string; limit?: number; conversationId?: string } = {},
     ): Promise<{
       generatedAt: string;
       conversationId: string | null;
@@ -466,13 +535,20 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       repliedCount: number;
       recent: LifeOpsXDm[];
     }> {
-      const grant = await this.resolveXGrant();
+      const requestedAccountId = xRequestedAccountId(opts);
+      const grant = await this.resolveXGrant(
+        undefined,
+        undefined,
+        requestedAccountId,
+      );
       if (!grant) {
         fail(409, "X is not connected.");
       }
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const delegated = await fetchXDirectMessagesWithRuntimeService({
         runtime: this.runtime,
         grant,
+        accountId,
         limit: opts.limit,
       });
       if (delegated.status === "handled") {
@@ -616,15 +692,18 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       confirmSend?: boolean;
       mode?: LifeOpsConnectorMode;
       side?: LifeOpsConnectorSide;
+      accountId?: string;
     }): Promise<{ ok: boolean; status: number | null; error?: string }> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      const grant = await this.resolveXGrant(mode, side);
+      const requestedAccountId = xRequestedAccountId(request);
+      const grant = await this.resolveXGrant(mode, side, requestedAccountId);
       if (!grant) {
         fail(409, "X is not connected.");
       }
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const capabilities = new Set(
         resolveXCapabilities(grant.capabilities, true),
       );
@@ -647,6 +726,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const result = await sendXDirectMessageWithRuntimeService({
         runtime: this.runtime,
         grant,
+        accountId,
         participantId,
         text,
       });
@@ -668,15 +748,18 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       confirmSend?: boolean;
       mode?: LifeOpsConnectorMode;
       side?: LifeOpsConnectorSide;
+      accountId?: string;
     }): Promise<{ ok: boolean; status: number | null; error?: string }> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      const grant = await this.resolveXGrant(mode, side);
+      const requestedAccountId = xRequestedAccountId(request);
+      const grant = await this.resolveXGrant(mode, side, requestedAccountId);
       if (!grant) {
         fail(409, "X is not connected.");
       }
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const capabilities = new Set(
         resolveXCapabilities(grant.capabilities, true),
       );
@@ -699,6 +782,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const result = await sendXConversationMessageWithRuntimeService({
         runtime: this.runtime,
         grant,
+        accountId,
         conversationId,
         text,
       });
@@ -720,6 +804,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       confirmSend?: boolean;
       mode?: LifeOpsConnectorMode;
       side?: LifeOpsConnectorSide;
+      accountId?: string;
     }): Promise<{
       ok: boolean;
       status: number | null;
@@ -730,10 +815,12 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      const grant = await this.resolveXGrant(mode, side);
+      const requestedAccountId = xRequestedAccountId(request);
+      const grant = await this.resolveXGrant(mode, side, requestedAccountId);
       if (!grant) {
         fail(409, "X is not connected.");
       }
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const capabilities = new Set(
         resolveXCapabilities(grant.capabilities, true),
       );
@@ -762,6 +849,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const result = await createXDirectMessageGroupWithRuntimeService({
         runtime: this.runtime,
         grant,
+        accountId,
         participantIds: uniqueParticipantIds,
         text,
       });
@@ -785,10 +873,12 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      const grant = await this.resolveXGrant(mode, side);
+      const requestedAccountId = xRequestedAccountId(request);
+      const grant = await this.resolveXGrant(mode, side, requestedAccountId);
       if (!grant) {
         fail(409, "X is not connected.");
       }
+      const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
       const capabilities = new Set(
         resolveXCapabilities(grant.capabilities, true),
       );
@@ -811,6 +901,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const result = await createXPostWithRuntimeService({
         runtime: this.runtime,
         grant,
+        accountId,
         text,
       });
       if (result.status !== "handled") {
@@ -819,7 +910,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           result.error instanceof Error ? result.error.message : result.reason,
         );
       }
-      const metadata = delegated.value.metadata as
+      const metadata = result.value.metadata as
         | Record<string, unknown>
         | undefined;
       const postId =
@@ -828,7 +919,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           : typeof (metadata?.x as Record<string, unknown> | undefined)
                 ?.tweetId === "string"
             ? ((metadata?.x as Record<string, unknown>).tweetId as string)
-            : delegated.value.id;
+            : result.value.id;
       await this.recordXPostAudit(
         `x:${grant.mode}`,
         "x post sent",
@@ -838,14 +929,14 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           trustedPosting,
         },
         {
-          postId: result.value.id ?? null,
+          postId,
           status: 201,
         },
       );
       return {
         ok: true,
         status: 201,
-        postId: result.value.id,
+        postId,
         category: "plugin_runtime",
       };
     }

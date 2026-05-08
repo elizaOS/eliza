@@ -9,6 +9,8 @@ import {
   type ConnectorAccountAuditEventRecord,
   type ConnectorAccountCredentialRefRecord,
   type ConnectorAccountRecord,
+  type ConnectorOwnerBindingLookup,
+  type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
   DatabaseAdapter,
@@ -5245,6 +5247,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async deleteConnectorAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
     return this.getConnectorAccountStore().deleteAccount(params);
+  }
+
+  async findConnectorOwnerBinding(
+    params: ConnectorOwnerBindingLookup
+  ): Promise<ConnectorOwnerBindingRecord | null> {
+    return this.getConnectorAccountStore().findOwnerBinding(params);
   }
 
   async setConnectorAccountCredentialRef(

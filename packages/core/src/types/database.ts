@@ -292,6 +292,8 @@ export interface ConnectorAccountRecord {
 	displayName?: string | null;
 	username?: string | null;
 	email?: string | null;
+	ownerBindingId?: string | null;
+	ownerIdentityId?: string | null;
 	role: string;
 	purpose: string[];
 	accessGate: string;
@@ -331,6 +333,8 @@ export interface UpsertConnectorAccountParams {
 	displayName?: string | null;
 	username?: string | null;
 	email?: string | null;
+	ownerBindingId?: string | null;
+	ownerIdentityId?: string | null;
 	role?: string;
 	purpose?: string[];
 	accessGate?: string;
@@ -1401,6 +1405,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	deleteConnectorAccount(
 		params: DeleteConnectorAccountParams,
 	): Promise<boolean>;
+	findConnectorOwnerBinding?(params: {
+		connector: string;
+		externalId: string;
+		instanceId?: string;
+	}): Promise<{
+		id: string;
+		identityId: string;
+		connector: string;
+		externalId: string;
+		displayHandle: string;
+		instanceId: string;
+		verifiedAt: number;
+	} | null>;
 	setConnectorAccountCredentialRef(
 		params: SetConnectorAccountCredentialRefParams,
 	): Promise<ConnectorAccountCredentialRefRecord>;

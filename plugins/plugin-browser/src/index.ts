@@ -16,7 +16,7 @@ export {
   type BrowserTarget,
   BrowserService,
 } from "./browser-service.js";
-export { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
+export { executeBrowserAutofillLogin } from "./actions/browser-autofill-login.js";
 export { browserAction } from "./actions/browser.js";
 export {
   BROWSER_BRIDGE_SUBACTIONS,

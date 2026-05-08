@@ -1,4 +1,3 @@
-export { blockUntilTaskCompleteAction } from "./actions/blockUntilTaskComplete.js";
 export { listActiveBlocksAction } from "./actions/listActiveBlocks.js";
 export { releaseBlockAction } from "./actions/releaseBlock.js";
 export {

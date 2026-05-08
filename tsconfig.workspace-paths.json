@@ -2,10 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "paths": {
-      "@elizaos/core": ["./packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["./packages/core/src/*"],
-      "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"]
+      "@elizaos/core": ["./packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["./packages/core/dist/*"],
+      "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["./packages/shared/dist/*"]
     }
   }
 }

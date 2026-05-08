@@ -220,12 +220,15 @@ interface ConnectorAccountDatabaseAdapter {
 		accountKey?: string;
 	}): Promise<ConnectorAccountDatabaseRecord | null>;
 	upsertConnectorAccount(params: {
+		id?: string;
 		provider: string;
 		accountKey: string;
 		externalId?: string | null;
 		displayName?: string | null;
 		username?: string | null;
 		email?: string | null;
+		ownerBindingId?: string | null;
+		ownerIdentityId?: string | null;
 		role?: string;
 		purpose?: string[];
 		accessGate?: string;
@@ -238,6 +241,9 @@ interface ConnectorAccountDatabaseAdapter {
 		provider?: string;
 		accountKey?: string;
 	}): Promise<boolean>;
+	findConnectorOwnerBinding?(
+		lookup: ConnectorOwnerBindingLookup,
+	): Promise<ConnectorOwnerBindingRecord | null>;
 	createOAuthFlowState?(params: {
 		state: string;
 		provider: string;
@@ -294,6 +300,8 @@ interface ConnectorAccountDatabaseRecord {
 	displayName?: string | null;
 	username?: string | null;
 	email?: string | null;
+	ownerBindingId?: string | null;
+	ownerIdentityId?: string | null;
 	role?: string;
 	purpose?: string[];
 	accessGate?: string;
@@ -351,6 +359,7 @@ type ActionWithConnectorAccountPolicy = Action & {
 
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>();
 let standaloneManager: ConnectorAccountManager | null = null;
+const oauthCodeVerifierSecrets = new Map<string, string>();
 
 function nowMs(): number {
 	return Date.now();
@@ -724,11 +733,14 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 
 	async upsertAccount(account: ConnectorAccount): Promise<ConnectorAccount> {
 		const record = await this.adapter.upsertConnectorAccount({
+			...(looksLikeUuid(account.id) ? { id: account.id } : {}),
 			provider: normalizeProvider(account.provider),
 			accountKey: account.externalId ?? account.id,
 			externalId: account.externalId ?? null,
 			displayName: account.label ?? null,
 			username: account.displayHandle ?? null,
+			ownerBindingId: account.ownerBindingId ?? null,
+			ownerIdentityId: account.ownerIdentityId ?? null,
 			role: account.role,
 			purpose: [...account.purpose],
 			accessGate: account.accessGate,
@@ -746,6 +758,19 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 				? { id: account.id }
 				: { provider: normalizeProvider(provider), accountKey: accountId },
 		);
+	}
+
+	async findOwnerBinding(
+		lookup: ConnectorOwnerBindingLookup,
+	): Promise<ConnectorOwnerBindingRecord | null> {
+		if (typeof this.adapter.findConnectorOwnerBinding !== "function") {
+			return null;
+		}
+		return this.adapter.findConnectorOwnerBinding({
+			connector: normalizeProvider(lookup.connector),
+			externalId: lookup.externalId,
+			instanceId: lookup.instanceId,
+		});
 	}
 
 	async createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
@@ -812,6 +837,19 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			return fallback;
 		}
 		const metadata = oauthFlowPatchMetadata(patch);
+		const metadataCodeVerifierRef = stringMetadataValue(
+			patch.metadata,
+			"codeVerifierRef",
+		);
+		const storedCodeVerifierRef = storeOAuthCodeVerifier(
+			normalizedProvider,
+			fallback?.id ?? flowIdOrState,
+			patch.codeVerifier,
+		);
+		const codeVerifierRef = storedCodeVerifierRef ?? metadataCodeVerifierRef;
+		if (codeVerifierRef) {
+			metadata.codeVerifierRef = codeVerifierRef;
+		}
 		const update = {
 			provider: normalizedProvider,
 			...(patch.accountId !== undefined &&
@@ -822,10 +860,9 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			...(patch.redirectUri !== undefined
 				? { redirectUri: patch.redirectUri ?? null }
 				: {}),
-			...(stringMetadataValue(patch.metadata, "codeVerifierRef") !== undefined
+			...(codeVerifierRef !== undefined
 				? {
-						codeVerifierRef:
-							stringMetadataValue(patch.metadata, "codeVerifierRef") ?? null,
+						codeVerifierRef,
 					}
 				: {}),
 			...(patch.expiresAt !== undefined ? { expiresAt: patch.expiresAt } : {}),
@@ -918,17 +955,65 @@ function stringMetadataValue(
 	return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function oauthCodeVerifierRef(provider: string, flowId: string): string {
+	return `connector-oauth-pkce:${normalizeProvider(provider)}:${flowId}`;
+}
+
+function storeOAuthCodeVerifier(
+	provider: string,
+	flowId: string,
+	codeVerifier: string | undefined,
+): string | undefined {
+	if (typeof codeVerifier !== "string" || !codeVerifier.trim()) {
+		return undefined;
+	}
+	const ref = oauthCodeVerifierRef(provider, flowId);
+	oauthCodeVerifierSecrets.set(ref, codeVerifier);
+	return ref;
+}
+
+function readOAuthCodeVerifier(
+	ref: string | null | undefined,
+): string | undefined {
+	if (!ref) return undefined;
+	const value = oauthCodeVerifierSecrets.get(ref);
+	return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function deleteOAuthCodeVerifier(ref: string | null | undefined): void {
+	if (!ref) return;
+	oauthCodeVerifierSecrets.delete(ref);
+}
+
+function safeOAuthMetadata(
+	metadata: Metadata | Record<string, unknown> | undefined,
+): Metadata {
+	const cleaned: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(metadata ?? {})) {
+		if (
+			key === "codeVerifier" ||
+			key === "code_verifier" ||
+			key === "oauthCodeVerifier"
+		) {
+			continue;
+		}
+		cleaned[key] = value;
+	}
+	return cleaned as Metadata;
+}
+
 function oauthFlowMetadata(flow: ConnectorOAuthFlow): Record<string, unknown> {
 	const metadata: Record<string, unknown> = {
-		...(cloneMetadata(flow.metadata) ?? {}),
+		...safeOAuthMetadata(flow.metadata),
 		flowId: flow.id,
 		status: flow.status,
 		updatedAt: flow.updatedAt,
 	};
 	if (flow.authUrl) metadata.authUrl = flow.authUrl;
 	if (flow.error) metadata.error = flow.error;
-	if (flow.codeVerifier) metadata.hasCodeVerifier = true;
-	delete metadata.codeVerifier;
+	if (flow.codeVerifier) {
+		metadata.hasCodeVerifier = true;
+	}
 	return metadata;
 }
 
@@ -936,15 +1021,16 @@ function oauthFlowPatchMetadata(
 	patch: Partial<ConnectorOAuthFlow>,
 ): Record<string, unknown> {
 	const metadata: Record<string, unknown> = {
-		...(cloneMetadata(patch.metadata) ?? {}),
+		...safeOAuthMetadata(patch.metadata),
 		updatedAt: nowMs(),
 	};
 	if (patch.id) metadata.flowId = patch.id;
 	if (patch.status) metadata.status = patch.status;
 	if (patch.authUrl !== undefined) metadata.authUrl = patch.authUrl ?? null;
 	if (patch.error !== undefined) metadata.error = patch.error ?? null;
-	if (patch.codeVerifier) metadata.hasCodeVerifier = true;
-	delete metadata.codeVerifier;
+	if (patch.codeVerifier) {
+		metadata.hasCodeVerifier = true;
+	}
 	return metadata;
 }
 
@@ -973,6 +1059,8 @@ function databaseRecordToAccount(
 		status,
 		externalId: record.externalId ?? record.accountKey,
 		displayHandle: record.username ?? record.email ?? undefined,
+		ownerBindingId: record.ownerBindingId ?? undefined,
+		ownerIdentityId: record.ownerIdentityId ?? undefined,
 		createdAt: record.createdAt ?? now,
 		updatedAt: record.updatedAt ?? now,
 		metadata: cloneMetadata(record.metadata),
@@ -1001,6 +1089,14 @@ function databaseRecordToOAuthFlow(
 		stringMetadataValue(metadata, "status") ??
 		fallback?.status ??
 		(record.consumedAt ? "completed" : "pending");
+	const codeVerifierRef =
+		record.codeVerifierRef ??
+		stringMetadataValue(metadata, "codeVerifierRef") ??
+		stringMetadataValue(metadata, "code_verifier_ref");
+	const metadataForFlow = safeOAuthMetadata(metadata);
+	if (codeVerifierRef) {
+		metadataForFlow.codeVerifierRef = codeVerifierRef;
+	}
 	return {
 		id: flowId,
 		provider: normalizeProvider(record.provider),
@@ -1010,14 +1106,15 @@ function databaseRecordToOAuthFlow(
 		authUrl: stringMetadataValue(metadata, "authUrl") ?? fallback?.authUrl,
 		error: stringMetadataValue(metadata, "error") ?? fallback?.error,
 		redirectUri: record.redirectUri ?? fallback?.redirectUri,
-		codeVerifier: fallback?.codeVerifier,
+		codeVerifier:
+			fallback?.codeVerifier ?? readOAuthCodeVerifier(codeVerifierRef),
 		createdAt: record.createdAt ?? fallback?.createdAt ?? now,
 		updatedAt:
 			typeof metadata.updatedAt === "number"
 				? metadata.updatedAt
 				: (fallback?.updatedAt ?? record.createdAt ?? now),
 		expiresAt: record.expiresAt ?? fallback?.expiresAt,
-		metadata: cloneMetadata(metadata),
+		metadata: cloneMetadata(metadataForFlow),
 	};
 }
 
@@ -1371,33 +1468,43 @@ export class ConnectorAccountManager extends Service {
 			);
 		}
 
-		const result = await registered.completeOAuth(
-			{
-				provider: providerId,
-				flow,
-				code: input.code,
-				error: input.error,
-				errorDescription: input.errorDescription,
-				query: input.query ?? {},
-				body: input.body,
-			},
-			this,
-		);
+		try {
+			const result = await registered.completeOAuth(
+				{
+					provider: providerId,
+					flow,
+					code: input.code,
+					error: input.error,
+					errorDescription: input.errorDescription,
+					query: input.query ?? {},
+					body: input.body,
+				},
+				this,
+			);
 
-		const account = result.account
-			? await this.upsertAccount(providerId, result.account, flow.accountId)
-			: undefined;
-		const completed = await this.storage.updateOAuthFlow(providerId, flow.id, {
-			...result.flow,
-			status: result.flow?.status ?? "completed",
-			accountId: account?.id ?? result.flow?.accountId ?? flow.accountId,
-			metadata: result.metadata ?? result.flow?.metadata ?? flow.metadata,
-		});
-		return {
-			flow: completed ?? flow,
-			account,
-			redirectUrl: result.redirectUrl,
-		};
+			const account = result.account
+				? await this.upsertAccount(providerId, result.account, flow.accountId)
+				: undefined;
+			const completed = await this.storage.updateOAuthFlow(
+				providerId,
+				flow.id,
+				{
+					...result.flow,
+					status: result.flow?.status ?? "completed",
+					accountId: account?.id ?? result.flow?.accountId ?? flow.accountId,
+					metadata: result.metadata ?? result.flow?.metadata ?? flow.metadata,
+				},
+			);
+			return {
+				flow: completed ?? flow,
+				account,
+				redirectUrl: result.redirectUrl,
+			};
+		} finally {
+			deleteOAuthCodeVerifier(
+				stringMetadataValue(flow.metadata, "codeVerifierRef"),
+			);
+		}
 	}
 
 	async evaluatePolicy(
@@ -1429,12 +1536,14 @@ export class ConnectorAccountManager extends Service {
 				)
 			: await this.listAccounts(providerId);
 
+		let lastFailure: string | undefined;
 		for (const account of accounts) {
 			if (!account) continue;
 			const failure = await this.accountPolicyFailure(account, policy, context);
 			if (!failure) {
 				return { allowed: true, provider: providerId, account, policy };
 			}
+			lastFailure = failure;
 		}
 
 		const accountText = explicitAccountId
@@ -1443,7 +1552,10 @@ export class ConnectorAccountManager extends Service {
 		return {
 			allowed: policy.required === false,
 			provider: providerId,
-			reason: `No ${accountText} satisfies connector account policy`,
+			reason:
+				explicitAccountId && lastFailure
+					? lastFailure
+					: `No ${accountText} satisfies connector account policy`,
 			policy,
 		};
 	}
@@ -1485,7 +1597,7 @@ export class ConnectorAccountManager extends Service {
 		}
 		if (account.accessGate === "owner_binding") {
 			const binding = await this.resolveOwnerBindingForAccount(account);
-			if (!binding && !account.ownerBindingId && !account.ownerIdentityId) {
+			if (!binding) {
 				return "owner binding has not been verified";
 			}
 		}

@@ -364,6 +364,127 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/coding-agents/preflight", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ installed: [], available: false }),
+    });
+  });
+
+  await page.route(
+    "**/api/coding-agents/coordinator/status",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          supervisionLevel: "manual",
+          taskCount: 0,
+          tasks: [],
+          pendingConfirmations: 0,
+          taskThreadCount: 0,
+          taskThreads: [],
+          frameworks: [],
+        }),
+      });
+    },
+  );
+
+  await page.route("**/api/character/experiences**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [], total: 0 }),
+    });
+  });
+
+  await page.route("**/api/browser-workspace", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ mode: "web", tabs: [] }),
+    });
+  });
+
+  await page.route("**/api/browser-bridge/settings", async (route) => {
+    const method = route.request().method();
+    if (method !== "GET" && method !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        settings: {
+          enabled: false,
+          trackingMode: "off",
+          allowBrowserControl: false,
+          requireConfirmationForAccountAffecting: true,
+          incognitoEnabled: false,
+          siteAccessMode: "current_site_only",
+          grantedOrigins: [],
+          blockedOrigins: [],
+          maxRememberedTabs: 50,
+          pauseUntil: null,
+          metadata: {},
+          updatedAt: SMOKE_GENERATED_AT,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/browser-bridge/companions", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ companions: [] }),
+    });
+  });
+
+  await page.route("**/api/browser-bridge/packages", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: {
+          extensionPath: null,
+          chromeBuildPath: null,
+          chromePackagePath: null,
+          safariWebExtensionPath: null,
+          safariAppPath: null,
+          safariPackagePath: null,
+          releaseManifest: null,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/vincent/status**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

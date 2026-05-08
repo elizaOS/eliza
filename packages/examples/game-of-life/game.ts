@@ -3,7 +3,7 @@
  *
  * Each entity is a REAL elizaOS AgentRuntime with:
  * - Its own character (DNA encoded in character settings)
- * - Custom actions: MOVE_TO_FOOD, FLEE, ATTACK, EAT, REPRODUCE
+ * - Custom actions: GAME_OF_LIFE (umbrella), MOVE_TOWARD_FOOD, FLEE, ATTACK, EAT, REPRODUCE
  * - Rule-based model handlers (no LLM)
  * - In-memory database adapter
  *
@@ -181,6 +181,15 @@ function mutateDNA(parent: DNA): DNA {
 // ============================================================================
 // ACTIONS
 // ============================================================================
+
+const GAME_OF_LIFE_SUB_ACTIONS = [
+  "MOVE_TOWARD_FOOD",
+  "EAT",
+  "FLEE",
+  "ATTACK",
+  "REPRODUCE",
+  "WANDER",
+] as const;
 
 const moveTowardFoodAction: Action = {
   name: "MOVE_TOWARD_FOOD",
@@ -572,6 +581,39 @@ const wanderAction: Action = {
   examples: [],
 };
 
+const gameOfLifeAction: Action = {
+  name: "GAME_OF_LIFE",
+  description:
+    "Route game-simulation decisions to the appropriate movement, feeding, combat, or reproduction action.",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
+  similes: ["GAME", "SIMULATION", "LIFE"],
+  subActions: [...GAME_OF_LIFE_SUB_ACTIONS],
+  subPlanner: {
+    name: "game_of_life_subplanner",
+    description:
+      "Select and execute one of MOVE_TOWARD_FOOD, EAT, FLEE, ATTACK, REPRODUCE, or WANDER.",
+  },
+
+  validate: async () => true,
+
+  // Handler is bypassed when subActions are present.
+  handler: async () => {
+    return {
+      success: true,
+      text: "Game-of-Life action routed to the selected operation.",
+      data: {
+        actionName: "GAME_OF_LIFE",
+        subActions: [...GAME_OF_LIFE_SUB_ACTIONS],
+      },
+    };
+  },
+
+  parameters: [],
+  examples: [],
+};
+
 // Pending births to create new runtimes
 const pendingBirths: AgentState[] = [];
 
@@ -721,14 +763,7 @@ const gameOfLifePlugin: Plugin = {
   name: "game-of-life-agent",
   description: "Actions for Game of Life agents",
 
-  actions: [
-    moveTowardFoodAction,
-    eatAction,
-    fleeAction,
-    attackAction,
-    reproduceAction,
-    wanderAction,
-  ],
+  actions: [gameOfLifeAction],
 
   models: {
     [ModelType.TEXT_SMALL]: decisionModelHandler,
@@ -968,7 +1003,7 @@ async function main(): Promise<void> {
 ╠════════════════════════════════════════════════════════════════════════╣
 ║  Each entity is a REAL elizaOS AgentRuntime with:                      ║
 ║  • Its own Character (DNA encoded in settings)                         ║
-║  • Actions: MOVE_TO_FOOD, FLEE, ATTACK, EAT, REPRODUCE, WANDER         ║
+║  • Actions: GAME_OF_LIFE, MOVE_TOWARD_FOOD, FLEE, ATTACK, EAT, REPRODUCE, WANDER      ║
 ║  • Rule-based model handlers (no LLM)                                  ║
 ║  • In-memory database adapter                                          ║
 ║                                                                        ║

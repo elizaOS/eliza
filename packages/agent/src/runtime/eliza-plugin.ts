@@ -26,7 +26,6 @@ import { taskAction } from "../actions/task.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { triggerAction } from "../actions/trigger.js";
-import { webSearchAction } from "../actions/web-search.js";
 import { workflowAction } from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
@@ -207,7 +206,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       triggerAction,
       ...pageActionGroupActions,
       skillCommandAction,
-      webSearchAction,
       extractPageAction,
       contactAction,
       settingsAction,

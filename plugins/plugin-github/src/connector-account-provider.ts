@@ -34,7 +34,8 @@ import {
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { GITHUB_SERVICE_TYPE } from "./types.js";
 
-const GITHUB_AUTHORIZATION_ENDPOINT = "https://github.com/login/oauth/authorize";
+const GITHUB_AUTHORIZATION_ENDPOINT =
+  "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_ENDPOINT = "https://api.github.com/user";
 
@@ -96,7 +97,9 @@ function parseScopes(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function defaultRoleFromAccountId(accountId: string | undefined): ConnectorAccountRole {
+function defaultRoleFromAccountId(
+  accountId: string | undefined,
+): ConnectorAccountRole {
   if (accountId === DEFAULT_GITHUB_USER_ACCOUNT_ID) return "OWNER";
   if (accountId === DEFAULT_GITHUB_AGENT_ACCOUNT_ID) return "AGENT";
   return "OWNER";
@@ -104,7 +107,7 @@ function defaultRoleFromAccountId(accountId: string | undefined): ConnectorAccou
 
 function roleFromMetadata(
   metadata: unknown,
-  accountId: string | undefined
+  accountId: string | undefined,
 ): ConnectorAccountRole {
   const record =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -112,7 +115,11 @@ function roleFromMetadata(
       : {};
   const raw = nonEmptyString(record.role ?? record.accountRole);
   const normalized = raw?.toUpperCase();
-  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+  if (
+    normalized === "OWNER" ||
+    normalized === "AGENT" ||
+    normalized === "TEAM"
+  ) {
     return normalized;
   }
   return defaultRoleFromAccountId(accountId);
@@ -155,7 +162,9 @@ async function exchangeCodeForToken(args: {
   return parsed;
 }
 
-async function fetchGitHubUser(accessToken: string): Promise<GitHubUserPayload> {
+async function fetchGitHubUser(
+  accessToken: string,
+): Promise<GitHubUserPayload> {
   const response = await fetch(GITHUB_USER_ENDPOINT, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -179,7 +188,10 @@ function synthesizeEnvAccounts(runtime: IAgentRuntime): ConnectorAccount[] {
     id: account.accountId,
     provider: GITHUB_SERVICE_TYPE,
     label: account.label ?? `GitHub ${account.role} (${account.accountId})`,
-    role: account.role === "user" ? ("OWNER" as ConnectorAccountRole) : ("AGENT" as ConnectorAccountRole),
+    role:
+      account.role === "user"
+        ? ("OWNER" as ConnectorAccountRole)
+        : ("AGENT" as ConnectorAccountRole),
     purpose: DEFAULT_PURPOSES,
     accessGate: "open",
     status: "connected",
@@ -200,8 +212,12 @@ export function createGitHubConnectorAccountProvider(
     provider: GITHUB_SERVICE_TYPE,
     label: "GitHub",
 
-    listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
-      const stored = await manager.getStorage().listAccounts(GITHUB_SERVICE_TYPE);
+    listAccounts: async (
+      manager: ConnectorAccountManager,
+    ): Promise<ConnectorAccount[]> => {
+      const stored = await manager
+        .getStorage()
+        .listAccounts(GITHUB_SERVICE_TYPE);
       if (stored.length > 0) return stored;
       // Synthesize from legacy GITHUB_USER_PAT / GITHUB_AGENT_PAT env-vars when
       // SQL storage has not yet materialized rows for them.
@@ -244,9 +260,10 @@ export function createGitHubConnectorAccountProvider(
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
       const redirectUri = request.redirectUri ?? config.redirectUri;
-      const scopes = request.scopes && request.scopes.length > 0
-        ? request.scopes
-        : ["repo", "read:user", "user:email", "notifications"];
+      const scopes =
+        request.scopes && request.scopes.length > 0
+          ? request.scopes
+          : ["repo", "read:user", "user:email", "notifications"];
 
       const params = new URLSearchParams({
         client_id: config.clientId,
@@ -272,7 +289,9 @@ export function createGitHubConnectorAccountProvider(
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
-        throw new Error("GitHub OAuth callback is missing an authorization code.");
+        throw new Error(
+          "GitHub OAuth callback is missing an authorization code.",
+        );
       }
 
       const config = readClientConfig(runtime);
@@ -300,19 +319,49 @@ export function createGitHubConnectorAccountProvider(
         typeof tokens.expires_in === "number"
           ? Date.now() + tokens.expires_in * 1000
           : undefined;
+      const oauthCredentialVersion = String(Date.now());
+      const accountMetadata = {
+        authMethod: "oauth",
+        login,
+        githubUserId: user.id ?? null,
+        email: nonEmptyString(user.email) ?? null,
+        type: nonEmptyString(user.type) ?? null,
+        tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
+        grantedScopes: parseScopes(tokens.scope),
+        hasRefreshToken: Boolean(tokens.refresh_token),
+        expiresAt,
+        oauthCredentialVersion,
+      };
+      const pendingAccount = await manager.upsertAccount(
+        GITHUB_SERVICE_TYPE,
+        {
+          provider: GITHUB_SERVICE_TYPE,
+          role: roleFromMetadata(request.flow.metadata, request.flow.accountId),
+          purpose: DEFAULT_PURPOSES,
+          accessGate: "open",
+          status: "pending",
+          externalId: externalId ?? login,
+          displayHandle: login,
+          label: nonEmptyString(user.name) ?? login,
+          metadata: accountMetadata,
+        },
+        request.flow.accountId,
+      );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: GITHUB_SERVICE_TYPE,
-        accountIdForRef: request.flow.accountId ?? login,
-        storageAccountId: request.flow.accountId,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
         caller: "plugin-github",
         credentials: [
           {
             credentialType: "oauth.tokens",
             value: JSON.stringify({
               access_token: tokens.access_token,
-              ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+              ...(tokens.refresh_token
+                ? { refresh_token: tokens.refresh_token }
+                : {}),
               ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
               token_type: nonEmptyString(tokens.token_type) ?? "bearer",
               scope: tokens.scope ?? "",
@@ -326,31 +375,21 @@ export function createGitHubConnectorAccountProvider(
         ],
       });
 
-      const accountPatch: ConnectorAccountPatch & { provider: string } = {
+      const accountPatch: ConnectorAccountPatch & {
+        provider: string;
+        id: string;
+      } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
         provider: GITHUB_SERVICE_TYPE,
-        role: roleFromMetadata(request.flow.metadata, request.flow.accountId),
-        purpose: DEFAULT_PURPOSES,
-        accessGate: "open",
         status: "connected",
-        externalId: externalId ?? login,
-        displayHandle: login,
-        label: nonEmptyString(user.name) ?? login,
         metadata: {
-          authMethod: "oauth",
-          login,
-          githubUserId: user.id ?? null,
-          email: nonEmptyString(user.email) ?? null,
-          type: nonEmptyString(user.type) ?? null,
-          tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
-          grantedScopes: parseScopes(tokens.scope),
-          hasRefreshToken: Boolean(tokens.refresh_token),
-          expiresAt,
+          ...accountMetadata,
           credentialRefs: credentialPersist.refs,
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
           },
-          oauthCredentialVersion: String(Date.now()),
         },
       };
 

@@ -123,11 +123,10 @@ export interface LifeOpsRouteContext {
  * Ensure the request has the runtime context required to act on behalf of
  * the configured owner entity. Returns `false` (and writes a 503) when the
  * agent runtime is not available — this is the per-request analogue of an
- * auth guard. The framework-level token check
- * (`route.public !== true && !isAuthorized()` in
- * `tryHandleRuntimePluginRoute`) already rejects unauthenticated callers
- * before we get here; this helper is the second gate that confirms the
- * route can actually resolve a tenant.
+ * auth guard. The framework-level token check rejects unauthenticated
+ * callers and `routes/plugin.ts` applies OWNER/ADMIN role gating to private
+ * raw routes before they reach this handler; this helper confirms the route
+ * can actually resolve a tenant.
  */
 function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   if (!ctx.state.runtime) {
@@ -2042,7 +2041,18 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.startTelegramAuth(body), 201);
+      const status = await service.getTelegramConnectorStatus(
+        parseConnectorSideFromRequest(url, body),
+      );
+      json(res, {
+        provider: "telegram",
+        side: status.side,
+        state: status.connected ? "connected" : "error",
+        error: status.connected
+          ? undefined
+          : "Telegram setup is managed by @elizaos/plugin-telegram. Configure the Telegram connector plugin, then check status again.",
+        status,
+      });
     });
   }
 
@@ -2054,7 +2064,18 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.submitTelegramAuth(body));
+      const status = await service.getTelegramConnectorStatus(
+        parseConnectorSideFromRequest(url, body),
+      );
+      json(res, {
+        provider: "telegram",
+        side: status.side,
+        state: status.connected ? "connected" : "error",
+        error: status.connected
+          ? undefined
+          : "Telegram setup is managed by @elizaos/plugin-telegram. Legacy LifeOps code/password submission is disabled.",
+        status,
+      });
     });
   }
 
@@ -2066,12 +2087,7 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       const side =
         parseConnectorSideQuery(url.searchParams.get("side")) ?? "owner";
-      const pending = await service.getTelegramConnectorStatus(side);
-      if (pending.authState !== "idle" && pending.authState !== "connected") {
-        json(res, await service.disconnectTelegram(side));
-      } else {
-        json(res, pending);
-      }
+      json(res, await service.getTelegramConnectorStatus(side));
     });
   }
 
@@ -2142,11 +2158,19 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<StartLifeOpsSignalPairingRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      const side = parseConnectorSideFromRequest(url, body);
+      const status = await service.getSignalConnectorStatus(side);
       json(
         res,
-        await service.startSignalPairing(
-          parseConnectorSideFromRequest(url, body),
-        ),
+        {
+          provider: "signal",
+          side: status.side,
+          sessionId: `plugin-managed:${status.side}`,
+          status,
+          message: status.connected
+            ? "Signal is connected through @elizaos/plugin-signal."
+            : "Signal pairing is managed by @elizaos/plugin-signal. Configure the Signal connector plugin, then check status again.",
+        },
         201,
       );
     });
@@ -2161,6 +2185,21 @@ export async function handleLifeOpsRoutes(
       if (!sessionId) {
         throw new LifeOpsServiceError(400, "sessionId is required");
       }
+      if (sessionId.startsWith("plugin-managed:")) {
+        const sideValue = sessionId.slice("plugin-managed:".length);
+        const side = parseConnectorSideQuery(sideValue) ?? "owner";
+        const status = await service.getSignalConnectorStatus(side);
+        json(res, {
+          sessionId,
+          state: status.connected ? "connected" : "failed",
+          qrDataUrl: null,
+          error: status.connected
+            ? null
+            : "Signal pairing is managed by @elizaos/plugin-signal.",
+          status,
+        });
+        return;
+      }
       json(res, await service.getSignalPairingStatus(sessionId));
     });
   }
@@ -2172,13 +2211,14 @@ export async function handleLifeOpsRoutes(
       res,
     );
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.stopSignalPairing(
-          parseConnectorSideFromRequest(url, body),
-        ),
-      );
+    return runRoute(ctx, async () => {
+      const side = parseConnectorSideFromRequest(url, body);
+      json(res, {
+        sessionId: `plugin-managed:${side}`,
+        state: "idle",
+        qrDataUrl: null,
+        error: null,
+      });
     });
   }
 

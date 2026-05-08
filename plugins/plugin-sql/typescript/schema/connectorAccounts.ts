@@ -28,6 +28,8 @@ export const connectorAccountsTable = pgTable(
     displayName: text("display_name"),
     username: text("username"),
     email: text("email"),
+    ownerBindingId: text("owner_binding_id"),
+    ownerIdentityId: text("owner_identity_id"),
     role: text("role").notNull().default("OWNER"),
     purpose: jsonb("purpose").$type<string[]>().default(sql`'["messaging"]'::jsonb`).notNull(),
     accessGate: text("access_gate").notNull().default("open"),

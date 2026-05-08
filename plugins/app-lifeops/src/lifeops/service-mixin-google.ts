@@ -6,6 +6,13 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
+import {
+  getConnectorAccountManager,
+  type ConnectorAccount,
+  type ConnectorAccountManager,
+  type ConnectorAccountProvider,
+  type Metadata,
+} from "@elizaos/core";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorGrant,
@@ -41,6 +48,10 @@ import {
   resolveGoogleOAuthConfig,
   startGoogleConnectorOAuth,
 } from "./google-oauth.js";
+import {
+  googleCapabilitiesToScopes,
+  googleScopesToCapabilities,
+} from "./google-scopes.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import type {
   Constructor,
@@ -124,6 +135,214 @@ function requestIncludesGmailCapabilities(
   );
 }
 
+interface GenericGoogleConnectorAccountAccess {
+  manager: ConnectorAccountManager;
+  provider: ConnectorAccountProvider;
+}
+
+const GENERIC_GOOGLE_GRANT_ID_PREFIX = "connector-account:";
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function metadataString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function metadataBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+function metadataStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean)
+    : [];
+}
+
+function metadataIsoString(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed)
+      ? new Date(parsed).toISOString()
+      : value.trim();
+  }
+  return null;
+}
+
+function readRuntimeSetting(runtime: unknown, key: string): string | null {
+  const value = (runtime as { getSetting?: (name: string) => unknown })
+    ?.getSetting?.(key);
+  return metadataString(value);
+}
+
+function isGenericGoogleOAuthConfigured(runtime: unknown): boolean {
+  return Boolean(
+    readRuntimeSetting(runtime, "GOOGLE_CLIENT_ID") ??
+      process.env.GOOGLE_CLIENT_ID,
+  ) && Boolean(
+    readRuntimeSetting(runtime, "GOOGLE_CLIENT_SECRET") ??
+      process.env.GOOGLE_CLIENT_SECRET,
+  ) && Boolean(
+    readRuntimeSetting(runtime, "GOOGLE_REDIRECT_URI") ??
+      process.env.GOOGLE_REDIRECT_URI,
+  );
+}
+
+function normalizeGenericGoogleAvailableModes(
+  modeAvailability: {
+    defaultMode: LifeOpsConnectorMode;
+    availableModes: LifeOpsConnectorMode[];
+  },
+  genericAvailable: boolean,
+): { defaultMode: LifeOpsConnectorMode; availableModes: LifeOpsConnectorMode[] } {
+  if (
+    !genericAvailable ||
+    modeAvailability.availableModes.includes("local")
+  ) {
+    return modeAvailability;
+  }
+  return {
+    ...modeAvailability,
+    availableModes: ["local", ...modeAvailability.availableModes],
+  };
+}
+
+function genericGrantId(accountId: string): string {
+  return `${GENERIC_GOOGLE_GRANT_ID_PREFIX}${accountId}`;
+}
+
+function genericAccountIdFromGrantId(
+  grantId: string | undefined,
+): string | null {
+  const normalized = metadataString(grantId);
+  if (!normalized) return null;
+  return normalized.startsWith(GENERIC_GOOGLE_GRANT_ID_PREFIX)
+    ? normalized.slice(GENERIC_GOOGLE_GRANT_ID_PREFIX.length)
+    : normalized;
+}
+
+function genericGoogleSide(account: ConnectorAccount): LifeOpsConnectorSide {
+  return account.role === "AGENT" ? "agent" : "owner";
+}
+
+function mapGenericGoogleCapability(value: string): string | null {
+  switch (value) {
+    case "google.basic_identity":
+      return "google.basic_identity";
+    case "google.calendar.read":
+    case "calendar.read":
+      return "google.calendar.read";
+    case "google.calendar.write":
+    case "calendar.write":
+      return "google.calendar.write";
+    case "google.gmail.triage":
+    case "gmail.read":
+      return "google.gmail.triage";
+    case "google.gmail.send":
+    case "gmail.send":
+      return "google.gmail.send";
+    case "google.gmail.manage":
+    case "gmail.manage":
+      return "google.gmail.manage";
+    default:
+      return null;
+  }
+}
+
+function normalizeGenericGoogleCapabilities(
+  account: ConnectorAccount,
+): string[] {
+  const metadata = metadataRecord(account.metadata);
+  const direct = [
+    ...metadataStringArray(metadata.grantedCapabilities),
+    ...metadataStringArray(metadata.capabilities),
+  ];
+  const scopes = metadataStringArray(metadata.grantedScopes);
+  const fromScopes = googleScopesToCapabilities(scopes);
+  const capabilities = new Set<string>(["google.basic_identity"]);
+  for (const capability of [...direct, ...fromScopes]) {
+    const mapped = mapGenericGoogleCapability(capability);
+    if (mapped) {
+      capabilities.add(mapped);
+    }
+  }
+  if (capabilities.has("google.calendar.write")) {
+    capabilities.add("google.calendar.read");
+  }
+  return normalizeGrantCapabilities([...capabilities]);
+}
+
+function genericGoogleGrantedScopes(
+  account: ConnectorAccount,
+  capabilities: readonly string[],
+): string[] {
+  const metadata = metadataRecord(account.metadata);
+  const scopes = metadataStringArray(metadata.grantedScopes);
+  return scopes.length > 0
+    ? scopes
+    : googleCapabilitiesToScopes(capabilities as never);
+}
+
+function genericGoogleIdentity(
+  account: ConnectorAccount,
+): Record<string, unknown> | null {
+  const metadata = metadataRecord(account.metadata);
+  const identity: Record<string, unknown> = {
+    ...(metadataString(account.externalId) ? { sub: account.externalId } : {}),
+    ...(metadataString(account.displayHandle)
+      ? { email: account.displayHandle }
+      : {}),
+    ...metadataRecord(metadata.identity),
+  };
+  for (const key of ["email", "name", "picture", "locale"]) {
+    const value = metadataString(metadata[key]);
+    if (value) identity[key] = value;
+  }
+  return Object.keys(identity).length > 0 ? identity : null;
+}
+
+function genericGoogleGrantFromAccount(
+  account: ConnectorAccount,
+): LifeOpsConnectorGrant {
+  const metadata = metadataRecord(account.metadata);
+  const capabilities = normalizeGenericGoogleCapabilities(account);
+  const nowIso = new Date(account.updatedAt ?? Date.now()).toISOString();
+  return {
+    id: genericGrantId(account.id),
+    agentId: "",
+    provider: "google",
+    side: genericGoogleSide(account),
+    mode: "local",
+    identity: genericGoogleIdentity(account) ?? {},
+    grantedScopes: genericGoogleGrantedScopes(account, capabilities),
+    capabilities,
+    tokenRef: null,
+    connectorAccountId: account.id,
+    cloudConnectionId: null,
+    executionTarget: "local",
+    sourceOfTruth: "local_storage",
+    preferredByAgent: metadataBoolean(metadata.isDefault),
+    metadata: {
+      ...metadata,
+      connectorAccountId: account.id,
+      connectorAccountProvider: "google",
+    },
+    lastRefreshAt: metadataIsoString(metadata.expiresAt) ?? nowIso,
+    createdAt: new Date(account.createdAt ?? Date.now()).toISOString(),
+    updatedAt: nowIso,
+  } as LifeOpsConnectorGrant;
+}
+
 // ---------------------------------------------------------------------------
 // Google mixin
 // ---------------------------------------------------------------------------
@@ -133,6 +352,146 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGoogleService> {
   return class extends Base {
+    private getGenericGoogleConnectorAccountAccess():
+      | GenericGoogleConnectorAccountAccess
+      | null {
+      try {
+        const manager = getConnectorAccountManager(this.runtime);
+        const provider = manager.getProvider?.("google");
+        return provider ? { manager, provider } : null;
+      } catch (error) {
+        this.logLifeOpsWarn?.(
+          "google_connector_account_manager",
+          error instanceof Error ? error.message : String(error),
+          { provider: "google" },
+        );
+        return null;
+      }
+    }
+
+    private async listGenericGoogleConnectorAccounts(
+      requestedSide?: LifeOpsConnectorSide,
+    ): Promise<ConnectorAccount[]> {
+      const access = this.getGenericGoogleConnectorAccountAccess();
+      if (!access) return [];
+      const accounts = await access.manager.listAccounts("google");
+      return accounts.filter((account) => {
+        if (requestedSide && genericGoogleSide(account) !== requestedSide) {
+          return false;
+        }
+        return account.status !== "disabled" && account.status !== "revoked";
+      });
+    }
+
+    private genericGoogleStatusFromAccount(
+      account: ConnectorAccount,
+      modeAvailability: {
+        defaultMode: LifeOpsConnectorMode;
+        availableModes: LifeOpsConnectorMode[];
+      },
+    ): LifeOpsGoogleConnectorStatus {
+      const grant = {
+        ...genericGoogleGrantFromAccount(account),
+        agentId: this.agentId(),
+      };
+      const metadata = metadataRecord(account.metadata);
+      const connected = account.status === "connected";
+      const reason =
+        account.status === "error" || account.status === "revoked"
+          ? "needs_reauth"
+          : connected
+            ? "connected"
+            : "disconnected";
+      return {
+        provider: "google",
+        side: grant.side,
+        mode: "local",
+        defaultMode: modeAvailability.defaultMode,
+        availableModes: modeAvailability.availableModes,
+        executionTarget: "local",
+        sourceOfTruth: "local_storage",
+        configured: true,
+        connected,
+        reason,
+        preferredByAgent: grant.preferredByAgent,
+        cloudConnectionId: null,
+        identity: genericGoogleIdentity(account),
+        grantedCapabilities: normalizeGrantCapabilities(grant.capabilities),
+        grantedScopes: [...grant.grantedScopes],
+        expiresAt: metadataIsoString(metadata.expiresAt),
+        hasRefreshToken: metadataBoolean(metadata.hasRefreshToken),
+        grant,
+      };
+    }
+
+    private genericGoogleDisconnectedStatus(
+      side: LifeOpsConnectorSide,
+      modeAvailability: {
+        defaultMode: LifeOpsConnectorMode;
+        availableModes: LifeOpsConnectorMode[];
+      },
+    ): LifeOpsGoogleConnectorStatus {
+      const configured = isGenericGoogleOAuthConfigured(this.runtime);
+      return {
+        provider: "google",
+        side,
+        mode: "local",
+        defaultMode: modeAvailability.defaultMode,
+        availableModes: modeAvailability.availableModes,
+        executionTarget: "local",
+        sourceOfTruth: "local_storage",
+        configured,
+        connected: false,
+        reason: configured ? "disconnected" : "config_missing",
+        preferredByAgent: false,
+        cloudConnectionId: null,
+        identity: null,
+        grantedCapabilities: [],
+        grantedScopes: [],
+        expiresAt: null,
+        hasRefreshToken: false,
+        grant: null,
+      };
+    }
+
+    private async getGenericGoogleConnectorStatus(
+      requestUrl: URL,
+      requestedSide: LifeOpsConnectorSide,
+      grantId: string | undefined,
+      modeAvailability: {
+        defaultMode: LifeOpsConnectorMode;
+        availableModes: LifeOpsConnectorMode[];
+      },
+    ): Promise<LifeOpsGoogleConnectorStatus> {
+      const accountId = genericAccountIdFromGrantId(grantId);
+      const accounts = await this.listGenericGoogleConnectorAccounts(
+        requestedSide,
+      );
+      const account = accountId
+        ? accounts.find(
+            (candidate) =>
+              candidate.id === accountId ||
+              candidate.externalId === accountId ||
+              candidate.displayHandle === accountId,
+          )
+        : accounts.find(
+            (candidate) =>
+              metadataRecord(candidate.metadata).isDefault === true &&
+              candidate.status === "connected",
+          ) ??
+          accounts.find((candidate) => candidate.status === "connected") ??
+          accounts[0];
+      return account
+        ? this.genericGoogleStatusFromAccount(
+            account,
+            modeAvailability,
+          )
+        : this.genericGoogleDisconnectedStatus(
+            requestedSide,
+            modeAvailability,
+          );
+    }
+
     // -----------------------------------------------------------------
     // Internal Google grant operations
     // -----------------------------------------------------------------
@@ -633,11 +992,15 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((candidate) => candidate.provider === "google");
       const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
-      const modeAvailability = resolveGoogleAvailableModes({
-        requestUrl,
-        cloudConfigured: cloudConfig.configured,
-        grants,
-      });
+      const genericGoogleAccess = this.getGenericGoogleConnectorAccountAccess();
+      const modeAvailability = normalizeGenericGoogleAvailableModes(
+        resolveGoogleAvailableModes({
+          requestUrl,
+          cloudConfigured: cloudConfig.configured,
+          grants,
+        }),
+        Boolean(genericGoogleAccess),
+      );
       const resolvedGrant = resolvePreferredGoogleGrant({
         grants,
         requestedMode: explicitMode,
@@ -648,6 +1011,21 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const mode =
         explicitMode ?? resolvedGrant?.mode ?? modeAvailability.defaultMode;
       const side = explicitSide ?? resolvedGrant?.side ?? "owner";
+
+      if (genericGoogleAccess && mode !== "cloud_managed") {
+        const genericGrantRequested =
+          typeof grantId === "string" &&
+          grantId.startsWith(GENERIC_GOOGLE_GRANT_ID_PREFIX);
+        const genericStatus = await this.getGenericGoogleConnectorStatus(
+          requestUrl,
+          side,
+          grantId,
+          modeAvailability,
+        );
+        if (genericStatus.connected || genericGrantRequested || !resolvedGrant) {
+          return genericStatus;
+        }
+      }
 
       if (mode === "cloud_managed") {
         if (!cloudConfig.configured && !resolvedGrant) {
@@ -903,12 +1281,34 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsGoogleConnectorStatus[]> {
       const side = normalizeOptionalConnectorSide(requestedSide, "side");
       const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
-      const modeAvailability = resolveGoogleAvailableModes({
-        requestUrl,
-        cloudConfigured: cloudConfig.configured,
-      });
+      const genericGoogleAccess = this.getGenericGoogleConnectorAccountAccess();
+      const modeAvailability = normalizeGenericGoogleAvailableModes(
+        resolveGoogleAvailableModes({
+          requestUrl,
+          cloudConfigured: cloudConfig.configured,
+        }),
+        Boolean(genericGoogleAccess),
+      );
       const results: LifeOpsGoogleConnectorStatus[] = [];
       const seenGrantIds = new Set<string>();
+      const seenConnectorAccountIds = new Set<string>();
+
+      if (genericGoogleAccess) {
+        const accounts = await this.listGenericGoogleConnectorAccounts(side);
+        for (const account of accounts) {
+          const status = this.genericGoogleStatusFromAccount(
+            account,
+            modeAvailability,
+          );
+          if (status.grant) {
+            seenGrantIds.add(status.grant.id);
+            if (status.grant.connectorAccountId) {
+              seenConnectorAccountIds.add(status.grant.connectorAccountId);
+            }
+          }
+          results.push(status);
+        }
+      }
 
       if (cloudConfig.configured) {
         try {
@@ -962,7 +1362,14 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const grants = resolveGoogleGrants({
         grants: allGrants,
         requestedSide: side,
-      }).filter((grant) => !seenGrantIds.has(grant.id));
+      }).filter(
+        (grant) =>
+          !seenGrantIds.has(grant.id) &&
+          !(
+            grant.connectorAccountId &&
+            seenConnectorAccountIds.has(grant.connectorAccountId)
+          ),
+      );
       for (const grant of grants) {
         const status = await this.getGoogleConnectorStatus(
           requestUrl,
@@ -995,12 +1402,15 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const grants = (
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
-      const modeAvailability = resolveGoogleAvailableModes({
-        requestUrl,
-        cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
-          .configured,
-        grants,
-      });
+      const modeAvailability = normalizeGenericGoogleAvailableModes(
+        resolveGoogleAvailableModes({
+          requestUrl,
+          cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
+            .configured,
+          grants,
+        }),
+        Boolean(this.getGenericGoogleConnectorAccountAccess()),
+      );
       if (!modeAvailability.availableModes.includes(preferredMode)) {
         fail(
           400,
@@ -1078,10 +1488,14 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
       const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
-      const modeAvailability = resolveGoogleAvailableModes({
-        requestUrl,
-        cloudConfigured: cloudConfig.configured,
-      });
+      const genericGoogleAccess = this.getGenericGoogleConnectorAccountAccess();
+      const modeAvailability = normalizeGenericGoogleAvailableModes(
+        resolveGoogleAvailableModes({
+          requestUrl,
+          cloudConfigured: cloudConfig.configured,
+        }),
+        Boolean(genericGoogleAccess),
+      );
       const mode = requestedMode ?? modeAvailability.defaultMode;
       if (mode === "cloud_managed") {
         try {
@@ -1104,6 +1518,60 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           }
           this.logLifeOpsError("google_connector_start", error, { mode });
           throw error;
+        }
+      }
+
+      const isGenericGrantRequest =
+        typeof request.grantId === "string" &&
+        request.grantId.startsWith(GENERIC_GOOGLE_GRANT_ID_PREFIX);
+      if (
+        genericGoogleAccess?.provider.startOAuth &&
+        (!request.grantId || isGenericGrantRequest)
+      ) {
+        const accountId = isGenericGrantRequest
+          ? genericAccountIdFromGrantId(request.grantId)
+          : undefined;
+        const redirectUri = new URL(
+          "/api/connectors/google/oauth/callback",
+          requestUrl.origin,
+        ).toString();
+        try {
+          const flow = await genericGoogleAccess.manager.startOAuth("google", {
+            redirectUri,
+            accountId: accountId ?? undefined,
+            scopes: googleCapabilitiesToScopes(requestedCapabilities as never),
+            metadata: {
+              lifeops: true,
+              side: requestedSide,
+              mode,
+              requestedCapabilities,
+              redirectUrl:
+                typeof request.redirectUrl === "string" &&
+                request.redirectUrl.trim().length > 0
+                  ? request.redirectUrl.trim()
+                  : undefined,
+            } as Metadata,
+          });
+          return {
+            provider: "google",
+            side: requestedSide,
+            mode,
+            requestedCapabilities,
+            redirectUri: flow.redirectUri ?? redirectUri,
+            authUrl: flow.authUrl ?? "",
+          };
+        } catch (error) {
+          this.logLifeOpsWarn("google_connector_start", String(error), {
+            provider: "google",
+            mode,
+            sourceOfTruth: "connector_account",
+          });
+          fail(
+            400,
+            error instanceof Error
+              ? error.message
+              : "Failed to start Google connector OAuth.",
+          );
         }
       }
 
@@ -1153,6 +1621,52 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     async completeGoogleConnectorCallback(
       callbackUrl: URL,
     ): Promise<LifeOpsGoogleConnectorStatus> {
+      const genericGoogleAccess = this.getGenericGoogleConnectorAccountAccess();
+      const genericState = callbackUrl.searchParams.get("state") ?? undefined;
+      if (genericGoogleAccess?.provider.completeOAuth && genericState) {
+        const flow = await genericGoogleAccess.manager.getOAuthFlow(
+          "google",
+          genericState,
+        );
+        if (flow) {
+          try {
+            const completed = await genericGoogleAccess.manager.completeOAuth(
+              "google",
+              {
+                state: genericState,
+                code: callbackUrl.searchParams.get("code") ?? undefined,
+                error: callbackUrl.searchParams.get("error") ?? undefined,
+                errorDescription:
+                  callbackUrl.searchParams.get("error_description") ??
+                  undefined,
+                query: Object.fromEntries(callbackUrl.searchParams.entries()),
+              },
+            );
+            const accountId =
+              completed.account?.id ?? completed.flow.accountId ?? undefined;
+            const side =
+              completed.account ? genericGoogleSide(completed.account) : "owner";
+            return this.getGoogleConnectorStatus(
+              callbackUrl,
+              "local",
+              side,
+              accountId ? genericGrantId(accountId) : undefined,
+            );
+          } catch (error) {
+            this.logLifeOpsWarn("google_connector_callback", String(error), {
+              provider: "google",
+              sourceOfTruth: "connector_account",
+            });
+            fail(
+              400,
+              error instanceof Error
+                ? error.message
+                : "Failed to complete Google connector OAuth.",
+            );
+          }
+        }
+      }
+
       let result: GoogleConnectorCallbackResult;
       try {
         result = await completeGoogleConnectorOAuth({
@@ -1281,12 +1795,15 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const grants = (
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
-      const modeAvailability = resolveGoogleAvailableModes({
-        requestUrl,
-        cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
-          .configured,
-        grants,
-      });
+      const modeAvailability = normalizeGenericGoogleAvailableModes(
+        resolveGoogleAvailableModes({
+          requestUrl,
+          cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
+            .configured,
+          grants,
+        }),
+        Boolean(this.getGenericGoogleConnectorAccountAccess()),
+      );
       const preferredGrant = resolvePreferredGoogleGrant({
         grants,
         requestedMode,
@@ -1307,6 +1824,54 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           );
 
       if (!grant) {
+        const genericGoogleAccess = this.getGenericGoogleConnectorAccountAccess();
+        if (genericGoogleAccess) {
+          const accountId = requestedGrantId
+            ? genericAccountIdFromGrantId(requestedGrantId)
+            : null;
+          const accounts = await this.listGenericGoogleConnectorAccounts(
+            fallbackSide,
+          );
+          const account = accountId
+            ? accounts.find(
+                (candidate) =>
+                  candidate.id === accountId ||
+                  candidate.externalId === accountId ||
+                  candidate.displayHandle === accountId,
+              )
+            : accounts.find((candidate) => candidate.status === "connected") ??
+              accounts[0];
+          if (account) {
+            await genericGoogleAccess.manager.deleteAccount(
+              "google",
+              account.id,
+            );
+            const syntheticGrant = {
+              ...genericGoogleGrantFromAccount(account),
+              agentId: this.agentId(),
+            };
+            await this.clearGoogleGrantData(syntheticGrant);
+            await this.clearGoogleConnectorData(fallbackSide);
+            await this.recordConnectorAudit(
+              "google:local",
+              "google connector disconnected",
+              {
+                side: fallbackSide,
+                mode: "local",
+                connectorAccountId: account.id,
+              },
+              {
+                disconnected: true,
+                sourceOfTruth: "connector_account",
+              },
+            );
+            return this.getGoogleConnectorStatus(
+              requestUrl,
+              "local",
+              fallbackSide,
+            );
+          }
+        }
         if (requestedGrantId) {
           fail(404, "Google connector grant not found.");
         }

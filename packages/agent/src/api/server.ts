@@ -193,6 +193,7 @@ import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
+import { isConnectorOAuthCallbackEndpoint } from "./connector-oauth-callback-auth.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
@@ -1067,6 +1068,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1095,6 +1097,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isTrustedLocalRequest = _isTrustedLocalRequest;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1223,6 +1226,10 @@ async function handleRequest(
           }
         : undefined,
     });
+  const isConnectorOAuthCallbackRoute = isConnectorOAuthCallbackEndpoint(
+    method,
+    pathname,
+  );
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -1345,6 +1352,7 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
+    !isConnectorOAuthCallbackRoute &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -2028,6 +2036,7 @@ async function handleRequest(
       json,
       error,
       readJsonBody,
+      authorize: () => isTrustedLocalRequest(req) || isCloudProvisioned,
     })
   ) {
     return;

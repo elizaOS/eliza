@@ -60,7 +60,10 @@ interface PersistConnectorCredentialRefsParams {
 
 type VaultWriter = {
   name: string;
-  write: (vaultRef: string, credential: ConnectorCredentialInput) => Promise<string>;
+  write: (
+    vaultRef: string,
+    credential: ConnectorCredentialInput,
+  ) => Promise<string>;
 };
 
 type CredentialRefWriter = {
@@ -69,7 +72,7 @@ type CredentialRefWriter = {
 };
 
 export async function persistConnectorCredentialRefs(
-  params: PersistConnectorCredentialRefsParams
+  params: PersistConnectorCredentialRefsParams,
 ): Promise<ConnectorCredentialPersistResult> {
   const refs: ConnectorCredentialRefMetadata[] = [];
   const vaultWriters = resolveVaultWriters(params.runtime, {
@@ -77,6 +80,26 @@ export async function persistConnectorCredentialRefs(
     accountId: params.accountIdForRef,
     caller: params.caller,
   });
+  if (vaultWriters.length === 0) {
+    throw new Error(
+      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. Refusing to mark OAuth account connected without persisted credentials.`,
+    );
+  }
+  if (!params.storageAccountId) {
+    throw new Error(
+      `No durable connector account id is available for ${params.provider} account ${params.accountIdForRef}. Refusing to mark OAuth account connected without persisted credential refs.`,
+    );
+  }
+  const storageWriters = resolveCredentialRefWriters(
+    params.runtime,
+    params.manager,
+    params.storageAccountId,
+  );
+  if (storageWriters.length === 0) {
+    throw new Error(
+      `No durable connector credential ref writer is available for ${params.provider} account ${params.storageAccountId}. Refusing to mark OAuth account connected without persisted credential refs.`,
+    );
+  }
 
   for (const credential of params.credentials) {
     const plannedRef = buildConnectorCredentialVaultRef({
@@ -85,25 +108,22 @@ export async function persistConnectorCredentialRefs(
       accountId: params.accountIdForRef,
       credentialType: credential.credentialType,
     });
-    // TODO(connector-vault): once every host exposes a durable connector
-    // credential store, fail OAuth instead of returning metadata-only refs.
-    const vaultRef =
-      vaultWriters.length > 0
-        ? await writeWithFirstAvailableVault(vaultWriters, plannedRef, credential)
-        : plannedRef;
+    const vaultRef = await writeWithFirstAvailableVault(
+      vaultWriters,
+      plannedRef,
+      credential,
+    );
     refs.push({
       credentialType: credential.credentialType,
       vaultRef,
-      ...(credential.expiresAt !== undefined ? { expiresAt: credential.expiresAt } : {}),
+      ...(credential.expiresAt !== undefined
+        ? { expiresAt: credential.expiresAt }
+        : {}),
       ...(credential.metadata ? { metadata: credential.metadata } : {}),
     });
   }
 
-  const storageWriters =
-    params.storageAccountId && refs.length > 0
-      ? resolveCredentialRefWriters(params.runtime, params.manager, params.storageAccountId)
-      : [];
-  if (storageWriters.length > 0) {
+  if (refs.length > 0) {
     await writeRefsToStorage(storageWriters, refs);
   }
 
@@ -122,13 +142,17 @@ export async function loadConnectorOAuthTokenSet(params: {
 }): Promise<JsonRecord | null> {
   const { records } = await loadConnectorCredentialRecords(params);
   const tokenRecord = records.find((record) =>
-    sameCredentialType(record.credentialType, OAUTH_TOKENS_CREDENTIAL_TYPE)
+    sameCredentialType(record.credentialType, OAUTH_TOKENS_CREDENTIAL_TYPE),
   );
   if (!tokenRecord) return null;
   const raw =
     nonEmptyString(tokenRecord.value) ??
     (tokenRecord.vaultRef
-      ? await readCredentialSecret(params.runtime, tokenRecord.vaultRef, params.caller)
+      ? await readCredentialSecret(
+          params.runtime,
+          tokenRecord.vaultRef,
+          params.caller,
+        )
       : undefined);
   const parsed = raw ? parseMaybeJson(raw) : undefined;
   return asRecord(parsed) ?? null;
@@ -145,27 +169,40 @@ export async function saveConnectorOAuthTokenSet(params: {
   const { account, records } = await loadConnectorCredentialRecords(params);
   if (!account) return false;
   const tokenRecord = records.find((record) =>
-    sameCredentialType(record.credentialType, OAUTH_TOKENS_CREDENTIAL_TYPE)
+    sameCredentialType(record.credentialType, OAUTH_TOKENS_CREDENTIAL_TYPE),
   );
   if (!tokenRecord?.vaultRef) return false;
 
-  await writeExistingVaultRef(params.runtime, tokenRecord.vaultRef, {
-    credentialType: OAUTH_TOKENS_CREDENTIAL_TYPE,
-    value: params.value,
-    ...(params.expiresAt !== undefined ? { expiresAt: params.expiresAt } : {}),
-  }, {
-    provider: params.provider,
-    accountId: account.id,
-    caller: params.caller,
-  });
+  await writeExistingVaultRef(
+    params.runtime,
+    tokenRecord.vaultRef,
+    {
+      credentialType: OAUTH_TOKENS_CREDENTIAL_TYPE,
+      value: params.value,
+      ...(params.expiresAt !== undefined
+        ? { expiresAt: params.expiresAt }
+        : {}),
+    },
+    {
+      provider: params.provider,
+      accountId: account.id,
+      caller: params.caller,
+    },
+  );
 
-  const storageWriters = resolveCredentialRefWriters(params.runtime, undefined, account.id);
+  const storageWriters = resolveCredentialRefWriters(
+    params.runtime,
+    undefined,
+    account.id,
+  );
   if (storageWriters.length > 0) {
     await writeRefsToStorage(storageWriters, [
       {
         credentialType: OAUTH_TOKENS_CREDENTIAL_TYPE,
         vaultRef: tokenRecord.vaultRef,
-        ...(params.expiresAt !== undefined ? { expiresAt: params.expiresAt } : {}),
+        ...(params.expiresAt !== undefined
+          ? { expiresAt: params.expiresAt }
+          : {}),
       },
     ]);
   }
@@ -175,7 +212,7 @@ export async function saveConnectorOAuthTokenSet(params: {
 export async function getConnectorAccount(
   runtime: IAgentRuntime,
   provider: string,
-  accountId: string
+  accountId: string,
 ): Promise<ConnectorAccount | null> {
   try {
     const manager = getConnectorAccountManager(runtime);
@@ -185,11 +222,15 @@ export async function getConnectorAccount(
     // Fall back to any directly registered storage service below.
   }
 
-  const storage = getService(runtime, CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE) as
-    | {
-        getAccount?: (provider: string, accountId: string) => Promise<ConnectorAccount | null>;
-      }
-    | null;
+  const storage = getService(
+    runtime,
+    CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  ) as {
+    getAccount?: (
+      provider: string,
+      accountId: string,
+    ) => Promise<ConnectorAccount | null>;
+  } | null;
   if (typeof storage?.getAccount === "function") {
     return storage.getAccount(provider, accountId);
   }
@@ -197,7 +238,7 @@ export async function getConnectorAccount(
 }
 
 export function credentialRefRecordsFromMetadata(
-  metadata: unknown
+  metadata: unknown,
 ): ConnectorCredentialRefRecordLike[] {
   const record = asRecord(metadata);
   if (!record) return [];
@@ -217,7 +258,11 @@ async function loadConnectorCredentialRecords(params: {
   account: ConnectorAccount | null;
   records: ConnectorCredentialRefRecordLike[];
 }> {
-  const account = await getConnectorAccount(params.runtime, params.provider, params.accountId);
+  const account = await getConnectorAccount(
+    params.runtime,
+    params.provider,
+    params.accountId,
+  );
   if (!account) return { account: null, records: [] };
   const records = [...credentialRefRecordsFromMetadata(account.metadata)];
 
@@ -238,7 +283,11 @@ async function loadConnectorCredentialRecords(params: {
       | null
       | undefined;
     if (typeof reader?.listConnectorAccountCredentialRefs === "function") {
-      records.push(...(await reader.listConnectorAccountCredentialRefs({ accountId: account.id })));
+      records.push(
+        ...(await reader.listConnectorAccountCredentialRefs({
+          accountId: account.id,
+        })),
+      );
     } else if (typeof reader?.getConnectorAccountCredentialRef === "function") {
       const ref = await reader.getConnectorAccountCredentialRef({
         accountId: account.id,
@@ -251,7 +300,9 @@ async function loadConnectorCredentialRecords(params: {
   return { account, records };
 }
 
-function credentialRefsFromUnknown(value: unknown): ConnectorCredentialRefRecordLike[] {
+function credentialRefsFromUnknown(
+  value: unknown,
+): ConnectorCredentialRefRecordLike[] {
   if (Array.isArray(value)) {
     return value.flatMap((entry) => {
       const ref = credentialRefFromRecord(asRecord(entry));
@@ -273,11 +324,11 @@ function credentialRefsFromUnknown(value: unknown): ConnectorCredentialRefRecord
 }
 
 function credentialRefFromRecord(
-  record: JsonRecord | undefined
+  record: JsonRecord | undefined,
 ): ConnectorCredentialRefRecordLike | null {
   if (!record) return null;
   const credentialType = nonEmptyString(
-    record.credentialType ?? record.type ?? record.name
+    record.credentialType ?? record.type ?? record.name,
   );
   const vaultRef = nonEmptyString(record.vaultRef ?? record.ref);
   if (!credentialType || !vaultRef) return null;
@@ -285,17 +336,19 @@ function credentialRefFromRecord(
     credentialType,
     vaultRef,
     metadata: asRecord(record.metadata) ?? null,
-    expiresAt: record.expiresAt as ConnectorCredentialRefRecordLike["expiresAt"],
-    updatedAt: record.updatedAt as ConnectorCredentialRefRecordLike["updatedAt"],
-    version: (record.version ?? record.credentialVersion) as
-      | ConnectorCredentialRefRecordLike["version"],
+    expiresAt:
+      record.expiresAt as ConnectorCredentialRefRecordLike["expiresAt"],
+    updatedAt:
+      record.updatedAt as ConnectorCredentialRefRecordLike["updatedAt"],
+    version: (record.version ??
+      record.credentialVersion) as ConnectorCredentialRefRecordLike["version"],
   };
 }
 
 async function readCredentialSecret(
   runtime: IAgentRuntime,
   vaultRef: string,
-  caller: string
+  caller: string,
 ): Promise<string | undefined> {
   for (const reader of resolveSecretReaders(runtime)) {
     try {
@@ -313,18 +366,20 @@ async function writeExistingVaultRef(
   runtime: IAgentRuntime,
   vaultRef: string,
   credential: ConnectorCredentialInput,
-  context: { provider: string; accountId: string; caller: string }
+  context: { provider: string; accountId: string; caller: string },
 ): Promise<void> {
   const writers = resolveVaultWriters(runtime, context);
   if (writers.length === 0) {
-    throw new Error(`No vault writer available for connector credential ${vaultRef}`);
+    throw new Error(
+      `No vault writer available for connector credential ${vaultRef}`,
+    );
   }
   await writeWithFirstAvailableVault(writers, vaultRef, credential);
 }
 
 function resolveVaultWriters(
   runtime: IAgentRuntime,
-  context: { provider: string; accountId: string; caller: string }
+  context: { provider: string; accountId: string; caller: string },
 ): VaultWriter[] {
   const writers: VaultWriter[] = [];
   const credentialStore = getFirstService(runtime, [
@@ -332,19 +387,17 @@ function resolveVaultWriters(
     "CONNECTOR_CREDENTIAL_STORE",
     "connectorCredentialStore",
     "credential_store",
-  ]) as
-    | {
-        putSecret?: (params: {
-          vaultRef?: string;
-          agentId: string;
-          provider: string;
-          accountId: string;
-          credentialType: string;
-          value: string;
-          caller?: string;
-        }) => Promise<string> | string;
-      }
-    | null;
+  ]) as {
+    putSecret?: (params: {
+      vaultRef?: string;
+      agentId: string;
+      provider: string;
+      accountId: string;
+      credentialType: string;
+      value: string;
+      caller?: string;
+    }) => Promise<string> | string;
+  } | null;
   if (typeof credentialStore?.putSecret === "function") {
     writers.push({
       name: "connector_credential_store",
@@ -361,17 +414,15 @@ function resolveVaultWriters(
     });
   }
 
-  const vault = getFirstService(runtime, ["vault", "VAULT"]) as
-    | {
-        set?: (
-          key: string,
-          value: string,
-          options?: { sensitive?: boolean; caller?: string }
-        ) => Promise<void> | void;
-        get?: (key: string) => Promise<string> | string;
-        reveal?: (key: string, caller?: string) => Promise<string> | string;
-      }
-    | null;
+  const vault = getFirstService(runtime, ["vault", "VAULT"]) as {
+    set?: (
+      key: string,
+      value: string,
+      options?: { sensitive?: boolean; caller?: string },
+    ) => Promise<void> | void;
+    get?: (key: string) => Promise<string> | string;
+    reveal?: (key: string, caller?: string) => Promise<string> | string;
+  } | null;
   if (typeof vault?.set === "function") {
     writers.push({
       name: "vault",
@@ -385,34 +436,37 @@ function resolveVaultWriters(
     });
   }
 
-  const secrets = getService(runtime, "SECRETS") as
-    | {
-        setGlobal?: (
-          key: string,
-          value: string,
-          config?: { sensitive?: boolean }
-        ) => Promise<boolean> | boolean;
-        set?: (
-          key: string,
-          value: string,
-          context: JsonRecord,
-          config?: { sensitive?: boolean }
-        ) => Promise<boolean> | boolean;
-      }
-    | null;
-  if (typeof secrets?.setGlobal === "function" || typeof secrets?.set === "function") {
+  const secrets = getService(runtime, "SECRETS") as {
+    setGlobal?: (
+      key: string,
+      value: string,
+      config?: { sensitive?: boolean },
+    ) => Promise<boolean> | boolean;
+    set?: (
+      key: string,
+      value: string,
+      context: JsonRecord,
+      config?: { sensitive?: boolean },
+    ) => Promise<boolean> | boolean;
+  } | null;
+  if (
+    typeof secrets?.setGlobal === "function" ||
+    typeof secrets?.set === "function"
+  ) {
     writers.push({
       name: "SECRETS",
       write: async (vaultRef, credential) => {
         if (typeof secrets.setGlobal === "function") {
-          await secrets.setGlobal(vaultRef, credential.value, { sensitive: true });
+          await secrets.setGlobal(vaultRef, credential.value, {
+            sensitive: true,
+          });
           return vaultRef;
         }
         await secrets.set?.(
           vaultRef,
           credential.value,
           { level: "global", agentId: runtime.agentId },
-          { sensitive: true }
+          { sensitive: true },
         );
         return vaultRef;
       },
@@ -438,13 +492,13 @@ async function readSecret(
   reader: unknown,
   vaultRef: string,
   caller: string,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<string | null> {
   const candidate = reader as {
     reveal?: (key: string, caller?: string) => Promise<string> | string;
     get?: (
       key: string,
-      optionsOrContext?: { reveal?: boolean; caller?: string } | JsonRecord
+      optionsOrContext?: { reveal?: boolean; caller?: string } | JsonRecord,
     ) => Promise<string | null> | string | null;
   };
   if (typeof candidate.reveal === "function") {
@@ -453,9 +507,13 @@ async function readSecret(
   if (typeof candidate.get !== "function") return null;
   if (
     reader &&
-    (reader as { constructor?: { name?: string } }).constructor?.name === "SecretsService"
+    (reader as { constructor?: { name?: string } }).constructor?.name ===
+      "SecretsService"
   ) {
-    return candidate.get(vaultRef, { level: "global", agentId: runtime.agentId });
+    return candidate.get(vaultRef, {
+      level: "global",
+      agentId: runtime.agentId,
+    });
   }
   return candidate.get(vaultRef, { reveal: true, caller });
 }
@@ -463,7 +521,7 @@ async function readSecret(
 function resolveCredentialRefWriters(
   runtime: IAgentRuntime,
   manager: ConnectorAccountManager | undefined,
-  accountId: string
+  accountId: string,
 ): CredentialRefWriter[] {
   const candidates = [
     manager?.getStorage?.(),
@@ -498,7 +556,9 @@ function resolveCredentialRefWriters(
             credentialType: ref.credentialType,
             vaultRef: ref.vaultRef,
             ...(ref.metadata ? { metadata: ref.metadata } : {}),
-            ...(ref.expiresAt !== undefined ? { expiresAt: ref.expiresAt } : {}),
+            ...(ref.expiresAt !== undefined
+              ? { expiresAt: ref.expiresAt }
+              : {}),
           });
         },
       });
@@ -511,7 +571,9 @@ function resolveCredentialRefWriters(
             credentialType: ref.credentialType,
             vaultRef: ref.vaultRef,
             ...(ref.metadata ? { metadata: ref.metadata } : {}),
-            ...(ref.expiresAt !== undefined ? { expiresAt: ref.expiresAt } : {}),
+            ...(ref.expiresAt !== undefined
+              ? { expiresAt: ref.expiresAt }
+              : {}),
           });
         },
       });
@@ -523,22 +585,26 @@ function resolveCredentialRefWriters(
 async function writeWithFirstAvailableVault(
   writers: VaultWriter[],
   plannedRef: string,
-  credential: ConnectorCredentialInput
+  credential: ConnectorCredentialInput,
 ): Promise<string> {
   const errors: string[] = [];
   for (const writer of writers) {
     try {
       return await writer.write(plannedRef, credential);
     } catch (error) {
-      errors.push(`${writer.name}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(
+        `${writer.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
-  throw new Error(`Failed to persist connector credential ref ${plannedRef}: ${errors.join("; ")}`);
+  throw new Error(
+    `Failed to persist connector credential ref ${plannedRef}: ${errors.join("; ")}`,
+  );
 }
 
 async function writeRefsToStorage(
   writers: CredentialRefWriter[],
-  refs: ConnectorCredentialRefMetadata[]
+  refs: ConnectorCredentialRefMetadata[],
 ): Promise<void> {
   const errors: string[] = [];
   for (const writer of writers) {
@@ -548,10 +614,14 @@ async function writeRefsToStorage(
       }
       return;
     } catch (error) {
-      errors.push(`${writer.name}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(
+        `${writer.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
-  throw new Error(`Failed to persist connector credential refs: ${errors.join("; ")}`);
+  throw new Error(
+    `Failed to persist connector credential refs: ${errors.join("; ")}`,
+  );
 }
 
 function buildConnectorCredentialVaultRef(params: {
@@ -591,7 +661,10 @@ function parseMaybeJson(value: string): unknown | undefined {
   }
 }
 
-function getFirstService(runtime: IAgentRuntime, serviceTypes: readonly string[]): unknown {
+function getFirstService(
+  runtime: IAgentRuntime,
+  serviceTypes: readonly string[],
+): unknown {
   for (const serviceType of serviceTypes) {
     const service = getService(runtime, serviceType);
     if (service) return service;

@@ -39,14 +39,12 @@ vi.mock("../../engine.js", async (importOriginal) => {
 });
 
 import * as websiteBlockerEngine from "../../engine.js";
-import { blockUntilTaskCompleteAction } from "../actions/blockUntilTaskComplete.js";
 import { listActiveBlocksAction } from "../actions/listActiveBlocks.js";
 import { releaseBlockAction } from "../actions/releaseBlock.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {
   type BlockRuleTestHarness,
   createBlockRuleHarness,
-  seedTodo,
 } from "./test-harness.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000cccc" as UUID;
@@ -88,56 +86,6 @@ describe("T7g actions", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await harness.close();
-  });
-
-  it("BLOCK_UNTIL_TASK_COMPLETE with todoName (no match) creates a new todo AND a block rule", async () => {
-    const options = {
-      parameters: {
-        websites: ["x.com"],
-        todoName: "Finish workout",
-      },
-    } as HandlerOptions;
-
-    const result = await blockUntilTaskCompleteAction.handler(
-      harness.runtime,
-      EMPTY_MESSAGE,
-      undefined,
-      options,
-    );
-
-    expect(isActionResult(result)).toBe(true);
-    const data = actionData(result);
-    expect(data.createdTodo).toBe(true);
-    const todoId = data.todoId;
-    expect(typeof todoId).toBe("string");
-    const ruleId = data.ruleId;
-    expect(typeof ruleId).toBe("string");
-
-    const reader = new BlockRuleReader(harness.runtime);
-    const gated = await reader.findBlocksGatedByTodo(String(todoId));
-    expect(gated).toHaveLength(1);
-    expect(gated[0].id).toBe(ruleId);
-    expect(gated[0].websites).toEqual(["x.com"]);
-  });
-
-  it("BLOCK_UNTIL_TASK_COMPLETE with todoName matching an existing todo reuses it", async () => {
-    await seedTodo(harness, { id: "todo-existing", title: "Daily workout" });
-    const options = {
-      parameters: {
-        websites: ["x.com"],
-        todoName: "workout",
-      },
-    } as HandlerOptions;
-
-    const result = await blockUntilTaskCompleteAction.handler(
-      harness.runtime,
-      EMPTY_MESSAGE,
-      undefined,
-      options,
-    );
-    const data = actionData(result);
-    expect(data.createdTodo).toBe(false);
-    expect(data.todoId).toBe("todo-existing");
   });
 
   it("LIST_ACTIVE_BLOCKS returns rules previously created by the writer", async () => {
@@ -193,20 +141,6 @@ describe("T7g actions", () => {
       "No managed website block rules are active.",
     );
     expect(actionData(result).rules).toEqual([]);
-  });
-
-  it("BLOCK_UNTIL_TASK_COMPLETE validate rejects fixed-duration-only prompts", async () => {
-    const shouldValidate = await blockUntilTaskCompleteAction.validate?.(
-      harness.runtime,
-      {
-        ...EMPTY_MESSAGE,
-        content: {
-          text: "Block x.com for 2 hours so I can focus.",
-        },
-      } as Memory,
-    );
-
-    expect(shouldValidate).toBe(false);
   });
 
   it("RELEASE_BLOCK without confirmed fails; harsh_no_bypass cannot be released", async () => {

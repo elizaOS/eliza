@@ -37,8 +37,21 @@ describe("action selection benchmark scoring helpers", () => {
   it("matches planner aliases for social and focus actions", () => {
     expect(caseMatches("SOCIAL_POSTING", "POST", undefined)).toBe(true);
     expect(caseMatches("GET_TIMELINE", "POST", undefined)).toBe(true);
+    expect(caseMatches("SEARCH_TWITTER", "POST", undefined)).toBe(true);
     expect(caseMatches("BLOCK_WEBSITE", "WEBSITE_BLOCK", undefined)).toBe(true);
+    expect(caseMatches("AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK", undefined)).toBe(
+      true,
+    );
     expect(caseMatches("PHONE_BLOCK_APPS", "APP_BLOCK", undefined)).toBe(true);
+  });
+
+  it("matches approval resolution aliases", () => {
+    expect(caseMatches("ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("DENY_APPROVAL", "RESOLVE_REQUEST", undefined)).toBe(
+      true,
+    );
   });
 
   it("matches atomic device intent broadcast aliases", () => {
@@ -51,6 +64,18 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("MOBILE_REMINDER", "DEVICE_INTENT", undefined)).toBe(
       true,
     );
+  });
+
+  it("matches check-in aliases to the restored check-in action", () => {
+    expect(caseMatches("LIFE_CHECK_IN", "CHECKIN", undefined)).toBe(true);
+    expect(caseMatches("MORNING_CHECK_IN", "CHECKIN", undefined)).toBe(true);
+    expect(caseMatches("NIGHT_CHECKIN", "CHECKIN", undefined)).toBe(true);
+    expect(caseMatches("AUTOMATION_RUN", "CHECKIN", undefined)).toBe(true);
+  });
+
+  it("matches generic memory set aliases to the profile action", () => {
+    expect(caseMatches("MEMORY_SET", "PROFILE", undefined)).toBe(true);
+    expect(caseMatches("MEMORY_WRITE", "PROFILE", undefined)).toBe(true);
   });
 
   it("ignores background evaluator actions when picking the observed action", () => {

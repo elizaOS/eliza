@@ -9,6 +9,7 @@ import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
 } from "../browser-service.js";
+import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
@@ -25,7 +26,7 @@ import {
  */
 export type BrowserTarget = "workspace" | "bridge" | "computeruse";
 
-type BrowserActionSubaction =
+type BrowserWorkspaceSubaction =
   | "back"
   | "click"
   | "close"
@@ -50,6 +51,8 @@ type BrowserActionSubaction =
   | "cursor-move"
   | "cursor-hide";
 
+type BrowserActionSubaction = BrowserWorkspaceSubaction | "autofill-login";
+
 type BrowserActionParameters = {
   /**
    * Optional target override. Default: the BrowserService active target
@@ -67,7 +70,8 @@ type BrowserActionParameters = {
    * execute when the model picks the consolidated BROWSER action.
    */
   action?:
-    | BrowserActionSubaction
+    | BrowserWorkspaceSubaction
+    | "autofill-login"
     | "info"
     | "context"
     | "get_context"
@@ -76,6 +80,12 @@ type BrowserActionParameters = {
     | "close_tab"
     | "switch_tab";
   subaction?: BrowserActionSubaction;
+  /** Registrable hostname for `subaction: "autofill-login"`. */
+  domain?: string;
+  /** Saved login username for autofill-login (optional). */
+  username?: string;
+  /** When true with autofill-login, submit after filling. */
+  submit?: boolean;
   tabAction?: "close" | "list" | "new" | "switch";
   text?: string;
   timeoutMs?: number;
@@ -110,7 +120,13 @@ function extractFirstUrl(value: string): string | null {
 function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
-): BrowserWorkspaceCommand["subaction"] {
+): BrowserWorkspaceCommand["subaction"] | "autofill-login" {
+  if (
+    params?.subaction === "autofill-login" ||
+    params?.action === "autofill-login"
+  ) {
+    return "autofill-login";
+  }
   if (params?.subaction) {
     return params.subaction;
   }
@@ -230,7 +246,7 @@ function formatBrowserSessionResult(
 
 export const browserAction: Action = {
   name: "BROWSER",
-  contexts: ["browser", "web", "automation"],
+  contexts: ["browser", "web", "automation", "secrets"],
   roleGate: { minRole: "OWNER" },
   similes: [
     "BROWSE_SITE",
@@ -243,20 +259,32 @@ export const browserAction: Action = {
     "OPEN_SITE",
     "USE_BROWSER",
     "BROWSER_ACTION",
+    "BROWSER_AUTOFILL_LOGIN",
+    "AGENT_AUTOFILL",
+    "AUTOFILL_BROWSER_LOGIN",
+    "AUTOFILL_LOGIN",
+    "FILL_BROWSER_CREDENTIALS",
+    "LOG_INTO_SITE",
+    "SIGN_IN_TO_SITE",
   ],
   description:
-    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified.",
+    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
   descriptionCompressed:
-    "Browser tab/page control only: open/navigate/click/type/screenshot/state. For LifeOps Browser Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+    "Browser tab/page control: open/navigate/click/type/screenshot/state; subaction autofill-login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserActionParameters
       | undefined;
     const messageText = getMessageText(message);
+    const subaction = inferBrowserSubaction(params, messageText);
+
+    if (subaction === "autofill-login") {
+      return executeBrowserAutofillLogin(runtime, message, options);
+    }
+
     const url =
       params?.url?.trim() || extractFirstUrl(messageText) || undefined;
-    const subaction = inferBrowserSubaction(params, messageText);
 
     const command: BrowserWorkspaceCommand = {
       id: params?.id?.trim(),
@@ -356,6 +384,7 @@ export const browserAction: Action = {
           "realistic-press",
           "cursor-move",
           "cursor-hide",
+          "autofill-login",
         ],
       },
     },
@@ -389,6 +418,7 @@ export const browserAction: Action = {
           "realistic-press",
           "cursor-move",
           "cursor-hide",
+          "autofill-login",
         ],
       },
     },
@@ -400,6 +430,27 @@ export const browserAction: Action = {
         type: "string" as const,
         enum: ["close", "list", "new", "switch"],
       },
+    },
+    {
+      name: "domain",
+      description:
+        "Required when subaction is autofill-login: registrable hostname (e.g. `github.com`).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "username",
+      description:
+        "When using autofill-login: specific saved login; omit for most recently modified.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "submit",
+      description:
+        "When using autofill-login: submit the form after filling (default false).",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "id",

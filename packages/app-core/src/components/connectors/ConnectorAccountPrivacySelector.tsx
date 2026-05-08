@@ -28,7 +28,10 @@ import {
 
 export interface ConnectorAccountPrivacySelectorProps {
   value?: ConnectorAccountPrivacy;
-  onChange: (value: ConnectorAccountPrivacy) => Promise<void> | void;
+  onChange: (
+    value: ConnectorAccountPrivacy,
+    confirmation?: { privacy?: string; publicAcknowledged?: boolean },
+  ) => Promise<void> | void;
   disabled?: boolean;
   id?: string;
   accountLabel?: string;
@@ -96,7 +99,10 @@ export function ConnectorAccountPrivacySelector({
     if (!pendingValue || !confirmEnabled) return;
     setConfirmBusy(true);
     try {
-      await onChange(pendingValue);
+      await onChange(pendingValue, {
+        privacy: expectedPhrase,
+        publicAcknowledged,
+      });
       setPendingValue(null);
       setTypedValue("");
       setPublicAcknowledged(false);

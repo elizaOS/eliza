@@ -64,6 +64,26 @@ export async function persistConnectorCredentialRefs(
     accountId: params.accountIdForRef,
     caller: params.caller,
   });
+  if (vaultWriters.length === 0) {
+    throw new Error(
+      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. Refusing to mark OAuth account connected without persisted credentials.`,
+    );
+  }
+  if (!params.storageAccountId) {
+    throw new Error(
+      `No durable connector account id is available for ${params.provider} account ${params.accountIdForRef}. Refusing to mark OAuth account connected without persisted credential refs.`,
+    );
+  }
+  const storageWriters = resolveCredentialRefWriters(
+    params.runtime,
+    params.manager,
+    params.storageAccountId,
+  );
+  if (storageWriters.length === 0) {
+    throw new Error(
+      `No durable connector credential ref writer is available for ${params.provider} account ${params.storageAccountId}. Refusing to mark OAuth account connected without persisted credential refs.`,
+    );
+  }
 
   for (const credential of params.credentials) {
     const plannedRef = buildConnectorCredentialVaultRef({
@@ -72,16 +92,11 @@ export async function persistConnectorCredentialRefs(
       accountId: params.accountIdForRef,
       credentialType: credential.credentialType,
     });
-    // TODO(connector-vault): once every host exposes a durable connector
-    // credential store, fail OAuth instead of returning metadata-only refs.
-    const vaultRef =
-      vaultWriters.length > 0
-        ? await writeWithFirstAvailableVault(
-            vaultWriters,
-            plannedRef,
-            credential,
-          )
-        : plannedRef;
+    const vaultRef = await writeWithFirstAvailableVault(
+      vaultWriters,
+      plannedRef,
+      credential,
+    );
     refs.push({
       credentialType: credential.credentialType,
       vaultRef,
@@ -92,15 +107,7 @@ export async function persistConnectorCredentialRefs(
     });
   }
 
-  const storageWriters =
-    params.storageAccountId && refs.length > 0
-      ? resolveCredentialRefWriters(
-          params.runtime,
-          params.manager,
-          params.storageAccountId,
-        )
-      : [];
-  if (storageWriters.length > 0) {
+  if (refs.length > 0) {
     await writeRefsToStorage(storageWriters, refs);
   }
 

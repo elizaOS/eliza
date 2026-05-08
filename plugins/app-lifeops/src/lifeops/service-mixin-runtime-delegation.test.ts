@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
@@ -6,10 +8,11 @@ import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { withSignal } from "./service-mixin-signal.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
+import { withX } from "./service-mixin-x.js";
 
-const TestMessagingService = withWhatsApp(
+const TestMessagingService = withX(withWhatsApp(
   withSignal(withTelegram(LifeOpsServiceBase)),
-);
+));
 
 function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
   const settings = new Map<string, unknown>();
@@ -29,7 +32,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
 }
 
 function legacyGrant(
-  provider: "telegram" | "signal",
+  provider: "telegram" | "signal" | "x",
   overrides: Partial<LifeOpsConnectorGrant> = {},
 ): LifeOpsConnectorGrant {
   return {
@@ -47,6 +50,8 @@ function legacyGrant(
     capabilities:
       provider === "signal"
         ? ["signal.read", "signal.send"]
+        : provider === "x"
+          ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
         : ["telegram.read", "telegram.send"],
     tokenRef: `${provider}-legacy-token`,
     mode: "local",
@@ -76,6 +81,7 @@ function serviceWithLegacyGrants(args: {
   service.repository.deleteConnectorGrant = vi.fn(async () => undefined);
   service.repository.upsertConnectorGrant = vi.fn(async () => undefined);
   service.recordConnectorAudit = vi.fn(async () => undefined);
+  service.recordXPostAudit = vi.fn(async () => undefined);
   service.logLifeOpsWarn = vi.fn();
   return service;
 }
@@ -154,13 +160,174 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       grants: { telegram: legacyGrant("telegram") },
     });
 
-    await expect(service.getTelegramConnectorStatus("owner")).resolves.toMatchObject({
+    await expect(
+      service.getTelegramConnectorStatus("owner"),
+    ).resolves.toMatchObject({
       connected: true,
       grantedCapabilities: ["telegram.send"],
       degradations: expect.arrayContaining([
         expect.objectContaining({ code: "telegram_plugin_read_unavailable" }),
       ]),
     });
+  });
+
+  it("keeps the CONNECTOR action off legacy Telegram API credential auth", async () => {
+    const source = await readFile(
+      fileURLToPath(new URL("../actions/connector.ts", import.meta.url)),
+      "utf8",
+    );
+
+    expect(source).not.toContain("apiId");
+    expect(source).not.toContain("apiHash");
+    expect(source).not.toContain("startTelegramAuth");
+    expect(source).not.toContain("startSignalPairing");
+  });
+
+  it("passes non-default X account ids to runtime read, send, and post calls", async () => {
+    const getAccountStatus = vi.fn(async (accountId: string) => ({
+      accountId,
+      configured: true,
+      connected: true,
+      reason: "connected",
+      grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+      grantedScopes: ["tweet.read", "dm.read", "dm.write"],
+    }));
+    const fetchDirectMessagesForAccount = vi.fn(async () => []);
+    const sendDirectMessageForAccount = vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      messageId: "dm-123",
+    }));
+    const createPostForAccount = vi.fn(async () => ({
+      id: "memory-post-1",
+      metadata: {
+        messageIdFull: "tweet-123",
+        x: { tweetId: "tweet-fallback" },
+      },
+    }));
+    const service = serviceWithLegacyGrants({
+      services: {
+        x: {
+          getAccountStatus,
+          fetchDirectMessagesForAccount,
+          sendDirectMessageForAccount,
+          createPostForAccount,
+        },
+      },
+      grants: {
+        x: legacyGrant("x", {
+          connectorAccountId: "acct-x-secondary",
+          metadata: {
+            accountId: "acct-x-secondary",
+            connectorAccountId: "acct-x-secondary",
+          },
+        }),
+      },
+    });
+    service.repository.listXDms = vi.fn(async () => []);
+    service.repository.upsertXDm = vi.fn(async () => undefined);
+    service.resolvePrimaryChannelPolicy = vi.fn(async () => ({
+      allowPosts: true,
+      requireConfirmationForActions: false,
+    }));
+
+    await expect(
+      service.getXConnectorStatus("local", "owner"),
+    ).resolves.toMatchObject({
+      connected: true,
+      reason: "connected",
+    });
+    expect(getAccountStatus).toHaveBeenCalledWith("acct-x-secondary");
+
+    await expect(service.getXDmDigest({ limit: 5 })).resolves.toMatchObject({
+      unreadCount: 0,
+      recent: [],
+    });
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith(
+      "acct-x-secondary",
+      {
+        participantId: undefined,
+        limit: 5,
+      },
+    );
+
+    await expect(
+      service.sendXDirectMessage({
+        participantId: "x-user-1",
+        text: "dm hello",
+        confirmSend: true,
+      }),
+    ).resolves.toEqual({ ok: true, status: 202 });
+    expect(sendDirectMessageForAccount).toHaveBeenCalledWith(
+      "acct-x-secondary",
+      {
+        participantId: "x-user-1",
+        text: "dm hello",
+      },
+    );
+
+    await expect(
+      service.createXPost({ text: "public hello", side: "owner" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      status: 201,
+      postId: "tweet-123",
+      category: "plugin_runtime",
+    });
+    expect(createPostForAccount).toHaveBeenCalledWith("acct-x-secondary", {
+      text: "public hello",
+      replyToTweetId: undefined,
+    });
+  });
+
+  it("honors requested X account ids over grant defaults for runtime delegation", async () => {
+    const fetchDirectMessagesForAccount = vi.fn(async () => []);
+    const sendDirectMessageForAccount = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      messageId: "dm-requested",
+    }));
+    const createPostForAccount = vi.fn(async () => ({
+      id: "tweet-requested",
+      metadata: { messageIdFull: "tweet-requested" },
+    }));
+    const service = serviceWithLegacyGrants({
+      services: {
+        x: {
+          fetchDirectMessagesForAccount,
+          sendDirectMessageForAccount,
+          createPostForAccount,
+        },
+      },
+      grants: { x: legacyGrant("x") },
+    });
+    service.repository.listXDms = vi.fn(async () => []);
+    service.repository.upsertXDm = vi.fn(async () => undefined);
+    service.resolvePrimaryChannelPolicy = vi.fn(async () => ({
+      allowPosts: true,
+      requireConfirmationForActions: false,
+    }));
+
+    await service.getXDmDigest({ accountId: "acct-x-requested", limit: 3 });
+    await service.sendXDirectMessage({
+      accountId: "acct-x-requested",
+      participantId: "x-user-2",
+      text: "requested dm",
+      confirmSend: true,
+    });
+    await service.createXPost({
+      accountId: "acct-x-requested",
+      text: "requested post",
+      side: "owner",
+    });
+
+    expect(fetchDirectMessagesForAccount.mock.calls[0]?.[0]).toBe(
+      "acct-x-requested",
+    );
+    expect(sendDirectMessageForAccount.mock.calls[0]?.[0]).toBe(
+      "acct-x-requested",
+    );
+    expect(createPostForAccount.mock.calls[0]?.[0]).toBe("acct-x-requested");
   });
 
   it("does not read or send Signal from legacy LifeOps token refs", async () => {
@@ -238,6 +405,29 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
     expect(sendMessage).toHaveBeenCalledWith("+15550000001", "hello", {
       accountId: "acct-signal-owner",
+    });
+  });
+
+  it("reports Signal capabilities from partial runtime service methods", async () => {
+    const sendMessage = vi.fn(async () => ({ timestamp: 5678 }));
+    const service = serviceWithLegacyGrants({
+      services: {
+        signal: {
+          sendMessage,
+        },
+      },
+      grants: { signal: legacyGrant("signal") },
+    });
+
+    await expect(
+      service.getSignalConnectorStatus("owner"),
+    ).resolves.toMatchObject({
+      connected: true,
+      inbound: false,
+      grantedCapabilities: ["signal.send"],
+      degradations: expect.arrayContaining([
+        expect.objectContaining({ code: "signal_plugin_inbound_unavailable" }),
+      ]),
     });
   });
 
@@ -321,7 +511,31 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       inboundReady: false,
       degradations: expect.arrayContaining([
         expect.objectContaining({ code: "whatsapp_plugin_send_unavailable" }),
-        expect.objectContaining({ code: "whatsapp_plugin_inbound_unavailable" }),
+        expect.objectContaining({
+          code: "whatsapp_plugin_inbound_unavailable",
+        }),
+      ]),
+    });
+  });
+
+  it("reports WhatsApp send-only plugin services without requiring a connected flag", async () => {
+    const service = serviceWithLegacyGrants({
+      services: {
+        whatsapp: {
+          sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.2" }] })),
+        },
+      },
+    });
+
+    await expect(service.getWhatsAppConnectorStatus()).resolves.toMatchObject({
+      connected: true,
+      serviceConnected: true,
+      outboundReady: true,
+      inboundReady: false,
+      degradations: expect.arrayContaining([
+        expect.objectContaining({
+          code: "whatsapp_plugin_inbound_unavailable",
+        }),
       ]),
     });
   });

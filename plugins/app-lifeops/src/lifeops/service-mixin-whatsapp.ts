@@ -22,6 +22,7 @@ const WHATSAPP_PLUGIN_SETUP_MESSAGE =
 
 type WhatsAppRuntimeServiceLike = {
   connected?: boolean;
+  isServiceConnected?: () => boolean;
   phoneNumber?: string | null;
   sendMessage?: (message: {
     accountId?: string;
@@ -37,10 +38,36 @@ type WhatsAppRuntimeServiceLike = {
 function getWhatsAppRuntimeService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): WhatsAppRuntimeServiceLike | null {
-  const service = runtime.getService(
+  const service = runtime.getService?.(
     "whatsapp",
   ) as WhatsAppRuntimeServiceLike | null;
   return service && typeof service === "object" ? service : null;
+}
+
+function whatsAppServiceCanSend(
+  service: WhatsAppRuntimeServiceLike | null,
+): boolean {
+  return typeof service?.sendMessage === "function";
+}
+
+function whatsAppServiceCanRead(
+  service: WhatsAppRuntimeServiceLike | null,
+): boolean {
+  return (
+    typeof service?.fetchConnectorMessages === "function" ||
+    typeof service?.handleWebhook === "function"
+  );
+}
+
+function whatsAppServiceConnected(
+  service: WhatsAppRuntimeServiceLike | null,
+): boolean {
+  return Boolean(
+    service?.connected === true ||
+      service?.isServiceConnected?.() === true ||
+      whatsAppServiceCanSend(service) ||
+      whatsAppServiceCanRead(service),
+  );
 }
 
 /** @internal */
@@ -50,15 +77,9 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
   class LifeOpsWhatsAppServiceMixin extends Base {
     async getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus> {
       const runtimeService = getWhatsAppRuntimeService(this.runtime);
-      const serviceConnected = Boolean(runtimeService?.connected);
-      const outboundReady = Boolean(
-        runtimeService?.sendMessage && serviceConnected,
-      );
-      const inboundReady = Boolean(
-        serviceConnected &&
-          (runtimeService?.fetchConnectorMessages ||
-            runtimeService?.handleWebhook),
-      );
+      const serviceConnected = whatsAppServiceConnected(runtimeService);
+      const outboundReady = whatsAppServiceCanSend(runtimeService);
+      const inboundReady = whatsAppServiceCanRead(runtimeService);
       const status: LifeOpsWhatsAppConnectorStatus = {
         provider: "whatsapp",
         connected: outboundReady || inboundReady,

@@ -72,7 +72,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	CREATE_TASK: ["automation"],
 	START_CODING_TASK: ["code", "automation"],
 	BROWSER: ["browser"],
-	BROWSER_AUTOFILL_LOGIN: ["browser", "secrets"],
 	MANAGE_BROWSER_BRIDGE: ["browser", "files", "connectors", "settings"],
 	BROWSE: ["browser"],
 	SCREENSHOT: ["browser", "media"],

@@ -303,6 +303,11 @@ export interface ConnectorAccountCreateInput {
   purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
   privacy?: ConnectorAccountPrivacy;
   metadata?: Record<string, unknown>;
+  confirmation?: {
+    role?: string;
+    privacy?: string;
+    publicAcknowledged?: boolean;
+  };
 }
 
 export interface ConnectorAccountUpdateInput {
@@ -312,6 +317,11 @@ export interface ConnectorAccountUpdateInput {
   privacy?: ConnectorAccountPrivacy;
   enabled?: boolean;
   metadata?: Record<string, unknown>;
+  confirmation?: {
+    role?: string;
+    privacy?: string;
+    publicAcknowledged?: boolean;
+  };
 }
 
 export interface ConnectorAccountOAuthStartInput {

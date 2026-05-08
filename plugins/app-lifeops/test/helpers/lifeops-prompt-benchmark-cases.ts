@@ -343,7 +343,7 @@ function deriveSelfCareExpectation(
     );
     return {
       expectedAction: "LIFE",
-      acceptableActions: supportsBlockRule ? ["BLOCK_UNTIL_TASK_COMPLETE"] : [],
+      acceptableActions: supportsBlockRule ? ["WEBSITE_BLOCK"] : [],
       forbiddenActions: [],
       expectedOperation: isGoalScenario ? "create_goal" : "create_definition",
       notes:

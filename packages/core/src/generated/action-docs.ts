@@ -2901,94 +2901,9 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "BLOCK_UNTIL_TASK_COMPLETE",
-			description:
-				"Create a LifeOps-managed website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (for example, 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, create that todo first; optional unlockDurationMinutes re-locks the same hosts after the todo gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking'); those belong to OWNER_WEBSITE_BLOCK.",
-			parameters: [
-				{
-					name: "websites",
-					description: "List of website hostnames to block.",
-					required: true,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed: "List of website hostnames to block.",
-				},
-				{
-					name: "todoId",
-					description:
-						"ID of an existing todo. Preferred over todoName when known.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"ID of an existing todo. Preferred over todoName when known.",
-				},
-				{
-					name: "todoName",
-					description:
-						"Name of the todo. Resolved against active todos; created if no match.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Name of the todo. Resolved against active todos. created if no match.",
-				},
-				{
-					name: "unlockDurationMinutes",
-					description:
-						"Optional: once the gate is satisfied, re-lock the same websites after this many minutes.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Optional: once the gate is satisfied, re-lock the same websites after this many minutes.",
-				},
-				{
-					name: "profile",
-					description: "Optional profile label for the block rule.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional profile label for the block rule.",
-				},
-			],
-			descriptionCompressed:
-				"block-websites-until-todo-complete: websites + todoId|todoName + optional unlockDurationMinutes",
-			similes: [
-				"BLOCK_SITES_UNTIL_TODO_DONE",
-				"BLOCK_WEBSITE_UNTIL_TASK",
-				"CONDITIONAL_WEBSITE_BLOCK",
-				"BLOCK_UNTIL_DONE",
-				"FOCUS_UNTIL_TASK_DONE",
-			],
-			exampleCalls: [
-				{
-					user: "Use BLOCK_UNTIL_TASK_COMPLETE with the provided parameters.",
-					actions: ["BLOCK_UNTIL_TASK_COMPLETE"],
-					params: {
-						BLOCK_UNTIL_TASK_COMPLETE: {
-							websites: "example",
-							todoId: "example",
-							todoName: "example",
-							unlockDurationMinutes: 1,
-							profile: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "BROWSER",
 			description:
-				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified.",
+				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
 			parameters: [
 				{
 					name: "action",
@@ -3028,6 +2943,7 @@ export const allActionsSpec = {
 							"realistic-press",
 							"cursor-move",
 							"cursor-hide",
+							"autofill-login",
 						],
 					},
 					descriptionCompressed:
@@ -3063,6 +2979,7 @@ export const allActionsSpec = {
 							"realistic-press",
 							"cursor-move",
 							"cursor-hide",
+							"autofill-login",
 						],
 					},
 					descriptionCompressed: "Browser action to perform",
@@ -3076,6 +2993,39 @@ export const allActionsSpec = {
 						enum: ["close", "list", "new", "switch"],
 					},
 					descriptionCompressed: "Tab operation when subaction is tab",
+				},
+				{
+					name: "domain",
+					description:
+						"Required when subaction is autofill-login: registrable hostname (e.g. `github.com`).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Required when subaction is autofill-login: registrable hostname (e. g. `github.com`).",
+				},
+				{
+					name: "username",
+					description:
+						"When using autofill-login: specific saved login; omit for most recently modified.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"When using autofill-login: specific saved login. omit for most recently modified.",
+				},
+				{
+					name: "submit",
+					description:
+						"When using autofill-login: submit the form after filling (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"When using autofill-login: submit the form after filling (default false).",
 				},
 				{
 					name: "id",
@@ -3213,7 +3163,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Browser tab/page control only: open/navigate/click/type/screenshot/state. For LifeOps Browser Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+				"Browser tab/page control: open/navigate/click/type/screenshot/state; subaction autofill-login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
 			similes: [
 				"BROWSE_SITE",
 				"BROWSER_SESSION",
@@ -3225,6 +3175,13 @@ export const allActionsSpec = {
 				"OPEN_SITE",
 				"USE_BROWSER",
 				"BROWSER_ACTION",
+				"BROWSER_AUTOFILL_LOGIN",
+				"AGENT_AUTOFILL",
+				"AUTOFILL_BROWSER_LOGIN",
+				"AUTOFILL_LOGIN",
+				"FILL_BROWSER_CREDENTIALS",
+				"LOG_INTO_SITE",
+				"SIGN_IN_TO_SITE",
 			],
 			exampleCalls: [
 				{
@@ -3235,6 +3192,9 @@ export const allActionsSpec = {
 							action: "back",
 							subaction: "back",
 							tabAction: "close",
+							domain: "example",
+							username: "example",
+							submit: false,
 							id: "example",
 							url: "example",
 							selector: "example",
@@ -3249,69 +3209,6 @@ export const allActionsSpec = {
 							replace: false,
 							x: 1,
 							y: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "BROWSER_AUTOFILL_LOGIN",
-			description:
-				"Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
-			parameters: [
-				{
-					name: "domain",
-					description:
-						"Registrable hostname to autofill (e.g. `github.com`, no protocol or path).",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Registrable hostname to autofill (e. g. `github.com`, no protocol or path).",
-				},
-				{
-					name: "username",
-					description:
-						"Specific saved login to use. When omitted, the most recently modified saved login for the domain is selected.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Specific saved login to use. When omitted, the most recently modified saved login for the domain is selected.",
-				},
-				{
-					name: "submit",
-					description:
-						"When true, submit the form after filling. Defaults to false (fill-only).",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"When true, submit the form after filling. Defaults to false (fill-only).",
-				},
-			],
-			descriptionCompressed:
-				"autofill save credential open Eliza browser tab request domain require user pre-authorize agent autofill domain via Settings - Vault - Logins (cred domain: autoallow 1)",
-			similes: [
-				"AGENT_AUTOFILL",
-				"AUTOFILL_BROWSER_LOGIN",
-				"AUTOFILL_LOGIN",
-				"FILL_BROWSER_CREDENTIALS",
-				"LOG_INTO_SITE",
-				"SIGN_IN_TO_SITE",
-			],
-			exampleCalls: [
-				{
-					user: "Use BROWSER_AUTOFILL_LOGIN with the provided parameters.",
-					actions: ["BROWSER_AUTOFILL_LOGIN"],
-					params: {
-						BROWSER_AUTOFILL_LOGIN: {
-							domain: "example",
-							username: "example",
-							submit: false,
 						},
 					},
 				},
@@ -3352,6 +3249,56 @@ export const allActionsSpec = {
 						CHECK_AVAILABILITY: {
 							startAt: "example",
 							endAt: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CHECKIN",
+			description:
+				"Owner-only. Run a LifeOps morning or night check-in now by assembling the owner's todos, habits, goals, inbox, calendar, and recent signals into a briefing.",
+			parameters: [
+				{
+					name: "kind",
+					description:
+						"morning or night. Infer from the user request when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"morning or night. Infer from user request when omitted.",
+				},
+				{
+					name: "timezone",
+					description: "Optional IANA timezone override.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional IANA timezone override.",
+				},
+			],
+			descriptionCompressed:
+				"run owner LifeOps check-in now: kind morning|night; returns briefing summary",
+			similes: [
+				"CHECK_IN",
+				"LIFE_CHECK_IN",
+				"MORNING_CHECKIN",
+				"MORNING_CHECK_IN",
+				"NIGHT_CHECKIN",
+				"NIGHT_CHECK_IN",
+				"DAILY_BRIEF",
+			],
+			exampleCalls: [
+				{
+					user: "Use CHECKIN with the provided parameters.",
+					actions: ["CHECKIN"],
+					params: {
+						CHECKIN: {
+							kind: "example",
+							timezone: "example",
 						},
 					},
 				},
@@ -4182,6 +4129,20 @@ export const allActionsSpec = {
 						},
 					},
 				},
+			],
+		},
+		{
+			name: "FILE",
+			description:
+				"File operations: read, write, or edit a file at an absolute path. ",
+			parameters: [],
+			descriptionCompressed: "File read/write/edit at absolute path.",
+			similes: [
+				"READ_FILE",
+				"WRITE_FILE",
+				"EDIT_FILE",
+				"FILE_OPERATION",
+				"FILE_IO",
 			],
 		},
 		{
@@ -6481,48 +6442,6 @@ export const allActionsSpec = {
 							todos: "example",
 							includeCompleted: false,
 							limit: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "UPDATE_LINEAR_COMMENT",
-			description: "Update (edit) the body of an existing Linear comment",
-			parameters: [
-				{
-					name: "commentId",
-					description: "Linear comment id to update.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Linear comment id to update.",
-				},
-				{
-					name: "body",
-					description: "New comment body text.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "New comment body text.",
-				},
-			],
-			descriptionCompressed: "update (edit) body exist Linear comment",
-			similes: [
-				"edit-linear-comment",
-				"modify-linear-comment",
-				"change-linear-comment",
-			],
-			exampleCalls: [
-				{
-					user: "Use UPDATE_LINEAR_COMMENT with the provided parameters.",
-					actions: ["UPDATE_LINEAR_COMMENT"],
-					params: {
-						UPDATE_LINEAR_COMMENT: {
-							commentId: "example",
-							body: "example",
 						},
 					},
 				},

@@ -183,13 +183,13 @@ describe("sub-planner helpers", () => {
 		});
 
 		// Sub-planner exposes the same single PLAN_ACTIONS wrapper tool as the
-		// top-level planner so the cache key stays stable across descents. Child
-		// action specs render into the sub-planner's system prompt; the LLM
-		// picks one by name and passes it back via `action`. This keeps the tool
-		// list byte-identical regardless of which child set is in play.
+		// top-level planner so the tool list stays stable across descents. Child
+		// action specs render into the dynamic available-actions block; the LLM
+		// picks one by name and passes it back via `action`.
 		const modelCall = useModel.mock.calls[0];
 		expect(modelCall).toBeDefined();
 		const modelParams = modelCall?.[1] as {
+			messages?: Array<{ role: string; content: string }>;
 			tools?: Array<{ name: string; type?: string }>;
 			toolChoice?: string;
 			responseSchema?: unknown;
@@ -200,6 +200,11 @@ describe("sub-planner helpers", () => {
 		// Sub-planner uses the wrapper, so the JSON-schema fallback path must
 		// NOT be active.
 		expect(modelParams.responseSchema).toBeUndefined();
+		const prompt = modelParams.messages?.map((m) => m.content).join("\n");
+		expect(prompt).toContain("# Available Actions");
+		expect(prompt).toContain("- CHILD_A:");
+		expect(prompt).toContain("- CHILD_B:");
+		expect(prompt).not.toContain("- PARENT:");
 	});
 
 	it("expands activeContexts for sub-action execution so child gates pass", async () => {

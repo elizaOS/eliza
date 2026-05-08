@@ -341,12 +341,43 @@ export function createSlackConnectorAccountProvider(
         typeof parsed.authed_user?.expires_in === "number"
           ? Date.now() + parsed.authed_user.expires_in * 1000
           : undefined;
+      const oauthCredentialVersion = String(Date.now());
+      const accountMetadata = {
+        teamId,
+        teamName: teamName ?? null,
+        appId: parsed.app_id ?? null,
+        botUserId: parsed.bot_user_id ?? null,
+        enterpriseId: parsed.enterprise?.id ?? null,
+        authedUserId: parsed.authed_user?.id ?? null,
+        tokenType: parsed.token_type ?? "bot",
+        grantedScopes,
+        hasRefreshToken: Boolean(
+          parsed.refresh_token ?? parsed.authed_user?.refresh_token,
+        ),
+        expiresAt,
+        oauthCredentialVersion,
+      };
+      const pendingAccount = await manager.upsertAccount(
+        SLACK_SERVICE_NAME,
+        {
+          provider: SLACK_SERVICE_NAME,
+          role: "OWNER",
+          purpose: DEFAULT_PURPOSES,
+          accessGate: "open",
+          status: "pending",
+          externalId: teamId,
+          displayHandle: teamName,
+          label: teamName ?? `Slack workspace ${teamId}`,
+          metadata: accountMetadata,
+        },
+        request.flow.accountId,
+      );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: SLACK_SERVICE_NAME,
-        accountIdForRef: request.flow.accountId ?? teamId,
-        storageAccountId: request.flow.accountId,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
         caller: "plugin-slack",
         credentials: [
           {
@@ -392,34 +423,21 @@ export function createSlackConnectorAccountProvider(
         ],
       });
 
-      const accountPatch: ConnectorAccountPatch & { provider: string } = {
+      const accountPatch: ConnectorAccountPatch & {
+        provider: string;
+        id: string;
+      } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
         provider: SLACK_SERVICE_NAME,
-        role: "OWNER",
-        purpose: DEFAULT_PURPOSES,
-        accessGate: "open",
         status: "connected",
-        externalId: teamId,
-        displayHandle: teamName,
-        label: teamName ?? `Slack workspace ${teamId}`,
         metadata: {
-          teamId,
-          teamName: teamName ?? null,
-          appId: parsed.app_id ?? null,
-          botUserId: parsed.bot_user_id ?? null,
-          enterpriseId: parsed.enterprise?.id ?? null,
-          authedUserId: parsed.authed_user?.id ?? null,
-          tokenType: parsed.token_type ?? "bot",
-          grantedScopes,
-          hasRefreshToken: Boolean(
-            parsed.refresh_token ?? parsed.authed_user?.refresh_token,
-          ),
-          expiresAt,
+          ...accountMetadata,
           credentialRefs: credentialPersist.refs,
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
           },
-          oauthCredentialVersion: String(Date.now()),
         },
       };
 

@@ -1,5 +1,4 @@
 import {
-  type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
@@ -12,7 +11,7 @@ import {
 import { updateIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
-import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { getLinearAccountId } from "./account-options";
 import {
   getPriorityNumberValue,
   getRecordValue,
@@ -20,125 +19,11 @@ import {
   getStringValue,
   parseLinearPromptResponse,
 } from "./parseLinearPrompt.js";
-import { validateLinearActionIntent } from "./validate-linear-intent";
 
 const LINEAR_MODEL_TIMEOUT_MS = 15_000;
 const LINEAR_LOOKUP_LIMIT = 100;
 
-export const updateIssueAction: Action = {
-  name: "UPDATE_LINEAR_ISSUE",
-  contexts: ["tasks", "connectors", "automation"],
-  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
-  roleGate: { minRole: "USER" },
-  description: "Update an existing Linear issue",
-  similes: [
-    "update-linear-issue",
-    "edit-linear-issue",
-    "modify-linear-issue",
-    "move-linear-issue",
-    "change-linear-issue",
-  ],
-  parameters: [
-    {
-      name: "issueId",
-      description: "Linear issue id or issue identifier to update.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "title",
-      description: "Optional replacement title for the issue.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "description",
-      description: "Optional replacement description for the issue.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "priority",
-      description: "Optional priority update.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "teamKey",
-      description: "Optional Linear team key to move the issue into.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "assignee",
-      description: "Optional assignee email or display name.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "labelNames",
-      description: "Optional list of label names to set on the issue.",
-      required: false,
-      schema: { type: "array", items: { type: "string" } },
-    },
-    linearAccountIdParameter,
-  ],
-
-  examples: [
-    [
-      {
-        name: "User",
-        content: {
-          text: 'Update issue ENG-123 title to "Fix login button on all devices"',
-        },
-      },
-      {
-        name: "Assistant",
-        content: {
-          text: "I'll update the title of issue ENG-123 for you.",
-          actions: ["UPDATE_LINEAR_ISSUE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "User",
-        content: {
-          text: "Move issue COM2-7 to the ELIZA team",
-        },
-      },
-      {
-        name: "Assistant",
-        content: {
-          text: "I'll move issue COM2-7 to the ELIZA team.",
-          actions: ["UPDATE_LINEAR_ISSUE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "User",
-        content: {
-          text: "Change the priority of BUG-456 to high and assign to john@example.com",
-        },
-      },
-      {
-        name: "Assistant",
-        content: {
-          text: "I'll change the priority of BUG-456 to high and assign it to john@example.com.",
-          actions: ["UPDATE_LINEAR_ISSUE"],
-        },
-      },
-    ],
-  ],
-
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["update", "linear", "issue"],
-      regexAlternation: "update|linear|issue",
-    }),
-
-  async handler(
+export async function handleUpdateIssue(
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
@@ -390,5 +275,4 @@ export const updateIssueAction: Action = {
         success: false,
       };
     }
-  },
-};
+  }

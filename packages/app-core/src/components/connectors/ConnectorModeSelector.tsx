@@ -1,11 +1,36 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";
+import {
+  CONNECTOR_PLUGIN_MANAGED_MODE_ID,
+  type ConnectorManagementMode,
+  connectorAccountManagementPanelPluginId,
+  getConnectorPluginManagedAccountOption,
+  normalizeConnectorCatalogId,
+} from "./connector-account-options";
 
 export type ConnectorMode = {
   id: string;
   label: string;
   description: string;
+  managementMode?: ConnectorManagementMode;
 };
+
+function withPluginManagedMode(
+  connectorId: string,
+  modes: ConnectorMode[],
+): ConnectorMode[] {
+  const option = getConnectorPluginManagedAccountOption(connectorId);
+  if (!option) return modes;
+  return [
+    {
+      id: CONNECTOR_PLUGIN_MANAGED_MODE_ID,
+      label: option.label,
+      description: option.description,
+      managementMode: CONNECTOR_PLUGIN_MANAGED_MODE_ID,
+    },
+    ...modes.filter((mode) => mode.id !== CONNECTOR_PLUGIN_MANAGED_MODE_ID),
+  ];
+}
 
 /**
  * Returns available modes for each connector based on deployment context.
@@ -15,10 +40,11 @@ export function getConnectorModes(
   options?: { elizaCloudConnected?: boolean },
 ): ConnectorMode[] {
   const cloud = options?.elizaCloudConnected ?? false;
+  const normalizedConnectorId = normalizeConnectorCatalogId(connectorId);
 
-  switch (connectorId) {
+  switch (normalizedConnectorId) {
     case "discord":
-      return [
+      return withPluginManagedMode(connectorId, [
         ...(cloud
           ? [
               {
@@ -26,6 +52,7 @@ export function getConnectorModes(
                 label: "OAuth Gateway",
                 description:
                   "Invite the shared Eliza Cloud Discord gateway, nickname it to your agent, and route messages down to this app.",
+                managementMode: "cloud-managed" as const,
               },
             ]
           : []),
@@ -33,17 +60,19 @@ export function getConnectorModes(
           id: "local",
           label: "Desktop App",
           description: "Connect via local Discord desktop app (IPC)",
+          managementMode: "local-setup",
         },
         {
           id: "bot",
           label: "Bot Token",
           description:
             "Use your own Discord bot with a token from the Developer Portal",
+          managementMode: "local-config",
         },
-      ];
+      ]);
 
     case "telegram":
-      return [
+      return withPluginManagedMode(connectorId, [
         ...(cloud
           ? [
               {
@@ -51,6 +80,7 @@ export function getConnectorModes(
                 label: "Cloud Gateway",
                 description:
                   "Telegram bot communication still starts with a BotFather token; Eliza Cloud can host the webhook and route it to this app.",
+                managementMode: "cloud-managed" as const,
               },
             ]
           : []),
@@ -58,17 +88,19 @@ export function getConnectorModes(
           id: "bot",
           label: "Bot Token",
           description: "Create a bot via @BotFather and paste the token",
+          managementMode: "local-config",
         },
         {
           id: "account",
           label: "Personal Account",
           description:
             "Use your own Telegram account (requires app credentials from my.telegram.org)",
+          managementMode: "local-setup",
         },
-      ];
+      ]);
 
     case "slack":
-      return [
+      return withPluginManagedMode(connectorId, [
         ...(cloud
           ? [
               {
@@ -76,6 +108,7 @@ export function getConnectorModes(
                 label: "OAuth",
                 description:
                   "Connect Slack through Eliza Cloud OAuth for workspace-scoped bidirectional access.",
+                managementMode: "cloud-managed" as const,
               },
             ]
           : []),
@@ -84,11 +117,13 @@ export function getConnectorModes(
           label: "Socket Mode Tokens",
           description:
             "Use your own Slack app token and bot token for the local connector runtime.",
+          managementMode: "local-config",
         },
-      ];
+      ]);
 
+    case "x":
     case "twitter":
-      return [
+      return withPluginManagedMode(connectorId, [
         ...(cloud
           ? [
               {
@@ -96,6 +131,7 @@ export function getConnectorModes(
                 label: "OAuth",
                 description:
                   "Connect X/Twitter through Eliza Cloud OAuth so the agent can post, read mentions, and handle DMs through cloud-held tokens.",
+                managementMode: "cloud-managed" as const,
               },
             ]
           : []),
@@ -104,38 +140,43 @@ export function getConnectorModes(
           label: "Local OAuth2",
           description:
             "Use @elizaos/plugin-x with TWITTER_AUTH_MODE=oauth, a client ID, and a loopback redirect URI.",
+          managementMode: "local-config",
         },
         {
           id: "developer",
           label: "Developer Tokens",
           description:
             "Use OAuth 1.0a API keys and access tokens from the X Developer Portal.",
+          managementMode: "local-config",
         },
-      ];
+      ]);
 
     case "signal":
-      return [
+      return withPluginManagedMode(connectorId, [
         {
           id: "qr",
           label: "QR Pair",
           description: "Link as a device to your Signal account via QR code",
+          managementMode: "local-setup",
         },
-      ];
+      ]);
 
     case "whatsapp":
-      return [
+      return withPluginManagedMode(connectorId, [
         {
           id: "qr",
           label: "QR Pair",
           description: "Scan a QR code from your WhatsApp mobile app",
+          managementMode: "local-setup",
         },
         {
           id: "business",
           label: "Business Cloud API",
           description:
             "Use WhatsApp Business API with access token and phone number ID",
+          managementMode: "local-config",
         },
-      ];
+      ]);
 
     case "imessage":
       return [
@@ -144,12 +185,14 @@ export function getConnectorModes(
           label: "Direct (chat.db)",
           description:
             "Read iMessage database directly on this Mac. Requires Full Disk Access.",
+          managementMode: "local-setup",
         },
         {
           id: "bluebubbles",
           label: "BlueBubbles",
           description:
             "Bridge via BlueBubbles server app. Works locally or over network.",
+          managementMode: "local-config",
         },
         ...(cloud
           ? [
@@ -158,13 +201,14 @@ export function getConnectorModes(
                 label: "Blooio (Cloud)",
                 description:
                   "Cloud-based iMessage/SMS gateway. No Mac needed on the server.",
+                managementMode: "cloud-managed" as const,
               },
             ]
           : []),
       ];
 
     default:
-      return [];
+      return withPluginManagedMode(connectorId, []);
   }
 }
 
@@ -175,6 +219,9 @@ export function modeToSetupPluginId(
   connectorId: string,
   modeId: string,
 ): string | null {
+  if (modeId === CONNECTOR_PLUGIN_MANAGED_MODE_ID) {
+    return connectorAccountManagementPanelPluginId(connectorId);
+  }
   const map: Record<string, Record<string, string>> = {
     discord: { local: "discordlocal", bot: "discord", managed: "discord" },
     telegram: {
@@ -188,6 +235,11 @@ export function modeToSetupPluginId(
       "local-oauth": "twitter",
       developer: "twitter",
     },
+    x: {
+      oauth: "x",
+      "local-oauth": "x",
+      developer: "x",
+    },
     signal: { qr: "signal" },
     whatsapp: { qr: "whatsapp", business: "whatsapp" },
     imessage: {
@@ -196,20 +248,26 @@ export function modeToSetupPluginId(
       blooio: "blooio",
     },
   };
-  return map[connectorId]?.[modeId] ?? null;
+  return map[normalizeConnectorCatalogId(connectorId)]?.[modeId] ?? null;
 }
 
 export function getDefaultConnectorModeId(
   connectorId: string,
   modes: ConnectorMode[],
 ): string {
+  if (modes.some((mode) => mode.id === CONNECTOR_PLUGIN_MANAGED_MODE_ID)) {
+    return CONNECTOR_PLUGIN_MANAGED_MODE_ID;
+  }
   const preferredDefaults: Record<string, string[]> = {
     discord: ["bot"],
     slack: ["oauth", "socket"],
     telegram: ["bot"],
+    x: ["oauth", "local-oauth"],
     twitter: ["oauth", "local-oauth"],
   };
-  for (const preferred of preferredDefaults[connectorId] ?? []) {
+  for (const preferred of preferredDefaults[
+    normalizeConnectorCatalogId(connectorId)
+  ] ?? []) {
     if (modes.some((mode) => mode.id === preferred)) {
       return preferred;
     }

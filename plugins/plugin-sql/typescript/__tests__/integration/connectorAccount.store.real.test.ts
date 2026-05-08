@@ -2,6 +2,8 @@ import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { authIdentityTable, authOwnerBindingTable } from "../../schema/index";
+import type { DrizzleDatabase } from "../../types";
 import { mockCharacter } from "../schema-data";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -26,6 +28,8 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
       provider: "github",
       accountKey: "user-1",
       displayName: "Alice",
+      ownerBindingId: "binding-owner-1",
+      ownerIdentityId: "identity-owner-1",
       scopes: ["repo"],
       capabilities: ["pull-requests"],
       role: "OWNER",
@@ -39,17 +43,36 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
     });
     expect(fetched?.id).toBe(initial.id);
     expect(fetched?.scopes).toEqual(["repo"]);
+    expect(fetched?.ownerBindingId).toBe("binding-owner-1");
+    expect(fetched?.ownerIdentityId).toBe("identity-owner-1");
 
     const updated = await adapter.upsertConnectorAccount({
+      id: initial.id,
       provider: "github",
-      accountKey: "user-1",
+      accountKey: "user-renamed",
       displayName: "Alice Renamed",
+      ownerBindingId: "binding-owner-2",
       scopes: ["repo", "workflow"],
     });
     expect(updated.id).toBe(initial.id);
+    expect(updated.accountKey).toBe("user-renamed");
     expect(updated.displayName).toBe("Alice Renamed");
+    expect(updated.ownerBindingId).toBe("binding-owner-2");
+    expect(updated.ownerIdentityId).toBe("identity-owner-1");
     expect(updated.scopes).toEqual(["repo", "workflow"]);
     expect(updated.role).toBe("OWNER");
+    await expect(
+      adapter.getConnectorAccount({
+        provider: "github",
+        accountKey: "user-1",
+      })
+    ).resolves.toBeNull();
+    await expect(
+      adapter.getConnectorAccount({
+        provider: "github",
+        accountKey: "user-renamed",
+      })
+    ).resolves.toMatchObject({ id: initial.id });
   });
 
   it("soft-deletes by composite key and hides the deleted account from normal reads", async () => {
@@ -136,6 +159,55 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
         accountId: account.id,
       })
     ).resolves.toEqual([]);
+  });
+
+  it("resolves verified owner bindings for connector account policy checks", async () => {
+    const identityId = "identity-connector-owner";
+    const now = Date.now();
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    await db.insert(authIdentityTable).values({
+      id: identityId,
+      kind: "owner",
+      displayName: "Connector Owner",
+      createdAt: now,
+    });
+    await db.insert(authOwnerBindingTable).values({
+      id: "binding-connector-owner",
+      identityId,
+      connector: "discord",
+      externalId: "discord-user-1",
+      displayHandle: "owner#1234",
+      instanceId: "instance-1",
+      verifiedAt: now,
+    });
+
+    await expect(
+      adapter.findConnectorOwnerBinding?.({
+        connector: "discord",
+        externalId: "discord-user-1",
+        instanceId: "instance-1",
+      })
+    ).resolves.toMatchObject({
+      id: "binding-connector-owner",
+      identityId,
+      connector: "discord",
+      externalId: "discord-user-1",
+      displayHandle: "owner#1234",
+      instanceId: "instance-1",
+    });
+    await expect(
+      adapter.findConnectorOwnerBinding?.({
+        connector: "discord",
+        externalId: "discord-user-1",
+        instanceId: "other-instance",
+      })
+    ).resolves.toBeNull();
+    await expect(
+      adapter.findConnectorOwnerBinding?.({
+        connector: "discord",
+        externalId: "discord-user-1",
+      })
+    ).resolves.toBeNull();
   });
 
   it("appends and lists audit events with redaction and filtering", async () => {

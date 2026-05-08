@@ -183,18 +183,41 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["CREATE_GOAL", "LIFE"],
   ["CREATE_REMINDER", "LIFE"],
   ["SET_REMINDER_RULE", "LIFE"],
+  ["CHECK_IN", "CHECKIN"],
+  ["LIFE_CHECK_IN", "CHECKIN"],
+  ["MORNING_CHECKIN", "CHECKIN"],
+  ["MORNING_CHECK_IN", "CHECKIN"],
+  ["NIGHT_CHECKIN", "CHECKIN"],
+  ["NIGHT_CHECK_IN", "CHECKIN"],
+  ["RUN_CHECKIN", "CHECKIN"],
+  ["RUN_MORNING_CHECKIN", "CHECKIN"],
+  ["RUN_NIGHT_CHECKIN", "CHECKIN"],
+  ["AUTOMATION_RUN", "CHECKIN"],
+  ["DAILY_BRIEF", "CHECKIN"],
+  ["MEMORY_SET", "PROFILE"],
+  ["MEMORY_WRITE", "PROFILE"],
+  ["REMEMBER_PREFERENCES", "PROFILE"],
   ["MESSAGE", "MESSAGE"],
   ["DISPATCH_DRAFT", "MESSAGE"],
   ["CONFIRM_AND_SEND", "MESSAGE"],
   ["SOCIAL_POSTING", "POST"],
   ["GET_TIMELINE", "POST"],
   ["READ_TIMELINE", "POST"],
+  ["SEARCH_TWITTER", "POST"],
+  ["TWITTER_SEARCH", "POST"],
+  ["X_SEARCH", "POST"],
   ["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
   ["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
+  ["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
+  ["FOCUS_BLOCK", "WEBSITE_BLOCK"],
   ["SET_APP_BLOCK", "APP_BLOCK"],
   ["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
   ["PHONE_BLOCK_APPS", "APP_BLOCK"],
   ["BLOCK_APPS", "APP_BLOCK"],
+  ["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
+  ["REJECT_APPROVAL", "RESOLVE_REQUEST"],
+  ["DENY_APPROVAL", "RESOLVE_REQUEST"],
+  ["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
   ["BROADCAST_INTENT", "DEVICE_INTENT"],
   ["BROADCAST_REMINDER", "DEVICE_INTENT"],
   ["DEVICE_BROADCAST", "DEVICE_INTENT"],
@@ -212,6 +235,98 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
     return configured as UUID;
   }
   return stringToUuid(`${runtime.agentId}-admin-entity`);
+}
+
+function makeBenchmarkConnectorMemory(args: {
+  runtime: AgentRuntime;
+  text: string;
+  source: string;
+  index: number;
+}): Memory {
+  return {
+    id: stringToUuid(
+      `benchmark-${args.source}-${args.runtime.agentId}-${args.index}-${args.text}`,
+    ),
+    entityId: args.runtime.agentId,
+    agentId: args.runtime.agentId,
+    roomId: stringToUuid(`benchmark-${args.source}-room-${args.runtime.agentId}`),
+    content: {
+      text: args.text,
+      source: args.source,
+      channelType: ChannelType.DM,
+    },
+    createdAt: Date.now() - args.index * 60_000,
+  } as Memory;
+}
+
+function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
+  const withConnectors = runtime as AgentRuntime & {
+    registerPostConnector?: (registration: Record<string, unknown>) => void;
+    registerMessageConnector?: (registration: Record<string, unknown>) => void;
+  };
+  const account = {
+    source: "x",
+    accountId: "benchmark-x-owner",
+    label: "Benchmark X",
+    role: "OWNER",
+    health: "HEALTHY",
+  };
+  withConnectors.registerPostConnector?.({
+    source: "x",
+    accountId: "benchmark-x-owner",
+    account,
+    label: "Benchmark X",
+    capabilities: ["read_feed", "search_posts"],
+    contexts: ["social_posting", "connectors"],
+    fetchFeed: async () => [
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 1,
+        text: "@elizaOS: Latest project update and community highlights.",
+      }),
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 2,
+        text: "@milady: Agent runtime benchmarks are looking healthier.",
+      }),
+    ],
+    searchPosts: async (_context: unknown, params: { query?: string }) => {
+      const query = params.query?.trim() || "elizaOS";
+      return [
+        makeBenchmarkConnectorMemory({
+          runtime,
+          source: "x",
+          index: 1,
+          text: `Search result for ${query}: elizaOS agents shipping better action routing.`,
+        }),
+      ];
+    },
+  });
+  withConnectors.registerMessageConnector?.({
+    source: "x",
+    accountId: "benchmark-x-owner",
+    account,
+    label: "Benchmark X DMs",
+    capabilities: ["read_messages", "search_messages"],
+    supportedTargetKinds: ["channel", "user", "room"],
+    contexts: ["messaging", "connectors"],
+    fetchMessages: async () => [
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 1,
+        text: "DM from @alex: quick question about the elizaOS roadmap.",
+      }),
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 2,
+        text: "DM from @sam: can you send the benchmark aggregate?",
+      }),
+    ],
+  });
 }
 
 async function _ensureBenchmarkConversation(args: {
@@ -987,14 +1102,16 @@ async function seedBenchmarkCaseFixtures(
       ) => Promise<void>;
     };
     await seedModule.seedXConnectorGrant(runtime, { side: "owner" });
+    registerBenchmarkXConnectors(runtime);
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, agentId: runtime.agentId },
       "seedBenchmarkCaseFixtures: x connector grant seeded",
     );
   } catch (error) {
+    registerBenchmarkXConnectors(runtime);
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, error: String(error) },
-      "seedBenchmarkCaseFixtures: x grant seed skipped",
+      "seedBenchmarkCaseFixtures: x grant seed skipped; registered benchmark X connectors",
     );
   }
 

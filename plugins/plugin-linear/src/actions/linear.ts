@@ -18,8 +18,8 @@ import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
 import { listCommentsAction } from "./listComments";
 import { searchIssuesAction } from "./searchIssues";
-import { updateCommentAction } from "./updateComment";
-import { updateIssueAction } from "./updateIssue";
+import { handleUpdateComment } from "./updateComment";
+import { handleUpdateIssue } from "./updateIssue";
 
 export const LINEAR_CONTEXT = "linear";
 
@@ -50,9 +50,18 @@ const ALL_OPS: readonly LinearOp[] = [
   "search_issues",
 ] as const;
 
+type LinearHandlerFn = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback
+) => Promise<ActionResult>;
+
 interface LinearRoute {
   op: LinearOp;
-  action: Action;
+  action?: Action;
+  run?: LinearHandlerFn;
   match: RegExp;
 }
 
@@ -64,7 +73,7 @@ const ROUTES: LinearRoute[] = [
   },
   {
     op: "update_issue",
-    action: updateIssueAction,
+    run: handleUpdateIssue,
     match:
       /\b(update|edit|modify|move|change|assign|reassign|priority|status|label)\b.*\b(issue|bug|task|ticket|[a-z]+-\d+)\b/i,
   },
@@ -81,7 +90,7 @@ const ROUTES: LinearRoute[] = [
   },
   {
     op: "update_comment",
-    action: updateCommentAction,
+    run: handleUpdateComment,
     match: /\b(update|edit|modify|change)\b.*\bcomment\b/i,
   },
   {
@@ -235,15 +244,16 @@ export const linearAction: Action = {
       };
     }
 
-    const result =
-      (await route.action.handler(runtime, message, state, options, callback)) ??
-      ({ success: true } as ActionResult);
+    const dispatch = route.run ?? route.action?.handler?.bind(route.action);
+    const result = dispatch
+      ? ((await dispatch(runtime, message, state, options, callback)) ?? ({ success: true } as ActionResult))
+      : ({ success: true } as ActionResult);
     return {
       ...result,
       data: {
         ...(typeof result.data === "object" && result.data ? result.data : {}),
         actionName: "LINEAR",
-        routedActionName: route.action.name,
+        routedActionName: route.action?.name ?? route.op,
         op: route.op,
       },
     };

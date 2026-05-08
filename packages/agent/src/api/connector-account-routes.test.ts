@@ -13,6 +13,10 @@ const coreMocks = vi.hoisted(() => {
     createdAt?: number;
     updatedAt?: number;
     metadata?: Record<string, unknown>;
+    externalId?: string | null;
+    displayHandle?: string | null;
+    ownerBindingId?: string | null;
+    ownerIdentityId?: string | null;
   };
   type TestFlow = {
     id: string;
@@ -31,6 +35,24 @@ const coreMocks = vi.hoisted(() => {
   type TestProvider = {
     provider: string;
     startOAuth?: (request: { flow: TestFlow }) => Promise<{ authUrl: string }>;
+    completeOAuth?: (request: {
+      flow: TestFlow;
+      code?: string;
+      error?: string;
+      errorDescription?: string;
+      query?: Record<string, string | undefined>;
+      body?: unknown;
+    }) =>
+      | Promise<{
+          account?: TestAccount;
+          flow?: Partial<TestFlow>;
+          redirectUrl?: string;
+        }>
+      | {
+          account?: TestAccount;
+          flow?: Partial<TestFlow>;
+          redirectUrl?: string;
+        };
   };
 
   function key(provider: string, id: string): string {
@@ -181,6 +203,42 @@ const coreMocks = vi.hoisted(() => {
     async getOAuthFlow(provider: string, flowIdOrState: string) {
       return this.storage.getOAuthFlow(provider, flowIdOrState);
     }
+
+    async completeOAuth(
+      provider: string,
+      input: {
+        state: string;
+        code?: string;
+        error?: string;
+        errorDescription?: string;
+        query?: Record<string, string | undefined>;
+        body?: unknown;
+      },
+    ) {
+      const normalized = provider.toLowerCase();
+      const registered = this.providers.get(normalized);
+      if (!registered?.completeOAuth) throw new Error("OAuth not supported");
+      const flow = await this.storage.getOAuthFlow(normalized, input.state);
+      if (!flow) throw new Error("OAuth flow not found");
+      const result = await registered.completeOAuth({
+        flow,
+        code: input.code,
+        error: input.error,
+        errorDescription: input.errorDescription,
+        query: input.query,
+        body: input.body,
+      });
+      const account = result.account
+        ? await this.storage.upsertAccount(result.account)
+        : undefined;
+      const completed =
+        (await this.storage.updateOAuthFlow(normalized, flow.id, {
+          ...result.flow,
+          status: result.flow?.status ?? "completed",
+          accountId: account?.id ?? result.flow?.accountId ?? flow.accountId,
+        })) ?? flow;
+      return { flow: completed, account, redirectUrl: result.redirectUrl };
+    }
   }
 
   const managers = new WeakMap<object, ConnectorAccountManager>();
@@ -255,6 +313,7 @@ function createConnectorAccountHarness(options: {
   body?: Record<string, unknown>;
   storage?: TestStorage;
   adapter?: unknown;
+  authorize?: ConnectorAccountRouteContext["authorize"];
 }) {
   const captured: Captured = { status: 200, body: null };
   const storage = options.storage ?? new InMemoryConnectorAccountStorage();
@@ -286,6 +345,7 @@ function createConnectorAccountHarness(options: {
       captured.status = status;
       captured.body = { error: message };
     },
+    authorize: options.authorize,
   };
   return { ctx, captured, runtime, storage };
 }
@@ -337,11 +397,93 @@ describe("connector account routes", () => {
     expect(configHandled).toBe(false);
   });
 
+  it("honors route authorization before connector account reads", async () => {
+    const authorize = vi.fn(async () => false);
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/accounts",
+      authorize,
+    });
+    await storage.upsertAccount({
+      id: "acct_1",
+      provider: "slack",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "slack",
+        namespace: "accounts",
+        method: "GET",
+      }),
+    );
+    expect(captured.status).toBe(403);
+    expect(captured.body).toEqual({ error: "Forbidden" });
+  });
+
+  it("leaves OAuth callbacks available without route authorization", async () => {
+    const authorize = vi.fn(async () => false);
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/oauth/callback?state=state-1&code=ok",
+      authorize,
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "slack",
+      completeOAuth: () => ({
+        account: {
+          id: "acct_callback",
+          provider: "slack",
+          label: "Callback account",
+          role: "OWNER",
+          purpose: ["messaging"],
+          accessGate: "open",
+          status: "connected",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      }),
+    });
+    await storage.createOAuthFlow({
+      id: "flow-1",
+      provider: "slack",
+      state: "state-1",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      ok: true,
+      accountId: "acct_callback",
+    });
+  });
+
   it("persists OAuth start state through the connector account storage contract", async () => {
     const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
       method: "POST",
       pathname: "/api/connectors/slack/oauth/start",
-      body: { label: "Work Slack" },
+      body: {
+        label: "Work Slack",
+        metadata: {
+          safeHint: "visible",
+          codeVerifier: "pkce-secret",
+          nested: { refresh_token: "refresh-secret" },
+        },
+      },
     });
     const manager = getConnectorAccountManager(runtime as never, storage);
     manager.registerProvider({
@@ -354,9 +496,22 @@ describe("connector account routes", () => {
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
     expect(captured.status).toBe(201);
     const startBody = captured.body as {
-      flow: { id: string; state: string; authUrl: string };
+      flow: {
+        id: string;
+        state: string;
+        authUrl: string;
+        metadata?: Record<string, unknown>;
+      };
     };
     expect(startBody.flow.authUrl).toContain(startBody.flow.state);
+    expect(startBody.flow).toMatchObject({
+      metadata: {
+        safeHint: "visible",
+        nested: {},
+      },
+    });
+    expect(JSON.stringify(startBody.flow)).not.toContain("pkce-secret");
+    expect(JSON.stringify(startBody.flow)).not.toContain("refresh-secret");
 
     const statusHarness = createConnectorAccountHarness({
       method: "GET",
@@ -482,6 +637,118 @@ describe("connector account routes", () => {
         }),
       ]),
     });
+  });
+
+  it("requires server-side confirmation for OWNER role and privacy escalation", async () => {
+    const { storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/accounts",
+    });
+    await storage.upsertAccount({
+      id: "acct_agent",
+      provider: "slack",
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: 1,
+      updatedAt: 1,
+      metadata: { privacy: "owner_only" },
+    });
+
+    const roleDenied = createConnectorAccountHarness({
+      method: "PATCH",
+      pathname: "/api/connectors/slack/accounts/acct_agent",
+      storage,
+      body: { role: "OWNER" },
+    });
+    await expect(handleConnectorAccountRoutes(roleDenied.ctx)).resolves.toBe(
+      true,
+    );
+    expect(roleDenied.captured.status).toBe(403);
+
+    const roleConfirmed = createConnectorAccountHarness({
+      method: "PATCH",
+      pathname: "/api/connectors/slack/accounts/acct_agent",
+      storage,
+      body: { role: "OWNER", confirmation: { role: "OWNER" } },
+    });
+    await expect(handleConnectorAccountRoutes(roleConfirmed.ctx)).resolves.toBe(
+      true,
+    );
+    expect(roleConfirmed.captured.body).toMatchObject({ role: "OWNER" });
+
+    const privacyDenied = createConnectorAccountHarness({
+      method: "PATCH",
+      pathname: "/api/connectors/slack/accounts/acct_agent",
+      storage,
+      body: { privacy: "public" },
+    });
+    await expect(handleConnectorAccountRoutes(privacyDenied.ctx)).resolves.toBe(
+      true,
+    );
+    expect(privacyDenied.captured.status).toBe(403);
+
+    const privacyConfirmed = createConnectorAccountHarness({
+      method: "PATCH",
+      pathname: "/api/connectors/slack/accounts/acct_agent",
+      storage,
+      body: {
+        privacy: "public",
+        confirmation: { privacy: "PUBLIC", publicAcknowledged: true },
+      },
+    });
+    await expect(
+      handleConnectorAccountRoutes(privacyConfirmed.ctx),
+    ).resolves.toBe(true);
+    expect(privacyConfirmed.captured.body).toMatchObject({ privacy: "public" });
+  });
+
+  it("strips client-controlled policy metadata and owner-binding fields", async () => {
+    const { ctx, captured } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/accounts",
+      body: {
+        id: "acct_policy",
+        label: "Policy Attempt",
+        accessGate: "owner_binding",
+        ownerBindingId: "client-binding",
+        ownerIdentityId: "client-identity",
+        metadata: {
+          safe: "visible",
+          privacy: "public",
+          isDefault: true,
+          credentialRefs: [{ vaultRef: "secret" }],
+          nested: {
+            safe: "nested-visible",
+            refresh_token: "refresh-secret",
+            privacy: "public",
+          },
+        },
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(201);
+    expect(captured.body).toMatchObject({
+      id: "acct_policy",
+      accessGate: "open",
+      privacy: "owner_only",
+      isDefault: false,
+      metadata: {
+        safe: "visible",
+        nested: {
+          safe: "nested-visible",
+        },
+      },
+    });
+    expect(captured.body).not.toMatchObject({
+      ownerBindingId: "client-binding",
+      ownerIdentityId: "client-identity",
+    });
+    expect(JSON.stringify(captured.body)).not.toContain("refresh-secret");
+    expect(JSON.stringify(captured.body)).not.toContain("credentialRefs");
   });
 
   it("reads connector account audit events with response redaction", async () => {

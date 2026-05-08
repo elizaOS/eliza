@@ -791,6 +791,7 @@ export const websiteBlockAction: Action & {
     "SITE_BLOCKER",
     "HOSTS_BLOCK",
     "FOCUS_BLOCK",
+    "AUTOMATION_FOCUS_BLOCK",
     "BLOCK_WEBSITE",
     "WEBSITE_BLOCKER",
   ],

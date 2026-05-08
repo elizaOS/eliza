@@ -2,6 +2,7 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
+export { checkinAction } from "./actions/checkin.js";
 export { connectorAction } from "./actions/connector.js";
 export { deviceIntentAction } from "./actions/device-intent.js";
 export { healthAction } from "./actions/health.js";

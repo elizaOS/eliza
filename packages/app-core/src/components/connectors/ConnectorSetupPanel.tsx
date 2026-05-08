@@ -1,7 +1,13 @@
 import type React from "react";
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
+import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
+import {
+  getConnectorPluginManagedAccountCreateInput,
+  getConnectorPluginManagedAccountOption,
+  parseConnectorAccountManagementPanelPluginId,
+} from "./connector-account-options";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -37,6 +43,9 @@ export function registerConnectorSetupPanel(
 
 export function hasConnectorSetupPanel(pluginId: string): boolean {
   const normalized = normalizePluginId(pluginId);
+  if (parseConnectorAccountManagementPanelPluginId(pluginId)) {
+    return true;
+  }
   // Check registry first
   if (connectorSetupRegistry.has(normalized)) {
     return true;
@@ -66,8 +75,38 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   }
 }
 
+function ConnectorAccountManagementPanel({
+  provider,
+  connectorId,
+}: {
+  provider: string;
+  connectorId: string;
+}) {
+  const option =
+    getConnectorPluginManagedAccountOption(connectorId) ??
+    getConnectorPluginManagedAccountOption(provider);
+  const createInput = option?.supportsOAuth
+    ? undefined
+    : () => getConnectorPluginManagedAccountCreateInput(connectorId);
+
+  return (
+    <ConnectorAccountList
+      provider={provider}
+      connectorId={connectorId}
+      title={option?.title ?? "Plugin-managed accounts"}
+      onAddAccount={createInput}
+    />
+  );
+}
+
 export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
   const normalized = normalizePluginId(pluginId);
+  const accountManagementPanel =
+    parseConnectorAccountManagementPanelPluginId(pluginId);
+
+  if (accountManagementPanel) {
+    return <ConnectorAccountManagementPanel {...accountManagementPanel} />;
+  }
 
   // Check registry first — plugin-registered panels take precedence
   const RegisteredPanel = connectorSetupRegistry.get(normalized);

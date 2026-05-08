@@ -19,18 +19,10 @@ import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 const canModifyRole = (
 	currentRole: Role,
 	targetRole: Role | null,
-	newRole: Role,
+	_newRole: Role,
 ): boolean => {
 	if (targetRole === currentRole) return false;
-
-	switch (currentRole) {
-		case Role.OWNER:
-			return true;
-		case Role.ADMIN:
-			return newRole !== Role.OWNER;
-		default:
-			return false;
-	}
+	return currentRole === Role.OWNER;
 };
 
 const _extractionTemplate = `# Task: Extract role assignments from the conversation

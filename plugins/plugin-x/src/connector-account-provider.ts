@@ -187,7 +187,10 @@ function buildAuthorizeUrl(args: {
   return url.toString();
 }
 
-function readFlowMetadataString(metadata: unknown, key: string): string | undefined {
+function readFlowMetadataString(
+  metadata: unknown,
+  key: string,
+): string | undefined {
   const record =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
@@ -208,7 +211,11 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
         ? record.accountRole
         : undefined;
   const normalized = raw?.trim().toUpperCase();
-  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+  if (
+    normalized === "OWNER" ||
+    normalized === "AGENT" ||
+    normalized === "TEAM"
+  ) {
     return normalized;
   }
   return "OWNER";
@@ -251,6 +258,11 @@ export function createXConnectorAccountProvider(
       request: ConnectorOAuthCallbackRequest,
       manager?: ConnectorAccountManager,
     ): Promise<ConnectorOAuthCallbackResult> {
+      if (!manager) {
+        throw new Error(
+          "X OAuth callback requires a ConnectorAccountManager to persist the connector account before credentials.",
+        );
+      }
       const config = readClientConfig(runtime);
       const redirectUri =
         request.flow.redirectUri ??
@@ -283,19 +295,46 @@ export function createXConnectorAccountProvider(
         typeof token.expires_in === "number"
           ? Date.now() + token.expires_in * 1000
           : undefined;
+      const oauthCredentialVersion = String(Date.now());
+      const accountMetadata = {
+        authMethod: "oauth",
+        username: me.username,
+        name: me.name,
+        scope: token.scope,
+        tokenType: token.token_type,
+        expiresAt,
+        hasRefreshToken: Boolean(token.refresh_token),
+        oauthCredentialVersion,
+      };
+      const pendingAccount = await manager.upsertAccount(
+        X_PROVIDER,
+        {
+          externalId: me.id,
+          displayHandle: me.username ?? me.id,
+          label: me.name ?? me.username ?? me.id,
+          role: roleFromMetadata(request.flow.metadata),
+          purpose: [...DEFAULT_PURPOSES],
+          accessGate: "open",
+          status: "pending",
+          metadata: accountMetadata,
+        },
+        request.flow.accountId,
+      );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: X_PROVIDER,
-        accountIdForRef: request.flow.accountId ?? me.id,
-        storageAccountId: request.flow.accountId,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
         caller: "plugin-x",
         credentials: [
           {
             credentialType: "oauth.tokens",
             value: JSON.stringify({
               access_token: token.access_token,
-              ...(token.refresh_token ? { refresh_token: token.refresh_token } : {}),
+              ...(token.refresh_token
+                ? { refresh_token: token.refresh_token }
+                : {}),
               ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
               ...(token.scope ? { scope: token.scope } : {}),
               ...(token.token_type ? { token_type: token.token_type } : {}),
@@ -309,28 +348,17 @@ export function createXConnectorAccountProvider(
         ],
       });
 
-      const account: ConnectorAccountPatch = {
-        externalId: me.id,
-        displayHandle: me.username ?? me.id,
-        label: me.name ?? me.username ?? me.id,
-        role: roleFromMetadata(request.flow.metadata),
-        purpose: [...DEFAULT_PURPOSES],
-        accessGate: "open",
+      const account: ConnectorAccountPatch & { id: string } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
         status: "connected",
         metadata: {
-          authMethod: "oauth",
-          username: me.username,
-          name: me.name,
-          scope: token.scope,
-          tokenType: token.token_type,
-          expiresAt,
-          hasRefreshToken: Boolean(token.refresh_token),
+          ...accountMetadata,
           credentialRefs: credentialPersist.refs,
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
           },
-          oauthCredentialVersion: String(Date.now()),
         },
       };
 
