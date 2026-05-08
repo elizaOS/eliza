@@ -11,7 +11,7 @@ export const FIRST_PARTY_CONTEXT_IDS = [
 	"simple",
 	"general",
 	"memory",
-	"knowledge",
+	"documents",
 	"web",
 	"browser",
 	"code",
@@ -55,6 +55,7 @@ export const CONTEXT_ALIASES: Readonly<
 	portfolio: ["finance", "wallet", "crypto"],
 	web3: ["crypto", "wallet", "finance"],
 	defi: ["crypto", "wallet", "finance"],
+	knowledge: ["documents"],
 });
 
 /**

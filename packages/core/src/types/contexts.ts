@@ -5,7 +5,7 @@ export type FirstPartyAgentContext =
 	| "simple"
 	| "general"
 	| "memory"
-	| "knowledge"
+	| "documents"
 	| "web"
 	| "browser"
 	| "code"
