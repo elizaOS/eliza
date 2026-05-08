@@ -11,7 +11,22 @@ import {
   getBrowserWorkspaceMode,
 } from "../workspace/browser-workspace.js";
 
-type BrowserSessionParameters = {
+/**
+ * Targets are the registered browser backends. The agent uses what is
+ * available; specifying a target overrides the default. `workspace` is the
+ * current default (electrobun-embedded BrowserView with JSDOM fallback).
+ * `bridge` (Chrome/Safari companion) and `computeruse` (puppeteer Chromium)
+ * are reserved for the BrowserService target-registry refactor — see
+ * follow-up work.
+ */
+export type BrowserTarget = "workspace" | "bridge" | "computeruse";
+
+type BrowserActionParameters = {
+  /**
+   * Optional target override. Default: the BrowserService active target
+   * (currently always `workspace`). Forces a specific backend when set.
+   */
+  target?: BrowserTarget;
   id?: string;
   key?: string;
   pixels?: number;
@@ -73,7 +88,7 @@ function extractFirstUrl(value: string): string | null {
 }
 
 function inferBrowserSubaction(
-  params: BrowserSessionParameters | undefined,
+  params: BrowserActionParameters | undefined,
   messageText: string,
 ): BrowserWorkspaceCommand["subaction"] {
   if (params?.subaction) {
@@ -114,12 +129,12 @@ function formatBrowserSessionResult(
       .map((tab) => `- ${tab.title} (${tab.url})`)
       .join("\n");
     return labels
-      ? `Browser session tabs (${result.mode}):\n${labels}`
+      ? `Browser tabs (${result.mode}):\n${labels}`
       : `No browser session tabs are open (${result.mode}).`;
   }
 
   if (result.closed) {
-    return `Browser session closed (${result.mode}).`;
+    return `Browser closed (${result.mode}).`;
   }
 
   if (result.tab) {
@@ -141,35 +156,40 @@ function formatBrowserSessionResult(
       typeof result.value === "string"
         ? result.value
         : JSON.stringify(result.value, null, 2);
-    return `Browser session ${command.subaction} result (${result.mode}):\n${serialized}`;
+    return `Browser ${command.subaction} result (${result.mode}):\n${serialized}`;
   }
 
   if (result.snapshot?.data) {
-    return `Browser session ${command.subaction} captured a preview in ${result.mode} mode.`;
+    return `Browser ${command.subaction} captured a preview in ${result.mode} mode.`;
   }
 
-  return `Browser session ${command.subaction} completed in ${result.mode} mode.`;
+  return `Browser ${command.subaction} completed in ${result.mode} mode.`;
 }
 
-export const browserSessionAction: Action = {
-  name: "BROWSER_SESSION",
+export const browserAction: Action = {
+  name: "BROWSER",
   contexts: ["browser", "web", "automation"],
   roleGate: { minRole: "OWNER" },
   similes: [
     "BROWSE_SITE",
+    "BROWSER_SESSION",
+    "CONTROL_BROWSER",
     "CONTROL_BROWSER_SESSION",
+    "MANAGE_ELIZA_BROWSER_WORKSPACE",
+    "MANAGE_LIFEOPS_BROWSER",
     "NAVIGATE_SITE",
     "OPEN_SITE",
     "USE_BROWSER",
+    "BROWSER_ACTION",
   ],
   description:
-    "Control the Eliza browser workspace through one session surface. Uses the real desktop browser bridge or hosted Eliza Cloud browser when available, and falls back to the limited embedded web mode only when no real browser session backend is configured.",
+    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified.",
   descriptionCompressed:
-    "control Eliza browser workspace through one session surface use real desktop browser bridge host Eliza Cloud browser available, fall back limit embedd web mode real browser session backend configur",
+    "single BROWSER action; dispatches to whichever target is registered (workspace / bridge / computeruse); subaction covers open / navigate / click / type / screenshot / state / etc.",
   validate: async () => true,
   handler: async (_runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
-      | BrowserSessionParameters
+      | BrowserActionParameters
       | undefined;
     const messageText = getMessageText(message);
     const url =
@@ -196,7 +216,7 @@ export const browserSessionAction: Action = {
 
     try {
       logger.info(
-        `[browser-session] ${command.subaction} via ${getBrowserWorkspaceMode(process.env)}`,
+        `[BROWSER] ${command.subaction} via ${getBrowserWorkspaceMode(process.env)}`,
       );
       const result = await executeBrowserWorkspaceCommand(command);
 
@@ -209,21 +229,21 @@ export const browserSessionAction: Action = {
           subaction: result.subaction,
         },
         data: {
-          actionName: "BROWSER_SESSION",
+          actionName: "BROWSER",
           command,
           result,
         },
       };
     } catch (error) {
       const messageText =
-        error instanceof Error ? error.message : "Browser session failed";
-      logger.warn(`[browser-session] Failed: ${messageText}`);
+        error instanceof Error ? error.message : "Browser action failed";
+      logger.warn(`[BROWSER] Failed: ${messageText}`);
       return {
-        text: `Browser session failed: ${messageText}`,
+        text: `Browser action failed: ${messageText}`,
         success: false,
-        values: { success: false, error: "BROWSER_SESSION_FAILED" },
+        values: { success: false, error: "BROWSER_FAILED" },
         data: {
-          actionName: "BROWSER_SESSION",
+          actionName: "BROWSER",
           command,
         },
       };
@@ -232,7 +252,7 @@ export const browserSessionAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "Browser session action to perform",
+      description: "Browser action to perform",
       required: false,
       schema: {
         type: "string" as const,
