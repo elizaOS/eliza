@@ -3,12 +3,14 @@
  */
 
 import {
+  type ActionResult,
   asUUID,
   ChannelType,
   type Content,
   composePromptFromState,
   createUniqueUuid,
   EventType,
+  executePlannedToolCall,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
@@ -43,6 +45,8 @@ import {
 import {
   attachAvailableContexts,
   type ContextRoutingDecision,
+  getActiveRoutingContexts,
+  getContextRoutingFromMessage,
   parseContextRoutingMetadata,
   setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -59,7 +63,7 @@ import {
   isLatestResponseId,
   setLatestResponseId,
 } from "../utils/race-tracking";
-import { getActionResultsFromCache, refreshStateAfterAction } from "../utils/state";
+import { refreshStateAfterAction } from "../utils/state";
 
 const RETRY_CONFIG = {
   baseDelayMs: 200,
@@ -614,15 +618,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         if (callback) {
           await callback(responseContent);
         }
-      } else if (mode === "actions") {
-        // Actions mode - run processActions (though in native-planner we already did this)
-        await runtime.processActions(message, responseMessages, state, async (content) => {
-          responseContent!.actionCallbacks = content;
-          if (callback) {
-            return callback(content);
-          }
-          return [];
-        });
       }
     }
 
@@ -703,6 +698,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     let lastActionKey = "";
     let accumulatedState: State = state;
     let finishResponse: string | null = null;
+    const activeContexts = getActiveRoutingContexts(getContextRoutingFromMessage(message));
 
     // Save the original system prompt so we can restore it after the native planner loop.
     // The decision phase uses a functional system prompt (embedded in the template),
@@ -1059,22 +1055,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             `\nExecuting action: ${action}${hasActionParams ? ` with params: ${JSON.stringify(actionParams)}` : ""}\n`,
           );
 
-          const actionContent: Content & {
-            params?: Record<string, Record<string, unknown>>;
-            actionParams?: Record<string, unknown>;
-            actionInput?: Record<string, unknown>;
-          } = {
-            text: `Executing action: ${action}`,
-            actions: [action],
-            thought: thought ?? "",
-          };
-
-          if (hasActionParams) {
-            actionContent.params = toNativeActionParams(action, actionParams);
-            actionContent.actionParams = actionParams;
-            actionContent.actionInput = actionParams;
-          }
-
           const actionMessage: Memory = hasActionParams
             ? {
                 ...message,
@@ -1087,47 +1067,47 @@ export class CloudBootstrapMessageService implements IMessageService {
               }
             : message;
 
-          let capturedResult: {
-            text?: string;
-            success?: boolean;
-            values?: Record<string, unknown>;
-            data?: Record<string, unknown>;
-          } | null = null;
-
-          await runtime.processActions(
-            actionMessage,
-            [
-              {
-                id: v4() as UUID,
-                entityId: runtime.agentId,
-                roomId: message.roomId,
-                createdAt: Date.now(),
-                content: actionContent,
+          let capturedCallback: Content | undefined;
+          const result = await executePlannedToolCall(
+            runtime,
+            {
+              message: actionMessage,
+              state: accumulatedState,
+              activeContexts,
+              previousResults: traceActionResult as ActionResult[],
+              callback: async (content) => {
+                capturedCallback = content;
+                return [];
               },
-            ],
-            accumulatedState,
-            async (result) => {
-              capturedResult = result;
-              return [];
+              responses: [
+                {
+                  id: v4() as UUID,
+                  entityId: runtime.agentId,
+                  roomId: message.roomId,
+                  createdAt: Date.now(),
+                  content: {
+                    text: `Executing action: ${action}`,
+                    actions: [action],
+                    thought: thought ?? "",
+                  },
+                },
+              ],
             },
+            hasActionParams ? { name: action, params: actionParams } : { name: action },
+            options?.onStreamChunk ? { onStreamChunk: options.onStreamChunk } : undefined,
           );
-
-          const result =
-            capturedResult ||
-            (() => {
-              const actionResults = getActionResultsFromCache(runtime, message.id as string);
-              return actionResults.length > 0
-                ? (actionResults[0] as Record<string, unknown>)
-                : null;
-            })();
+          const resultText =
+            typeof result.text === "string" && result.text.length > 0
+              ? result.text
+              : capturedCallback?.text;
           const success = (result?.success as boolean) ?? false;
 
           const actionResult: NativePlannerActionResult = {
             data: { actionName: action },
             success,
-            text: result?.text as string | undefined,
+            text: resultText,
             values: result?.values as Record<string, unknown> | undefined,
-            error: success ? undefined : (result?.text as string | undefined),
+            error: success ? undefined : resultText,
           };
 
           // Transparent meta-actions (e.g., SEARCH_ACTIONS) don't appear in
@@ -1143,9 +1123,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
           // Track newly discovered actions from SEARCH_ACTIONS for explicit visibility
           if (action === "SEARCH_ACTIONS" && actionResult.success && result) {
-            const data = (result as Record<string, unknown>).data as
-              | Record<string, unknown>
-              | undefined;
+            const data = result.data as Record<string, unknown> | undefined;
             const newlyRegistered = data?.newlyRegistered as string[] | undefined;
             if (newlyRegistered?.length) {
               newlyRegistered.forEach((name) => discoveredActions.add(name));
