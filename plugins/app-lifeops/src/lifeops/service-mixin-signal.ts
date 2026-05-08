@@ -84,17 +84,11 @@ function signalServiceConnected(service: SignalServiceLike | null): boolean {
 }
 
 function signalServiceCanRead(service: SignalServiceLike | null): boolean {
-  return (
-    signalServiceConnected(service) &&
-    typeof service?.getRecentMessages === "function"
-  );
+  return typeof service?.getRecentMessages === "function";
 }
 
 function signalServiceCanSend(service: SignalServiceLike | null): boolean {
-  return (
-    signalServiceConnected(service) &&
-    typeof service?.sendMessage === "function"
-  );
+  return typeof service?.sendMessage === "function";
 }
 
 function signalReadyCapabilities(args: {

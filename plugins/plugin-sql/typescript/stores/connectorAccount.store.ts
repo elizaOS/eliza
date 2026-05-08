@@ -6,6 +6,8 @@ import type {
   ConnectorAccountCredentialRefRecord,
   ConnectorAccountJsonObject,
   ConnectorAccountRecord,
+  ConnectorOwnerBindingLookup,
+  ConnectorOwnerBindingRecord,
   ConsumeOAuthFlowStateParams,
   CreateOAuthFlowStateParams,
   DeleteConnectorAccountParams,
@@ -21,6 +23,7 @@ import type {
 } from "@elizaos/core";
 import { and, desc, eq, gt, isNull, type SQL, sql } from "drizzle-orm";
 import {
+  authOwnerBindingTable,
   connectorAccountAuditEventsTable,
   connectorAccountCredentialsTable,
   connectorAccountsTable,
@@ -31,7 +34,7 @@ import type { Store, StoreContext } from "./types";
 
 const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
-  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
+  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
 
 function redactConnectorAuditValue(value: unknown): JsonValue {
   if (value === null || value === undefined) return null;
@@ -135,6 +138,8 @@ function mapAccountRow(row: ConnectorAccountRow): ConnectorAccountRecord {
     displayName: row.displayName ?? null,
     username: row.username ?? null,
     email: row.email ?? null,
+    ownerBindingId: row.ownerBindingId ?? null,
+    ownerIdentityId: row.ownerIdentityId ?? null,
     role: row.role,
     purpose: asStringArray(row.purpose),
     accessGate: row.accessGate,
@@ -283,6 +288,8 @@ export class ConnectorAccountStore implements Store {
         displayName: params.displayName ?? null,
         username: params.username ?? null,
         email: params.email ?? null,
+        ownerBindingId: params.ownerBindingId ?? null,
+        ownerIdentityId: params.ownerIdentityId ?? null,
         role: params.role ?? "OWNER",
         purpose: params.purpose ? [...params.purpose] : ["messaging"],
         accessGate: params.accessGate ?? "open",
@@ -304,6 +311,8 @@ export class ConnectorAccountStore implements Store {
       if (params.displayName !== undefined) updateSet.displayName = params.displayName;
       if (params.username !== undefined) updateSet.username = params.username;
       if (params.email !== undefined) updateSet.email = params.email;
+      if (params.ownerBindingId !== undefined) updateSet.ownerBindingId = params.ownerBindingId;
+      if (params.ownerIdentityId !== undefined) updateSet.ownerIdentityId = params.ownerIdentityId;
       if (params.role !== undefined) updateSet.role = params.role;
       if (params.purpose !== undefined) updateSet.purpose = [...params.purpose];
       if (params.accessGate !== undefined) updateSet.accessGate = params.accessGate;
@@ -317,6 +326,40 @@ export class ConnectorAccountStore implements Store {
       }
       if (lastSyncAt !== undefined) updateSet.lastSyncAt = lastSyncAt;
       updateSet.deletedAt = deletedAt === undefined ? null : deletedAt;
+
+      if (params.id) {
+        const existing = await this.db
+          .select({ id: connectorAccountsTable.id })
+          .from(connectorAccountsTable)
+          .where(
+            and(
+              eq(connectorAccountsTable.agentId, agentId),
+              eq(connectorAccountsTable.id, params.id),
+              isNull(connectorAccountsTable.deletedAt)
+            )
+          )
+          .limit(1);
+        if (existing.length > 0) {
+          const updated = await this.db
+            .update(connectorAccountsTable)
+            .set({
+              ...updateSet,
+              accountKey: params.accountKey,
+            })
+            .where(
+              and(
+                eq(connectorAccountsTable.agentId, agentId),
+                eq(connectorAccountsTable.id, params.id)
+              )
+            )
+            .returning();
+          const row = updated[0];
+          if (!row) {
+            throw new Error("Failed to update connector account");
+          }
+          return mapAccountRow(row);
+        }
+      }
 
       const inserted = await this.db
         .insert(connectorAccountsTable)
@@ -363,6 +406,38 @@ export class ConnectorAccountStore implements Store {
         .returning();
       return updated.length > 0;
     }, "ConnectorAccountStore.deleteAccount");
+  }
+
+  async findOwnerBinding(
+    params: ConnectorOwnerBindingLookup
+  ): Promise<ConnectorOwnerBindingRecord | null> {
+    return this.ctx.withRetry(async () => {
+      if (!params.instanceId) {
+        return null;
+      }
+      const conditions = [
+        eq(authOwnerBindingTable.connector, params.connector),
+        eq(authOwnerBindingTable.externalId, params.externalId),
+        eq(authOwnerBindingTable.instanceId, params.instanceId),
+      ];
+      const rows = await this.db
+        .select()
+        .from(authOwnerBindingTable)
+        .where(and(...conditions))
+        .limit(1);
+      const row = rows[0];
+      return row
+        ? {
+            id: row.id,
+            identityId: row.identityId,
+            connector: row.connector,
+            externalId: row.externalId,
+            displayHandle: row.displayHandle,
+            instanceId: row.instanceId,
+            verifiedAt: Number(row.verifiedAt),
+          }
+        : null;
+    }, "ConnectorAccountStore.findOwnerBinding");
   }
 
   async setCredentialRef(

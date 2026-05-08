@@ -1,4 +1,10 @@
-import type { ConnectorAccount, ConnectorAccountStorage } from "@elizaos/core";
+import type {
+  ConnectorAccount,
+  ConnectorAccountPatch,
+  ConnectorAccountStorage,
+  IAgentRuntime,
+} from "@elizaos/core";
+import { getConnectorAccountManager } from "@elizaos/core";
 import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
@@ -29,6 +35,23 @@ describe("google plugin", () => {
     expect(googlePlugin.description).toContain("Gmail, Calendar, Drive, and Meet");
     expect(googlePlugin.description).not.toContain("Chat");
     expect(googlePlugin.services).toContain(GoogleWorkspaceService);
+  });
+
+  it("registers the Google connector account provider on init", async () => {
+    const runtime = {
+      getService: vi.fn(() => null),
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+
+    await googlePlugin.init?.({}, runtime);
+
+    expect(getConnectorAccountManager(runtime).getProvider("google")).toEqual(
+      expect.objectContaining({
+        provider: "google",
+        startOAuth: expect.any(Function),
+        completeOAuth: expect.any(Function),
+      })
+    );
   });
 
   it("derives OAuth scopes only from selected capabilities", () => {
@@ -275,11 +298,7 @@ describe("google plugin", () => {
             }
           : null,
     } as never;
-    const manager = {
-      getStorage: () => ({
-        setConnectorAccountCredentialRef: setCredentialRef,
-      }),
-    } as never;
+    const manager = createOAuthCallbackManager("google", "acct_google_durable_1", setCredentialRef);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
@@ -316,36 +335,99 @@ describe("google plugin", () => {
           provider: "google",
           state: "state-1",
           status: "pending",
-          accountId: "acct_google_1",
           codeVerifier: "verifier",
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          metadata: { role: "AGENT" },
+          metadata: { requestedRole: "AGENT" },
         },
       },
-      manager
+      manager as never
     );
 
     const metadata = (result?.account as ConnectorAccount)?.metadata as Record<string, unknown>;
+    expect((result?.account as ConnectorAccount)?.id).toBe("acct_google_durable_1");
     expect((result?.account as ConnectorAccount)?.role).toBe("AGENT");
     expect(JSON.stringify(metadata)).not.toContain("google-access-token");
     expect(JSON.stringify(metadata)).not.toContain("google-refresh-token");
     expect(metadata.credentialRefs).toEqual([
       expect.objectContaining({
         credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.google.acct_google_1.oauth_tokens",
+        vaultRef: "connector.agent-1.google.acct_google_durable_1.oauth_tokens",
       }),
     ]);
-    expect(vault.get("connector.agent-1.google.acct_google_1.oauth_tokens")).toContain(
+    expect(vault.get("connector.agent-1.google.acct_google_durable_1.oauth_tokens")).toContain(
       "google-access-token"
     );
     expect(setCredentialRef).toHaveBeenCalledWith(
       expect.objectContaining({
-        accountId: "acct_google_1",
+        accountId: "acct_google_durable_1",
         credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.google.acct_google_1.oauth_tokens",
+        vaultRef: "connector.agent-1.google.acct_google_durable_1.oauth_tokens",
       })
     );
+  });
+
+  it("fails OAuth callback when no durable credential writer is available", async () => {
+    const runtime = {
+      agentId: "agent-1",
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("oauth2.googleapis.com/token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "google-access-token",
+              refresh_token: "google-refresh-token",
+              expires_in: 3600,
+              scope: GOOGLE_OAUTH_SCOPES.gmail.read,
+              token_type: "Bearer",
+              id_token: createUnsignedJwt({
+                sub: "google-subject",
+                email: "ada@example.com",
+              }),
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      })
+    );
+
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const manager = createOAuthCallbackManager(
+      "google",
+      "acct_google_durable_1",
+      vi.fn(async () => undefined)
+    );
+    await expect(
+      provider.completeOAuth?.(
+        {
+          provider: "google",
+          code: "oauth-code",
+          query: {},
+          flow: {
+            id: "flow-1",
+            provider: "google",
+            state: "state-1",
+            status: "pending",
+            codeVerifier: "verifier",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            metadata: {},
+          },
+        },
+        manager as never
+      )
+    ).rejects.toThrow(/durable connector credential store|vault writer/i);
   });
 
   it("uses a fake Gmail client with selected Gmail read/send scopes", async () => {
@@ -702,4 +784,42 @@ function createUnsignedJwt(payload: Record<string, unknown>): string {
     Buffer.from(JSON.stringify(payload)).toString("base64url"),
     "sig",
   ].join(".");
+}
+
+function createOAuthCallbackManager(
+  provider: string,
+  durableAccountId: string,
+  setCredentialRef: ReturnType<typeof vi.fn>
+) {
+  return {
+    getStorage: () => ({
+      setConnectorAccountCredentialRef: setCredentialRef,
+    }),
+    upsertAccount: vi.fn(
+      async (
+        providerId: string,
+        input: ConnectorAccountPatch & { provider?: string },
+        accountId?: string
+      ): Promise<ConnectorAccount> => ({
+        id: accountId ?? durableAccountId,
+        provider: providerId || provider,
+        label: input.label,
+        role: input.role ?? "OWNER",
+        purpose: Array.isArray(input.purpose)
+          ? input.purpose
+          : input.purpose
+            ? [input.purpose]
+            : ["messaging"],
+        accessGate: input.accessGate ?? "open",
+        status: input.status ?? "pending",
+        externalId: input.externalId ?? undefined,
+        displayHandle: input.displayHandle ?? undefined,
+        ownerBindingId: input.ownerBindingId ?? undefined,
+        ownerIdentityId: input.ownerIdentityId ?? undefined,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: input.metadata,
+      })
+    ),
+  };
 }

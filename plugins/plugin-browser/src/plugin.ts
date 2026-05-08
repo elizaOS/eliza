@@ -21,7 +21,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
 import { BrowserService } from "./browser-service.js";
@@ -195,14 +194,10 @@ const browserBridgePluginRoutes: Route[] = [
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
-    "Browser plugin: BROWSER + MANAGE_BROWSER_BRIDGE + BROWSER_AUTOFILL_LOGIN actions; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
+    "Browser plugin: BROWSER (including autofill-login subaction) + MANAGE_BROWSER_BRIDGE; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
   schema: browserBridgeSchema,
   routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
-  actions: [
-    browserAction,
-    browserAutofillLoginAction,
-    manageBrowserBridgeAction,
-  ],
+  actions: [browserAction, manageBrowserBridgeAction],
 };

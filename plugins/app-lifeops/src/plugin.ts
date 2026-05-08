@@ -10,6 +10,7 @@ import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
+import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
 import { healthAction } from "./actions/health.js";
@@ -38,6 +39,7 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import { migrateRuntimeLifeConnectorGrantsToConnectorAccounts } from "./lifeops/connector-account-migration.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -64,7 +66,6 @@ import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
-  blockUntilTaskCompleteAction,
   listActiveBlocksAction,
   registerBlockRuleReconcilerWorker,
   releaseBlockAction,
@@ -75,6 +76,9 @@ import {
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
+
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -131,6 +135,50 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
 
   const enableValue = (process.env[enableKey] ?? "").trim().toLowerCase();
   return enableValue === "0" || enableValue === "false";
+}
+
+function isGoogleConnectorPlugin(plugin: Plugin): boolean {
+  return (
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_NAME ||
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_PACKAGE
+  );
+}
+
+function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
+  for (const key of ["googlePlugin", "default"]) {
+    const value = module[key];
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as Plugin).name === "string"
+    ) {
+      return value as Plugin;
+    }
+  }
+  return null;
+}
+
+export async function ensureLifeOpsGooglePluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+
+  const module = (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+    string,
+    unknown
+  >;
+  const plugin = resolvePluginExport(module);
+  if (!plugin) {
+    throw new Error(
+      `${GOOGLE_CONNECTOR_PLUGIN_PACKAGE} did not export a valid plugin`,
+    );
+  }
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+  await runtime.registerPlugin(plugin);
 }
 
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
@@ -196,14 +244,15 @@ const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
+  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
     websiteBlockAction,
-    blockUntilTaskCompleteAction,
     listActiveBlocksAction,
     releaseBlockAction,
     appBlockAction,
     calendarAction,
+    checkinAction,
     resolveRequestAction,
     deviceIntentAction,
     lifeAction,
@@ -243,6 +292,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    await ensureLifeOpsGooglePluginRegistered(runtime);
+
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
 
@@ -301,6 +352,23 @@ const rawAppLifeOpsPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
+    scheduleTaskEnsureAfterRuntimeInit({
+      runtime,
+      prefix: "[lifeops]",
+      label: "connector account migration",
+      ensure: async () => {
+        const result =
+          await migrateRuntimeLifeConnectorGrantsToConnectorAccounts(runtime, {
+            dryRun: false,
+          });
+        if (result.scannedGrants > 0) {
+          runtime.logger?.info?.(
+            `[lifeops] Migrated connector grants: scanned=${result.scannedGrants}, created=${result.createdAccounts}, updated=${result.updatedAccounts}, linked=${result.linkedGrants}, tokenRefs=${result.preservedTokenRefs}`,
+          );
+        }
+      },
+    });
+
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
       prefix: "[lifeops]",

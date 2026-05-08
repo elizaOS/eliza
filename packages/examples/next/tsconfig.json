@@ -26,16 +26,16 @@
         "./*"
       ],
       "@elizaos/core": [
-        "./../../../packages/core/src/index.node.ts"
+        "./../../../packages/core/dist/index.d.ts"
       ],
       "@elizaos/core/*": [
-        "./../../../packages/core/src/*"
+        "./../../../packages/core/dist/*"
       ],
       "@elizaos/shared": [
-        "./../../../packages/shared/src/index.ts"
+        "./../../../packages/shared/dist/index.d.ts"
       ],
       "@elizaos/shared/*": [
-        "./../../../packages/shared/src/*"
+        "./../../../packages/shared/dist/*"
       ]
     },
     "target": "ES2017"

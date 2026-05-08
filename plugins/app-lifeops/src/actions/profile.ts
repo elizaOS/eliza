@@ -25,11 +25,14 @@ import { resolveDefinitionFromIntent } from "./life.js";
 
 type ProfileSubaction =
   | "save"
+  | "set"
   | "capture_phone"
   | "set_reminder_preference"
   | "configure_escalation";
 
 type ProfileSaveParams = {
+  key?: string;
+  value?: unknown;
   name?: string;
   relationshipStatus?: string;
   partnerName?: string;
@@ -75,6 +78,23 @@ const SUBACTIONS = {
       "persist stable owner fact: name location gender age relationship-status travel-booking-prefs",
     required: [],
     optional: [
+      "name",
+      "location",
+      "gender",
+      "age",
+      "relationshipStatus",
+      "travelBookingPreferences",
+    ],
+  },
+  set: {
+    description:
+      "Compatibility alias for save. Persist stable owner facts or reusable preferences.",
+    descriptionCompressed:
+      "alias save owner profile fact/preference; normalize key/value when present",
+    required: [],
+    optional: [
+      "key",
+      "value",
       "name",
       "location",
       "gender",
@@ -139,6 +159,51 @@ function detailArray(
 ): unknown[] | undefined {
   const value = source?.[key];
   return Array.isArray(value) ? value : undefined;
+}
+
+function formatGenericProfileValue(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined && entryValue !== null)
+      .map(([entryKey, entryValue]) => {
+        const label = entryKey.replace(/[_-]+/g, " ");
+        if (typeof entryValue === "boolean") {
+          return entryValue ? label : `not ${label}`;
+        }
+        return `${label}: ${String(entryValue)}`;
+      });
+    return entries.length > 0 ? entries.join("; ") : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
+function normalizePlannerProfileParams(
+  params: ProfileParams,
+  message: Memory,
+): ProfileParams {
+  const normalized: ProfileParams = { ...params };
+  if (normalized.subaction === "set") {
+    normalized.subaction = "save";
+  }
+
+  const key = typeof params.key === "string" ? params.key.toLowerCase() : "";
+  const text = typeof message.content?.text === "string" ? message.content.text : "";
+  const looksLikeTravelPreference =
+    /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(key) ||
+    /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(text);
+  if (!normalized.travelBookingPreferences && looksLikeTravelPreference) {
+    normalized.travelBookingPreferences =
+      formatGenericProfileValue(params.value) ||
+      text.replace(/^\s*(?:remember\s+that|save|store)\s+/i, "").trim();
+  }
+
+  return normalized;
 }
 
 async function handleSave(
@@ -369,11 +434,21 @@ export const profileAction: Action & {
   validate: async () => true,
 
   handler: async (runtime, message, state, options) => {
+    const rawParams =
+      ((options as HandlerOptions | undefined)?.parameters as ProfileParams) ??
+      ({} as ProfileParams);
+    const normalizedRawParams = normalizePlannerProfileParams(
+      rawParams,
+      message,
+    );
+    const normalizedOptions: HandlerOptions | undefined = options
+      ? { ...options, parameters: normalizedRawParams }
+      : { parameters: normalizedRawParams };
     const resolved = await resolveActionArgs<ProfileSubaction, ProfileParams>({
       runtime,
       message,
       state: state ?? undefined,
-      options,
+      options: normalizedOptions,
       actionName: "PROFILE",
       subactions: SUBACTIONS,
       defaultSubaction: "save",
@@ -391,15 +466,11 @@ export const profileAction: Action & {
     }
 
     const params = resolved.params;
-    // Planner-supplied params may bypass resolveActionArgs entirely; merge
-    // the raw HandlerOptions parameters for save (which has no required fields).
-    const rawParams =
-      ((options as HandlerOptions | undefined)?.parameters as ProfileParams) ??
-      ({} as ProfileParams);
 
     switch (resolved.subaction) {
       case "save":
-        return handleSave(runtime, { ...rawParams, ...params });
+      case "set":
+        return handleSave(runtime, { ...normalizedRawParams, ...params });
       case "capture_phone":
         return handleCapturePhone(params, runtime);
       case "set_reminder_preference":
@@ -413,12 +484,13 @@ export const profileAction: Action & {
     {
       name: "subaction",
       description:
-        "Which profile operation to perform: save, capture_phone, set_reminder_preference, or configure_escalation.",
+        "Which profile operation to perform: save, set, capture_phone, set_reminder_preference, or configure_escalation.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [
           "save",
+          "set",
           "capture_phone",
           "set_reminder_preference",
           "configure_escalation",
@@ -465,6 +537,25 @@ export const profileAction: Action & {
       name: "travelBookingPreferences",
       description: "Reusable flight and hotel preference checklist or summary.",
       schema: { type: "string" as const },
+    },
+    {
+      name: "key",
+      description:
+        "Compatibility alias for generic profile set calls. Prefer explicit fields such as travelBookingPreferences.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "value",
+      description:
+        "Compatibility value for generic profile set calls; normalized into explicit owner profile fields when possible.",
+      schema: {
+        anyOf: [
+          { type: "string" as const },
+          { type: "number" as const },
+          { type: "boolean" as const },
+          { type: "object" as const, additionalProperties: true },
+        ],
+      },
     },
     {
       name: "phoneNumber",

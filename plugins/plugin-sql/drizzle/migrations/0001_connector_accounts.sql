@@ -7,6 +7,8 @@ CREATE TABLE "connector_accounts" (
 	"display_name" text,
 	"username" text,
 	"email" text,
+	"owner_binding_id" text,
+	"owner_identity_id" text,
 	"role" text DEFAULT 'OWNER' NOT NULL,
 	"purpose" jsonb DEFAULT '["messaging"]'::jsonb NOT NULL,
 	"access_gate" text DEFAULT 'open' NOT NULL,

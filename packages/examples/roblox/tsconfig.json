@@ -11,10 +11,10 @@
     "outDir": "./dist",
     "paths": {
       "@elizaos/core": [
-        "../../core/dist/index.node.d.ts"
+        "./../../core/dist/index.node.d.ts"
       ],
       "@elizaos/core/*": [
-        "../../core/dist/*"
+        "./../../core/dist/*"
       ]
     },
     "resolveJsonModule": true,

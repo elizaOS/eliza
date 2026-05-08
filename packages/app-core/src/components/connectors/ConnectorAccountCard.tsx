@@ -242,15 +242,18 @@ export function ConnectorAccountCard({
         <ConnectorAccountPurposeSelector
           value={account.role}
           disabled={saving}
-          onChange={(role) => {
-            void onUpdate({ role });
+          accountLabel={account.label}
+          onChange={(role, confirmation) => {
+            void onUpdate({ role, confirmation });
           }}
         />
         <ConnectorAccountPrivacySelector
           value={account.privacy}
           disabled={saving}
           accountLabel={account.label}
-          onChange={(privacy) => onUpdate({ privacy })}
+          onChange={(privacy, confirmation) =>
+            onUpdate({ privacy, confirmation })
+          }
         />
         <div className="inline-flex items-center gap-1.5 text-xs text-muted">
           <Checkbox

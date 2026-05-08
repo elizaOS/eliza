@@ -23,8 +23,8 @@ export interface ConnectorAccountListProps {
 }
 
 function sortConnectorAccounts(
-  accounts: ConnectorAccountRecord[],
-  defaultAccountId: string | null,
+	accounts: ConnectorAccountRecord[],
+	defaultAccountId: string | null,
 ): ConnectorAccountRecord[] {
   return [...accounts].sort((a, b) => {
     const aDefault =
@@ -41,12 +41,17 @@ function sortConnectorAccounts(
         b.status === "connected");
     if (aDefault !== bDefault) return aDefault ? -1 : 1;
     return a.label.localeCompare(b.label);
-  });
+	});
+}
+
+function openConnectorAuthUrl(authUrl: string | undefined): void {
+	if (!authUrl || typeof window === "undefined") return;
+	window.open(authUrl, "_blank", "noopener,noreferrer");
 }
 
 export function ConnectorAccountList({
-  provider,
-  connectorId = provider,
+	provider,
+	connectorId = provider,
   title = "Connector accounts",
   className,
   pollMs,
@@ -80,17 +85,27 @@ export function ConnectorAccountList({
     onSelectedAccountIdChange?.(accountId);
   };
 
-  const handleAdd = async () => {
-    if (onAddAccount) {
-      const body = await onAddAccount();
-      if (!body) return;
-      await connectorAccounts.add(body);
-      return;
-    }
-    await connectorAccounts.add({ role: "OWNER", privacy: "owner_only" });
-  };
+	const handleAdd = async () => {
+		if (onAddAccount) {
+			const body = await onAddAccount();
+			if (!body) return;
+			await connectorAccounts.add(body);
+			return;
+		}
+		const result = await connectorAccounts.startOAuth({
+			metadata: {
+				requestedRole: "OWNER",
+				privacy: "owner_only",
+			},
+		});
+		openConnectorAuthUrl(result.authUrl);
+	};
 
-  return (
+	const addBusy =
+		connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ||
+		connectorAccounts.saving.has(`oauth:${provider}:${connectorId}:new`);
+
+	return (
     <div
       className={cn(
         "mt-3 flex flex-col gap-2 rounded-xl border border-border/40 bg-bg-accent/40 p-3",
@@ -101,19 +116,17 @@ export function ConnectorAccountList({
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
           {title} ({sortedAccounts.length})
         </h3>
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          disabled={connectorAccounts.saving.has(
-            `add:${provider}:${connectorId}`,
-          )}
-          onClick={() => void handleAdd()}
-          className="h-8 gap-1 px-2.5 text-xs"
-        >
-          {connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ? (
-            <Spinner className="h-3 w-3" />
-          ) : (
+		<Button
+			type="button"
+			variant="default"
+			size="sm"
+			disabled={addBusy}
+			onClick={() => void handleAdd()}
+			className="h-8 gap-1 px-2.5 text-xs"
+		>
+			{addBusy ? (
+				<Spinner className="h-3 w-3" />
+			) : (
             <Plus className="h-3.5 w-3.5" aria-hidden />
           )}
           Add account

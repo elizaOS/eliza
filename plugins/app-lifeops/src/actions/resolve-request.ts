@@ -409,6 +409,10 @@ export const resolveRequestAction: Action & {
     "NO_DONT",
     "ACCEPT_REQUEST",
     "DECLINE_REQUEST",
+    "ADMIN_REJECT_APPROVAL",
+    "REJECT_APPROVAL",
+    "DENY_APPROVAL",
+    "DECLINE_APPROVAL",
   ],
   description:
     "Owner-only. Approve or reject a pending action queued for human confirmation (send_email, send_message, " +

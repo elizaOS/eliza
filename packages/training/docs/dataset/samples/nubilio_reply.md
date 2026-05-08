@@ -19,10 +19,10 @@ task: Generate dialog and actions for remilio nubilio.
 
 context:
 Execution profile: GROUP_COMPACT. Keep responses concise and context usage focused on the active group thread.
-Possible response actions: TASK_CONTROL, BLOCK_UNTIL_TASK_COMPLETE, PROCESS_KNOWLEDGE, LIST_AGENTS, MANAGE_ISSUES, IGNORE, RELEASE_BLOCK, LIST_ACTIVE_BLOCKS, EDIT_MESSAGE, TASK_HISTORY, DELETE_MESSAGE, NONE, TASK_SHARE, FINALIZE_WORKSPACE, REPLY, PROVISION_WORKSPACE, UPDATE_ENTITY, SPAWN_AGENT
+Possible response actions: TASK_CONTROL, PROCESS_KNOWLEDGE, LIST_AGENTS, MANAGE_ISSUES, IGNORE, RELEASE_BLOCK, LIST_ACTIVE_BLOCKS, EDIT_MESSAGE, TASK_HISTORY, DELETE_MESSAGE, NONE, TASK_SHARE, FINALIZE_WORKSPACE, REPLY, PROVISION_WORKSPACE, UPDATE_ENTITY, SPAWN_AGENT
 
 # Available Actions
-actions[18]:
+actions[17]:
 - IGNORE: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.
   aliases[3]: STOP_TALKING, STOP_CHATTING, STOP_CONVERSATION
   example: User: "Go screw yourself" -> actions: IGNORE
@@ -61,10 +61,6 @@ actions[18]:
 - DELETE_MESSAGE: Delete a message from a Discord channel
   aliases[3]: REMOVE_MESSAGE, REVOKE_MESSAGE, DELETE_DISCORD_MESSAGE
   example: User: "Delete message 123456789" -> actions: DELETE_MESSAGE
-- BLOCK_UNTIL_TASK_COMPLETE: Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are BLOCK_WEBSITES.
-  aliases[5]: BLOCK_SITES_UNTIL_TODO_DONE, BLOCK_WEBSITE_UNTIL_TASK, CONDITIONAL_WEBSITE_BLOCK, BLOCK_UNTIL_DONE, FOCUS_UNTIL_TASK_DONE
-  params[5]: websites:array of string - List of website hostnames to block.; todoId?:string - ID of an existing todo. Preferred over todoName when known.; todoName?:string - Name of the todo. Resolved against active todos; created if no match.; unlockDurationMinutes?:number - Optional: once the gate is satisfied, re-lock the same websites after this many minutes.; profile?:string - Optional profile label for the block rule.
-  example: User: "Block x.com until I finish my workout." -> actions: BLOCK_UNTIL_TASK_COMPLETE
 - PROVISION_WORKSPACE: Create a git workspace for coding tasks. Can clone a repository or create a git worktree for isolated development.
   aliases[4]: CREATE_WORKSPACE, CLONE_REPO, SETUP_WORKSPACE, PREPARE_WORKSPACE
   params[4]: repo?:string - Git repository URL to clone.; baseBranch?:string - Base branch to create feature branch from (default: main).; useWorktree?:boolean - Create a git worktree instead of a full clone.; parentWorkspaceId?:string - Parent workspace ID for worktree creation.

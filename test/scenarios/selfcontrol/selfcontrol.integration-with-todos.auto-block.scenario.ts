@@ -35,7 +35,7 @@ export default scenario({
     },
     {
       type: "actionCalled",
-      actionName: "BLOCK_UNTIL_TASK_COMPLETE",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

@@ -11,7 +11,7 @@ import { getCachedSelfControlStatus } from "../website-blocker/engine.js";
 export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",
   description:
-    "Owner-only provider for the local hosts-file website blocker integration. Use WEBSITE_BLOCK for timed or generic focus blocks, and BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task.",
+    "Owner-only provider for the local hosts-file website blocker integration. Use WEBSITE_BLOCK for website blocking (timed focus blocks, generic distraction blocks, or fixed duration).",
   descriptionCompressed: "Owner: hosts-file website blocker.",
   dynamic: true,
   contexts: ["screen_time", "settings"],

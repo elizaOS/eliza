@@ -5,6 +5,7 @@ import {
   type ConnectorAccountCredentialRow,
   type ConnectorAccountMigrationAccountRow,
   type ConnectorAccountMigrationDraft,
+  type ConnectorAccountOwnerBindingRow,
   type LegacyLifeConnectorGrantRow,
   type LifeConnectorGrantMigrationStore,
   lifeOpsConnectorGrantMigrationConstants,
@@ -77,6 +78,7 @@ function emptyCalendarResult(): CalendarCacheMigrationResult {
 class FakeMigrationStore implements LifeConnectorGrantMigrationStore {
   accounts: ConnectorAccountMigrationAccountRow[] = [];
   credentials: ConnectorAccountCredentialRow[] = [];
+  ownerBindings: ConnectorAccountOwnerBindingRow[] = [];
   events: FakeCalendarEvent[] = [];
   syncStates: FakeCalendarSyncState[] = [];
 
@@ -100,6 +102,24 @@ class FakeMigrationStore implements LifeConnectorGrantMigrationStore {
     );
   }
 
+  async listConnectorOwnerBindings(
+    lookups: readonly {
+      provider: string;
+      externalId: string;
+      instanceId: string | null;
+    }[],
+  ) {
+    return this.ownerBindings.filter((binding) =>
+      lookups.some(
+        (lookup) =>
+          lookup.provider === binding.connector &&
+          lookup.externalId === binding.externalId &&
+          Boolean(lookup.instanceId) &&
+          lookup.instanceId === binding.instanceId,
+      ),
+    );
+  }
+
   async upsertConnectorAccount(draft: ConnectorAccountMigrationDraft) {
     const existing = this.accounts.find(
       (account) =>
@@ -109,6 +129,11 @@ class FakeMigrationStore implements LifeConnectorGrantMigrationStore {
     );
     if (existing) {
       existing.metadata = { ...existing.metadata, ...draft.metadata };
+      existing.ownerBindingId = draft.ownerBindingId;
+      existing.ownerIdentityId = draft.ownerIdentityId;
+      existing.role = draft.role;
+      existing.connectorPurpose = draft.connectorPurpose;
+      existing.accessGate = draft.accessGate;
       return existing;
     }
     const account = {
@@ -119,6 +144,11 @@ class FakeMigrationStore implements LifeConnectorGrantMigrationStore {
       agentId: draft.agentId,
       provider: draft.provider,
       accountKey: draft.accountKey,
+      ownerBindingId: draft.ownerBindingId,
+      ownerIdentityId: draft.ownerIdentityId,
+      role: draft.role,
+      connectorPurpose: draft.connectorPurpose,
+      accessGate: draft.accessGate,
       metadata: draft.metadata,
     };
     this.accounts.push(account);
@@ -235,8 +265,89 @@ describe("LifeOps connector grant migration", () => {
 
     expect(ownerDraft.metadata.lifeops).toMatchObject({ purpose: "OWNER" });
     expect(agentDraft.metadata.lifeops).toMatchObject({ purpose: "AGENT" });
+    expect(ownerDraft.role).toBe("OWNER");
+    expect(agentDraft.role).toBe("AGENT");
+    expect(ownerDraft.connectorPurpose).toEqual([
+      "messaging",
+      "reading",
+      "automation",
+    ]);
+    expect(ownerDraft.metadata.privacy).toBe("owner_only");
+    expect(agentDraft.metadata.privacy).toBe("owner_only");
+    expect(ownerDraft.accessGate).toBe("open");
+    expect(agentDraft.accessGate).toBe("open");
+    expect(
+      (ownerDraft.metadata.lifeops as Record<string, unknown>).accessGate,
+    ).toMatchObject({
+      value: "open",
+      reason: "legacy_owner_connector_grant_missing_instance_id",
+      legacyOpenRetained: true,
+    });
+    expect(
+      (agentDraft.metadata.lifeops as Record<string, unknown>).accessGate,
+    ).toMatchObject({
+      value: "open",
+      reason: "legacy_agent_connector_grant_not_owner_bound",
+      legacyOpenRetained: true,
+    });
     expect(ownerDraft.capabilities).toContain("google.calendar.read");
     expect(ownerDraft.tokenRef).toBe("tokens/google/owner.json");
+  });
+
+  it("uses owner_binding access gate when a verified binding matches", () => {
+    const ownerBinding: ConnectorAccountOwnerBindingRow = {
+      id: "binding-owner-google",
+      identityId: "identity-owner",
+      connector: "google",
+      externalId: "google-sub-owner",
+      displayHandle: "owner@example.com",
+      instanceId: "instance-1",
+    };
+    const ownerDraft = buildConnectorAccountDraftFromGrant(
+      grant({
+        side: "owner",
+        metadataJson: JSON.stringify({ instanceId: "instance-1" }),
+      }),
+      { ownerBindings: [ownerBinding] },
+    );
+
+    expect(ownerDraft.accessGate).toBe("owner_binding");
+    expect(ownerDraft.ownerBindingId).toBe("binding-owner-google");
+    expect(ownerDraft.ownerIdentityId).toBe("identity-owner");
+    expect(ownerDraft.metadata.privacy).toBe("owner_only");
+    expect(ownerDraft.metadata.instanceId).toBe("instance-1");
+    expect(
+      (ownerDraft.metadata.lifeops as Record<string, unknown>).accessGate,
+    ).toMatchObject({
+      value: "owner_binding",
+      reason: "verified_owner_binding_found",
+      legacyOpenRetained: false,
+      ownerBindingId: "binding-owner-google",
+      ownerIdentityId: "identity-owner",
+      instanceId: "instance-1",
+    });
+  });
+
+  it("forces migrated connector privacy to owner_only instead of legacy public metadata", () => {
+    const ownerDraft = buildConnectorAccountDraftFromGrant(
+      grant({
+        metadataJson: JSON.stringify({
+          privacy: "public",
+          lifeops: { note: "legacy metadata" },
+        }),
+      }),
+    );
+
+    expect(ownerDraft.metadata.privacy).toBe("owner_only");
+    expect(ownerDraft.accessGate).toBe("open");
+    expect(ownerDraft.metadata.lifeops).toMatchObject({
+      note: "legacy metadata",
+      accessGate: {
+        value: "open",
+        reason: "legacy_owner_connector_grant_missing_instance_id",
+        legacyOpenRetained: true,
+      },
+    });
   });
 
   it("supports dry-run without mutating grants, accounts, credentials, or calendar cache", async () => {
@@ -277,6 +388,85 @@ describe("LifeOps connector grant migration", () => {
       true,
     );
     expect(store.events[0]?.connectorAccountId).toBeNull();
+  });
+
+  it("migrates owner and agent accounts with safe privacy and access gates", async () => {
+    const store = new FakeMigrationStore([
+      grant({
+        id: "grant-owner",
+        identityJson: JSON.stringify({
+          sub: "google-sub-owner",
+          email: "owner@example.com",
+        }),
+        identityEmail: "owner@example.com",
+        metadataJson: JSON.stringify({ instanceId: "instance-1" }),
+      }),
+      grant({
+        id: "grant-agent",
+        side: "agent",
+        identityJson: JSON.stringify({
+          sub: "google-sub-agent",
+          email: "agent@example.com",
+        }),
+        identityEmail: "agent@example.com",
+        tokenRef: "tokens/google/agent.json",
+      }),
+    ]);
+    store.ownerBindings.push({
+      id: "binding-owner-google",
+      identityId: "identity-owner",
+      connector: "google",
+      externalId: "google-sub-owner",
+      displayHandle: "owner@example.com",
+      instanceId: "instance-1",
+    });
+
+    await migrateLifeConnectorGrantsToConnectorAccounts(store, {
+      dryRun: false,
+    });
+
+    const ownerAccount = store.accounts.find((account) =>
+      account.accountKey.includes(":owner:"),
+    );
+    const agentAccount = store.accounts.find((account) =>
+      account.accountKey.includes(":agent:"),
+    );
+
+    expect(ownerAccount).toMatchObject({
+      role: "OWNER",
+      accessGate: "owner_binding",
+      ownerBindingId: "binding-owner-google",
+      ownerIdentityId: "identity-owner",
+      metadata: {
+        privacy: "owner_only",
+        instanceId: "instance-1",
+      },
+    });
+    expect(ownerAccount?.metadata?.lifeops).toMatchObject({
+      purpose: "OWNER",
+      accessGate: {
+        value: "owner_binding",
+        reason: "verified_owner_binding_found",
+        legacyOpenRetained: false,
+      },
+    });
+    expect(agentAccount).toMatchObject({
+      role: "AGENT",
+      accessGate: "open",
+      ownerBindingId: null,
+      ownerIdentityId: null,
+      metadata: {
+        privacy: "owner_only",
+      },
+    });
+    expect(agentAccount?.metadata?.lifeops).toMatchObject({
+      purpose: "AGENT",
+      accessGate: {
+        value: "open",
+        reason: "legacy_agent_connector_grant_not_owner_bound",
+        legacyOpenRetained: true,
+      },
+    });
   });
 
   it("is idempotent and preserves token refs in connector account credentials", async () => {

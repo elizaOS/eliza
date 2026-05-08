@@ -1,7 +1,6 @@
 import type http from "node:http";
 import {
   type ConnectorAccount,
-  type ConnectorAccountAccessGate,
   type ConnectorAccountPatch,
   type ConnectorAccountPurpose,
   type ConnectorAccountRole,
@@ -12,8 +11,11 @@ import {
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
-import { z, type infer as ZodInfer } from "zod";
+import type { infer as ZodInfer } from "zod";
+import * as zod from "zod";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
+
+const z = zod.z ?? zod;
 
 export interface ConnectorAccountRouteContext {
   req: http.IncomingMessage;
@@ -30,6 +32,18 @@ export interface ConnectorAccountRouteContext {
     res: http.ServerResponse,
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
+  authorize?: (
+    request: ConnectorAccountRouteAuthorizationRequest,
+  ) => boolean | Promise<boolean>;
+}
+
+export interface ConnectorAccountRouteAuthorizationRequest {
+  provider: string;
+  namespace: "accounts" | "oauth" | "audit";
+  method: string;
+  pathname: string;
+  action?: string;
+  accountId?: string;
 }
 
 const CONNECTORS_PREFIX = "/api/connectors/";
@@ -41,9 +55,30 @@ const privacyLevelSchema = z.enum([
   "semi_public",
   "public",
 ]);
+const confirmationSchema = z
+  .object({
+    role: z.string().trim().min(1).max(80).optional(),
+    privacy: z.string().trim().min(1).max(80).optional(),
+    publicAcknowledged: z.boolean().optional(),
+  })
+  .optional();
 const AUDIT_REDACTED = "[REDACTED]";
 const AUDIT_SECRET_KEY_PATTERN =
-  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
+  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
+const CLIENT_RESERVED_METADATA_KEYS = new Set([
+  "accessgate",
+  "credentialrefs",
+  "credentialrefstorage",
+  "isdefault",
+  "oauthcredentialrefs",
+  "oauthcredentialversion",
+  "ownerbindingid",
+  "owneridentityid",
+  "privacy",
+  "purpose",
+  "role",
+  "status",
+]);
 
 const accountInputSchema = z.object({
   id: z.string().trim().min(1).max(200).optional(),
@@ -64,6 +99,7 @@ const accountInputSchema = z.object({
   ownerBindingId: z.string().trim().min(1).max(200).optional(),
   ownerIdentityId: z.string().trim().min(1).max(200).optional(),
   metadata: metadataSchema,
+  confirmation: confirmationSchema,
 });
 
 const accountPatchSchema = accountInputSchema
@@ -134,6 +170,57 @@ function normalizeConnectorAccountStatus(
   }
 }
 
+const PRIVACY_RANK: Record<ZodInfer<typeof privacyLevelSchema>, number> = {
+  owner_only: 0,
+  team_visible: 1,
+  semi_public: 2,
+  public: 3,
+};
+
+function accountPrivacy(
+  account: ConnectorAccount,
+): ZodInfer<typeof privacyLevelSchema> {
+  const value = account.metadata?.privacy;
+  return isPrivacyLevel(value) ? value : DEFAULT_PRIVACY_LEVEL;
+}
+
+function requiresOwnerRoleConfirmation(
+  existing: ConnectorAccount,
+  requestedRole: unknown,
+): boolean {
+  return (
+    normalizeConnectorAccountRoleValue(requestedRole) === "OWNER" &&
+    normalizeConnectorAccountRoleValue(existing.role) !== "OWNER"
+  );
+}
+
+function hasOwnerRoleConfirmation(
+  confirmation: ZodInfer<typeof confirmationSchema>,
+): boolean {
+  return confirmation?.role?.trim().toUpperCase() === "OWNER";
+}
+
+function requiresPrivacyConfirmation(
+  existing: ConnectorAccount,
+  requestedPrivacy: ZodInfer<typeof privacyLevelSchema> | undefined,
+): boolean {
+  return Boolean(
+    requestedPrivacy &&
+      PRIVACY_RANK[requestedPrivacy] > PRIVACY_RANK[accountPrivacy(existing)],
+  );
+}
+
+function hasPrivacyConfirmation(
+  confirmation: ZodInfer<typeof confirmationSchema>,
+  requestedPrivacy: ZodInfer<typeof privacyLevelSchema>,
+): boolean {
+  const phrase = confirmation?.privacy?.trim().toUpperCase();
+  if (requestedPrivacy === "public") {
+    return phrase === "PUBLIC" && confirmation?.publicAcknowledged === true;
+  }
+  return phrase === "SHARE";
+}
+
 function parseConnectorScopedPath(pathname: string): {
   provider: string;
   namespace: "accounts" | "oauth" | "audit";
@@ -163,8 +250,53 @@ function parseConnectorScopedPath(pathname: string): {
   };
 }
 
+function isUnauthenticatedOAuthCallback(
+  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  method: string,
+): boolean {
+  return (
+    parsedPath.namespace === "oauth" &&
+    parsedPath.rest[0] === "callback" &&
+    (method === "GET" || method === "POST")
+  );
+}
+
+function authorizationRequestForPath(
+  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  method: string,
+  pathname: string,
+): ConnectorAccountRouteAuthorizationRequest {
+  const [first, second] = parsedPath.rest;
+  const accountId =
+    parsedPath.namespace === "accounts" && first && first !== "events"
+      ? first
+      : undefined;
+  const action =
+    parsedPath.namespace === "accounts"
+      ? second
+      : parsedPath.namespace === "oauth" || parsedPath.namespace === "audit"
+        ? first
+        : undefined;
+  return {
+    provider: parsedPath.provider,
+    namespace: parsedPath.namespace,
+    method,
+    pathname,
+    ...(action ? { action } : {}),
+    ...(accountId ? { accountId } : {}),
+  };
+}
+
 function isBlockedObjectKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
+function normalizeMetadataKey(key: string): string {
+  return key.replace(/[-_\s]/g, "").toLowerCase();
+}
+
+function isClientReservedMetadataKey(key: string): boolean {
+  return CLIENT_RESERVED_METADATA_KEYS.has(normalizeMetadataKey(key));
 }
 
 function cleanMetadataValue(value: unknown): unknown {
@@ -176,7 +308,11 @@ function cleanMetadataValue(value: unknown): unknown {
 
   const cleaned: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (isBlockedObjectKey(key) || AUDIT_SECRET_KEY_PATTERN.test(key)) {
+    if (
+      isBlockedObjectKey(key) ||
+      AUDIT_SECRET_KEY_PATTERN.test(key) ||
+      isClientReservedMetadataKey(key)
+    ) {
       continue;
     }
     cleaned[key] = cleanMetadataValue(item);
@@ -208,7 +344,9 @@ function redactAuditMetadata(value: unknown): unknown {
 }
 
 function accountPatchFromBody(
-  body: ZodInfer<typeof accountInputSchema> | ZodInfer<typeof accountPatchSchema>,
+  body:
+    | ZodInfer<typeof accountInputSchema>
+    | ZodInfer<typeof accountPatchSchema>,
   baseMetadata?: Metadata,
 ): ConnectorAccountPatch {
   const purposeValues = Array.isArray(body.purpose)
@@ -234,7 +372,7 @@ function accountPatchFromBody(
   const nextMetadata =
     metadata || body.privacy
       ? ({
-          ...(cleanMetadata(baseMetadata) ?? {}),
+          ...(baseMetadata ?? {}),
           ...(metadata ?? {}),
           ...(body.privacy ? { privacy: body.privacy } : {}),
         } as Metadata)
@@ -250,12 +388,12 @@ function accountPatchFromBody(
     label: body.label,
     role,
     purpose,
-    accessGate: body.accessGate as ConnectorAccountAccessGate | undefined,
     status,
     externalId: body.externalId as string | null | undefined,
     displayHandle: body.displayHandle as string | null | undefined,
-    ownerBindingId: body.ownerBindingId as string | null | undefined,
-    ownerIdentityId: body.ownerIdentityId as string | null | undefined,
+    // Server-owned account policy fields are intentionally not accepted from
+    // public HTTP bodies. Providers/pairing flows set owner bindings and access
+    // gates after verification through the manager API.
     metadata: nextMetadata,
   };
 }
@@ -507,6 +645,15 @@ export async function handleConnectorAccountRoutes(
     error(res, "Invalid connector provider", 400);
     return true;
   }
+  if (!isUnauthenticatedOAuthCallback(parsedPath, method) && ctx.authorize) {
+    const allowed = await ctx.authorize(
+      authorizationRequestForPath(parsedPath, method, pathname),
+    );
+    if (!allowed) {
+      error(res, "Forbidden", 403);
+      return true;
+    }
+  }
 
   const manager = getConnectorAccountManager(ctx.state.runtime);
 
@@ -531,6 +678,14 @@ export async function handleConnectorAccountRoutes(
           parsed.error.issues[0]?.message ?? "Invalid account body",
           400,
         );
+        return true;
+      }
+      if (
+        parsed.data.privacy &&
+        parsed.data.privacy !== DEFAULT_PRIVACY_LEVEL &&
+        !hasPrivacyConfirmation(parsed.data.confirmation, parsed.data.privacy)
+      ) {
+        error(res, "Privacy escalation requires confirmation", 403);
         return true;
       }
       const account = await manager.createAccount(provider, {
@@ -575,11 +730,24 @@ export async function handleConnectorAccountRoutes(
           error(res, "Connector account not found", 404);
           return true;
         }
-        const account = await manager.patchAccount(
-          provider,
-          accountId,
-          accountPatchFromBody(parsed.data, existing.metadata),
-        );
+        const patch = accountPatchFromBody(parsed.data, existing.metadata);
+        if (
+          requiresOwnerRoleConfirmation(existing, patch.role) &&
+          !hasOwnerRoleConfirmation(parsed.data.confirmation)
+        ) {
+          error(res, "OWNER role assignment requires confirmation", 403);
+          return true;
+        }
+        const requestedPrivacy = parsed.data.privacy;
+        if (
+          requestedPrivacy &&
+          requiresPrivacyConfirmation(existing, requestedPrivacy) &&
+          !hasPrivacyConfirmation(parsed.data.confirmation, requestedPrivacy)
+        ) {
+          error(res, "Privacy escalation requires confirmation", 403);
+          return true;
+        }
+        const account = await manager.patchAccount(provider, accountId, patch);
         if (!account) {
           error(res, "Connector account not found", 404);
           return true;
@@ -775,12 +943,16 @@ export async function handleConnectorAccountRoutes(
           query,
           body: body ?? undefined,
         });
+        const serializedFlow = serializeFlow(result.flow);
         json(res, {
           provider,
-          flow: serializeFlow(result.flow),
-          account: result.account
-            ? serializeAccount(result.account)
-            : undefined,
+          ok: true,
+          flow: {
+            id: serializedFlow.id,
+            status: serializedFlow.status,
+            error: serializedFlow.error,
+          },
+          accountId: result.account?.id ?? result.flow.accountId,
           redirectUrl: result.redirectUrl,
         });
       } catch (err) {

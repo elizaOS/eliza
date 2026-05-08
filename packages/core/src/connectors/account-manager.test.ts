@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type { TargetInfo } from "../types";
 import type {
 	IAgentRuntime,
@@ -10,6 +11,8 @@ import { getConnectorAccountManager } from "./account-manager";
 class TestRuntime {
 	private messageConnectors: MessageConnectorRegistration[] = [];
 	private postConnectors: PostConnectorRegistration[] = [];
+
+	constructor(public readonly adapter?: InMemoryDatabaseAdapter) {}
 
 	getService(): undefined {
 		return undefined;
@@ -43,8 +46,8 @@ class TestRuntime {
 	}
 }
 
-function makeRuntime(): IAgentRuntime {
-	return new TestRuntime() as unknown as IAgentRuntime;
+function makeRuntime(adapter?: InMemoryDatabaseAdapter): IAgentRuntime {
+	return new TestRuntime(adapter) as unknown as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {
@@ -196,5 +199,104 @@ describe("ConnectorAccountManager", () => {
 				code: "code-2",
 			}),
 		).rejects.toThrow(/already used|unknown|expired/i);
+	});
+
+	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = makeRuntime(adapter);
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-db",
+			startOAuth: () => ({
+				authUrl: "https://auth.example/start",
+				codeVerifier: "pkce-verifier-1",
+			}),
+		});
+		const flow = await manager.startOAuth("oauth-db");
+		expect(flow.codeVerifier).toBe("pkce-verifier-1");
+		const storedFlow = await adapter.getOAuthFlowState({
+			provider: "oauth-db",
+			state: flow.state,
+			includeExpired: true,
+			includeConsumed: true,
+		});
+		expect(storedFlow?.codeVerifierRef).toMatch(/^connector-oauth-pkce:/);
+		expect(JSON.stringify(storedFlow?.metadata ?? {})).not.toContain(
+			"pkce-verifier-1",
+		);
+		expect(storedFlow?.metadata).not.toHaveProperty("codeVerifier");
+
+		const callbackRuntime = makeRuntime(adapter);
+		const callbackManager = getConnectorAccountManager(callbackRuntime);
+		let callbackVerifier: string | undefined;
+		callbackManager.registerProvider({
+			provider: "oauth-db",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: (request) => {
+				callbackVerifier = request.flow.codeVerifier;
+				return {
+					account: {
+						id: "00000000-0000-4000-8000-000000000321",
+						provider: "oauth-db",
+						label: "OAuth DB account",
+						role: "OWNER",
+						purpose: ["messaging"],
+						accessGate: "open",
+						status: "connected",
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				};
+			},
+		});
+
+		await expect(
+			callbackManager.completeOAuth("oauth-db", {
+				state: flow.state,
+				code: "code-1",
+			}),
+		).resolves.toMatchObject({
+			account: { id: "00000000-0000-4000-8000-000000000321" },
+		});
+		expect(callbackVerifier).toBe("pkce-verifier-1");
+		await expect(
+			callbackManager.completeOAuth("oauth-db", {
+				state: flow.state,
+				code: "code-2",
+			}),
+		).rejects.toThrow(/already used|unknown|expired/i);
+	});
+
+	it("requires a verified owner-binding lookup for owner-bound policies", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		await manager.upsertAccount("chat", {
+			id: "acct-bound",
+			provider: "chat",
+			label: "Bound account",
+			role: "OWNER",
+			purpose: ["messaging"],
+			accessGate: "owner_binding",
+			status: "connected",
+			externalId: "external-owner",
+			ownerBindingId: "client-supplied-binding",
+			ownerIdentityId: "client-supplied-identity",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+
+		await expect(
+			manager.evaluatePolicy(
+				{
+					provider: "chat",
+					accessGates: ["owner_binding"],
+				},
+				{ accountId: "acct-bound" },
+			),
+		).resolves.toMatchObject({
+			allowed: false,
+			reason: "owner binding has not been verified",
+		});
 	});
 });

@@ -1905,15 +1905,345 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	);
 }
 
+function messageTextMatches(message: Memory, pattern: RegExp): boolean {
+	return pattern.test((getUserMessageText(message) ?? "").toLowerCase());
+}
+
+function shouldTreatPlannerLifeAsDeviceIntent(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (normalizeActionIdentifier(resolvedName) !== normalizeActionIdentifier("LIFE")) {
+		return false;
+	}
+	return (
+		messageTextMatches(message, /\b(?:broadcast|send|push)\b/) &&
+		messageTextMatches(
+			message,
+			/\b(?:all (?:my )?devices|devices?|mobile|phone|desktop|computer)\b/,
+		)
+	);
+}
+
+function shouldTreatPlannerWebAsCalendlyCalendar(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	const normalized = normalizeActionIdentifier(resolvedName);
+	if (
+		normalized !== normalizeActionIdentifier("BROWSER") &&
+		normalized !== normalizeActionIdentifier("WEB_GET") &&
+		normalized !== normalizeActionIdentifier("WEB_SEARCH")
+	) {
+		return false;
+	}
+	return messageTextMatches(message, /\bcalendly\b|api\.calendly\.com/);
+}
+
+function shouldTreatPlannerWebAsBookTravel(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	const normalized = normalizeActionIdentifier(resolvedName);
+	if (
+		normalized !== normalizeActionIdentifier("BROWSER") &&
+		normalized !== normalizeActionIdentifier("WEB_GET") &&
+		normalized !== normalizeActionIdentifier("WEB_SEARCH")
+	) {
+		return false;
+	}
+	return messageTextMatches(
+		message,
+		/\b(?:book|reserve)\s+(?:travel|flight|hotel|trip)\b|\bbook\s+travel\b/,
+	);
+}
+
+function shouldTreatPlannerBrowserAsAutofill(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	const normalized = normalizeActionIdentifier(resolvedName);
+	if (
+		normalized !== normalizeActionIdentifier("BROWSER") &&
+		normalized !== normalizeActionIdentifier("WEB_GET") &&
+		normalized !== normalizeActionIdentifier("WEB_SEARCH")
+	) {
+		return false;
+	}
+	return (
+		messageTextMatches(message, /\bfill\b/) &&
+		messageTextMatches(message, /\b(?:password|login|form|field)\b/)
+	);
+}
+
+function shouldTreatPlannerConnectorAsPost(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("CONNECTOR")
+	) {
+		return false;
+	}
+	return (
+		messageTextMatches(message, /\b(?:x|twitter)\b/) &&
+		messageTextMatches(message, /\b(?:search|posts?|timeline|feed|mentions?)\b/)
+	);
+}
+
+function inferPostSearchQuery(message: Memory): string | undefined {
+	const text = getUserMessageText(message) ?? "";
+	return (
+		/\bposts?\s+about\s+(.+)$/i.exec(text)?.[1]?.trim() ??
+		/\bsearch\s+(?:x|twitter)\s+for\s+(.+)$/i.exec(text)?.[1]?.trim() ??
+		/\babout\s+(.+)$/i.exec(text)?.[1]?.trim()
+	);
+}
+
+function normalizeWebsiteBlockPlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	return {
+		subaction: "block",
+		intent: stringParam(params.intent) ?? getUserMessageText(message),
+		...(Array.isArray(params.hostnames) || typeof params.hostnames === "string"
+			? { hostnames: params.hostnames }
+			: {}),
+		...(Array.isArray(params.sites) || typeof params.sites === "string"
+			? { hostnames: params.sites }
+			: {}),
+		...(typeof params.durationMinutes === "number" ||
+		typeof params.durationMinutes === "string"
+			? { durationMinutes: params.durationMinutes }
+			: {}),
+		...(typeof params.confirmed === "boolean" ||
+		typeof params.confirmed === "string"
+			? { confirmed: params.confirmed }
+			: {}),
+	};
+}
+
+function normalizePostPlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const rawSubaction = stringParam(params.subaction);
+	const source = stringParam(params.source);
+	const op =
+		/^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
+			rawSubaction ?? "",
+		)
+			? "read"
+			: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
+				? "search"
+				: stringParam(params.op) ?? stringParam(params.operation);
+	return {
+		...(op ? { op } : {}),
+		...(source
+			? { source: source === "twitter" ? "x" : source }
+			: messageTextMatches(message, /\b(?:x|twitter)\b/)
+				? { source: "x" }
+				: {}),
+		...(stringParam(params.query)
+			? { query: params.query }
+			: stringParam(params.searchTerm)
+				? { query: params.searchTerm }
+				: op === "search" || messageTextMatches(message, /\bsearch\b/)
+					? { query: inferPostSearchQuery(message) ?? getUserMessageText(message) }
+				: {}),
+		...(stringParam(params.feed) ? { feed: params.feed } : {}),
+		...(stringParam(params.target) ? { target: params.target } : {}),
+	};
+}
+
+function normalizeMessagePlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const operation =
+		stringParam(params.operation) ??
+		stringParam(params.subaction) ??
+		stringParam(params.subAction) ??
+		stringParam(params.op);
+	const manageIntent =
+		stringParam(params.manageOperation) ??
+		stringParam(params.command) ??
+		stringParam(params.action);
+	const source = stringParam(params.source);
+	const target =
+		stringParam(params.target) ??
+		stringParam(params.email) ??
+		stringParam(params.emailAddress) ??
+		stringParam(params.address);
+	return {
+		...(operation ? { operation } : {}),
+		...(source ? { source: source === "twitter" ? "x" : source } : {}),
+		...(target ? { target, sender: target } : {}),
+		...(manageIntent
+			? {
+					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
+						? "unsubscribe"
+						: manageIntent,
+				}
+			: {}),
+		...(stringParam(params.query) ? { query: params.query } : {}),
+		...(stringParam(params.channel) ? { channel: params.channel } : {}),
+	};
+}
+
+function normalizeResolveRequestPlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const text = `${toolCall.name} ${getUserMessageText(message) ?? ""}`;
+	const subaction = /\b(?:reject|deny|decline|no)\b/i.test(text)
+		? "reject"
+		: "approve";
+	return {
+		subaction,
+		...(stringParam(params.requestId) ? { requestId: params.requestId } : {}),
+		...(stringParam(params.reason) ? { reason: params.reason } : {}),
+	};
+}
+
+function normalizePasswordManagerPlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const rawSubaction = stringParam(params.subaction);
+	const wantsCopy = messageTextMatches(message, /\b(?:copy|clipboard|inject|fill)\b/);
+	const subaction =
+		rawSubaction && /^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
+			? rawSubaction
+			: wantsCopy
+				? "inject_password"
+				: "search";
+	const query =
+		stringParam(params.query) ??
+		stringParam(params.service) ??
+		stringParam(params.target) ??
+		stringParam(params.domain) ??
+		getUserMessageText(message);
+	return {
+		subaction,
+		...(query ? { query, intent: query } : {}),
+		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
+		...(typeof params.confirmed === "boolean" ? { confirmed: params.confirmed } : {}),
+	};
+}
+
+function normalizeAutofillPlannerParams(
+	toolCall: PlannerToolCall,
+	message: Memory,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const text = getUserMessageText(message) ?? "";
+	const domain =
+		stringParam(params.domain) ??
+		stringParam(params.site) ??
+		stringParam(params.website) ??
+		/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(text)?.[1];
+	return {
+		subaction: stringParam(params.subaction) ?? "fill",
+		field: stringParam(params.field) ?? "password",
+		...(domain ? { domain, url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}` } : {}),
+	};
+}
+
 function normalizeAliasedPlannerToolCall(
 	toolCall: PlannerToolCall,
 	resolvedName: string,
 	message: Memory,
 ): PlannerToolCall {
+	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
 	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("LIFE")
+		normalizedResolvedName !== normalizeActionIdentifier("LIFE")
 	) {
+		if (normalizedResolvedName === normalizeActionIdentifier("WEBSITE_BLOCK")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizeWebsiteBlockPlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("POST")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizePostPlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("MESSAGE")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizeMessagePlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizeResolveRequestPlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizePasswordManagerPlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("AUTOFILL")) {
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: normalizeAutofillPlannerParams(toolCall, message),
+			};
+		}
+		if (normalizedResolvedName === normalizeActionIdentifier("BOOK_TRAVEL")) {
+			return { ...toolCall, name: resolvedName, params: {} };
+		}
+		if (
+			normalizeActionIdentifier(toolCall.name) ===
+				normalizeActionIdentifier("BROWSER_AUTOFILL_LOGIN") &&
+			normalizedResolvedName === normalizeActionIdentifier("BROWSER")
+		) {
+			const base =
+				toolCall.params && typeof toolCall.params === "object"
+					? { ...(toolCall.params as Record<string, unknown>) }
+					: ({} as Record<string, unknown>);
+			return {
+				...toolCall,
+				name: resolvedName,
+				params: { ...base, subaction: "autofill-login" },
+			};
+		}
 		return { ...toolCall, name: resolvedName };
 	}
 
@@ -1954,9 +2284,53 @@ async function executeV5PlannedToolCall(
 			unwrappedToolCall,
 			args.executorCtx.message,
 		);
+	const forceLifeToDeviceIntent =
+		!forceContactReminderToLife &&
+		shouldTreatPlannerLifeAsDeviceIntent(
+			resolvedName,
+			args.executorCtx.message,
+		);
+	const forceWebToCalendlyCalendar =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		shouldTreatPlannerWebAsCalendlyCalendar(
+			resolvedName,
+			args.executorCtx.message,
+		);
+	const forceWebToBookTravel =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		!forceWebToCalendlyCalendar &&
+		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
+	const forceBrowserToAutofill =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		!forceWebToCalendlyCalendar &&
+		!forceWebToBookTravel &&
+		shouldTreatPlannerBrowserAsAutofill(
+			resolvedName,
+			args.executorCtx.message,
+		);
+	const forceConnectorToPost =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		!forceWebToCalendlyCalendar &&
+		!forceWebToBookTravel &&
+		!forceBrowserToAutofill &&
+		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "LIFE"
-		: resolvedName;
+		: forceLifeToDeviceIntent
+			? "DEVICE_INTENT"
+			: forceWebToCalendlyCalendar
+				? "CALENDAR"
+				: forceWebToBookTravel
+					? "BOOK_TRAVEL"
+					: forceBrowserToAutofill
+						? "AUTOFILL"
+						: forceConnectorToPost
+							? "POST"
+							: resolvedName;
 	const toolCallForNormalization = forceContactReminderToLife
 		? {
 				...unwrappedToolCall,
@@ -2867,6 +3241,9 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SOCIAL_POSTING", "POST"],
 		["GET_TIMELINE", "POST"],
 		["READ_TIMELINE", "POST"],
+		["SEARCH_TWITTER", "POST"],
+		["TWITTER_SEARCH", "POST"],
+		["X_SEARCH", "POST"],
 		["ADD_TODO", "LIFE"],
 		["CREATE_TODO", "LIFE"],
 		["LIST_TODOS", "LIFE"],
@@ -2880,6 +3257,20 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CREATE_GOAL", "LIFE"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
+		["CHECK_IN", "CHECKIN"],
+		["LIFE_CHECK_IN", "CHECKIN"],
+		["MORNING_CHECKIN", "CHECKIN"],
+		["MORNING_CHECK_IN", "CHECKIN"],
+		["NIGHT_CHECKIN", "CHECKIN"],
+		["NIGHT_CHECK_IN", "CHECKIN"],
+		["RUN_CHECKIN", "CHECKIN"],
+		["RUN_MORNING_CHECKIN", "CHECKIN"],
+		["RUN_NIGHT_CHECKIN", "CHECKIN"],
+		["AUTOMATION_RUN", "CHECKIN"],
+		["DAILY_BRIEF", "CHECKIN"],
+		["MEMORY_SET", "PROFILE"],
+		["MEMORY_WRITE", "PROFILE"],
+		["REMEMBER_PREFERENCES", "PROFILE"],
 		["CREATE_PREFERENCE_PROFILE", "PROFILE"],
 		["FLAG_CONFLICT", "CALENDAR"],
 		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
@@ -2888,12 +3279,22 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CALENDAR_READ", "CALENDAR"],
 		["CALENDAR_CREATE_EVENT", "CALENDAR"],
 		["CALENDAR_FEED", "CALENDAR"],
+		["CALENDLY_CHECK_AVAILABILITY", "CALENDAR"],
+		["CALENDLY_AVAILABILITY", "CALENDAR"],
+		["CALENDLY_SINGLE_USE_LINK", "CALENDAR"],
+		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
 		["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
 		["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
+		["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
+		["FOCUS_BLOCK", "WEBSITE_BLOCK"],
 		["SET_APP_BLOCK", "APP_BLOCK"],
 		["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
 		["PHONE_BLOCK_APPS", "APP_BLOCK"],
 		["BLOCK_APPS", "APP_BLOCK"],
+		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
+		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
+		["DENY_APPROVAL", "RESOLVE_REQUEST"],
+		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
 	].map(([from, to]) => [

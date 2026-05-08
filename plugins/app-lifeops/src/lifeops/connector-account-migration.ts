@@ -10,6 +10,26 @@ import {
 } from "./sql.js";
 
 export type LifeOpsConnectorAccountPurpose = "OWNER" | "AGENT" | "TEAM";
+export type LifeOpsConnectorAccountPrivacy =
+  | "owner_only"
+  | "team_visible"
+  | "semi_public"
+  | "public";
+
+export interface ConnectorAccountOwnerBindingLookup {
+  provider: string;
+  externalId: string;
+  instanceId: string | null;
+}
+
+export interface ConnectorAccountOwnerBindingRow {
+  id: string;
+  identityId: string;
+  connector: string;
+  externalId: string;
+  displayHandle: string;
+  instanceId: string;
+}
 
 export interface LegacyLifeConnectorGrantRow {
   id: string;
@@ -38,6 +58,11 @@ export interface ConnectorAccountMigrationAccountRow {
   agentId: string;
   provider: string;
   accountKey: string;
+  ownerBindingId?: string | null;
+  ownerIdentityId?: string | null;
+  role?: LifeOpsConnectorAccountPurpose;
+  connectorPurpose?: string[];
+  accessGate?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -56,6 +81,11 @@ export interface ConnectorAccountMigrationDraft {
   displayName: string | null;
   username: string | null;
   email: string | null;
+  ownerBindingId: string | null;
+  ownerIdentityId: string | null;
+  role: LifeOpsConnectorAccountPurpose;
+  connectorPurpose: string[];
+  accessGate: string;
   status: string;
   scopes: string[];
   capabilities: string[];
@@ -121,6 +151,9 @@ export interface LifeConnectorGrantMigrationStore {
   listConnectorAccountCredentials(
     accountIds: readonly string[],
   ): Promise<ConnectorAccountCredentialRow[]>;
+  listConnectorOwnerBindings?(
+    lookups: readonly ConnectorAccountOwnerBindingLookup[],
+  ): Promise<ConnectorAccountOwnerBindingRow[]>;
   upsertConnectorAccount(
     draft: ConnectorAccountMigrationDraft,
   ): Promise<ConnectorAccountMigrationAccountRow>;
@@ -145,10 +178,26 @@ export interface LifeConnectorGrantMigrationStore {
 }
 
 const LEGACY_TOKEN_CREDENTIAL_TYPE = "lifeops.legacy_token_ref";
+const DEFAULT_CONNECTOR_ACCOUNT_PRIVACY: LifeOpsConnectorAccountPrivacy =
+  "owner_only";
 const CALENDAR_AMBIGUOUS_REASON =
   "legacy_calendar_cache_ambiguous_grant_or_account";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CONNECTOR_ACCOUNT_PRIVACY_LEVELS = new Set<string>([
+  "owner_only",
+  "team_visible",
+  "semi_public",
+  "public",
+]);
+
+interface OwnerBindingResolution {
+  binding: ConnectorAccountOwnerBindingRow | null;
+  accessGate: string;
+  reason: string;
+  legacyOpenRetained: boolean;
+  instanceId: string | null;
+}
 
 function emptyCalendarCacheMigrationResult(): CalendarCacheMigrationResult {
   return {
@@ -165,6 +214,23 @@ function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeProvider(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeConnectorAccountPrivacy(
+  value: unknown,
+): LifeOpsConnectorAccountPrivacy {
+  return typeof value === "string" &&
+    CONNECTOR_ACCOUNT_PRIVACY_LEVELS.has(value)
+    ? (value as LifeOpsConnectorAccountPrivacy)
+    : DEFAULT_CONNECTOR_ACCOUNT_PRIVACY;
 }
 
 function normalizeAccountKeySegment(value: string): string {
@@ -211,6 +277,22 @@ function pickIdentityString(
   return null;
 }
 
+function pickNestedIdentityString(
+  records: readonly Record<string, unknown>[],
+  keys: readonly string[],
+): string | null {
+  for (const record of records) {
+    const direct = pickIdentityString(record, keys);
+    if (direct) return direct;
+    for (const value of Object.values(record)) {
+      if (!isJsonRecord(value)) continue;
+      const nested = pickIdentityString(value, keys);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function deriveIdentityEmail(
   grant: LegacyLifeConnectorGrantRow,
   identity: Record<string, unknown>,
@@ -248,6 +330,188 @@ function deriveAccountIdentityKey(
   );
 }
 
+function deriveOwnerBindingInstanceId(
+  identity: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+): string | null {
+  return pickNestedIdentityString(
+    [metadata, identity],
+    [
+      "instanceId",
+      "instance_id",
+      "elizaInstanceId",
+      "eliza_instance_id",
+      "runtimeInstanceId",
+    ],
+  );
+}
+
+function deriveOwnerBindingLookupFromGrant(
+  grant: LegacyLifeConnectorGrantRow,
+): ConnectorAccountOwnerBindingLookup | null {
+  const identity = safeJsonRecord(grant.identityJson, grant.id);
+  const metadata = safeJsonRecord(grant.metadataJson, grant.id);
+  const externalId = pickIdentityString(identity, [
+    "sub",
+    "id",
+    "externalId",
+    "accountId",
+    "userId",
+  ]);
+  if (!externalId) return null;
+  return {
+    provider: normalizeProvider(grant.provider),
+    externalId,
+    instanceId: deriveOwnerBindingInstanceId(identity, metadata),
+  };
+}
+
+function uniqueOwnerBindingLookups(
+  lookups: readonly (ConnectorAccountOwnerBindingLookup | null)[],
+): ConnectorAccountOwnerBindingLookup[] {
+  const seen = new Set<string>();
+  const unique: ConnectorAccountOwnerBindingLookup[] = [];
+  for (const lookup of lookups) {
+    if (!lookup) continue;
+    const key = `${lookup.provider}:${lookup.externalId}:${
+      lookup.instanceId ?? ""
+    }`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(lookup);
+  }
+  return unique;
+}
+
+function resolveOwnerBindingAccessGate(args: {
+  purpose: LifeOpsConnectorAccountPurpose;
+  provider: string;
+  externalId: string | null;
+  instanceId: string | null;
+  ownerBindings: readonly ConnectorAccountOwnerBindingRow[];
+}): OwnerBindingResolution {
+  if (args.purpose !== "OWNER") {
+    return {
+      binding: null,
+      accessGate: "open",
+      reason:
+        args.purpose === "AGENT"
+          ? "legacy_agent_connector_grant_not_owner_bound"
+          : "legacy_team_connector_grant_not_owner_bound",
+      legacyOpenRetained: true,
+      instanceId: args.instanceId,
+    };
+  }
+
+  if (!args.externalId) {
+    return {
+      binding: null,
+      accessGate: "open",
+      reason: "legacy_owner_connector_grant_missing_external_id",
+      legacyOpenRetained: true,
+      instanceId: args.instanceId,
+    };
+  }
+
+  if (!args.instanceId) {
+    return {
+      binding: null,
+      accessGate: "open",
+      reason: "legacy_owner_connector_grant_missing_instance_id",
+      legacyOpenRetained: true,
+      instanceId: null,
+    };
+  }
+
+  const provider = normalizeProvider(args.provider);
+  const candidates = args.ownerBindings.filter(
+    (binding) =>
+      normalizeProvider(binding.connector) === provider &&
+      binding.externalId === args.externalId,
+  );
+  const matches = candidates.filter(
+    (binding) => binding.instanceId === args.instanceId,
+  );
+
+  if (matches.length === 1) {
+    const [binding] = matches;
+    if (!binding) {
+      throw new Error("Expected verified owner binding match");
+    }
+    return {
+      binding,
+      accessGate: "owner_binding",
+      reason: "verified_owner_binding_found",
+      legacyOpenRetained: false,
+      instanceId: binding.instanceId,
+    };
+  }
+
+  return {
+    binding: null,
+    accessGate: "open",
+    reason:
+      matches.length > 1
+        ? "legacy_owner_connector_grant_ambiguous_owner_binding"
+        : "legacy_owner_connector_grant_without_verified_owner_binding",
+    legacyOpenRetained: true,
+    instanceId: args.instanceId,
+  };
+}
+
+function withConnectorPrivacy(
+  metadata: Record<string, unknown>,
+  privacy: LifeOpsConnectorAccountPrivacy,
+): Record<string, unknown> {
+  return {
+    ...metadata,
+    privacy,
+  };
+}
+
+function applyExistingAccountSafetyOverrides(
+  draft: ConnectorAccountMigrationDraft,
+  existingAccount: ConnectorAccountMigrationAccountRow | null,
+): ConnectorAccountMigrationDraft {
+  if (!existingAccount) return draft;
+
+  const existingPrivacy = normalizeConnectorAccountPrivacy(
+    existingAccount.metadata?.privacy,
+  );
+  let metadata = withConnectorPrivacy(draft.metadata, existingPrivacy);
+  let accessGate = draft.accessGate;
+
+  if (
+    existingAccount.accessGate &&
+    existingAccount.accessGate !== "open" &&
+    existingAccount.accessGate !== draft.accessGate
+  ) {
+    accessGate = existingAccount.accessGate;
+    const lifeops = isJsonRecord(metadata.lifeops) ? metadata.lifeops : {};
+    metadata = {
+      ...metadata,
+      lifeops: {
+        ...lifeops,
+        accessGate: {
+          value: accessGate,
+          reason: "existing_non_open_access_gate_preserved",
+          legacyOpenRetained: false,
+        },
+      },
+    };
+  }
+
+  return {
+    ...draft,
+    accessGate,
+    ownerBindingId:
+      draft.ownerBindingId ?? existingAccount.ownerBindingId ?? null,
+    ownerIdentityId:
+      draft.ownerIdentityId ?? existingAccount.ownerIdentityId ?? null,
+    metadata,
+  };
+}
+
 export function mapLifeOpsConnectorSideToPurpose(
   side: string,
 ): LifeOpsConnectorAccountPurpose {
@@ -259,6 +523,9 @@ export function mapLifeOpsConnectorSideToPurpose(
 
 export function buildConnectorAccountDraftFromGrant(
   grant: LegacyLifeConnectorGrantRow,
+  options: {
+    ownerBindings?: readonly ConnectorAccountOwnerBindingRow[];
+  } = {},
 ): ConnectorAccountMigrationDraft {
   const identity = safeJsonRecord(grant.identityJson, grant.id);
   const grantMetadata = safeJsonRecord(grant.metadataJson, grant.id);
@@ -281,6 +548,15 @@ export function buildConnectorAccountDraftFromGrant(
     "accountId",
     "userId",
   ]);
+  const instanceId = deriveOwnerBindingInstanceId(identity, grantMetadata);
+  const ownerBindingResolution = resolveOwnerBindingAccessGate({
+    purpose,
+    provider: grant.provider,
+    externalId,
+    instanceId,
+    ownerBindings: options.ownerBindings ?? [],
+  });
+  const metadataInstanceId = ownerBindingResolution.instanceId ?? instanceId;
 
   return {
     legacyGrantId: grant.id,
@@ -291,21 +567,36 @@ export function buildConnectorAccountDraftFromGrant(
     displayName,
     username,
     email,
+    ownerBindingId: ownerBindingResolution.binding?.id ?? null,
+    ownerIdentityId: ownerBindingResolution.binding?.identityId ?? null,
+    role: purpose,
+    connectorPurpose: ["messaging", "reading", "automation"],
+    accessGate: ownerBindingResolution.accessGate,
     status: "connected",
     scopes,
     capabilities,
     profile: identity,
     metadata: {
       ...grantMetadata,
+      privacy: DEFAULT_CONNECTOR_ACCOUNT_PRIVACY,
+      ...(metadataInstanceId ? { instanceId: metadataInstanceId } : {}),
       lifeops: {
-        ...(typeof grantMetadata.lifeops === "object" &&
-        grantMetadata.lifeops !== null &&
-        !Array.isArray(grantMetadata.lifeops)
-          ? (grantMetadata.lifeops as Record<string, unknown>)
-          : {}),
+        ...(isJsonRecord(grantMetadata.lifeops) ? grantMetadata.lifeops : {}),
         legacyGrantId: grant.id,
         side: grant.side,
         purpose,
+        accessGate: {
+          value: ownerBindingResolution.accessGate,
+          reason: ownerBindingResolution.reason,
+          legacyOpenRetained: ownerBindingResolution.legacyOpenRetained,
+          ...(ownerBindingResolution.binding
+            ? {
+                ownerBindingId: ownerBindingResolution.binding.id,
+                ownerIdentityId: ownerBindingResolution.binding.identityId,
+                instanceId: ownerBindingResolution.binding.instanceId,
+              }
+            : {}),
+        },
         mode: grant.mode,
         executionTarget: grant.executionTarget,
         sourceOfTruth: grant.sourceOfTruth,
@@ -326,6 +617,7 @@ export function planLifeConnectorGrantMigration(args: {
   grants: readonly LegacyLifeConnectorGrantRow[];
   existingAccounts: readonly ConnectorAccountMigrationAccountRow[];
   existingCredentials?: readonly ConnectorAccountCredentialRow[];
+  ownerBindings?: readonly ConnectorAccountOwnerBindingRow[];
 }): ConnectorAccountGrantMigrationPlan {
   const existingByKey = new Map<string, ConnectorAccountMigrationAccountRow>();
   for (const account of args.existingAccounts) {
@@ -356,17 +648,28 @@ export function planLifeConnectorGrantMigration(args: {
       });
       continue;
     }
-    const draft = buildConnectorAccountDraftFromGrant(grant);
+    const draft = buildConnectorAccountDraftFromGrant(grant, {
+      ownerBindings: args.ownerBindings,
+    });
     const existingAccount =
       existingByKey.get(
         `${draft.agentId}:${draft.provider}:${draft.accountKey}`,
       ) ?? null;
+    const finalDraft = applyExistingAccountSafetyOverrides(
+      draft,
+      existingAccount,
+    );
     const existingCredential = existingAccount
       ? (credentialsByAccountAndType.get(
           `${existingAccount.id}:${LEGACY_TOKEN_CREDENTIAL_TYPE}`,
         ) ?? null)
       : null;
-    items.push({ grant, draft, existingAccount, existingCredential });
+    items.push({
+      grant,
+      draft: finalDraft,
+      existingAccount,
+      existingCredential,
+    });
   }
   return { items, skipped };
 }
@@ -383,10 +686,18 @@ export async function migrateLifeConnectorGrantsToConnectorAccounts(
   const existingCredentials = await store.listConnectorAccountCredentials(
     existingAccounts.map((account) => account.id),
   );
+  const ownerBindings = store.listConnectorOwnerBindings
+    ? await store.listConnectorOwnerBindings(
+        uniqueOwnerBindingLookups(
+          grants.map((grant) => deriveOwnerBindingLookupFromGrant(grant)),
+        ),
+      )
+    : [];
   const plan = planLifeConnectorGrantMigration({
     grants,
     existingAccounts,
     existingCredentials,
+    ownerBindings,
   });
 
   const result: LifeConnectorGrantMigrationResult = {
@@ -489,12 +800,25 @@ function parseConnectorAccountRow(
     agentId: toText(row.agent_id),
     provider: toText(row.provider),
     accountKey: toText(row.account_key),
-    metadata:
-      row.metadata &&
-      typeof row.metadata === "object" &&
-      !Array.isArray(row.metadata)
-        ? (row.metadata as Record<string, unknown>)
-        : undefined,
+    ownerBindingId: normalizeOptionalString(row.owner_binding_id),
+    ownerIdentityId: normalizeOptionalString(row.owner_identity_id),
+    accessGate: normalizeOptionalString(row.access_gate) ?? undefined,
+    metadata: isJsonRecord(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : undefined,
+  };
+}
+
+function parseConnectorOwnerBindingRow(
+  row: Record<string, unknown>,
+): ConnectorAccountOwnerBindingRow {
+  return {
+    id: toText(row.id),
+    identityId: toText(row.identity_id),
+    connector: toText(row.connector),
+    externalId: toText(row.external_id),
+    displayHandle: toText(row.display_handle),
+    instanceId: toText(row.instance_id),
   };
 }
 
@@ -569,7 +893,8 @@ export class RuntimeLifeConnectorGrantMigrationStore
     if (uuidAgentIds.length === 0) return [];
     const rows = await executeMaybeMissingTable(
       this.runtime,
-      `SELECT id, agent_id, provider, account_key, metadata
+      `SELECT id, agent_id, provider, account_key, owner_binding_id,
+              owner_identity_id, access_gate, metadata
          FROM connector_accounts
         WHERE agent_id IN (${sqlIn(uuidAgentIds)})`,
     );
@@ -590,6 +915,37 @@ export class RuntimeLifeConnectorGrantMigrationStore
     return rows.map(parseCredentialRow);
   }
 
+  async listConnectorOwnerBindings(
+    lookups: readonly ConnectorAccountOwnerBindingLookup[],
+  ): Promise<ConnectorAccountOwnerBindingRow[]> {
+    const uniqueLookups = uniqueOwnerBindingLookups(lookups).filter(
+      (lookup) => lookup.instanceId,
+    );
+    if (uniqueLookups.length === 0) return [];
+    const providers = Array.from(
+      new Set(uniqueLookups.map((lookup) => lookup.provider)),
+    );
+    const externalIds = Array.from(
+      new Set(uniqueLookups.map((lookup) => lookup.externalId)),
+    );
+    const rows = await executeMaybeMissingTable(
+      this.runtime,
+      `SELECT id, identity_id, connector, external_id, display_handle, instance_id
+         FROM auth_owner_bindings
+        WHERE connector IN (${sqlIn(providers)})
+          AND external_id IN (${sqlIn(externalIds)})`,
+    );
+    const bindings = rows.map(parseConnectorOwnerBindingRow);
+    return bindings.filter((binding) =>
+      uniqueLookups.some(
+        (lookup) =>
+          lookup.provider === normalizeProvider(binding.connector) &&
+          lookup.externalId === binding.externalId &&
+          (!lookup.instanceId || lookup.instanceId === binding.instanceId),
+      ),
+    );
+  }
+
   async upsertConnectorAccount(
     draft: ConnectorAccountMigrationDraft,
   ): Promise<ConnectorAccountMigrationAccountRow> {
@@ -597,7 +953,8 @@ export class RuntimeLifeConnectorGrantMigrationStore
       this.runtime,
       `INSERT INTO connector_accounts (
         agent_id, provider, account_key, external_id, display_name, username,
-        email, status, scopes, capabilities, profile, metadata, connected_at,
+        email, owner_binding_id, owner_identity_id, role, purpose, access_gate,
+        status, scopes, capabilities, profile, metadata, connected_at,
         created_at, updated_at
       ) VALUES (
         ${sqlQuote(draft.agentId)},
@@ -607,6 +964,11 @@ export class RuntimeLifeConnectorGrantMigrationStore
         ${sqlText(draft.displayName)},
         ${sqlText(draft.username)},
         ${sqlText(draft.email)},
+        ${sqlText(draft.ownerBindingId)},
+        ${sqlText(draft.ownerIdentityId)},
+        ${sqlQuote(draft.role)},
+        ${sqlJson(draft.connectorPurpose)}::jsonb,
+        ${sqlQuote(draft.accessGate)},
         ${sqlQuote(draft.status)},
         ${sqlJson(draft.scopes)}::jsonb,
         ${sqlJson(draft.capabilities)}::jsonb,
@@ -616,11 +978,16 @@ export class RuntimeLifeConnectorGrantMigrationStore
         ${sqlQuote(draft.createdAt)}::timestamptz,
         ${sqlQuote(draft.updatedAt)}::timestamptz
       )
-      ON CONFLICT(agent_id, provider, account_key) DO UPDATE SET
+      ON CONFLICT(agent_id, provider, account_key) WHERE deleted_at IS NULL DO UPDATE SET
         external_id = excluded.external_id,
         display_name = excluded.display_name,
         username = excluded.username,
         email = excluded.email,
+        owner_binding_id = COALESCE(excluded.owner_binding_id, connector_accounts.owner_binding_id),
+        owner_identity_id = COALESCE(excluded.owner_identity_id, connector_accounts.owner_identity_id),
+        role = excluded.role,
+        purpose = excluded.purpose,
+        access_gate = excluded.access_gate,
         status = excluded.status,
         scopes = excluded.scopes,
         capabilities = excluded.capabilities,
@@ -628,7 +995,8 @@ export class RuntimeLifeConnectorGrantMigrationStore
         metadata = connector_accounts.metadata || excluded.metadata,
         updated_at = excluded.updated_at,
         deleted_at = NULL
-      RETURNING id, agent_id, provider, account_key, metadata`,
+      RETURNING id, agent_id, provider, account_key, owner_binding_id,
+                owner_identity_id, access_gate, metadata`,
     );
     const row = rows[0];
     if (!row) throw new Error("Failed to upsert connector account");

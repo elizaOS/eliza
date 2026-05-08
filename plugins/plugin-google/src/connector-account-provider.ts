@@ -165,7 +165,7 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
       : {};
-  const raw = nonEmptyString(record.role ?? record.accountRole);
+  const raw = nonEmptyString(record.role ?? record.accountRole ?? record.requestedRole);
   if (!raw) return "OWNER";
   const normalized = raw.toUpperCase();
   if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
@@ -360,12 +360,48 @@ export function createGoogleConnectorAccountProvider(
         throw new Error("Google identity payload did not include sub or email.");
       }
       const expiresAt = Date.now() + tokens.expires_in * 1000;
+      const oauthCredentialVersion = String(Date.now());
+      const accountMetadata = {
+        email: identity.email ?? null,
+        emailVerified: identity.email_verified ?? null,
+        name: identity.name ?? null,
+        picture: identity.picture ?? null,
+        locale: identity.locale ?? null,
+        grantedCapabilities,
+        grantedScopes:
+          grantedScopes.length > 0
+            ? grantedScopes
+            : scopesForGoogleCapabilities(grantedCapabilities),
+        identityScopes: [...GOOGLE_IDENTITY_SCOPES],
+        tokenType: tokens.token_type ?? "Bearer",
+        hasRefreshToken: Boolean(tokens.refresh_token),
+        expiresAt,
+        oauthCredentialVersion,
+      };
+      const pendingAccount = await manager.upsertAccount(
+        GOOGLE_SERVICE_NAME,
+        {
+          provider: GOOGLE_SERVICE_NAME,
+          role: roleFromMetadata(request.flow.metadata),
+          purpose: purposes,
+          accessGate: "open",
+          status: "pending",
+          externalId,
+          displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
+          label:
+            nonEmptyString(identity.name) ??
+            nonEmptyString(identity.email) ??
+            GOOGLE_OAUTH_PROVIDER_METADATA.label,
+          metadata: accountMetadata,
+        },
+        request.flow.accountId
+      );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: GOOGLE_SERVICE_NAME,
-        accountIdForRef: request.flow.accountId ?? externalId,
-        storageAccountId: request.flow.accountId,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
         caller: "plugin-google",
         credentials: [
           {
@@ -392,39 +428,19 @@ export function createGoogleConnectorAccountProvider(
 
       const accountPatch: ConnectorAccountPatch & {
         provider: string;
+        id: string;
       } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
         provider: GOOGLE_SERVICE_NAME,
-        role: roleFromMetadata(request.flow.metadata),
-        purpose: purposes,
-        accessGate: "open",
         status: "connected",
-        externalId,
-        displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
-        label:
-          nonEmptyString(identity.name) ??
-          nonEmptyString(identity.email) ??
-          GOOGLE_OAUTH_PROVIDER_METADATA.label,
         metadata: {
-          email: identity.email ?? null,
-          emailVerified: identity.email_verified ?? null,
-          name: identity.name ?? null,
-          picture: identity.picture ?? null,
-          locale: identity.locale ?? null,
-          grantedCapabilities,
-          grantedScopes:
-            grantedScopes.length > 0
-              ? grantedScopes
-              : scopesForGoogleCapabilities(grantedCapabilities),
-          identityScopes: [...GOOGLE_IDENTITY_SCOPES],
-          tokenType: tokens.token_type ?? "Bearer",
-          hasRefreshToken: Boolean(tokens.refresh_token),
-          expiresAt,
+          ...accountMetadata,
           credentialRefs: credentialPersist.refs,
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
           },
-          oauthCredentialVersion: String(Date.now()),
         },
       };
 

@@ -106,7 +106,7 @@ function cloneConnectorJsonObject(
 
 const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
-	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
+	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
 
 function redactConnectorAuditValue(value: unknown): JsonValue {
 	if (value === null || value === undefined) return null;
@@ -1753,6 +1753,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			username:
 				params.username !== undefined ? params.username : existing?.username,
 			email: params.email !== undefined ? params.email : existing?.email,
+			ownerBindingId:
+				params.ownerBindingId !== undefined
+					? params.ownerBindingId
+					: existing?.ownerBindingId,
+			ownerIdentityId:
+				params.ownerIdentityId !== undefined
+					? params.ownerIdentityId
+					: existing?.ownerIdentityId,
 			role: params.role ?? existing?.role ?? "OWNER",
 			purpose: params.purpose
 				? [...params.purpose]

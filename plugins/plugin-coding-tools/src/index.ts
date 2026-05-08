@@ -5,6 +5,7 @@ import {
   editAction,
   enterWorktreeAction,
   exitWorktreeAction,
+  fileAction,
   globAction,
   grepAction,
   lsAction,
@@ -23,7 +24,7 @@ import {
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, BASH, GREP, GLOB, LS, WEB_FETCH, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. The TODO umbrella action (op-based CRUD) is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute. Blocks user-private + per-OS system paths by default.",
+    "Native Claude-Code-style coding tools. FILE (read/write/edit subactions), BASH, GREP, GLOB, LS, WEB_FETCH, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. The TODO umbrella action (op-based CRUD) is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute. Blocks user-private + per-OS system paths by default.",
   services: [
     FileStateService,
     SandboxService,
@@ -32,9 +33,7 @@ export const codingToolsPlugin: Plugin = {
   ],
   providers: [availableToolsProvider],
   actions: [
-    readAction,
-    writeAction,
-    editAction,
+    fileAction,
     bashAction,
     grepAction,
     globAction,

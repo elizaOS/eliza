@@ -2,7 +2,7 @@ import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
-import type { ContextEvent } from "../types/context-object";
+import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -363,8 +363,18 @@ function renderPlannerModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const availableActionsBlock = renderAvailableActionsBlock(params.context);
+	const contextSegments = availableActionsBlock
+			? [
+					...renderedContext.promptSegments,
+					{
+						content: availableActionsBlock,
+						stable: false,
+					} satisfies PromptSegment,
+			]
+		: renderedContext.promptSegments;
 	const promptSegments = normalizePromptSegments([
-		...renderedContext.promptSegments,
+		...contextSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: false },
 	]);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
@@ -375,13 +385,109 @@ function renderPlannerModelInput(params: {
 	// dynamic block would re-introduce the JSON-dump anti-pattern in the user
 	// message and invalidate the cache prefix on every iteration.
 	const messages = buildStageChatMessages({
-		contextSegments: renderedContext.promptSegments,
+		contextSegments,
 		stageLabel: "planner_stage",
 		instructions,
 		dynamicBlocks: [],
 		stepMessages,
 	});
 	return { messages, promptSegments };
+}
+
+function normalizePlannerToolName(name: string): string {
+	return name.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isPlannerWrapperTool(name: string): boolean {
+	return normalizePlannerToolName(name) === normalizePlannerToolName(PLAN_ACTIONS_TOOL_NAME);
+}
+
+function compactToolParameters(parameters: unknown): unknown {
+	if (!parameters || typeof parameters !== "object") {
+		return undefined;
+	}
+	const record = parameters as {
+		type?: unknown;
+		properties?: unknown;
+		required?: unknown;
+		additionalProperties?: unknown;
+	};
+	return {
+		...(typeof record.type === "string" ? { type: record.type } : {}),
+		...(record.properties &&
+		typeof record.properties === "object" &&
+		!Array.isArray(record.properties)
+			? { properties: record.properties }
+			: {}),
+		...(Array.isArray(record.required) ? { required: record.required } : {}),
+		...(record.additionalProperties !== undefined
+			? { additionalProperties: record.additionalProperties }
+			: {}),
+	};
+}
+
+function renderToolForAvailableActions(tool: ContextObjectTool): string {
+	const description = tool.description?.trim();
+	const parameterSummary = compactToolParameters(tool.parameters);
+	const lines = [`- ${tool.name}:${description ? ` ${description}` : ""}`];
+	if (parameterSummary !== undefined) {
+		lines.push(`  parameters: ${JSON.stringify(parameterSummary)}`);
+	}
+	return lines.join("\n");
+}
+
+function renderAvailableActionsBlock(context: ContextObject): string | null {
+	const parentAction =
+		typeof context.metadata?.subPlannerParentAction === "string"
+			? context.metadata.subPlannerParentAction
+			: "";
+	const inSubPlanner = parentAction.length > 0;
+	const tools: ContextObjectTool[] = [];
+	const seen = new Set<string>();
+
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) {
+			continue;
+		}
+		const tool = event.tool as ContextObjectTool;
+		if (!tool?.name || isPlannerWrapperTool(tool.name)) {
+			continue;
+		}
+		const parentMatches =
+			typeof tool.metadata?.parentAction === "string" &&
+			tool.metadata.parentAction === parentAction;
+		if (inSubPlanner) {
+			if (event.source !== "sub-planner" && !parentMatches) {
+				continue;
+			}
+		} else if (event.source === "sub-planner" || parentMatches) {
+			continue;
+		}
+		const key = normalizePlannerToolName(tool.name);
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		tools.push(tool);
+	}
+
+	if (tools.length === 0) {
+		return null;
+	}
+
+	const scope = inSubPlanner
+		? [
+				`sub_planner_scope: parent=${parentAction}`,
+				`Use only the child actions listed below. Do not call ${parentAction} from inside its own sub-planner.`,
+				"",
+			]
+		: [];
+
+	return [
+		...scope,
+		"# Available Actions",
+		...tools.map(renderToolForAvailableActions),
+	].join("\n");
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {

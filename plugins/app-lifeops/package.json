@@ -154,6 +154,7 @@
     "@elizaos/plugin-calendly": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-google": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",

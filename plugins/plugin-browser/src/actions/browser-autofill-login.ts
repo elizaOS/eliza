@@ -1,5 +1,9 @@
 /**
- * BROWSER_AUTOFILL_LOGIN — agent-driven browser login autofill.
+ * BROWSER autofill-login subaction — agent-driven browser login autofill.
+ *
+ * Invoked via BROWSER with `subaction: "autofill-login"` (canonical). The legacy
+ * planner action name `BROWSER_AUTOFILL_LOGIN` normalizes to BROWSER with this
+ * subaction in the planner dispatch pipeline.
  *
  * Lets the agent say "log into github.com for me" and have the saved
  * credentials filled into an open Eliza browser tab without a per-call
@@ -21,7 +25,7 @@
  *     whose URL hostname matches `domain` (registrable hostname,
  *     case-insensitive). Returns a clean error when no such tab exists
  *     so the agent can decide whether to open one first via
- *     BROWSER_SESSION.
+ *     BROWSER (open/navigate).
  *
  * Fill mechanism:
  *   - Injects a small JS snippet that mirrors the same form-detection
@@ -32,7 +36,12 @@
  *     the safer behaviour is fill-only and let the user click submit.
  */
 
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getAutofillAllowed,
@@ -51,6 +60,9 @@ interface BrowserAutofillLoginParameters {
   /** When true, attempt to submit the form after filling. Default: false. */
   submit?: boolean;
 }
+
+const AUTOFILL_SUBACTION = "autofill-login";
+
 const MAX_BROWSER_TAB_SCAN = 100;
 const MAX_FILL_REASON_CHARS = 240;
 
@@ -140,252 +152,205 @@ function buildAutofillScript(args: {
 `;
 }
 
-export const browserAutofillLoginAction: Action = {
-  name: "BROWSER_AUTOFILL_LOGIN",
-  contexts: ["browser", "web", "secrets"],
-  roleGate: { minRole: "OWNER" },
-  similes: [
-    "AGENT_AUTOFILL",
-    "AUTOFILL_BROWSER_LOGIN",
-    "AUTOFILL_LOGIN",
-    "FILL_BROWSER_CREDENTIALS",
-    "LOG_INTO_SITE",
-    "SIGN_IN_TO_SITE",
-  ],
-  description:
-    "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
-  descriptionCompressed:
-    "autofill save credential open Eliza browser tab request domain require user pre-authorize agent autofill domain via Settings - Vault - Logins (cred domain: autoallow 1)",
-  validate: async () => true,
-  handler: async (_runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | BrowserAutofillLoginParameters
-      | undefined;
-    const domain = params?.domain?.trim().toLowerCase() ?? "";
-    const requestedUsername = params?.username?.trim();
-    const submit = params?.submit === true;
+function narrowSnippetResult(raw: unknown): {
+  filled: boolean;
+  fillReason: string | null;
+} {
+  if (!raw || typeof raw !== "object") {
+    return { filled: false, fillReason: null };
+  }
+  const obj = raw as { filled?: { username?: boolean; password?: boolean } };
+  const hasFilledProp = "filled" in obj && Boolean(obj.filled);
+  let fillReason: string | null = null;
+  const reasonVal = "reason" in obj ? obj.reason : undefined;
+  if (typeof reasonVal === "string") {
+    fillReason = reasonVal.slice(0, MAX_FILL_REASON_CHARS);
+  }
+  return { filled: hasFilledProp, fillReason };
+}
 
-    if (!domain) {
-      return {
-        text: "BROWSER_AUTOFILL_LOGIN requires a `domain` parameter.",
-        success: false,
-        values: {
-          success: false,
-          error: "BROWSER_AUTOFILL_LOGIN_BAD_PARAMS",
-        },
-        data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-      };
-    }
+/**
+ * Executes the vault-gated workspace autofill flow for {@link AUTOFILL_SUBACTION}.
+ */
+export async function executeBrowserAutofillLogin(
+  _runtime: IAgentRuntime,
+  _message: Memory | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  const params = options?.parameters as BrowserAutofillLoginParameters | undefined;
+  const domain = params?.domain?.trim().toLowerCase() ?? "";
+  const requestedUsername = params?.username?.trim();
+  const submit = params?.submit === true;
 
-    if (!isBrowserWorkspaceBridgeConfigured(process.env)) {
-      return {
-        text: "BROWSER_AUTOFILL_LOGIN requires the desktop browser workspace bridge.",
-        success: false,
-        values: {
-          success: false,
-          error: "BROWSER_BRIDGE_UNAVAILABLE",
-        },
-        data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-      };
-    }
-
-    // Resolve the shared vault via dynamic import — the agent package
-    // doesn't directly depend on @elizaos/app-core to avoid a circular
-    // graph; the runtime bootstraps app-core before any action runs.
-    const { sharedVault } = (await import(
-      "@elizaos/app-core/services/vault-mirror"
-    )) as typeof import("@elizaos/app-core/services/vault-mirror");
-    const vault = sharedVault();
-
-    // ── Authorization gate: per-domain autoallow flag ─────────────
-    const allowed = await getAutofillAllowed(vault, domain);
-    if (!allowed) {
-      const text = `User has not pre-authorized agent autofill for ${domain}. Toggle "Allow agent to autofill" for this domain under Settings -> Vault -> Logins.`;
-      return {
-        text,
-        success: false,
-        values: {
-          success: false,
-          error: "AGENT_AUTOFILL_NOT_AUTHORIZED",
-          domain,
-        },
-        data: { actionName: "BROWSER_AUTOFILL_LOGIN", domain, reason: text },
-      };
-    }
-
-    // ── Look up credentials ──────────────────────────────────────
-    let savedLogin: Awaited<ReturnType<typeof getSavedLogin>> = null;
-    if (requestedUsername) {
-      savedLogin = await getSavedLogin(vault, domain, requestedUsername);
-      if (!savedLogin) {
-        return {
-          text: `No saved login for ${requestedUsername} on ${domain}.`,
-          success: false,
-          values: {
-            success: false,
-            error: "AGENT_AUTOFILL_NO_LOGIN",
-            domain,
-            username: requestedUsername,
-          },
-          data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-        };
-      }
-    } else {
-      // No username supplied — pick the most recently modified entry.
-      const summaries = await listSavedLogins(vault, domain);
-      if (summaries.length === 0) {
-        return {
-          text: `No saved logins for ${domain}.`,
-          success: false,
-          values: {
-            success: false,
-            error: "AGENT_AUTOFILL_NO_LOGIN",
-            domain,
-          },
-          data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-        };
-      }
-      const sorted = [...summaries].sort(
-        (a, b) => b.lastModified - a.lastModified,
-      );
-      const chosen = sorted[0];
-      if (!chosen) {
-        return {
-          text: `No saved logins for ${domain}.`,
-          success: false,
-          values: {
-            success: false,
-            error: "AGENT_AUTOFILL_NO_LOGIN",
-            domain,
-          },
-          data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-        };
-      }
-      savedLogin = await getSavedLogin(vault, domain, chosen.username);
-      if (!savedLogin) {
-        return {
-          text: `Saved login ${chosen.username} on ${domain} disappeared between list and reveal.`,
-          success: false,
-          values: {
-            success: false,
-            error: "AGENT_AUTOFILL_RACE",
-            domain,
-          },
-          data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-        };
-      }
-    }
-
-    // ── Locate the open tab ──────────────────────────────────────
-    const tabs = await listBrowserWorkspaceTabs();
-    const matchingTab = tabs
-      .slice(0, MAX_BROWSER_TAB_SCAN)
-      .find((t) => tabUrlMatchesDomain(t.url, domain));
-    if (!matchingTab) {
-      return {
-        text: `No open browser tab on ${domain}. Open one with BROWSER_SESSION first.`,
-        success: false,
-        values: {
-          success: false,
-          error: "AGENT_AUTOFILL_NO_TAB",
-          domain,
-        },
-        data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-      };
-    }
-
-    // ── Inject and evaluate the autofill script ──────────────────
-    const script = buildAutofillScript({
-      username: savedLogin.username,
-      password: savedLogin.password,
-      submit,
-    });
-    const rawResult = await evaluateBrowserWorkspaceTab({
-      id: matchingTab.id,
-      script,
-    });
-    // The injected snippet returns
-    //   { ok: boolean; reason?: string; filled?: { username, password }; submitted?: boolean }
-    // — narrow to the fields we surface in `values` so the action result
-    // is plain JSON.
-    const filled =
-      rawResult &&
-      typeof rawResult === "object" &&
-      "filled" in (rawResult as Record<string, unknown>)
-        ? Boolean((rawResult as { filled?: unknown }).filled)
-        : false;
-    const fillReason =
-      rawResult &&
-      typeof rawResult === "object" &&
-      typeof (rawResult as { reason?: unknown }).reason === "string"
-        ? (rawResult as { reason: string }).reason.slice(
-            0,
-            MAX_FILL_REASON_CHARS,
-          )
-        : null;
-
-    logger.info(
-      `[browser-autofill-login] domain=${domain} tabId=${matchingTab.id} submit=${submit} filled=${filled}`,
-    );
-
+  if (!domain) {
     return {
-      text: submit
-        ? `Filled and submitted login on ${domain} (tab ${matchingTab.id}).`
-        : `Filled login on ${domain} (tab ${matchingTab.id}). User must click submit.`,
-      success: true,
+      text: `BROWSER requires subaction "${AUTOFILL_SUBACTION}" and a \`domain\` parameter.`,
+      success: false,
       values: {
-        success: true,
+        success: false,
+        error: "BROWSER_AUTOFILL_BAD_PARAMS",
+        subaction: AUTOFILL_SUBACTION,
+      },
+      data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+    };
+  }
+
+  if (!isBrowserWorkspaceBridgeConfigured(process.env)) {
+    return {
+      text: `BROWSER ${AUTOFILL_SUBACTION} requires the desktop browser workspace bridge.`,
+      success: false,
+      values: {
+        success: false,
+        error: "BROWSER_BRIDGE_UNAVAILABLE",
+        subaction: AUTOFILL_SUBACTION,
+      },
+      data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+    };
+  }
+
+  const { sharedVault } = await import("@elizaos/app-core/services/vault-mirror");
+  const vault = sharedVault();
+
+  const allowed = await getAutofillAllowed(vault, domain);
+  if (!allowed) {
+    const text = `User has not pre-authorized agent autofill for ${domain}. Toggle "Allow agent to autofill" for this domain under Settings -> Vault -> Logins.`;
+    return {
+      text,
+      success: false,
+      values: {
+        success: false,
+        error: "AGENT_AUTOFILL_NOT_AUTHORIZED",
         domain,
-        tabId: matchingTab.id,
-        submitted: submit,
-        filled,
-        ...(fillReason ? { fillReason } : {}),
+        subaction: AUTOFILL_SUBACTION,
       },
       data: {
-        actionName: "BROWSER_AUTOFILL_LOGIN",
+        actionName: "BROWSER",
+        subaction: AUTOFILL_SUBACTION,
         domain,
-        tabId: matchingTab.id,
-        filled,
-        ...(fillReason ? { fillReason } : {}),
+        reason: text,
       },
     };
-  },
-  parameters: [
-    {
-      name: "domain",
-      description:
-        "Registrable hostname to autofill (e.g. `github.com`, no protocol or path).",
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "username",
-      description:
-        "Specific saved login to use. When omitted, the most recently modified saved login for the domain is selected.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "submit",
-      description:
-        "When true, submit the form after filling. Defaults to false (fill-only).",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Log into github.com for me" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Filled login on github.com. Click submit when ready.",
-          actions: ["BROWSER_AUTOFILL_LOGIN"],
+  }
+
+  let savedLogin: Awaited<ReturnType<typeof getSavedLogin>> = null;
+  if (requestedUsername) {
+    savedLogin = await getSavedLogin(vault, domain, requestedUsername);
+    if (!savedLogin) {
+      return {
+        text: `No saved login for ${requestedUsername} on ${domain}.`,
+        success: false,
+        values: {
+          success: false,
+          error: "AGENT_AUTOFILL_NO_LOGIN",
+          domain,
+          username: requestedUsername,
+          subaction: AUTOFILL_SUBACTION,
         },
+        data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+      };
+    }
+  } else {
+    const summaries = await listSavedLogins(vault, domain);
+    if (summaries.length === 0) {
+      return {
+        text: `No saved logins for ${domain}.`,
+        success: false,
+        values: {
+          success: false,
+          error: "AGENT_AUTOFILL_NO_LOGIN",
+          domain,
+          subaction: AUTOFILL_SUBACTION,
+        },
+        data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+      };
+    }
+    const sorted = [...summaries].sort(
+      (a, b) => b.lastModified - a.lastModified,
+    );
+    const chosen = sorted[0];
+    if (!chosen) {
+      return {
+        text: `No saved logins for ${domain}.`,
+        success: false,
+        values: {
+          success: false,
+          error: "AGENT_AUTOFILL_NO_LOGIN",
+          domain,
+          subaction: AUTOFILL_SUBACTION,
+        },
+        data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+      };
+    }
+    savedLogin = await getSavedLogin(vault, domain, chosen.username);
+    if (!savedLogin) {
+      return {
+        text: `Saved login ${chosen.username} on ${domain} disappeared between list and reveal.`,
+        success: false,
+        values: {
+          success: false,
+          error: "AGENT_AUTOFILL_RACE",
+          domain,
+          subaction: AUTOFILL_SUBACTION,
+        },
+        data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+      };
+    }
+  }
+
+  const tabs = await listBrowserWorkspaceTabs();
+  const matchingTab = tabs
+    .slice(0, MAX_BROWSER_TAB_SCAN)
+    .find((t) => tabUrlMatchesDomain(t.url, domain));
+  if (!matchingTab) {
+    return {
+      text: `No open browser tab on ${domain}. Open one with BROWSER (open/navigate) first.`,
+      success: false,
+      values: {
+        success: false,
+        error: "AGENT_AUTOFILL_NO_TAB",
+        domain,
+        subaction: AUTOFILL_SUBACTION,
       },
-    ],
-  ],
-};
+      data: { actionName: "BROWSER", subaction: AUTOFILL_SUBACTION },
+    };
+  }
+
+  const script = buildAutofillScript({
+    username: savedLogin.username,
+    password: savedLogin.password,
+    submit,
+  });
+  const rawResult = await evaluateBrowserWorkspaceTab({
+    id: matchingTab.id,
+    script,
+  });
+  const { filled, fillReason } = narrowSnippetResult(rawResult);
+
+  logger.info(
+    `[browser-autofill-login] domain=${domain} tabId=${matchingTab.id} submit=${submit} filled=${filled}`,
+  );
+
+  return {
+    text: submit
+      ? `Filled and submitted login on ${domain} (tab ${matchingTab.id}).`
+      : `Filled login on ${domain} (tab ${matchingTab.id}). User must click submit.`,
+    success: true,
+    values: {
+      success: true,
+      domain,
+      tabId: matchingTab.id,
+      submitted: submit,
+      filled,
+      subaction: AUTOFILL_SUBACTION,
+      ...(fillReason ? { fillReason } : {}),
+    },
+    data: {
+      actionName: "BROWSER",
+      subaction: AUTOFILL_SUBACTION,
+      domain,
+      tabId: matchingTab.id,
+      filled,
+      ...(fillReason ? { fillReason } : {}),
+    },
+  };
+}

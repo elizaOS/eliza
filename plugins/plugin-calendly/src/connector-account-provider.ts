@@ -329,12 +329,44 @@ export function createCalendlyConnectorAccountProvider(
         typeof tokens.expires_in === "number"
           ? Date.now() + tokens.expires_in * 1000
           : undefined;
+      const oauthCredentialVersion = String(Date.now());
+      const accountMetadata = {
+        authMethod: "oauth",
+        userUri: nonEmptyString(user?.uri) ?? null,
+        email: nonEmptyString(user?.email) ?? null,
+        name: nonEmptyString(user?.name) ?? null,
+        schedulingUrl: nonEmptyString(user?.scheduling_url) ?? null,
+        timezone: nonEmptyString(user?.timezone) ?? null,
+        organizationUri: nonEmptyString(user?.current_organization) ?? null,
+        tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
+        hasRefreshToken: Boolean(tokens.refresh_token),
+        expiresAt,
+        oauthCredentialVersion,
+      };
+      const pendingAccount = await manager.upsertAccount(
+        CALENDLY_PROVIDER_NAME,
+        {
+          provider: CALENDLY_PROVIDER_NAME,
+          role: "OWNER",
+          purpose: DEFAULT_PURPOSES,
+          accessGate: "open",
+          status: "pending",
+          externalId,
+          displayHandle:
+            nonEmptyString(user?.email) ??
+            nonEmptyString(user?.name) ??
+            externalId,
+          label: nonEmptyString(user?.name) ?? "Calendly",
+          metadata: accountMetadata,
+        },
+        request.flow.accountId,
+      );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: CALENDLY_PROVIDER_NAME,
-        accountIdForRef: request.flow.accountId ?? externalId,
-        storageAccountId: request.flow.accountId,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
         caller: "plugin-calendly",
         credentials: [
           {
@@ -361,35 +393,21 @@ export function createCalendlyConnectorAccountProvider(
         ],
       });
 
-      const accountPatch: ConnectorAccountPatch & { provider: string } = {
+      const accountPatch: ConnectorAccountPatch & {
+        provider: string;
+        id: string;
+      } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
         provider: CALENDLY_PROVIDER_NAME,
-        role: "OWNER",
-        purpose: DEFAULT_PURPOSES,
-        accessGate: "open",
         status: "connected",
-        externalId,
-        displayHandle:
-          nonEmptyString(user?.email) ??
-          nonEmptyString(user?.name) ??
-          externalId,
-        label: nonEmptyString(user?.name) ?? "Calendly",
         metadata: {
-          authMethod: "oauth",
-          userUri: nonEmptyString(user?.uri) ?? null,
-          email: nonEmptyString(user?.email) ?? null,
-          name: nonEmptyString(user?.name) ?? null,
-          schedulingUrl: nonEmptyString(user?.scheduling_url) ?? null,
-          timezone: nonEmptyString(user?.timezone) ?? null,
-          organizationUri: nonEmptyString(user?.current_organization) ?? null,
-          tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
-          hasRefreshToken: Boolean(tokens.refresh_token),
-          expiresAt,
+          ...accountMetadata,
           credentialRefs: credentialPersist.refs,
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
           },
-          oauthCredentialVersion: String(Date.now()),
         },
       };
 

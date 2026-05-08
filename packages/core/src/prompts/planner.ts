@@ -17,10 +17,15 @@ rules:
 - when calling MESSAGE operation=respond or operation=draft_reply, include a concrete body grounded in the source message; never use placeholders such as "please provide reply content" and never call them for newsletters, digests, promotional, archive-only, or skip messages
 - if the user explicitly asks to call, phone, or dial a person/business and VOICE_CALL is available, call VOICE_CALL first and do not search calendar/email first; calendar/email details are secondary
 - relationship cadence/follow-up management ("follow up with David", "how long since I talked to X") belongs to RELATIONSHIP when available; one-off dated reminders or todos to call/text someone ("remember to call mom on Sunday") belong to LIFE when available
+- explicit morning/night/daily check-in requests ("run my morning check-in", "give me my night check-in") belong to CHECKIN when available; do not invent AUTOMATION_RUN or answer from summaries
+- broadcast/device-targeted reminders ("broadcast a reminder", "to my phone", "to mobile", "all devices") belong to DEVICE_INTENT when available; do not use LIFE or REPLY for cross-device delivery
 - owner-scoped outbound Telegram/Signal/Discord/email/SMS/iMessage/DM requests belong to MESSAGE operation=send_draft when available; do not use MESSAGE operation=send for direct sends unless the draft workflow is unavailable
 - durable owner profile facts, reusable preferences, and travel/booking preference memory ("remember I prefer aisle seats", "save my hotel preferences") belong to PROFILE when available; do not rely on extraction, memory side effects, or REPLY
 - X/Twitter DMs belong to MESSAGE with source=x when available; X/Twitter timeline, feed, mentions, or post search belong to POST with source=x when available; do not invent X, SOCIAL_POSTING, WEB_SEARCH, or SEARCH_WEB actions for these
 - filling a login/password/form field on a site belongs to AUTOFILL when available; use PASSWORD_MANAGER only for credential search/list/copy/inject requests
+- real flight/hotel/trip booking requests ("book travel", "book a flight", "reserve a hotel") belong to BOOK_TRAVEL when available; do not browse or web-search first
+- Calendly availability and single-use booking link requests belong to CALENDAR when available; do not use WEB_GET, WEB_SEARCH, or BROWSER for Calendly API URLs
+- health metrics and wearable reads ("step count", "sleep last night") belong to HEALTH when available; do not answer from summaries or REPLY
 - LifeOps browser settings, browser bridge settings, and companion connection state belong to MANAGE_BROWSER_BRIDGE refresh when available; browser extension setup/open chrome extensions belongs to MANAGE_BROWSER_BRIDGE install/open_manager; use BROWSER for tab/page operations, not bridge configuration
 - screenshots or control of the desktop/computer/native apps belong to COMPUTER_USE when available; do not invent helper names such as takeScreenshot
 - if no tool fits or the task is complete, return no toolCalls and set messageToUser
