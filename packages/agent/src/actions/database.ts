@@ -848,16 +848,3 @@ export const databaseAction: Action = {
   ],
 };
 
-// ---------------------------------------------------------------------------
-// Legacy aliases.
-//
-// eliza-plugin.ts and web-search.ts still import the four old per-op exports
-// + searchVectorsAction. Each alias points at the same canonical
-// `databaseAction`, so there is one action with name "DATABASE" registered.
-// Updating the import sites is a follow-up.
-// ---------------------------------------------------------------------------
-
-export const listDatabaseTablesAction = databaseAction;
-export const getTableDataAction = databaseAction;
-export const executeDatabaseQueryAction = databaseAction;
-export const searchVectorsAction = databaseAction;
