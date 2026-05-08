@@ -209,6 +209,12 @@ describe("GoogleChatN8nCredentialProvider", () => {
     expect(await provider.resolve("user1", "googleChatOAuth2Api")).toBeNull();
   });
 
+  test("returns null when GOOGLE_CHAT_SERVICE_ACCOUNT is not valid JSON (e.g. user pasted a path)", async () => {
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT: "/run/secrets/sa.json" });
+    const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);
+    expect(await provider.resolve("user1", "googleChatOAuth2Api")).toBeNull();
+  });
+
   test("returns null when no Google credential env vars are set", async () => {
     const runtime = makeRuntime({});
     const provider = await GoogleChatN8nCredentialProvider.start(runtime as never);

@@ -30,7 +30,15 @@ export class GoogleChatN8nCredentialProvider extends Service {
 
     let serviceAccountKey: string | undefined;
     if (inlineJson) {
-      serviceAccountKey = inlineJson;
+      try {
+        JSON.parse(inlineJson);
+        serviceAccountKey = inlineJson;
+      } catch {
+        logger.warn(
+          `[GoogleChat] GOOGLE_CHAT_SERVICE_ACCOUNT is not valid JSON — did you mean to set GOOGLE_CHAT_SERVICE_ACCOUNT_FILE instead?`,
+        );
+        return null;
+      }
     } else if (filePath) {
       try {
         const content = await fs.readFile(filePath, 'utf-8');
