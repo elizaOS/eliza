@@ -165,9 +165,9 @@ Secure with a reverse proxy (Nginx + TLS) for production.
 Error: Unsupported model version v1
 ```
 
-**Cause:** The `@elizaos/plugin-ollama` depends on `ollama-ai-provider@^1.2.0`, which uses the v1 AI SDK spec. The current runtime ships AI SDK v6, causing a silent version mismatch.
+**Cause:** Older builds used `ollama-ai-provider` (v1 model spec) with AI SDK 5+, which requires providers that implement specification v2. Current `@elizaos/plugin-ollama` uses `ollama-ai-provider-v2`, which matches AI SDK 5/6. If you still see this error, run `bun install` at the repo root so dependencies resolve to the updated provider.
 
-**Workaround — Use Ollama's OpenAI-Compatible Endpoint:**
+**Alternative — Use Ollama's OpenAI-Compatible Endpoint:**
 
 Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`. Route through the OpenAI plugin instead:
 

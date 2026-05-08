@@ -1,9 +1,44 @@
+/**
+ * Ollama provider plugin registration.
+ *
+ * ## Why this file exists separately from `models/*`
+ *
+ * Centralizes **plugin metadata**, **model-type → handler** wiring, and **init-time** logging
+ * (base URL, model defaults) so model modules stay pure “call Ollama / AI SDK” logic.
+ *
+ * ## Text handlers and v5 parity
+ *
+ * `TEXT_*`, `RESPONSE_HANDLER`, and `ACTION_PLANNER` all route through `models/text.ts`, which uses:
+ *
+ * - **`generateText`** — default completion; structured output when `responseSchema` is set and
+ *   streaming is not used for that shape; **`stream: true`** + schema-only (no tools) for nested
+ *   extractors. **Why:** keeps JSON `format` on the supported completion path.
+ * - **`streamText`** — plain SSE chat when `stream: true` with no tools/schema/`toolChoice`; and
+ *   **`stream: true` + native tools** so Ollama can stream `/api/chat` with tools. For v5 planner
+ *   model types under SSE, `models/text.ts` may yield a **single** `textStream` chunk of plan JSON
+ *   so `useModel`’s concatenated string stays parseable. **Why:** core’s streaming path only
+ *   accumulates `textStream` chunks, not the `text` promise; mixing arbitrary deltas with plan JSON
+ *   breaks `parseMessageHandlerOutput`.
+ *
+ * Handlers return **`Promise<string | TextStreamResult>`** — **why:** `useModel` accepts either a
+ * final string or a streaming object for text model keys; matching OpenRouter keeps orchestration
+ * and SSE paths identical. ElizaOS v5 Stage 1 calls `RESPONSE_HANDLER` with **`messages`**,
+ * **`tools`**, and **`toolChoice`**; the text adapter must accept the same shapes as
+ * OpenRouter/OpenAI or local-only agents fail before the first reply. See `models/text.ts` and
+ * `utils/ai-sdk-wire.ts` module comments for the full rationale.
+ *
+ * ## AI SDK log noise
+ *
+ * Suppresses noisy AI SDK warnings at load (`AI_SDK_LOG_WARNINGS`) because local inference
+ * runs in tight loops during tests and desktop shells. **Why:** keeps CI and packaged logs readable.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,
   ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
+  TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
@@ -105,49 +140,49 @@ export const ollamaPlugin: Plugin = {
     [TEXT_NANO_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextNano(runtime, params);
     },
 
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextSmall(runtime, params);
     },
 
     [TEXT_MEDIUM_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextMedium(runtime, params);
     },
 
     [ModelType.TEXT_LARGE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextLarge(runtime, params);
     },
 
     [TEXT_MEGA_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextMega(runtime, params);
     },
 
     [RESPONSE_HANDLER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleResponseHandler(runtime, params);
     },
 
     [ACTION_PLANNER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleActionPlanner(runtime, params);
     },
 
