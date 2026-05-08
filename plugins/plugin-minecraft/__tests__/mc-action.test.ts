@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { minecraftLocomoteOpAction } from "../src/actions/index.js";
+import { minecraftAction } from "../src/actions/index.js";
 import { minecraftVisionProvider, minecraftWaypointsProvider } from "../src/providers/index.js";
 import { MINECRAFT_SERVICE_TYPE } from "../src/services/minecraft-service.js";
 import { WAYPOINTS_SERVICE_TYPE } from "../src/services/waypoints-service.js";
@@ -33,7 +33,7 @@ describe("MC_ACTION", () => {
     const mc = { request: vi.fn().mockResolvedValue({}) };
     const runtime = runtimeWithServices({ [MINECRAFT_SERVICE_TYPE]: mc });
 
-    const result = await minecraftLocomoteOpAction.handler(runtime, memory("move"), undefined, {
+    const result = await minecraftAction.handler(runtime, memory("move"), undefined, {
       parameters: { op: "goto", x: 10, y: 64, z: -20 },
     });
 
@@ -87,12 +87,12 @@ describe("MC_ACTION", () => {
       [WAYPOINTS_SERVICE_TYPE]: waypoints,
     });
 
-    const result = await minecraftLocomoteOpAction.handler(
+    const result = await minecraftAction.handler(
       runtime,
       memory("go to waypoint Home"),
       undefined,
       {
-        parameters: { op: "waypoint-goto", name: "Home" },
+        parameters: { op: "waypoint_goto", name: "Home" },
       }
     );
 
