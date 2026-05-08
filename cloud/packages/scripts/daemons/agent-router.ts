@@ -2,23 +2,21 @@
 /**
  * Agent Router daemon.
  *
- * Replaces /opt/milady-cloud/agent-lookup.cjs which queried the legacy
- * `milady_sandboxes` table. This daemon queries `agent_sandboxes` and
- * returns the same response shape so nginx Lua (`agent-router.lua`) keeps
- * working without changes.
+ * Resolves agent id → headscale IP / bridge port / web UI port for the nginx
+ * Lua subdomain router.
  *
  * Usage:
  *   npx tsx packages/scripts/daemons/agent-router.ts
  *
  * Environment:
- *   AGENT_ROUTER_PORT  default 3458 — picked to avoid conflict with the
- *                      legacy agent-lookup.cjs on 3456 during transition.
- *   DATABASE_URL       Postgres connection (loaded from .env.local).
+ *   AGENT_ROUTER_PORT       default 3458
+ *   AGENT_ROUTER_BIND_HOST  default 127.0.0.1
+ *   DATABASE_URL            Postgres connection (loaded from .env.local).
  */
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("../../lib/utils/logger").logger;
 type Repo = typeof import("../../db/repositories/agent-sandboxes").agentSandboxesRepository;
@@ -28,42 +26,13 @@ interface RouterDeps {
   agentSandboxesRepository: Repo;
 }
 
-export interface AgentRouterConfig {
+interface AgentRouterConfig {
   port: number;
   bindHost: string;
 }
 
 const DEFAULT_PORT = 3458;
 const DEFAULT_BIND_HOST = "127.0.0.1";
-
-function loadEnvFile(filePath: string): void {
-  if (!fs.existsSync(filePath)) return;
-  const content = fs.readFileSync(filePath, "utf-8");
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 0) continue;
-    const key = trimmed.slice(0, eqIdx);
-    let value = trimmed.slice(eqIdx + 1);
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
-
-function loadLocalEnv(): void {
-  const scriptPath = fileURLToPath(import.meta.url);
-  const projectRoot = path.resolve(path.dirname(scriptPath), "../../..");
-  loadEnvFile(path.join(projectRoot, ".env.local"));
-  loadEnvFile(path.join(projectRoot, ".env"));
-}
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -100,10 +69,6 @@ interface RoutingResponse {
   target: string;
 }
 
-/**
- * Resolve routing info for a given agent id.
- * Exported so unit tests can call it without spinning up an HTTP server.
- */
 export async function resolveAgentRouting(agentId: string): Promise<RoutingResponse | null> {
   const { agentSandboxesRepository } = await loadDeps();
   const sandbox = await agentSandboxesRepository.findById(agentId);
@@ -117,8 +82,9 @@ export async function resolveAgentRouting(agentId: string): Promise<RoutingRespo
     return null;
   }
 
+  if (!parsed.port) return null;
   const host = parsed.hostname;
-  const bridgePort = parsed.port ? Number.parseInt(parsed.port, 10) : 80;
+  const bridgePort = Number.parseInt(parsed.port, 10);
   const webUiPort = sandbox.web_ui_port;
 
   return {
@@ -135,11 +101,13 @@ async function handleRequest(url: URL): Promise<Response> {
   if (url.pathname === "/healthz") {
     return Response.json({ ok: true }, { status: 200 });
   }
+  // /headscale-ip is the path nginx Lua already calls; /routing is the alias
+  // for new callers.
   const match = url.pathname.match(/^\/agents\/([^/]+)\/(headscale-ip|routing)$/);
   if (!match) {
     return Response.json({ error: "not found" }, { status: 404 });
   }
-  const agentId = match[1] ?? "";
+  const agentId = match[1];
   if (!AGENT_ID_RE.test(agentId)) {
     return Response.json({ error: "invalid agent id" }, { status: 400 });
   }
@@ -154,7 +122,7 @@ let server: import("node:http").Server | null = null;
 let shuttingDown = false;
 
 async function main(): Promise<void> {
-  loadLocalEnv();
+  loadLocalEnv(import.meta.url);
   const config = readRouterConfig();
   const { logger } = await loadDeps();
 
@@ -229,8 +197,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 function isMainModule(): boolean {
-  const entry = process.argv[1];
-  return entry ? path.resolve(entry) === fileURLToPath(import.meta.url) : false;
+  return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
 
 if (isMainModule()) {
