@@ -66,13 +66,13 @@ describe("default-contexts", () => {
 			expect(userContexts).not.toContain(id);
 		}
 
-		// `general`, `web`, `memory`, `knowledge`, and `media` are USER-or-below.
+		// `general`, `web`, `memory`, `documents`, and `media` are USER-or-below.
 		expect(userContexts).toEqual(
 			expect.arrayContaining([
 				"general",
 				"web",
 				"memory",
-				"knowledge",
+				"documents",
 				"media",
 			]),
 		);
@@ -95,6 +95,6 @@ describe("default-contexts", () => {
 		expect(guestContexts).toContain("general");
 		// USER-gated contexts are excluded from GUEST.
 		expect(guestContexts).not.toContain("memory");
-		expect(guestContexts).not.toContain("knowledge");
+		expect(guestContexts).not.toContain("documents");
 	});
 });

@@ -50,10 +50,10 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			roleGate: { minRole: "USER" },
 		},
 		{
-			id: "knowledge",
-			label: "Knowledge",
+			id: "documents",
+			label: "Documents",
 			description:
-				"Compressed knowledge-base context for stored documents, uploaded files, learned notes, RAG search, and knowledge ingestion.",
+				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search/recall prior documents and uploaded files (knowledge base, RAG).",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			roleGate: { minRole: "USER" },
@@ -91,7 +91,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "files",
 			label: "Files",
 			description:
-				"Local file and document operations: read, write, list, attach.",
+				"Admin-only local filesystem operations: read, write, list, attach raw files on disk. NOT for saving documents/notes/research — use the 'documents' context for that.",
 			parent: "code",
 			sensitivity: "private",
 			cacheScope: "turn",
