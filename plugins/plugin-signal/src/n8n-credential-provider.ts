@@ -27,10 +27,10 @@ export class SignalN8nCredentialProvider extends Service {
     const httpUrl = this.runtime.getSetting('SIGNAL_HTTP_URL') as string | undefined;
     const accountNumber = this.runtime.getSetting('SIGNAL_ACCOUNT_NUMBER') as string | undefined;
     if (!httpUrl?.trim() || !accountNumber?.trim()) return null;
-    // Signal REST API is unauthenticated by default; supply the account number as a header sentinel.
+    // Signal REST API is unauthenticated by default; supply the account number and base URL as sentinels.
     return {
       status: 'credential_data',
-      data: { name: 'X-Signal-Account', value: accountNumber.trim() },
+      data: { name: 'X-Signal-Account', value: accountNumber.trim(), signalHttpUrl: httpUrl.trim() },
     };
   }
 

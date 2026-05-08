@@ -30,7 +30,7 @@ export class FeishuN8nCredentialProvider extends Service {
     // Surface app credentials; workflows call the Feishu auth API to get a tenant_access_token.
     return {
       status: 'credential_data',
-      data: { name: 'X-Feishu-App-Id', value: appId.trim() },
+      data: { name: 'X-Feishu-App-Id', value: appId.trim(), appSecret: appSecret.trim() },
     };
   }
 

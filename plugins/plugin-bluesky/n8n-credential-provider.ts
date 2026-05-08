@@ -27,10 +27,10 @@ export class BlueskyN8nCredentialProvider extends Service {
     const handle = this.runtime.getSetting('BLUESKY_HANDLE') as string | undefined;
     const password = this.runtime.getSetting('BLUESKY_PASSWORD') as string | undefined;
     if (!handle?.trim() || !password?.trim()) return null;
-    // Surface handle as header sentinel; the n8n workflow must call createSession to obtain the JWT.
+    // Surface handle + app password; workflows call com.atproto.server.createSession with both to get a JWT.
     return {
       status: 'credential_data',
-      data: { name: 'X-Bluesky-Handle', value: handle.trim() },
+      data: { name: 'X-Bluesky-Handle', value: handle.trim(), appPassword: password.trim() },
     };
   }
 
