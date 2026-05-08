@@ -171,7 +171,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
   afterAll(cleanupEnvironment);
 
   it("should create runtime in CHAT mode with MCP", async () => {
-    startTimer("chat_runtime_create");
+    startTimer("mcp_chat_runtime_create");
 
     const userContext = buildUserContext(testData, {
       agentMode: AgentMode.CHAT,
@@ -181,11 +181,11 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
 
     runtime = await runtimeFactory.createRuntimeForUser(userContext);
 
-    allTimings.chatRuntimeCreate = endTimer("chat_runtime_create");
+    allTimings.mcpChatRuntimeCreate = endTimer("mcp_chat_runtime_create");
 
     expect(runtime).toBeDefined();
     expect(runtime.character?.name).toBe("Mira");
-    console.log(`\n✅ CHAT runtime created in ${allTimings.chatRuntimeCreate}ms`);
+    console.log(`\n✅ CHAT runtime created in ${allTimings.mcpChatRuntimeCreate}ms`);
   }, 60000);
 
   it("should have MCP service initialized", async () => {
@@ -206,7 +206,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
   it("should process message with MCP tools available", async () => {
     testUser = await createTestUser(runtime, "ChatTestUser");
 
-    startTimer("chat_message");
+    startTimer("mcp_chat_message");
     const result = await sendTestMessage(
       runtime,
       testUser,
@@ -214,10 +214,10 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
       testData,
       { timeoutMs: 120000 },
     );
-    allTimings.assistantMessage = endTimer("chat_message");
+    allTimings.mcpChatMessage = endTimer("mcp_chat_message");
 
     expect(result.didRespond).toBe(true);
-    console.log(`\n✅ CHAT message in ${allTimings.assistantMessage}ms`);
+    console.log(`\n✅ CHAT message in ${allTimings.mcpChatMessage}ms`);
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
@@ -279,7 +279,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (Web Search)", 
 // CHAT Mode Tests
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
+describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (character instructions)", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
 
@@ -287,7 +287,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
   afterAll(cleanupEnvironment);
 
   it("should create runtime in CHAT mode", async () => {
-    startTimer("chat_runtime_create");
+    startTimer("build_runtime_create");
 
     const userContext = buildUserContext(testData, {
       agentMode: AgentMode.CHAT,
@@ -297,7 +297,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
 
     runtime = await runtimeFactory.createRuntimeForUser(userContext);
 
-    allTimings.buildRuntimeCreate = endTimer("chat_runtime_create");
+    allTimings.buildRuntimeCreate = endTimer("build_runtime_create");
 
     expect(runtime).toBeDefined();
     console.log(`\n✅ CHAT runtime created in ${allTimings.buildRuntimeCreate}ms`);

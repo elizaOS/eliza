@@ -189,7 +189,7 @@ RAG retrieval should answer questions about this codeword from the document.
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      `/api/documents/fragments/${encodeURIComponent(uploadedDocumentId ?? "")}`,
+      `/api/documents/${encodeURIComponent(uploadedDocumentId ?? "")}/fragments`,
     );
 
     expect(status).toBe(200);
