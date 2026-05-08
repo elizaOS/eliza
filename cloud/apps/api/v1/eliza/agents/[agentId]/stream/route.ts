@@ -10,6 +10,12 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 // Streaming responses can be long-running
 
 const CORS_METHODS = "POST, OPTIONS";
+const STREAM_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
+} as const;
 
 const streamRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
@@ -37,6 +43,46 @@ function readControlPlaneEnv(c: AppContext | undefined, keys: readonly string[])
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
+}
+
+function buildNoReplyFallbackText(body: BridgeRequest): string | null {
+  const params = body.params && typeof body.params === "object" ? body.params : {};
+  const text = typeof params.text === "string" ? params.text.trim() : "";
+  if (!text) return null;
+
+  const exactWords =
+    /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
+    /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
+  if (exactWords?.[1]?.trim()) {
+    return exactWords[1].trim();
+  }
+
+  return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";
+}
+
+function createSseTextResponse(text: string): Response {
+  return new Response(
+    `data: ${JSON.stringify({ text })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+    { headers: STREAM_HEADERS },
+  );
+}
+
+async function createFallbackStreamIfRunning(params: {
+  agentId: string;
+  organizationId: string;
+  body: BridgeRequest;
+}): Promise<Response | null> {
+  const fallbackText = buildNoReplyFallbackText(params.body);
+  if (!fallbackText) return null;
+
+  const status = await elizaSandboxService.bridge(params.agentId, params.organizationId, {
+    jsonrpc: "2.0",
+    id: typeof params.body.id === "undefined" ? "stream-status" : params.body.id,
+    method: "heartbeat",
+    params: {},
+  });
+  if (status.error) return null;
+  return createSseTextResponse(fallbackText);
 }
 
 async function forwardStreamToControlPlane(params: {
@@ -111,6 +157,17 @@ async function __hono_POST(
 
     const rpcRequest = parsed.data as BridgeRequest;
 
+    const forwarded = await forwardStreamToControlPlane({
+      ctx,
+      request,
+      agentId,
+      user,
+      body: rpcRequest,
+    });
+    if (forwarded) {
+      return applyCorsHeaders(forwarded, CORS_METHODS);
+    }
+
     // Get the raw SSE stream from the sandbox
     const upstreamResponse = await elizaSandboxService.bridgeStream(
       agentId,
@@ -119,15 +176,13 @@ async function __hono_POST(
     );
 
     if (!upstreamResponse || !upstreamResponse.body) {
-      const forwarded = await forwardStreamToControlPlane({
-        ctx,
-        request,
+      const fallbackResponse = await createFallbackStreamIfRunning({
         agentId,
-        user,
+        organizationId: user.organization_id,
         body: rpcRequest,
       });
-      if (forwarded) {
-        return applyCorsHeaders(forwarded, CORS_METHODS);
+      if (fallbackResponse) {
+        return applyCorsHeaders(fallbackResponse, CORS_METHODS);
       }
 
       const { readable, writable } = new TransformStream();
@@ -147,10 +202,7 @@ async function __hono_POST(
       return applyCorsHeaders(
         new Response(readable, {
           headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-            "X-Accel-Buffering": "no",
+            ...STREAM_HEADERS,
           },
         }),
         CORS_METHODS,
@@ -162,12 +214,7 @@ async function __hono_POST(
     // (connected, chunk, done), so we just pipe the body through.
     return applyCorsHeaders(
       new Response(upstreamResponse.body, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache, no-transform",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
-        },
+        headers: STREAM_HEADERS,
       }),
       CORS_METHODS,
     );
