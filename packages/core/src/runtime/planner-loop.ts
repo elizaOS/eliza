@@ -357,9 +357,16 @@ function renderPlannerModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	// The planner stage instructions are template-derived (`v5PlannerTemplate`)
+	// and structurally identical across iterations and across user turns, so they
+	// belong in the cached prefix. Marking the segment `stable: true` lets
+	// `buildSegmentedUserContent` stamp `cache_control` on this block when the
+	// provider supports it (Anthropic), and lets `cachePrefixSegments` extend
+	// the cache-key prefix through these instructions when no unstable segments
+	// precede them.
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
-		{ content: `planner_stage:\n${instructions}`, stable: false },
+		{ content: `planner_stage:\n${instructions}`, stable: true },
 	]);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the

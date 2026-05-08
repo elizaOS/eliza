@@ -157,18 +157,43 @@ function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserCo
   return content;
 }
 
+// Anthropic accepts at most 4 `cache_control` breakpoints per request; sending
+// more returns a 400 from the API. The v5 planner / evaluator path can easily
+// exceed this once `staticPrefix`, the synthetic `selectedContexts` /
+// `contextDefinitions` blocks, optional `contextProviders`, and the now-stable
+// stage instructions are all present. Pick the LAST `MAX_CACHE_BREAKPOINTS`
+// stable segments — earlier stable segments still ride along inside any longer
+// matching prefix that a later breakpoint creates, so we lose granularity but
+// not coverage.
+const MAX_CACHE_BREAKPOINTS = 4;
+
+function selectCacheBreakpointIndices(segments: readonly { stable?: boolean }[]): Set<number> {
+  const stableIndices: number[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i]?.stable) stableIndices.push(i);
+  }
+  return new Set(stableIndices.slice(-MAX_CACHE_BREAKPOINTS));
+}
+
 function buildSegmentedUserContent(
   params: GenerateTextParamsWithProviderOptions,
   cacheControl?: AnthropicCacheControl
 ): UserContent {
   const content: AnthropicUserContentPart[] = [];
+  const segments = params.promptSegments ?? [];
+  const breakpointIndices =
+    cacheControl !== undefined
+      ? selectCacheBreakpointIndices(segments)
+      : new Set<number>();
 
-  for (const segment of params.promptSegments ?? []) {
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (!segment) continue;
     const textPart: AnthropicTextPart = {
       type: "text",
       text: segment.content,
     };
-    if (segment.stable && cacheControl) {
+    if (breakpointIndices.has(i) && cacheControl) {
       textPart.cache_control = {
         type: cacheControl.type,
         ...(cacheControl.ttl ? { ttl: cacheControl.ttl } : {}),
@@ -187,6 +212,31 @@ function buildSegmentedUserContent(
   }
 
   return content;
+}
+
+/**
+ * Build the wire `messages` array for the planner / evaluator path, where the
+ * runtime passes BOTH a `messages` array (system + user + assistant/tool
+ * trajectory, built by `buildStageChatMessages`) AND `promptSegments` (the same
+ * stable+dynamic content as labeled parts). The leading system message has
+ * already been peeled off by `dropDuplicateLeadingSystemMessage` and forwarded
+ * to the provider's separate `system` parameter; the leading user message that
+ * remains here was synthesized from dynamic context only and is fully covered
+ * by `promptSegments`, so we drop it to avoid duplicating tokens.
+ *
+ * The structured `userContent` (which carries `cache_control` on stable parts
+ * via `buildSegmentedUserContent`) is injected as the new leading user message,
+ * followed by the trajectory turns verbatim. Trajectory turns must NOT be
+ * rewritten — they are append-only across planner iterations and rewriting
+ * them would break the byte-stable prefix that prompt caching depends on.
+ */
+function buildPlannerWireMessages(
+  wireMessages: ModelMessage[],
+  userContent: UserContent | string
+): ModelMessage[] {
+  const tail =
+    wireMessages[0]?.role === "user" ? wireMessages.slice(1) : wireMessages;
+  return [{ role: "user", content: userContent }, ...tail];
 }
 
 function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
@@ -446,9 +496,29 @@ async function generateTextWithModel(
     paramsWithAttachments.messages,
     systemPrompt
   );
+  // Planner / evaluator path: the runtime passes BOTH `messages` (built by
+  // `buildStageChatMessages` — leading system+user pair plus assistant/tool
+  // trajectory) AND `promptSegments` (the same stable+dynamic content as
+  // labeled parts). Without this branch, the segmented `userContent` (which
+  // carries cache_control on stable parts) was built and discarded because the
+  // messages branch sent `wireMessages` directly with flat string content; the
+  // global providerOptions.anthropic.cacheControl is also stripped a few lines
+  // above. Net result before this fix: zero cache_control blocks reached the
+  // wire on every planner / evaluator call, and Anthropic prompt caching was
+  // silently inert despite the v5 cache strategy being designed around it.
+  //
+  // See `buildPlannerWireMessages` for the per-message reshaping; covered by
+  // the "planner v5 path" test in `__tests__/native-plumbing.test.ts`.
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+      ? segmentedPrompt
+        ? {
+            messages: buildPlannerWireMessages(
+              wireMessages,
+              userContent ?? resolved.prompt
+            ),
+          }
+        : { messages: wireMessages }
       : {
           messages: [
             {

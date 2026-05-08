@@ -289,9 +289,14 @@ function renderEvaluatorModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	// Mirrors planner-loop: the evaluator stage instructions are template-derived
+	// (`v5EvaluatorTemplate`) and structurally identical across calls. Marking
+	// the segment `stable: true` makes them cacheable on Anthropic's wire path
+	// (`buildSegmentedUserContent` stamps `cache_control` on stable parts) and
+	// lets `cachePrefixSegments` extend the cache-key prefix through them.
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
-		{ content: `evaluator_stage:\n${instructions}`, stable: false },
+		{ content: `evaluator_stage:\n${instructions}`, stable: true },
 	]);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
