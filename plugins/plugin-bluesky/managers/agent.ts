@@ -40,14 +40,13 @@ export class BlueSkyAgentManager {
 		public readonly config: BlueSkyConfig & { accountId?: string },
 		public readonly client: BlueSkyClient,
 	) {
-		this.accountId = config.accountId ?? "default";
+		this.accountId = normalizeBlueSkyAccountId(
+			config.accountId ?? DEFAULT_BLUESKY_ACCOUNT_ID,
+		);
 	}
 
-	private getAccountId(): string {
-		return normalizeBlueSkyAccountId(
-			(this.config as BlueSkyConfig & { accountId?: string }).accountId ??
-				DEFAULT_BLUESKY_ACCOUNT_ID,
-		);
+	getAccountId(): string {
+		return this.accountId;
 	}
 
 	async start(): Promise<void> {
@@ -146,9 +145,8 @@ export class BlueSkyAgentManager {
 			const payload: BlueSkyNotificationEventPayload = {
 				runtime: this.runtime,
 				source: "bluesky",
-				accountId: this.getAccountId(),
-				notification,
 				accountId: this.accountId,
+				notification,
 			};
 			void this.runtime.emitEvent(event, payload);
 		}
@@ -156,8 +154,8 @@ export class BlueSkyAgentManager {
 
 	private startActionProcessing(): void {
 		const interval = getActionInterval(this.runtime, this.accountId);
-		this.processActions();
-		this.actionTimer = setInterval(() => this.processActions(), interval);
+		this.processQueuedActions();
+		this.actionTimer = setInterval(() => this.processQueuedActions(), interval);
 	}
 
 	private async processQueuedActions(): Promise<void> {
@@ -174,9 +172,8 @@ export class BlueSkyAgentManager {
 				const payload: BlueSkyNotificationEventPayload = {
 					runtime: this.runtime,
 					source: "bluesky",
-					accountId: this.getAccountId(),
-					notification,
 					accountId: this.accountId,
+					notification,
 				};
 				void this.runtime.emitEvent("bluesky.should_respond", payload);
 			}

@@ -1,14 +1,16 @@
 /**
- * RUNTIME action — single polymorphic entry point for runtime ops.
+ * RUNTIME — single polymorphic entry point for runtime control + introspection.
  *
  * Ops:
- *   - status         in-process snapshot of agent + counts
- *   - list_actions   in-process listing of registered actions, optionally filtered
- *   - reload_config  POST /api/config/reload (loadElizaConfig + applyReloadedConfig
- *                    are not exported; the HTTP route owns the state.config + diff)
- *   - restart        in-process: requestRestart() via the registered RestartHandler
- *   - restart_agent  user-validated restart that persists a memory entry first;
- *                    semantics differ from `restart` and remain a distinct op
+ *   - status           in-process snapshot of agent + counts
+ *   - self_status      Layer-2 detail from the Self-Awareness System (folds in GET_SELF_STATUS)
+ *   - describe_actions in-process listing of registered actions, optionally filtered
+ *                      (alias: list_actions)
+ *   - reload_config    POST /api/config/reload — reapplies hot-reloadable eliza.json fields
+ *   - restart          requests a process restart via the registered RestartHandler.
+ *                      When invoked from a chat turn the handler verifies the user
+ *                      explicitly asked for it and persists a "Restarting…" memory;
+ *                      otherwise it falls through to a plain restart request.
  *
  * @module actions/runtime
  */
@@ -24,6 +26,8 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  type AwarenessRegistry,
+  getGlobalAwarenessRegistry,
   getValidationKeywordTerms,
   isSelfEditEnabled,
   resolveServerOnlyPort,
@@ -33,16 +37,38 @@ import { requestRestart } from "../runtime/restart.js";
 
 const RUNTIME_OPS = [
   "status",
-  "list_actions",
+  "self_status",
+  "describe_actions",
   "reload_config",
   "restart",
-  "restart_agent",
 ] as const;
 
 type RuntimeOp = (typeof RUNTIME_OPS)[number];
 
+// `list_actions` is accepted as an alias of `describe_actions` so older
+// inbound callers that wrote the previous name continue to work.
+const OP_ALIASES: Record<string, RuntimeOp> = {
+  list_actions: "describe_actions",
+  // `restart_agent` was the legacy name for the user-validated restart op;
+  // it now flows through `restart` like any other restart request.
+  restart_agent: "restart",
+};
+
 const RESTART_SOURCES = ["self-edit", "user", "plugin-install"] as const;
 type RestartSource = (typeof RESTART_SOURCES)[number];
+
+const SELF_STATUS_MODULES = [
+  "all",
+  "runtime",
+  "permissions",
+  "wallet",
+  "provider",
+  "pluginHealth",
+  "connectors",
+  "cloud",
+  "features",
+] as const;
+type SelfStatusModule = (typeof SELF_STATUS_MODULES)[number];
 
 interface RuntimeParams {
   op?: string;
@@ -50,25 +76,48 @@ interface RuntimeParams {
   filter?: string;
   reason?: string;
   source?: RestartSource;
+  module?: string;
+  detailLevel?: "brief" | "full";
 }
 
 /** Small delay (ms) before restarting so the response has time to flush. */
 const SHUTDOWN_DELAY_MS = 1_500;
 const MAX_RESTART_REASON_CHARS = 240;
+const MAX_SELF_STATUS_BRIEF_CHARS = 1200;
+const MAX_SELF_STATUS_FULL_CHARS = 8000;
 
 const RESTART_REQUEST_TERMS = getValidationKeywordTerms(
   "action.restart.request",
   { includeAllLocales: true },
 );
 
-function isRuntimeOp(value: string): value is RuntimeOp {
-  return (RUNTIME_OPS as readonly string[]).includes(value);
+function normalizeOp(value: string): RuntimeOp | null {
+  if ((RUNTIME_OPS as readonly string[]).includes(value)) {
+    return value as RuntimeOp;
+  }
+  if (Object.hasOwn(OP_ALIASES, value)) {
+    return OP_ALIASES[value];
+  }
+  return null;
 }
 
 function isRestartSource(value: string | undefined): value is RestartSource {
   return (
     typeof value === "string" &&
     (RESTART_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+function isSelfStatusModule(value: string): value is SelfStatusModule {
+  return (SELF_STATUS_MODULES as readonly string[]).includes(value);
+}
+
+function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "getDetail" in value &&
+    typeof (value as { getDetail?: unknown }).getDetail === "function"
   );
 }
 
@@ -146,7 +195,50 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   };
 }
 
-function listActionsOp(
+async function selfStatusOp(
+  runtime: IAgentRuntime,
+  params: RuntimeParams,
+): Promise<ActionResult> {
+  const registry = (() => {
+    const service = runtime.getService("AWARENESS_REGISTRY");
+    return isAwarenessRegistry(service)
+      ? service
+      : getGlobalAwarenessRegistry();
+  })();
+  if (!registry) {
+    return fail("self_status", "Self-awareness registry is not available.");
+  }
+
+  const rawModule = typeof params.module === "string" ? params.module : "all";
+  const module: SelfStatusModule = isSelfStatusModule(rawModule)
+    ? rawModule
+    : "all";
+  const detailLevel = params.detailLevel === "full" ? "full" : "brief";
+
+  const rawText = await registry.getDetail(runtime, module, detailLevel);
+  const maxChars =
+    detailLevel === "full"
+      ? MAX_SELF_STATUS_FULL_CHARS
+      : MAX_SELF_STATUS_BRIEF_CHARS;
+  const text =
+    rawText.length <= maxChars
+      ? rawText
+      : `${rawText.slice(0, maxChars)}\n…[self-status truncated]`;
+  return {
+    success: true,
+    text,
+    values: { module, detailLevel },
+    data: {
+      actionName: "RUNTIME",
+      op: "self_status",
+      module,
+      detailLevel,
+      truncated: text.length < rawText.length,
+    },
+  };
+}
+
+function describeActionsOp(
   runtime: IAgentRuntime,
   params: RuntimeParams,
 ): ActionResult {
@@ -170,7 +262,7 @@ function listActionsOp(
     values: { count: matched.length, totalRegistered: all.length },
     data: {
       actionName: "RUNTIME",
-      op: "list_actions",
+      op: "describe_actions",
       filter: filterRaw,
       actions: matched.map((action) => ({
         name: action.name,
@@ -238,42 +330,11 @@ async function reloadConfigOp(): Promise<ActionResult> {
   }
 }
 
-async function restartOp(params: RuntimeParams): Promise<ActionResult> {
-  const reason =
-    typeof params.reason === "string"
-      ? params.reason.slice(0, MAX_RESTART_REASON_CHARS)
-      : undefined;
-  try {
-    setTimeout(() => {
-      requestRestart(reason);
-    }, SHUTDOWN_DELAY_MS);
-    return {
-      success: true,
-      text: reason
-        ? `Runtime restart scheduled (${reason}).`
-        : "Runtime restart scheduled.",
-      values: { restarting: true },
-      data: { actionName: "RUNTIME", op: "restart", reason },
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn(`[runtime] restart failed: ${msg}`);
-    return fail("restart", `Restart request failed: ${msg}`);
-  }
-}
-
-async function restartAgentOp(
+async function restartOp(
   runtime: IAgentRuntime,
   message: Memory | undefined,
   params: RuntimeParams,
 ): Promise<ActionResult> {
-  // Guard: only restart when the user explicitly asked. The runtime doesn't
-  // call validate before handler, and the LLM can fuzzy-match restart_agent
-  // from action loops or stray text fragments.
-  if (!isExplicitRestartRequest(message)) {
-    return fail("restart_agent", "Refused: no explicit user restart request.");
-  }
-
   const reason =
     typeof params.reason === "string"
       ? params.reason.slice(0, MAX_RESTART_REASON_CHARS)
@@ -290,10 +351,10 @@ async function restartAgentOp(
     return {
       success: false,
       text: refusal,
-      values: { error: "RESTART_AGENT_GATE_CLOSED" },
+      values: { error: "RESTART_GATE_CLOSED" },
       data: {
         actionName: "RUNTIME",
-        op: "restart_agent",
+        op: "restart",
         reason,
         source,
         refused: "self-edit-not-enabled",
@@ -301,21 +362,24 @@ async function restartAgentOp(
     };
   }
 
-  if (!message) {
-    return fail("restart_agent", "Refused: missing trigger message context.");
-  }
-
+  // When a chat message is present and was an explicit restart request, persist
+  // a memory entry (legacy RESTART_AGENT semantics). When invoked without a
+  // message context (programmatic) or via an internal source, skip the memory
+  // write — that path is the legacy RESTART_RUNTIME semantics.
+  const isFromChat = isExplicitRestartRequest(message);
   const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
-  logger.info(`[runtime] ${restartText}`);
 
-  const restartMemory: Memory = {
-    id: crypto.randomUUID() as UUID,
-    entityId: runtime.agentId,
-    roomId: message.roomId,
-    worldId: message.worldId,
-    content: { text: restartText, source: "eliza", type: "system" },
-  };
-  await runtime.createMemory(restartMemory, "messages");
+  if (isFromChat && message) {
+    logger.info(`[runtime] ${restartText}`);
+    const restartMemory: Memory = {
+      id: crypto.randomUUID() as UUID,
+      entityId: runtime.agentId,
+      roomId: message.roomId,
+      worldId: message.worldId,
+      content: { text: restartText, source: "eliza", type: "system" },
+    };
+    await runtime.createMemory(restartMemory, "messages");
+  }
 
   setTimeout(() => {
     requestRestart(reason);
@@ -323,21 +387,71 @@ async function restartAgentOp(
 
   return {
     success: true,
-    text: restartText,
+    text: isFromChat
+      ? restartText
+      : reason
+        ? `Runtime restart scheduled (${reason}).`
+        : "Runtime restart scheduled.",
     values: { restarting: true },
-    data: { actionName: "RUNTIME", op: "restart_agent", reason, source },
+    data: {
+      actionName: "RUNTIME",
+      op: "restart",
+      reason,
+      source,
+      fromChat: isFromChat,
+    },
   };
 }
 
 export const runtimeAction: Action = {
   name: "RUNTIME",
-  contexts: ["admin", "agent_internal", "settings"],
+  contexts: [
+    "admin",
+    "agent_internal",
+    "settings",
+    "general",
+    "connectors",
+    "wallet",
+  ],
   roleGate: { minRole: "OWNER" },
-  similes: [],
+  similes: [
+    // Old leaf action names
+    "GET_RUNTIME_STATUS",
+    "LIST_ACTIONS",
+    "DESCRIBE_REGISTERED_ACTIONS",
+    "RELOAD_RUNTIME_CONFIG",
+    "RESTART_RUNTIME",
+    "RESTART_AGENT",
+    "GET_SELF_STATUS",
+    // Common aliases
+    "RUNTIME_STATUS",
+    "AGENT_STATUS_RUNTIME",
+    "RUNTIME_SNAPSHOT",
+    "REGISTERED_ACTIONS",
+    "AVAILABLE_ACTIONS",
+    "RELOAD_CONFIG",
+    "REFRESH_CONFIG",
+    "RESTART_PROCESS",
+    "RELOAD_RUNTIME",
+    "BOUNCE_RUNTIME",
+    "RESTART",
+    "REBOOT",
+    "RELOAD",
+    "REFRESH",
+    "RESPAWN",
+    "RESTART_SELF",
+    "REBOOT_AGENT",
+    "RELOAD_AGENT",
+    "CHECK_STATUS",
+    "SELF_STATUS",
+    "MY_STATUS",
+    "SYSTEM_STATUS",
+    "CHECK_SELF",
+  ],
   description:
-    "Polymorphic runtime control: status (snapshot of registered actions/providers/evaluators/services), list_actions (registered actions, optionally filtered), reload_config (re-apply hot-reloadable fields from eliza.json), restart (bounce process via supervisor), restart_agent (user-requested restart with memory entry).",
+    "Polymorphic runtime control. op=status snapshots registered actions/providers/evaluators/services; op=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); op=describe_actions lists registered actions, optionally filtered; op=reload_config re-applies hot-reloadable fields from eliza.json; op=restart bounces the process via the registered RestartHandler.",
   descriptionCompressed:
-    "polymorphic runtime control: status, list_actions, reload_config, restart, restart_agent",
+    "polymorphic runtime control: status, self_status, describe_actions, reload_config, restart",
   validate: async () => true,
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     const params =
@@ -345,25 +459,30 @@ export const runtimeAction: Action = {
         | RuntimeParams
         | undefined) ?? {};
     const opRaw = typeof params.op === "string" ? params.op : "";
-    if (!isRuntimeOp(opRaw)) {
+    const op = normalizeOp(opRaw);
+    if (!op) {
       return {
         success: false,
         text: `Unknown op "${opRaw}". Valid: ${RUNTIME_OPS.join(", ")}.`,
         values: { error: "RUNTIME_INVALID_OP", op: opRaw },
-        data: { actionName: "RUNTIME", op: opRaw, error: "RUNTIME_INVALID_OP" },
+        data: {
+          actionName: "RUNTIME",
+          op: opRaw,
+          error: "RUNTIME_INVALID_OP",
+        },
       };
     }
-    switch (opRaw) {
+    switch (op) {
       case "status":
         return statusOp(runtime, params);
-      case "list_actions":
-        return listActionsOp(runtime, params);
+      case "self_status":
+        return selfStatusOp(runtime, params);
+      case "describe_actions":
+        return describeActionsOp(runtime, params);
       case "reload_config":
         return reloadConfigOp();
       case "restart":
-        return restartOp(params);
-      case "restart_agent":
-        return restartAgentOp(runtime, message, params);
+        return restartOp(runtime, message, params);
     }
   },
   parameters: [
@@ -373,7 +492,7 @@ export const runtimeAction: Action = {
       required: true,
       schema: {
         type: "string" as const,
-        enum: [...RUNTIME_OPS],
+        enum: [...RUNTIME_OPS, ...Object.keys(OP_ALIASES)],
       },
     },
     {
@@ -387,23 +506,42 @@ export const runtimeAction: Action = {
       },
     },
     {
+      name: "module",
+      description:
+        "self_status only: which module to inspect (all, runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features). Default: all.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [...SELF_STATUS_MODULES],
+      },
+    },
+    {
+      name: "detailLevel",
+      description:
+        "self_status only: 'brief' (~200 tokens, default) or 'full' (~2000 tokens).",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["brief", "full"],
+      },
+    },
+    {
       name: "filter",
       description:
-        "list_actions only: case-insensitive substring filter on action names.",
+        "describe_actions only: case-insensitive substring filter on action names.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description:
-        "restart / restart_agent only: optional reason for diagnostics.",
+      description: "restart only: optional reason for diagnostics.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "source",
       description:
-        "restart_agent only: 'self-edit' (gated by isSelfEditEnabled), 'user', or 'plugin-install'.",
+        "restart only: 'self-edit' (gated by isSelfEditEnabled), 'user', or 'plugin-install'.",
       required: false,
       schema: {
         type: "string" as const,
@@ -420,6 +558,19 @@ export const runtimeAction: Action = {
       {
         name: "{{agentName}}",
         content: { text: "Agent: …", action: "RUNTIME" },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "How are your plugins doing right now?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin health: 12 loaded, 2 degraded.",
+          action: "RUNTIME",
+        },
       },
     ],
     [

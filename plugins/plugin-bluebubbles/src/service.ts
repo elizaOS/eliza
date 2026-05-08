@@ -16,6 +16,7 @@ import {
 	Service,
 	type UUID,
 } from "@elizaos/core";
+import { DEFAULT_ACCOUNT_ID as BLUEBUBBLES_DEFAULT_ACCOUNT_ID } from "./accounts";
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
 import {
@@ -398,6 +399,7 @@ function blueBubblesMessageToMemory({
 	roomId,
 	source,
 	config,
+	accountId = BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
 }: {
 	runtime: IAgentRuntime;
 	message: BlueBubblesMessage;
@@ -405,6 +407,7 @@ function blueBubblesMessageToMemory({
 	roomId: UUID;
 	source: "bluebubbles" | "imessage";
 	config: BlueBubblesConfig | null;
+	accountId?: string;
 }): Memory {
 	const senderHandle = normalizeBlueBubblesTarget(
 		message.handle?.address ?? message.chats[0]?.chatIdentifier ?? chatGuid,
@@ -442,6 +445,10 @@ function blueBubblesMessageToMemory({
 		...(memory.metadata ?? {}),
 		source,
 		provider: "bluebubbles",
+		// Top-level accountId per MessageMetadata contract. Inbound connector
+		// stamps this so outbound resolution can route replies back through the
+		// same connector account.
+		accountId,
 		timestamp: message.dateCreated,
 		entityName: message.handle?.address ?? senderHandle,
 		entityUserName: senderHandle,
@@ -1218,6 +1225,10 @@ export class BlueBubblesService extends Service {
 			...(memory.metadata ?? {}),
 			source: "bluebubbles",
 			provider: "bluebubbles",
+			// Top-level accountId per MessageMetadata contract. Inbound connector
+			// stamps this so outbound resolution can route replies back through
+			// the same connector account.
+			accountId: BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
 			timestamp: message.dateCreated,
 			entityName: message.handle?.address ?? senderHandle,
 			entityUserName: senderHandle,

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import {
+  DEFAULT_PRIVACY_LEVEL,
   type ConnectorAccount,
   type ConnectorAccountAccessGate,
   type ConnectorAccountPatch,
@@ -8,6 +9,7 @@ import {
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
   getConnectorAccountManager,
+  isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
 import { z } from "zod";
@@ -33,6 +35,12 @@ export interface ConnectorAccountRouteContext {
 const CONNECTORS_PREFIX = "/api/connectors/";
 
 const metadataSchema = z.record(z.string(), z.unknown()).optional();
+const privacyLevelSchema = z.enum([
+  "owner_only",
+  "team_visible",
+  "semi_public",
+  "public",
+]);
 const AUDIT_REDACTED = "[REDACTED]";
 const AUDIT_SECRET_KEY_PATTERN =
   /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
@@ -50,7 +58,7 @@ const accountInputSchema = z.object({
   accessGate: z.string().trim().min(1).max(80).optional(),
   status: z.string().trim().min(1).max(80).optional(),
   enabled: z.boolean().optional(),
-  privacy: z.string().trim().min(1).max(80).optional(),
+  privacy: privacyLevelSchema.optional(),
   externalId: z.string().trim().min(1).max(500).optional(),
   displayHandle: z.string().trim().min(1).max(500).optional(),
   ownerBindingId: z.string().trim().min(1).max(200).optional(),
@@ -159,16 +167,28 @@ function isBlockedObjectKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
 }
 
+function cleanMetadataValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanMetadataValue(item));
+  }
+  if (typeof value !== "object") return value;
+
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (isBlockedObjectKey(key) || AUDIT_SECRET_KEY_PATTERN.test(key)) {
+      continue;
+    }
+    cleaned[key] = cleanMetadataValue(item);
+  }
+  return cleaned;
+}
+
 function cleanMetadata(value: unknown): Metadata | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (!isBlockedObjectKey(key)) {
-      cleaned[key] = item;
-    }
-  }
+  const cleaned = cleanMetadataValue(value) as Record<string, unknown>;
   return cleaned as Metadata;
 }
 
@@ -247,8 +267,9 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
       account.id,
     role: normalizeConnectorAccountRoleValue(account.role) ?? "OWNER",
     purpose: account.purpose,
-    privacy:
-      typeof metadata.privacy === "string" ? metadata.privacy : "owner_only",
+    privacy: isPrivacyLevel(metadata.privacy)
+      ? metadata.privacy
+      : DEFAULT_PRIVACY_LEVEL,
     accessGate: account.accessGate,
     status: normalizeConnectorAccountStatus(account.status),
     externalId: account.externalId,
@@ -260,15 +281,25 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     enabled: account.status !== "disabled" && account.status !== "revoked",
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
-    metadata,
+    metadata: redactAuditMetadata(metadata),
   };
+}
+
+function isUsableDefaultAccount(account: ConnectorAccount): boolean {
+  return (
+    account.status === "connected" &&
+    account.accessGate !== "disabled" &&
+    account.metadata?.disabled !== true
+  );
 }
 
 function getDefaultAccountId(accounts: ConnectorAccount[]): string | null {
   return (
-    accounts.find((account) => account.metadata?.isDefault === true)?.id ??
-    accounts.find((account) => account.status === "connected")?.id ??
-    accounts[0]?.id ??
+    accounts.find(
+      (account) =>
+        account.metadata?.isDefault === true && isUsableDefaultAccount(account),
+    )?.id ??
+    accounts.find((account) => isUsableDefaultAccount(account))?.id ??
     null
   );
 }
@@ -569,10 +600,7 @@ export async function handleConnectorAccountRoutes(
       }
 
       if (action === "test") {
-        const ok =
-          account.status !== "error" &&
-          account.status !== "disabled" &&
-          account.status !== "revoked";
+        const ok = isUsableDefaultAccount(account);
         json(res, {
           ok,
           provider,
@@ -583,16 +611,32 @@ export async function handleConnectorAccountRoutes(
       }
 
       if (action === "refresh") {
+        const refreshed = await manager.patchAccount(provider, accountId, {
+          metadata: {
+            ...(account.metadata ?? {}),
+            lastSyncedAt: Date.now(),
+          },
+        });
         json(res, {
           ok: true,
           provider,
-          account: serializeAccount(account),
-          status: normalizeConnectorAccountStatus(account.status),
+          account: serializeAccount(refreshed ?? account),
+          status: normalizeConnectorAccountStatus(
+            (refreshed ?? account).status,
+          ),
         });
         return true;
       }
 
       if (action === "default") {
+        if (!isUsableDefaultAccount(account)) {
+          error(
+            res,
+            "Only connected, enabled connector accounts can be default",
+            400,
+          );
+          return true;
+        }
         const accounts = await manager.listAccounts(provider);
         for (const item of accounts) {
           const isTarget = item.id === accountId;

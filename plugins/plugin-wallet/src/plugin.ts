@@ -27,9 +27,9 @@ const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
   description:
     "Wallet backend service + unified wallet provider (Steward / local).",
-  services: [WalletBackendService, DexScreenerService, TokenInfoService],
+  services: [WalletBackendService],
   providers: [unifiedWalletProvider],
-  actions: [tokenInfoAction],
+  actions: [],
   evaluators: [],
 };
 
@@ -117,13 +117,14 @@ export const walletPlugin: Plugin = {
   routes: concatPlugins(solanaPlugin.routes),
   init: async (config, runtime) => {
     await coreWalletPlugin.init?.(config, runtime);
-    registerDexScreenerSearchCategory(runtime);
-    registerBirdeyeSearchCategories(runtime);
     await evmPlugin.init?.(config, runtime);
     await solanaPlugin.init?.(config, runtime);
     registerDexScreenerSearchCategory(runtime);
     await initBirdeyeAnalytics(runtime);
   },
 };
+
+/** @deprecated Use {@link walletPlugin} */
+export const agentWalletPlugin = walletPlugin;
 
 export default walletPlugin;
