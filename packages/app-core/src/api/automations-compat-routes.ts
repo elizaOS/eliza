@@ -92,7 +92,8 @@ const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
 ]);
 
 // 30s cache for last-execution data — avoids hammering n8n on every automations poll.
-const lastExecutionCache = new Map<string, { data: AutomationLastExecution; expiresAt: number }>();
+// null data = checked and found no executions yet (still cached to avoid re-polling).
+const lastExecutionCache = new Map<string, { data: AutomationLastExecution | null; expiresAt: number }>();
 const LAST_EXECUTION_TTL_MS = 30_000;
 
 interface StaticAutomationNodeSpec {
@@ -735,13 +736,19 @@ async function buildAutomationListResponse(
   // Fetch last execution for each live n8n workflow in parallel.
   // Promise.allSettled ensures one failure does not block the full list.
   if (!n8nOffline && workflowItemsById.size > 0) {
+    const now = Date.now();
+    for (const [k, v] of lastExecutionCache) {
+      if (v.expiresAt < now) lastExecutionCache.delete(k);
+    }
     const workflowIds = [...workflowItemsById.keys()];
     await Promise.allSettled(
       workflowIds.map(async (workflowId) => {
         const cached = lastExecutionCache.get(workflowId);
         if (cached && cached.expiresAt > Date.now()) {
-          const item = workflowItemsById.get(workflowId);
-          if (item) item.lastExecution = cached.data;
+          if (cached.data !== null) {
+            const item = workflowItemsById.get(workflowId);
+            if (item) item.lastExecution = cached.data;
+          }
           return;
         }
         const result = await invokeN8nCompatRoute<{ executions?: unknown[] }>(
@@ -753,8 +760,11 @@ async function buildAutomationListResponse(
         if (result.status !== 200 || !Array.isArray(result.payload?.executions)) {
           return;
         }
-        const raw = result.payload.executions[0] as Record<string, unknown> | undefined;
-        if (!raw) return;
+        if (result.payload.executions.length === 0) {
+          lastExecutionCache.set(workflowId, { data: null, expiresAt: Date.now() + LAST_EXECUTION_TTL_MS });
+          return;
+        }
+        const raw = result.payload.executions[0] as Record<string, unknown>;
         const exec = normalizeLastExecution(raw);
         if (!exec) return;
         lastExecutionCache.set(workflowId, { data: exec, expiresAt: Date.now() + LAST_EXECUTION_TTL_MS });
@@ -803,11 +813,14 @@ async function buildAutomationListResponse(
 function normalizeLastExecution(raw: Record<string, unknown>): AutomationLastExecution | null {
   const rawStatus = raw.status;
   if (typeof rawStatus !== "string") return null;
-  const status = (
-    ["success", "error", "running", "waiting"].includes(rawStatus)
-      ? rawStatus
-      : "unknown"
-  ) as AutomationLastExecution["status"];
+  const STATUS_MAP: Record<string, AutomationLastExecution["status"]> = {
+    success: "success",
+    error: "error",
+    crashed: "error",
+    running: "running",
+    waiting: "waiting",
+  };
+  const status = STATUS_MAP[rawStatus] ?? "unknown";
   const startedAt = typeof raw.startedAt === "string" ? raw.startedAt : null;
   if (!startedAt) return null;
   const stoppedAt = typeof raw.stoppedAt === "string" ? raw.stoppedAt : null;
