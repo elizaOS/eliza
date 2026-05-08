@@ -28,6 +28,7 @@ import {
   submitWebBrowserWorkspaceForm,
 } from "./browser-workspace-forms.js";
 import {
+  assertBrowserWorkspaceConnectorSecretsNotExported,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_TIMEOUT_MS,
@@ -410,6 +411,12 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
       }
       case "set": {
         const action = command.setAction ?? "viewport";
+        if (action === "credentials" || action === "headers") {
+          assertBrowserWorkspaceConnectorSecretsNotExported(
+            tab.partition,
+            `set:${action}`,
+          );
+        }
         if (action === "viewport") {
           runtime.settings.viewport = {
             height: Math.max(1, Math.round(command.height ?? 720)),
@@ -449,6 +456,10 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
       }
       case "cookies": {
+        assertBrowserWorkspaceConnectorSecretsNotExported(
+          tab.partition,
+          "cookies",
+        );
         const action = command.cookieAction ?? "get";
         if (action === "clear") {
           for (const key of Object.keys(
@@ -478,6 +489,10 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
       }
       case "storage": {
+        assertBrowserWorkspaceConnectorSecretsNotExported(
+          tab.partition,
+          "storage",
+        );
         const area =
           command.storageArea === "session"
             ? dom.window.sessionStorage
@@ -859,6 +874,10 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
       }
       case "state": {
+        assertBrowserWorkspaceConnectorSecretsNotExported(
+          tab.partition,
+          "state",
+        );
         if (command.stateAction === "load") {
           const filePath =
             command.filePath?.trim() || command.outputPath?.trim();

@@ -18,10 +18,12 @@ import { resolveCanonicalOwnerId } from "@elizaos/core";
 import { browserAutofillLoginAction } from "./actions/browser-autofill-login.js";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
+import { browserWorkspaceProvider } from "./providers/workspace.js";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
-} from "./routes.js";
+} from "./routes/bridge.js";
+import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
 import { browserBridgeSchema } from "./schema.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -184,9 +186,10 @@ const browserBridgePluginRoutes: Route[] = [
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
-    "Browser plugin: BROWSER + MANAGE_BROWSER_BRIDGE actions. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge — settings, pairing, tab + page-context sync, and packaging artifacts.",
+    "Browser plugin: BROWSER + MANAGE_BROWSER_BRIDGE + BROWSER_AUTOFILL_LOGIN actions; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
   schema: browserBridgeSchema,
-  routes: browserBridgePluginRoutes,
+  routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
+  providers: [browserWorkspaceProvider],
   actions: [
     browserAction,
     browserAutofillLoginAction,

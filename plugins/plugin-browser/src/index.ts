@@ -21,7 +21,7 @@ export {
 export * from "./contracts.js";
 export * from "./packaging.js";
 export { browserPlugin } from "./plugin.js";
-export * from "./routes.js";
+export * from "./routes/bridge.js";
 export * from "./schema.js";
 export * from "./service.js";
 export * from "./workspace/browser-workspace.js";
