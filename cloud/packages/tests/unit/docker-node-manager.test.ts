@@ -148,6 +148,94 @@ describe("DockerNodeManager", () => {
     expect(nodes.find((n) => n.node_id === "stale-canonical")?.status).toBe("healthy");
   });
 
+  test("healthCheckNode returns prior status (not phantom 'offline') for canonical nodes that fail probe", async () => {
+    // Regression: /api/v1/cron/agent-hot-pool exposes the return value of
+    // healthCheckAll/healthCheckNode in its response body. If we suppress the
+    // DB write for canonical nodes but still return "offline", consumers see
+    // a status that contradicts the persisted row. Return node.status instead.
+    const node = makeNode({
+      node_id: "canonical",
+      status: "healthy",
+      metadata: {},
+    });
+    const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];
+
+    mock.module("@/db/repositories/docker-nodes", () => ({
+      dockerNodesRepository: {
+        findEnabled: async () => [node],
+        updateStatus: async (nodeId: string, status: DockerNodeStatus) => {
+          statusUpdates.push({ nodeId, status });
+        },
+      },
+    }));
+    mock.module("@/lib/services/docker-node-workloads", () => ({
+      countAllocatedWorkloadsOnNode: async () => 0,
+      countRetainedWorkloadsOnNode: async () => 0,
+    }));
+    mock.module("@/lib/services/docker-ssh", () => ({
+      DockerSSHClient: {
+        getClient: () => ({
+          connect: async () => {
+            throw new Error("All configured authentication methods failed");
+          },
+          exec: async () => "docker-id",
+        }),
+      },
+    }));
+    mock.module("@/lib/utils/logger", () => ({
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    }));
+
+    const { DockerNodeManager } = await importManager();
+    const status = await DockerNodeManager.getInstance().healthCheckNode(node);
+
+    // Returns the prior persisted status, not the phantom "offline".
+    expect(status).toBe("healthy");
+    // No DB write at all for the canonical node.
+    expect(statusUpdates).toEqual([]);
+  }, 15_000);
+
+  test("healthCheckNode marks autoscaled nodes offline and returns 'offline'", async () => {
+    const node = makeNode({
+      node_id: "autoscaled",
+      status: "healthy",
+      metadata: { provider: "hetzner-cloud", autoscaled: true },
+    });
+    const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];
+
+    mock.module("@/db/repositories/docker-nodes", () => ({
+      dockerNodesRepository: {
+        findEnabled: async () => [node],
+        updateStatus: async (nodeId: string, status: DockerNodeStatus) => {
+          statusUpdates.push({ nodeId, status });
+        },
+      },
+    }));
+    mock.module("@/lib/services/docker-node-workloads", () => ({
+      countAllocatedWorkloadsOnNode: async () => 0,
+      countRetainedWorkloadsOnNode: async () => 0,
+    }));
+    mock.module("@/lib/services/docker-ssh", () => ({
+      DockerSSHClient: {
+        getClient: () => ({
+          connect: async () => {
+            throw new Error("All configured authentication methods failed");
+          },
+          exec: async () => "docker-id",
+        }),
+      },
+    }));
+    mock.module("@/lib/utils/logger", () => ({
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    }));
+
+    const { DockerNodeManager } = await importManager();
+    const status = await DockerNodeManager.getInstance().healthCheckNode(node);
+
+    expect(status).toBe("offline");
+    expect(statusUpdates).toEqual([{ nodeId: "autoscaled", status: "offline" }]);
+  }, 15_000);
+
   test("probes unknown nodes so newly bootstrapped capacity can become available", async () => {
     const nodes = [makeNode({ node_id: "new-node", status: "unknown", capacity: 8 })];
     const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];

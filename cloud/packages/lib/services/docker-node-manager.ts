@@ -211,7 +211,9 @@ export class DockerNodeManager {
       logger.warn(
         `[docker-node-manager] Suppressed offline status for canonical node ${node.node_id} (${node.hostname}); leaving prior status intact. Set enabled=false to remove from rotation.`,
       );
-      return status;
+      // Return the prior in-DB status so callers (e.g. /api/v1/cron/agent-hot-pool)
+      // see the unchanged state, not a phantom "offline" that was never persisted.
+      return node.status;
     }
 
     await dockerNodesRepository.updateStatus(node.node_id, status);
