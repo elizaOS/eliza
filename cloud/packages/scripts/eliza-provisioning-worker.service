@@ -25,6 +25,9 @@ SyslogIdentifier=eliza-provisioning-worker
 
 NoNewPrivileges=yes
 ProtectSystem=strict
+# Private writable /tmp for the service. tsx needs to create /tmp/tsx-${UID}
+# for its IPC server, which ProtectSystem=strict otherwise blocks.
+PrivateTmp=true
 ReadWritePaths=/opt/eliza
 ReadOnlyPaths=/home/deploy/.ssh
 
