@@ -231,6 +231,14 @@ export function nativeModuleStubPlugin(
         id.replace(/\\/g, "/").includes("/@img/sharp")
       )
         return VIRTUAL_PREFIX + id;
+      // @napi-rs/keyring + optional platform packs (@napi-rs/keyring-darwin-arm64, …).
+      // Vite dependency optimization tries to parse .node binaries as UTF-8 and crashes.
+      if (
+        /^@napi-rs\/keyring/.test(id) ||
+        id.replace(/\\/g, "/").includes("/@napi-rs/keyring")
+      ) {
+        return `${VIRTUAL_PREFIX}@napi-rs/keyring`;
+      }
       // Exact or sub-path match against native packages
       if (nativePackages.has(bare)) return VIRTUAL_PREFIX + id;
       return null;
@@ -367,6 +375,21 @@ export function nativeModuleStubPlugin(
           id.slice(VIRTUAL_PREFIX.length),
           requireModule,
         );
+      }
+
+      if (strippedId === "@napi-rs/keyring") {
+        return [
+          "// Stub: real binding is native-only (@elizaos/vault master key / OS keychain).",
+          "export class Entry {",
+          "  constructor(_service, _account) {}",
+          '  getPassword() { return ""; }',
+          "  setPassword() {",
+          "    throw new Error(",
+          '      "OS keychain is unavailable in the browser/renderer build."',
+          "    );",
+          "  }",
+          "}",
+        ].join("\n");
       }
 
       // libvips native / wasm bindings — only used server-side for LifeOps screen sampling
