@@ -41,9 +41,15 @@ describe("DockerNodeManager", () => {
     mock.restore();
   });
 
-  test("skips stale healthy nodes that fail the live SSH/Docker probe", async () => {
+  test("skips stale healthy autoscaled nodes that fail the live SSH/Docker probe and marks them offline", async () => {
     const nodes = [
-      makeNode({ node_id: "stale", capacity: 10 }),
+      makeNode({
+        node_id: "stale",
+        capacity: 10,
+        // Autoscaled (Hetzner Cloud) nodes flap to offline on ssh probe
+        // failure so the autoscaler can drain + reprovision them.
+        metadata: { provider: "hetzner-cloud", autoscaled: true },
+      }),
       makeNode({ node_id: "ready", capacity: 4 }),
     ];
     const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];
@@ -86,6 +92,60 @@ describe("DockerNodeManager", () => {
       { nodeId: "stale", status: "offline" },
       { nodeId: "ready", status: "healthy" },
     ]);
+  });
+
+  test("does NOT mark canonical (non-autoscaled) nodes offline when ssh probe fails", async () => {
+    // Canonical nodes (operator-provisioned, no `metadata.autoscaled === true`)
+    // are protected from health-check flapping. Their status is left intact in
+    // the DB; operators retain explicit `enabled=false` to remove them from
+    // rotation. Rationale: these nodes host long-lived production sandboxes
+    // and a transient ssh hiccup should not pull them out of the pool.
+    const nodes = [
+      makeNode({ node_id: "stale-canonical", capacity: 100, metadata: {} }),
+      makeNode({ node_id: "ready", capacity: 4 }),
+    ];
+    const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];
+
+    mock.module("@/db/repositories/docker-nodes", () => ({
+      dockerNodesRepository: {
+        findEnabled: async () => nodes,
+        updateStatus: async (nodeId: string, status: DockerNodeStatus) => {
+          statusUpdates.push({ nodeId, status });
+          const node = nodes.find((candidate) => candidate.node_id === nodeId);
+          if (node) node.status = status;
+        },
+      },
+    }));
+    mock.module("@/lib/services/docker-node-workloads", () => ({
+      countAllocatedWorkloadsOnNode: async () => 0,
+      countRetainedWorkloadsOnNode: async () => 0,
+    }));
+    mock.module("@/lib/services/docker-ssh", () => ({
+      DockerSSHClient: {
+        getClient: (hostname: string) => ({
+          connect: async () => {
+            if (hostname.startsWith("stale-canonical.")) {
+              throw new Error("All configured authentication methods failed");
+            }
+          },
+          exec: async () => "docker-id",
+        }),
+      },
+    }));
+    mock.module("@/lib/utils/logger", () => ({
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    }));
+
+    const { DockerNodeManager } = await importManager();
+    const selected = await DockerNodeManager.getInstance().getAvailableNode();
+
+    // Selection still falls through to the healthy `ready` node (canonical
+    // node failed ensureNodeReady's probe so it was skipped for THIS pick).
+    expect(selected?.node_id).toBe("ready");
+    // Critical: NO `offline` status write for the canonical node.
+    expect(statusUpdates).toEqual([{ nodeId: "ready", status: "healthy" }]);
+    // The canonical node's in-memory status is unchanged (still healthy).
+    expect(nodes.find((n) => n.node_id === "stale-canonical")?.status).toBe("healthy");
   });
 
   test("probes unknown nodes so newly bootstrapped capacity can become available", async () => {
