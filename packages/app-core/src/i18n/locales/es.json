@@ -3219,7 +3219,6 @@
   "documentsview.FailedToDeleteDocumentWithMessage": "No se pudo eliminar el documento: {{message}}",
   "documentsview.FailedToImportFromUrl": "No se pudo importar desde la URL: {{message}}",
   "documentsview.FailedToLoadDocument": "No se pudo cargar el documento",
-  "documentsview.FailedToLoadKnowledgeData": "No se pudieron cargar los datos de conocimiento",
   "documentsview.FailedToReadFile": "No se pudo leer el archivo",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FormatsCount": "{{count}} formatos",
@@ -3232,7 +3231,6 @@
   "documentsview.FromUrl": "Desde URL",
   "documentsview.ImageCouldNotBeCompressed": "La imagen no se pudo comprimir por debajo de {{limit}} para su procesamiento.",
   "documentsview.IncludeAIImageDes": "Procesar imágenes",
-  "documentsview.KnowledgeServiceIs": "El servicio de conocimiento se está cargando...",
   "documentsview.LargeFilesDetected": "{{count}} archivos grandes detectados.",
   "documentsview.LoadingDocuments": "Cargando documentos...",
   "documentsview.Locked": "Locked",
@@ -3278,7 +3276,6 @@
   "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.NewTextDocument": "New text document",
   "documentsview.NewTextKnowledge": "New text knowledge",
-  "documentsview.PasteKnowledgeText": "Paste knowledge text...",
   "documentsview.ScopeAgent": "Agent",
   "documentsview.ScopeAgentDescription": "Private to the agent runtime.",
   "documentsview.ScopeAll": "All",
@@ -3291,5 +3288,8 @@
   "documentsview.ScopeUserDescription": "Visible to this user and the owner.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.UploadFailedWithMessage": "Upload failed: {{message}}",
-  "documentsview.UploadScope": "Scope"
+  "documentsview.UploadScope": "Scope",
+  "documentsview.FailedToLoadData": "No se pudieron cargar los datos de conocimiento",
+  "documentsview.ServiceIsLoading": "El servicio de conocimiento se está cargando...",
+  "documentsview.PasteText": "Paste knowledge text..."
 }

@@ -89,7 +89,21 @@ function denyResult(op: CharacterOp, message: string): ActionResult {
 export const characterAction: Action = {
 	name: "CHARACTER",
 	contexts: ["settings", "agent_internal", "media", "admin"],
-	similes: [],
+	similes: [
+		// Old leaf action names
+		"MODIFY_CHARACTER",
+		"PERSIST_CHARACTER",
+		"UPDATE_IDENTITY",
+		"UPDATE_OWNER_NAME",
+		// Identity / naming aliases
+		"IDENTITY",
+		"SET_IDENTITY",
+		"UPDATE_AGENT_NAME",
+		"UPDATE_SYSTEM_PROMPT",
+		"SET_AGENT_NAME",
+		"SET_SYSTEM_PROMPT",
+		"RENAME_AGENT",
+	],
 	description:
 		"Modify, persist, or update the agent character. Ops: modify (LLM-driven personality, tone, voice, style, bio, name, topics, response format) | persist (flush in-memory runtime.character to the persistence service) | update_identity (rename agent or replace system prompt).",
 	suppressPostActionContinuation: true,

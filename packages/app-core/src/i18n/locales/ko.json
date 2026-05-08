@@ -3219,7 +3219,6 @@
   "documentsview.FailedToDeleteDocumentWithMessage": "문서 삭제 실패: {{message}}",
   "documentsview.FailedToImportFromUrl": "URL에서 가져오지 못했습니다: {{message}}",
   "documentsview.FailedToLoadDocument": "문서를 로드하지 못했습니다.",
-  "documentsview.FailedToLoadKnowledgeData": "지식 데이터를 로드하지 못했습니다.",
   "documentsview.FailedToReadFile": "파일을 읽지 못했습니다.",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FormatsCount": "{{count}} 형식",
@@ -3232,7 +3231,6 @@
   "documentsview.FromUrl": "URL에서",
   "documentsview.ImageCouldNotBeCompressed": "처리를 위해 이미지를 {{limit}} 아래로 압축할 수 없습니다.",
   "documentsview.IncludeAIImageDes": "이미지 처리",
-  "documentsview.KnowledgeServiceIs": "지식 서비스 로드 중...",
   "documentsview.LargeFilesDetected": "{{count}} 대용량 파일이 감지되었습니다.",
   "documentsview.LoadingDocuments": "문서 로드 중...",
   "documentsview.Locked": "Locked",
@@ -3278,7 +3276,6 @@
   "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.NewTextDocument": "New text document",
   "documentsview.NewTextKnowledge": "New text knowledge",
-  "documentsview.PasteKnowledgeText": "Paste knowledge text...",
   "documentsview.ScopeAgent": "Agent",
   "documentsview.ScopeAgentDescription": "Private to the agent runtime.",
   "documentsview.ScopeAll": "All",
@@ -3291,5 +3288,8 @@
   "documentsview.ScopeUserDescription": "Visible to this user and the owner.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.UploadFailedWithMessage": "Upload failed: {{message}}",
-  "documentsview.UploadScope": "Scope"
+  "documentsview.UploadScope": "Scope",
+  "documentsview.FailedToLoadData": "지식 데이터를 로드하지 못했습니다.",
+  "documentsview.ServiceIsLoading": "지식 서비스 로드 중...",
+  "documentsview.PasteText": "Paste knowledge text..."
 }

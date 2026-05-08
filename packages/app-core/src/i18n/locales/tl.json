@@ -3219,7 +3219,6 @@
   "documentsview.FailedToDeleteDocumentWithMessage": "Nabigong tanggalin ang dokumento: {{message}}",
   "documentsview.FailedToImportFromUrl": "Nabigong mag-import mula sa URL: {{message}}",
   "documentsview.FailedToLoadDocument": "Nabigong i-load ang dokumento",
-  "documentsview.FailedToLoadKnowledgeData": "Nabigong i-load ang data ng kaalaman",
   "documentsview.FailedToReadFile": "Nabigong basahin ang file",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FormatsCount": "{{count}} na mga format",
@@ -3232,7 +3231,6 @@
   "documentsview.FromUrl": "Mula sa URL",
   "documentsview.ImageCouldNotBeCompressed": "Hindi ma-compress ang larawan sa ibaba {{limit}} para sa pagproseso.",
   "documentsview.IncludeAIImageDes": "I-process ang mga Larawan",
-  "documentsview.KnowledgeServiceIs": "Naglo-load ang knowledge service...",
   "documentsview.LargeFilesDetected": "{{count}} malaking file (mga) nakita.",
   "documentsview.LoadingDocuments": "Naglo-load ng mga dokumento...",
   "documentsview.Locked": "Locked",
@@ -3278,7 +3276,6 @@
   "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.NewTextDocument": "New text document",
   "documentsview.NewTextKnowledge": "New text knowledge",
-  "documentsview.PasteKnowledgeText": "Paste knowledge text...",
   "documentsview.ScopeAgent": "Agent",
   "documentsview.ScopeAgentDescription": "Private to the agent runtime.",
   "documentsview.ScopeAll": "All",
@@ -3291,5 +3288,8 @@
   "documentsview.ScopeUserDescription": "Visible to this user and the owner.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.UploadFailedWithMessage": "Upload failed: {{message}}",
-  "documentsview.UploadScope": "Scope"
+  "documentsview.UploadScope": "Scope",
+  "documentsview.FailedToLoadData": "Nabigong i-load ang data ng kaalaman",
+  "documentsview.ServiceIsLoading": "Naglo-load ang knowledge service...",
+  "documentsview.PasteText": "Paste knowledge text..."
 }
