@@ -3219,7 +3219,6 @@
   "documentsview.FailedToDeleteDocumentWithMessage": "Falha ao excluir documento: {{message}}",
   "documentsview.FailedToImportFromUrl": "Falha ao importar do URL: {{message}}",
   "documentsview.FailedToLoadDocument": "Falha ao carregar o documento",
-  "documentsview.FailedToLoadKnowledgeData": "Falha ao carregar dados de conhecimento",
   "documentsview.FailedToReadFile": "Falha ao ler o arquivo",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FormatsCount": "{{count}} formatos",
@@ -3232,7 +3231,6 @@
   "documentsview.FromUrl": "Do URL",
   "documentsview.ImageCouldNotBeCompressed": "A imagem não pôde ser compactada abaixo de {{limit}} para processamento.",
   "documentsview.IncludeAIImageDes": "Processar imagens",
-  "documentsview.KnowledgeServiceIs": "O serviço de conhecimento está carregando...",
   "documentsview.LargeFilesDetected": "{{count}} arquivo(s) grande(s) detectado(s).",
   "documentsview.LoadingDocuments": "Carregando documentos...",
   "documentsview.Locked": "Locked",
@@ -3278,7 +3276,6 @@
   "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.NewTextDocument": "New text document",
   "documentsview.NewTextKnowledge": "New text knowledge",
-  "documentsview.PasteKnowledgeText": "Paste knowledge text...",
   "documentsview.ScopeAgent": "Agent",
   "documentsview.ScopeAgentDescription": "Private to the agent runtime.",
   "documentsview.ScopeAll": "All",
@@ -3291,5 +3288,8 @@
   "documentsview.ScopeUserDescription": "Visible to this user and the owner.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.UploadFailedWithMessage": "Upload failed: {{message}}",
-  "documentsview.UploadScope": "Scope"
+  "documentsview.UploadScope": "Scope",
+  "documentsview.FailedToLoadData": "Falha ao carregar dados de conhecimento",
+  "documentsview.ServiceIsLoading": "O serviço de conhecimento está carregando...",
+  "documentsview.PasteText": "Paste knowledge text..."
 }

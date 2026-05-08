@@ -3219,7 +3219,6 @@
   "documentsview.FailedToDeleteDocumentWithMessage": "Không xóa được tài liệu: {{message}}",
   "documentsview.FailedToImportFromUrl": "Không thể nhập từ URL: {{message}}",
   "documentsview.FailedToLoadDocument": "Không tải được tài liệu",
-  "documentsview.FailedToLoadKnowledgeData": "Không tải được dữ liệu kiến thức",
   "documentsview.FailedToReadFile": "Không đọc được tập tin",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FormatsCount": "{{count}} định dạng",
@@ -3232,7 +3231,6 @@
   "documentsview.FromUrl": "Từ URL",
   "documentsview.ImageCouldNotBeCompressed": "Không thể nén hình ảnh xuống dưới {{limit}} để xử lý.",
   "documentsview.IncludeAIImageDes": "Xử lý ảnh",
-  "documentsview.KnowledgeServiceIs": "Dịch vụ tri thức đang tải...",
   "documentsview.LargeFilesDetected": "{{count}} đã phát hiện (các) tệp lớn.",
   "documentsview.LoadingDocuments": "Đang tải tài liệu...",
   "documentsview.Locked": "Locked",
@@ -3278,7 +3276,6 @@
   "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.NewTextDocument": "New text document",
   "documentsview.NewTextKnowledge": "New text knowledge",
-  "documentsview.PasteKnowledgeText": "Paste knowledge text...",
   "documentsview.ScopeAgent": "Agent",
   "documentsview.ScopeAgentDescription": "Private to the agent runtime.",
   "documentsview.ScopeAll": "All",
@@ -3291,5 +3288,8 @@
   "documentsview.ScopeUserDescription": "Visible to this user and the owner.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.UploadFailedWithMessage": "Upload failed: {{message}}",
-  "documentsview.UploadScope": "Scope"
+  "documentsview.UploadScope": "Scope",
+  "documentsview.FailedToLoadData": "Không tải được dữ liệu kiến thức",
+  "documentsview.ServiceIsLoading": "Dịch vụ tri thức đang tải...",
+  "documentsview.PasteText": "Paste knowledge text..."
 }
