@@ -1,5 +1,5 @@
 /**
- * Message Handler - Processes messages through elizaOS runtime via CloudBootstrapMessageService.
+ * Message Handler - Processes messages through the elizaOS runtime message service.
  */
 
 import {
@@ -7,10 +7,11 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
-  EventType,
+  DefaultMessageService,
   elizaLogger,
   type Media,
   Memory,
+  type MessageProcessingOptions,
   MemoryType,
   stringToUuid,
   type UUID,
@@ -25,8 +26,7 @@ import { discordService } from "@/lib/services/discord";
 import { generateRoomTitle } from "@/lib/services/room-title";
 import type { DialogueMetadata } from "@/lib/types/message-content";
 import type { AgentModeConfig } from "./agent-mode-types";
-import { AgentMode, DEFAULT_AGENT_MODE } from "./agent-mode-types";
-import type { CloudMessageOptions } from "./plugin-cloud-bootstrap/types";
+import { DEFAULT_AGENT_MODE, isValidAgentModeConfig } from "./agent-mode-types";
 import type { UserContext } from "./user-context";
 
 export interface UsageInfo {
@@ -61,6 +61,11 @@ export type ReasoningChunkCallback = (
   messageId?: UUID,
 ) => Promise<void>;
 
+type RuntimeMessageOptions = MessageProcessingOptions & {
+  useNativePlanner?: boolean;
+  onReasoningChunk?: ReasoningChunkCallback;
+};
+
 export interface MessageOptions {
   roomId: string;
   text: string;
@@ -81,7 +86,9 @@ export class MessageHandler {
   async process(options: MessageOptions): Promise<MessageResult> {
     const { roomId, text, attachments, agentModeConfig, onStreamChunk, onReasoningChunk } = options;
     const entityId = this.userContext.userId;
-    const modeConfig = agentModeConfig || DEFAULT_AGENT_MODE;
+    const modeConfig = isValidAgentModeConfig(agentModeConfig)
+      ? agentModeConfig
+      : DEFAULT_AGENT_MODE;
 
     elizaLogger.info(
       `[MessageHandler] Processing via messageService: user=${this.userContext.userId}, room=${roomId}, mode=${modeConfig.mode}, streaming=${!!onStreamChunk}`,
@@ -93,36 +100,13 @@ export class MessageHandler {
       attachments,
     });
 
+    let callbackContent: Content | undefined;
     let responseMemory: Memory | undefined;
     let usage: MessageResult["usage"];
-    let markResponseReady: (() => void) | undefined;
-    const responseReady = new Promise<void>((resolve) => {
-      markResponseReady = resolve;
-    });
 
     const callback = async (content: Content) => {
       if (content.text) {
-        responseMemory = {
-          id: createUniqueUuid(this.runtime, (userMessage.id ?? uuidv4()) as UUID),
-          entityId: this.runtime.agentId,
-          agentId: this.runtime.agentId,
-          roomId: roomId as UUID,
-          createdAt: Date.now(),
-          content: {
-            ...content,
-            source: content.source || "agent",
-            inReplyTo: userMessage.id,
-          },
-          metadata: {
-            type: MemoryType.MESSAGE,
-            role: "agent",
-            dialogueType: "message",
-            visibility: "visible",
-            agentMode: modeConfig.mode,
-          } as DialogueMetadata,
-        };
-        await this.runtime.createMemory(responseMemory, "messages");
-        markResponseReady?.();
+        callbackContent = content;
       }
 
       if ("usage" in content && isUsageInfo(content.usage)) {
@@ -131,84 +115,50 @@ export class MessageHandler {
       return [];
     };
 
-    // BUILD mode uses plugin handler via MESSAGE_RECEIVED event
-    if (modeConfig.mode === AgentMode.BUILD) {
-      const eventPromise = this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-        runtime: this.runtime,
-        message: userMessage,
-        callback,
-        onStreamChunk,
-        onReasoningChunk,
-      });
+    const messageOptions: RuntimeMessageOptions = {
+      useNativePlanner: true,
+      onStreamChunk,
+      onReasoningChunk,
+    };
 
-      await Promise.race([eventPromise, responseReady]);
-      if (!responseMemory) {
-        await eventPromise;
-      } else {
-        eventPromise.catch((error) => {
-          elizaLogger.warn(
-            `[MessageHandler] BUILD mode post-response pipeline failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
-      }
-    } else {
-      const messageOptions: CloudMessageOptions = {
-        useNativePlanner: true,
-        onStreamChunk,
-        onReasoningChunk,
-      };
+    const messageService = this.runtime.messageService ?? new DefaultMessageService();
+    if (!this.runtime.messageService) {
+      elizaLogger.warn("[MessageHandler] No runtime.messageService available; using default.");
+    }
 
-      if (!this.runtime.messageService) {
-        throw new Error(
-          "[MessageHandler] No messageService available. Ensure CloudBootstrapPlugin is loaded.",
-        );
-      }
+    const result = await messageService.handleMessage(
+      this.runtime,
+      userMessage,
+      callback,
+      messageOptions,
+    );
 
-      const result = await this.runtime.messageService.handleMessage(
-        this.runtime,
-        userMessage,
-        callback,
-        messageOptions,
-      );
-
-      if (
-        !responseMemory &&
-        result &&
-        result.responseMessages &&
-        result.responseMessages.length > 0
-      ) {
-        responseMemory = result.responseMessages[0];
-        // Persist if not already saved (callback may not have been invoked)
-        if (responseMemory && responseMemory.id) {
-          const existing = await this.runtime.getMemoryById(responseMemory.id);
-          if (!existing) {
-            await this.runtime.createMemory(responseMemory, "messages");
-          }
+    if (result?.responseMessages && result.responseMessages.length > 0) {
+      responseMemory = result.responseMessages[0];
+      if (responseMemory?.id) {
+        const existing = await this.runtime.getMemoryById(responseMemory.id);
+        if (!existing) {
+          await this.runtime.createMemory(responseMemory, "messages");
         }
       }
+    }
 
-      if (!responseMemory && result && result.responseContent) {
-        responseMemory = {
-          id: createUniqueUuid(this.runtime, (userMessage.id ?? uuidv4()) as UUID),
-          entityId: this.runtime.agentId,
-          agentId: this.runtime.agentId,
-          roomId: roomId as UUID,
-          createdAt: Date.now(),
-          content: {
-            ...result.responseContent,
-            source: result.responseContent.source || "agent",
-            inReplyTo: userMessage.id,
-          },
-          metadata: {
-            type: MemoryType.MESSAGE,
-            role: "agent",
-            dialogueType: "message",
-            visibility: "visible",
-            agentMode: modeConfig.mode,
-          } as DialogueMetadata,
-        };
-        await this.runtime.createMemory(responseMemory, "messages");
-      }
+    if (!responseMemory && result?.responseContent) {
+      responseMemory = await this.createAgentResponseMemory(
+        roomId,
+        userMessage,
+        result.responseContent,
+        modeConfig,
+      );
+    }
+
+    if (!responseMemory && callbackContent) {
+      responseMemory = await this.createAgentResponseMemory(
+        roomId,
+        userMessage,
+        callbackContent,
+        modeConfig,
+      );
     }
 
     if (!responseMemory) {
@@ -254,6 +204,35 @@ export class MessageHandler {
     });
 
     return { message: responseMemory, usage };
+  }
+
+  private async createAgentResponseMemory(
+    roomId: string,
+    userMessage: Memory,
+    content: Content,
+    modeConfig: AgentModeConfig,
+  ): Promise<Memory> {
+    const responseMemory: Memory = {
+      id: createUniqueUuid(this.runtime, (userMessage.id ?? uuidv4()) as UUID),
+      entityId: this.runtime.agentId,
+      agentId: this.runtime.agentId,
+      roomId: roomId as UUID,
+      createdAt: Date.now(),
+      content: {
+        ...content,
+        source: content.source || "agent",
+        inReplyTo: userMessage.id,
+      },
+      metadata: {
+        type: MemoryType.MESSAGE,
+        role: "agent",
+        dialogueType: "message",
+        visibility: "visible",
+        agentMode: modeConfig.mode,
+      } as DialogueMetadata,
+    };
+    await this.runtime.createMemory(responseMemory, "messages");
+    return responseMemory;
   }
 
   private async ensureConnectionForCloud(roomId: string, entityId: string): Promise<void> {

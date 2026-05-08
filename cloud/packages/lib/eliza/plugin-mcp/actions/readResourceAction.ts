@@ -1,3 +1,7 @@
+// Cloud mirror of plugins/plugin-mcp/src/actions/readResourceAction.ts. The
+// `READ_MCP_RESOURCE` name is intentionally identical: this file only loads in
+// the cloud-only `@elizaos/plugin-mcp` (cloud namespace) and does not co-load
+// with the local agent/core runtime that ships the local plugin-mcp action.
 import {
   type Action,
   type ActionResult,
@@ -26,7 +30,7 @@ import {
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
 
-const MCP_RESOURCE_CONTEXTS = ["connectors", "knowledge", "files"];
+const MCP_RESOURCE_CONTEXTS = ["connectors", "documents", "files"];
 const RESOURCE_KEYWORDS = [
   "resource",
   "read",
