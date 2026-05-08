@@ -316,7 +316,7 @@ export {
   IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithKnowledge,
+  maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -711,7 +711,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-// Knowledge + wallet context augmentation moved to server-helpers.ts;
+// Documents + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
@@ -1580,8 +1580,7 @@ async function handleRequest(
   // (/api/trajectories/*) are now provided by the @elizaos/app-training
   // plugin via the runtime route registry.
 
-  // Knowledge routes (/api/knowledge/*) are now provided by the
-  // @elizaos/app-knowledge plugin via the runtime route registry.
+  // Documents routes (/api/documents/*) are provided by the /app-documents plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||

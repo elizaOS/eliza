@@ -222,7 +222,7 @@ function createRouterAction(definition: ScapeRouterDefinition): Action {
 
       const timeoutMs = 15_000;
       const result =
-        definition.name === "INVENTORY_OP"
+        definition.name === "INVENTORY"
           ? await Promise.race([
               dispatchInventoryOp(service, resolved.subaction, params),
               new Promise<never>((_, reject) =>

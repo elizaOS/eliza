@@ -15,7 +15,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { buildResolvedClient, resolveIdentity } from "../action-helpers.js";
+import {
+  buildResolvedClient,
+  resolveAccountSelection,
+} from "../action-helpers.js";
 import {
   errorMessage,
   formatRateLimitMessage,
@@ -97,6 +100,13 @@ export const notificationTriageAction: Action = {
       required: false,
       schema: { type: "string", enum: ["user", "agent"], default: "user" },
     },
+    {
+      name: "accountId",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
 
   validate: async (
@@ -120,8 +130,8 @@ export const notificationTriageAction: Action = {
       totalUnread: number;
     }>
   > => {
-    const identity = resolveIdentity(options, "user");
-    const resolved = buildResolvedClient(runtime, identity);
+    const selection = resolveAccountSelection(options, "user");
+    const resolved = buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };

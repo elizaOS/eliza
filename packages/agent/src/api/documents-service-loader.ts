@@ -1,7 +1,7 @@
 import type { AgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 
 export interface DocumentsServiceLike {
-  addKnowledge(options: {
+  addDocument(options: {
     agentId?: UUID;
     worldId: UUID;
     roomId: UUID;
@@ -16,7 +16,7 @@ export interface DocumentsServiceLike {
     storedDocumentMemoryId: UUID;
     fragmentCount: number;
   }>;
-  getKnowledge(
+  searchDocuments(
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
   ): Promise<
@@ -39,7 +39,7 @@ export interface DocumentsServiceLike {
     roomId?: UUID;
     unique?: boolean;
   }): Promise<number>;
-  updateKnowledgeDocument?(options: {
+  updateDocument?(options: {
     documentId: UUID;
     content: string;
   }): Promise<{
@@ -49,38 +49,26 @@ export interface DocumentsServiceLike {
   deleteMemory(memoryId: UUID): Promise<void>;
 }
 
-/** @deprecated Use DocumentsServiceLike */
-export type KnowledgeServiceLike = DocumentsServiceLike;
-
 export type DocumentsLoadFailReason =
   | "timeout"
   | "runtime_unavailable"
   | "not_registered";
-
-/** @deprecated Use DocumentsLoadFailReason */
-export type KnowledgeLoadFailReason = DocumentsLoadFailReason;
 
 export interface DocumentsServiceResult {
   service: DocumentsServiceLike | null;
   reason?: DocumentsLoadFailReason;
 }
 
-/** @deprecated Use DocumentsServiceResult */
-export type KnowledgeServiceResult = DocumentsServiceResult;
-
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 60_000;
 
 export function getDocumentsServiceTimeoutMs(): number {
-  const envVal = process.env.KNOWLEDGE_SERVICE_TIMEOUT_MS;
+  const envVal = process.env.DOCUMENTS_SERVICE_TIMEOUT_MS;
   if (!envVal) return DEFAULT_TIMEOUT_MS;
   const parsed = Number.parseInt(envVal, 10);
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }
-
-/** @deprecated Use getDocumentsServiceTimeoutMs */
-export const getKnowledgeTimeoutMs = getDocumentsServiceTimeoutMs;
 
 export async function getDocumentsService(
   runtime: AgentRuntime | null,
@@ -89,11 +77,11 @@ export async function getDocumentsService(
     return { service: null, reason: "runtime_unavailable" };
   }
 
-  let service = runtime.getService<Service & DocumentsServiceLike>("knowledge");
+  let service = runtime.getService<Service & DocumentsServiceLike>("documents");
   if (service) return { service };
 
   try {
-    const servicePromise = runtime.getServiceLoadPromise("knowledge");
+    const servicePromise = runtime.getServiceLoadPromise("documents");
     const timeoutMs = getDocumentsServiceTimeoutMs();
     const timeout = new Promise<never>((_resolve, reject) => {
       setTimeout(
@@ -102,13 +90,10 @@ export async function getDocumentsService(
       );
     });
     await Promise.race([servicePromise, timeout]);
-    service = runtime.getService<Service & DocumentsServiceLike>("knowledge");
+    service = runtime.getService<Service & DocumentsServiceLike>("documents");
     if (service) return { service };
     return { service: null, reason: "not_registered" };
   } catch {
     return { service: null, reason: "timeout" };
   }
 }
-
-/** @deprecated Use getDocumentsService */
-export const getKnowledgeService = getDocumentsService;

@@ -3,12 +3,26 @@ import {
   type AgentRunCounts,
   type AgentRunSummary,
   type AgentRunSummaryResult,
+  type AppendConnectorAccountAuditEventParams,
   ChannelType,
   type Component,
+  type ConnectorAccountAuditEventRecord,
+  type ConnectorAccountAuditOutcome,
+  type ConnectorAccountCredentialRefRecord,
+  type ConnectorAccountJsonObject,
+  type ConnectorAccountRecord,
+  type ConsumeOAuthFlowStateParams,
+  type CreateOAuthFlowStateParams,
   DatabaseAdapter,
+  type DeleteConnectorAccountParams,
   type EntitiesForRoomsResult,
   type Entity,
+  type GetConnectorAccountCredentialRefParams,
+  type GetConnectorAccountParams,
   type IDatabaseAdapter,
+  type JsonValue,
+  type ListConnectorAccountCredentialRefsParams,
+  type ListConnectorAccountsParams,
   type Log,
   type LogBody,
   logger,
@@ -28,14 +42,14 @@ import {
   type Relationship,
   type Room,
   type RunStatus,
+  type OAuthFlowRecord,
+  type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
+  type UpsertConnectorAccountParams,
   type UUID,
   type World,
 } from "@elizaos/core";
-
-// JSON-serializable value type for metadata
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 function asRawMessage(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -57,14 +71,148 @@ type CountMemoriesParams = {
   metadata?: Record<string, unknown>;
 };
 
+const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
+const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
+  /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code_verifier|client_secret|api_?key|private_?key|oauth_?code|state/i;
+
+export function redactConnectorAuditMetadata(value: unknown): JsonValue {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((item) => redactConnectorAuditMetadata(item));
+  }
+  if (typeof value === "object") {
+    const redacted: ConnectorAccountJsonObject = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
+        ? CONNECTOR_AUDIT_REDACTED
+        : redactConnectorAuditMetadata(item);
+    }
+    return redacted;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  return String(value);
+}
+
+function toConnectorDate(value: number | Date | null | undefined): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
+function dateToMillis(value: Date | null | undefined): number | null {
+  return value ? value.getTime() : null;
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined)
+  ) as Partial<T>;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function asJsonObject(value: unknown): ConnectorAccountJsonObject {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as ConnectorAccountJsonObject;
+  }
+  return {};
+}
+
+function mapConnectorAccountRow(
+  row: typeof connectorAccountsTable.$inferSelect
+): ConnectorAccountRecord {
+  return {
+    id: row.id as UUID,
+    agentId: row.agentId as UUID,
+    provider: row.provider,
+    accountKey: row.accountKey,
+    externalId: row.externalId,
+    displayName: row.displayName,
+    username: row.username,
+    email: row.email,
+    role: row.role,
+    purpose: asStringArray(row.purpose),
+    accessGate: row.accessGate,
+    status: row.status,
+    scopes: asStringArray(row.scopes),
+    capabilities: asStringArray(row.capabilities),
+    profile: asJsonObject(row.profile),
+    metadata: asJsonObject(row.metadata),
+    connectedAt: dateToMillis(row.connectedAt) ?? Date.now(),
+    lastSyncAt: dateToMillis(row.lastSyncAt),
+    deletedAt: dateToMillis(row.deletedAt),
+    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
+    updatedAt: dateToMillis(row.updatedAt) ?? Date.now(),
+  };
+}
+
+function mapConnectorCredentialRow(
+  row: typeof connectorAccountCredentialsTable.$inferSelect
+): ConnectorAccountCredentialRefRecord {
+  return {
+    id: row.id as UUID,
+    accountId: row.accountId as UUID,
+    agentId: row.agentId as UUID,
+    provider: row.provider,
+    credentialType: row.credentialType,
+    vaultRef: row.vaultRef,
+    metadata: asJsonObject(row.metadata),
+    expiresAt: dateToMillis(row.expiresAt),
+    lastVerifiedAt: dateToMillis(row.lastVerifiedAt),
+    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
+    updatedAt: dateToMillis(row.updatedAt) ?? Date.now(),
+  };
+}
+
+function mapConnectorAuditRow(
+  row: typeof connectorAccountAuditEventsTable.$inferSelect
+): ConnectorAccountAuditEventRecord {
+  return {
+    id: row.id as UUID,
+    accountId: row.accountId as UUID | null,
+    agentId: row.agentId as UUID,
+    provider: row.provider,
+    actorId: row.actorId,
+    action: row.action,
+    outcome: row.outcome as ConnectorAccountAuditOutcome,
+    metadata: asJsonObject(row.metadata),
+    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
+  };
+}
+
+function mapOAuthFlowRow(row: typeof oauthFlowsTable.$inferSelect): OAuthFlowRecord {
+  return {
+    stateHash: row.stateHash,
+    agentId: row.agentId as UUID,
+    provider: row.provider,
+    accountId: row.accountId as UUID | null,
+    redirectUri: row.redirectUri,
+    codeVerifierRef: row.codeVerifierRef,
+    scopes: asStringArray(row.scopes),
+    metadata: asJsonObject(row.metadata),
+    createdAt: dateToMillis(row.createdAt) ?? Date.now(),
+    expiresAt: dateToMillis(row.expiresAt) ?? Date.now(),
+    consumedAt: dateToMillis(row.consumedAt),
+    consumedBy: row.consumedBy,
+  };
+}
+
 import {
   and,
   cosineDistance,
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
+  isNull,
   lt,
   lte,
   or,
@@ -75,6 +223,7 @@ import {
 const v4 = () => crypto.randomUUID();
 
 import type { DatabaseMigrationService } from "./migration-service";
+import { sha256Async } from "./runtime-migrator/crypto-utils";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
   agentTable,
@@ -82,6 +231,9 @@ import {
   channelParticipantsTable,
   channelTable,
   componentTable,
+  connectorAccountAuditEventsTable,
+  connectorAccountCredentialsTable,
+  connectorAccountsTable,
   embeddingTable,
   entityTable,
   logTable,
@@ -89,6 +241,7 @@ import {
   messageServerAgentsTable,
   messageServerTable,
   messageTable,
+  oauthFlowsTable,
   pairingAllowlistTable,
   pairingRequestTable,
   participantTable,
@@ -5151,6 +5304,338 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     for (const id of ids) {
       await this.deletePairingAllowlistEntry(id);
     }
+  }
+
+  // ── Connector account storage ────────────────────────────────────────
+
+  async listConnectorAccounts(
+    params: ListConnectorAccountsParams = {}
+  ): Promise<ConnectorAccountRecord[]> {
+    return this.withDatabase(async () => {
+      const conditions: SQL[] = [
+        eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId),
+      ];
+      if (params.provider) conditions.push(eq(connectorAccountsTable.provider, params.provider));
+      if (params.status) conditions.push(eq(connectorAccountsTable.status, params.status));
+
+      const rows = await this.db
+        .select()
+        .from(connectorAccountsTable)
+        .where(and(...conditions))
+        .orderBy(desc(connectorAccountsTable.updatedAt))
+        .limit(params.limit ?? 100)
+        .offset(params.offset ?? 0);
+
+      return rows.map(mapConnectorAccountRow);
+    });
+  }
+
+  async getConnectorAccount(
+    params: GetConnectorAccountParams
+  ): Promise<ConnectorAccountRecord | null> {
+    return this.withDatabase(async () => {
+      const conditions: SQL[] = [];
+      if (params.id) {
+        conditions.push(eq(connectorAccountsTable.id, params.id));
+      } else {
+        conditions.push(eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId));
+        if (!params.provider || !params.accountKey) {
+          throw new Error("getConnectorAccount requires id or provider + accountKey");
+        }
+        conditions.push(eq(connectorAccountsTable.provider, params.provider));
+        conditions.push(eq(connectorAccountsTable.accountKey, params.accountKey));
+      }
+
+      const rows = await this.db
+        .select()
+        .from(connectorAccountsTable)
+        .where(and(...conditions))
+        .limit(1);
+
+      return rows[0] ? mapConnectorAccountRow(rows[0]) : null;
+    });
+  }
+
+  async upsertConnectorAccount(
+    params: UpsertConnectorAccountParams
+  ): Promise<ConnectorAccountRecord> {
+    return this.withDatabase(async () => {
+      const now = new Date();
+      const values = stripUndefined({
+        id: params.id,
+        agentId: params.agentId ?? this.agentId,
+        provider: params.provider,
+        accountKey: params.accountKey,
+        externalId: params.externalId,
+        displayName: params.displayName,
+        username: params.username,
+        email: params.email,
+        role: params.role,
+        purpose: params.purpose,
+        accessGate: params.accessGate,
+        status: params.status,
+        scopes: params.scopes,
+        capabilities: params.capabilities,
+        profile: params.profile,
+        metadata: params.metadata,
+        connectedAt: toConnectorDate(params.connectedAt),
+        lastSyncAt: toConnectorDate(params.lastSyncAt),
+        deletedAt: toConnectorDate(params.deletedAt),
+        updatedAt: now,
+      }) as typeof connectorAccountsTable.$inferInsert;
+
+      const updateSet = stripUndefined({
+        externalId: params.externalId,
+        displayName: params.displayName,
+        username: params.username,
+        email: params.email,
+        role: params.role,
+        purpose: params.purpose,
+        accessGate: params.accessGate,
+        status: params.status,
+        scopes: params.scopes,
+        capabilities: params.capabilities,
+        profile: params.profile,
+        metadata: params.metadata,
+        connectedAt: toConnectorDate(params.connectedAt),
+        lastSyncAt: toConnectorDate(params.lastSyncAt),
+        deletedAt: toConnectorDate(params.deletedAt),
+        updatedAt: now,
+      });
+
+      const rows = await this.db
+        .insert(connectorAccountsTable)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [
+            connectorAccountsTable.agentId,
+            connectorAccountsTable.provider,
+            connectorAccountsTable.accountKey,
+          ],
+          set: updateSet,
+        })
+        .returning();
+
+      if (!rows[0]) {
+        throw new Error("Failed to upsert connector account");
+      }
+      return mapConnectorAccountRow(rows[0]);
+    });
+  }
+
+  async deleteConnectorAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const conditions: SQL[] = [];
+      if (params.id) {
+        conditions.push(eq(connectorAccountsTable.id, params.id));
+      } else {
+        conditions.push(eq(connectorAccountsTable.agentId, params.agentId ?? this.agentId));
+        if (!params.provider || !params.accountKey) {
+          throw new Error("deleteConnectorAccount requires id or provider + accountKey");
+        }
+        conditions.push(eq(connectorAccountsTable.provider, params.provider));
+        conditions.push(eq(connectorAccountsTable.accountKey, params.accountKey));
+      }
+
+      const rows = await this.db
+        .delete(connectorAccountsTable)
+        .where(and(...conditions))
+        .returning();
+      return rows.length > 0;
+    });
+  }
+
+  async setConnectorAccountCredentialRef(
+    params: SetConnectorAccountCredentialRefParams
+  ): Promise<ConnectorAccountCredentialRefRecord> {
+    return this.withDatabase(async () => {
+      const account = await this.getConnectorAccount({ id: params.accountId });
+      if (!account) {
+        throw new Error(`Connector account not found: ${params.accountId}`);
+      }
+
+      const now = new Date();
+      const values = stripUndefined({
+        accountId: params.accountId,
+        agentId: account.agentId,
+        provider: account.provider,
+        credentialType: params.credentialType,
+        vaultRef: params.vaultRef,
+        metadata: params.metadata,
+        expiresAt: toConnectorDate(params.expiresAt),
+        lastVerifiedAt: toConnectorDate(params.lastVerifiedAt),
+        updatedAt: now,
+      }) as typeof connectorAccountCredentialsTable.$inferInsert;
+
+      const updateSet = stripUndefined({
+        vaultRef: params.vaultRef,
+        metadata: params.metadata,
+        expiresAt: toConnectorDate(params.expiresAt),
+        lastVerifiedAt: toConnectorDate(params.lastVerifiedAt),
+        updatedAt: now,
+      });
+
+      const rows = await this.db
+        .insert(connectorAccountCredentialsTable)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [
+            connectorAccountCredentialsTable.accountId,
+            connectorAccountCredentialsTable.credentialType,
+          ],
+          set: updateSet,
+        })
+        .returning();
+
+      if (!rows[0]) {
+        throw new Error("Failed to set connector credential ref");
+      }
+      return mapConnectorCredentialRow(rows[0]);
+    });
+  }
+
+  async getConnectorAccountCredentialRef(
+    params: GetConnectorAccountCredentialRefParams
+  ): Promise<ConnectorAccountCredentialRefRecord | null> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select()
+        .from(connectorAccountCredentialsTable)
+        .where(
+          and(
+            eq(connectorAccountCredentialsTable.accountId, params.accountId),
+            eq(connectorAccountCredentialsTable.credentialType, params.credentialType)
+          )
+        )
+        .limit(1);
+
+      return rows[0] ? mapConnectorCredentialRow(rows[0]) : null;
+    });
+  }
+
+  async listConnectorAccountCredentialRefs(
+    params: ListConnectorAccountCredentialRefsParams
+  ): Promise<ConnectorAccountCredentialRefRecord[]> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select()
+        .from(connectorAccountCredentialsTable)
+        .where(eq(connectorAccountCredentialsTable.accountId, params.accountId))
+        .orderBy(desc(connectorAccountCredentialsTable.updatedAt));
+
+      return rows.map(mapConnectorCredentialRow);
+    });
+  }
+
+  async appendConnectorAccountAuditEvent(
+    params: AppendConnectorAccountAuditEventParams
+  ): Promise<ConnectorAccountAuditEventRecord> {
+    return this.withDatabase(async () => {
+      let agentId = params.agentId ?? this.agentId;
+      let provider = params.provider;
+      if (params.accountId && (!params.agentId || !provider)) {
+        const account = await this.getConnectorAccount({ id: params.accountId });
+        if (!account) {
+          throw new Error(`Connector account not found: ${params.accountId}`);
+        }
+        agentId = account.agentId;
+        provider = account.provider;
+      }
+      if (!provider) {
+        throw new Error("appendConnectorAccountAuditEvent requires provider or accountId");
+      }
+
+      const metadata = asJsonObject(redactConnectorAuditMetadata(params.metadata ?? {}));
+      const rows = await this.db
+        .insert(connectorAccountAuditEventsTable)
+        .values({
+          accountId: params.accountId ?? null,
+          agentId,
+          provider,
+          actorId: params.actorId ?? null,
+          action: params.action,
+          outcome: params.outcome ?? "success",
+          metadata,
+          createdAt: toConnectorDate(params.createdAt) ?? new Date(),
+        })
+        .returning();
+
+      if (!rows[0]) {
+        throw new Error("Failed to append connector account audit event");
+      }
+      return mapConnectorAuditRow(rows[0]);
+    });
+  }
+
+  async createOAuthFlowState(params: CreateOAuthFlowStateParams): Promise<OAuthFlowRecord> {
+    return this.withDatabase(async () => {
+      const stateHash = await sha256Async(params.state);
+      const expiresAt =
+        toConnectorDate(params.expiresAt) ?? new Date(Date.now() + (params.ttlMs ?? 10 * 60_000));
+
+      const rows = await this.db
+        .insert(oauthFlowsTable)
+        .values(
+          stripUndefined({
+            stateHash,
+            agentId: params.agentId ?? this.agentId,
+            provider: params.provider,
+            accountId: params.accountId,
+            redirectUri: params.redirectUri,
+            codeVerifierRef: params.codeVerifierRef,
+            scopes: params.scopes,
+            metadata: params.metadata,
+            expiresAt,
+            consumedAt: null,
+            consumedBy: null,
+          }) as typeof oauthFlowsTable.$inferInsert
+        )
+        .onConflictDoUpdate({
+          target: oauthFlowsTable.stateHash,
+          set: stripUndefined({
+            agentId: params.agentId ?? this.agentId,
+            provider: params.provider,
+            accountId: params.accountId,
+            redirectUri: params.redirectUri,
+            codeVerifierRef: params.codeVerifierRef,
+            scopes: params.scopes,
+            metadata: params.metadata,
+            expiresAt,
+            consumedAt: null,
+            consumedBy: null,
+          }),
+        })
+        .returning();
+
+      if (!rows[0]) {
+        throw new Error("Failed to create OAuth flow state");
+      }
+      return mapOAuthFlowRow(rows[0]);
+    });
+  }
+
+  async consumeOAuthFlowState(
+    params: ConsumeOAuthFlowStateParams
+  ): Promise<OAuthFlowRecord | null> {
+    return this.withDatabase(async () => {
+      const stateHash = await sha256Async(params.state);
+      const now = toConnectorDate(params.now) ?? new Date();
+      const conditions: SQL[] = [
+        eq(oauthFlowsTable.stateHash, stateHash),
+        isNull(oauthFlowsTable.consumedAt),
+        gt(oauthFlowsTable.expiresAt, now),
+      ];
+      if (params.agentId) conditions.push(eq(oauthFlowsTable.agentId, params.agentId));
+      if (params.provider) conditions.push(eq(oauthFlowsTable.provider, params.provider));
+
+      const rows = await this.db
+        .update(oauthFlowsTable)
+        .set({ consumedAt: now, consumedBy: params.consumedBy ?? null })
+        .where(and(...conditions))
+        .returning();
+
+      return rows[0] ? mapOAuthFlowRow(rows[0]) : null;
+    });
   }
 }
 

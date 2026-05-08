@@ -1,4 +1,9 @@
 import type { Plugin, ServiceClass } from "@elizaos/core";
+import { registerBirdeyeSearchCategories } from "./analytics/birdeye/search-category.js";
+import { registerDexScreenerSearchCategory } from "./analytics/dexscreener/search-category.js";
+import { DexScreenerService } from "./analytics/dexscreener/service.js";
+import { tokenInfoAction } from "./analytics/token-info/action.js";
+import { TokenInfoService } from "./analytics/token-info/service.js";
 import evmPlugin from "./chains/evm/index.js";
 import solanaPlugin from "./chains/solana/index.js";
 import { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
@@ -8,9 +13,9 @@ const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
   description:
     "Wallet backend service + unified wallet provider (Steward / local).",
-  services: [WalletBackendService],
+  services: [WalletBackendService, DexScreenerService, TokenInfoService],
   providers: [unifiedWalletProvider],
-  actions: [],
+  actions: [tokenInfoAction],
   evaluators: [],
 };
 
@@ -51,12 +56,11 @@ export const walletPlugin: Plugin = {
   routes: concatPlugins(solanaPlugin.routes),
   init: async (config, runtime) => {
     await coreWalletPlugin.init?.(config, runtime);
+    registerDexScreenerSearchCategory(runtime);
+    registerBirdeyeSearchCategories(runtime);
     await evmPlugin.init?.(config, runtime);
     await solanaPlugin.init?.(config, runtime);
   },
 };
-
-/** @deprecated Use {@link walletPlugin} */
-export const agentWalletPlugin = walletPlugin;
 
 export default walletPlugin;

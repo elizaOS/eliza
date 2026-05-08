@@ -101,4 +101,116 @@ describe("sub-planner helpers", () => {
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
 	});
+
+	it("passes child actions to the model as native tool definitions", async () => {
+		const childA = makeAction({
+			name: "CHILD_A",
+			description: "Do thing A",
+		});
+		const childB = makeAction({
+			name: "CHILD_B",
+			description: "Do thing B",
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD_A", "CHILD_B"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "CHILD_A", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "done",
+			data: { actionName: "CHILD_A" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, childA, childB], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		// Sub-planner exposes the same single PLAN_ACTIONS wrapper tool as the
+		// top-level planner so the cache key stays stable across descents. Child
+		// action specs render into the sub-planner's system prompt; the LLM
+		// picks one by name and passes it back via `action`. This keeps the tool
+		// list byte-identical regardless of which child set is in play.
+		const modelCall = useModel.mock.calls[0];
+		expect(modelCall).toBeDefined();
+		const modelParams = modelCall?.[1] as {
+			tools?: Array<{ name: string; type?: string }>;
+			toolChoice?: string;
+			responseSchema?: unknown;
+		};
+		expect(modelParams.tools).toEqual([
+			expect.objectContaining({ name: "PLAN_ACTIONS", type: "function" }),
+		]);
+		// Sub-planner uses the wrapper, so the JSON-schema fallback path must
+		// NOT be active.
+		expect(modelParams.responseSchema).toBeUndefined();
+	});
+
+	it("expands activeContexts for sub-action execution so child gates pass", async () => {
+		// Reproduce the production case: parent and children with non-overlapping
+		// `contexts`. Without ctx expansion, the per-action context gate in
+		// execute-planned-tool-call.ts rejects the child even though the parent's
+		// `subActions` declaration explicitly authorized it.
+		const child = makeAction({
+			name: "CHILD",
+			contexts: ["web"],
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			contexts: ["research_workflow"],
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "CHILD", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "ok",
+			data: { actionName: "CHILD" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: {
+				message: makeMessage(),
+				activeContexts: ["research_workflow"],
+			},
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		// The execute callback must receive a ctx where activeContexts now includes
+		// the child's contexts (so the gate admits it). The original parent
+		// activeContexts is preserved as well.
+		const [, executedCtx] = execute.mock.calls[0] ?? [];
+		expect(executedCtx).toBeDefined();
+		const activeContexts = (executedCtx as { activeContexts?: string[] })
+			?.activeContexts;
+		expect(activeContexts).toEqual(
+			expect.arrayContaining(["research_workflow", "web"]),
+		);
+	});
 });

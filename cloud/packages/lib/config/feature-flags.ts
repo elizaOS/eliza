@@ -1,6 +1,5 @@
 export type FeatureFlag =
   | "mcp"
-  | "characterBuilder"
   | "containers"
   | "gallery"
   | "memories"
@@ -25,11 +24,6 @@ export const FEATURE_FLAGS: FeatureFlagsMap = {
     enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_MCP, true),
     name: "MCP Integration",
     description: "Model Context Protocol integration and management",
-  },
-  characterBuilder: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_CHARACTER_BUILDER, true),
-    name: "Character Builder",
-    description: "Visual character creation and editing tool",
   },
   containers: {
     enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_CONTAINERS, true),
@@ -74,10 +68,6 @@ export const FEATURE_ROUTE_MAP: Record<FeatureFlag, { frontend: string[]; api: s
   mcp: {
     frontend: ["/dashboard/mcps"],
     api: ["/api/mcp", "/api/v1/mcp"],
-  },
-  characterBuilder: {
-    frontend: ["/dashboard/build"],
-    api: [],
   },
   containers: {
     frontend: ["/dashboard/containers"],

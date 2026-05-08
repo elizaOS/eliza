@@ -8,10 +8,10 @@
 import { platform } from "node:os";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-// IMESSAGE_SEND_MESSAGE was a standalone action that duplicated the
-// MessageConnector path. The connector (registered by IMessageService.
-// registerSendHandlers) is now the canonical way to deliver — SEND_MESSAGE
-// routes through it. This plugin no longer registers its own send action.
+// The former iMessage-specific send action duplicated the MessageConnector
+// path. The connector registered by IMessageService.registerSendHandlers is
+// now the canonical delivery path through MESSAGE operation=send. This plugin
+// no longer registers its own send action.
 import { chatContextProvider, contactsProvider } from "./providers/index.js";
 import {
   chatDbMessageToPublicShape,

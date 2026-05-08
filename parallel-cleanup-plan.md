@@ -15,7 +15,7 @@ This plan treats the cleanup as one concurrent push, not sequential phases. Each
 - `descriptionCompressed` is already auto-derived by `compressPromptDescription`, with a 160-char cap and protected technical spans. What is missing is linting, author guidance, and hand-fixing bad descriptions.
 - Trajectory helpers already exist in `packages/core/src/trajectory-utils.ts`: `recordLlmCall`, `withActionStep`, `withProviderStep`, `withEvaluatorStep`, `spawnWithTrajectoryLink`.
 - `runtime.useModel` already has fallback trajectory logging through `packages/agent/src/runtime/prompt-optimization.ts`.
-- `processActions` currently calls `action.handler(...)` directly. It must be wrapped in `withActionStep`.
+- Planned tool execution currently calls `action.handler(...)` directly. It should be wrapped in `withActionStep`.
 - Provider/evaluator dispatch paths should be wrapped in `withProviderStep` / `withEvaluatorStep` if not already.
 - All raw SDK/fetch LLM-like calls must use `recordLlmCall`.
 
@@ -81,7 +81,7 @@ TODO:
 - [ ] Add tests for category registration, duplicate category behavior, filter metadata, and disabled/missing category errors.
 
 Acceptance:
-- `WEB_SEARCH`, `SEARCH_X`, `SEARCH_LINEAR_ISSUES`, `SEARCH_YOUTUBE`, `SEARCH_KNOWLEDGE`, `SEARCH_PLUGINS`, `SEARCH_VECTORS`, etc. can be migrated to one `SEARCH` action without losing backend-specific metadata.
+- `WEB_SEARCH`, `SEARCH_POSTS`, `SEARCH_LINEAR_ISSUES`, `SEARCH_YOUTUBE`, `SEARCH_KNOWLEDGE`, `SEARCH_PLUGINS`, `SEARCH_VECTORS`, etc. can be migrated to one `SEARCH` action without losing backend-specific metadata.
 
 ## Workstream 03 - Core Action Grouping And TOON Formatting
 
@@ -134,7 +134,7 @@ Owner paths:
 - Trajectory tests
 
 TODO:
-- [ ] Wrap `processActions` handler invocation with `withActionStep(runtime, action.name, ...)`.
+- [ ] Wrap planned tool handler invocation with `withActionStep(runtime, action.name, ...)`.
 - [ ] Wrap provider rendering with `withProviderStep`.
 - [ ] Wrap evaluator dispatch with `withEvaluatorStep`.
 - [ ] Verify child steps link to parent via `appendChildSteps`.
@@ -382,7 +382,7 @@ Owner paths:
 - `plugins/plugin-wallet/src/analytics/birdeye`
 
 TODO:
-- [ ] Convert `SEARCH_LINEAR_ISSUES`, `SEARCH_SHOPIFY_STORE`, `SEARCH_YOUTUBE`, `SEARCH_X`, `SEARCH_MESSAGES`, `SEARCH_SKILLS`, `DEXSCREENER_SEARCH`, Birdeye token searches to category registrations.
+- [ ] Convert `SEARCH_LINEAR_ISSUES`, `SEARCH_SHOPIFY_STORE`, `SEARCH_YOUTUBE`, `SEARCH_POSTS`, `SEARCH_MESSAGES`, `SEARCH_SKILLS`, `DEXSCREENER_SEARCH`, Birdeye token searches to category registrations.
 - [ ] Delete old action exports after `SEARCH` tests pass.
 - [ ] Preserve backend-specific filters as metadata.
 - [ ] Convert prompts/examples to TOON.

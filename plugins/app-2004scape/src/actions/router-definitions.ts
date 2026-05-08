@@ -15,7 +15,7 @@ export interface Rs2004RouterDefinition {
 
 export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
   {
-    name: "SKILL_OP",
+    name: "SKILL",
     description:
       "Route 2004scape skilling actions: chop, mine, fish, burn, cook, fletch, craft, smith.",
     descriptionCompressed:
@@ -80,7 +80,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "INVENTORY_OP",
+    name: "RS_2004_INVENTORY",
     description:
       "Route 2004scape inventory operations: drop, pickup, equip, unequip, use, use-on-item, use-on-object.",
     descriptionCompressed:
@@ -138,7 +138,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "BANK_OP",
+    name: "BANK",
     description:
       "Route 2004scape banking operations: open, close, deposit, withdraw.",
     descriptionCompressed: "Bank ops: open, close, deposit, withdraw.",
@@ -174,7 +174,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "SHOP_OP",
+    name: "SHOP",
     description: "Route 2004scape shop operations: open, close, buy, sell.",
     descriptionCompressed: "Shop ops: open, close, buy, sell.",
     subactions: [
@@ -209,7 +209,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "COMBAT_OP",
+    name: "COMBAT",
     description:
       "Route 2004scape combat operations: attack, cast-spell, set-style, eat.",
     descriptionCompressed: "Combat ops: attack, cast-spell, set-style, eat.",
@@ -245,7 +245,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "INTERACT_OP",
+    name: "INTERACT",
     description:
       "Route 2004scape world interactions: talk, navigate-dialog, interact-object, open-door, pickpocket.",
     descriptionCompressed:

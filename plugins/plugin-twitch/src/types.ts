@@ -37,6 +37,8 @@ export type TwitchRole = "moderator" | "owner" | "vip" | "subscriber" | "all";
 
 /** Configuration settings for the Twitch plugin */
 export interface TwitchSettings {
+  /** Connector account identifier for this Twitch bot instance */
+  accountId?: string;
   /** Twitch username for the bot account */
   username: string;
   /** Twitch application client ID */

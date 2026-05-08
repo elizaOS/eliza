@@ -21,6 +21,10 @@ import {
   searchDriveFiles,
   updateSheetCells,
 } from "./google-drive.js";
+import {
+  getDriveFileWithGoogleWorkspaceBridge,
+  searchDriveFilesWithGoogleWorkspaceBridge,
+} from "./google-workspace-bridge.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
@@ -179,6 +183,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose paged Drive folder listing, so this path still uses the
+        // legacy LifeOps token until a paged account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return listDriveFiles({
           accessToken,
@@ -215,6 +222,33 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        const bridgeGet = await getDriveFileWithGoogleWorkspaceBridge({
+          runtime: this.runtime,
+          grant,
+          fileId: request.fileId,
+        });
+        if (bridgeGet.status === "handled") {
+          return bridgeGet.value;
+        }
+        if (bridgeGet.error) {
+          this.logLifeOpsWarn(
+            "google_workspace_bridge_fallback",
+            bridgeGet.reason,
+            {
+              provider: "google",
+              operation: "drive.getFile",
+              grantId: grant.id,
+              mode: grant.mode,
+              error:
+                bridgeGet.error instanceof Error
+                  ? bridgeGet.error.message
+                  : String(bridgeGet.error),
+            },
+          );
+        }
+        // Deprecated transition fallback: plugin-google is the primary Drive
+        // file metadata path; this local-token REST path remains only for
+        // unmigrated Google credential records.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getDriveFile({ accessToken, fileId: request.fileId });
       };
@@ -247,6 +281,34 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        const bridgeSearch = await searchDriveFilesWithGoogleWorkspaceBridge({
+          runtime: this.runtime,
+          grant,
+          query: request.query,
+          maxResults: request.maxResults,
+        });
+        if (bridgeSearch.status === "handled") {
+          return bridgeSearch.value;
+        }
+        if (bridgeSearch.error) {
+          this.logLifeOpsWarn(
+            "google_workspace_bridge_fallback",
+            bridgeSearch.reason,
+            {
+              provider: "google",
+              operation: "drive.searchFiles",
+              grantId: grant.id,
+              mode: grant.mode,
+              error:
+                bridgeSearch.error instanceof Error
+                  ? bridgeSearch.error.message
+                  : String(bridgeSearch.error),
+            },
+          );
+        }
+        // Deprecated transition fallback: plugin-google is the primary Drive
+        // search path; this local-token REST path remains only for unmigrated
+        // Google credential records.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return searchDriveFiles({
           accessToken,
@@ -282,6 +344,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose Docs content reads, so this path still uses the legacy
+        // LifeOps token until an account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getDocContent({ accessToken, documentId: request.documentId });
       };
@@ -314,6 +379,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose Sheets content reads, so this path still uses the legacy
+        // LifeOps token until an account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getSheetContent({
           accessToken,
@@ -353,6 +421,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose Drive file writes, so this path still uses the legacy
+        // LifeOps token until an account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return createDriveFile({
           accessToken,
@@ -391,6 +462,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose Docs writes, so this path still uses the legacy LifeOps token
+        // until an account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return appendToDoc({
           accessToken,
@@ -429,6 +503,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
+        // Deprecated transition fallback only: plugin-google does not yet
+        // expose Sheets writes, so this path still uses the legacy LifeOps
+        // token until an account-scoped method exists.
         const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return updateSheetCells({
           accessToken,

@@ -533,7 +533,7 @@ function decorateTaskWithSkillHint(
     )
   ) {
     lines.push(
-      `For LifeOps context, ask the parent with \`USE_SKILL lifeops-context {"category":"email|calendar|inbox|priority|contacts|scratchpad|search|context","query":"...","limit":5}\`.`,
+      `For LifeOps context, ask the parent with \`USE_SKILL lifeops-context {"category":"email|calendar|inbox|priority|contacts|documents|search|context","query":"...","limit":5}\`.`,
     );
   }
   lines.push("--- End skills ---");

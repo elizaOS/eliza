@@ -18,7 +18,7 @@ import type { State } from "./state";
  * Phases include message/reply steps (`incoming_before_compose`, …, `outgoing_before_deliver`),
  * model I/O (`pre_model` / `post_model` around `useModel`), `after_memory_persisted` after
  * `createMemory` commits, and **stream** hooks (`model_stream_chunk` / `model_stream_end`) on
- * raw `useModel` `textStream` plus async boundaries (message service, `processActions`, …).
+ * raw `useModel` `textStream` plus async message-service boundaries.
  *
  * **Observability:** each handler invocation emits `EventType.PIPELINE_HOOK_METRIC` (when
  * listeners are registered) and logs at debug / warn / error thresholds — see
@@ -92,7 +92,7 @@ export type PipelineHookPhase =
 	| "after_memory_persisted"
 	/**
 	 * Per stream delta: raw provider tokens from `useModel`'s `textStream` loop (`source: "use_model"`),
-	 * plus **async** `onStreamChunk` boundaries (`message_service`, `process_actions`, …).
+	 * plus **async** `onStreamChunk` boundaries (`message_service`, …).
 	 * On Node, `message_service` is skipped while delivering the same chunk from `useModel`
 	 * (see `getModelStreamChunkDeliveryDepth` in `streaming-context.ts`) to avoid duplicate hooks.
 	 * High frequency: default `applyPipelineHooks` disables per-hook telemetry for this phase.
@@ -109,7 +109,6 @@ export type PipelineHookPhase =
 export type ModelStreamHookSource =
 	| "use_model"
 	| "message_service"
-	| "process_actions"
 	| "dpe"
 	| (string & {});
 

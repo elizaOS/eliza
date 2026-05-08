@@ -16,6 +16,12 @@ export { cacheTable } from "./cache";
 export { channelTable } from "./channel";
 export { channelParticipantsTable } from "./channelParticipant";
 export { componentTable } from "./component";
+export {
+  connectorAccountAuditEventsTable,
+  connectorAccountCredentialsTable,
+  connectorAccountsTable,
+  oauthFlowsTable,
+} from "./connectorAccounts";
 export { embeddingTable } from "./embedding";
 export { entityTable } from "./entity";
 export {

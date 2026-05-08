@@ -76,6 +76,43 @@ CONTEXTS = [
     "admin",
     "agent_internal",
 ]
+STOPWORDS = {
+    "about",
+    "above",
+    "after",
+    "again",
+    "assistant",
+    "before",
+    "being",
+    "could",
+    "every",
+    "final",
+    "first",
+    "format",
+    "given",
+    "human",
+    "large",
+    "message",
+    "model",
+    "original",
+    "please",
+    "question",
+    "response",
+    "should",
+    "source",
+    "system",
+    "their",
+    "there",
+    "these",
+    "thing",
+    "tools",
+    "trained",
+    "using",
+    "value",
+    "where",
+    "which",
+    "would",
+}
 
 MESSAGE_HANDLER_TOOL = {
     "type": "function",
@@ -293,7 +330,7 @@ def build_dataset_prompt_template(
             f"Missing signals to fill: {', '.join(missing) if missing else 'none'}",
             f"Native coverage: {json.dumps(coverage, ensure_ascii=False, sort_keys=True)}",
             "Synthesis templates:",
-            json_dump(selected_templates, max_chars=3500),
+            json_dump(selected_templates, max_chars=2200),
         ]
     )
 
@@ -367,13 +404,13 @@ Canonical MESSAGE_HANDLER_PLAN tool:
 {json_dump(MESSAGE_HANDLER_TOOL, max_chars=2500)}
 
 Real Eliza reference snippets:
-{json_dump(reference_rows, max_chars=6500)}
+{json_dump(reference_rows, max_chars=3600)}
 
 Dataset-specific prompt template:
 {dataset_template}
 
 Source sample:
-{json_dump(source_payload, max_chars=6500)}
+{json_dump(source_payload, max_chars=4600)}
 
 Expected task rows for this sample: {", ".join(expected)}.
 
@@ -436,6 +473,8 @@ def call_cerebras(
     timeout: int,
     temperature: float,
     response_format: bool,
+    rate_limit_retries: int,
+    rate_limit_sleep: float,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -444,25 +483,33 @@ def call_cerebras(
     }
     if response_format:
         payload["response_format"] = {"type": "json_object"}
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "OpenAI/Python 1.0.0",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return {"error": {"status": exc.code, "body": body}}
-    except Exception as exc:  # noqa: BLE001
-        return {"error": {"type": type(exc).__name__, "message": str(exc)}}
+    last: dict[str, Any] | None = None
+    for attempt in range(rate_limit_retries + 1):
+        request = urllib.request.Request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "OpenAI/Python 1.0.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last = {"error": {"status": exc.code, "body": body}}
+            if exc.code == 429 and attempt < rate_limit_retries:
+                time.sleep(rate_limit_sleep * (attempt + 1))
+                continue
+            return last
+        except Exception as exc:  # noqa: BLE001
+            last = {"error": {"type": type(exc).__name__, "message": str(exc)}}
+            return last
+    return last or {"error": {"type": "unknown", "message": "request failed"}}
 
 
 def strip_json_text(text: str) -> str:
@@ -555,6 +602,383 @@ def request_text(request: dict[str, Any]) -> str:
     return "\n".join(parts).lower()
 
 
+def collect_text(value: Any, out: list[str]) -> None:
+    if isinstance(value, str):
+        out.append(value)
+    elif isinstance(value, list):
+        for item in value:
+            collect_text(item, out)
+    elif isinstance(value, dict):
+        for item in value.values():
+            collect_text(item, out)
+
+
+def content_tokens(value: Any) -> set[str]:
+    texts: list[str] = []
+    collect_text(value, texts)
+    joined = "\n".join(texts).lower()
+    tokens = set(re.findall(r"[a-z0-9_][a-z0-9_'-]{3,}", joined))
+    return {token for token in tokens if token not in STOPWORDS and not token.startswith("truncated")}
+
+
+def text_fragments(value: Any) -> list[str]:
+    fragments: list[str] = []
+    collect_text(value, fragments)
+    return [fragment.strip() for fragment in fragments if fragment.strip()]
+
+
+def sanitize_task_text(text: str) -> str:
+    replacements = {
+        "Gemini": "a secondary AI model",
+        "gemini": "a secondary AI model",
+        "TOON": "native JSON",
+        "toon": "native JSON",
+    }
+    out = text
+    for source, target in replacements.items():
+        out = out.replace(source, target)
+    return out
+
+
+def extract_source_task(sample: dict[str, Any], row: dict[str, Any] | None = None) -> str:
+    fragments = text_fragments(sample.get("preview"))
+    combined = "\n".join(fragments)
+    action_inputs = re.findall(r'"action_input"\s*:\s*"([^"]{6,240})"', combined)
+    actions = re.findall(r'"action"\s*:\s*"([^"]{3,120})"', combined)
+    for action, action_input in zip(actions, action_inputs):
+        if action.lower() not in {"final answer", "final_answer"}:
+            return sanitize_task_text(action_input.strip())
+    if action_inputs:
+        return sanitize_task_text(action_inputs[0].strip())
+
+    preview = sample.get("preview")
+    if isinstance(preview, dict) and isinstance(preview.get("messages"), list):
+        for message in reversed(preview["messages"]):
+            if not isinstance(message, dict):
+                continue
+            role = str(message.get("role") or message.get("from") or "").lower()
+            content = str(message.get("content") or message.get("value") or "").strip()
+            if role in {"user", "human"} and content and not content.lstrip().startswith("TOOLS"):
+                return sanitize_task_text(content[:600])
+
+    if row:
+        request = row.get("request") if isinstance(row.get("request"), dict) else {}
+        messages = request.get("messages")
+        if isinstance(messages, list):
+            for message in reversed(messages):
+                if isinstance(message, dict) and message.get("role") == "user":
+                    content = str(message.get("content") or "").strip()
+                    if content:
+                        return sanitize_task_text(content[:600])
+        prompt = request.get("prompt")
+        if isinstance(prompt, str) and prompt.strip():
+            return sanitize_task_text(prompt.strip()[:600])
+
+    for fragment in fragments:
+        if "_read_error" not in fragment and len(fragment) > 12:
+            return sanitize_task_text(fragment[:600])
+    return "Handle the current user request using the selected Eliza context."
+
+
+def infer_contexts(sample: dict[str, Any], parsed: dict[str, Any], row: dict[str, Any]) -> list[str]:
+    fillins = parsed.get("fillins") if isinstance(parsed.get("fillins"), dict) else {}
+    context_value = fillins.get("contexts") if isinstance(fillins.get("contexts"), dict) else {}
+    contexts = context_value.get("value")
+    if isinstance(contexts, list):
+        out = [str(item) for item in contexts if str(item) in CONTEXTS]
+        if out:
+            return out[:4]
+
+    response = row.get("response") if isinstance(row.get("response"), dict) else {}
+    for raw_call in response.get("toolCalls") or []:
+        call = normalize_tool_call(raw_call)
+        if not call or call["name"] != "MESSAGE_HANDLER_PLAN":
+            continue
+        args = call.get("args") if isinstance(call.get("args"), dict) else {}
+        plan = args.get("plan") if isinstance(args.get("plan"), dict) else {}
+        raw_contexts = plan.get("contexts")
+        if isinstance(raw_contexts, list):
+            out = [str(item) for item in raw_contexts if str(item) in CONTEXTS]
+            if out:
+                return out[:4]
+
+    text = "\n".join(text_fragments(sample.get("preview"))).lower()
+    if "vector search" in text or "knowledge" in text or "document" in text:
+        return ["knowledge"]
+    if "browser" in text or "tab" in text:
+        return ["browser"]
+    if "web search" in text or "latest" in text or "current" in text:
+        return ["web"]
+    return ["general"]
+
+
+def context_registry() -> str:
+    return ",".join(CONTEXTS)
+
+
+def message_handler_system() -> str:
+    registry = context_registry()
+    return (
+        "user_role: OWNER\n\n"
+        "context-registry:\n"
+        f"context_registry_digest: {registry}\n\n"
+        "instruction:system:\n"
+        f"available_contexts: {registry}\n\n"
+        "context:\n"
+        "message_handler_stage:\n"
+        "task: Decide the plan for this direct message."
+    )
+
+
+def user_stage_message(task: str) -> str:
+    task = sanitize_task_text(task)
+    return (
+        "provider:RECENT_MESSAGES:\n"
+        "provider: RECENT_MESSAGES\n"
+        "# Conversation Messages\n"
+        f"SourceUser: {task}\n\n"
+        "# Received Message\n"
+        f"SourceUser: {task}\n\n"
+        "message:user:\n"
+        f"{task}"
+    )
+
+
+def normalize_tools(tools: Any, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    if isinstance(tools, list):
+        for raw_tool in tools:
+            if not isinstance(raw_tool, dict):
+                continue
+            name = raw_tool.get("name") or raw_tool.get("toolName")
+            if not is_nonempty_string(name):
+                continue
+            parameters = raw_tool.get("parameters") or raw_tool.get("inputSchema")
+            if not isinstance(parameters, dict):
+                parameters = {"type": "object", "additionalProperties": True, "properties": {}}
+            normalized.append(
+                {
+                    "type": raw_tool.get("type") or "function",
+                    "name": str(name),
+                    "description": str(raw_tool.get("description") or f"Eliza tool {name}."),
+                    "parameters": parameters,
+                    **({"strict": raw_tool["strict"]} if "strict" in raw_tool else {}),
+                }
+            )
+    known = {tool["name"] for tool in normalized}
+    for call in tool_calls:
+        name = str(call.get("name") or "")
+        if not name or name in known:
+            continue
+        normalized.append(
+            {
+                "type": "function",
+                "name": name,
+                "description": f"Execute the Eliza action `{name}`.",
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {},
+                },
+            }
+        )
+        known.add(name)
+    return normalized
+
+
+def normalize_tool_calls(raw_calls: Any) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    if not isinstance(raw_calls, list):
+        return calls
+    for index, raw in enumerate(raw_calls):
+        call = normalize_tool_call(raw)
+        if not call:
+            continue
+        calls.append(
+            {
+                "id": str((raw.get("id") or raw.get("toolCallId") or f"call_{index + 1}") if isinstance(raw, dict) else f"call_{index + 1}"),
+                "name": str(call["name"]),
+                "args": call.get("args") if isinstance(call.get("args"), dict) else {},
+            }
+        )
+    return calls
+
+
+def planner_system(contexts: list[str], tools: list[dict[str, Any]]) -> str:
+    tool_blocks = []
+    for tool in tools:
+        tool_blocks.append(
+            "tool:\n"
+            f"tool: {tool.get('name')}\n"
+            f"description: {tool.get('description', '')}"
+        )
+    return (
+        "user_role: OWNER\n\n"
+        "context-registry:\n"
+        f"context_registry_digest: {context_registry()}\n\n"
+        "selected-contexts:\n"
+        f"selected_contexts: {','.join(contexts)}\n\n"
+        + "\n\n".join(tool_blocks)
+        + "\n\nplanner_stage:\n"
+        "task: Choose the next native tool call or final response."
+    )
+
+
+def evaluator_system(contexts: list[str]) -> str:
+    return (
+        "user_role: OWNER\n\n"
+        "context-registry:\n"
+        f"context_registry_digest: {context_registry()}\n\n"
+        "selected-contexts:\n"
+        f"selected_contexts: {','.join(contexts)}\n\n"
+        "evaluation_stage:\n"
+        "task: Evaluate whether the prior plan/tool result completed the user request."
+    )
+
+
+def canonicalize_output(
+    parsed: dict[str, Any],
+    *,
+    sample: dict[str, Any],
+    dataset_info: dict[str, Any],
+) -> dict[str, Any]:
+    rows = parsed.get("nativeRows")
+    if not isinstance(rows, list):
+        return parsed
+    expected = expected_task_types(sample, dataset_info)
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        task_type = metadata.get("task_type") or infer_task_from_row(row)
+        if task_type not in ALLOWED_TASK_TYPES:
+            task_type = expected[min(index, len(expected) - 1)] if expected else "response"
+        contexts = infer_contexts(sample, parsed, row)
+        task = extract_source_task(sample, row)
+        request = row.get("request") if isinstance(row.get("request"), dict) else {}
+        response = row.get("response") if isinstance(row.get("response"), dict) else {}
+        tool_calls = normalize_tool_calls(response.get("toolCalls"))
+
+        row["format"] = "eliza_native_v1"
+        row["schemaVersion"] = 1
+        row["boundary"] = row.get("boundary") if row.get("boundary") in NATIVE_BOUNDARIES else "vercel_ai_sdk.generateText"
+        row["source"] = row.get("source") or "synthetic_dataset_fillin"
+        row["model"] = row.get("model") or "gpt-oss-120b"
+        row["provider"] = row.get("provider") or "cerebras"
+        row.pop("cacheStats", None)
+        row["metadata"] = {
+            **metadata,
+            "task_type": "response" if task_type == "reply" else task_type,
+            "source_dataset": str(sample.get("dataset")),
+            "source_sample_index": sample.get("sampleIndex"),
+            "source_row_index": sample.get("rowIndex"),
+            "synthetic": True,
+            "synthesis_model": "cerebras/gpt-oss-120b",
+        }
+        inferred = row["metadata"].get("inferred_fields")
+        if not isinstance(inferred, list):
+            inferred = []
+        for field in ("contexts", "request.messages"):
+            if field not in inferred:
+                inferred.append(field)
+        row["metadata"]["inferred_fields"] = inferred
+
+        if task_type == "should_respond":
+            row["purpose"] = "messageHandler"
+            row["stepType"] = "messageHandler"
+            message_handler_call = None
+            for call in tool_calls:
+                if call["name"] == "MESSAGE_HANDLER_PLAN":
+                    message_handler_call = call
+                    break
+            if not message_handler_call:
+                message_handler_call = {
+                    "id": "call_1",
+                    "name": "MESSAGE_HANDLER_PLAN",
+                    "args": {
+                        "thought": "Route the source request to the inferred Eliza contexts.",
+                        "plan": {"contexts": contexts},
+                    },
+                }
+            args = message_handler_call.get("args") if isinstance(message_handler_call.get("args"), dict) else {}
+            plan = args.get("plan") if isinstance(args.get("plan"), dict) else {}
+            plan.setdefault("contexts", contexts)
+            args["plan"] = plan
+            args.setdefault("thought", "Route the source request to the inferred Eliza contexts.")
+            message_handler_call["args"] = args
+            row["request"] = {
+                "messages": [
+                    {"role": "system", "content": message_handler_system()},
+                    {"role": "user", "content": user_stage_message(task)},
+                ],
+                "prompt": "",
+                "toolChoice": "required",
+                "tools": [MESSAGE_HANDLER_TOOL],
+            }
+            row["response"] = {
+                "text": json.dumps(
+                    {
+                        "processMessage": "RESPOND",
+                        "plan": plan,
+                        "action": "RESPOND",
+                        "contexts": plan.get("contexts", contexts),
+                        "thought": args.get("thought"),
+                        **({"reply": plan.get("reply")} if plan.get("reply") else {}),
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                "toolCalls": [message_handler_call],
+            }
+            continue
+
+        if task_type == "action_planner":
+            row["purpose"] = "planner"
+            row["stepType"] = "planner"
+            tools = normalize_tools(request.get("tools"), tool_calls)
+            row["request"] = {
+                "messages": [
+                    {"role": "system", "content": planner_system(contexts, tools)},
+                    {"role": "user", "content": user_stage_message(task)},
+                ],
+                "prompt": "",
+                "toolChoice": request.get("toolChoice") if request.get("toolChoice") in {"auto", "required"} else "auto",
+                "tools": tools,
+            }
+            response.pop("usage", None)
+            response.pop("providerMetadata", None)
+            row["response"] = {
+                "text": response.get("text") if isinstance(response.get("text"), str) else "",
+                "finishReason": response.get("finishReason") or ("tool-calls" if tool_calls else "stop"),
+                "toolCalls": tool_calls,
+            }
+            continue
+
+        if task_type == "evaluator":
+            row["purpose"] = "evaluation"
+            row["stepType"] = "evaluation"
+            row["request"] = {
+                "messages": [
+                    {"role": "system", "content": evaluator_system(contexts)},
+                    {"role": "user", "content": user_stage_message(task)},
+                ],
+                "prompt": "",
+            }
+            response.pop("usage", None)
+            response.pop("providerMetadata", None)
+            text = response.get("text") if isinstance(response.get("text"), str) else ""
+            if not text.strip():
+                text = json.dumps(
+                    {"decision": "FINISH", "success": True, "thought": "Synthetic evaluator fill-in."},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            row["response"] = {"text": text}
+    parsed["nativeRows"] = rows
+    parsed["canonicalized"] = True
+    return parsed
+
+
 def strip_provider_reasoning(value: Any) -> Any:
     if isinstance(value, list):
         return [strip_provider_reasoning(item) for item in value]
@@ -596,6 +1020,10 @@ def evaluate_output(
     if parsed.get("sampleIndex") != sample.get("sampleIndex"):
         issues.append("top-level sampleIndex does not match source sample")
 
+    preview = sample.get("preview")
+    if isinstance(preview, dict) and "_read_error" in preview:
+        hard_failures.append("source preview has a read error; fix/resample dataset before fill-in")
+
     fillins = parsed.get("fillins")
     if not isinstance(fillins, dict):
         issues.append("missing fillins object")
@@ -617,6 +1045,18 @@ def evaluate_output(
     for forbidden in FORBIDDEN_OUTPUT_TOKENS:
         if forbidden in all_row_text:
             hard_failures.append(f"forbidden token present in nativeRows: {forbidden}")
+
+    task_tokens = content_tokens(extract_source_task(sample))
+    source_tokens = content_tokens(sample.get("preview"))
+    output_tokens = content_tokens(rows)
+    if task_tokens and len(task_tokens) >= 2:
+        overlap = task_tokens & output_tokens
+        if len(overlap) < 1:
+            hard_failures.append("nativeRows do not preserve enough source-specific content")
+    elif source_tokens and len(source_tokens) >= 8:
+        overlap = source_tokens & output_tokens
+        if len(overlap) < 2:
+            hard_failures.append("nativeRows do not preserve enough source-specific content")
 
     for index, row in enumerate(rows):
         label = f"nativeRows[{index}]"
@@ -794,6 +1234,8 @@ def run_one(
                 timeout=args.timeout,
                 temperature=args.temperature,
                 response_format=True,
+                rate_limit_retries=args.rate_limit_retries,
+                rate_limit_sleep=args.rate_limit_sleep,
             )
             if (
                 "error" in response
@@ -809,8 +1251,14 @@ def run_one(
                     timeout=args.timeout,
                     temperature=args.temperature,
                     response_format=False,
+                    rate_limit_retries=args.rate_limit_retries,
+                    rate_limit_sleep=args.rate_limit_sleep,
                 )
+            if args.request_sleep > 0:
+                time.sleep(args.request_sleep)
             parsed, raw_text, parse_error = parse_cerebras_json(response)
+            if parsed is not None and args.canonicalize:
+                parsed = canonicalize_output(parsed, sample=sample, dataset_info=dataset_info)
 
         evaluation = evaluate_output(
             parsed,
@@ -857,11 +1305,15 @@ def select_samples(
     samples_per_dataset: int,
     limit_datasets: int,
     dataset_filter: set[str],
+    pair_filter: set[tuple[str, int]],
 ) -> list[dict[str, Any]]:
     by_dataset: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for sample in samples:
         dataset = str(sample.get("dataset"))
         if dataset_filter and dataset not in dataset_filter:
+            continue
+        sample_index = int(sample.get("sampleIndex") or 0)
+        if pair_filter and (dataset, sample_index) not in pair_filter:
             continue
         by_dataset[dataset].append(sample)
 
@@ -875,6 +1327,32 @@ def select_samples(
         rows = sorted(by_dataset[dataset], key=lambda item: int(item.get("sampleIndex") or 0))
         selected.extend(rows[:samples_per_dataset])
     return selected
+
+
+def load_failed_pairs(path: Path, *, reason_pattern: str = "") -> set[tuple[str, int]]:
+    pairs: set[tuple[str, int]] = set()
+    if not path.exists():
+        raise SystemExit(f"failed-results path does not exist: {path}")
+    compiled = re.compile(reason_pattern) if reason_pattern else None
+    for row in read_jsonl(path):
+        evaluation = row.get("evaluation") if isinstance(row.get("evaluation"), dict) else {}
+        if evaluation.get("passed"):
+            continue
+        if compiled:
+            reason_text = json.dumps(
+                {
+                    "hardFailures": evaluation.get("hardFailures") or [],
+                    "issues": evaluation.get("issues") or [],
+                },
+                ensure_ascii=False,
+            )
+            if not compiled.search(reason_text):
+                continue
+        dataset = row.get("dataset")
+        sample_index = row.get("sampleIndex")
+        if isinstance(dataset, str) and isinstance(sample_index, int):
+            pairs.add((dataset, sample_index))
+    return pairs
 
 
 def summarize_run(
@@ -1023,6 +1501,16 @@ def main() -> int:
     parser.add_argument("--samples-per-dataset", type=int, default=3)
     parser.add_argument("--limit-datasets", type=int, default=0)
     parser.add_argument("--datasets", default="", help="Comma-separated dataset allowlist.")
+    parser.add_argument(
+        "--only-failed-from",
+        default="",
+        help="Optional fillin_final_results.jsonl; selects only failed dataset/sample pairs.",
+    )
+    parser.add_argument(
+        "--only-failed-reason",
+        default="",
+        help="Regex filter applied to failed hardFailures/issues when --only-failed-from is set.",
+    )
     parser.add_argument("--max-iterations", type=int, default=3)
     parser.add_argument("--min-score", type=float, default=0.82)
     parser.add_argument("--workers", type=int, default=4)
@@ -1031,7 +1519,12 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--retry-sleep", type=float, default=0.25)
+    parser.add_argument("--rate-limit-retries", type=int, default=3)
+    parser.add_argument("--rate-limit-sleep", type=float, default=20.0)
+    parser.add_argument("--request-sleep", type=float, default=0.0)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-canonicalize", dest="canonicalize", action="store_false")
+    parser.set_defaults(canonicalize=True)
     parser.add_argument("--keep-raw-text", action="store_true")
     args = parser.parse_args()
 
@@ -1046,12 +1539,18 @@ def main() -> int:
     dataset_order = [item.get("dataset") for item in json.loads(Path(args.templates).read_text(encoding="utf-8")).get("datasets", [])] if Path(args.templates).exists() else []
     dataset_order = [str(item) for item in dataset_order if item]
     dataset_filter = {item.strip() for item in args.datasets.split(",") if item.strip()}
+    pair_filter = (
+        load_failed_pairs(Path(args.only_failed_from), reason_pattern=args.only_failed_reason)
+        if args.only_failed_from
+        else set()
+    )
     selected = select_samples(
         samples,
         dataset_order=dataset_order,
         samples_per_dataset=args.samples_per_dataset,
         limit_datasets=args.limit_datasets,
         dataset_filter=dataset_filter,
+        pair_filter=pair_filter,
     )
     if not selected:
         raise SystemExit("no samples selected")

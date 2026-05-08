@@ -46,6 +46,13 @@ export const GITHUB_PULL_REQUESTS_SEARCH_CATEGORY: SearchCategoryRegistration =
         ],
       },
       {
+        name: "accountId",
+        label: "Account",
+        description:
+          "Optional configured GitHub account id. Defaults by identity role.",
+        type: "string",
+      },
+      {
         name: "limit",
         label: "Limit",
         description: "Maximum pull requests to return.",

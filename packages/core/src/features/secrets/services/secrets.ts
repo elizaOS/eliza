@@ -6,10 +6,6 @@
  * with encryption, access control, and change notification support.
  */
 
-import {
-	resolveSecretKeyAlias,
-	SECRET_KEY_ALIASES,
-} from "../../../character-utils.ts";
 import { logger } from "../../../logger.ts";
 import {
 	type IAgentRuntime,
@@ -133,14 +129,6 @@ export class SecretsService extends Service {
 			logger.info(`[SecretsService] Migrated ${migrated} legacy env vars`);
 		}
 
-		// Migrate aliased secret keys to canonical names
-		const aliasesMigrated = await this.migrateAliasedKeys();
-		if (aliasesMigrated > 0) {
-			logger.info(
-				`[SecretsService] Migrated ${aliasesMigrated} aliased keys to canonical names`,
-			);
-		}
-
 		const isSandboxMode = Boolean(
 			this.runtime &&
 				(this.runtime as unknown as Record<string, unknown>).sandboxMode,
@@ -175,47 +163,6 @@ export class SecretsService extends Service {
 	}
 
 	/**
-	 * Migrate secrets stored under aliased keys to their canonical names.
-	 * This ensures backward compatibility while standardizing key names.
-	 */
-	private async migrateAliasedKeys(): Promise<number> {
-		let migrated = 0;
-		const context: SecretContext = {
-			level: "global",
-			agentId: this.runtime.agentId,
-		};
-
-		for (const [alias, canonical] of Object.entries(SECRET_KEY_ALIASES)) {
-			// Check if old alias key exists
-			const aliasValue = await this.storage.get(alias, context);
-			if (aliasValue === null) {
-				continue;
-			}
-
-			// Check if canonical key already exists
-			const canonicalValue = await this.storage.get(canonical, context);
-			if (canonicalValue !== null) {
-				// Canonical already exists, skip (don't overwrite)
-				logger.debug(
-					`[SecretsService] Skipping migration of ${alias} - ${canonical} already exists`,
-				);
-				continue;
-			}
-
-			// Migrate: copy value to canonical key
-			const success = await this.storage.set(canonical, aliasValue, context);
-			if (success) {
-				migrated++;
-				logger.debug(
-					`[SecretsService] Migrated ${alias} to canonical name ${canonical}`,
-				);
-			}
-		}
-
-		return migrated;
-	}
-
-	/**
 	 * Stop the service
 	 */
 	async stop(): Promise<void> {
@@ -239,45 +186,19 @@ export class SecretsService extends Service {
 	 * Automatically resolves aliases to canonical names.
 	 */
 	async get(key: string, context: SecretContext): Promise<string | null> {
-		// Resolve alias to canonical name
-		const canonicalKey = resolveSecretKeyAlias(key);
+		this.logAccess(key, "read", context, true);
 
-		this.logAccess(canonicalKey, "read", context, true);
-
-		// Try canonical key first
-		let value = await this.storage.get(canonicalKey, context);
-
-		// If not found and original key was different, also try the original (for migration)
-		if (value === null && key !== canonicalKey) {
-			value = await this.storage.get(key, context);
-			// If found under old key, migrate to canonical key
-			if (value !== null) {
-				logger.debug(
-					`[SecretsService] Migrating ${key} to canonical name ${canonicalKey}`,
-				);
-				await this.storage.set(canonicalKey, value, context);
-				// Optionally delete old key (keeping for backward compatibility for now)
-			}
-		}
+		const value = await this.storage.get(key, context);
 
 		if (value === null) {
-			this.logAccess(canonicalKey, "read", context, false, "Secret not found");
+			this.logAccess(key, "read", context, false, "Secret not found");
 		}
 
 		return value;
 	}
 
 	/**
-	 * Resolve a secret key alias to its canonical name.
-	 * Convenience method that delegates to the shared utility.
-	 */
-	resolveSecretKey(key: string): string {
-		return resolveSecretKeyAlias(key);
-	}
-
-	/**
 	 * Set a secret value.
-	 * Automatically resolves aliases to canonical names.
 	 */
 	async set(
 		key: string,
@@ -285,54 +206,42 @@ export class SecretsService extends Service {
 		context: SecretContext,
 		config?: Partial<SecretConfig>,
 	): Promise<boolean> {
-		// Resolve alias to canonical name
-		const canonicalKey = resolveSecretKeyAlias(key);
+		this.logAccess(key, "write", context, true);
 
-		this.logAccess(canonicalKey, "write", context, true);
-
-		// Validate if validation method specified
 		if (config?.validationMethod && config.validationMethod !== "none") {
 			const validation = await this.validate(
-				canonicalKey,
+				key,
 				value,
 				config.validationMethod,
 			);
 			if (!validation.isValid) {
 				this.logAccess(
-					canonicalKey,
+					key,
 					"write",
 					context,
 					false,
 					`Validation failed: ${validation.error}`,
 				);
 				throw new SecretsError(
-					`Validation failed for ${canonicalKey}: ${validation.error}`,
+					`Validation failed for ${key}: ${validation.error}`,
 					"VALIDATION_FAILED",
-					{ key: canonicalKey, error: validation.error },
+					{ key, error: validation.error },
 				);
 			}
 		}
 
-		// Get previous value for change event
-		const previousValue = await this.storage.get(canonicalKey, context);
+		const previousValue = await this.storage.get(key, context);
 
-		const success = await this.storage.set(
-			canonicalKey,
-			value,
-			context,
-			config,
-		);
+		const success = await this.storage.set(key, value, context, config);
 
 		if (success) {
-			// Sync to process.env if global (using canonical key)
 			if (context.level === "global" && this.mirrorSecretsToProcessEnv) {
-				await this.globalStorage.syncToEnv(canonicalKey);
+				await this.globalStorage.syncToEnv(key);
 			}
 
-			// Emit change event
 			await this.emitChangeEvent({
 				type: previousValue === null ? "created" : "updated",
-				key: canonicalKey,
+				key,
 				value,
 				previousValue: previousValue ?? undefined,
 				context,
@@ -340,7 +249,7 @@ export class SecretsService extends Service {
 			});
 		} else {
 			this.logAccess(
-				canonicalKey,
+				key,
 				"write",
 				context,
 				false,
@@ -353,43 +262,28 @@ export class SecretsService extends Service {
 
 	/**
 	 * Delete a secret.
-	 * Automatically resolves aliases to canonical names.
 	 */
 	async delete(key: string, context: SecretContext): Promise<boolean> {
-		// Resolve alias to canonical name
-		const canonicalKey = resolveSecretKeyAlias(key);
+		this.logAccess(key, "delete", context, true);
 
-		this.logAccess(canonicalKey, "delete", context, true);
-
-		const previousValue = await this.storage.get(canonicalKey, context);
-		const success = await this.storage.delete(canonicalKey, context);
+		const previousValue = await this.storage.get(key, context);
+		const success = await this.storage.delete(key, context);
 
 		if (success) {
-			// Remove from process.env if global (both canonical and original key)
 			if (context.level === "global" && this.mirrorSecretsToProcessEnv) {
-				delete process.env[canonicalKey];
-				if (key !== canonicalKey) {
-					delete process.env[key];
-				}
+				delete process.env[key];
 			}
 
-			// Emit change event
 			await this.emitChangeEvent({
 				type: "deleted",
-				key: canonicalKey,
+				key,
 				value: null,
 				previousValue: previousValue ?? undefined,
 				context,
 				timestamp: Date.now(),
 			});
 		} else {
-			this.logAccess(
-				canonicalKey,
-				"delete",
-				context,
-				false,
-				"Secret not found",
-			);
+			this.logAccess(key, "delete", context, false, "Secret not found");
 		}
 
 		return success;
@@ -397,18 +291,9 @@ export class SecretsService extends Service {
 
 	/**
 	 * Check if a secret exists.
-	 * Automatically resolves aliases to canonical names.
 	 */
 	async exists(key: string, context: SecretContext): Promise<boolean> {
-		const canonicalKey = resolveSecretKeyAlias(key);
-		const exists = await this.storage.exists(canonicalKey, context);
-
-		// Also check original key for backward compatibility
-		if (!exists && key !== canonicalKey) {
-			return this.storage.exists(key, context);
-		}
-
-		return exists;
+		return this.storage.exists(key, context);
 	}
 
 	/**

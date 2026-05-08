@@ -63,7 +63,7 @@ export const listActiveBlocksAction: Action = {
   name: "LIST_ACTIVE_BLOCKS",
   similes: ["LIST_BLOCK_RULES", "SHOW_ACTIVE_BLOCKS", "WEBSITE_BLOCKS_STATUS"],
   description:
-    "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with the LifeOps-managed block rules (id, gateType, websites, gate target — todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus / includeManagedRules. Only for website/app blocking status — do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+    "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with LifeOps-managed block rules (id, gateType, websites, and gate target: todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus and includeManagedRules. Use only for website/app blocking status; do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
   descriptionCompressed:
     "list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
   contexts: ["screen_time", "browser", "tasks", "automation"],
@@ -168,7 +168,7 @@ export const listActiveBlocksAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "A live website block is active for x.com until 2026-04-04T13:44:54.000Z.\nManaged block rules: ...",
+          text: "A live website block is active for x.com until 2026-06-04T13:44:54.000Z.\nManaged block rules: ...",
           action: "LIST_ACTIVE_BLOCKS",
         },
       },

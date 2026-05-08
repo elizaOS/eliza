@@ -1,4 +1,4 @@
-import type { KnowledgeSourceItem } from "./knowledge";
+import type { DocumentSourceItem } from "./documents";
 import type { Content } from "./primitives";
 import type {
 	JsonValue,
@@ -38,7 +38,7 @@ export interface MessageExampleGroup
 
 export type CharacterSettings = Omit<
 	ProtoCharacterSettingsType,
-	"$typeName" | "$unknown" | "secrets"
+	"$typeName" | "$unknown" | "secrets" | "enableKnowledge"
 > & {
 	ENABLE_AUTONOMY?: boolean | string;
 	DISABLE_BASIC_CAPABILITIES?: boolean | string;
@@ -47,7 +47,7 @@ export type CharacterSettings = Omit<
 	ENABLE_TRUST?: boolean | string;
 	ENABLE_SECRETS_MANAGER?: boolean | string;
 	ENABLE_PLUGIN_MANAGER?: boolean | string;
-	ENABLE_KNOWLEDGE?: boolean | string;
+	ENABLE_DOCUMENTS?: boolean | string;
 	ENABLE_RELATIONSHIPS?: boolean | string;
 	ENABLE_TRAJECTORIES?: boolean | string;
 	secrets?: Record<string, string | boolean | number>;
@@ -62,6 +62,7 @@ export type Character = Partial<
 		| "settings"
 		| "messageExamples"
 		| "knowledge"
+		| "documents"
 		| "secrets"
 		| "style"
 	>
@@ -69,7 +70,8 @@ export type Character = Partial<
 	settings?: CharacterSettings;
 	secrets?: Record<string, string | number | boolean>;
 	messageExamples?: MessageExampleGroup[];
-	knowledge?: KnowledgeSourceItem[];
+	documents?: DocumentSourceItem[];
+	knowledge?: DocumentSourceItem[];
 	style?: { all?: string[]; chat?: string[]; post?: string[] };
 	/** Enable advanced planning capabilities for this character */
 	advancedPlanning?: boolean;

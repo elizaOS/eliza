@@ -57,8 +57,8 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
-      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
-      "@elizaos/app-knowledge/*": ["../../plugins/app-knowledge/src/*"],
+      "@elizaos/app-documents": ["../../plugins/app-documents/src/index.ts"],
+      "@elizaos/app-documents/*": ["../../plugins/app-documents/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
       "@elizaos/app-task-coordinator": [

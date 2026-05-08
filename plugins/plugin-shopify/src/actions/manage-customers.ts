@@ -14,23 +14,13 @@ import {
   type ShopifyService,
 } from "../services/ShopifyService.js";
 import type { Customer } from "../types.js";
+import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
 import { getActionOptions } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatCustomer(c: Customer): string {
   const email = c.email ?? "no email";
@@ -145,7 +135,8 @@ export const manageCustomersAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    const accountId = getShopifyAccountId(runtime, options);
+    if (!svc?.isConnected(accountId)) {
       await callback?.({
         text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       });
@@ -167,7 +158,10 @@ export const manageCustomersAction: Action = {
     try {
       const queryStr =
         intent.action === "search" ? intent.query : (intent.query ?? undefined);
-      const result = await svc.listCustomers({ query: queryStr, first: 15 });
+      const result = await svc.listCustomers(
+        { query: queryStr, first: 15 },
+        accountId,
+      );
 
       if (result.customers.length === 0) {
         const msg = queryStr
@@ -223,6 +217,7 @@ export const manageCustomersAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
+    shopifyAccountIdParameter,
   ],
 
   examples,

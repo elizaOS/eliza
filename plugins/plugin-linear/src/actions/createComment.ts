@@ -12,6 +12,7 @@ import {
 import { createCommentTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateCommentParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -35,6 +36,7 @@ export const createCommentAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    linearAccountIdParameter,
   ],
   similes: [
     "create-linear-comment",
@@ -109,6 +111,7 @@ export const createCommentAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -166,12 +169,14 @@ export const createCommentAction: Action = {
                 limit: 5,
               };
 
-              const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
+              const defaultTeamKey =
+                linearService.getDefaultTeamKey(accountId) ??
+                (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
               if (defaultTeamKey) {
                 filters.team = defaultTeamKey;
               }
 
-              const issues = await linearService.searchIssues(filters);
+              const issues = await linearService.searchIssues(filters, accountId);
 
               if (issues.length === 0) {
                 const errorMessage = `No issues found matching "${issueDescription}". Please provide a specific issue ID.`;
@@ -261,12 +266,12 @@ export const createCommentAction: Action = {
         };
       }
 
-      const issue = await linearService.getIssue(issueId);
+      const issue = await linearService.getIssue(issueId, accountId);
 
       const comment = await linearService.createComment({
         issueId: issue.id,
         body: commentBody,
-      });
+      }, accountId);
 
       const successMessage = `✅ Comment added to issue ${issue.identifier}: "${commentBody}"`;
       await callback?.({
@@ -284,6 +289,7 @@ export const createCommentAction: Action = {
           commentBody: commentBody,
           createdAt:
             comment.createdAt instanceof Date ? comment.createdAt.toISOString() : comment.createdAt,
+          accountId,
         },
       };
     } catch (error) {

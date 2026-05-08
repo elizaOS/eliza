@@ -56,6 +56,46 @@ describe('Telegram message connector adapter', () => {
     });
   });
 
+  it('registers account-scoped and legacy connector routes', () => {
+    const runtime = createRuntime();
+    const service = createTelegramService({
+      bot: {},
+      handleSendMessage: vi.fn(),
+      accountStates: new Map([
+        [
+          'acct-a',
+          {
+            accountId: 'acct-a',
+            account: { accountId: 'acct-a', name: 'A' },
+          },
+        ],
+        [
+          'acct-b',
+          {
+            accountId: 'acct-b',
+            account: { accountId: 'acct-b', name: 'B' },
+          },
+        ],
+      ]),
+      defaultAccountId: 'acct-a',
+    });
+
+    TelegramService.registerSendHandlers(runtime, service);
+
+    const registrations = runtime.registerMessageConnector.mock.calls.map(
+      (call) => call[0],
+    );
+    expect(registrations.map((registration) => registration.accountId)).toEqual(
+      [undefined, 'acct-a', 'acct-b'],
+    );
+    expect(registrations[2]).toMatchObject({
+      source: 'telegram',
+      accountId: 'acct-b',
+      account: { accountId: 'acct-b' },
+      metadata: { accountId: 'acct-b' },
+    });
+  });
+
   it('parses forum-topic channel IDs for unified sends', async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue([]);
@@ -72,9 +112,38 @@ describe('Telegram message connector adapter', () => {
 
     expect(sendMessage).toHaveBeenCalledWith(
       '-1001234567890',
-      { text: 'hello' },
+      { text: 'hello', metadata: { accountId: 'default' } },
       undefined,
       42,
+    );
+  });
+
+  it('routes outbound sends through the requested account manager', async () => {
+    const runtime = createRuntime();
+    const managerA = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const managerB = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const service = createTelegramService({
+      bot: {},
+      messageManager: managerA,
+      defaultAccountId: 'acct-a',
+      accountStates: new Map([
+        ['acct-a', { accountId: 'acct-a', messageManager: managerA, bot: {} }],
+        ['acct-b', { accountId: 'acct-b', messageManager: managerB, bot: {} }],
+      ]),
+    });
+
+    await service.handleSendMessage(
+      runtime,
+      { source: 'telegram', accountId: 'acct-b', channelId: '-100123' },
+      { text: 'hello' },
+    );
+
+    expect(managerA.sendMessage).not.toHaveBeenCalled();
+    expect(managerB.sendMessage).toHaveBeenCalledWith(
+      '-100123',
+      { text: 'hello', metadata: { accountId: 'acct-b' } },
+      undefined,
+      undefined,
     );
   });
 
@@ -103,5 +172,48 @@ describe('Telegram message connector adapter', () => {
       kind: 'group',
       target: { source: 'telegram', channelId: '-100123' },
     });
+  });
+
+  it('does not stamp known chats onto the wrong account', async () => {
+    const runtime = createRuntime();
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      defaultAccountId: 'acct-a',
+      accountStates: new Map([
+        ['acct-a', { accountId: 'acct-a' }],
+        ['acct-b', { accountId: 'acct-b' }],
+      ]),
+      knownChats: new Map([
+        [
+          'acct-a:-100111',
+          {
+            id: -100111,
+            type: 'supergroup',
+            title: 'A Room',
+          },
+        ],
+        [
+          'acct-b:-100222',
+          {
+            id: -100222,
+            type: 'supergroup',
+            title: 'B Room',
+          },
+        ],
+      ]),
+    });
+
+    const targets = await service.listConnectorRooms({ runtime });
+
+    expect(
+      targets.map((target) => ({
+        accountId: target.target.accountId,
+        channelId: target.target.channelId,
+      })),
+    ).toEqual([
+      { accountId: 'acct-a', channelId: '-100111' },
+      { accountId: 'acct-b', channelId: '-100222' },
+    ]);
   });
 });

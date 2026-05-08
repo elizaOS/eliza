@@ -14,6 +14,8 @@ export * from "./character";
 export * from "./character-utils";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
+export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 // Export additional constants not re-exported by character-utils
 export {
 	CANONICAL_SECRET_KEYS,
@@ -44,6 +46,7 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export * from "./features/documents/index";
 export type {
 	DraftRecord,
 	DraftRequest,
@@ -82,6 +85,7 @@ export {
 	listInboxAction,
 	MessageRefStore,
 	manageMessageAction,
+	messagingTriageActions,
 	NotYetImplementedError,
 	rankScored,
 	registerSendPolicy,
@@ -178,8 +182,15 @@ export * from "./sessions";
 export * from "./settings";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
 // Export onboarding types and utilities

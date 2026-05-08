@@ -1,4 +1,5 @@
 import {
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -107,6 +108,7 @@ function makeRuntime(opts: {
 		contexts: opts.contextRegistry,
 		composeState: vi.fn(async () => opts.state),
 		emitEvent: vi.fn(async () => undefined),
+		runActionsByMode: vi.fn(async () => []),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -561,13 +563,21 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 		const trajectories = readRecordedTrajectories(String(AGENT_ID), tempDir);
 		expect(trajectories).toHaveLength(1);
 		const exportPath = join(tempDir, "all-trajectories.jsonl");
-		writeFileSync(
-			exportPath,
-			trajectories.map((trajectory) => JSON.stringify(trajectory)).join("\n"),
-			"utf8",
-		);
+		const jsonl =
+			trajectories.map((trajectory) => JSON.stringify(trajectory)).join("\n") +
+			"\n";
+		writeFileSync(exportPath, jsonl, "utf8");
 		const exported = readFileSync(exportPath, "utf8");
 		expect(exported).toContain('"trajectoryId"');
+		const reviewExportDir = process.env.MILADY_V5_STRESS_EXPORT_DIR;
+		if (reviewExportDir) {
+			mkdirSync(reviewExportDir, { recursive: true });
+			writeFileSync(
+				join(reviewExportDir, "v5-stress-trajectory.jsonl"),
+				exported,
+				"utf8",
+			);
+		}
 
 		const trajectory = trajectories[0] as {
 			status: string;

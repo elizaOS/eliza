@@ -15,12 +15,12 @@ import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
 	name: "SEARCH_MESSAGES",
-	contexts: ["messaging", "email", "knowledge"],
+	contexts: ["messaging", "email", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations.",
+		"Read-only search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations. Do not use for requests to draft, reply, send, unsubscribe, block, archive, trash, label, or otherwise mutate messages; use DRAFT_REPLY, RESPOND_TO_MESSAGE, SEND_DRAFT, or MANAGE_MESSAGE instead.",
 	descriptionCompressed:
-		"search msgs cross-connector: filters source world channel sender content tags since until limit; combinable any-subset",
+		"read-only search msgs; not for draft reply send unsubscribe archive trash label mutate",
 	similes: [
 		"SEARCH_INBOX",
 		"FIND_MESSAGE",
@@ -92,7 +92,7 @@ export const searchMessagesAction: Action = {
 		message: Memory,
 		state?: State,
 	): Promise<boolean> =>
-		validateMessageAction(message, state, ["messaging", "email", "knowledge"]),
+		validateMessageAction(message, state, ["messaging", "email", "documents"]),
 
 	handler: async (
 		runtime: IAgentRuntime,

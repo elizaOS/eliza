@@ -7,6 +7,7 @@ import {
   type EventPayload,
   type IAgentRuntime,
   logger,
+  type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
@@ -15,6 +16,13 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { GoogleAuth } from "google-auth-library";
+import {
+  DEFAULT_GOOGLE_CHAT_ACCOUNT_ID,
+  normalizeGoogleChatAccountId,
+  readGoogleChatAccountId,
+  resolveDefaultGoogleChatAccountId,
+  resolveGoogleChatAccountSettings,
+} from "./accounts.js";
 import {
   GOOGLE_CHAT_SERVICE_NAME,
   GoogleChatApiError,
@@ -59,11 +67,13 @@ function scoreGoogleChatSpace(space: GoogleChatSpace, query: string): number {
 
 function googleChatSpaceToConnectorTarget(
   space: GoogleChatSpace,
-  score = 0.55
+  score = 0.55,
+  accountId = DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
 ): MessageConnectorTarget {
   return {
     target: {
       source: GOOGLE_CHAT_SERVICE_NAME,
+      accountId,
       channelId: space.name,
     },
     label: getSpaceDisplayName(space),
@@ -72,11 +82,110 @@ function googleChatSpaceToConnectorTarget(
     score,
     contexts: ["social", "connectors"],
     metadata: {
+      accountId,
       spaceType: space.type,
       singleUserBotDm: space.singleUserBotDm,
       threaded: space.threaded,
     },
   };
+}
+
+type ConnectorHookContext = {
+  runtime: IAgentRuntime;
+  roomId?: UUID;
+  target?: TargetInfo;
+};
+
+type ConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type ConnectorMutationParams = {
+  messageId?: string;
+  id?: string;
+  emoji?: string;
+  text?: string;
+  content?: Content;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: ConnectorHookContext,
+    params?: ConnectorReadParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: ConnectorHookContext,
+    params: ConnectorReadParams & { query: string }
+  ) => Promise<Memory[]>;
+  reactHandler?: (runtime: IAgentRuntime, params: ConnectorMutationParams) => Promise<void>;
+  editHandler?: (runtime: IAgentRuntime, params: ConnectorMutationParams) => Promise<void>;
+  deleteHandler?: (runtime: IAgentRuntime, params: ConnectorMutationParams) => Promise<void>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0] &
+  AdditiveMessageConnectorHooks;
+
+function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(limit), 200);
+}
+
+async function readStoredMessageMemories(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+  limit: number
+): Promise<Memory[]> {
+  return runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit,
+    orderBy: "createdAt",
+    orderDirection: "desc",
+  });
+}
+
+async function readStoredMessagesForTargets(
+  runtime: IAgentRuntime,
+  targets: MessageConnectorTarget[],
+  limit: number
+): Promise<Memory[]> {
+  const roomIds = Array.from(
+    new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
+  );
+  const chunks = await Promise.all(
+    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
+  );
+  return chunks
+    .flat()
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .slice(0, limit);
+}
+
+function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
+}
+
+function getMutationMessageName(params: ConnectorMutationParams): string {
+  const messageName = String(params.messageId ?? params.id ?? "").trim();
+  if (!messageName) {
+    throw new Error("Google Chat message operation requires messageId");
+  }
+  return messageName;
 }
 
 function googleChatOptionsFromContent(
@@ -127,17 +236,27 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     runtime.emitEvent(GoogleChatEventTypes.CONNECTION_READY, {
       runtime,
       service,
+      accountId: service.getAccountId(),
     } as EventPayload);
 
     return service;
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: GoogleChatService): void {
-    const sendHandler = service.handleSendMessage.bind(service);
+    const accountId = service.getAccountId(runtime);
+    const sendHandler = async (
+      handlerRuntime: IAgentRuntime,
+      target: TargetInfo,
+      content: Content
+    ): Promise<Memory | undefined> => {
+      await service.handleSendMessage(handlerRuntime, target, content);
+      return undefined;
+    };
 
     if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
+      const registration = {
         source: GOOGLE_CHAT_SERVICE_NAME,
+        accountId,
         label: "Google Chat",
         capabilities: [
           "send_message",
@@ -151,6 +270,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         contexts: ["social", "connectors"],
         description:
           "Send Google Chat messages to spaces, threaded conversations, and direct-message spaces.",
+        metadata: {
+          accountId,
+          service: GOOGLE_CHAT_SERVICE_NAME,
+        },
         sendHandler,
         resolveTargets: async (query) => {
           const directUser = normalizeUserTarget(query);
@@ -159,12 +282,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
                 {
                   target: {
                     source: GOOGLE_CHAT_SERVICE_NAME,
+                    accountId,
                     channelId: directUser,
                   },
                   label: directUser,
                   kind: "user",
                   score: 0.95,
                   contexts: ["social", "connectors"],
+                  metadata: { accountId },
                 } satisfies MessageConnectorTarget,
               ]
             : [];
@@ -173,7 +298,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           const spaceTargets = spaces
             .map((space) => ({ space, score: scoreGoogleChatSpace(space, query) }))
             .filter(({ score }) => score > 0)
-            .map(({ space, score }) => googleChatSpaceToConnectorTarget(space, score));
+            .map(({ space, score }) => googleChatSpaceToConnectorTarget(space, score, accountId));
 
           return [...directTarget, ...spaceTargets]
             .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
@@ -182,11 +307,66 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         listRecentTargets: async () =>
           (await service.listConnectorSpaces())
             .slice(0, 10)
-            .map((space) => googleChatSpaceToConnectorTarget(space)),
+            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
         listRooms: async () =>
           (await service.listConnectorSpaces()).map((space) =>
-            googleChatSpaceToConnectorTarget(space)
+            googleChatSpaceToConnectorTarget(space, 0.55, accountId)
           ),
+        fetchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          if (target?.roomId) {
+            return readStoredMessageMemories(context.runtime, target.roomId, limit);
+          }
+          const targets = (await service.listConnectorSpaces())
+            .slice(0, 10)
+            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId));
+          return readStoredMessagesForTargets(context.runtime, targets, limit);
+        },
+        searchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          const messages = target?.roomId
+            ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
+            : await readStoredMessagesForTargets(
+                context.runtime,
+                (await service.listConnectorSpaces())
+                  .slice(0, 10)
+                  .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
+                Math.max(limit, 100)
+              );
+          return filterMemoriesByQuery(messages, params.query, limit);
+        },
+        reactHandler: async (_handlerRuntime, params) => {
+          const messageName = getMutationMessageName(params);
+          const emoji = String(params.emoji ?? "").trim();
+          if (!emoji) {
+            throw new Error("Google Chat reactHandler requires emoji");
+          }
+          const result = await service.sendReaction(messageName, emoji);
+          if (!result.success) {
+            throw new Error(result.error || "Google Chat reaction failed");
+          }
+        },
+        editHandler: async (_handlerRuntime, params) => {
+          const messageName = getMutationMessageName(params);
+          const mutationParams = params as ConnectorMutationParams;
+          const text = String(mutationParams.text ?? params.content?.text ?? "").trim();
+          if (!text) {
+            throw new Error("Google Chat editHandler requires text content");
+          }
+          const result = await service.updateMessage(messageName, text);
+          if (!result.success) {
+            throw new Error(result.error || "Google Chat message edit failed");
+          }
+        },
+        deleteHandler: async (_handlerRuntime, params) => {
+          const messageName = getMutationMessageName(params);
+          const result = await service.deleteMessage(messageName);
+          if (!result.success) {
+            throw new Error(result.error || "Google Chat message delete failed");
+          }
+        },
         getChatContext: async (target, context) => {
           const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
           const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
@@ -203,6 +383,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           return {
             target: {
               source: GOOGLE_CHAT_SERVICE_NAME,
+              accountId,
               roomId: target.roomId,
               channelId: space.name,
               threadId: target.threadId,
@@ -210,6 +391,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
             label: getSpaceDisplayName(space),
             summary: isDirectMessage(space) ? "Google Chat direct message" : "Google Chat space",
             metadata: {
+              accountId,
               spaceType: space.type,
               threaded: space.threaded,
               singleUserBotDm: space.singleUserBotDm,
@@ -232,7 +414,8 @@ export class GoogleChatService extends Service implements IGoogleChatService {
             metadata: entity.metadata,
           } satisfies MessageConnectorUserContext;
         },
-      });
+      } as ExtendedMessageConnectorRegistration;
+      runtime.registerMessageConnector(registration);
       return;
     }
 
@@ -252,56 +435,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       throw new GoogleChatConfigurationError("Runtime not initialized");
     }
 
-    const getStringSetting = (key: string, envKey: string, defaultValue = ""): string => {
-      const value = runtime.getSetting(key);
-      if (typeof value === "string") return value;
-      return process.env[envKey] || defaultValue;
-    };
-
-    const serviceAccount = getStringSetting(
-      "GOOGLE_CHAT_SERVICE_ACCOUNT",
-      "GOOGLE_CHAT_SERVICE_ACCOUNT"
-    );
-    const serviceAccountFile = getStringSetting(
-      "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE",
-      "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE"
-    );
-    const audienceType = getStringSetting(
-      "GOOGLE_CHAT_AUDIENCE_TYPE",
-      "GOOGLE_CHAT_AUDIENCE_TYPE",
-      "app-url"
-    );
-    const audience = getStringSetting("GOOGLE_CHAT_AUDIENCE", "GOOGLE_CHAT_AUDIENCE");
-    const webhookPath = getStringSetting(
-      "GOOGLE_CHAT_WEBHOOK_PATH",
-      "GOOGLE_CHAT_WEBHOOK_PATH",
-      "/googlechat"
-    );
-    const spacesRaw = getStringSetting("GOOGLE_CHAT_SPACES", "GOOGLE_CHAT_SPACES");
-    const requireMention = getStringSetting(
-      "GOOGLE_CHAT_REQUIRE_MENTION",
-      "GOOGLE_CHAT_REQUIRE_MENTION",
-      "true"
-    );
-    const enabled = getStringSetting("GOOGLE_CHAT_ENABLED", "GOOGLE_CHAT_ENABLED", "true");
-    const botUser = getStringSetting("GOOGLE_CHAT_BOT_USER", "GOOGLE_CHAT_BOT_USER") || undefined;
-
-    return {
-      serviceAccount: serviceAccount || undefined,
-      serviceAccountFile: serviceAccountFile || undefined,
-      audienceType: audienceType as "app-url" | "project-number",
-      audience,
-      webhookPath: webhookPath.startsWith("/") ? webhookPath : `/${webhookPath}`,
-      spaces: spacesRaw
-        ? spacesRaw
-            .split(",")
-            .map((s: string) => s.trim())
-            .filter(Boolean)
-        : [],
-      requireMention: requireMention.toLowerCase() !== "false",
-      enabled: enabled.toLowerCase() !== "false",
-      botUser: botUser || undefined,
-    };
+    return resolveGoogleChatAccountSettings(runtime);
   }
 
   private validateSettings(): void {
@@ -387,6 +521,13 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  getAccountId(runtime?: IAgentRuntime): string {
+    return normalizeGoogleChatAccountId(
+      this.settings?.accountId ??
+        (runtime ? resolveDefaultGoogleChatAccountId(runtime) : undefined)
+    );
   }
 
   getBotUser(): string | undefined {
@@ -476,6 +617,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (this.runtime) {
       this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_SENT, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         messageName: result.name,
         space: options.space,
       } as EventPayload);
@@ -541,6 +683,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (this.runtime) {
       this.runtime.emitEvent(GoogleChatEventTypes.REACTION_SENT, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         messageName,
         emoji,
         reactionName: result.name,
@@ -707,6 +850,15 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     target: TargetInfo,
     content: Content
   ): Promise<void> {
+    const requestedAccountId = normalizeGoogleChatAccountId(
+      target.accountId ?? readGoogleChatAccountId(content, target) ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Google Chat account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
     const room = target.roomId ? await runtime.getRoom(target.roomId) : null;
     const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
     if (!channelId) {
@@ -758,6 +910,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (eventType === "MESSAGE") {
       this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_RECEIVED, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         event,
         message: event.message,
         space: event.space,
@@ -766,12 +919,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     } else if (eventType === "ADDED_TO_SPACE") {
       this.runtime.emitEvent(GoogleChatEventTypes.SPACE_JOINED, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         space: event.space,
         user: event.user,
       } as EventPayload);
     } else if (eventType === "REMOVED_FROM_SPACE") {
       this.runtime.emitEvent(GoogleChatEventTypes.SPACE_LEFT, {
         runtime: this.runtime,
+        accountId: this.getAccountId(),
         space: event.space,
         user: event.user,
       } as EventPayload);

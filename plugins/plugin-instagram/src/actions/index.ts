@@ -1,7 +1,6 @@
 /**
- * Instagram actions module
+ * Instagram actions module.
  *
- * Contains action implementations for Instagram operations.
+ * Instagram DMs route through MESSAGE. Instagram media comments route through
+ * POST with source "instagram" and a mediaId/target.
  */
-
-export { instagramReplyAction } from "./reply";

@@ -12,6 +12,7 @@ import {
 import { updateIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import {
   getPriorityNumberValue,
   getRecordValue,
@@ -80,6 +81,7 @@ export const updateIssueAction: Action = {
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
+    linearAccountIdParameter,
   ],
 
   examples: [
@@ -148,6 +150,7 @@ export const updateIssueAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -212,7 +215,7 @@ export const updateIssueAction: Action = {
 
         const teamKey = getStringValue(parsedUpdates.teamKey);
         if (teamKey) {
-          const teams = await linearService.getTeams();
+          const teams = await linearService.getTeams(accountId);
           const team = teams
             .slice(0, LINEAR_LOOKUP_LIMIT)
             .find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
@@ -227,7 +230,7 @@ export const updateIssueAction: Action = {
         const assignee = getStringValue(parsedUpdates.assignee);
         if (assignee) {
           const cleanAssignee = assignee.replace(/^@/, "");
-          const users = await linearService.getUsers();
+          const users = await linearService.getUsers(accountId);
           const user = users
             .slice(0, LINEAR_LOOKUP_LIMIT)
             .find(
@@ -244,13 +247,13 @@ export const updateIssueAction: Action = {
 
         const status = getStringValue(parsedUpdates.status);
         if (status) {
-          const issue = await linearService.getIssue(issueId);
+          const issue = await linearService.getIssue(issueId, accountId);
           const issueTeam = await issue.team;
           const teamId = updates.teamId || issueTeam?.id;
           if (!teamId) {
             logger.warn("Could not determine team for status update");
           } else {
-            const states = await linearService.getWorkflowStates(teamId);
+            const states = await linearService.getWorkflowStates(teamId, accountId);
 
             const state = states
               .slice(0, LINEAR_LOOKUP_LIMIT)
@@ -272,7 +275,7 @@ export const updateIssueAction: Action = {
         const parsedLabels = getStringArrayValue(parsedUpdates.labels);
         if (parsedLabels !== undefined) {
           const teamId = updates.teamId;
-          const labels = await linearService.getLabels(teamId);
+          const labels = await linearService.getLabels(teamId, accountId);
           const labelIds: string[] = [];
 
           for (const labelName of parsedLabels.slice(0, LINEAR_LOOKUP_LIMIT)) {
@@ -338,7 +341,7 @@ export const updateIssueAction: Action = {
         };
       }
 
-      const updatedIssue = await linearService.updateIssue(issueId, updates);
+      const updatedIssue = await linearService.updateIssue(issueId, updates, accountId);
 
       const updateSummary = [];
       if (updates.title) updateSummary.push(`title: "${updates.title}"`);
@@ -372,6 +375,7 @@ export const updateIssueAction: Action = {
               )
             : undefined,
           url: updatedIssue.url,
+          accountId,
         },
       };
     } catch (error) {

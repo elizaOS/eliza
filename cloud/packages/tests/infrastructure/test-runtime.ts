@@ -75,7 +75,7 @@ export interface CreateTestRuntimeOptions {
   testData: TestDataSet;
   /** Character ID to load (optional - uses default if not provided) */
   characterId?: string;
-  /** Agent mode (defaults to ASSISTANT) */
+  /** Agent mode (defaults to CHAT) */
   agentMode?: AgentMode;
   /** Enable web search (defaults to false for tests) */
   webSearchEnabled?: boolean;
@@ -227,7 +227,7 @@ export function buildUserContext(
     );
   }
 
-  const mode = options.agentMode || AgentMode.ASSISTANT;
+  const mode = options.agentMode || AgentMode.CHAT;
 
   return {
     userId: testData.user.id,
@@ -387,8 +387,7 @@ export interface SendTestMessageOptions {
 /**
  * Send a test message through the production MessageHandler.
  *
- * This uses createMessageHandler which emits MESSAGE_RECEIVED events,
- * properly triggering plugin-assistant's handler.
+ * This uses createMessageHandler and the runtime message service.
  */
 export async function sendTestMessage(
   runtime: TestRuntime,
@@ -424,7 +423,7 @@ export async function sendTestMessage(
     userId: userContext.userId,
     entityId: userContext.entityId as string,
     organizationId: testData.organization.id,
-    agentMode: AgentMode.ASSISTANT,
+    agentMode: AgentMode.CHAT,
     apiKey: testData.apiKey.key,
     isAnonymous: false,
     webSearchEnabled: false,
@@ -447,13 +446,12 @@ export async function sendTestMessage(
         (timeout as { unref?: () => void }).unref?.();
       });
 
-      // Process message through handler - this emits MESSAGE_RECEIVED event
-      // which triggers plugin-assistant's handleMessage()
+      // Process message through the production handler.
       const result = await Promise.race([
         handler.process({
           roomId: userContext.roomId as string,
           text,
-          agentModeConfig: { mode: AgentModeEnum.ASSISTANT },
+          agentModeConfig: { mode: AgentModeEnum.CHAT },
           onStreamChunk: onStreamChunk
             ? async (chunk) => {
                 await onStreamChunk(chunk);

@@ -94,7 +94,7 @@ function parseDateParam(value: string | undefined): number | undefined {
 
 export const readChannelAction: Action = {
   name: "READ_CHANNEL",
-  contexts: ["messaging", "social_posting", "connectors", "knowledge"],
+  contexts: ["messaging", "social_posting", "connectors", "documents"],
   roleGate: { minRole: "ADMIN" },
   similes: [
     "READ_CHAT",

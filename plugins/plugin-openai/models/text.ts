@@ -811,15 +811,16 @@ async function generateTextByModelType(
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice);
   const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
-  const promptOrMessages: NativePrompt = normalizedMessages
-    ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+  const effectiveMessages =
+    wireMessages && wireMessages.length > 0 ? wireMessages : normalizedMessages;
+  const promptText =
+    typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : "";
+  const promptOrMessages: NativePrompt =
+    effectiveMessages && effectiveMessages.length > 0
+      ? { messages: effectiveMessages }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
-        : { prompt: params.prompt }
-    : userContent
-      ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: params.prompt };
+        : { prompt: promptText };
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,

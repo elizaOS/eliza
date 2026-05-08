@@ -359,7 +359,7 @@ export function deriveCompatOnboardingReplayBody(
  * METADATA-ONLY as of P0 of the remote-auth hardening. This function now
  * exists strictly so unrelated routes (e.g. `/api/cloud/status`) can branch
  * on cloud-provisioned shape. It does NOT authorise anything: callers must
- * still pass through `ensureCompatApiAuthorized` (legacy bearer) or — once
+ * still pass through `ensureCompatApiAuthorized` (bearer token) or — once
  * the dashboard mints sessions — `ensureAuthSessionOrBootstrap`. The
  * audited bypasses at `auth-pairing-compat-routes.ts:124,140` and the
  * onboarding-skip used to read this; both have been removed.

@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Canonical Discord messaging/search should
+// go through @elizaos/plugin-discord runtime services; this file remains only
+// for owner-browser inspection through @elizaos/plugin-browser workspace tabs.
 import {
   closeBrowserWorkspaceTab,
   evaluateBrowserWorkspaceTab,

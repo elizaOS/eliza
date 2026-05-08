@@ -94,6 +94,19 @@ function normalizeConnectorBrowserWorkspaceSegment(
   return normalized;
 }
 
+function hashConnectorBrowserWorkspacePartitionKey(
+  provider: string,
+  accountId: string,
+): string {
+  const input = `${provider.trim().toLowerCase()}\0${accountId.trim().toLowerCase()}`;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(7, "0");
+}
+
 export function resolveConnectorBrowserWorkspacePartition(
   provider: string,
   accountId: string,
@@ -106,7 +119,8 @@ export function resolveConnectorBrowserWorkspacePartition(
     accountId,
     "accountId",
   );
-  return `${CONNECTOR_BROWSER_WORKSPACE_PARTITION_PREFIX}${providerSegment}-${accountSegment}`;
+  const suffix = hashConnectorBrowserWorkspacePartitionKey(provider, accountId);
+  return `${CONNECTOR_BROWSER_WORKSPACE_PARTITION_PREFIX}${providerSegment}-${accountSegment}-${suffix}`;
 }
 
 export function isConnectorBrowserWorkspacePartition(

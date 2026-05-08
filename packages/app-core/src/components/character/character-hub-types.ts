@@ -1,6 +1,6 @@
 export type CharacterHubActivityKind =
   | "personality"
-  | "knowledge"
+  | "documents"
   | "experience"
   | "relationship";
 

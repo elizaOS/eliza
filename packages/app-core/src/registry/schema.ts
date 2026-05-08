@@ -239,7 +239,7 @@ const pluginSubtype = z.enum([
   "feature",
   "database",
   "voice",
-  "knowledge",
+  "documents",
   "blockchain",
   "media",
   "agents",

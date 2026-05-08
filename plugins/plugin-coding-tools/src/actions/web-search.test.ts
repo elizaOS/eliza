@@ -12,8 +12,8 @@ function makeRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
 const message = {} as Memory;
 const state: State | undefined = undefined;
 
-describe("CODE_WEB_SEARCH (stub)", () => {
-  it("returns success with stub:true and echoes the query", async () => {
+describe("CODE_WEB_SEARCH delegated request", () => {
+  it("returns success with delegatedRequest:true and echoes the query", async () => {
     const runtime = makeRuntime();
     const result = await webSearchAction.handler!(runtime, message, state, {
       parameters: { query: "elizaos plugin docs" },
@@ -22,7 +22,7 @@ describe("CODE_WEB_SEARCH (stub)", () => {
     expect(result.text).toContain("not configured");
     expect(result.text).toContain('"elizaos plugin docs"');
     const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.stub).toBe(true);
+    expect(data?.delegatedRequest).toBe(true);
     expect(data?.query).toBe("elizaos plugin docs");
     expect(data?.allowed_domains).toBeUndefined();
     expect(data?.blocked_domains).toBeUndefined();
@@ -39,7 +39,7 @@ describe("CODE_WEB_SEARCH (stub)", () => {
     });
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.stub).toBe(true);
+    expect(data?.delegatedRequest).toBe(true);
     expect(data?.allowed_domains).toEqual(["example.com", "docs.example.com"]);
     expect(data?.blocked_domains).toEqual(["spam.example"]);
   });

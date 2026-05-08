@@ -39,8 +39,8 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			return normalizeEnvValue(process.env[key]) || defaultValue;
 		};
 
-		const ctxKnowledgeEnabled = parseBooleanEnv(
-			getSetting("CTX_KNOWLEDGE_ENABLED", "false"),
+		const ctxDocumentsEnabled = parseBooleanEnv(
+			getSetting("CTX_DOCUMENTS_ENABLED", "false"),
 		);
 		const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
 		const localEmbeddingModel = getSetting("LOCAL_EMBEDDING_MODEL");
@@ -92,7 +92,7 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			EMBEDDING_DIMENSION: embeddingDimension,
 
 			LOAD_DOCS_ON_STARTUP: parseBooleanEnv(getSetting("LOAD_DOCS_ON_STARTUP")),
-			CTX_KNOWLEDGE_ENABLED: ctxKnowledgeEnabled,
+			CTX_DOCUMENTS_ENABLED: ctxDocumentsEnabled,
 
 			RATE_LIMIT_ENABLED: parseBooleanEnv(
 				getSetting("RATE_LIMIT_ENABLED", "true"),
@@ -145,7 +145,7 @@ function validateConfigRequirements(
 		);
 	}
 
-	if (config.CTX_KNOWLEDGE_ENABLED) {
+	if (config.CTX_DOCUMENTS_ENABLED) {
 		if (config.TEXT_PROVIDER === "openai" && !config.OPENAI_API_KEY) {
 			throw new Error(
 				'OPENAI_API_KEY is required when TEXT_PROVIDER is set to "openai"',

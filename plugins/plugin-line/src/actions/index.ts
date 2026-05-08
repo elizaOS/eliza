@@ -1,5 +1,5 @@
 /**
- * LINE plugin actions.
+ * LINE plugin actions are provided by connector hooks.
  */
 
-export { LINE_MESSAGE_OP_ACTION, messageOp } from "./messageOp.js";
+export {};

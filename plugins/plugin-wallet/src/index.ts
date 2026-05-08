@@ -7,6 +7,12 @@ export {
   DexScreenerService,
   dexscreenerPlugin,
 } from "./analytics/dexscreener/index.js";
+export {
+  TOKEN_INFO_SERVICE_TYPE,
+  tokenInfoAction,
+  tokenInfoPlugin,
+  TokenInfoService,
+} from "./analytics/token-info/index.js";
 // Consolidated analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
 export {
   kaminoPlugin,
@@ -43,7 +49,7 @@ export {
   YieldOptimizationService,
 } from "./lp/lp-manager-entry.js";
 export * from "./lp/types.js";
-export { agentWalletPlugin, default, walletPlugin } from "./plugin.js";
+export { default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
 export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";

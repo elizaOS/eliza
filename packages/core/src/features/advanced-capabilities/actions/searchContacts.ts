@@ -117,7 +117,7 @@ function readSearchContactsInput(
 
 export const searchContactsAction: Action = {
 	name: spec.name,
-	contexts: ["contacts", "messaging", "knowledge"],
+	contexts: ["contacts", "messaging", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
@@ -151,7 +151,7 @@ export const searchContactsAction: Action = {
 		}
 		if (
 			hasActionContextOrKeyword(message, state, {
-				contexts: ["contacts", "messaging", "knowledge"],
+				contexts: ["contacts", "messaging", "documents"],
 				keywordKeys: ["action.searchContacts.request"],
 			})
 		) {

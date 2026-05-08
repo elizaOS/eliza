@@ -8,8 +8,7 @@ const MAX_DRAFT_NODES = 12;
  * Provider that tells the LLM when a workflow draft is pending confirmation.
  *
  * Without this, the LLM has no context about pending drafts and will route
- * confirmation messages (e.g. "yes, deploy it") to REPLY instead of
- * CREATE_N8N_WORKFLOW.
+ * confirmation messages (e.g. "yes, deploy it") to REPLY instead of WORKFLOW.
  */
 export const pendingDraftProvider: Provider = {
   name: 'PENDING_WORKFLOW_DRAFT',
@@ -38,11 +37,11 @@ export const pendingDraftProvider: Provider = {
           '# Pending Workflow Draft\n\n' +
           `A workflow draft "${draft.workflow.name}" is pending.\n` +
           `Nodes: ${nodeNames}\n\n` +
-          '**REQUIRED**: Any user message about this draft MUST trigger the CREATE_N8N_WORKFLOW action.\n' +
+          '**REQUIRED**: Any user message about this draft MUST trigger the WORKFLOW action.\n' +
           'This includes confirmations ("yes", "ok", "deploy it", "create it", "go ahead"),\n' +
           'cancellations ("cancel", "nevermind"), and modifications ("change X", "use Y instead").\n' +
           'The action handler manages all draft operations — do NOT handle them via text reply.\n' +
-          'You MUST include CREATE_N8N_WORKFLOW in your actions.',
+          'You MUST include WORKFLOW in your actions.',
         data: {
           hasPendingDraft: true,
           truncated: draft.workflow.nodes.length > MAX_DRAFT_NODES,

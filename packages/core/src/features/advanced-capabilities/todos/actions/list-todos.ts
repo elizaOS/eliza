@@ -40,7 +40,9 @@ function formatDue(dueAt: number): string {
 export const listTodosAction: Action = {
 	name: "LIST_TODOS",
 	contexts: ["todos", "agent_internal"],
-	description: "List todo items for the current user.",
+	roleGate: { minRole: "USER" },
+	description:
+		"List todo items for the current user, optionally filtered by status and limited by count.",
 	similes: ["SHOW_TODOS", "GET_TODOS", "MY_TODOS"],
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {

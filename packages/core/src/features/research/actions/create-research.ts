@@ -46,6 +46,7 @@ function extractQuery(
 export const createResearchAction: Action = {
 	name: "CREATE_RESEARCH",
 	contexts: ["research", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
 		"Start a new research thread. Requires a title and an initial query. Returns the new research id.",
 	similes: ["START_RESEARCH", "NEW_RESEARCH", "BEGIN_RESEARCH"],

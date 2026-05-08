@@ -121,6 +121,7 @@ const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
+const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
 const appCompanionSourceRoot = path.join(
   elizaWorkspaceRoot,
   "apps",
@@ -167,9 +168,17 @@ const realResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-openai\/(.+)$/,
     replacement: path.join(pluginOpenAiRoot, "$1"),
   },
+  {
+    find: /^@elizaos\/plugin-imessage$/,
+    replacement: path.join(pluginIMessageRoot, "src", "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-imessage\/(.+)$/,
+    replacement: path.join(pluginIMessageRoot, "src", "$1"),
+  },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-lifeops",
-    "app-knowledge",
+    "app-documents",
     "app-task-coordinator",
     "app-vincent",
   ]),
@@ -303,41 +312,41 @@ const realResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: "@elizaos/app-knowledge/routes",
+    find: "@elizaos/app-documents/routes",
     replacement: path.join(
       elizaWorkspaceRoot,
       "apps",
-      "app-knowledge",
+      "app-documents",
       "src",
       "routes.ts",
     ),
   },
   {
-    find: "@elizaos/app-knowledge/service-loader",
+    find: "@elizaos/app-documents/service-loader",
     replacement: path.join(
       elizaWorkspaceRoot,
       "apps",
-      "app-knowledge",
+      "app-documents",
       "src",
       "service-loader.ts",
     ),
   },
   {
-    find: /^@elizaos\/app-knowledge\/(.*)/,
+    find: /^@elizaos\/app-documents\/(.*)/,
     replacement: path.join(
       elizaWorkspaceRoot,
       "apps",
-      "app-knowledge",
+      "app-documents",
       "src",
       "$1",
     ),
   },
   {
-    find: "@elizaos/app-knowledge",
+    find: "@elizaos/app-documents",
     replacement: path.join(
       elizaWorkspaceRoot,
       "apps",
-      "app-knowledge",
+      "app-documents",
       "src",
       "index.ts",
     ),

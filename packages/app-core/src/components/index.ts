@@ -39,9 +39,10 @@ export {
   type PromptDialogProps as PromptModalProps,
   SaveFooter as ConfigSaveFooter,
 } from "@elizaos/ui";
-export * from "../utils/knowledge-upload-image";
+export * from "../utils/documents-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";
+export * from "./accounts/EditableAccountLabel";
 export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
 export * from "./apps/extensions/types";
@@ -55,7 +56,10 @@ export * from "./apps/surfaces/types";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/character-greeting";
+export * from "./chat/AccountRequiredCard";
 export * from "./chat/AgentActivityBox";
+export * from "./chat/ConnectorAccountPicker";
+export * from "./chat/connector-send-as";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
@@ -65,6 +69,12 @@ export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
 export * from "./config-ui";
 export * from "./connectors/BlueBubblesStatusPanel";
+export * from "./connectors/ConnectorAccountAuditList";
+export * from "./connectors/ConnectorAccountCard";
+export * from "./connectors/ConnectorAccountList";
+export * from "./connectors/ConnectorAccountPrivacySelector";
+export * from "./connectors/ConnectorAccountPurposeSelector";
+export * from "./connectors/ConnectorAccountSetupScope";
 export * from "./connectors/ConnectorSetupPanel";
 export * from "./connectors/DiscordLocalConnectorPanel";
 export * from "./connectors/SignalQrOverlay";
@@ -84,9 +94,9 @@ export * from "./pages/ConfigPageView";
 export * from "./pages/ConnectorsPageView";
 export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
+export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-export * from "./pages/KnowledgeView";
 
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";

@@ -2,7 +2,7 @@
 // route outbound messages through registered runtime message connectors
 
 import { findEntityByName } from "../../../entities.ts";
-import { requireActionSpec } from "../../../generated/spec-helpers.ts";
+import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import type {
@@ -23,11 +23,15 @@ import type {
 	TargetInfo,
 	UUID,
 } from "../../../types/index.ts";
+import { ChannelType } from "../../../types/index.ts";
 import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { stringToUuid } from "../../../utils.ts";
 
-const spec = requireActionSpec("SEND_MESSAGE");
+const spec = getActionSpec("MESSAGE");
+const SEND_MESSAGE_SIMILES = spec?.similes?.filter(
+	(simile) => simile !== "POST_MESSAGE",
+) ?? ["DM", "DIRECT_MESSAGE", "SEND_DM"];
 
 const ADMIN_TARGETS = new Set(["admin", "owner"]);
 const VALID_URGENCIES = new Set(["normal", "important", "urgent"]);
@@ -42,6 +46,7 @@ type SendMessageParams = {
 	thread?: unknown;
 	attachments?: unknown;
 	urgency?: unknown;
+	persist?: unknown;
 
 	// Compatibility with older SEND_MESSAGE / AGENT_SEND_MESSAGE params.
 	text?: unknown;
@@ -162,6 +167,13 @@ const SEND_MESSAGE_PARAMETERS: ActionParameter[] = [
 			enum: ["normal", "important", "urgent"],
 		},
 	},
+	{
+		name: "persist",
+		description:
+			"Whether to persist the sent content into the target room/channel memory. Defaults true.",
+		required: false,
+		schema: { type: "boolean" },
+	},
 ];
 
 const BASE_DESCRIPTION =
@@ -176,6 +188,15 @@ function normalizeText(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
 		: undefined;
+}
+
+function normalizeBoolean(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (["true", "yes", "1", "on"].includes(normalized)) return true;
+	if (["false", "no", "0", "off"].includes(normalized)) return false;
+	return undefined;
 }
 
 function normalizeComparable(value: unknown): string {
@@ -357,7 +378,7 @@ function buildDynamicDescription(
 	};
 }
 
-async function previewConnectorTargets(
+async function _previewConnectorTargets(
 	connector: MessageConnector,
 	context: MessageConnectorQueryContext,
 ): Promise<string[]> {
@@ -399,33 +420,11 @@ async function previewConnectorTargets(
 
 async function refreshActionDescription(
 	runtime: IAgentRuntime,
-	message?: Memory,
-	state?: State,
+	_message?: Memory,
+	_state?: State,
 ): Promise<void> {
 	const connectors = listMessageConnectors(runtime);
-	const targetPreviews = new Map<string, string[]>();
-	if (message) {
-		await Promise.all(
-			connectors.slice(0, 8).map(async (connector) => {
-				if (!connector.listRecentTargets && !connector.listRooms) {
-					return;
-				}
-				const context = buildQueryContext(
-					runtime,
-					message,
-					state,
-					connector.source,
-					undefined,
-				);
-				const previews = await previewConnectorTargets(connector, context);
-				if (previews.length > 0) {
-					targetPreviews.set(connector.source, previews);
-				}
-			}),
-		);
-	}
-
-	const dynamic = buildDynamicDescription(connectors, targetPreviews);
+	const dynamic = buildDynamicDescription(connectors);
 	sendMessageAction.description = dynamic.description;
 	sendMessageAction.descriptionCompressed = dynamic.descriptionCompressed;
 }
@@ -848,8 +847,8 @@ function explicitTargetFromString(
 		kind = "room";
 		target.roomId = targetValue as UUID;
 	} else {
-		kind = "channel";
-		target.channelId = stripped;
+		kind = targetKind ?? "contact";
+		target.entityId = stripped as UUID;
 	}
 
 	return {
@@ -1082,7 +1081,7 @@ async function resolveSendTarget(
 	if (connectors.length === 0) {
 		return {
 			status: "missing_connector",
-			text: "No message connectors are registered. Connect or enable a messaging connector before using SEND_MESSAGE.",
+			text: "No message connectors are registered. Connect or enable a messaging connector before using MESSAGE operation=send.",
 			error: "NO_CONNECTORS_REGISTERED",
 			sourceResolution: params.sourceResolution,
 		};
@@ -1199,7 +1198,7 @@ async function resolveSendTarget(
 	if (sorted.length === 0) {
 		return {
 			status: "missing_target",
-			text: "SEND_MESSAGE could not resolve a target. Provide target and, if needed, source/targetKind.",
+			text: "MESSAGE operation=send could not resolve a target. Provide target and, if needed, source/targetKind.",
 			error: "TARGET_NOT_RESOLVED",
 			sourceResolution: params.sourceResolution,
 		};
@@ -1219,7 +1218,7 @@ async function resolveSendTarget(
 		return {
 			status: "ambiguous",
 			text:
-				"SEND_MESSAGE found multiple plausible targets. Specify a more exact target/source, or choose one of these options:\n" +
+				"MESSAGE operation=send found multiple plausible targets. Specify a more exact target/source, or choose one of these options:\n" +
 				formatCandidates(choices),
 			candidates: choices,
 			sourceResolution: params.source ? "exact" : "inferred",
@@ -1230,7 +1229,7 @@ async function resolveSendTarget(
 		return {
 			status: "ambiguous",
 			text:
-				"SEND_MESSAGE needs a source or more specific target. Registered connector options:\n" +
+				"MESSAGE operation=send needs a source or more specific target. Registered connector options:\n" +
 				connectors
 					.map(
 						(connector, index) =>
@@ -1307,6 +1306,274 @@ function buildContent(params: NormalizedSendParams): Content {
 	return content;
 }
 
+function applyConnectorContentShaping(
+	connector: MessageConnector,
+	content: Content,
+): Content {
+	let text = typeof content.text === "string" ? content.text : "";
+	const shaping = connector.contentShaping;
+	if (text && typeof shaping?.postProcess === "function") {
+		text = shaping.postProcess(text);
+	}
+	const maxLength = shaping?.constraints?.maxLength;
+	if (
+		text &&
+		typeof maxLength === "number" &&
+		Number.isFinite(maxLength) &&
+		maxLength > 0 &&
+		text.length > maxLength
+	) {
+		text = text.slice(0, Math.max(0, Math.floor(maxLength)));
+	}
+	return text === content.text ? content : { ...content, text };
+}
+
+function channelTypeForTargetKind(
+	kind: MessageTargetKind | undefined,
+): Content["channelType"] {
+	if (
+		kind === "user" ||
+		kind === "contact" ||
+		kind === "email" ||
+		kind === "phone"
+	) {
+		return ChannelType.DM;
+	}
+	if (kind === "thread") return ChannelType.THREAD;
+	if (kind === "server") return ChannelType.WORLD;
+	return ChannelType.GROUP;
+}
+
+async function ensureOutboundMessageRoom(
+	runtime: IAgentRuntime,
+	source: string,
+	target: TargetInfo,
+	label: string,
+	kind: MessageTargetKind | undefined,
+): Promise<{ roomId: UUID; worldId: UUID }> {
+	const serverPart = target.serverId ?? "default";
+	const targetPart =
+		target.roomId ??
+		target.channelId ??
+		target.entityId ??
+		target.threadId ??
+		label ??
+		"default";
+	const worldId = stringToUuid(
+		`${runtime.agentId}:${source}:message-world:${serverPart}`,
+	) as UUID;
+	const roomId = isUuidLike(target.roomId ?? "")
+		? (target.roomId as UUID)
+		: (stringToUuid(
+				`${runtime.agentId}:${source}:message-room:${serverPart}:${targetPart}`,
+			) as UUID);
+	await runtime.ensureWorldExists({
+		id: worldId,
+		name: `${source}${target.serverId ? ` ${target.serverId}` : ""}`,
+		agentId: runtime.agentId,
+		messageServerId: target.serverId
+			? (stringToUuid(`${source}:server:${target.serverId}`) as UUID)
+			: undefined,
+		metadata: { source, type: "message_world", serverId: target.serverId },
+	});
+	await runtime.ensureRoomExists({
+		id: roomId,
+		name: label,
+		source,
+		type: channelTypeForTargetKind(kind) ?? ChannelType.GROUP,
+		channelId: target.channelId ?? target.roomId ?? target.entityId,
+		messageServerId: target.serverId
+			? (stringToUuid(`${source}:server:${target.serverId}`) as UUID)
+			: undefined,
+		worldId,
+		metadata: {
+			source,
+			type: "outbound_message_target",
+			target: {
+				source: target.source,
+				roomId: target.roomId,
+				channelId: target.channelId,
+				serverId: target.serverId,
+				entityId: target.entityId,
+				threadId: target.threadId,
+			},
+			targetKind: kind,
+		},
+	});
+	await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+	return { roomId, worldId };
+}
+
+async function persistOutboundMessageMemory(params: {
+	runtime: IAgentRuntime;
+	source: string;
+	target: TargetInfo;
+	targetLabel: string;
+	targetKind?: MessageTargetKind;
+	content: Content;
+	sentMemory?: Memory | undefined;
+	persist: boolean;
+}): Promise<Memory | undefined> {
+	if (!params.persist) return params.sentMemory ?? undefined;
+	const {
+		runtime,
+		source,
+		target,
+		targetLabel,
+		targetKind,
+		content,
+		sentMemory,
+	} = params;
+	try {
+		const { roomId, worldId } = await ensureOutboundMessageRoom(
+			runtime,
+			source,
+			target,
+			targetLabel,
+			targetKind,
+		);
+		const platformMessageId =
+			typeof sentMemory?.metadata === "object"
+				? (sentMemory.metadata as { messageIdFull?: string }).messageIdFull
+				: undefined;
+		const memory: Memory = {
+			...(sentMemory ?? {}),
+			id:
+				sentMemory?.id ??
+				(stringToUuid(
+					platformMessageId
+						? `${source}:message:${platformMessageId}`
+						: `${runtime.agentId}:${source}:message:${targetLabel}:${Date.now()}:${content.text ?? ""}`,
+				) as UUID),
+			entityId: sentMemory?.entityId ?? runtime.agentId,
+			agentId: sentMemory?.agentId ?? runtime.agentId,
+			roomId: sentMemory?.roomId ?? roomId,
+			worldId: sentMemory?.worldId ?? worldId,
+			content: {
+				...content,
+				...(sentMemory?.content ?? {}),
+				source,
+				channelType:
+					sentMemory?.content?.channelType ??
+					channelTypeForTargetKind(targetKind),
+			},
+			metadata: {
+				type: "message",
+				source,
+				provider: source,
+				...(sentMemory?.metadata ?? {}),
+				...(platformMessageId ? { messageIdFull: platformMessageId } : {}),
+			},
+			createdAt: sentMemory?.createdAt ?? Date.now(),
+		};
+		if (memory.id) {
+			await runtime.upsertMemory(memory, "messages");
+			return memory;
+		}
+		const id = await runtime.createMemory(memory, "messages");
+		return { ...memory, id };
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: "SEND_MESSAGE",
+				err: error instanceof Error ? error.message : String(error),
+				source,
+			},
+			"Message sent but target room memory persistence failed",
+		);
+		return sentMemory ?? undefined;
+	}
+}
+
+async function persistCurrentChatSendMemory(params: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	actionName: string;
+	operation?: string;
+	subAction?: string;
+	summaryText: string;
+	source: string;
+	targetLabel: string;
+	targetKind?: MessageTargetKind;
+	targetMemory?: Memory;
+	platformMessageId?: string;
+}): Promise<Memory | undefined> {
+	const {
+		runtime,
+		message,
+		actionName,
+		operation,
+		subAction,
+		summaryText,
+		source,
+		targetLabel,
+		targetKind,
+		targetMemory,
+		platformMessageId,
+	} = params;
+	try {
+		const memoryId = stringToUuid(
+			[
+				message.id ?? message.roomId,
+				actionName,
+				source,
+				targetMemory?.id ?? platformMessageId ?? Date.now(),
+			].join(":"),
+		) as UUID;
+		const memory: Memory = {
+			id: memoryId,
+			entityId: runtime.agentId,
+			agentId: runtime.agentId,
+			roomId: message.roomId,
+			worldId: message.worldId,
+			content: {
+				text: summaryText,
+				actions: [actionName],
+				source: "agent_action",
+				type: "action_result",
+				actionName,
+				actionStatus: "completed",
+				responseMessageId: targetMemory?.id,
+				metadata: {
+					operation,
+					subAction,
+					targetSource: source,
+					targetLabel,
+					targetKind,
+					targetRoomId: targetMemory?.roomId,
+					sentMessageId: platformMessageId,
+				},
+			},
+			metadata: {
+				type: "message",
+				source: "agent_action",
+				provider: source,
+				actionName,
+				operation,
+				subAction,
+				targetSource: source,
+				targetLabel,
+				targetKind,
+				targetRoomId: targetMemory?.roomId,
+				sentMessageId: platformMessageId,
+			} as Memory["metadata"],
+			createdAt: Date.now(),
+		};
+		await runtime.upsertMemory(memory, "messages");
+		return memory;
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: actionName,
+				err: error instanceof Error ? error.message : String(error),
+				source,
+			},
+			"Message sent but current chat action memory persistence failed",
+		);
+		return undefined;
+	}
+}
+
 function withThread(
 	target: TargetInfo,
 	thread: string | undefined,
@@ -1323,7 +1590,12 @@ function invalidResult(text: string, error: string): ActionResult {
 		text,
 		success: false,
 		values: { success: false, error },
-		data: { actionName: "SEND_MESSAGE", error },
+		data: {
+			actionName: "MESSAGE",
+			operation: "send",
+			subAction: "SEND_MESSAGE",
+			error,
+		},
 	};
 }
 
@@ -1332,10 +1604,10 @@ function invalidResult(text: string, error: string): ActionResult {
  */
 export const sendMessageAction: Action = {
 	name: "SEND_MESSAGE",
-	similes: spec.similes ? [...spec.similes] : ["DM", "MESSAGE", "SEND_DM"],
+	similes: SEND_MESSAGE_SIMILES,
 	description: BASE_DESCRIPTION,
 	descriptionCompressed: BASE_DESCRIPTION_COMPRESSED,
-	contexts: ["messaging", "email", "contacts", "connectors", "social_posting"],
+	contexts: ["messaging", "email", "contacts", "connectors"],
 	roleGate: { minRole: "ADMIN" },
 	validate: async (
 		runtime: IAgentRuntime,
@@ -1344,13 +1616,7 @@ export const sendMessageAction: Action = {
 	): Promise<boolean> => {
 		await refreshActionDescription(runtime, message, state);
 		return hasActionContextOrKeyword(message, state, {
-			contexts: [
-				"messaging",
-				"email",
-				"contacts",
-				"connectors",
-				"social_posting",
-			],
+			contexts: ["messaging", "email", "contacts", "connectors"],
 			keywords: [
 				"send message",
 				"dm",
@@ -1359,8 +1625,6 @@ export const sendMessageAction: Action = {
 				"tell",
 				"notify",
 				"message them",
-				"post to",
-				"post in",
 			],
 		});
 	},
@@ -1379,14 +1643,14 @@ export const sendMessageAction: Action = {
 
 		if (!params.message && !params.attachments) {
 			return invalidResult(
-				"SEND_MESSAGE requires a non-empty message or attachments.",
+				"MESSAGE operation=send requires a non-empty message or attachments.",
 				"INVALID_PARAMETERS",
 			);
 		}
 
 		if (!VALID_URGENCIES.has(params.urgency)) {
 			return invalidResult(
-				`SEND_MESSAGE urgency must be one of: normal, important, urgent. Got "${params.urgency}".`,
+				`MESSAGE operation=send urgency must be one of: normal, important, urgent. Got "${params.urgency}".`,
 				"INVALID_PARAMETERS",
 			);
 		}
@@ -1412,7 +1676,9 @@ export const sendMessageAction: Action = {
 					error: errorCode,
 				},
 				data: {
-					actionName: "SEND_MESSAGE",
+					actionName: "MESSAGE",
+					operation: "send",
+					subAction: "SEND_MESSAGE",
 					error: errorCode,
 					sourceResolution: resolution.sourceResolution,
 					candidates:
@@ -1431,10 +1697,13 @@ export const sendMessageAction: Action = {
 
 		const selected = resolution.candidate;
 		const target = withThread(selected.target, params.thread);
-		const content = buildContent({
-			...params,
-			source: selected.connector.source,
-		});
+		const content = applyConnectorContentShaping(
+			selected.connector,
+			buildContent({
+				...params,
+				source: selected.connector.source,
+			}),
+		);
 		const context = buildQueryContext(
 			runtime,
 			message,
@@ -1447,9 +1716,20 @@ export const sendMessageAction: Action = {
 			target,
 			context,
 		);
+		let persistedMemory: Memory | undefined;
 
 		try {
-			await runtime.sendMessageToTarget(target, content);
+			const sentMemory = await runtime.sendMessageToTarget(target, content);
+			persistedMemory = await persistOutboundMessageMemory({
+				runtime,
+				source: selected.connector.source,
+				target,
+				targetLabel: selected.label,
+				targetKind: selected.kind,
+				content,
+				sentMemory,
+				persist: normalizeBoolean(rawParams.persist) !== false,
+			});
 		} catch (error) {
 			const errMsg = error instanceof Error ? error.message : String(error);
 			logger.error(
@@ -1464,7 +1744,9 @@ export const sendMessageAction: Action = {
 					source: selected.connector.source,
 				},
 				data: {
-					actionName: "SEND_MESSAGE",
+					actionName: "MESSAGE",
+					operation: "send",
+					subAction: "SEND_MESSAGE",
 					error: "SEND_FAILED",
 					source: selected.connector.source,
 					target,
@@ -1473,6 +1755,24 @@ export const sendMessageAction: Action = {
 				},
 			};
 		}
+
+		const platformMessageId =
+			typeof persistedMemory?.metadata === "object"
+				? (persistedMemory.metadata as { messageIdFull?: string }).messageIdFull
+				: undefined;
+		await persistCurrentChatSendMemory({
+			runtime,
+			message,
+			actionName: "MESSAGE",
+			operation: "send",
+			subAction: "SEND_MESSAGE",
+			summaryText: `Message sent via ${selected.connector.label} to ${selected.label}.`,
+			source: selected.connector.source,
+			targetLabel: selected.label,
+			targetKind: selected.kind,
+			targetMemory: persistedMemory,
+			platformMessageId,
+		});
 
 		return {
 			text: `Message sent via ${selected.connector.label} to ${selected.label}.`,
@@ -1485,7 +1785,9 @@ export const sendMessageAction: Action = {
 				sourceResolution: resolution.sourceResolution,
 			},
 			data: {
-				actionName: "SEND_MESSAGE",
+				actionName: "MESSAGE",
+				operation: "send",
+				subAction: "SEND_MESSAGE",
 				source: selected.connector.source,
 				target,
 				targetLabel: selected.label,
@@ -1494,12 +1796,14 @@ export const sendMessageAction: Action = {
 				resolutionReasons: selected.reasons,
 				thread: params.thread,
 				urgency: params.urgency,
+				memoryId: persistedMemory?.id,
+				responseMessageId: platformMessageId,
 				...extraContext,
 			},
 		};
 	},
 	parameters: SEND_MESSAGE_PARAMETERS,
-	examples: (spec.examples ?? []) as ActionExample[][],
+	examples: (spec?.examples ?? []) as ActionExample[][],
 };
 
 export default sendMessageAction;

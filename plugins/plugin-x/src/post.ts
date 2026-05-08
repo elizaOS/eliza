@@ -387,6 +387,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
         try {
           // Ensure context exists with error handling
           const context = await ensureTwitterContext(this.runtime, {
+            accountId: this.client.accountId,
             userId,
             username: this.client.profile?.username || "unknown",
             conversationId: `${userId}-home`,
@@ -404,10 +405,20 @@ Generate a single tweet that sounds like YOU would actually write it:`;
               channelType: ChannelType.FEED,
               type: "post",
               metadata: {
+                accountId: this.client.accountId,
                 tweetId,
                 postedAt: Date.now(),
               },
             },
+            metadata: {
+              type: "message",
+              source: "twitter",
+              accountId: this.client.accountId,
+              provider: "twitter",
+              messageIdFull: tweetId,
+              chatType: ChannelType.FEED,
+              fromBot: true,
+            } as unknown as Memory["metadata"],
             createdAt: Date.now(),
           };
 

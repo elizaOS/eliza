@@ -17,13 +17,18 @@ describe("browser workspace connector auth sessions", () => {
   it("derives persistent per-provider account partitions", () => {
     expect(
       resolveBrowserWorkspaceConnectorPartition("Gmail", "Work Account"),
-    ).toBe("persist:connector-gmail-work-account");
+    ).toMatch(/^persist:connector-gmail-work-account-[a-z0-9]+$/);
     expect(
       resolveBrowserWorkspaceConnectorPartition(
         "google/chat",
         "me@example.com",
       ),
-    ).toBe("persist:connector-google-chat-me-example-com");
+    ).toMatch(/^persist:connector-google-chat-me-example-com-[a-z0-9]+$/);
+    expect(
+      resolveBrowserWorkspaceConnectorPartition("gmail", "work.account"),
+    ).not.toBe(
+      resolveBrowserWorkspaceConnectorPartition("gmail", "work account"),
+    );
   });
 
   it("isolates named accounts into separate internal browser partitions", async () => {
@@ -44,17 +49,18 @@ describe("browser workspace connector auth sessions", () => {
       webEnv,
     );
 
-    expect(first.partition).toBe("persist:connector-gmail-work");
-    expect(second.partition).toBe("persist:connector-gmail-personal");
+    expect(first.partition).toMatch(/^persist:connector-gmail-work-[a-z0-9]+$/);
+    expect(second.partition).toMatch(
+      /^persist:connector-gmail-personal-[a-z0-9]+$/,
+    );
     expect(first.tabId).not.toBe(second.tabId);
     expect(first.authState).toBe("auth_pending");
     expect(second.authState).toBe("auth_pending");
 
     const tabs = await listBrowserWorkspaceTabs(webEnv);
-    expect(tabs.map((tab) => tab.partition).sort()).toEqual([
-      "persist:connector-gmail-personal",
-      "persist:connector-gmail-work",
-    ]);
+    expect(tabs.map((tab) => tab.partition).sort()).toEqual(
+      [first.partition, second.partition].sort(),
+    );
   });
 
   it("reuses the same provider account handle without sharing other accounts", async () => {

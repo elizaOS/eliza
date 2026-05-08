@@ -32,7 +32,7 @@ export {
   HeartbeatsDesktopShell,
   HeartbeatsView,
 } from "./components/pages/HeartbeatsView";
-export { KnowledgeView } from "./components/pages/KnowledgeView";
+export { DocumentsView } from "./components/pages/DocumentsView";
 export { LogsView } from "./components/pages/LogsView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";

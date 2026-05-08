@@ -249,7 +249,7 @@ function extractAdhdAction(prompt: string): string {
   if (/clear everything|start fresh|reset/.test(message))
     return "RESET_SESSION";
   if (/phone number|contact info/.test(message)) return "UPDATE_CONTACT_INFO";
-  if (/generate .*picture|image/.test(message)) return "GENERATE_IMAGE";
+  if (/generate .*picture|image/.test(message)) return "GENERATE_MEDIA";
   if (/ignore that last/.test(message)) return "IGNORE";
   if (/create .*plan|detailed plan/.test(message)) return "CREATE_PLAN";
   return lower.includes("reply") ? "REPLY" : "REPLY";

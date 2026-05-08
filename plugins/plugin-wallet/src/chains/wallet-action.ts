@@ -40,6 +40,8 @@ const LEGACY_TRANSFER_ACTIONS = new Set([
 ]);
 
 const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
+const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV", "WALLET_GOV_OP"]);
+const GOV_OPS = new Set(["propose", "vote", "queue", "execute"]);
 
 function selectedContextMatches(
   state: State | undefined,
@@ -85,20 +87,29 @@ function legacySubaction(value: unknown): WalletRouterSubaction | undefined {
     return "transfer";
   }
   if (LEGACY_BRIDGE_ACTIONS.has(upper)) return "bridge";
+  if (LEGACY_GOV_ACTIONS.has(upper)) return "gov";
   return undefined;
+}
+
+function normalizedGovOp(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return GOV_OPS.has(normalized) ? normalized : undefined;
 }
 
 function normalizeRawParams(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
   const action = raw.action ?? raw.name;
+  const op = normalizedGovOp(raw.op ?? raw.govOp);
   return {
     subaction:
       raw.subaction ??
       raw.operation ??
       raw.actionType ??
+      (op ? "gov" : undefined) ??
       legacySubaction(action),
-    chain: raw.chain ?? raw.fromChain ?? raw.network,
+    chain: raw.target ?? raw.chain ?? raw.fromChain ?? raw.network,
     fromToken:
       raw.fromToken ??
       raw.inputToken ??
@@ -116,6 +127,14 @@ function normalizeRawParams(
     slippageBps: raw.slippageBps ?? raw.slippage,
     mode: raw.mode ?? (raw.confirmed === true ? "execute" : undefined),
     dryRun: raw.dryRun ?? raw.dry_run,
+    op,
+    governor: raw.governor,
+    proposalId: raw.proposalId,
+    support: raw.support,
+    targets: raw.targets,
+    values: raw.values,
+    calldatas: raw.calldatas,
+    description: raw.description,
   };
 }
 
@@ -232,11 +251,11 @@ async function parseParams(
 }
 
 export const walletRouterAction: Action = {
-  name: "WALLET_ACTION",
+  name: "WALLET",
   description:
-    "Route wallet token operations through the registered chain handlers. Use subaction transfer, swap, or bridge with uniform params: subaction, chain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun. Omit chain only when one registered handler supports the subaction.",
+    "Route crypto wallet operations through the registered chain handlers. Use subaction transfer, swap, bridge, or gov. target selects the chain; mode prepare previews and mode execute submits. Legacy chain aliases are accepted.",
   descriptionCompressed:
-    "Route wallet transfer/swap/bridge via chain registry; params: subaction, chain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun.",
+    "Crypto wallet router: subaction transfer|swap|bridge|gov, target chain, mode prepare|execute.",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "USER" },
@@ -249,19 +268,22 @@ export const walletRouterAction: Action = {
     "WALLET_TRANSFER",
     "CROSS_CHAIN_TRANSFER",
     "PREPARE_TRANSFER",
+    "WALLET_ACTION",
+    "WALLET_GOV",
+    "WALLET_GOV_OP",
   ],
   parameters: [
     {
       name: "subaction",
       description: "Wallet operation to perform.",
       required: true,
-      schema: { type: "string", enum: ["transfer", "swap", "bridge"] },
-      examples: ["transfer", "swap", "bridge"],
+      schema: { type: "string", enum: ["transfer", "swap", "bridge", "gov"] },
+      examples: ["transfer", "swap", "bridge", "gov"],
     },
     {
-      name: "chain",
+      name: "target",
       description:
-        "Chain id or name. Omit only when one chain supports subaction.",
+        "Chain id or name. Omit only when one chain supports the subaction.",
       required: false,
       schema: { type: "string" },
       examples: ["base", "solana", "8453"],
@@ -283,8 +305,8 @@ export const walletRouterAction: Action = {
     },
     {
       name: "amount",
-      description: "Human-readable token amount.",
-      required: true,
+      description: "Human-readable token amount. Required for transfer, swap, and bridge.",
+      required: false,
       schema: { type: "string" },
       examples: ["0.1", "25"],
     },
@@ -320,6 +342,57 @@ export const walletRouterAction: Action = {
       schema: { type: "boolean", default: false },
       examples: [true, false],
     },
+    {
+      name: "op",
+      description: "Governance operation when subaction is gov.",
+      required: false,
+      schema: { type: "string", enum: ["propose", "vote", "queue", "execute"] },
+      examples: ["vote"],
+    },
+    {
+      name: "governor",
+      description: "Governor contract address for governance operations.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["0x742d35Cc6634C0532925a3b844Bc454e4438f44e"],
+    },
+    {
+      name: "proposalId",
+      description: "Proposal id for governance vote, queue, or execute.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "support",
+      description: "Vote support value for governance vote operations.",
+      required: false,
+      schema: { type: "number" },
+      examples: [1],
+    },
+    {
+      name: "targets",
+      description: "Target contract addresses for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "values",
+      description: "Native token values as strings for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "calldatas",
+      description: "Hex calldata values for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "description",
+      description: "Proposal description for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   validate: async (_runtime, message, state) => {
     const raw = extractRawParams(message, state);
@@ -334,7 +407,7 @@ export const walletRouterAction: Action = {
     }
     const text = message.content?.text;
     if (typeof text !== "string") return false;
-    return /\b(wallet|swap|transfer|send|token|crypto|money|balance|solana|evm|ethereum|base|arbitrum)\b/i.test(
+    return /\b(wallet|swap|transfer|send|token|crypto|money|balance|solana|evm|ethereum|base|arbitrum|governance|governor|proposal|vote|dao)\b/i.test(
       text,
     );
   },
@@ -422,7 +495,7 @@ export const walletRouterAction: Action = {
         name: "{{agent}}",
         content: {
           text: "Preparing the Base transfer.",
-          action: "WALLET_ACTION",
+          action: "WALLET",
         },
       },
     ],
@@ -437,7 +510,7 @@ export const walletRouterAction: Action = {
         name: "{{agent}}",
         content: {
           text: "Preparing a Solana swap dry run.",
-          action: "WALLET_ACTION",
+          action: "WALLET",
         },
       },
     ],

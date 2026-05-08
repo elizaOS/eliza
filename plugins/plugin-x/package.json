@@ -63,10 +63,30 @@
     "pluginParameters": {
       "TWITTER_AUTH_MODE": {
         "type": "string",
-        "description": "Auth mode: 'env' (legacy keys/tokens), 'oauth' (3-legged OAuth2 PKCE), or 'broker' (stub).",
+        "description": "Auth mode: 'env' (legacy keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
         "required": false,
         "default": "env",
         "sensitive": false
+      },
+      "TWITTER_ACCOUNT_ID": {
+        "type": "string",
+        "description": "Account ID for the default X account when connector account routing is enabled.",
+        "required": false,
+        "default": "default",
+        "sensitive": false
+      },
+      "TWITTER_DEFAULT_ACCOUNT_ID": {
+        "type": "string",
+        "description": "Default X account ID used when a target/content does not specify accountId.",
+        "required": false,
+        "default": "default",
+        "sensitive": false
+      },
+      "TWITTER_ACCOUNTS": {
+        "type": "string",
+        "description": "Optional JSON object/array of account-scoped X credentials for multi-account pilots.",
+        "required": false,
+        "sensitive": true
       },
       "TWITTER_API_KEY": {
         "type": "string",
@@ -109,12 +129,6 @@
         "description": "OAuth2 scopes (space-separated).",
         "required": false,
         "default": "tweet.read tweet.write users.read offline.access",
-        "sensitive": false
-      },
-      "TWITTER_BROKER_URL": {
-        "type": "string",
-        "description": "Broker URL (required for TWITTER_AUTH_MODE=broker; stub only).",
-        "required": false,
         "sensitive": false
       },
       "TWITTER_TARGET_USERS": {

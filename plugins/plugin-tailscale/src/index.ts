@@ -36,3 +36,4 @@ export { CloudTailscaleService } from './services/CloudTailscaleService';
 export { selectTunnelBackend, readBackendMode } from './services/TunnelBackendSelector';
 export type { BackendDecision } from './services/TunnelBackendSelector';
 export type { ITunnelService, TunnelStatus, TunnelProvider, TailscaleBackendMode } from './types';
+export * from './accounts';

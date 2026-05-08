@@ -108,7 +108,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Plugin Loading - Production Flow", () =
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: "chat" as any,
       webSearchEnabled: false,
     });
 
@@ -273,7 +273,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Assistant - Trending Tokens Query", () 
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: "chat" as any,
       webSearchEnabled: false,
     });
 

@@ -5,6 +5,10 @@
  */
 
 import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
+import {
+  resolveGitHubAccountSelection,
+  type GitHubAccountSelection,
+} from "./accounts.js";
 import type { GitHubService } from "./services/github-service.js";
 import {
   GITHUB_SERVICE_TYPE,
@@ -16,6 +20,7 @@ import {
 export interface ResolvedClient {
   client: GitHubOctokitClient;
   identity: GitHubIdentity;
+  accountId?: string;
 }
 
 export function resolveIdentity(
@@ -31,13 +36,13 @@ export function resolveIdentity(
 
 export function getClient(
   runtime: IAgentRuntime,
-  identity: GitHubIdentity,
+  selection: GitHubAccountSelection,
 ): GitHubOctokitClient | null {
   const service = runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE);
   if (!service) {
     return null;
   }
-  return service.getOctokit(identity);
+  return service.getOctokit(selection);
 }
 
 export async function reportAndReturn<T>(
@@ -117,9 +122,12 @@ export function isConfirmed(
   return options?.confirmed === true;
 }
 
-export function needsClientError(identity: GitHubIdentity): string {
-  return `GitHub ${identity} token not configured (set ${
-    identity === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"
+export function needsClientError(selection: GitHubAccountSelection): string {
+  const accountSuffix = selection.accountId
+    ? ` accountId "${selection.accountId}"`
+    : ` ${selection.role} account`;
+  return `GitHub${accountSuffix} token not configured (set GITHUB_ACCOUNTS or ${
+    selection.role === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"
   })`;
 }
 
@@ -129,14 +137,33 @@ export function getServiceOrNull(runtime: IAgentRuntime): GitHubService | null {
 
 export function buildResolvedClient(
   runtime: IAgentRuntime,
-  identity: GitHubIdentity,
+  selection: GitHubIdentity | GitHubAccountSelection,
 ): ResolvedClient | { error: string } {
   if (!getServiceOrNull(runtime)) {
     return { error: "GitHub service not available" };
   }
-  const client = getClient(runtime, identity);
+  const resolvedSelection =
+    typeof selection === "string" ? { role: selection } : selection;
+  const client = getClient(runtime, resolvedSelection);
   if (!client) {
-    return { error: needsClientError(identity) };
+    return { error: needsClientError(resolvedSelection) };
   }
-  return { client, identity };
+  return {
+    client,
+    identity: resolvedSelection.role,
+    accountId: resolvedSelection.accountId,
+  };
+}
+
+export function resolveAccountSelection(
+  options: Record<string, unknown> | undefined,
+  defaultIdentity: GitHubIdentity,
+): GitHubAccountSelection {
+  return resolveGitHubAccountSelection(options, defaultIdentity);
+}
+
+export function describeSelection(selection: GitHubAccountSelection): string {
+  return selection.accountId
+    ? `${selection.role} (${selection.accountId})`
+    : selection.role;
 }

@@ -1,5 +1,7 @@
 import type {
 	MessageHandlerAction,
+	MessageHandlerExtract,
+	MessageHandlerExtractedRelationship,
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
@@ -61,6 +63,8 @@ export function parseMessageHandlerOutput(
 			? [SIMPLE_CONTEXT_ID]
 			: rawContexts;
 
+	const extract = parseExtract(parsed.extract);
+
 	return {
 		processMessage,
 		plan: {
@@ -68,7 +72,46 @@ export function parseMessageHandlerOutput(
 			reply,
 		},
 		thought: typeof parsed.thought === "string" ? parsed.thought : "",
+		...(extract ? { extract } : {}),
 	};
+}
+
+function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+		return undefined;
+	}
+	const source = raw as Record<string, unknown>;
+	const facts = Array.isArray(source.facts)
+		? source.facts
+				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+				.filter((entry): entry is string => entry.length > 0)
+		: [];
+	const relationships = Array.isArray(source.relationships)
+		? source.relationships
+				.map((entry): MessageHandlerExtractedRelationship | null => {
+					if (!entry || typeof entry !== "object") return null;
+					const rel = entry as Record<string, unknown>;
+					const subject =
+						typeof rel.subject === "string" ? rel.subject.trim() : "";
+					const predicate =
+						typeof rel.predicate === "string" ? rel.predicate.trim() : "";
+					const object =
+						typeof rel.object === "string" ? rel.object.trim() : "";
+					if (!subject || !predicate || !object) return null;
+					return { subject, predicate, object };
+				})
+				.filter(
+					(entry): entry is MessageHandlerExtractedRelationship =>
+						entry !== null,
+				)
+		: [];
+	if (facts.length === 0 && relationships.length === 0) {
+		return undefined;
+	}
+	const result: MessageHandlerExtract = {};
+	if (facts.length > 0) result.facts = facts;
+	if (relationships.length > 0) result.relationships = relationships;
+	return result;
 }
 
 export function routeMessageHandlerOutput(

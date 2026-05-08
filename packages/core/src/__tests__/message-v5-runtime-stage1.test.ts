@@ -73,7 +73,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "mh-1",
-						name: "MESSAGE_HANDLER_PLAN",
+						name: "HANDLE_RESPONSE",
 						arguments: {
 							plan: {
 								contexts: ["simple"],
@@ -102,7 +102,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseSchema?: unknown;
 			responseFormat?: unknown;
 		};
-		expect(params.tools?.[0]?.name).toBe("MESSAGE_HANDLER_PLAN");
+		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
 		expect(params.toolChoice).toBe("required");
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -118,7 +118,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "mh-1",
-						toolName: "MESSAGE_HANDLER_PLAN",
+						toolName: "HANDLE_RESPONSE",
 						input: {
 							plan: {
 								contexts: ["simple"],
@@ -139,7 +139,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				providerOrder: ["RECENT_MESSAGES", "PROVIDERS", "CHARACTER"],
 				providers: {
 					RECENT_MESSAGES: {
-						text: "# Conversation Messages\nshould not render as text",
+						text: "# Conversation Messages\nfull recent provider text",
 						values: { shouldNotRender: "value leak" },
 						data: {
 							secret: "secret leak",
@@ -205,11 +205,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(systemContent).toContain("message_handler_stage:");
 		expect(systemContent).toContain("available_contexts:");
-		// Prior dialogue lands as a `message:user:` segment in the user content,
-		// NOT as a `# Conversation Messages` text dump from RECENT_MESSAGES.
+		// Stage 1 keeps both provider text and structured prior messages. This
+		// preserves long provider payloads while still giving the model clean
+		// chat-message-shaped prior turns.
+		expect(userContent).toContain("provider:RECENT_MESSAGES:");
+		expect(userContent).toContain("# Conversation Messages");
+		expect(userContent).toContain("full recent provider text");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
-		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).toContain("Can you check my calendar?");
 		expect(userContent).not.toContain("user_role:");
 		const fullPrompt = `${params.prompt ?? ""}\n${systemContent}\n${userContent}`;
@@ -233,29 +236,29 @@ describe("runV5MessageRuntimeStage1", () => {
 			JSON.stringify({
 				action: "RESPOND",
 				simple: false,
-				contexts: ["knowledge"],
-				thought: "Knowledge context is needed.",
+				contexts: ["documents"],
+				thought: "Documents context is needed.",
 			}),
 			JSON.stringify({
 				thought: "No tool needed in this fixture.",
 				toolCalls: [],
-				messageToUser: "I found the relevant knowledge.",
+				messageToUser: "I found the relevant documents.",
 			}),
 		]);
 		runtime.providers = [
 			{
-				name: "KNOWLEDGE",
-				contexts: ["knowledge"],
+				name: "DOCUMENTS",
+				contexts: ["documents"],
 				get: vi.fn(),
 			},
 			{
 				name: "PROVIDERS",
-				contexts: ["knowledge"],
+				contexts: ["documents"],
 				get: vi.fn(),
 			},
 			{
 				name: "CHARACTER",
-				contexts: ["knowledge"],
+				contexts: ["documents"],
 				get: vi.fn(),
 			},
 		] as unknown as IAgentRuntime["providers"];
@@ -264,7 +267,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime,
 			message: makeMessage(),
 			state: {
-				values: { availableContexts: "knowledge" },
+				values: { availableContexts: "documents" },
 				data: {},
 				text: "",
 			},
@@ -277,7 +280,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		expect(composeState.mock.calls).toHaveLength(1);
 		const providerNames = composeState.mock.calls[0]?.[1] as string[];
-		expect(providerNames).toContain("KNOWLEDGE");
+		expect(providerNames).toContain("DOCUMENTS");
 		expect(providerNames).toContain("RECENT_MESSAGES");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");

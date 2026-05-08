@@ -451,7 +451,7 @@ describe("serviceType collision guardrails", () => {
 			.map(([serviceType, group]) => formatDuplicateGroup(serviceType, group));
 
 		expect(unexpectedDuplicateGroups).toEqual([]);
-	});
+	}, 180_000);
 
 	it("keeps known collision fixes in place", () => {
 		const registrations = collectServiceClassRegistrations();

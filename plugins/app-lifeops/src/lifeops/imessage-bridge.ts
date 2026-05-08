@@ -1,3 +1,6 @@
+// Deprecated LifeOps fallback shim. Canonical iMessage messaging should go
+// through @elizaos/plugin-imessage runtime services; this bridge remains for
+// legacy BlueBubbles/imsg backends when the native plugin is unavailable.
 /**
  * iMessage bridge — dual-backend (`imsg` CLI or BlueBubbles HTTP API).
  *

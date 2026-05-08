@@ -79,9 +79,6 @@ export interface StreamingEventHooks {
  * // Structured field extraction - extracts content from the text field
  * const extractor = new StructuredFieldStreamExtractor(config);
  *
- * // Action output filtering
- * const extractor = new ActionStreamFilter();
- *
  * // Custom implementation
  * class MyExtractor implements IStreamExtractor {
  *   private _done = false;

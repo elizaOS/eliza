@@ -21,6 +21,31 @@ import {
  */
 export type BrowserTarget = "workspace" | "bridge" | "computeruse";
 
+type BrowserActionSubaction =
+  | "back"
+  | "click"
+  | "close"
+  | "forward"
+  | "get"
+  | "hide"
+  | "navigate"
+  | "open"
+  | "press"
+  | "reload"
+  | "screenshot"
+  | "show"
+  | "snapshot"
+  | "state"
+  | "tab"
+  | "type"
+  | "wait"
+  | "realistic-click"
+  | "realistic-fill"
+  | "realistic-type"
+  | "realistic-press"
+  | "cursor-move"
+  | "cursor-hide";
+
 type BrowserActionParameters = {
   /**
    * Optional target override. Default: the BrowserService active target
@@ -32,30 +57,21 @@ type BrowserActionParameters = {
   pixels?: number;
   script?: string;
   selector?: string;
-  subaction?:
-    | "back"
-    | "click"
-    | "close"
-    | "forward"
-    | "get"
-    | "hide"
-    | "navigate"
-    | "open"
-    | "press"
-    | "reload"
-    | "screenshot"
-    | "show"
-    | "snapshot"
-    | "state"
-    | "tab"
-    | "type"
-    | "wait"
-    | "realistic-click"
-    | "realistic-fill"
-    | "realistic-type"
-    | "realistic-press"
-    | "cursor-move"
-    | "cursor-hide";
+  /**
+   * Compatibility alias for older browser-router calls. Prefer `subaction` in
+   * new plans, but accept this so BROWSER_ACTION-shaped tool calls can still
+   * execute when the model picks the consolidated BROWSER action.
+   */
+  action?:
+    | BrowserActionSubaction
+    | "info"
+    | "context"
+    | "get_context"
+    | "list_tabs"
+    | "open_tab"
+    | "close_tab"
+    | "switch_tab";
+  subaction?: BrowserActionSubaction;
   tabAction?: "close" | "list" | "new" | "switch";
   text?: string;
   timeoutMs?: number;
@@ -95,6 +111,11 @@ function inferBrowserSubaction(
     return params.subaction;
   }
 
+  const legacySubaction = normalizeLegacyBrowserAction(params?.action);
+  if (legacySubaction) {
+    return legacySubaction;
+  }
+
   if (params?.tabAction) {
     return "tab";
   }
@@ -118,6 +139,43 @@ function inferBrowserSubaction(
   }
 
   return "state";
+}
+
+function normalizeLegacyBrowserAction(
+  action: BrowserActionParameters["action"] | undefined,
+): BrowserWorkspaceCommand["subaction"] | undefined {
+  switch (action) {
+    case "info":
+    case "context":
+    case "get_context":
+      return "state";
+    case "list_tabs":
+    case "open_tab":
+    case "close_tab":
+    case "switch_tab":
+      return "tab";
+    case undefined:
+      return undefined;
+    default:
+      return action;
+  }
+}
+
+function normalizeLegacyTabAction(
+  action: BrowserActionParameters["action"] | undefined,
+): BrowserActionParameters["tabAction"] | undefined {
+  switch (action) {
+    case "list_tabs":
+      return "list";
+    case "open_tab":
+      return "new";
+    case "close_tab":
+      return "close";
+    case "switch_tab":
+      return "switch";
+    default:
+      return undefined;
+  }
 }
 
 function formatBrowserSessionResult(
@@ -185,7 +243,7 @@ export const browserAction: Action = {
   description:
     "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified.",
   descriptionCompressed:
-    "single BROWSER action; dispatches to whichever target is registered (workspace / bridge / computeruse); subaction covers open / navigate / click / type / screenshot / state / etc.",
+    "Browser tab/page control only: open/navigate/click/type/screenshot/state. For LifeOps Browser Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
   validate: async () => true,
   handler: async (_runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -203,7 +261,7 @@ export const browserAction: Action = {
       script: params?.script,
       selector: params?.selector?.trim(),
       subaction,
-      tabAction: params?.tabAction,
+      tabAction: params?.tabAction ?? normalizeLegacyTabAction(params?.action),
       text: params?.text,
       timeoutMs: params?.timeoutMs,
       url,
@@ -250,6 +308,47 @@ export const browserAction: Action = {
     }
   },
   parameters: [
+    {
+      name: "action",
+      description:
+        "Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [
+          "back",
+          "click",
+          "close",
+          "context",
+          "forward",
+          "get",
+          "get_context",
+          "hide",
+          "info",
+          "list_tabs",
+          "navigate",
+          "open",
+          "open_tab",
+          "press",
+          "reload",
+          "screenshot",
+          "show",
+          "snapshot",
+          "state",
+          "tab",
+          "type",
+          "wait",
+          "close_tab",
+          "switch_tab",
+          "realistic-click",
+          "realistic-fill",
+          "realistic-type",
+          "realistic-press",
+          "cursor-move",
+          "cursor-hide",
+        ],
+      },
+    },
     {
       name: "subaction",
       description: "Browser action to perform",

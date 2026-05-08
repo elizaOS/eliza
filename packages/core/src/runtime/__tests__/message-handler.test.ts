@@ -111,4 +111,34 @@ describe("v5 message handler routing", () => {
 }`);
 		expect(parsed?.plan.contexts).toEqual(["email"]);
 	});
+
+	it("parses extract.facts and extract.relationships when present", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "Capturing user fact.",
+  "plan": { "contexts": ["memory"] },
+  "extract": {
+    "facts": ["the user's birthday is 1990-03-05", "  ", ""],
+    "relationships": [
+      { "subject": "user", "predicate": "works_with", "object": "Alice" },
+      { "subject": "user", "predicate": "", "object": "Bob" }
+    ]
+  }
+}`);
+		expect(parsed?.extract?.facts).toEqual([
+			"the user's birthday is 1990-03-05",
+		]);
+		expect(parsed?.extract?.relationships).toEqual([
+			{ subject: "user", predicate: "works_with", object: "Alice" },
+		]);
+	});
+
+	it("omits extract when no facts or relationships were emitted", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "No durable info.",
+  "plan": { "contexts": ["simple"], "reply": "hi" }
+}`);
+		expect(parsed?.extract).toBeUndefined();
+	});
 });

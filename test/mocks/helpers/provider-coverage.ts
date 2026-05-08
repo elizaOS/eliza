@@ -140,7 +140,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "plugins/app-lifeops/test/lifeops-x-dm-reader.integration.test.ts",
       "plugins/app-lifeops/src/actions/search-across-channels.test.ts",
     ],
   },

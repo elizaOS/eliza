@@ -1,3 +1,7 @@
+// Local plugin-mcp counterpart to cloud/packages/lib/eliza/plugin-mcp/actions/readResourceAction.ts.
+// The `READ_MCP_RESOURCE` name is intentionally identical across both: this
+// local file ships in the agent/core runtime and does not co-load with the
+// cloud-only mirror.
 import {
   type Action,
   type ActionResult,

@@ -14,10 +14,11 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   buildResolvedClient,
+  describeSelection,
   isConfirmed,
   requireNumber,
   requireString,
-  resolveIdentity,
+  resolveAccountSelection,
   splitRepo,
 } from "../action-helpers.js";
 import {
@@ -80,8 +81,8 @@ async function runList(
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
-  const identity = resolveIdentity(options, "agent");
-  const resolved = buildResolvedClient(runtime, identity);
+  const selection = resolveAccountSelection(options, "agent");
+  const resolved = buildResolvedClient(runtime, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -153,7 +154,7 @@ async function runReview(
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
-  const identity = resolveIdentity(options, "user");
+  const selection = resolveAccountSelection(options, "user");
   const repo = requireString(options, "repo");
   const number = requireNumber(options, "number");
   const action = parseReviewAction(options?.action);
@@ -176,7 +177,7 @@ async function runReview(
     const preview =
       `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
       (body ? ` with body: "${body.slice(0, 120)}"` : "") +
-      ` as ${identity}. Re-invoke with confirmed: true to proceed.`;
+      ` as ${describeSelection(selection)}. Re-invoke with confirmed: true to proceed.`;
     await callback?.({ text: preview });
     return { success: false, requiresConfirmation: true, preview };
   }
@@ -187,7 +188,7 @@ async function runReview(
     return { success: false, error: err };
   }
 
-  const resolved = buildResolvedClient(runtime, identity);
+  const resolved = buildResolvedClient(runtime, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -278,6 +279,13 @@ export const prOpAction: Action = {
       description: "Identity to use: agent or user.",
       required: false,
       schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+    },
+    {
+      name: "accountId",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "confirmed",

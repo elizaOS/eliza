@@ -42,8 +42,9 @@ function resolveStatus(value: unknown): TodoStatus | undefined {
 export const editTodoAction: Action = {
 	name: "EDIT_TODO",
 	contexts: ["todos", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
-		"Edit an existing todo item. Can update title, notes, due date, or status.",
+		"Edit one existing todo item by id, updating its title, notes, due date, or status.",
 	similes: ["UPDATE_TODO", "MODIFY_TODO", "CHANGE_TODO"],
 
 	validate: async (

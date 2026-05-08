@@ -18,7 +18,7 @@ const shopifyPlugin: Plugin = {
   // Self-declared auto-enable: activate when the SHOPIFY_ACCESS_TOKEN env var
   // is set. The hardcoded AUTH_PROVIDER_PLUGINS map still serves as fallback.
   autoEnable: {
-    envKeys: ["SHOPIFY_ACCESS_TOKEN"],
+    envKeys: ["SHOPIFY_ACCESS_TOKEN", "SHOPIFY_ACCOUNTS"],
   },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerShopifySearchCategory(runtime);
@@ -26,5 +26,6 @@ const shopifyPlugin: Plugin = {
 };
 
 export default shopifyPlugin;
+export * from "./accounts.js";
 export type { ShopifyPluginConfig } from "./types.js";
 export { ShopifyService };

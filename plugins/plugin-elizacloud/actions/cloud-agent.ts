@@ -441,11 +441,6 @@ export const cloudAgentAction: Action = {
     "check credits",
     "check balance",
     "cloud billing",
-    // legacy action names — keep so older callers still resolve
-    "PROVISION_CLOUD_AGENT",
-    "FREEZE_CLOUD_AGENT",
-    "RESUME_CLOUD_AGENT",
-    "CHECK_CLOUD_CREDITS",
   ],
   tags: ["cloud", "container", "deployment", "backup", "billing"],
   parameters: [

@@ -29,6 +29,7 @@ import type {
   CreateLifeOpsBrowserSessionRequest,
 } from "@elizaos/shared";
 import {
+  type BrowserBridgeCompanionAuthErrorCode,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
@@ -96,7 +97,12 @@ function getBrowserCompanionAuth(
   const companionId =
     typeof companionHeader === "string" ? companionHeader.trim() : "";
   if (!companionId) {
-    ctx.error(ctx.res, "Missing X-Browser-Bridge-Companion-Id header", 401);
+    routeJsonError(
+      ctx,
+      "Missing X-Browser-Bridge-Companion-Id header",
+      401,
+      "browser_bridge_companion_auth_missing_id",
+    );
     return null;
   }
   const authHeader =
@@ -106,7 +112,12 @@ function getBrowserCompanionAuth(
   const match = /^Bearer\s+(.+)$/i.exec(authHeader);
   const pairingToken = match?.[1]?.trim() ?? "";
   if (!pairingToken) {
-    ctx.error(ctx.res, "Missing browser companion bearer token", 401);
+    routeJsonError(
+      ctx,
+      "Missing browser companion bearer token",
+      401,
+      "browser_bridge_companion_auth_missing_token",
+    );
     return null;
   }
   return {
@@ -178,6 +189,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function routeJsonError(
+  ctx: BrowserBridgeRouteContext,
+  message: string,
+  status: number,
+  code?: BrowserBridgeCompanionAuthErrorCode | string | null,
+): void {
+  ctx.json(
+    ctx.res,
+    {
+      error: message,
+      ...(code ? { code } : {}),
+    },
+    status,
+  );
+}
+
 function isStatusError(
   error: unknown,
 ): error is Error & { readonly status: number } {
@@ -186,6 +213,18 @@ function isStatusError(
     "status" in error &&
     typeof error.status === "number"
   );
+}
+
+function statusErrorCode(error: unknown): string | null {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+  return null;
 }
 
 function decodeMatchedPathComponent(
@@ -252,7 +291,7 @@ async function runRoute(
             ? "browser_bridge_auth_invalid"
             : "browser_bridge_service_error",
       });
-      ctx.error(ctx.res, error.message, error.status);
+      routeJsonError(ctx, error.message, error.status, statusErrorCode(error));
       return true;
     }
     logger.error(
@@ -415,6 +454,52 @@ export async function handleBrowserBridgeRoutes(
           ctx.state.adminEntityId,
         ),
       });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/browser-bridge/companions/revoke"
+  ) {
+    if (rateLimitRequest(ctx, "companions:revoke")) {
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      const auth = getBrowserCompanionAuth(ctx);
+      if (!auth) {
+        return;
+      }
+      json(
+        res,
+        await service.revokeBrowserCompanionFromCompanion(
+          auth.companionId,
+          auth.pairingToken,
+          ctx.state.adminEntityId,
+        ),
+      );
+    });
+  }
+
+  const browserCompanionRevokeMatch = pathname.match(
+    /^\/api\/browser-bridge\/companions\/([^/]+)\/revoke$/,
+  );
+  if (method === "POST" && browserCompanionRevokeMatch) {
+    const companionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionRevokeMatch,
+      1,
+      res,
+      "browser companion id",
+    );
+    if (!companionId) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.revokeBrowserCompanion(
+          companionId,
+          ctx.state.adminEntityId,
+        ),
+      );
     });
   }
 

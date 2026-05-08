@@ -19,10 +19,14 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
 } from "@elizaos/shared";
+import {
+  callbackWithPrivacy,
+  createLifeOpsMessageEgressContext,
+} from "../lifeops/privacy-egress.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import { messageText } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
 
 type XReadSubaction = "read_dms" | "read_feed" | "search";
 
@@ -578,13 +582,18 @@ export const xAction: Action & {
         : (llmPlan.query ?? "");
 
     const service = new LifeOpsService(runtime);
+    const egressContext = await createLifeOpsMessageEgressContext({
+      runtime,
+      message,
+      hasOwnerAccess: hasLifeOpsAccess,
+    });
     const respond = async (payload: ActionResult): Promise<ActionResult> => {
-      await callback?.({
-        text: payload.text ?? "",
+      return callbackWithPrivacy(callback, payload, {
+        context: egressContext,
+        dataClasses: ["metadata", "body"],
         source: "action",
         action: "X",
       });
-      return payload;
     };
 
     if (

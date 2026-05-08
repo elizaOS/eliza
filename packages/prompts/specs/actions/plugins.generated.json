@@ -89,7 +89,7 @@
     },
     {
       "name": "BASH",
-      "description": "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
+      "description": "Execute a shell command via /bin/bash -c <command>. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
       "parameters": [
         {
           "name": "command",
@@ -122,17 +122,9 @@
           "schema": {
             "type": "string"
           }
-        },
-        {
-          "name": "run_in_background",
-          "description": "If true, return a task_id immediately. Use TASK_OUTPUT to poll and TASK_STOP to terminate.",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
         }
       ],
-      "descriptionCompressed": "Run a shell command (foreground or background).",
+      "descriptionCompressed": "Run a shell command synchronously.",
       "similes": ["SHELL", "EXEC", "RUN_COMMAND"],
       "exampleCalls": [
         {
@@ -143,8 +135,7 @@
               "command": "example",
               "description": "example",
               "timeout": 1,
-              "cwd": "example",
-              "run_in_background": false
+              "cwd": "example"
             }
           }
         }
@@ -152,7 +143,7 @@
     },
     {
       "name": "BLOCK_UNTIL_TASK_COMPLETE",
-      "description": "Create a website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (e.g. 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, the todo is created first; an optional unlockDurationMinutes re-locks the same hosts after the gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking') — those belong to OWNER_WEBSITE_BLOCK.",
+      "description": "Create a LifeOps-managed website block rule gated on completion of a specific todo, so the named hosts stay blocked until that todo is marked done. Use when the unblock condition is finishing a task, workout, assignment, or todo (for example, 'block x.com until I finish my workout'). When todoName is supplied with no matching active todo, create that todo first; optional unlockDurationMinutes re-locks the same hosts after the todo gate releases. Do not use for fixed-duration blocks ('for 2 hours') or generic focus blocks ('turn on social media blocking'); those belong to OWNER_WEBSITE_BLOCK.",
       "parameters": [
         {
           "name": "websites",
@@ -223,118 +214,102 @@
       ]
     },
     {
-      "name": "BLUEBUBBLES_MESSAGE_OP",
-      "description": "BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react).",
-      "parameters": [
-        {
-          "name": "op",
-          "description": "Operation to run: send or react.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["send", "react"]
-          }
-        },
-        {
-          "name": "text",
-          "description": "Message text for send.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "to",
-          "description": "BlueBubbles chat guid, handle, or current conversation.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "default": "current"
-          }
-        },
-        {
-          "name": "messageGuid",
-          "description": "Target message guid for reactions.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "emoji",
-          "description": "Reaction emoji.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Bluebubbles message ops: send, react.",
-      "similes": [
-        "SEND_IMESSAGE",
-        "TEXT_MESSAGE",
-        "IMESSAGE_REPLY",
-        "BLUEBUBBLES_SEND",
-        "APPLE_MESSAGE",
-        "BLUEBUBBLES_REACT",
-        "BB_REACTION",
-        "IMESSAGE_REACT"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use BLUEBUBBLES_MESSAGE_OP with the provided parameters.",
-          "actions": ["BLUEBUBBLES_MESSAGE_OP"],
-          "params": {
-            "BLUEBUBBLES_MESSAGE_OP": {
-              "op": "send",
-              "text": "example",
-              "to": "current",
-              "messageGuid": "example",
-              "emoji": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "BROWSER_ACTION",
-      "description": "browser_action:\n  purpose: Control a Chromium-based browser through the local runtime: launch, navigate, interact, inspect, execute JavaScript, wait, and manage tabs.\n  provider_state: Read-only browser availability and recent action state are available from the computerState provider. Use state/info/list_tabs only for explicit live refreshes.\n  flow: Open or connect first, then navigate and interact. Use clickables to discover interactive elements.\n  actions: open/connect/close/navigate/click/type/scroll/screenshot/dom/get_dom/clickables/get_clickables/execute/state/info/context/get_context/wait/list_tabs/open_tab/close_tab/switch_tab.",
+      "name": "BROWSER",
+      "description": "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified.",
       "parameters": [
         {
           "name": "action",
-          "description": "Browser action to perform.",
-          "required": true,
+          "description": "Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+          "required": false,
           "schema": {
             "type": "string",
             "enum": [
-              "open",
-              "connect",
-              "close",
-              "navigate",
+              "back",
               "click",
-              "type",
-              "scroll",
-              "screenshot",
-              "dom",
-              "get_dom",
-              "clickables",
-              "get_clickables",
-              "execute",
-              "state",
-              "info",
+              "close",
               "context",
+              "forward",
+              "get",
               "get_context",
-              "wait",
+              "hide",
+              "info",
               "list_tabs",
+              "navigate",
+              "open",
               "open_tab",
+              "press",
+              "reload",
+              "screenshot",
+              "show",
+              "snapshot",
+              "state",
+              "tab",
+              "type",
+              "wait",
               "close_tab",
-              "switch_tab"
+              "switch_tab",
+              "realistic-click",
+              "realistic-fill",
+              "realistic-type",
+              "realistic-press",
+              "cursor-move",
+              "cursor-hide"
             ]
           }
         },
         {
+          "name": "subaction",
+          "description": "Browser action to perform",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "back",
+              "click",
+              "close",
+              "forward",
+              "get",
+              "hide",
+              "navigate",
+              "open",
+              "press",
+              "reload",
+              "screenshot",
+              "show",
+              "snapshot",
+              "state",
+              "tab",
+              "type",
+              "wait",
+              "realistic-click",
+              "realistic-fill",
+              "realistic-type",
+              "realistic-press",
+              "cursor-move",
+              "cursor-hide"
+            ]
+          }
+        },
+        {
+          "name": "tabAction",
+          "description": "Tab operation when subaction is tab",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["close", "list", "new", "switch"]
+          }
+        },
+        {
+          "name": "id",
+          "description": "Session or tab id to target",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "url",
-          "description": "URL for open, navigate, or open_tab.",
+          "description": "URL for open or navigate",
           "required": false,
           "schema": {
             "type": "string"
@@ -342,101 +317,189 @@
         },
         {
           "name": "selector",
-          "description": "CSS selector for click, type, or wait.",
+          "description": "Selector for click, type, or wait",
           "required": false,
           "schema": {
             "type": "string"
-          }
-        },
-        {
-          "name": "coordinate",
-          "description": "Viewport [x, y] coordinate for click.",
-          "required": false,
-          "schema": {
-            "type": "array",
-            "items": {
-              "type": "number"
-            }
           }
         },
         {
           "name": "text",
-          "description": "Text to type, text to click, or text to wait for.",
+          "description": "Text for type",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "code",
-          "description": "JavaScript source to execute in the page.",
+          "name": "key",
+          "description": "Keyboard key for press",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "direction",
-          "description": "Scroll direction.",
+          "name": "pixels",
+          "description": "Scroll distance in pixels",
           "required": false,
           "schema": {
-            "type": "string",
-            "enum": ["up", "down"]
+            "type": "number"
           }
         },
         {
-          "name": "amount",
-          "description": "Scroll amount in pixels.",
+          "name": "timeoutMs",
+          "description": "Command timeout in milliseconds",
           "required": false,
           "schema": {
-            "type": "number",
-            "default": 300
+            "type": "number"
           }
         },
         {
-          "name": "tabId",
-          "description": "Tab identifier for tab actions.",
+          "name": "script",
+          "description": "Script for eval",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "timeout",
-          "description": "Timeout in milliseconds for wait actions.",
+          "name": "watchMode",
+          "description": "Hint that the user is watching; prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
           "required": false,
           "schema": {
-            "type": "number",
-            "default": 5000
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "cursorDurationMs",
+          "description": "Cursor animation duration (ms) for realistic-* subactions",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "perCharDelayMs",
+          "description": "Per-character delay for realistic-type/realistic-fill (ms)",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "replace",
+          "description": "Replace existing input value when filling (vs append) — applies to realistic-fill",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "x",
+          "description": "Cursor target X (CSS pixels) for cursor-move",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "y",
+          "description": "Cursor target Y (CSS pixels) for cursor-move",
+          "required": false,
+          "schema": {
+            "type": "number"
           }
         }
       ],
-      "descriptionCompressed": "Chromium browser control router: open/connect/navigate/click/type/read dom/clickables/execute/wait/tabs; read-only state.",
+      "descriptionCompressed": "Browser tab/page control only: open/navigate/click/type/screenshot/state. For LifeOps Browser Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
       "similes": [
+        "BROWSE_SITE",
+        "BROWSER_SESSION",
         "CONTROL_BROWSER",
-        "WEB_BROWSER",
-        "OPEN_BROWSER",
-        "BROWSE_WEB",
-        "NAVIGATE_BROWSER",
-        "BROWSER_CLICK",
-        "BROWSER_TYPE"
+        "CONTROL_BROWSER_SESSION",
+        "MANAGE_ELIZA_BROWSER_WORKSPACE",
+        "MANAGE_LIFEOPS_BROWSER",
+        "NAVIGATE_SITE",
+        "OPEN_SITE",
+        "USE_BROWSER",
+        "BROWSER_ACTION"
       ],
       "exampleCalls": [
         {
-          "user": "Use BROWSER_ACTION with the provided parameters.",
-          "actions": ["BROWSER_ACTION"],
+          "user": "Use BROWSER with the provided parameters.",
+          "actions": ["BROWSER"],
           "params": {
-            "BROWSER_ACTION": {
-              "action": "open",
+            "BROWSER": {
+              "action": "back",
+              "subaction": "back",
+              "tabAction": "close",
+              "id": "example",
               "url": "example",
               "selector": "example",
-              "coordinate": "example",
               "text": "example",
-              "code": "example",
-              "direction": "up",
-              "amount": 300,
-              "tabId": "example",
-              "timeout": 5000
+              "key": "example",
+              "pixels": 1,
+              "timeoutMs": 1,
+              "script": "example",
+              "watchMode": false,
+              "cursorDurationMs": 1,
+              "perCharDelayMs": 1,
+              "replace": false,
+              "x": 1,
+              "y": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BROWSER_AUTOFILL_LOGIN",
+      "description": "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
+      "parameters": [
+        {
+          "name": "domain",
+          "description": "Registrable hostname to autofill (e.g. `github.com`, no protocol or path).",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "username",
+          "description": "Specific saved login to use. When omitted, the most recently modified saved login for the domain is selected.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "submit",
+          "description": "When true, submit the form after filling. Defaults to false (fill-only).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "autofill save credential open Eliza browser tab request domain require user pre-authorize agent autofill domain via Settings - Vault - Logins (cred domain: autoallow 1)",
+      "similes": [
+        "AGENT_AUTOFILL",
+        "AUTOFILL_BROWSER_LOGIN",
+        "AUTOFILL_LOGIN",
+        "FILL_BROWSER_CREDENTIALS",
+        "LOG_INTO_SITE",
+        "SIGN_IN_TO_SITE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use BROWSER_AUTOFILL_LOGIN with the provided parameters.",
+          "actions": ["BROWSER_AUTOFILL_LOGIN"],
+          "params": {
+            "BROWSER_AUTOFILL_LOGIN": {
+              "domain": "example",
+              "username": "example",
+              "submit": false
             }
           }
         }
@@ -823,11 +886,7 @@
         "restore agent",
         "check credits",
         "check balance",
-        "cloud billing",
-        "PROVISION_CLOUD_AGENT",
-        "FREEZE_CLOUD_AGENT",
-        "RESUME_CLOUD_AGENT",
-        "CHECK_CLOUD_CREDITS"
+        "cloud billing"
       ],
       "exampleCalls": [
         {
@@ -865,7 +924,7 @@
       ],
       "descriptionCompressed": "Slash commands: help, status, stop, models, list.",
       "similes": [
-        "COMMAND_OP",
+        "COMMAND",
         "SLASH_COMMAND",
         "HELP_COMMAND",
         "STATUS_COMMAND",
@@ -1132,54 +1191,6 @@
           "params": {
             "CREATE_LINEAR_ISSUE": {
               "issueData": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "CREATE_N8N_WORKFLOW",
-      "description": "Generate, preview, and deploy n8n workflows from natural language. ",
-      "parameters": [
-        {
-          "name": "request",
-          "description": "Natural-language workflow request, draft modification, deployment confirmation, or cancellation request.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "draftAction",
-          "description": "Optional explicit operation for a pending workflow draft.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["generate", "modify", "deploy", "cancel"]
-          }
-        }
-      ],
-      "descriptionCompressed": "generate, preview, deploy n8n workflow natural language handle full lifecycle: generate draft, show preview, deploy user confirmation handle modify/cancel pend draft IMPORTANT: workflow draft pend, action use user response draft includ yes, ok, deploy, cancel, modification request never reply w/ text draft pend",
-      "similes": [
-        "CREATE_WORKFLOW",
-        "BUILD_WORKFLOW",
-        "GENERATE_WORKFLOW",
-        "MAKE_AUTOMATION",
-        "CREATE_AUTOMATION",
-        "BUILD_N8N_WORKFLOW",
-        "SETUP_WORKFLOW",
-        "CONFIRM_WORKFLOW",
-        "DEPLOY_WORKFLOW",
-        "CANCEL_WORKFLOW"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use CREATE_N8N_WORKFLOW with the provided parameters.",
-          "actions": ["CREATE_N8N_WORKFLOW"],
-          "params": {
-            "CREATE_N8N_WORKFLOW": {
-              "request": "example",
-              "draftAction": "generate"
             }
           }
         }
@@ -1588,40 +1599,6 @@
       ]
     },
     {
-      "name": "DOWNLOAD_MUSIC",
-      "description": "Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
-      "parameters": [
-        {
-          "name": "confirmed",
-          "description": "Must be true to download music after preview.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        }
-      ],
-      "descriptionCompressed": "Download track to library without playing.",
-      "similes": [
-        "FETCH_MUSIC",
-        "GET_MUSIC",
-        "DOWNLOAD_SONG",
-        "SAVE_MUSIC",
-        "GRAB_MUSIC"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use DOWNLOAD_MUSIC with the provided parameters.",
-          "actions": ["DOWNLOAD_MUSIC"],
-          "params": {
-            "DOWNLOAD_MUSIC": {
-              "confirmed": false
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "EDIT",
       "description": "Replace text in an existing file. Default behavior requires `old_string` to match exactly once; pass `replace_all=true` to substitute every occurrence. The file must have been READ in this session, must still match its recorded mtime, and the new content cannot introduce a detected secret pattern.",
       "parameters": [
@@ -1805,48 +1782,6 @@
           "params": {
             "EXIT_WORKTREE": {
               "cleanup": false
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "FARCASTER_CAST",
-      "description": "Post a public Farcaster cast, or reply to an existing cast when replyToHash is provided.",
-      "parameters": [
-        {
-          "name": "text",
-          "description": "Cast text.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "replyToHash",
-          "description": "Hash of the parent cast. When set, posts as a reply; otherwise posts a new cast.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Farcaster cast: post or reply (with replyToHash).",
-      "similes": [
-        "SEND_CAST",
-        "REPLY_TO_CAST",
-        "POST_CAST",
-        "FARCASTER_POST",
-        "SHARE_ON_FARCASTER"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use FARCASTER_CAST with the provided parameters.",
-          "actions": ["FARCASTER_CAST"],
-          "params": {
-            "FARCASTER_CAST": {
-              "text": "example",
-              "replyToHash": "example"
             }
           }
         }
@@ -2103,57 +2038,6 @@
             "GET_LINEAR_ISSUE": {
               "issueId": "example",
               "query": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "GET_N8N_EXECUTIONS",
-      "description": "Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [
-        {
-          "name": "workflowId",
-          "description": "Exact n8n workflow id to inspect.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "workflowName",
-          "description": "Workflow name or partial name when id is unknown.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "limit",
-          "description": "Maximum number of executions to return.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        }
-      ],
-      "descriptionCompressed": "get execution history n8n workflow show status, start time, error message identify workflow ID, name, semantic description language",
-      "similes": [
-        "GET_EXECUTIONS",
-        "SHOW_EXECUTIONS",
-        "EXECUTION_HISTORY",
-        "WORKFLOW_RUNS",
-        "WORKFLOW_EXECUTIONS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use GET_N8N_EXECUTIONS with the provided parameters.",
-          "actions": ["GET_N8N_EXECUTIONS"],
-          "params": {
-            "GET_N8N_EXECUTIONS": {
-              "workflowId": "example",
-              "workflowName": "example",
-              "limit": 1
             }
           }
         }
@@ -2424,61 +2308,6 @@
       ]
     },
     {
-      "name": "INSTAGRAM_REPLY",
-      "description": "Reply on Instagram. mode=comment posts a comment on a media post (target=mediaId, text=comment). mode=dm sends a direct message to a thread (target=threadId, text=message).",
-      "parameters": [
-        {
-          "name": "mode",
-          "description": "Reply mode: comment (post comment) or dm (direct message).",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "target",
-          "description": "Target identifier: mediaId for comment, threadId for dm. Falls back to message.content.mediaId/threadId.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "text",
-          "description": "Reply text. Falls back to state.response.text or message.content.text.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Reply on Instagram: comment on post or DM user.",
-      "similes": [
-        "POST_INSTAGRAM_COMMENT",
-        "INSTAGRAM_COMMENT",
-        "COMMENT_INSTAGRAM",
-        "REPLY_INSTAGRAM",
-        "SEND_INSTAGRAM_DM",
-        "INSTAGRAM_DM",
-        "INSTAGRAM_MESSAGE",
-        "DM_INSTAGRAM",
-        "DIRECT_MESSAGE_INSTAGRAM"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use INSTAGRAM_REPLY with the provided parameters.",
-          "actions": ["INSTAGRAM_REPLY"],
-          "params": {
-            "INSTAGRAM_REPLY": {
-              "mode": "example",
-              "target": "example",
-              "text": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "INSTALL_SKILL",
       "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
       "parameters": [
@@ -2557,7 +2386,7 @@
     },
     {
       "name": "LIST_ACTIVE_BLOCKS",
-      "description": "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with the LifeOps-managed block rules (id, gateType, websites, gate target — todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus / includeManagedRules. Only for website/app blocking status — do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+      "description": "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with LifeOps-managed block rules (id, gateType, websites, and gate target: todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus and includeManagedRules. Use only for website/app blocking status; do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
       "parameters": [
         {
           "name": "includeLiveStatus",
@@ -3288,83 +3117,6 @@
       ]
     },
     {
-      "name": "MATRIX_JOIN_ROOM",
-      "description": "Join a Matrix room by ID or alias",
-      "parameters": [
-        {
-          "name": "room",
-          "description": "Matrix room id (!room:server) or alias (#alias:server).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Join Matrix room by id or alias.",
-      "similes": ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
-      "exampleCalls": [
-        {
-          "user": "Use MATRIX_JOIN_ROOM with the provided parameters.",
-          "actions": ["MATRIX_JOIN_ROOM"],
-          "params": {
-            "MATRIX_JOIN_ROOM": {
-              "room": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "MODIFY_EXISTING_N8N_WORKFLOW",
-      "description": "Load an existing deployed n8n workflow for modification. ",
-      "parameters": [
-        {
-          "name": "workflowId",
-          "description": "Optional exact n8n workflow id to load into the draft editor.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "workflowName",
-          "description": "Optional workflow name to load into the draft editor.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "query",
-          "description": "Optional natural-language description of the workflow to modify.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Load deployed n8n workflow into draft editor; then use CREATE_N8N_WORKFLOW to change, preview, redeploy.",
-      "similes": [
-        "EDIT_EXISTING_WORKFLOW",
-        "UPDATE_EXISTING_WORKFLOW",
-        "CHANGE_EXISTING_WORKFLOW",
-        "LOAD_WORKFLOW_FOR_EDIT"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use MODIFY_EXISTING_N8N_WORKFLOW with the provided parameters.",
-          "actions": ["MODIFY_EXISTING_N8N_WORKFLOW"],
-          "params": {
-            "MODIFY_EXISTING_N8N_WORKFLOW": {
-              "workflowId": "example",
-              "workflowName": "example",
-              "query": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "MUSIC_GENERATION",
       "description": "Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
       "parameters": [
@@ -3428,28 +3180,46 @@
       ]
     },
     {
-      "name": "N8N",
-      "description": "Manage n8n workflows. Operations: create (build new), modify (edit existing), activate (enable), deactivate (disable), delete (with confirmation), executions (get run history).",
+      "name": "MUSIC_LIBRARY",
+      "description": "Consolidated music library action. Use op=playlist with subaction=save, load, delete, or add for playlist management; op=play-query to research and queue complex music requests; op=search-youtube to return YouTube links; op=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
       "parameters": [
         {
           "name": "op",
-          "description": "Operation: create, modify, activate, deactivate, delete, or executions. If omitted, inferred from message text.",
+          "description": "Music library operation: playlist, play-query, search-youtube, or download.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["playlist", "play-query", "search-youtube", "download"]
+          }
+        },
+        {
+          "name": "subaction",
+          "description": "Playlist subaction when op=playlist: save, load, delete, or add.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["save", "load", "delete", "add"]
+          }
+        },
+        {
+          "name": "query",
+          "description": "Song, artist, album, or video query for play-query, search-youtube, download, or playlist add.",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "workflowId",
-          "description": "Exact n8n workflow id. When omitted, the workflow is matched semantically.",
+          "name": "playlistName",
+          "description": "Playlist name for playlist save, load, delete, or add.",
           "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "workflowName",
-          "description": "Workflow name fragment for fuzzy matching (executions only).",
+          "name": "song",
+          "description": "Song query for playlist subaction=add.",
           "required": false,
           "schema": {
             "type": "string"
@@ -3457,98 +3227,39 @@
         },
         {
           "name": "limit",
-          "description": "Max executions to return (executions only). Default 10.",
+          "description": "Maximum YouTube search results to inspect.",
           "required": false,
           "schema": {
-            "type": "number"
+            "type": "number",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 10
           }
         },
         {
-          "name": "description",
-          "description": "Natural-language description (create/modify only). If omitted, derived from message.",
+          "name": "confirmed",
+          "description": "Must be true before queue changes, downloads, or playlist mutations.",
           "required": false,
           "schema": {
-            "type": "string"
+            "type": "boolean",
+            "default": false
           }
         }
       ],
-      "descriptionCompressed": "n8n workflow: create, modify, activate, deactivate, delete, executions.",
-      "similes": [
-        "WORKFLOW",
-        "N8N_WORKFLOW",
-        "CREATE_WORKFLOW",
-        "BUILD_WORKFLOW",
-        "GENERATE_WORKFLOW",
-        "CREATE_N8N_WORKFLOW",
-        "MODIFY_WORKFLOW",
-        "UPDATE_WORKFLOW",
-        "EDIT_WORKFLOW",
-        "MODIFY_EXISTING_N8N_WORKFLOW",
-        "ACTIVATE_WORKFLOW",
-        "DEACTIVATE_WORKFLOW",
-        "DELETE_WORKFLOW",
-        "ENABLE_WORKFLOW",
-        "DISABLE_WORKFLOW",
-        "STOP_WORKFLOW",
-        "PAUSE_WORKFLOW",
-        "TURN_ON_WORKFLOW",
-        "TURN_OFF_WORKFLOW",
-        "START_WORKFLOW",
-        "REMOVE_WORKFLOW",
-        "DESTROY_WORKFLOW",
-        "ACTIVATE_N8N_WORKFLOW",
-        "DEACTIVATE_N8N_WORKFLOW",
-        "DELETE_N8N_WORKFLOW",
-        "GET_EXECUTIONS",
-        "SHOW_EXECUTIONS",
-        "EXECUTION_HISTORY",
-        "WORKFLOW_RUNS",
-        "WORKFLOW_EXECUTIONS",
-        "GET_N8N_EXECUTIONS"
-      ],
+      "descriptionCompressed": "Music library ops: playlist(subaction save/load/delete/add), play-query, search-youtube, download. Mutations require confirmed:true.",
       "exampleCalls": [
         {
-          "user": "Use N8N with the provided parameters.",
-          "actions": ["N8N"],
+          "user": "Use MUSIC_LIBRARY with the provided parameters.",
+          "actions": ["MUSIC_LIBRARY"],
           "params": {
-            "N8N": {
-              "op": "example",
-              "workflowId": "example",
-              "workflowName": "example",
-              "limit": 1,
-              "description": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "NOSTR_PUBLISH_NOTE",
-      "description": "Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; private messages should be sent via SEND_MESSAGE (which routes through the Nostr DM connector).",
-      "parameters": [
-        {
-          "name": "text",
-          "description": "Note content to publish.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Publish Nostr note (kind:1) to relays.",
-      "similes": [
-        "NOSTR_NOTE",
-        "POST_NOSTR_NOTE",
-        "NOSTR_KIND_1",
-        "PUBLISH_NOSTR"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use NOSTR_PUBLISH_NOTE with the provided parameters.",
-          "actions": ["NOSTR_PUBLISH_NOTE"],
-          "params": {
-            "NOSTR_PUBLISH_NOTE": {
-              "text": "example"
+            "MUSIC_LIBRARY": {
+              "op": "playlist",
+              "subaction": "save",
+              "query": "example",
+              "playlistName": "example",
+              "song": "example",
+              "limit": 5,
+              "confirmed": false
             }
           }
         }
@@ -3600,70 +3311,7 @@
       ]
     },
     {
-      "name": "NOTEBOOK_EDIT",
-      "description": "Replace, insert, or delete a cell in a Jupyter `.ipynb` notebook. Default `edit_mode` is `replace`. Insert places a new cell after `cell_id` (or at the start if omitted). Delete removes the matching cell. The notebook must have been READ in this session and must still match its recorded mtime.",
-      "parameters": [
-        {
-          "name": "notebook_path",
-          "description": "Absolute path to a .ipynb notebook.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "cell_id",
-          "description": "Target cell id. Required for replace and delete; optional for insert.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "new_source",
-          "description": "New cell source text. Required for replace and insert.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "cell_type",
-          "description": "Cell type: code | markdown | raw.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "edit_mode",
-          "description": "replace | insert | delete (default replace).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Replace/insert/delete a cell in a Jupyter notebook by cell_id.",
-      "similes": ["EDIT_NOTEBOOK"],
-      "exampleCalls": [
-        {
-          "user": "Use NOTEBOOK_EDIT with the provided parameters.",
-          "actions": ["NOTEBOOK_EDIT"],
-          "params": {
-            "NOTEBOOK_EDIT": {
-              "notebook_path": "example",
-              "cell_id": "example",
-              "new_source": "example",
-              "cell_type": "example",
-              "edit_mode": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "PAYMENT_OP",
+      "name": "PAYMENT",
       "description": "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
       "parameters": [
         {
@@ -3712,10 +3360,10 @@
       ],
       "exampleCalls": [
         {
-          "user": "Use PAYMENT_OP with the provided parameters.",
-          "actions": ["PAYMENT_OP"],
+          "user": "Use PAYMENT with the provided parameters.",
+          "actions": ["PAYMENT"],
           "params": {
-            "PAYMENT_OP": {
+            "PAYMENT": {
               "op": "check",
               "amount": "example",
               "entityId": "example",
@@ -3848,40 +3496,7 @@
       ]
     },
     {
-      "name": "PLAY_MUSIC_QUERY",
-      "description": "Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
-      "parameters": [
-        {
-          "name": "confirmed",
-          "description": "Must be true to resolve the music query and add the result to the queue.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        }
-      ],
-      "descriptionCompressed": "Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases.",
-      "similes": [
-        "SMART_PLAY",
-        "RESEARCH_AND_PLAY",
-        "FIND_AND_PLAY",
-        "INTELLIGENT_MUSIC_SEARCH"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use PLAY_MUSIC_QUERY with the provided parameters.",
-          "actions": ["PLAY_MUSIC_QUERY"],
-          "params": {
-            "PLAY_MUSIC_QUERY": {
-              "confirmed": false
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "PLAYBACK_OP",
+      "name": "PLAYBACK",
       "description": "Music playback control. Use op=pause, resume, skip, stop, or queue. ",
       "parameters": [
         {
@@ -3927,317 +3542,13 @@
       ],
       "exampleCalls": [
         {
-          "user": "Use PLAYBACK_OP with the provided parameters.",
-          "actions": ["PLAYBACK_OP"],
+          "user": "Use PLAYBACK with the provided parameters.",
+          "actions": ["PLAYBACK"],
           "params": {
-            "PLAYBACK_OP": {
+            "PLAYBACK": {
               "op": "pause",
               "query": "example",
               "confirmed": false
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "PLAYLIST_OP",
-      "description": "Playlist operations. Use op=save, load, delete, or add. State-changing ops require confirmed:true.",
-      "parameters": [
-        {
-          "name": "op",
-          "description": "Playlist operation: save, load, delete, or add.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": ["save", "load", "delete", "add"]
-          }
-        },
-        {
-          "name": "playlistName",
-          "description": "Playlist name for save/load/delete/add.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "song",
-          "description": "Song query for op=add.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "confirmed",
-          "description": "Must be true to perform a state-changing playlist op.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        }
-      ],
-      "descriptionCompressed": "Playlist ops: save, load, delete, add.",
-      "similes": [
-        "MUSIC_PLAYLIST",
-        "SAVE_PLAYLIST",
-        "LOAD_PLAYLIST",
-        "DELETE_PLAYLIST",
-        "ADD_TO_PLAYLIST",
-        "REMOVE_PLAYLIST",
-        "PLAY_PLAYLIST"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use PLAYLIST_OP with the provided parameters.",
-          "actions": ["PLAYLIST_OP"],
-          "params": {
-            "PLAYLIST_OP": {
-              "op": "save",
-              "playlistName": "example",
-              "song": "example",
-              "confirmed": false
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "POLYMARKET_PLACE_ORDER",
-      "description": "Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
-      "parameters": [
-        {
-          "name": "side",
-          "description": "Intended side, buy or sell. Trading is currently disabled.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["buy", "sell"]
-          }
-        },
-        {
-          "name": "marketId",
-          "description": "Polymarket market id or condition id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "amount",
-          "description": "Intended order amount. Trading is currently disabled.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        }
-      ],
-      "descriptionCompressed": "Report disabled Polymarket trading readiness.",
-      "similes": ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
-      "exampleCalls": [
-        {
-          "user": "Use POLYMARKET_PLACE_ORDER with the provided parameters.",
-          "actions": ["POLYMARKET_PLACE_ORDER"],
-          "params": {
-            "POLYMARKET_PLACE_ORDER": {
-              "side": "buy",
-              "marketId": "example",
-              "amount": 1
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "POLYMARKET_READ",
-      "description": "Read Polymarket public state. kind selects: status (readiness), markets (list active markets), market (single market by id/slug), orderbook (CLOB quote by tokenId), positions (wallet positions).",
-      "parameters": [
-        {
-          "name": "kind",
-          "description": "Read kind: status | markets | market | orderbook | positions.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "limit",
-          "description": "markets only: max markets (1-100).",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 20
-          }
-        },
-        {
-          "name": "offset",
-          "description": "markets only: result offset.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 0
-          }
-        },
-        {
-          "name": "id",
-          "description": "market only: Polymarket Gamma market id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "slug",
-          "description": "market only: Polymarket market slug.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "tokenId",
-          "description": "orderbook only: Polymarket CLOB token id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "user",
-          "description": "positions only: wallet address.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Polymarket reads: status, markets, market, orderbook, positions.",
-      "similes": [
-        "POLYMARKET_STATUS",
-        "POLYMARKET_READINESS",
-        "POLYMARKET_HEALTH",
-        "POLYMARKET_GET_MARKETS",
-        "POLYMARKET_MARKETS",
-        "SEARCH_POLYMARKET_MARKETS",
-        "POLYMARKET_GET_MARKET",
-        "POLYMARKET_MARKET",
-        "POLYMARKET_MARKET_DETAILS",
-        "POLYMARKET_GET_ORDERBOOK",
-        "POLYMARKET_ORDERBOOK",
-        "POLYMARKET_QUOTE",
-        "POLYMARKET_TOKEN_INFO",
-        "POLYMARKET_GET_POSITIONS",
-        "POLYMARKET_POSITIONS",
-        "POLYMARKET_WALLET_POSITIONS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use POLYMARKET_READ with the provided parameters.",
-          "actions": ["POLYMARKET_READ"],
-          "params": {
-            "POLYMARKET_READ": {
-              "kind": "example",
-              "limit": 20,
-              "offset": 0,
-              "id": "example",
-              "slug": "example",
-              "tokenId": "example",
-              "user": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "POST_BLUESKY",
-      "description": "Post a top-level Bluesky post or a reply. kind=post supports replyTo={uri,cid}. text optional; if empty the runtime model generates content.",
-      "parameters": [
-        {
-          "name": "kind",
-          "description": "Always 'post' for now.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "text",
-          "description": "Post text. If empty, the agent's model generates content.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "replyTo",
-          "description": "Reply target as { uri, cid }. Omit for a top-level post.",
-          "required": false,
-          "schema": {
-            "type": "object"
-          }
-        }
-      ],
-      "descriptionCompressed": "Post or reply on Bluesky.",
-      "similes": [
-        "BLUESKY_POST",
-        "BLUESKY_REPLY",
-        "REPLY_BLUESKY",
-        "POST_TO_BLUESKY"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use POST_BLUESKY with the provided parameters.",
-          "actions": ["POST_BLUESKY"],
-          "params": {
-            "POST_BLUESKY": {
-              "kind": "example",
-              "text": "example",
-              "replyTo": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "POST_TO_SOCIAL",
-      "description": "Publish a public post to a social network (X, Bluesky, Farcaster, Nostr). Platform is selected by the `platform` parameter (or inferred from the message text). Optional `replyTo` references the parent post id/uri/hash.",
-      "parameters": [
-        {
-          "name": "platform",
-          "description": "Target social network: x, bluesky, farcaster, nostr.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "text",
-          "description": "Post body. Falls back to the user message text when omitted.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "replyTo",
-          "description": "Parent post id (X tweet id), uri (Bluesky), hash (Farcaster), or event id (Nostr). Optional.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Post to social network: x, bluesky, farcaster, nostr.",
-      "exampleCalls": [
-        {
-          "user": "Use POST_TO_SOCIAL with the provided parameters.",
-          "actions": ["POST_TO_SOCIAL"],
-          "params": {
-            "POST_TO_SOCIAL": {
-              "platform": "example",
-              "text": "example",
-              "replyTo": "example"
             }
           }
         }
@@ -4334,7 +3645,7 @@
       ]
     },
     {
-      "name": "READING_OP",
+      "name": "READING",
       "description": "Mystical reading router. Set type to tarot, astrology, or iching, and subaction to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
       "parameters": [
         {
@@ -4399,10 +3710,10 @@
       ],
       "exampleCalls": [
         {
-          "user": "Use READING_OP with the provided parameters.",
-          "actions": ["READING_OP"],
+          "user": "Use READING with the provided parameters.",
+          "actions": ["READING"],
           "params": {
-            "READING_OP": {
+            "READING": {
               "type": "tarot",
               "subaction": "start",
               "question": "example",
@@ -4456,68 +3767,6 @@
               "ruleId": "example",
               "confirmed": false,
               "reason": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "REMOTE_ATTESTATION",
-      "description": "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
-      "parameters": [],
-      "descriptionCompressed": "generate remote attestation prove agent run TEE (Trusted Execution Environment)",
-      "similes": [
-        "REMOTE_ATTESTATION",
-        "TEE_REMOTE_ATTESTATION",
-        "TEE_ATTESTATION",
-        "TEE_QUOTE",
-        "ATTESTATION",
-        "TEE_ATTESTATION_QUOTE",
-        "PROVE_TEE",
-        "VERIFY_TEE"
-      ]
-    },
-    {
-      "name": "REPLY_X_DM",
-      "description": "Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
-      "parameters": [
-        {
-          "name": "recipient",
-          "description": "Recipient user id or username (without leading @).",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "text",
-          "description": "The DM body.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "confirmed",
-          "description": "Must be true for the DM to actually send.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        }
-      ],
-      "descriptionCompressed": "reply Twitter/X direct message two-stage: wo/ confirm: true return preview require confirmation; w/ confirm: true DM send",
-      "similes": ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
-      "exampleCalls": [
-        {
-          "user": "Use REPLY_X_DM with the provided parameters.",
-          "actions": ["REPLY_X_DM"],
-          "params": {
-            "REPLY_X_DM": {
-              "recipient": "example",
-              "text": "example",
-              "confirmed": false
             }
           }
         }
@@ -4711,7 +3960,7 @@
       "parameters": [
         {
           "name": "query",
-          "description": "Search term for Shopify products, orders, or customers.",
+          "description": "Search term.",
           "required": false,
           "schema": {
             "type": "string"
@@ -4719,7 +3968,7 @@
         },
         {
           "name": "scope",
-          "description": "Restrict search to all, products, orders, or customers.",
+          "description": "Search scope: all, products, orders, or customers.",
           "required": false,
           "schema": {
             "type": "string",
@@ -4728,7 +3977,7 @@
         },
         {
           "name": "limit",
-          "description": "Maximum results per searched Shopify category.",
+          "description": "Maximum results per scope.",
           "required": false,
           "schema": {
             "type": "number"
@@ -4782,91 +4031,6 @@
             "SEARCH_SKILLS": {
               "query": "example",
               "limit": 1
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SEARCH_X",
-      "description": "Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
-      "parameters": [
-        {
-          "name": "query",
-          "description": "Search query to run against X recent tweets.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "maxResults",
-          "description": "Maximum tweets to return (1-100).",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 100
-          }
-        }
-      ],
-      "descriptionCompressed": "search x recent tweet use v2 recent search endpoint parameter: query (require), maxresult (optional, default 10)",
-      "similes": ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
-      "exampleCalls": [
-        {
-          "user": "Use SEARCH_X with the provided parameters.",
-          "actions": ["SEARCH_X"],
-          "params": {
-            "SEARCH_X": {
-              "query": "example",
-              "maxResults": 10
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SEARCH_YOUTUBE",
-      "description": "Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.",
-      "parameters": [
-        {
-          "name": "query",
-          "description": "Song, artist, or video query to search on YouTube.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "limit",
-          "description": "Maximum YouTube results to inspect.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 5,
-            "minimum": 1,
-            "maximum": 10
-          }
-        }
-      ],
-      "descriptionCompressed": "Search YouTube for song/video, return link.",
-      "similes": [
-        "FIND_YOUTUBE",
-        "SEARCH_YOUTUBE_VIDEO",
-        "FIND_SONG",
-        "SEARCH_MUSIC",
-        "GET_YOUTUBE_LINK",
-        "LOOKUP_YOUTUBE"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SEARCH_YOUTUBE with the provided parameters.",
-          "actions": ["SEARCH_YOUTUBE"],
-          "params": {
-            "SEARCH_YOUTUBE": {
-              "query": "example",
-              "limit": 5
             }
           }
         }
@@ -4937,62 +4101,6 @@
               "task": "example",
               "label": "example",
               "keys": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SEND_X_POST",
-      "description": "Publish a tweet on Twitter/X with a confirmation gate. Supports replies via replyToTweetId. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
-      "parameters": [
-        {
-          "name": "text",
-          "description": "The tweet body.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "replyToTweetId",
-          "description": "Tweet id to reply to. When set, posts as a reply.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "confirmed",
-          "description": "Must be true for the tweet to actually post.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        }
-      ],
-      "descriptionCompressed": "Post tweet on X (Twitter); supports replies via replyToTweetId.",
-      "similes": [
-        "POST_X",
-        "POST_TWEET",
-        "TWEET",
-        "SEND_TWEET",
-        "TWITTER_POST",
-        "POST_ON_TWITTER",
-        "SHARE_ON_TWITTER",
-        "TWEET_WITH_CONFIRMATION",
-        "PUBLISH_TWEET"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SEND_X_POST with the provided parameters.",
-          "actions": ["SEND_X_POST"],
-          "params": {
-            "SEND_X_POST": {
-              "text": "example",
-              "replyToTweetId": "example",
-              "confirmed": false
             }
           }
         }
@@ -5073,41 +4181,6 @@
       ]
     },
     {
-      "name": "SIGNAL_READ_RECENT_MESSAGES",
-      "description": "Read the most recent Signal messages across active conversations",
-      "parameters": [
-        {
-          "name": "limit",
-          "description": "Maximum recent messages to return.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 25
-          }
-        }
-      ],
-      "descriptionCompressed": "Read recent Signal msgs.",
-      "similes": [
-        "READ_SIGNAL_MESSAGES",
-        "CHECK_SIGNAL_MESSAGES",
-        "SHOW_SIGNAL_MESSAGES",
-        "SIGNAL_INBOX"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SIGNAL_READ_RECENT_MESSAGES with the provided parameters.",
-          "actions": ["SIGNAL_READ_RECENT_MESSAGES"],
-          "params": {
-            "SIGNAL_READ_RECENT_MESSAGES": {
-              "limit": 10
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "SKILL",
       "description": "Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
       "parameters": [
@@ -5128,158 +4201,6 @@
           "params": {
             "SKILL": {
               "op": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_GET_USER_INFO",
-      "description": "Get information about a Slack user",
-      "parameters": [
-        {
-          "name": "userId",
-          "description": "Slack user ID to look up, such as U0123456789.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Get Slack user info.",
-      "similes": [
-        "GET_SLACK_USER",
-        "USER_INFO",
-        "SLACK_USER",
-        "MEMBER_INFO",
-        "WHO_IS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_GET_USER_INFO with the provided parameters.",
-          "actions": ["SLACK_GET_USER_INFO"],
-          "params": {
-            "SLACK_GET_USER_INFO": {
-              "userId": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_MESSAGE_OP",
-      "description": "Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
-      "parameters": [
-        {
-          "name": "op",
-          "description": "Operation: send, edit, delete, react, pin, or unpin.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["send", "edit", "delete", "react", "pin", "unpin"]
-          }
-        },
-        {
-          "name": "text",
-          "description": "Message text for send or edit.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "channelRef",
-          "description": "Slack channel name/id or current.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "default": "current"
-          }
-        },
-        {
-          "name": "messageTs",
-          "description": "Slack message timestamp for edit/delete/react/pin/unpin.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "emoji",
-          "description": "Reaction emoji name without colons.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Slack message ops: send, edit, delete, react, pin, unpin.",
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_MESSAGE_OP with the provided parameters.",
-          "actions": ["SLACK_MESSAGE_OP"],
-          "params": {
-            "SLACK_MESSAGE_OP": {
-              "op": "send",
-              "text": "example",
-              "channelRef": "current",
-              "messageTs": "example",
-              "emoji": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_READ_CHANNEL",
-      "description": "Read message history from a Slack channel",
-      "parameters": [
-        {
-          "name": "channelRef",
-          "description": "Slack channel name/id or current.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "default": "current"
-          }
-        },
-        {
-          "name": "limit",
-          "description": "Maximum messages to read.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 100
-          }
-        },
-        {
-          "name": "after",
-          "description": "Optional lower bound timestamp or date.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Read Slack channel message history.",
-      "similes": [
-        "READ_SLACK_MESSAGES",
-        "GET_CHANNEL_HISTORY",
-        "SLACK_HISTORY",
-        "FETCH_MESSAGES",
-        "LIST_MESSAGES"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_READ_CHANNEL with the provided parameters.",
-          "actions": ["SLACK_READ_CHANNEL"],
-          "params": {
-            "SLACK_READ_CHANNEL": {
-              "channelRef": "current",
-              "limit": 10,
-              "after": "example"
             }
           }
         }
@@ -5417,48 +4338,6 @@
       ]
     },
     {
-      "name": "SUMMARIZE_FEED",
-      "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
-      "parameters": [
-        {
-          "name": "limit",
-          "description": "Number of top feed tweets to summarize.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 5,
-            "minimum": 1,
-            "maximum": 25
-          }
-        },
-        {
-          "name": "fetchCount",
-          "description": "Number of feed tweets to fetch before ranking.",
-          "required": false,
-          "schema": {
-            "type": "number",
-            "default": 50,
-            "minimum": 1,
-            "maximum": 100
-          }
-        }
-      ],
-      "descriptionCompressed": "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
-      "similes": ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
-      "exampleCalls": [
-        {
-          "user": "Use SUMMARIZE_FEED with the provided parameters.",
-          "actions": ["SUMMARIZE_FEED"],
-          "params": {
-            "SUMMARIZE_FEED": {
-              "limit": 5,
-              "fetchCount": 50
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "SYNC_SKILL_CATALOG",
       "description": "Sync the skill catalog from the registry to discover new skills.",
       "parameters": [],
@@ -5484,6 +4363,14 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "accountId",
+          "description": "Optional Tailscale account id from TAILSCALE_ACCOUNTS. Defaults to TAILSCALE_DEFAULT_ACCOUNT_ID or legacy settings.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "descriptionCompressed": "Tailscale: start tunnel, stop tunnel.",
@@ -5494,7 +4381,8 @@
           "params": {
             "TAILSCALE": {
               "op": "example",
-              "port": 1
+              "port": 1,
+              "accountId": "example"
             }
           }
         }
@@ -5502,7 +4390,7 @@
     },
     {
       "name": "TASK_CONTROL",
-      "description": "Apply a control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a session, optional follow-up instruction + agentType override), continue (send a follow-up instruction to the existing or a new session), archive (hide from active lists), reopen (restore from archive). The target thread is resolved from threadId, sessionId, or a free-text search; resume/continue accept an optional instruction.",
+      "description": "Apply a current control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a task session with optional follow-up instruction and agentType override), continue (send a follow-up instruction to the existing or a new task session), archive (hide from active lists), reopen (restore from archive). Resolve the target from threadId, sessionId, or free-text search.",
       "parameters": [
         {
           "name": "operation",
@@ -5593,7 +4481,7 @@
     },
     {
       "name": "TASK_HISTORY",
-      "description": "Query the agent-orchestrator coordinator's task threads as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for 'what am I working on right now', date-range summaries, topic search, task counts, or a single thread's detail — never to dump raw conversation history into context.",
+      "description": "Query the agent-orchestrator coordinator's current task-thread registry as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for current work, date-range summaries, topic search, task counts, or one thread's detail.",
       "parameters": [
         {
           "name": "metric",
@@ -5681,51 +4569,6 @@
       ]
     },
     {
-      "name": "TASK_OUTPUT",
-      "description": "Read captured output and current status of a background BASH task. Pass block=true to wait for completion (or until timeout) before returning.",
-      "parameters": [
-        {
-          "name": "task_id",
-          "description": "Task id returned by BASH (background or auto-promoted).",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "block",
-          "description": "If true, wait for the task to finish (or until timeout) before returning.",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "timeout",
-          "description": "When blocking, max ms to wait. Clamped to [0, 600000]. Default 30000 when block=true, 0 otherwise.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        }
-      ],
-      "descriptionCompressed": "Read background shell task output (optionally blocking).",
-      "similes": ["GET_TASK_OUTPUT"],
-      "exampleCalls": [
-        {
-          "user": "Use TASK_OUTPUT with the provided parameters.",
-          "actions": ["TASK_OUTPUT"],
-          "params": {
-            "TASK_OUTPUT": {
-              "task_id": "example",
-              "block": false,
-              "timeout": 1
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "TASK_SHARE",
       "description": "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
       "parameters": [
@@ -5772,33 +4615,6 @@
               "threadId": "example",
               "sessionId": "example",
               "search": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "TASK_STOP",
-      "description": "Terminate a running background BASH task by id. Sends SIGTERM (and SIGKILL after a grace period). Returns the task's terminal status.",
-      "parameters": [
-        {
-          "name": "task_id",
-          "description": "Task id returned by BASH (background or auto-promoted).",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Stop a background shell task.",
-      "similes": ["KILL_TASK", "STOP_TASK"],
-      "exampleCalls": [
-        {
-          "user": "Use TASK_STOP with the provided parameters.",
-          "actions": ["TASK_STOP"],
-          "params": {
-            "TASK_STOP": {
-              "task_id": "example"
             }
           }
         }
@@ -5912,13 +4728,61 @@
       ]
     },
     {
-      "name": "TODO_WRITE",
-      "description": "Replace the per-conversation coding-agent todo list (keyed by roomId, kept in process memory) with the provided array. Each item is { id?: string, content: string, status: pending|in_progress|completed, activeForm?: string }; missing ids are auto-generated, missing activeForm falls back to content. The full list is overwritten on every call — pass the complete updated list, not a delta. Use to plan multi-step coding work and track progress within a session.",
+      "name": "TODO",
+      "description": "Manage the user's todo list. Op-based dispatch — provide an `op` parameter:\n",
       "parameters": [
         {
-          "name": "todos",
-          "description": "Array of todo objects. Each item: { id?: string, content: string, status: 'pending'|'in_progress'|'completed', activeForm?: string }. Replaces the entire list.",
+          "name": "op",
+          "description": "Operation: write, create, update, complete, cancel, delete, list, clear.",
           "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "description": "Todo id (update/complete/cancel/delete).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "content",
+          "description": "Imperative form, e.g. 'Add tests' (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "activeForm",
+          "description": "Present-continuous form, e.g. 'Adding tests' (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "description": "pending | in_progress | completed | cancelled.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "parentTodoId",
+          "description": "Parent todo id for sub-tasks (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "todos",
+          "description": "Array of {id?, content, status, activeForm?} for op=write. Replaces the user's list for this conversation.",
+          "required": false,
           "schema": {
             "type": "array",
             "items": {
@@ -5931,8 +4795,7 @@
                   "type": "string"
                 },
                 "status": {
-                  "type": "string",
-                  "enum": ["pending", "in_progress", "completed"]
+                  "type": "string"
                 },
                 "activeForm": {
                   "type": "string"
@@ -5940,17 +4803,64 @@
               }
             }
           }
+        },
+        {
+          "name": "includeCompleted",
+          "description": "Include completed/cancelled todos in op=list output.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Max rows to return for op=list.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
         }
       ],
-      "descriptionCompressed": "todo-write:replace conversation list [{id?,content,status:pending|in_progress|completed,activeForm?}]",
-      "similes": ["UPDATE_TODOS", "SET_TODOS"],
+      "descriptionCompressed": "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
+      "similes": [
+        "TODO_WRITE",
+        "WRITE_TODOS",
+        "SET_TODOS",
+        "UPDATE_TODOS",
+        "TODO_CREATE",
+        "CREATE_TODO",
+        "TODO_UPDATE",
+        "UPDATE_TODO",
+        "TODO_COMPLETE",
+        "COMPLETE_TODO",
+        "FINISH_TODO",
+        "TODO_CANCEL",
+        "CANCEL_TODO",
+        "TODO_DELETE",
+        "DELETE_TODO",
+        "REMOVE_TODO",
+        "TODO_LIST",
+        "LIST_TODOS",
+        "GET_TODOS",
+        "SHOW_TODOS",
+        "TODO_CLEAR",
+        "CLEAR_TODOS"
+      ],
       "exampleCalls": [
         {
-          "user": "Use TODO_WRITE with the provided parameters.",
-          "actions": ["TODO_WRITE"],
+          "user": "Use TODO with the provided parameters.",
+          "actions": ["TODO"],
           "params": {
-            "TODO_WRITE": {
-              "todos": "example"
+            "TODO": {
+              "op": "example",
+              "id": "example",
+              "content": "example",
+              "activeForm": "example",
+              "status": "example",
+              "parentTodoId": "example",
+              "todos": "example",
+              "includeCompleted": false,
+              "limit": 1
             }
           }
         }
@@ -5994,48 +4904,6 @@
             "TOGGLE_SKILL": {
               "slug": "example",
               "enabled": false
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "TWITCH_CHANNEL_OP",
-      "description": "Join or leave a Twitch channel.",
-      "parameters": [
-        {
-          "name": "op",
-          "description": "Either join or leave.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": ["join", "leave"]
-          }
-        },
-        {
-          "name": "channel",
-          "description": "Twitch channel name without #.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Twitch channel ops: join, leave.",
-      "similes": [
-        "TWITCH_CHANNEL",
-        "TWITCH_JOIN_CHANNEL",
-        "TWITCH_LEAVE_CHANNEL",
-        "MANAGE_TWITCH_CHANNEL"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use TWITCH_CHANNEL_OP with the provided parameters.",
-          "actions": ["TWITCH_CHANNEL_OP"],
-          "params": {
-            "TWITCH_CHANNEL_OP": {
-              "op": "join",
-              "channel": "example"
             }
           }
         }
@@ -6247,58 +5115,6 @@
             "WEB_FETCH": {
               "url": "example",
               "prompt": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "WORKFLOW",
-      "description": "n8n workflow lifecycle operation. Pass `op` (\"activate\", \"deactivate\", or \"delete\") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.",
-      "parameters": [
-        {
-          "name": "op",
-          "description": "Lifecycle operation to perform. One of: activate, deactivate, delete.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "workflowId",
-          "description": "Exact n8n workflow id. When omitted, the workflow is matched semantically.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "n8n workflow lifecycle: activate, deactivate, delete.",
-      "similes": [
-        "ACTIVATE_WORKFLOW",
-        "DEACTIVATE_WORKFLOW",
-        "DELETE_WORKFLOW",
-        "ENABLE_WORKFLOW",
-        "DISABLE_WORKFLOW",
-        "STOP_WORKFLOW",
-        "PAUSE_WORKFLOW",
-        "TURN_ON_WORKFLOW",
-        "TURN_OFF_WORKFLOW",
-        "START_WORKFLOW",
-        "REMOVE_WORKFLOW",
-        "DESTROY_WORKFLOW",
-        "ACTIVATE_N8N_WORKFLOW",
-        "DEACTIVATE_N8N_WORKFLOW",
-        "DELETE_N8N_WORKFLOW"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use WORKFLOW with the provided parameters.",
-          "actions": ["WORKFLOW"],
-          "params": {
-            "WORKFLOW": {
-              "op": "example",
-              "workflowId": "example"
             }
           }
         }

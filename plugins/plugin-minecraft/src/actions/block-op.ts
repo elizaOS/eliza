@@ -20,7 +20,7 @@ import {
   withMinecraftTimeout,
 } from "./helpers.js";
 
-const ACTION_NAME = "MC_BLOCK_OP";
+const ACTION_NAME = "MC_BLOCK";
 
 type BlockOp = "dig" | "place";
 

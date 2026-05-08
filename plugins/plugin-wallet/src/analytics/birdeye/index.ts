@@ -3,7 +3,8 @@
 import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
 import { parseBooleanFromText } from "@elizaos/core";
-import { walletSearchAddressAction } from "./actions/wallet-search-address";
+import { tokenInfoAction } from "../token-info/action";
+import { TokenInfoService } from "../token-info/service";
 import Birdeye from "./birdeye-task";
 import { BIRDEYE_SERVICE_NAME } from "./constants";
 import { agentPortfolioProvider } from "./providers/agent-portfolio-provider";
@@ -17,13 +18,10 @@ import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from "./service";
 export const birdeyePlugin: Plugin = {
   name: "birdeye",
   description: "birdeye plugin",
-  actions: [
-    // Token intel is exposed through the unified SEARCH category.
-    walletSearchAddressAction,
-  ],
+  actions: [tokenInfoAction],
   // injected later if set up is fine
   providers: [],
-  services: [],
+  services: [TokenInfoService],
   init: async (_, runtime: IAgentRuntime) => {
     const taskReadyPromise = new Promise((resolve) => {
       runtime.initPromise.then(async () => {

@@ -27,7 +27,7 @@ export interface ScapeRouterDefinition {
 
 export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
   {
-    name: "JOURNAL_OP",
+    name: "JOURNAL",
     description:
       "Route Scape Journal operations for goals and durable agent notes.",
     descriptionCompressed: "Journal ops: set-goal, complete-goal, remember.",
@@ -54,7 +54,7 @@ export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "INVENTORY_OP",
+    name: "INVENTORY",
     description:
       "Route inventory operations for eating food and dropping items.",
     descriptionCompressed: "Inventory ops: eat, drop.",

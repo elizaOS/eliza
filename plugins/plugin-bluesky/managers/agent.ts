@@ -13,13 +13,19 @@ import type {
 	NotificationReason,
 } from "../types";
 import {
+	DEFAULT_BLUESKY_ACCOUNT_ID,
 	getActionInterval,
 	getMaxActionsProcessing,
 	getPollInterval,
 	getPostIntervalRange,
 	isPostingEnabled,
+	normalizeBlueSkyAccountId,
 	shouldPostImmediately,
 } from "../utils/config";
+
+function cursorCacheKey(agentId: string, accountId: string): string {
+	return `bluesky:cursor:${agentId}:${accountId}`;
+}
 
 export class BlueSkyAgentManager {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -34,11 +40,25 @@ export class BlueSkyAgentManager {
 		public readonly client: BlueSkyClient,
 	) {}
 
+	getAccountId(): string {
+		return normalizeBlueSkyAccountId(
+			(this.config as BlueSkyConfig & { accountId?: string }).accountId ??
+				DEFAULT_BLUESKY_ACCOUNT_ID,
+		);
+	}
+
 	async start(): Promise<void> {
 		if (this.running) return;
 
 		await this.client.authenticate();
 		this.running = true;
+
+		const cached = await this.runtime.getCache<string>(
+			cursorCacheKey(this.runtime.agentId, this.getAccountId()),
+		);
+		if (typeof cached === "string" && cached) {
+			this.lastSeenAt = cached;
+		}
 
 		this.startNotificationPolling();
 
@@ -95,6 +115,10 @@ export class BlueSkyAgentManager {
 
 		if (newNotifications.length > 0) {
 			this.lastSeenAt = notifications[0].indexedAt;
+			await this.runtime.setCache(
+				cursorCacheKey(this.runtime.agentId, this.getAccountId()),
+				this.lastSeenAt,
+			);
 
 			for (const notification of newNotifications) {
 				this.emitNotificationEvent(notification);
@@ -119,6 +143,7 @@ export class BlueSkyAgentManager {
 			const payload: BlueSkyNotificationEventPayload = {
 				runtime: this.runtime,
 				source: "bluesky",
+				accountId: this.getAccountId(),
 				notification,
 			};
 			void this.runtime.emitEvent(event, payload);
@@ -127,11 +152,11 @@ export class BlueSkyAgentManager {
 
 	private startActionProcessing(): void {
 		const interval = getActionInterval(this.runtime);
-		this.processActions();
-		this.actionTimer = setInterval(() => this.processActions(), interval);
+		this.processQueuedActions();
+		this.actionTimer = setInterval(() => this.processQueuedActions(), interval);
 	}
 
-	private async processActions(): Promise<void> {
+	private async processQueuedActions(): Promise<void> {
 		if (!this.running) return;
 
 		const max = getMaxActionsProcessing(this.runtime);
@@ -145,6 +170,7 @@ export class BlueSkyAgentManager {
 				const payload: BlueSkyNotificationEventPayload = {
 					runtime: this.runtime,
 					source: "bluesky",
+					accountId: this.getAccountId(),
 					notification,
 				};
 				void this.runtime.emitEvent("bluesky.should_respond", payload);
@@ -179,6 +205,7 @@ export class BlueSkyAgentManager {
 					platform: "bluesky",
 					kind: "public_post_generation",
 					automated: true,
+					accountId: this.getAccountId(),
 				},
 			},
 			async () => {
@@ -187,6 +214,7 @@ export class BlueSkyAgentManager {
 					runtime: this.runtime,
 					source: "bluesky",
 					automated: true,
+					accountId: this.getAccountId(),
 				};
 				await this.runtime.emitEvent("bluesky.create_post", payload);
 			},

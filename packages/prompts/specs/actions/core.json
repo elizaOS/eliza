@@ -244,57 +244,186 @@
       "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
-      "name": "SEND_MESSAGE",
-      "description": "Send a message to a user or room (other than the current one)",
-      "similes": [
-        "DM",
-        "MESSAGE",
-        "SEND_DM",
-        "POST_MESSAGE",
-        "DIRECT_MESSAGE",
-        "NOTIFY"
-      ],
+      "name": "MESSAGE",
+      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, and users. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user. Public feed publishing belongs to POST.",
+      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
       "parameters": [
         {
-          "name": "targetType",
-          "description": "Whether the message target is a user or a room.",
-          "required": true,
+          "name": "operation",
+          "description": "Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user.",
+          "required": false,
           "schema": {
             "type": "string",
-            "enum": ["user", "room"]
+            "enum": [
+              "send",
+              "read",
+              "search",
+              "list_channels",
+              "list_servers",
+              "react",
+              "edit",
+              "delete",
+              "pin",
+              "join",
+              "leave",
+              "get_user"
+            ]
           },
-          "examples": ["user", "room"],
-          "descriptionCompressed": "user or room target."
+          "descriptionCompressed": "message operation"
         },
         {
           "name": "source",
-          "description": "The platform/source to send the message on (e.g. telegram, discord, x).",
+          "description": "Connector source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, or wechat.",
           "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["telegram", "discord"],
-          "descriptionCompressed": "source platform (telegram, discord, x)."
+          "schema": { "type": "string" },
+          "descriptionCompressed": "connector source"
         },
         {
           "name": "target",
-          "description": "Identifier of the target. For user targets, a name/handle/id; for room targets, a room name/id.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["dev_guru", "announcements"],
-          "descriptionCompressed": "Target name/handle/id."
+          "description": "Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "loose message target"
         },
         {
-          "name": "text",
-          "description": "The message content to send.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["Hello!", "Important announcement!"],
-          "descriptionCompressed": "Message content."
+          "name": "roomId",
+          "description": "Platform room or stored room ID for channel/group/DM operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "room id"
+        },
+        {
+          "name": "channel",
+          "description": "Loose channel, room, or group name/reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "channel reference"
+        },
+        {
+          "name": "channelId",
+          "description": "Platform channel ID for channel operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "channel id"
+        },
+        {
+          "name": "server",
+          "description": "Loose server, guild, workspace, or team name/reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "server reference"
+        },
+        {
+          "name": "serverId",
+          "description": "Platform server, guild, workspace, or team ID.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "server id"
+        },
+        {
+          "name": "userId",
+          "description": "Platform user ID or stored entity ID for user/DM operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "user id"
+        },
+        {
+          "name": "username",
+          "description": "Loose username for user/DM lookup.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "username"
+        },
+        {
+          "name": "handle",
+          "description": "Loose platform handle for user/DM lookup.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "handle"
+        },
+        {
+          "name": "threadId",
+          "description": "Thread identifier for threaded message operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "thread id"
+        },
+        {
+          "name": "alias",
+          "description": "Channel or room alias for operation=join or operation=leave.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "room alias"
+        },
+        {
+          "name": "invite",
+          "description": "Invite URL or token for operation=join.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "invite"
+        },
+        {
+          "name": "message",
+          "description": "Message text for operation=send or replacement text for operation=edit.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message text"
+        },
+        {
+          "name": "query",
+          "description": "Search term for operation=search.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "search query"
+        },
+        {
+          "name": "messageId",
+          "description": "Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message id"
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction value for operation=react.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "reaction emoji"
+        },
+        {
+          "name": "pin",
+          "description": "Pin state for operation=pin. Use false to unpin when supported.",
+          "required": false,
+          "schema": { "type": "boolean" },
+          "descriptionCompressed": "pin state"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of messages/channels/servers to return.",
+          "required": false,
+          "schema": { "type": "integer" },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for read/search/list operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "before",
+          "description": "Optional message id or timestamp boundary for older read/search results.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "before boundary"
+        },
+        {
+          "name": "after",
+          "description": "Optional message id or timestamp boundary for newer read/search results.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "after boundary"
         }
       ],
       "examples": [
@@ -309,37 +438,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Post 'Important announcement!' in #announcements"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to announcements.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to Jimmy.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": ["MESSAGE"]
             }
           }
         ]
@@ -347,18 +446,162 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": ["REPLY", "SEND_MESSAGE"],
+          "actions": ["REPLY", "MESSAGE"],
           "params": {
-            "SEND_MESSAGE": {
-              "targetType": "user",
+            "MESSAGE": {
+              "operation": "send",
               "source": "telegram",
               "target": "dev_guru",
-              "text": "Hello!"
+              "message": "Hello!"
             }
           }
         }
       ],
-      "descriptionCompressed": "Send msg to another user or room (not current)."
+      "descriptionCompressed": "primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user dm group channel room thread user server"
+    },
+    {
+      "name": "POST",
+      "description": "Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.",
+      "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+      "parameters": [
+        {
+          "name": "operation",
+          "description": "Post subaction: send, read, or search.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["send", "read", "search"]
+          },
+          "descriptionCompressed": "post operation"
+        },
+        {
+          "name": "source",
+          "description": "Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post connector source"
+        },
+        {
+          "name": "text",
+          "description": "Public post text for operation=send.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post text"
+        },
+        {
+          "name": "target",
+          "description": "Loose feed target for operation=send/read, such as a user, handle, channel, media id, or connector-specific reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post target"
+        },
+        {
+          "name": "feed",
+          "description": "Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "feed selector"
+        },
+        {
+          "name": "replyTo",
+          "description": "Optional post, cast, media, or thread identifier when publishing a reply/comment.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "reply/comment target"
+        },
+        {
+          "name": "mediaId",
+          "description": "Optional media identifier for connectors that publish comments or replies to media.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "media id"
+        },
+        {
+          "name": "query",
+          "description": "Search term for operation=search.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "search query"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of posts to return.",
+          "required": false,
+          "schema": { "type": "integer" },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for operation=read or operation=search.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "before",
+          "description": "Optional post id or timestamp boundary for older feed/search results.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "before boundary"
+        },
+        {
+          "name": "after",
+          "description": "Optional post id or timestamp boundary for newer feed/search results.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "after boundary"
+        },
+        {
+          "name": "attachments",
+          "description": "Optional media attachments for connectors that support media posts.",
+          "required": false,
+          "schema": { "type": "array" },
+          "descriptionCompressed": "media attachments"
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Post 'shipping today' to X"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Posted to X.",
+              "actions": ["POST"]
+            }
+          }
+        ]
+      ],
+      "exampleCalls": [
+        {
+          "user": "Post \"shipping today\" to X",
+          "actions": ["REPLY", "POST"],
+          "params": {
+            "POST": {
+              "operation": "send",
+              "source": "x",
+              "text": "shipping today"
+            }
+          }
+        },
+        {
+          "user": "Comment 'looks good' on Instagram media 180123",
+          "actions": ["REPLY", "POST"],
+          "params": {
+            "POST": {
+              "operation": "send",
+              "source": "instagram",
+              "mediaId": "180123",
+              "text": "looks good"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "primary post action operations send read search public feed timeline posts"
     },
     {
       "name": "ADD_CONTACT",
@@ -1063,27 +1306,90 @@
       "descriptionCompressed": "Edit contact details for person in conversation."
     },
     {
-      "name": "GENERATE_IMAGE",
-      "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
+      "name": "GENERATE_MEDIA",
+      "description": "Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
       "similes": [
+        "GENERATE_IMAGE",
+        "GENERATE_VIDEO",
+        "GENERATE_AUDIO",
+        "GENERATE_MEDIA_IMAGE",
         "DRAW",
         "CREATE_IMAGE",
         "RENDER_IMAGE",
         "VISUALIZE",
         "MAKE_IMAGE",
         "PAINT",
-        "IMAGE"
+        "IMAGE",
+        "CREATE_VIDEO",
+        "MAKE_VIDEO",
+        "ANIMATE",
+        "COMPOSE",
+        "MAKE_MUSIC",
+        "TEXT_TO_SPEECH",
+        "SOUND_EFFECT"
       ],
       "parameters": [
         {
+          "name": "mediaType",
+          "description": "The kind of media to generate.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["image", "video", "audio"]
+          },
+          "examples": ["image", "video", "audio"],
+          "descriptionCompressed": "Media kind: image, video, audio."
+        },
+        {
           "name": "prompt",
-          "description": "Image generation prompt.",
+          "description": "Detailed generation prompt describing the desired media.",
           "required": true,
           "schema": {
             "type": "string"
           },
           "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
-          "descriptionCompressed": "Image prompt."
+          "descriptionCompressed": "Generation prompt."
+        },
+        {
+          "name": "audioKind",
+          "description": "For audio generation, choose music, sfx, or tts.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["music", "sfx", "tts"]
+          },
+          "examples": ["music", "sfx", "tts"],
+          "descriptionCompressed": "Audio subtype."
+        },
+        {
+          "name": "duration",
+          "description": "Optional target duration in seconds for video or audio.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [5, 30],
+          "descriptionCompressed": "Duration seconds."
+        },
+        {
+          "name": "aspectRatio",
+          "description": "Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["16:9", "9:16"],
+          "descriptionCompressed": "Video aspect ratio."
+        },
+        {
+          "name": "size",
+          "description": "Optional image size or image provider size preset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["1024x1024", "landscape_4_3"],
+          "descriptionCompressed": "Image size."
         }
       ],
       "examples": [
@@ -1098,7 +1404,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1106,14 +1412,14 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "What does a neural network look like visually?"
+              "text": "Make a five second clip of waves rolling in."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I'll create a visualization of a neural network for you, one sec...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll create that video clip.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1121,19 +1427,19 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Can you visualize the feeling of calmness for me?"
+              "text": "Compose a mellow synth track for studying."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "Creating an image to capture calmness for you, please wait a moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll generate that audio track.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ]
       ],
-      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
+      "descriptionCompressed": "Generate image, video, or audio from prompt."
     }
   ]
 }

@@ -192,14 +192,19 @@ webhookHandler.onStatus((status) => {
 
 ## Actions
 
-The plugin provides the following actions for use with ElizaOS agents:
+WhatsApp messaging is exposed through the canonical message connector actions.
+Use `source: "whatsapp"` when a request needs to target WhatsApp explicitly.
+Media, templates, and interactive messages remain available through the service
+and low-level client APIs shown above; they are not advertised as separate
+executable action names.
 
-| Action | Description |
-|--------|-------------|
-| `WHATSAPP_SEND_MESSAGE` | Send a text message |
-| `WHATSAPP_SEND_REACTION` | Send a reaction to a message |
-| `WHATSAPP_SEND_MEDIA` | Send an image, video, audio, or document |
-| `WHATSAPP_SEND_INTERACTIVE` | Send a button or list message |
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send a message to a phone number, contact, user, group, or room |
+| `MESSAGE` | `read` | Read recent WhatsApp conversation messages |
+| `MESSAGE` | `search` | Search WhatsApp conversation history |
+| `MESSAGE` | `react` | Send or remove a reaction on a message |
+| `MESSAGE` | `get_user` | Resolve a WhatsApp contact or user |
 
 ## Event Types
 

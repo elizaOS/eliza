@@ -14,7 +14,7 @@ import type { ServiceTypeName } from "../../types/service.ts";
  * Extended runtime interface with optional component unregistration helpers.
  */
 export interface ExtendedRuntime extends IAgentRuntime {
-	unregisterAction?: (actionName: string) => void;
+	unregisterAction: (actionName: string) => boolean;
 	unregisterProvider?: (providerName: string) => void;
 	unregisterEvaluator?: (evaluatorName: string) => void;
 	unregisterService?: (serviceType: string) => Promise<void>;
@@ -35,7 +35,9 @@ export function extendRuntimeWithComponentUnregistration(
 			const index = this.actions.findIndex((a) => a.name === actionName);
 			if (index !== -1) {
 				this.actions.splice(index, 1);
+				return true;
 			}
+			return false;
 		};
 	}
 

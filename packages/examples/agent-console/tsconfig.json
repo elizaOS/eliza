@@ -11,5 +11,5 @@
     "allowSyntheticDefaultImports": true,
     "types": ["node", "bun-types"]
   },
-  "include": ["server.ts"]
+  "include": ["server.ts", "action-scanner.ts"]
 }

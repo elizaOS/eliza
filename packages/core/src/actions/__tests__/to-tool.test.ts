@@ -31,7 +31,7 @@ describe("actionToTool", () => {
 			options: Array<{ label: string; value: string }>;
 		};
 		const action = makeAction({
-			name: "SEARCH_KNOWLEDGE",
+			name: "DOCUMENT",
 			description: "Search indexed knowledge",
 			descriptionCompressed: "Search knowledge",
 			parameters: [
@@ -56,7 +56,7 @@ describe("actionToTool", () => {
 		expect(tool).toEqual({
 			type: "function",
 			function: {
-				name: "SEARCH_KNOWLEDGE",
+				name: "DOCUMENT",
 				description: "Search knowledge",
 				strict: true,
 				parameters: {

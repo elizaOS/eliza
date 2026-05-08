@@ -36,8 +36,9 @@ export interface ActionSpyCall {
   runId?: string;
   /**
    * True when the action's terminal output is "user must confirm before
-   * dispatch" (security-sensitive ops like remote desktop, sending messages,
-   * outbound calls). The runtime emits ACTION_COMPLETED with
+   * dispatch" or "user must provide one missing detail" (security-sensitive ops
+   * like remote desktop, sending messages, outbound calls, and draft flows that
+   * stop for a date/duration). The runtime emits ACTION_COMPLETED with
    * `actionStatus: "failed"` for these even though selection + execution were
    * both correct. The benchmark scorer treats these as completed.
    */
@@ -64,7 +65,49 @@ const CONFIRMATION_ERROR_CODES = new Set([
   "REQUIRES_CONFIRMATION",
   "AWAITING_CONFIRMATION",
   "NEEDS_CONFIRMATION",
+  "MISSING_ARGUMENTS",
+  "MISSING_REQUIRED_FIELDS",
+  "MISSING_DETAILS",
+  "MISSING_INPUT",
+  "NEEDS_INPUT",
+  "REQUIRES_INPUT",
 ]);
+
+function containsConfirmationPendingText(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /pending (?:owner )?approval|requires? confirmation|confirmation required|awaiting confirmation|needs confirmation|what time should|what time would you like|when should|when would you like|how long would you like|please confirm|could you confirm|could you tell me|tell me which|tell me what|once I have|need (?:the|a|to know)/i.test(
+      value,
+    )
+  );
+}
+
+function hasMissingInputMarker(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (
+    record.requiresInput === true ||
+    record.needsInput === true ||
+    record.requiresConfirmation === true
+  ) {
+    return true;
+  }
+  if (
+    (Array.isArray(record.missing) && record.missing.length > 0) ||
+    (typeof record.missing === "string" && record.missing.trim().length > 0)
+  ) {
+    return true;
+  }
+  for (const key of ["error", "reason", "code"]) {
+    const raw = record[key];
+    if (typeof raw === "string") {
+      const normalized = raw.trim().toUpperCase();
+      if (CONFIRMATION_ERROR_CODES.has(normalized)) return true;
+      if (/MISSING|REQUIRES?_?INPUT|NEEDS?_?INPUT/i.test(raw)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Mirrors the detection in `services/message.ts` that breaks the multi-step
@@ -72,11 +115,13 @@ const CONFIRMATION_ERROR_CODES = new Set([
  * `actionResult` attached to the ACTION_COMPLETED payload.
  */
 function detectConfirmationPending(payload: ActionEventPayload): boolean {
+  if (containsConfirmationPendingText(payload.content?.text)) return true;
   const actionResult = (
     payload.content as { actionResult?: unknown } | undefined
   )?.actionResult;
   if (!actionResult || typeof actionResult !== "object") return false;
   const r = actionResult as Record<string, unknown>;
+  if (containsConfirmationPendingText(r.text)) return true;
   const v =
     r.values && typeof r.values === "object"
       ? (r.values as Record<string, unknown>)
@@ -87,6 +132,8 @@ function detectConfirmationPending(payload: ActionEventPayload): boolean {
       : null;
   if (v?.requiresConfirmation === true) return true;
   if (d?.requiresConfirmation === true) return true;
+  if (hasMissingInputMarker(v)) return true;
+  if (hasMissingInputMarker(d)) return true;
   if (typeof v?.error === "string" && CONFIRMATION_ERROR_CODES.has(v.error))
     return true;
   if (typeof d?.error === "string" && CONFIRMATION_ERROR_CODES.has(d.error))

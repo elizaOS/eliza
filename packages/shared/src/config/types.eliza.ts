@@ -30,9 +30,14 @@ import type {
 import type { ToolsConfig } from "./types.tools.js";
 
 export type {
+  AudioElevenlabsConfig,
   AudioElevenlabsSfxConfig,
+  AudioElevenlabsVoiceSettings,
+  AudioFalConfig,
   AudioGenConfig,
   AudioGenProvider,
+  AudioKind,
+  AudioProviderRoutingConfig,
   AudioSunoConfig,
   CustomActionDef,
   CustomActionHandler,

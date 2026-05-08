@@ -15,26 +15,16 @@ import {
 } from "../services/ShopifyService.js";
 import type { Product } from "../types.js";
 import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
+import {
   confirmationRequired,
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatProduct(p: Product): string {
   const variants = p.variants.edges.map((e) => e.node);
@@ -187,6 +177,7 @@ export const manageProductsAction: Action = {
       required: false,
       schema: { type: "boolean", default: false },
     },
+    shopifyAccountIdParameter,
   ],
 
   validate: async (
@@ -204,7 +195,8 @@ export const manageProductsAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    const accountId = getShopifyAccountId(runtime, options);
+    if (!svc?.isConnected(accountId)) {
       await callback?.({
         text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
       });
@@ -228,7 +220,7 @@ export const manageProductsAction: Action = {
         const result = await svc.listProducts({
           query: intent.query,
           first: 10,
-        });
+        }, accountId);
         if (result.products.length === 0) {
           await callback?.({
             text: intent.query
@@ -268,7 +260,7 @@ export const manageProductsAction: Action = {
           productType: intent.productType ?? undefined,
           vendor: intent.vendor ?? undefined,
           status,
-        });
+        }, accountId);
         await callback?.({
           text: `Product created: ${product.title} (${product.status}).`,
         });
@@ -280,7 +272,7 @@ export const manageProductsAction: Action = {
         const searchResult = await svc.listProducts({
           query: intent.identifier,
           first: 5,
-        });
+        }, accountId);
         if (searchResult.products.length === 0) {
           await callback?.({
             text: `Could not find a product matching "${intent.identifier}".`,
@@ -312,7 +304,7 @@ export const manageProductsAction: Action = {
           });
         }
 
-        const updated = await svc.updateProduct(target.id, updateInput);
+        const updated = await svc.updateProduct(target.id, updateInput, accountId);
         await callback?.({
           text: `Product updated: ${updated.title} (${updated.status}).`,
         });

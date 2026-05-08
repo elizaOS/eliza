@@ -1,7 +1,7 @@
 /**
  * FactExtractorEvaluator
  *
- * Single-call replacement for the legacy two-pass pipeline (reflection
+ * Single-call replacement for the previous two-pass pipeline (reflection
  * fact-extraction half + `factRefinement.ts`). For each new user message:
  *
  *   1. Embed the message text.
@@ -9,7 +9,7 @@
  *      `durable` and `current` lists in TS (the runtime search API does not
  *      filter on metadata).
  *   3. One LLM call (OBJECT_SMALL, temp=0) emits a JSON `ops` array validated
- *      by `ExtractorOutputSchema`. Legacy JSON responses are still accepted.
+ *      by `ExtractorOutputSchema`. Compatible JSON responses are still accepted.
  *   4. Write-time embedding-similarity dedup upgrades near-duplicate
  *      `add_*` ops to `strengthen` against the closest existing fact in the
  *      same `kind` + `category`.
@@ -236,7 +236,7 @@ function pickFactConfidence(memory: Memory): number {
 }
 
 /**
- * Resolve a fact's kind. Legacy facts written before the two-store model
+ * Resolve a fact's kind. Earlier facts written before the two-store model
  * carry no `kind` metadata; treat them as durable per the lazy
  * reclassification policy in `fact-memory.md`.
  */
@@ -690,7 +690,18 @@ async function handler(
 	_state?: State,
 ): Promise<ActionResult | undefined> {
 	if (!message.content?.text || !message.entityId || !message.roomId) {
-		return undefined;
+		return {
+			success: true,
+			text: "Fact extractor skipped: message text, entity id, or room id is missing.",
+			data: {
+				skipped: true,
+				reason: "missing_message_context",
+				added: 0,
+				strengthened: 0,
+				decayed: 0,
+				contradicted: 0,
+			},
+		};
 	}
 
 	const messageEmbedding = await embedText(runtime, message.content.text);
@@ -702,7 +713,18 @@ async function handler(
 			},
 			"Skipping fact extraction - empty embedding",
 		);
-		return undefined;
+		return {
+			success: true,
+			text: "Fact extractor skipped: no embedding was produced for the message.",
+			data: {
+				skipped: true,
+				reason: "empty_embedding",
+				added: 0,
+				strengthened: 0,
+				decayed: 0,
+				contradicted: 0,
+			},
+		};
 	}
 
 	// Two parallel similarity searches, room- and entity-scoped, over the
@@ -797,7 +819,18 @@ async function handler(
 
 	const ops = parseExtractorResponse(runtime, response);
 	if (ops === null) {
-		return undefined;
+		return {
+			success: true,
+			text: "Fact extractor skipped: model response did not contain valid fact operations.",
+			data: {
+				skipped: true,
+				reason: "invalid_model_response",
+				added: 0,
+				strengthened: 0,
+				decayed: 0,
+				contradicted: 0,
+			},
+		};
 	}
 
 	const ctx: ApplyContext = {
@@ -865,7 +898,7 @@ async function handler(
 }
 
 /**
- * Fact extraction as an `ALWAYS_AFTER` action (replaces the legacy evaluator).
+ * Fact extraction as an `ALWAYS_AFTER` action.
  * Migration target: fold into Stage 1 messageHandler so its single LLM call
  * also returns factOps[].
  */
@@ -882,8 +915,8 @@ export const factExtractorAction: Action = {
 };
 
 /**
- * @deprecated Re-exported as an evaluator only so legacy registrations don't
- * break during migration. New code should register `factExtractorAction`.
+ * Compatibility evaluator export for registrations that still consume the
+ * evaluator shape. New code should register `factExtractorAction`.
  */
 export const factExtractorEvaluator: Evaluator = {
 	name: "FACT_EXTRACTOR",

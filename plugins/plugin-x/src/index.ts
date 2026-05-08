@@ -1,9 +1,4 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { searchXAction } from "./actions/searchX.js";
-import { sendXPostAction } from "./actions/sendXPost.js";
-import { summarizeFeedAction } from "./actions/summarizeFeed.js";
-import { xTimelineProvider } from "./providers/xTimeline.js";
-import { xUnreadDmsProvider } from "./providers/xUnreadDms.js";
 import { registerXSearchCategory } from "./search-category.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
@@ -11,9 +6,9 @@ import { getSetting } from "./utils/settings";
 export const XPlugin: Plugin = {
   name: "x",
   description:
-    "X (formerly Twitter) connector with posting, interactions, and timeline actions",
-  actions: [sendXPostAction, searchXAction, summarizeFeedAction],
-  providers: [xTimelineProvider, xUnreadDmsProvider],
+    "X (formerly Twitter) connector with posting, interactions, and timeline support",
+  actions: [],
+  providers: [],
   services: [XService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerXSearchCategory(runtime);
@@ -58,21 +53,8 @@ export const XPlugin: Plugin = {
       } else {
         logger.log("✅ X OAuth configuration found");
       }
-    } else if (mode === "broker") {
-      const token =
-        getSetting(runtime, "TWITTER_BROKER_TOKEN") ||
-        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
-      if (!token) {
-        logger.warn(
-          "TWITTER_AUTH_MODE=broker needs TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
-        );
-      } else {
-        logger.log("✅ X broker mode configured (Eliza Cloud)");
-      }
     } else {
-      logger.warn(
-        `Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth|broker.`,
-      );
+      logger.warn(`Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth.`);
     }
   },
 };

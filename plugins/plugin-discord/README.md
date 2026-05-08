@@ -210,31 +210,20 @@ From Discord.js `PermissionFlagsBits`:
 
 The plugin provides the following actions:
 
-| Action                  | Description                                |
-| ----------------------- | ------------------------------------------ |
-| **chatWithAttachments** | Handle messages with Discord attachments   |
-| **createPoll**          | Create a poll in a Discord channel         |
-| **downloadMedia**       | Download media files from Discord messages |
-| **getUserInfo**         | Get information about a Discord user       |
-| **joinVoice**           | Join a voice channel                       |
-| **leaveVoice**          | Leave a voice channel                      |
-| **listChannels**        | List channels in a Discord server          |
-| **pinMessage**          | Pin a message in a channel                 |
-| **reactToMessage**      | Add a reaction to a message                |
-| **readChannel**         | Read messages from a channel               |
-| **searchMessages**      | Search for messages in a channel           |
-| **sendDM**              | Send a direct message to a user            |
-| **serverInfo**          | Get information about the current server   |
-| **summarize**           | Summarize conversation history             |
-| **transcribeMedia**     | Transcribe audio/video media to text       |
-| **unpinMessage**        | Unpin a message from a channel             |
+| Action                           | Description                                              |
+| -------------------------------- | -------------------------------------------------------- |
+| **MESSAGE**                      | Send, read, search, list, react, edit, delete, pin, join, leave, or get user info through the Discord message connector |
+| **DISCORD_CHAT_WITH_ATTACHMENTS** | Handle explicitly selected Discord attachments           |
+| **DISCORD_CREATE_POLL**          | Create a poll in a Discord channel                       |
+| **DISCORD_MEDIA**                | Download or transcribe Discord media                     |
+| **DISCORD_SUMMARIZE_CONVERSATION** | Summarize a date/time range from stored Discord history |
+| **DISCORD_SETUP_CREDENTIALS**    | Set up Discord credential pairing                        |
 
 ### Providers
 
-The plugin includes two state providers:
+The plugin includes one state provider:
 
-1. **channelStateProvider** - Provides state information about Discord channels
-2. **voiceStateProvider** - Provides state information about voice channels and connection status
+1. **voiceStateProvider** - Provides state information about voice channels and connection status
 
 ### Event Types
 

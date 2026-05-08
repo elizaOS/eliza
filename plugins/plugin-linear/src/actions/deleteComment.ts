@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { DeleteCommentParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteCommentAction: Action = {
@@ -26,6 +27,7 @@ export const deleteCommentAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    linearAccountIdParameter,
   ],
   similes: [
     "remove-linear-comment",
@@ -70,6 +72,7 @@ export const deleteCommentAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const params = _options?.parameters as
         | DeleteCommentParameters
@@ -83,14 +86,14 @@ export const deleteCommentAction: Action = {
         return { text: errorMessage, success: false };
       }
 
-      await linearService.deleteComment(commentId);
+      await linearService.deleteComment(commentId, accountId);
 
       const successMessage = `Deleted comment ${commentId}.`;
       await callback?.({ text: successMessage, source: message.content.source });
       return {
         text: successMessage,
         success: true,
-        data: { commentId },
+        data: { commentId, accountId },
       };
     } catch (error) {
       logger.error("Failed to delete comment:", error);

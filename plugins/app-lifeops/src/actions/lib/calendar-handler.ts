@@ -2982,7 +2982,7 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "CALENDAR",
+  name: "GOOGLE_CALENDAR",
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
@@ -3269,6 +3269,12 @@ export const calendarAction: Action & {
                 missing: ["title"],
               },
             ),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["title"],
+            },
           });
         }
         // The LifeOps service throws a raw 400 when neither startAt nor a
@@ -3306,6 +3312,13 @@ export const calendarAction: Action & {
                 calendarContext?.calendarTimeZone ??
                 resolveCalendarTimeZone(details),
             }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["startAt"],
+              title,
+            },
           });
         }
         let requestToCreate = request;

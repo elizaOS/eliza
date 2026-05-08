@@ -118,25 +118,25 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
 
   /**
    * Simulates the scenario:
-   * 1. Runtime created in ASSISTANT mode
+   * 1. Runtime created in CHAT mode
    * 2. Long-running database operations start (simulating evaluator)
    * 3. Mode change triggers invalidation
    * 4. Operations should complete without pool closure errors
-   */
+  */
   it(
-    "should handle mode switch from ASSISTANT to CHAT during DB operations",
+    "should handle CHAT runtime recreation during DB operations",
     async () => {
-      console.log("\n=== MODE SWITCH TEST: ASSISTANT → CHAT ===");
+      console.log("\n=== CHAT RUNTIME RECREATION TEST ===");
 
-      // Create ASSISTANT mode runtime
-      const assistantContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+      // Create CHAT mode runtime
+      const chatContext = buildUserContext(testData, {
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
-      const assistantRuntime = await runtimeFactory.createRuntimeForUser(assistantContext);
-      const agentId = assistantRuntime.agentId as string;
-      console.log(`Created ASSISTANT runtime: ${agentId}`);
+      const chatRuntime = await runtimeFactory.createRuntimeForUser(chatContext);
+      const agentId = chatRuntime.agentId as string;
+      console.log(`Created CHAT runtime: ${agentId}`);
 
       // Get adapter reference to simulate evaluator holding a reference
       const adapterEntries = _testing.getAdapterEntries();
@@ -151,17 +151,17 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
       const simulateEvaluatorOperations = async (label: string): Promise<void> => {
         try {
           console.log(`${label}: Starting simulated evaluator operations...`);
-          const selfRoomId = assistantRuntime.agentId as any;
+          const selfRoomId = chatRuntime.agentId as any;
 
           // Simulate runtime.countMemories()
           await ignoreExpectedProbeFailure(
-            assistantRuntime.countMemories(selfRoomId, false, "messages"),
+            chatRuntime.countMemories(selfRoomId, false, "messages"),
             `${label}: countMemories`,
           );
 
           // Simulate runtime.getMemories()
           await ignoreExpectedProbeFailure(
-            assistantRuntime.getMemories({
+            chatRuntime.getMemories({
               tableName: "messages",
               roomId: selfRoomId,
               count: 10,
@@ -172,7 +172,7 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
 
           // Simulate getAgents (a real DB query)
           const agents = await Promise.race([
-            assistantRuntime.getAgents(),
+            chatRuntime.getAgents(),
             new Promise<never>((_, reject) => {
               const t = setTimeout(
                 () => reject(new Error(`${label}: getAgents probe timed out`)),
@@ -242,19 +242,19 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
   );
 
   /**
-   * Test rapid mode switching
+   * Test rapid chat runtime recreation
    */
   it(
-    "should handle rapid mode switches between CHAT and ASSISTANT",
+    "should handle rapid CHAT runtime recreation",
     async () => {
       console.log("\n=== RAPID MODE SWITCH TEST ===");
 
       const errors: string[] = [];
       let runtime: TestRuntime | null = null;
 
-      // Rapidly switch between modes while running queries
+      // Rapidly recreate runtimes while running queries
       for (let i = 0; i < 5; i++) {
-        const mode = i % 2 === 0 ? AgentMode.CHAT : AgentMode.ASSISTANT;
+        const mode = AgentMode.CHAT;
         console.log(`\nSwitch ${i + 1}: Creating runtime in ${mode} mode`);
 
         try {
@@ -325,7 +325,7 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
       console.log("\n=== KNOWLEDGE SERVICE ACCESS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -386,7 +386,7 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
       console.log("\n=== MEMORY SERVICE OPERATIONS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -464,7 +464,7 @@ describe.skipIf(!hasDatabaseUrl)("Concurrent Configuration Changes", () => {
       console.log("\n=== CONCURRENT INVALIDATIONS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -528,12 +528,12 @@ describe.skipIf(!hasDatabaseUrl)("Concurrent Configuration Changes", () => {
 
       // Create runtime with web search (different config)
       const contextA = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
       const contextB = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: true, // Different config = different cache key
       });
 
@@ -618,7 +618,7 @@ describe.skipIf(!hasDatabaseUrl)("Long-Running Operation Simulation", () => {
       console.log("Simulating long-term-extraction evaluator operations...");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 

@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { normalizeNostrAccountId, readNostrAccountId } from "../accounts.js";
 import type { NostrService } from "../service.js";
 import { NOSTR_SERVICE_NAME, type NostrProfile } from "../types.js";
 
@@ -91,6 +92,16 @@ export const publishProfile: Action = {
       return { success: false, error: "Nostr service not available" };
     }
 
+    const requestedAccountId = normalizeNostrAccountId(
+      readNostrAccountId(_options, message.content) ?? nostrService.getAccountId(runtime)
+    );
+    if (requestedAccountId !== nostrService.getAccountId(runtime)) {
+      return {
+        success: false,
+        error: `Nostr account '${requestedAccountId}' is not available`,
+      };
+    }
+
     // Get or compose state
     const currentState = state ?? (await runtime.composeState(message));
 
@@ -164,6 +175,7 @@ export const publishProfile: Action = {
         relays: result.relays?.slice(0, MAX_NOSTR_PROFILE_RELAYS),
         profile: profileInfo,
         timeoutMs,
+        accountId: requestedAccountId,
       },
     };
   },

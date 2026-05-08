@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-knowledge",
+  "name": "@elizaos/app-documents",
   "version": "2.0.0-beta.0",
   "type": "module",
   "main": "./dist/index.js",

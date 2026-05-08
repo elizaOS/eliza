@@ -162,7 +162,7 @@ export async function handleAuthPairingCompatRoutes(
   // ── GET /api/onboarding/status ──────────────────────────────────────
   // Cloud-provisioned containers used to skip auth here entirely. That
   // bypass is gone: callers now need a trusted local request, a valid
-  // cookie session, an allowed legacy bearer, or a bootstrap exchange.
+  // cookie session, an allowed bearer token, or a bootstrap exchange.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;

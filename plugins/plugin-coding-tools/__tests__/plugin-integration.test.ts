@@ -15,8 +15,6 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
-  SHELL_TASK_SERVICE,
-  ShellTaskService,
 } from "../src/index.js";
 import * as pluginModule from "../src/index.js";
 
@@ -24,16 +22,12 @@ const EXPECTED_ACTIONS = [
   "READ",
   "WRITE",
   "EDIT",
-  "NOTEBOOK_EDIT",
   "BASH",
-  "TASK_OUTPUT",
-  "TASK_STOP",
   "GREP",
   "GLOB",
   "LS",
   "WEB_FETCH",
   "CODE_WEB_SEARCH",
-  "TODO_WRITE",
   "ASK_USER_QUESTION",
   "ENTER_WORKTREE",
   "EXIT_WORKTREE",
@@ -45,7 +39,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 16 expected actions", () => {
+  it("registers exactly the 12 expected actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
@@ -65,21 +59,24 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("exports the 5 active services", () => {
+  it("exports the 4 active services", () => {
     const services = codingToolsPlugin.services ?? [];
     expect(services).toContain(FileStateService);
     expect(services).toContain(SandboxService);
     expect(services).toContain(SessionCwdService);
     expect(services).toContain(RipgrepService);
-    expect(services).toContain(ShellTaskService);
-    expect(services.length).toBe(5);
+    expect(services.length).toBe(4);
   });
 
-  it("does not export deprecated AST or OS-sandbox service constants", () => {
+  it("does not export removed actions or service constants", () => {
     expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
     expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
-    expect("BashAstService" in pluginModule).toBe(false);
-    expect("OsSandboxService" in pluginModule).toBe(false);
+    expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);
+    expect("ShellTaskService" in pluginModule).toBe(false);
+    expect("notebookEditAction" in pluginModule).toBe(false);
+    expect("taskOutputAction" in pluginModule).toBe(false);
+    expect("taskStopAction" in pluginModule).toBe(false);
+    expect("todoWriteAction" in pluginModule).toBe(false);
   });
 
   it("exports the available-tools provider at position -10 with code/terminal/automation gates", () => {
@@ -135,17 +132,14 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     const sandbox = await SandboxService.start(runtime);
     const session = await SessionCwdService.start(runtime);
     const rg = await RipgrepService.start(runtime);
-    const shellTasks = await ShellTaskService.start(runtime);
     services.set(FILE_STATE_SERVICE, fileState);
     services.set(SANDBOX_SERVICE, sandbox);
     services.set(SESSION_CWD_SERVICE, session);
     services.set(RIPGREP_SERVICE, rg);
-    services.set(SHELL_TASK_SERVICE, shellTasks);
     cleanup.push(() => fileState.stop());
     cleanup.push(() => sandbox.stop());
     cleanup.push(() => session.stop());
     cleanup.push(() => rg.stop());
-    cleanup.push(() => shellTasks.stop());
     session.setCwd("smoke-room", tmpDir);
   });
 
@@ -222,8 +216,6 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   it("GREP finds the NEEDLE token (skip when ripgrep absent)", async () => {
     const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
     if (!rg) return;
-    // The bundled @vscode/ripgrep binary may be missing in dev installs;
-    // patch in a system rg if so.
     const fs2 = await import("node:fs");
     const initial = rg.binary();
     if (!fs2.existsSync(initial)) {
@@ -244,25 +236,11 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.text).toContain("needle.txt");
   });
 
-  it("TODO_WRITE persists a list", async () => {
-    const action = findAction("TODO_WRITE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: {
-        todos: [
-          { content: "first task", status: "pending" },
-          { content: "doing now", status: "in_progress" },
-        ],
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
   it("ENTER_WORKTREE in a non-git dir fails cleanly", async () => {
     const action = findAction("ENTER_WORKTREE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
       parameters: {},
     });
-    // tmpDir isn't a git repo, so this must fail cleanly (not throw).
     expect(result.success).toBe(false);
     expect(result.text).toContain("io_error");
   });

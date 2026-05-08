@@ -302,7 +302,7 @@ describe("pendingDraftProvider", () => {
     );
 
     expect(result.text).toContain("Gmail to Telegram");
-    expect(result.text).toContain("CREATE_N8N_WORKFLOW");
+    expect(result.text).toContain("WORKFLOW");
     expect(result.data).toEqual({ hasPendingDraft: true });
     expect(result.values).toEqual({ hasPendingDraft: true });
   });

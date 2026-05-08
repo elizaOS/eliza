@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { AbstractBabylonSystem, defineSystem } from "../core/system";
-import type {
-  EngineContext,
-  SystemTickResult,
-  TickContext,
-} from "../core/types";
+import { defineSystem } from "../core/system";
+import type { SystemTickResult, TickContext } from "../core/types";
 import { TickPhase } from "../core/types";
 
 describe("defineSystem", () => {
@@ -81,39 +77,3 @@ describe("defineSystem", () => {
   });
 });
 
-describe("AbstractBabylonSystem (deprecated)", () => {
-  it("can be extended to create a module", async () => {
-    class TestModule extends AbstractBabylonSystem {
-      readonly id = "test-class";
-      readonly name = "Test Class Module";
-      readonly phase = TickPhase.Bootstrap;
-
-      async onTick(_ctx: TickContext): Promise<SystemTickResult> {
-        return { metrics: { classWorks: true } };
-      }
-    }
-
-    const mod = new TestModule();
-    expect(mod.id).toBe("test-class");
-    expect(typeof mod.onTick).toBe("function");
-
-    const result = await mod.onTick({} as TickContext);
-    expect(result.metrics?.classWorks).toBe(true);
-  });
-
-  it("has no-op defaults for register and destroy", async () => {
-    class Minimal extends AbstractBabylonSystem {
-      readonly id = "min";
-      readonly name = "Min";
-      readonly phase = TickPhase.Events;
-      async onTick(_ctx: TickContext): Promise<SystemTickResult> {
-        return {};
-      }
-    }
-
-    const mod = new Minimal();
-    // Should not throw
-    await mod.register({} as unknown as EngineContext);
-    await mod.destroy();
-  });
-});

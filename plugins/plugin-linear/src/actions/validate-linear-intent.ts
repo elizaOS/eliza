@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { hasLinearAccountConfig } from "../accounts";
 
 export interface LinearIntentValidationSpec {
   readonly keywords: readonly string[];
@@ -35,7 +36,7 @@ export async function validateLinearActionIntent(
       return false;
     }
 
-    return Boolean(runtime.getSetting("LINEAR_API_KEY"));
+    return hasLinearAccountConfig(runtime);
   } catch {
     return false;
   }

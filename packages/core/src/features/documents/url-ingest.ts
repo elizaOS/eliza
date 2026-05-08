@@ -212,7 +212,7 @@ async function requestWithPinnedAddress(
 let pinnedFetchImpl: PinnedFetchImpl = requestWithPinnedAddress;
 
 // Test hook for deterministic network simulation without sockets.
-export function __setKnowledgeUrlFetchImplForTests(
+export function __setDocumentUrlFetchImplForTests(
 	impl: PinnedFetchImpl | null,
 ): void {
 	pinnedFetchImpl = impl ?? requestWithPinnedAddress;
@@ -495,25 +495,25 @@ async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
 	return segments.join(" ");
 }
 
-export type FetchedKnowledgeUrlKind = "text" | "transcript" | "html" | "binary";
+export type FetchedDocumentUrlKind = "text" | "transcript" | "html" | "binary";
 
-export interface FetchedKnowledgeUrl {
+export interface FetchedDocumentUrl {
 	/** Filename derived from the URL or YouTube video id. */
 	filename: string;
 	/** UTF-8 string for text/transcript/html, base64 for binary. */
 	content: string;
 	/** Coarse classification of the fetched payload. */
-	contentType: FetchedKnowledgeUrlKind;
+	contentType: FetchedDocumentUrlKind;
 	/** Underlying MIME type from the response headers (or synthesised for transcripts). */
 	mimeType: string;
 }
 
-export interface FetchKnowledgeFromUrlOptions {
+export interface FetchDocumentFromUrlOptions {
 	/** Reserved: surfaced through to caller metadata when handling images. */
 	includeImageDescriptions?: boolean;
 }
 
-function classifyMimeType(mimeType: string): FetchedKnowledgeUrlKind {
+function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
 	const normalized = mimeType.toLowerCase();
 	if (
 		normalized.startsWith("application/pdf") ||
@@ -555,14 +555,14 @@ function htmlToPlainText(value: string): string {
 }
 
 /**
- * Fetch a remote URL and return knowledge-friendly content. Supports YouTube
+ * Fetch a remote URL and return document-friendly content. Supports YouTube
  * transcript extraction, HTML pages, plain-text resources, and a small set of
  * binary document types (returned as base64).
  */
-export async function fetchKnowledgeFromUrl(
+export async function fetchDocumentFromUrl(
 	url: string,
-	_opts: FetchKnowledgeFromUrlOptions = {},
-): Promise<FetchedKnowledgeUrl> {
+	_opts: FetchDocumentFromUrlOptions = {},
+): Promise<FetchedDocumentUrl> {
 	if (isYouTubeUrl(url)) {
 		const videoId = extractYouTubeVideoId(url);
 		if (!videoId) {

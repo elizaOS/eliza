@@ -1,18 +1,12 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import channelOp from "./actions/channelOp";
 import chatWithAttachments from "./actions/chatWithAttachments";
 import createPoll from "./actions/createPoll";
-import getUserInfo from "./actions/getUserInfo";
 import mediaOp from "./actions/mediaOp";
-import messageOp from "./actions/messageOp";
 import setupCredentials from "./actions/setup-credentials";
 import { summarize } from "./actions/summarizeConversation";
 import { printBanner } from "./banner";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
-import { discordChannelsProvider } from "./providers/discordChannels";
-import { discordServerInfoProvider } from "./providers/discordServerInfo";
-import { guildInfoProvider } from "./providers/guildInfo";
 import { voiceStateProvider } from "./providers/voiceState";
 import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
@@ -26,21 +20,13 @@ const discordPlugin: Plugin = {
 	services: [DiscordService, DiscordOwnerPairingServiceImpl],
 	routes: discordSetupRoutes,
 	actions: [
-		messageOp,
-		channelOp,
 		mediaOp,
 		chatWithAttachments,
 		summarize,
 		createPoll,
-		getUserInfo,
 		setupCredentials,
 	],
-	providers: [
-		voiceStateProvider,
-		guildInfoProvider,
-		discordChannelsProvider,
-		discordServerInfoProvider,
-	],
+	providers: [voiceStateProvider],
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
 		registerDiscordSearchCategory(runtime);

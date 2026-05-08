@@ -1,5 +1,5 @@
 /**
- * Knowledge HTTP routes for the app-knowledge plugin.
+ * Documents HTTP routes for the app-documents plugin.
  *
  * These routes were previously dispatched from
  * `packages/agent/src/api/server.ts`. They are now registered through the
@@ -15,7 +15,7 @@ import {
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
-import { handleKnowledgeRoutes } from "./routes.js";
+import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -52,7 +52,7 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 
 type PluginRouteHandler = NonNullable<Route["handler"]>;
 
-function knowledgeRouteHandler(): PluginRouteHandler {
+function documentsRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -63,7 +63,7 @@ function knowledgeRouteHandler(): PluginRouteHandler {
     const agentRuntime = (runtime as AgentRuntime) ?? null;
     const method = (httpReq.method ?? "GET").toUpperCase();
     const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
-    await handleKnowledgeRoutes({
+    await handleDocumentsRoutes({
       req: httpReq,
       res: httpRes,
       method,
@@ -77,44 +77,31 @@ function knowledgeRouteHandler(): PluginRouteHandler {
   };
 }
 
-const KNOWLEDGE_ROUTES: Array<{ type: string; path: string }> = [
-  // Document collection
-  { type: "GET", path: "/api/knowledge" },
-  { type: "GET", path: "/api/knowledge/stats" },
-  { type: "GET", path: "/api/knowledge/documents" },
-  { type: "POST", path: "/api/knowledge/documents" },
-  { type: "POST", path: "/api/knowledge/documents/bulk" },
-  { type: "POST", path: "/api/knowledge/documents/url" },
-  { type: "GET", path: "/api/knowledge/documents/:id" },
-  { type: "PATCH", path: "/api/knowledge/documents/:id" },
-  { type: "DELETE", path: "/api/knowledge/documents/:id" },
-  // Search + fragment listing
-  { type: "GET", path: "/api/knowledge/search" },
-  { type: "GET", path: "/api/knowledge/fragments/:documentId" },
-  // Scratchpad subroutes (handled inside handleKnowledgeRoutes via
-  // handleScratchpadTopicRoutes once the prefix matches).
-  { type: "GET", path: "/api/knowledge/scratchpad/topics" },
-  { type: "POST", path: "/api/knowledge/scratchpad/topics" },
-  { type: "GET", path: "/api/knowledge/scratchpad/search" },
-  { type: "POST", path: "/api/knowledge/scratchpad/summary-preview" },
-  { type: "GET", path: "/api/knowledge/scratchpad/topics/:topicId" },
-  { type: "PUT", path: "/api/knowledge/scratchpad/topics/:topicId" },
-  { type: "DELETE", path: "/api/knowledge/scratchpad/topics/:topicId" },
+const DOCUMENTS_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/documents" },
+  { type: "POST", path: "/api/documents" },
+  { type: "GET", path: "/api/documents/stats" },
+  { type: "GET", path: "/api/documents/search" },
+  { type: "POST", path: "/api/documents/bulk" },
+  { type: "POST", path: "/api/documents/url" },
+  { type: "GET", path: "/api/documents/:id" },
+  { type: "PATCH", path: "/api/documents/:id" },
+  { type: "DELETE", path: "/api/documents/:id" },
+  { type: "GET", path: "/api/documents/:id/fragments" },
 ];
 
-export const knowledgeRoutes: Route[] = KNOWLEDGE_ROUTES.map(
+export const documentsRoutes: Route[] = DOCUMENTS_ROUTES.map(
   (r) =>
     ({
       type: r.type as Route["type"],
       path: r.path,
       rawPath: true as const,
-      handler: knowledgeRouteHandler(),
+      handler: documentsRouteHandler(),
     }) as Route,
 );
 
-export const knowledgePlugin: Plugin = {
-  name: "@elizaos/app-knowledge-routes",
-  description:
-    "Knowledge documents, fragments, search, and scratchpad topic routes",
-  routes: knowledgeRoutes,
+export const documentsPlugin: Plugin = {
+  name: "@elizaos/app-documents-routes",
+  description: "Document storage, fragments, and search routes",
+  routes: documentsRoutes,
 };

@@ -435,6 +435,7 @@ Response (YES/NO):`;
   private async ensureTweetContext(tweet: ClientTweet) {
     try {
       const context = await ensureContext(this.runtime, {
+        accountId: this.client.accountId,
         userId: tweet.userId,
         username: tweet.username,
         name: tweet.name,
@@ -453,6 +454,11 @@ Response (YES/NO):`;
         },
         agentId: this.runtime.agentId,
         roomId: context.roomId,
+        metadata: buildTwitterMessageMetadata(
+          tweet,
+          context.entityId,
+          this.client.accountId,
+        ),
         createdAt: getEpochMs(tweet.timestamp),
       };
 
@@ -468,9 +474,10 @@ Response (YES/NO):`;
    */
   private async engageWithTweet(tweet: ClientTweet): Promise<boolean> {
     try {
+      const entityId = createUniqueUuid(this.runtime, tweet.userId);
       const message: Memory = {
         id: createUniqueUuid(this.runtime, tweet.id),
-        entityId: createUniqueUuid(this.runtime, tweet.userId),
+        entityId,
         content: {
           text: tweet.text,
           source: "twitter",
@@ -478,6 +485,11 @@ Response (YES/NO):`;
         },
         agentId: this.runtime.agentId,
         roomId: createUniqueUuid(this.runtime, tweet.conversationId),
+        metadata: buildTwitterMessageMetadata(
+          tweet,
+          entityId,
+          this.client.accountId,
+        ),
         createdAt: getEpochMs(tweet.timestamp),
       };
 
@@ -687,7 +699,9 @@ Response (YES/NO):`;
           agentId: this.runtime.agentId,
           metadata: {
             ownership: { ownerId: userId },
+            accountId: this.client.accountId,
             twitter: {
+              accountId: this.client.accountId,
               username: username,
               id: userId,
             },
@@ -730,7 +744,11 @@ Response (YES/NO):`;
           },
           agentId: this.runtime.agentId,
           roomId,
-          metadata: buildTwitterMessageMetadata(tweet, entityId),
+          metadata: buildTwitterMessageMetadata(
+            tweet,
+            entityId,
+            this.client.accountId,
+          ),
           createdAt: getEpochMs(tweet.timestamp),
         };
 
@@ -810,6 +828,9 @@ Response (YES/NO):`;
         content: {
           text: interaction.targetTweet.text,
           source: "twitter",
+          metadata: {
+            accountId: this.client.accountId,
+          },
         },
         entityId: createUniqueUuid(this.runtime, interaction.userId),
         roomId: createUniqueUuid(
@@ -817,6 +838,20 @@ Response (YES/NO):`;
           interaction.targetTweet.conversationId,
         ),
         agentId: this.runtime.agentId,
+        metadata: {
+          type: "message",
+          source: "twitter",
+          accountId: this.client.accountId,
+          provider: "twitter",
+          fromId: interaction.userId,
+          messageIdFull: interaction.targetTweetId,
+          twitter: {
+            accountId: this.client.accountId,
+            tweetId: interaction.targetTweetId,
+            userId: interaction.userId,
+            username: interaction.username,
+          },
+        } as unknown as Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -887,6 +922,7 @@ Response (YES/NO):`;
         source: "twitter",
         metadata: {
           type: interaction.type,
+          accountId: this.client.accountId,
           targetTweetId: interaction.targetTweetId,
           username: interaction.username,
           userId: interaction.userId,
@@ -924,7 +960,16 @@ Response (YES/NO):`;
       content: {
         type,
         source: "twitter",
+        metadata: {
+          accountId: this.client.accountId,
+        },
       },
+      metadata: {
+        type,
+        source: "twitter",
+        accountId: this.client.accountId,
+        provider: "twitter",
+      } as unknown as Memory["metadata"],
       createdAt: Date.now(),
     };
   }
@@ -1000,6 +1045,19 @@ Response (YES/NO):`;
             source: "twitter",
             inReplyTo: message.id,
           },
+          metadata: {
+            type: "message",
+            source: "twitter",
+            accountId: this.client.accountId,
+            provider: "twitter",
+            fromBot: true,
+            messageIdFull: tweetResult.id,
+            twitter: {
+              accountId: this.client.accountId,
+              tweetId: tweetResult.id,
+              inReplyTo: tweetToReplyTo,
+            },
+          } as unknown as Memory["metadata"],
           createdAt: Date.now(),
         };
 

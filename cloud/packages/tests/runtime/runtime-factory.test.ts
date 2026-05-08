@@ -1,10 +1,8 @@
 /**
  * RuntimeFactory Integration Tests
  *
- * Tests the production RuntimeFactory with all modes:
+ * Tests the production RuntimeFactory with CHAT mode:
  * - CHAT: Basic conversation mode
- * - ASSISTANT: Full capabilities with MCP, web search
- * - BUILD: Character building mode
  *
  * These tests run the EXACT production code path against the local database.
  * Make sure your local server is running before running these tests.
@@ -160,21 +158,21 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
 });
 
 // ============================================================================
-// ASSISTANT Mode Tests (with MCP)
+// CHAT Mode Tests (with MCP)
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (MCP)", () => {
+describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (MCP)", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
 
   beforeAll(setupEnvironment);
   afterAll(cleanupEnvironment);
 
-  it("should create runtime in ASSISTANT mode with MCP", async () => {
+  it("should create runtime in CHAT mode with MCP", async () => {
     startTimer("assistant_runtime_create");
 
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       characterId: testData.character?.id,
       webSearchEnabled: false, // Isolate MCP testing
     });
@@ -185,7 +183,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (MCP)", ()
 
     expect(runtime).toBeDefined();
     expect(runtime.character?.name).toBe("Mira");
-    console.log(`\n✅ ASSISTANT runtime created in ${allTimings.assistantRuntimeCreate}ms`);
+    console.log(`\n✅ CHAT runtime created in ${allTimings.assistantRuntimeCreate}ms`);
   }, 60000);
 
   it("should have MCP service initialized", async () => {
@@ -217,20 +215,20 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (MCP)", ()
     allTimings.assistantMessage = endTimer("assistant_message");
 
     expect(result.didRespond).toBe(true);
-    console.log(`\n✅ ASSISTANT message in ${allTimings.assistantMessage}ms`);
+    console.log(`\n✅ CHAT message in ${allTimings.assistantMessage}ms`);
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
-  it("should cleanup ASSISTANT runtime", async () => {
+  it("should cleanup CHAT runtime", async () => {
     await invalidateRuntime(runtime.agentId as string);
   });
 });
 
 // ============================================================================
-// ASSISTANT Mode with Web Search
+// CHAT Mode with Web Search
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (Web Search)", () => {
+describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode (Web Search)", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
 
@@ -241,7 +239,7 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (Web Searc
     startTimer("websearch_runtime_create");
 
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: true,
     });
 
@@ -276,21 +274,21 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - ASSISTANT Mode (Web Searc
 });
 
 // ============================================================================
-// BUILD Mode Tests
+// CHAT Mode Tests
 // ============================================================================
 
-describe.skipIf(skipLiveModelSuites)("RuntimeFactory - BUILD Mode", () => {
+describe.skipIf(skipLiveModelSuites)("RuntimeFactory - CHAT Mode", () => {
   let runtime: TestRuntime;
   let testUser: TestUserContext;
 
   beforeAll(setupEnvironment);
   afterAll(cleanupEnvironment);
 
-  it("should create runtime in BUILD mode", async () => {
+  it("should create runtime in CHAT mode", async () => {
     startTimer("build_runtime_create");
 
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.BUILD,
+      agentMode: AgentMode.CHAT,
       characterId: testData.character?.id,
       webSearchEnabled: false,
     });
@@ -300,10 +298,10 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - BUILD Mode", () => {
     allTimings.buildRuntimeCreate = endTimer("build_runtime_create");
 
     expect(runtime).toBeDefined();
-    console.log(`\n✅ BUILD runtime created in ${allTimings.buildRuntimeCreate}ms`);
+    console.log(`\n✅ CHAT runtime created in ${allTimings.buildRuntimeCreate}ms`);
   }, 60000);
 
-  it("should process BUILD mode message", async () => {
+  it("should process CHAT mode message", async () => {
     testUser = await createTestUser(runtime, "BuildTestUser");
 
     startTimer("build_message");
@@ -317,11 +315,11 @@ describe.skipIf(skipLiveModelSuites)("RuntimeFactory - BUILD Mode", () => {
     allTimings.buildMessage = endTimer("build_message");
 
     expect(result.didRespond).toBe(true);
-    console.log(`\n✅ BUILD message in ${allTimings.buildMessage}ms`);
+    console.log(`\n✅ CHAT message in ${allTimings.buildMessage}ms`);
     console.log(`   Response: ${result.response?.text?.substring(0, 80)}...`);
   }, 180000);
 
-  it("should cleanup BUILD runtime", async () => {
+  it("should cleanup CHAT runtime", async () => {
     await invalidateRuntime(runtime.agentId as string);
   });
 });
@@ -336,7 +334,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should cache runtime on first creation", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -352,7 +350,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should return cached runtime on second call", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -379,14 +377,14 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should separate cached runtimes when direct model preferences differ", async () => {
     const baseContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
       modelPreferences: {
         responseHandlerModel: "google/gemini-2.5-flash-lite",
       },
     });
     const tunedContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
       modelPreferences: {
         responseHandlerModel: "projects/demo/locations/us-central1/endpoints/demo-handler",
@@ -417,7 +415,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
   afterAll(cleanupEnvironment);
 
   it("should benchmark runtime creation times", async () => {
-    const modes = [AgentMode.CHAT, AgentMode.ASSISTANT, AgentMode.BUILD];
+    const modes = [AgentMode.CHAT];
     const benchmarks: Record<string, number> = {};
 
     for (const mode of modes) {
@@ -440,9 +438,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       allTimings[`benchmark_${mode}`] = time;
     }
 
-    // All modes should create in under 10 seconds
+    // Chat runtime should create in under 10 seconds
     expect(benchmarks[AgentMode.CHAT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.ASSISTANT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.BUILD]).toBeLessThan(10000);
   }, 180000);
 });

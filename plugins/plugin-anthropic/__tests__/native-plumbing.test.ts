@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("Anthropic native text plumbing", () => {
-  it("preserves prompt segment cache_control and returns cache usage with native tools", async () => {
+  it("preserves prompt segment cache metadata and returns cache usage with native tools", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
@@ -60,14 +60,24 @@ describe("Anthropic native text plumbing", () => {
 
     const call = generateText.mock.calls[0][0] as {
       messages: Array<{ content: Array<Record<string, unknown>> }>;
+      system?: unknown;
       providerOptions?: Record<string, unknown>;
       tools?: unknown;
     };
     expect(call.tools).toBe(tools);
     expect(call.messages[0].content).toEqual([
-      { type: "text", text: "stable", cache_control: { type: "ephemeral", ttl: "5m" } },
+      {
+        type: "text",
+        text: "stable",
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } } },
+      },
       { type: "text", text: "unstable" },
     ]);
+    expect(call.system).toEqual({
+      role: "system",
+      content: "system prompt",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } } },
+    });
     expect(call.providerOptions).toEqual({ anthropic: { cacheControl: undefined } });
     expect(result).toMatchObject({
       text: "ok",
@@ -106,11 +116,15 @@ describe("Anthropic native text plumbing", () => {
     } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
-    expect(call.system).toBe("system prompt");
+    expect(call.system).toEqual({
+      role: "system",
+      content: "system prompt",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    });
     expect(call.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
-  it("emits cache_control on stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
+  it("emits cache metadata on stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
@@ -124,7 +138,7 @@ describe("Anthropic native text plumbing", () => {
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
-    // Runtime with NO ANTHROPIC_PROMPT_CACHE_TTL setting — cache_control must still fire
+    // Runtime with NO ANTHROPIC_PROMPT_CACHE_TTL setting: cache metadata must still fire.
     const runtimeNoCacheTtl = {
       character: { name: "Claude Agent", system: "system prompt" },
       emitEvent: vi.fn(),
@@ -148,14 +162,21 @@ describe("Anthropic native text plumbing", () => {
 
     const call = generateText.mock.calls[0][0] as {
       messages: Array<{ content: Array<Record<string, unknown>> }>;
+      system?: unknown;
     };
-    // The stable segment MUST carry cache_control even with no env var set
+    // The stable segment must carry AI SDK-native cache metadata even with no env var set.
     const stableBlock = call.messages[0].content[0];
-    expect(stableBlock.cache_control).toBeDefined();
-    expect((stableBlock.cache_control as Record<string, unknown>).type).toBe("ephemeral");
-    // The non-stable segment must NOT carry cache_control
+    expect(stableBlock.providerOptions).toMatchObject({
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    });
+    expect(call.system).toEqual({
+      role: "system",
+      content: "system prompt",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    });
+    // The non-stable segment must not carry cache metadata.
     const dynamicBlock = call.messages[0].content[1];
-    expect(dynamicBlock.cache_control).toBeUndefined();
+    expect(dynamicBlock.providerOptions).toBeUndefined();
   }, 60_000);
 
   it("applies 1h TTL when ANTHROPIC_PROMPT_CACHE_TTL=1h is set", async () => {
@@ -193,9 +214,16 @@ describe("Anthropic native text plumbing", () => {
 
     const call = generateText.mock.calls[0][0] as {
       messages: Array<{ content: Array<Record<string, unknown>> }>;
+      system?: unknown;
     };
     const stableBlock = call.messages[0].content[0];
-    expect((stableBlock.cache_control as Record<string, unknown>).type).toBe("ephemeral");
-    expect((stableBlock.cache_control as Record<string, unknown>).ttl).toBe("1h");
+    expect(stableBlock.providerOptions).toMatchObject({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+    });
+    expect(call.system).toEqual({
+      role: "system",
+      content: "system prompt",
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
+    });
   }, 60_000);
 });

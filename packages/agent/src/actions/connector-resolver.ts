@@ -3,7 +3,7 @@
  * handles via the Rolodex (relationships graph) and finding conversations
  * with a person across all connected platforms.
  *
- * Used by SEND_MESSAGE, READ_MESSAGES, READ_POSTS, and SEND_POST actions.
+ * Used by MESSAGE and POST connector operations.
  *
  * @module actions/connector-resolver
  */

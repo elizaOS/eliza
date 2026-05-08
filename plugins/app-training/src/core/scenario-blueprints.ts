@@ -158,12 +158,12 @@ const respondKnowledge: ScenarioBlueprint[] = [
   {
     id: "respond-knowledge-search-001",
     decision: "RESPOND",
-    primaryContext: "knowledge",
+    primaryContext: "documents",
     pattern: "group_direct_mention",
     description: "Someone asks the agent to look something up",
     minContextTurns: 2,
     maxContextTurns: 6,
-    expectedAction: "SEARCH_KNOWLEDGE",
+    expectedAction: "DOCUMENT",
     groundingKeywords: ["search", "find", "look up", "what is"],
     generationHint:
       "Generate a group chat where someone asks the agent a factual question that requires knowledge lookup.",
@@ -171,7 +171,7 @@ const respondKnowledge: ScenarioBlueprint[] = [
   {
     id: "respond-knowledge-summarize-001",
     decision: "RESPOND",
-    primaryContext: "knowledge",
+    primaryContext: "documents",
     pattern: "group_reply_chain",
     description: "Agent is asked to summarize a discussion",
     minContextTurns: 8,
@@ -192,7 +192,7 @@ const respondMedia: ScenarioBlueprint[] = [
     description: "Someone asks the agent to generate an image",
     minContextTurns: 1,
     maxContextTurns: 5,
-    expectedAction: "GENERATE_IMAGE",
+    expectedAction: "GENERATE_MEDIA",
     groundingKeywords: ["generate", "create", "make", "image", "picture"],
     generationHint:
       "Generate a group chat where someone asks the agent to generate an image of something specific.",
@@ -201,7 +201,7 @@ const respondMedia: ScenarioBlueprint[] = [
     id: "respond-media-describe-001",
     decision: "RESPOND",
     primaryContext: "media",
-    secondaryContexts: ["knowledge"],
+    secondaryContexts: ["documents"],
     pattern: "group_direct_mention",
     description: "Someone shares an image and asks the agent to describe it",
     minContextTurns: 1,
@@ -464,13 +464,13 @@ const multiTurnIntentScenarios: ScenarioBlueprint[] = [
   {
     id: "respond-multi-turn-knowledge-001",
     decision: "RESPOND",
-    primaryContext: "knowledge",
+    primaryContext: "documents",
     pattern: "group_action_emergence",
     description:
       "Group debates a topic, eventually asks agent to research and settle the argument",
     minContextTurns: 6,
     maxContextTurns: 15,
-    expectedAction: "SEARCH_KNOWLEDGE",
+    expectedAction: "DOCUMENT",
     groundingKeywords: [
       "actually",
       "I think",
@@ -527,7 +527,7 @@ const CONTEXT_KEYWORDS: Record<AgentContext, string[]> = {
   crypto: ["crypto", "token", "defi", "onchain"],
   wallet: ["wallet", "token", "swap", "balance"],
   payments: ["payment", "invoice", "billing", "transfer"],
-  knowledge: ["research", "lookup", "answer", "facts"],
+  documents: ["research", "lookup", "answer", "facts"],
   browser: ["link", "site", "page", "browser"],
   code: ["repo", "patch", "bug", "script"],
   media: ["image", "audio", "video", "describe"],
@@ -718,7 +718,7 @@ function describeActionIntent(
       return `perform the wallet action "${readable}"`;
     case "payments":
       return `handle a payment or billing request for "${readable}"`;
-    case "knowledge":
+    case "documents":
       return `help with a knowledge task around "${readable}"`;
     case "browser":
       return `use browser capabilities to "${readable}"`;

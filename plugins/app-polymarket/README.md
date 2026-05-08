@@ -6,14 +6,11 @@ Native Polymarket app plugin for market discovery, orderbook quote reads, positi
 
 When the runtime plugin is loaded, it exposes these agent actions:
 
-- `POLYMARKET_STATUS`
-- `POLYMARKET_GET_MARKETS`
-- `POLYMARKET_GET_MARKET`
-- `POLYMARKET_GET_ORDERBOOK`
-- `POLYMARKET_GET_POSITIONS`
-- `POLYMARKET_PLACE_ORDER`
+- `PREDICTION_MARKET`
 
-Signed order placement is intentionally disabled until CLOB signing support is implemented. `POLYMARKET_PLACE_ORDER` reports readiness and required configuration instead of placing trades.
+Use `target: "polymarket"` and `subaction: "read"` with `kind: "status" | "markets" | "market" | "orderbook" | "positions"` for public reads. Legacy names such as `POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, and `POLYMARKET_GET_ORDERBOOK` remain compatibility similes for the consolidated action.
+
+Use `subaction: "place-order"` for trading readiness. Signed order placement is intentionally disabled until CLOB signing support is implemented. Legacy `POLYMARKET_PLACE_ORDER` remains a compatibility simile and reports readiness and required configuration instead of placing trades.
 
 ## CLI Interoperability Checks
 

@@ -13,6 +13,11 @@ import type { IAgentRuntime } from "./runtime";
  */
 export interface TargetInfo
 	extends Omit<ProtoTargetInfo, "$typeName" | "$unknown"> {
+	/**
+	 * Connector account identifier for multi-account sources.
+	 * Omitted/undefined targets use the legacy source-only route.
+	 */
+	accountId?: string;
 	roomId?: UUID;
 	entityId?: UUID;
 }
@@ -20,11 +25,14 @@ export interface TargetInfo
 /**
  * Function signature for handlers responsible for sending messages to specific platforms.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: legacy connectors return Promise<void>; new connectors may return Memory for persistence.
+export type SendHandlerResult = Promise<Memory | undefined | void>;
+
 export type SendHandlerFunction = (
 	runtime: IAgentRuntime,
 	target: TargetInfo,
 	content: Content,
-) => Promise<void>;
+) => SendHandlerResult;
 
 export enum SOCKET_MESSAGE_TYPE {
 	ROOM_JOINING = 1,

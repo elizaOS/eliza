@@ -212,7 +212,8 @@ function isStatusAnimation(text: string): boolean {
   // Strip ANSI escapes, whitespace, ellipsis, and spinner glyphs so
   // "⠋ Orchestrating…" normalizes to "Orchestrating".
   const stripped = text
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping requires the literal ESC (0x1B) control char.
+    .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, "")
     .replace(/[\s\u2026\u00b7\u2022\u25cf\u25cb⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏|/\-\\]/g, "")
     .trim();
   if (stripped.length === 0) return true;

@@ -39,8 +39,6 @@ import {
   recallMemoryFilteredAction,
 } from "../actions/memories.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
-import { readChannelAction } from "../actions/read-channel.js";
-import { readMessagesAction } from "../actions/read-messages.js";
 import { readPluginConfigAction } from "../actions/read-plugin-config.js";
 import { restartAction } from "../actions/restart.js";
 import {
@@ -253,7 +251,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       skillCommandAction,
       webSearchAction,
       extractPageAction,
-      readChannelAction,
       searchConversationsAction,
       searchEntityAction,
       linkEntityAction,
@@ -263,7 +260,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       createContactAction,
       deleteContactAction,
       updateOwnerNameAction,
-      readMessagesAction,
       updateIdentityAction,
       updateAiProviderAction,
       toggleCapabilityAction,

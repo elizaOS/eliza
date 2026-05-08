@@ -126,15 +126,6 @@ export const UNISWAP_V3_ADDRESSES: Record<
   },
 };
 
-/**
- * @deprecated Use UNISWAP_V3_ADDRESSES.base instead.
- * Kept for backwards compatibility.
- */
-export const UNISWAP_V3_BASE = {
-  ROUTER: "0x2626664c2603336E57B271c5C0b26F421741e481" as const,
-  QUOTER_V2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a" as const,
-};
-
 /** Protocol fee in bps — 0.875% */
 export const PROTOCOL_FEE_BPS = 875;
 /** Protocol fee collector address (all EVM chains) */

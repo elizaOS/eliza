@@ -8,6 +8,7 @@ import type {
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionRevokeResponse,
   BrowserBridgeCompanionStatus,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
@@ -56,6 +57,15 @@ export interface BrowserBridgeRouteService extends Service {
     apiBaseUrl: string,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionAutoPairResponse>;
+  revokeBrowserCompanion(
+    companionId: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevokeResponse>;
+  revokeBrowserCompanionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevokeResponse>;
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,

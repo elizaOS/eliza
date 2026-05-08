@@ -120,9 +120,11 @@ function readAddContactInput(
 
 export const addContactAction: Action = {
 	name: spec.name,
-	contexts: ["contacts", "messaging", "knowledge"],
+	contexts: ["contacts", "messaging", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description: spec.description,
+	descriptionCompressed:
+		"Add a contact only when the user explicitly asks to add/save a new contact. Do not use for follow-up reminders or days-since-contact; use RELATIONSHIP instead.",
 	similes: spec.similes ? [...spec.similes] : [],
 	examples: (spec.examples ?? []) as ActionExample[][],
 
@@ -150,7 +152,7 @@ export const addContactAction: Action = {
 		}
 		if (
 			hasActionContextOrKeyword(message, state, {
-				contexts: ["contacts", "messaging", "knowledge"],
+				contexts: [],
 				keywordKeys: ["action.addContact.request"],
 			})
 		) {

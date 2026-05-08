@@ -1,23 +1,9 @@
 // ---------------------------------------------------------------------------
 // Chat types — Conversation*, Chat*, Message*, Stream*, Action*, Emote*,
-// Knowledge*, Memory*, MCP*, Share*
+// Document*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
 import type { ConversationMetadata, ConversationScope } from "@elizaos/agent";
-
-export type {
-  ScratchpadCreateTopicRequest,
-  ScratchpadDeleteTopicResponse,
-  ScratchpadReplaceTopicRequest,
-  ScratchpadSearchResponse,
-  ScratchpadSummaryPreviewRequest,
-  ScratchpadSummaryPreviewResponse,
-  ScratchpadTopicDto,
-  ScratchpadTopicMatchDto,
-  ScratchpadTopicResponse,
-  ScratchpadTopicSearchResultDto,
-  ScratchpadTopicsListResponse,
-} from "@elizaos/shared/contracts";
 
 // Conversations
 export interface Conversation {
@@ -143,14 +129,14 @@ export interface ChatTokenUsage {
 
 export type ConversationMode = "simple" | "power";
 
-// Knowledge types
-export interface KnowledgeStats {
+// Document types
+export interface DocumentStats {
   documentCount: number;
   fragmentCount: number;
   agentId: string;
 }
 
-export type KnowledgeDocumentProvenanceKind =
+export type DocumentProvenanceKind =
   | "upload"
   | "learned"
   | "character"
@@ -159,22 +145,27 @@ export type KnowledgeDocumentProvenanceKind =
   | "bundled"
   | "unknown";
 
-export interface KnowledgeDocumentProvenance {
-  kind: KnowledgeDocumentProvenanceKind;
+export interface DocumentProvenance {
+  kind: DocumentProvenanceKind;
   label: string;
   detail?: string;
 }
 
-export interface KnowledgeDocument {
+export interface DocumentRecord {
   id: string;
   filename: string;
   contentType: string;
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: KnowledgeDocumentProvenanceKind;
+  scope?: "global" | "owner-private" | "user-private" | "agent-private";
+  scopedToEntityId?: string;
+  addedBy?: string;
+  addedByRole?: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";
+  addedFrom?: string;
+  source: DocumentProvenanceKind;
   url?: string;
-  provenance: KnowledgeDocumentProvenance;
+  provenance: DocumentProvenance;
   canEditText: boolean;
   editabilityReason?: string;
   canDelete: boolean;
@@ -182,48 +173,48 @@ export interface KnowledgeDocument {
   content?: { text?: string };
 }
 
-export interface KnowledgeDocumentDetail extends KnowledgeDocument {
+export interface DocumentDetail extends DocumentRecord {
   content?: { text?: string };
 }
 
-export interface KnowledgeDocumentsResponse {
-  documents: KnowledgeDocument[];
+export interface DocumentsResponse {
+  documents: DocumentRecord[];
   total: number;
   limit: number;
   offset: number;
 }
 
-export interface KnowledgeFragment {
+export interface DocumentFragmentRecord {
   id: string;
   text: string;
   position?: number;
   createdAt: number;
 }
 
-export interface KnowledgeFragmentsResponse {
+export interface DocumentFragmentsResponse {
   documentId: string;
-  fragments: KnowledgeFragment[];
+  fragments: DocumentFragmentRecord[];
   count: number;
 }
 
-export interface KnowledgeSearchResult {
+export interface DocumentSearchResult {
   id: string;
   text: string;
   similarity: number;
   documentId?: string;
   documentTitle?: string;
-  documentProvenance?: KnowledgeDocumentProvenance;
+  documentProvenance?: DocumentProvenance;
   position?: number;
 }
 
-export interface KnowledgeSearchResponse {
+export interface DocumentSearchResponse {
   query: string;
   threshold: number;
-  results: KnowledgeSearchResult[];
+  results: DocumentSearchResult[];
   count: number;
 }
 
-export interface KnowledgeUploadResult {
+export interface DocumentUploadResult {
   ok: boolean;
   documentId: string;
   fragmentCount: number;
@@ -233,13 +224,13 @@ export interface KnowledgeUploadResult {
   warnings?: string[];
 }
 
-export interface KnowledgeDocumentUpdateResult {
+export interface DocumentUpdateResult {
   ok: boolean;
   documentId: string;
   fragmentCount: number;
 }
 
-export interface KnowledgeBulkUploadItemResult {
+export interface DocumentBulkUploadItemResult {
   index: number;
   ok: boolean;
   filename: string;
@@ -249,12 +240,12 @@ export interface KnowledgeBulkUploadItemResult {
   warnings?: string[];
 }
 
-export interface KnowledgeBulkUploadResult {
+export interface DocumentBulkUploadResult {
   ok: boolean;
   total: number;
   successCount: number;
   failureCount: number;
-  results: KnowledgeBulkUploadItemResult[];
+  results: DocumentBulkUploadItemResult[];
 }
 
 // Memory / context command types
@@ -283,7 +274,7 @@ export interface QuickContextResponse {
   query: string;
   answer: string;
   memories: MemorySearchResult[];
-  knowledge: KnowledgeSearchResult[];
+  documents: DocumentSearchResult[];
 }
 
 // Memory Viewer types

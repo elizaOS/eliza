@@ -1,3 +1,4 @@
+import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
@@ -163,6 +164,7 @@ export async function runPlannerLoop(
 		evaluatorOutputs: [],
 	};
 	const failures: FailureLike[] = [];
+	let terminalOnlyContinuations = 0;
 
 	for (
 		let iteration = 1;
@@ -198,10 +200,74 @@ export async function runPlannerLoop(
 					terminalMessage: plannerOutput.messageToUser,
 					terminalOnly: true,
 				});
+				trajectory.context = appendTerminalPlannerOutputEvent({
+					context: trajectory.context,
+					iteration,
+					message: plannerOutput.messageToUser,
+				});
+				if (trajectory.steps.some((step) => step.toolCall)) {
+					const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					trajectory.evaluatorOutputs.push(evaluator);
+					trajectory.context = appendEvaluationEvent({
+						context: trajectory.context,
+						iteration,
+						evaluator,
+					});
+
+					if (evaluator.decision === "FINISH") {
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								evaluator.messageToUser ??
+									plannerOutput.messageToUser ??
+									latestToolResultText(trajectory) ??
+									evaluator.thought,
+								trajectory,
+							),
+						};
+					}
+
+					if (evaluator.decision === "NEXT_RECOMMENDED") {
+						const selected = preferRecommendedToolCall(trajectory, evaluator);
+						if (!selected) {
+							params.runtime.logger?.warn?.(
+								{
+									recommendedToolCallId: evaluator.recommendedToolCallId,
+									queuedToolCallIds: trajectory.plannedQueue.map(
+										(call) => call.id,
+									),
+								},
+								"Evaluator requested NEXT_RECOMMENDED without a valid queued tool after terminal planner output; replanning",
+							);
+							trajectory.plannedQueue.length = 0;
+						}
+						continue;
+					}
+
+					terminalOnlyContinuations++;
+					assertTrajectoryLimit({
+						kind: "terminal_only_continuations",
+						max: config.maxTerminalOnlyContinuations,
+						observed: terminalOnlyContinuations,
+					});
+					trajectory.plannedQueue.length = 0;
+					trajectory.context = appendTerminalContinuationEvent({
+						context: trajectory.context,
+						iteration,
+						terminalOnlyContinuations,
+						message: plannerOutput.messageToUser,
+					});
+					continue;
+				}
 				return {
 					status: "finished",
 					trajectory,
-					finalMessage: plannerOutput.messageToUser,
+					finalMessage: userSafeFinalMessage(
+						plannerOutput.messageToUser,
+						trajectory,
+					),
 				};
 			}
 
@@ -271,6 +337,15 @@ export async function runPlannerLoop(
 			failures,
 		});
 
+		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (latestResult?.continueChain === false) {
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: latestResult.text,
+			};
+		}
+
 		await maybeCompactBeforeNextModelCall({
 			trajectory,
 			config,
@@ -284,19 +359,10 @@ export async function runPlannerLoop(
 
 		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
-		trajectory.context = appendContextEvent(trajectory.context, {
-			id: `evaluation:${iteration}:${Date.now()}`,
-			type: "evaluation",
-			source: "planner-loop",
-			createdAt: Date.now(),
-			metadata: {
-				iteration,
-				success: evaluator.success,
-				decision: evaluator.decision,
-				thought: evaluator.thought,
-				messageToUser: evaluator.messageToUser,
-				recommendedToolCallId: evaluator.recommendedToolCallId,
-			},
+		trajectory.context = appendEvaluationEvent({
+			context: trajectory.context,
+			iteration,
+			evaluator,
 		});
 
 		if (evaluator.decision === "FINISH") {
@@ -304,10 +370,12 @@ export async function runPlannerLoop(
 				status: "finished",
 				trajectory,
 				evaluator,
-				finalMessage:
+				finalMessage: userSafeFinalMessage(
 					evaluator.messageToUser ??
-					latestToolResultText(trajectory) ??
-					evaluator.thought,
+						latestToolResultText(trajectory) ??
+						evaluator.thought,
+					trajectory,
+				),
 			};
 		}
 
@@ -556,15 +624,109 @@ function parseJsonPlannerOutput(raw: string): {
 } {
 	const parsed = parseJsonObject<RawPlannerOutput>(raw) ?? {};
 	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
-	const toolCalls = normalizeToolCalls(
-		parsed.toolCalls ?? parsed.tools ?? parsed.actions ?? parsed.action,
-	);
+	const rawToolCalls =
+		parsed.toolCalls ??
+		parsed.tools ??
+		parsed.actions ??
+		(parsed.action != null ? parsed : undefined);
+	const toolCalls = normalizeToolCalls(rawToolCalls);
+	if (toolCalls.length > 0 || messageToUser) {
+		return {
+			thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
+			toolCalls,
+			messageToUser,
+			raw: parsed as Record<string, unknown>,
+		};
+	}
+
+	const array = parseJsonArrayFromText(raw);
+	const arrayToolCalls = normalizeToolCalls(array);
+	if (arrayToolCalls.length > 0) {
+		return {
+			thought: undefined,
+			toolCalls: arrayToolCalls,
+			messageToUser: undefined,
+			raw: { toolCalls: array } as Record<string, unknown>,
+		};
+	}
+
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls,
+		toolCalls: [],
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
+}
+
+function parseJsonArrayFromText(raw: string): unknown[] | null {
+	const trimmed = raw.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	const candidates: string[] = [];
+	const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	candidates.push(fullFence?.[1]?.trim() ?? trimmed);
+
+	for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
+		const candidate = match[1]?.trim();
+		if (candidate) {
+			candidates.push(candidate);
+		}
+	}
+
+	const arrayText = extractFirstJsonArray(trimmed);
+	if (arrayText) {
+		candidates.push(arrayText);
+	}
+
+	for (const candidate of [...new Set(candidates)]) {
+		try {
+			const parsed = JSON.parse(candidate);
+			if (Array.isArray(parsed)) {
+				return parsed;
+			}
+		} catch {
+			// Try the next candidate.
+		}
+	}
+	return null;
+}
+
+function extractFirstJsonArray(raw: string): string | null {
+	const start = raw.indexOf("[");
+	if (start < 0) return null;
+
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let index = start; index < raw.length; index++) {
+		const char = raw[index];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+			} else if (char === "\\") {
+				escaped = true;
+			} else if (char === '"') {
+				inString = false;
+			}
+			continue;
+		}
+		if (char === '"') {
+			inString = true;
+			continue;
+		}
+		if (char === "[") {
+			depth++;
+			continue;
+		}
+		if (char !== "]") continue;
+		depth--;
+		if (depth === 0) {
+			return raw.slice(start, index + 1);
+		}
+	}
+	return null;
 }
 
 async function callPlanner(params: {
@@ -1050,6 +1212,104 @@ async function evaluateTrajectory(
 	});
 }
 
+function appendEvaluationEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+}): ContextObject {
+	const createdAt = Date.now();
+	return appendContextEvent(args.context, {
+		id: `evaluation:${args.iteration}:${createdAt}`,
+		type: "evaluation",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			success: args.evaluator.success,
+			decision: args.evaluator.decision,
+			thought: args.evaluator.thought,
+			messageToUser: args.evaluator.messageToUser,
+			recommendedToolCallId: args.evaluator.recommendedToolCallId,
+		},
+	});
+}
+
+function appendTerminalPlannerOutputEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	message?: string;
+}): ContextObject {
+	const createdAt = Date.now();
+	const unsafe = isUnsafeUserVisibleText(args.message);
+	const content = [
+		"planner_terminal_output:",
+		compactText(args.message ?? "", 1_200),
+		"",
+		unsafe
+			? "note: This output looked like internal planning or attempted tool-call text. It must not be shown directly to the user."
+			: "note: Evaluate whether this user-visible output actually completes the request.",
+	].join("\n");
+	return appendContextEvent(args.context, {
+		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
+		type: "segment",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			unsafe,
+		},
+		segment: {
+			id: `terminal-planner-output:${args.iteration}:${createdAt}`,
+			label: "terminal_planner_output",
+			content,
+			stable: false,
+			metadata: {
+				iteration: args.iteration,
+				unsafe,
+			},
+		},
+	});
+}
+
+function appendTerminalContinuationEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	terminalOnlyContinuations: number;
+	message?: string;
+}): ContextObject {
+	const createdAt = Date.now();
+	const unsafe = isUnsafeUserVisibleText(args.message);
+	const content = [
+		"planner_retry_instruction:",
+		`terminal_only_continuations: ${args.terminalOnlyContinuations}`,
+		unsafe
+			? "The previous planner output exposed internal tool planning. Emit native toolCalls for remaining work, or a concise user-safe message only if the request is complete."
+			: "The evaluator found the previous terminal planner output incomplete. Emit native toolCalls for remaining work.",
+	].join("\n");
+	return appendContextEvent(args.context, {
+		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
+		type: "segment",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			terminalOnlyContinuations: args.terminalOnlyContinuations,
+			unsafe,
+		},
+		segment: {
+			id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
+			label: "planner_retry_instruction",
+			content,
+			stable: false,
+			metadata: {
+				iteration: args.iteration,
+				terminalOnlyContinuations: args.terminalOnlyContinuations,
+				unsafe,
+			},
+		},
+	});
+}
+
 async function executeQueuedToolCall(params: {
 	params: PlannerLoopParams;
 	trajectory: PlannerTrajectory;
@@ -1231,9 +1491,25 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 	return calls;
 }
 
+/**
+ * The LLM sees the stable two-tool surface (HANDLE_RESPONSE, PLAN_ACTIONS)
+ * so every action invocation arrives wrapped:
+ * `{ name: "PLAN_ACTIONS", args: { action, subaction?, parameters, thought } }`.
+ * Holding the tool list to a fixed pair keeps prompt-cache hashes stable
+ * across requests no matter which actions are gated this turn.
+ *
+ * We unwrap at the parse boundary so all downstream logic — context-event
+ * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
+ * failure attribution — sees the actual action name, not the wrapper.
+ *
+ * The `subaction` hint is preserved on `params.__subaction` for router-style
+ * actions (e.g. LINEAR_ISSUE / SHOPIFY) so the executor can short-circuit a
+ * sub-planner descent and dispatch directly to the named child.
+ */
+
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	if (typeof entry === "string") {
-		const name = entry.trim();
+		const name = normalizeToolCallName(entry);
 		return name ? { name } : null;
 	}
 
@@ -1242,21 +1518,77 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const name = String(
-		record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
-	).trim();
+	const rawFunction =
+		record.function && typeof record.function === "object"
+			? (record.function as Record<string, unknown>)
+			: null;
+	const functionName =
+		typeof record.function === "string" ? record.function : rawFunction?.name;
+	const name = normalizeToolCallName(
+		record.name ??
+			record.toolName ??
+			record.tool ??
+			record.action ??
+			record.actionName ??
+			functionName ??
+			"",
+	);
 	if (!name) {
 		return null;
 	}
 
 	const args = normalizeArgs(
-		record.input ?? record.args ?? record.arguments ?? record.params,
+		record.input ??
+			record.args ??
+			record.arguments ??
+			record.params ??
+			record.parameters ??
+			rawFunction?.input ??
+			rawFunction?.args ??
+			rawFunction?.arguments ??
+			rawFunction?.params ??
+			rawFunction?.parameters,
 	);
+
+	if (name.toUpperCase() === PLAN_ACTIONS_TOOL_NAME) {
+		const inner = args ?? {};
+		const actionName =
+			typeof inner.action === "string" ? inner.action.trim() : "";
+		if (!actionName) {
+			return null;
+		}
+		const subaction =
+			typeof inner.subaction === "string" && inner.subaction.trim().length > 0
+				? inner.subaction.trim()
+				: undefined;
+		const baseParameters =
+			inner.parameters &&
+			typeof inner.parameters === "object" &&
+			!Array.isArray(inner.parameters)
+				? (inner.parameters as Record<string, unknown>)
+				: {};
+		const actionParameters: Record<string, unknown> = subaction
+			? { ...baseParameters, __subaction: subaction }
+			: baseParameters;
+		return {
+			id: typeof record.id === "string" ? record.id : undefined,
+			name: actionName,
+			params: actionParameters,
+		};
+	}
+
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
 		params: args,
 	};
+}
+
+function normalizeToolCallName(value: unknown): string {
+	const raw = String(value ?? "").trim();
+	if (!raw) return "";
+	const withoutPrefix = raw.replace(/^(?:functions?|tools?)\./i, "");
+	return withoutPrefix.trim();
 }
 
 function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
@@ -1297,6 +1629,37 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+function userSafeFinalMessage(
+	message: string | undefined,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const candidate = getNonEmptyString(message);
+	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+		return candidate;
+	}
+	const latest = latestToolResultText(trajectory);
+	if (latest && !isUnsafeUserVisibleText(latest)) {
+		return latest;
+	}
+	return candidate ? "I handled the available step." : undefined;
+}
+
+function isUnsafeUserVisibleText(value: string | undefined): boolean {
+	if (!value) return false;
+	const text = value.trim();
+	if (!text) return false;
+	return [
+		/\bto=functions\.[A-Z0-9_]+\b/i,
+		/\bfunctions\.[A-Z0-9_]+\b/i,
+		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,
+		/\b(?:tool|function)\s+calls?\b/i,
+		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
+		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
+		/\b(?:DRAFT_REPLY|RESPOND_TO_MESSAGE|SEND_DRAFT|TRIAGE_MESSAGES|LIST_INBOX)\b/,
+		/\{\s*"parameters"\s*:/i,
+	].some((pattern) => pattern.test(text));
 }
 
 function preferRecommendedToolCall(

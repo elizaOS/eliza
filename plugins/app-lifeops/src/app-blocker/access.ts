@@ -3,7 +3,7 @@ import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
 import {
   checkSenderRole,
   type RoleCheckResult,
-} from "../website-blocker/roles.ts";
+} from "../website-blocker/roles.js";
 
 export const APP_BLOCKER_ACCESS_ERROR =
   "App blocking is restricted to OWNER users.";

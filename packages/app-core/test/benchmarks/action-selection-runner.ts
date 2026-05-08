@@ -142,6 +142,26 @@ const BENCHMARK_USER_NAME = "Owner";
 const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
+const NON_SELECTION_ACTION_NAMES = new Set([
+  "RELATIONSHIP_EXTRACTION",
+  "FACT_EXTRACTOR",
+  "REFLECTION",
+]);
+const ACTION_CANONICAL_NAMES = new Map<string, string>([
+  ["GOOGLE_CALENDAR", "CALENDAR"],
+  ["CALENDLY", "CALENDAR"],
+  ["SCHEDULING", "CALENDAR"],
+  ["PROPOSE_MEETING_TIMES", "CALENDAR"],
+  ["CHECK_AVAILABILITY", "CALENDAR"],
+  ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
+  ["SEND_MESSAGE", "SEND_DRAFT"],
+  ["DISPATCH_DRAFT", "SEND_DRAFT"],
+  ["CONFIRM_AND_SEND", "SEND_DRAFT"],
+  ["FILE_ACTION", "COMPUTER_USE"],
+  ["TERMINAL_ACTION", "COMPUTER_USE"],
+  ["BROWSER_ACTION", "COMPUTER_USE"],
+  ["MANAGE_WINDOW", "COMPUTER_USE"],
+]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   const configured = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
@@ -193,11 +213,17 @@ async function _ensureBenchmarkConversation(args: {
   await runtime.ensureParticipantInRoom(entityId, roomId);
 }
 
-function normalizeActionName(name: string | null | undefined): string | null {
+export function normalizeActionName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
   return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+}
+
+function canonicalActionName(name: string | null | undefined): string | null {
+  const normalized = normalizeActionName(name);
+  if (normalized === null) return null;
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -239,23 +265,23 @@ function caseThrottleMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function caseMatches(
+export function caseMatches(
   actual: string | null,
   expected: string | null,
   acceptable: string[] | undefined,
 ): boolean {
-  const actualNorm = normalizeActionName(actual);
+  const actualNorm = canonicalActionName(actual);
   if (expected === null) {
     return (
       actualNorm === null ||
       (actualNorm !== null && GENERIC_ACTION_NAMES.has(actualNorm))
     );
   }
-  const expectedNorm = normalizeActionName(expected);
+  const expectedNorm = canonicalActionName(expected);
   if (actualNorm !== null && actualNorm === expectedNorm) return true;
   if (!acceptable) return false;
   for (const alt of acceptable) {
-    if (actualNorm !== null && normalizeActionName(alt) === actualNorm) {
+    if (actualNorm !== null && canonicalActionName(alt) === actualNorm) {
       return true;
     }
   }
@@ -276,11 +302,16 @@ function firstMatchingActionName(
 }
 
 function isGenericActionName(name: string | null | undefined): boolean {
-  const normalized = normalizeActionName(name);
+  const normalized = canonicalActionName(name);
   return normalized !== null && GENERIC_ACTION_NAMES.has(normalized);
 }
 
-function pickObservedAction(
+function isNonSelectionActionName(name: string | null | undefined): boolean {
+  const normalized = canonicalActionName(name);
+  return normalized !== null && NON_SELECTION_ACTION_NAMES.has(normalized);
+}
+
+export function pickObservedAction(
   records: ReadonlyArray<{
     phase: "started" | "completed";
     actionName: string;
@@ -312,10 +343,26 @@ function pickObservedAction(
     .filter((name) => typeof name === "string" && name.trim().length > 0);
   return (
     firstMatchingActionName(names, expected, acceptable) ??
-    names.find((name) => !isGenericActionName(name)) ??
-    names[0] ??
+    names.find(
+      (name) => !isGenericActionName(name) && !isNonSelectionActionName(name),
+    ) ??
     null
   );
+}
+
+function computeFilteredActions(
+  registeredActions: string[],
+  availableActions: string[],
+): string[] {
+  const availableCanonical = new Set(
+    availableActions
+      .map((actionName) => canonicalActionName(actionName))
+      .filter((actionName): actionName is string => actionName !== null),
+  );
+  return registeredActions.filter((actionName) => {
+    const canonical = canonicalActionName(actionName);
+    return canonical === null || !availableCanonical.has(canonical);
+  });
 }
 
 /**
@@ -355,9 +402,9 @@ export function determineFailureMode(args: {
 }): ActionFailureMode {
   if (args.pass) return "passed";
   if (args.hadError) return "error";
-  const actualNorm = normalizeActionName(args.actual);
-  const plannedNorm = normalizeActionName(args.planned);
-  const expectedNorm = normalizeActionName(args.expected);
+  const actualNorm = canonicalActionName(args.actual);
+  const plannedNorm = canonicalActionName(args.planned);
+  const expectedNorm = canonicalActionName(args.expected);
   if (
     actualNorm !== null &&
     expectedNorm !== null &&
@@ -367,7 +414,7 @@ export function determineFailureMode(args: {
   }
   if (
     expectedNorm !== null &&
-    args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+    args.filtered.some((n) => canonicalActionName(n) === expectedNorm)
   ) {
     return "validate_filtered";
   }
@@ -384,7 +431,7 @@ export function determineFailureMode(args: {
   if (actualNorm === null && plannedNorm === null) {
     if (
       expectedNorm !== null &&
-      args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+      args.filtered.some((n) => canonicalActionName(n) === expectedNorm)
     ) {
       return "validate_filtered";
     }
@@ -400,6 +447,24 @@ interface PlannerDecision {
 }
 
 function parseAvailableActionsFromPrompt(prompt: string): string[] {
+	try {
+		const parsed = JSON.parse(prompt) as { tools?: unknown };
+		if (Array.isArray(parsed.tools)) {
+      return parsed.tools
+        .flatMap((tool) => {
+          if (!tool || typeof tool !== "object") return [];
+          const record = tool as Record<string, unknown>;
+          const fn = record.function as Record<string, unknown> | undefined;
+          const name = record.name ?? record.toolName ?? fn?.name;
+          return typeof name === "string" ? [name] : [];
+        })
+        .map((name) => normalizeActionName(name))
+        .filter((name): name is string => name !== null);
+    }
+  } catch {
+    // Fall back to parsing the legacy markdown prompt below.
+  }
+
   const lines = prompt.split("\n");
   const available: string[] = [];
   let inSection = false;
@@ -421,7 +486,7 @@ function parseAvailableActionsFromPrompt(prompt: string): string[] {
   return available;
 }
 
-function parsePlannedActionsFromResponse(response: string): string[] {
+export function parsePlannedActionsFromResponse(response: string): string[] {
   const parsed = parseJSONObjectFromText(response);
   if (!parsed) {
     return [];
@@ -434,39 +499,70 @@ function parsePlannedActionsFromResponse(response: string): string[] {
     parsed.name ??
     parsed.actionName;
   const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
-  const names = actionValues
-    .flatMap((action) => {
-      if (typeof action === "string") {
-        return action.split(",");
-      }
-      if (action && typeof action === "object") {
-        const record = action as Record<string, unknown>;
-        const rawName = record.name ?? record.action ?? record.actionName;
-        return typeof rawName === "string" ? [rawName] : [];
-      }
-      return [];
+	const names = actionValues
+		.flatMap((action) => {
+			if (typeof action === "string") {
+				return action.split(",");
+			}
+			if (action && typeof action === "object") {
+				const record = action as Record<string, unknown>;
+				const rawFunction = record.function as Record<string, unknown> | undefined;
+				const input =
+					record.input && typeof record.input === "object"
+						? (record.input as Record<string, unknown>)
+						: undefined;
+				const rawName =
+					record.name ??
+					record.action ??
+					record.actionName ??
+					record.toolName ??
+					rawFunction?.name;
+				const canonicalRawName =
+					typeof rawName === "string" ? canonicalActionName(rawName) : null;
+				if (canonicalRawName === "CALL_ACTION") {
+					const nestedName =
+						input?.actionName ??
+						input?.name ??
+						(record.actionParameters &&
+						typeof record.actionParameters === "object"
+							? (record.actionParameters as Record<string, unknown>).actionName
+							: undefined);
+					return typeof nestedName === "string" ? [nestedName] : [];
+				}
+				return typeof rawName === "string" ? [rawName] : [];
+			}
+			return [];
     })
-    .map((name) => normalizeActionName(name))
+    .map((name) => canonicalActionName(name))
     .filter((name): name is string => name !== null);
   return [...new Set(names)];
 }
 
 function extractPlannerDecision(
-  trajectory: TrajectoryRecord | undefined,
+	trajectory: TrajectoryRecord | undefined,
+	registeredActions: readonly string[] = [],
 ): PlannerDecision {
-  const plannerCall = trajectory?.agentTrajectory.llmCalls.find(
-    (call) => call.purpose === "action_planner",
-  );
+	const plannerCall = trajectory?.agentTrajectory.llmCalls.find(
+		(call) => call.purpose === "action_planner",
+	);
   if (!plannerCall) {
     return {
       availableActions: [],
       plannedActions: [],
       plannedAction: null,
     };
-  }
-  const availableActions = parseAvailableActionsFromPrompt(plannerCall.prompt);
-  const plannedActions = parsePlannedActionsFromResponse(plannerCall.response);
-  return {
+	}
+	const rawAvailableActions = parseAvailableActionsFromPrompt(plannerCall.prompt);
+	const availableActions =
+		rawAvailableActions.length === 1 &&
+		canonicalActionName(rawAvailableActions[0]) === "CALL_ACTION" &&
+		registeredActions.length > 0
+			? registeredActions
+					.map((name) => normalizeActionName(name))
+					.filter((name): name is string => name !== null)
+			: rawAvailableActions;
+	const plannedActions = parsePlannedActionsFromResponse(plannerCall.response);
+	return {
     availableActions,
     plannedActions,
     plannedAction: plannedActions[0] ?? null,
@@ -486,6 +582,7 @@ function extractPlannerDecision(
 async function seedBenchmarkCaseFixtures(
   runtime: AgentRuntime,
   userEntityId: string,
+  tc: ActionBenchmarkCase,
 ): Promise<void> {
   // 1) Ensure the LifeOps plugin schema (incl. life_scheduling_negotiations,
   //    life_scheduling_proposals, life_connector_grants, life_relationships)
@@ -594,6 +691,44 @@ async function seedBenchmarkCaseFixtures(
           updatedAt: now,
         });
       }
+
+      const relationshipsService = runtime.getService("relationships") as
+        | {
+            addContact?: (
+              entityId: UUID,
+              categories?: string[],
+              preferences?: Record<string, string>,
+              customFields?: Record<string, string>,
+            ) => Promise<unknown>;
+          }
+        | undefined;
+      if (typeof relationshipsService?.addContact === "function") {
+        for (const contact of [
+          { name: "David", email: "david@example.com", category: "colleague" },
+          { name: "Marco", email: "marco@example.com", category: "colleague" },
+          { name: "Sarah", email: "sarah@example.com", category: "colleague" },
+          { name: "design team", email: "design@example.com", category: "team" },
+        ]) {
+          const entityId = stringToUuid(
+            `benchmark-contact-${contact.name}-${runtime.agentId}`,
+          );
+          const existing = await runtime.getEntityById(entityId);
+          if (!existing) {
+            await runtime.createEntity({
+              id: entityId,
+              names: [contact.name],
+              agentId: runtime.agentId,
+              metadata: { email: contact.email, benchmark: true },
+            });
+          }
+          await relationshipsService.addContact(
+            entityId,
+            [contact.category],
+            { email: contact.email },
+            { displayName: contact.name, email: contact.email },
+          );
+        }
+      }
     }
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId },
@@ -631,6 +766,13 @@ async function seedBenchmarkCaseFixtures(
     };
     await seedModule.seedGoogleConnectorGrant(runtime, {
       grantId: `bench-google-${runtime.agentId}`,
+      capabilities: [
+        "google.calendar.read",
+        "google.calendar.write",
+        "google.gmail.triage",
+        "google.gmail.send",
+        "google.gmail.manage",
+      ],
       email: "owner@example.test",
     });
     runtime.logger?.debug?.(
@@ -682,6 +824,95 @@ async function seedBenchmarkCaseFixtures(
       "seedBenchmarkCaseFixtures: x grant seed skipped",
     );
   }
+
+  // 5) Approval benchmark cases say there is a pending travel request. Seed
+  //    one so the handler can resolve the user instruction end-to-end instead
+  //    of asking for an id the fixture never created.
+  if (tc.tags.includes("approval")) {
+    let seeded = false;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
+      try {
+        const approvalModule = await import(
+          // @ts-expect-error — workspace package resolved at runtime
+          "@elizaos/app-lifeops/lifeops/approval-queue"
+        );
+        const createApprovalQueue =
+          (approvalModule as { createApprovalQueue?: unknown })
+            .createApprovalQueue ??
+          (
+            approvalModule as {
+              default?: { createApprovalQueue?: unknown };
+            }
+          ).default?.createApprovalQueue;
+        const createQueue =
+          typeof createApprovalQueue === "function" ? createApprovalQueue : null;
+        const fallbackModule =
+          createQueue === null
+            ? await import(
+                // @ts-expect-error — path resolved at runtime relative to this file
+                "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts"
+              )
+            : null;
+        const createApprovalQueueFinal =
+          createQueue ??
+          (fallbackModule as { createApprovalQueue?: unknown })
+            ?.createApprovalQueue;
+        if (typeof createApprovalQueueFinal !== "function") {
+          throw new TypeError("createApprovalQueue export is unavailable");
+        }
+        const queue = createApprovalQueueFinal(runtime, { agentId: runtime.agentId });
+        const existing = await queue.list({
+          subjectUserId: userEntityId,
+          state: "pending",
+          action: "execute_workflow",
+          limit: 1,
+        });
+        if (existing.length === 0) {
+          await queue.enqueue({
+            requestedBy: "benchmark:action-selection",
+            subjectUserId: userEntityId,
+            action: "execute_workflow",
+            payload: {
+              action: "execute_workflow",
+              workflowId: "bench-travel-booking-approval",
+              input: {
+                kind: "travel_booking",
+                summary: "San Francisco to New York travel booking",
+                itineraryRef: "bench-travel-approval",
+                estimatedTotalCents: 49900,
+                currency: "USD",
+              },
+            },
+            channel: "internal",
+            reason: "Pending travel booking request for benchmark approval flow.",
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          });
+        }
+        const pending = await queue.list({
+          subjectUserId: userEntityId,
+          state: "pending",
+          action: null,
+          limit: 1,
+        });
+        seeded = pending.length > 0;
+      } catch (error) {
+        lastError = error;
+        await sleep(250);
+      }
+    }
+    if (seeded) {
+      runtime.logger?.debug?.(
+        { src: "benchmark", userEntityId, agentId: runtime.agentId },
+        "seedBenchmarkCaseFixtures: approval request seeded",
+      );
+    } else {
+      runtime.logger?.warn?.(
+        { src: "benchmark", userEntityId, error: String(lastError) },
+        "seedBenchmarkCaseFixtures: approval request seed skipped",
+      );
+    }
+  }
 }
 
 /**
@@ -699,7 +930,7 @@ async function runSingleCaseWithRecording(
   const started = Date.now();
   const userEntityId = resolveBenchmarkOwnerEntityId(runtime);
   runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", userEntityId, false);
-  await seedBenchmarkCaseFixtures(runtime, userEntityId);
+  await seedBenchmarkCaseFixtures(runtime, userEntityId, tc);
   const harness = new RecordingHarness(runtime, {
     caseId: tc.id,
     userId: userEntityId,
@@ -731,12 +962,10 @@ async function runSingleCaseWithRecording(
         ? turn.responseText.slice(0, 200)
         : undefined;
     const trajectory = harness.dumpTrajectory();
-    const planner = extractPlannerDecision(trajectory);
+		const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
-        ? registeredActions.filter(
-            (actionName) => !planner.availableActions.includes(actionName),
-          )
+        ? computeFilteredActions(registeredActions, planner.availableActions)
         : [];
     const plannerPass = caseMatches(
       planner.plannedAction,
@@ -803,12 +1032,10 @@ async function runSingleCaseWithRecording(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const trajectory = harness.dumpTrajectory();
-    const planner = extractPlannerDecision(trajectory);
+		const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
-        ? registeredActions.filter(
-            (actionName) => !planner.availableActions.includes(actionName),
-          )
+        ? computeFilteredActions(registeredActions, planner.availableActions)
         : [];
     startedAction ??= pickObservedAction(
       trajectory.actions,

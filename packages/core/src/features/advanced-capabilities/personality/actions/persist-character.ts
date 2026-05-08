@@ -29,7 +29,7 @@ const SAVEABLE_CHARACTER_FIELDS: ReadonlyArray<keyof Character> = [
 	"templates",
 	"settings",
 	"plugins",
-	"knowledge",
+	"documents",
 ] as const;
 
 function normalizeFieldList(value: unknown): Array<keyof Character> {

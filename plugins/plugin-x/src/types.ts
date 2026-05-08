@@ -17,11 +17,18 @@ import type { TwitterPostClient } from "./post";
  * Runtime-provided state passed into the Twitter client constructors.
  *
  * In practice this is either an empty object (when the runtime holds all
- * settings) or a subset of {@link TwitterConfig}. We intentionally do not
- * add an index signature here: extra, unknown keys should be pushed into
- * runtime settings rather than carried on `state`.
+ * settings), a subset of {@link TwitterConfig}, or an account-scoped state
+ * resolved by the plugin-local X account resolver. We intentionally do not add
+ * an index signature here: extra, unknown keys should be pushed into runtime
+ * settings or the connector account store rather than carried on `state`.
  */
-export type TwitterClientState = Partial<TwitterConfig>;
+export type TwitterClientState = Partial<TwitterConfig> & {
+  /**
+   * Plugin-local account identifier used until the shared connector account
+   * store becomes the source of truth for X account routing.
+   */
+  accountId?: string;
+};
 
 /**
  * Defines a type for media data, which includes a Buffer representing the actual data

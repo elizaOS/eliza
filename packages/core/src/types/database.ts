@@ -277,6 +277,171 @@ export type PairingAllowlistsResult = Array<{
 	entries: PairingAllowlistEntry[];
 }>;
 
+export type ConnectorAccountJsonObject = { [key: string]: JsonValue };
+
+export type ConnectorAccountStorageStatus = string;
+
+export type ConnectorAccountAuditOutcome = "success" | "failure";
+
+export interface ConnectorAccountRecord {
+	id: UUID;
+	agentId: UUID;
+	provider: string;
+	accountKey: string;
+	externalId?: string | null;
+	displayName?: string | null;
+	username?: string | null;
+	email?: string | null;
+	role: string;
+	purpose: string[];
+	accessGate: string;
+	status: ConnectorAccountStorageStatus;
+	scopes: string[];
+	capabilities: string[];
+	profile: ConnectorAccountJsonObject;
+	metadata: ConnectorAccountJsonObject;
+	connectedAt: number;
+	lastSyncAt?: number | null;
+	deletedAt?: number | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface ListConnectorAccountsParams {
+	agentId?: UUID;
+	provider?: string;
+	status?: ConnectorAccountStorageStatus;
+	limit?: number;
+	offset?: number;
+}
+
+export interface GetConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider?: string;
+	accountKey?: string;
+}
+
+export interface UpsertConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider: string;
+	accountKey: string;
+	externalId?: string | null;
+	displayName?: string | null;
+	username?: string | null;
+	email?: string | null;
+	role?: string;
+	purpose?: string[];
+	accessGate?: string;
+	status?: ConnectorAccountStorageStatus;
+	scopes?: string[];
+	capabilities?: string[];
+	profile?: ConnectorAccountJsonObject;
+	metadata?: ConnectorAccountJsonObject;
+	connectedAt?: number | Date;
+	lastSyncAt?: number | Date | null;
+	deletedAt?: number | Date | null;
+}
+
+export interface DeleteConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider?: string;
+	accountKey?: string;
+}
+
+export interface ConnectorAccountCredentialRefRecord {
+	id: UUID;
+	accountId: UUID;
+	agentId: UUID;
+	provider: string;
+	credentialType: string;
+	vaultRef: string;
+	metadata: ConnectorAccountJsonObject;
+	expiresAt?: number | null;
+	lastVerifiedAt?: number | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface SetConnectorAccountCredentialRefParams {
+	accountId: UUID;
+	credentialType: string;
+	vaultRef: string;
+	metadata?: ConnectorAccountJsonObject;
+	expiresAt?: number | Date | null;
+	lastVerifiedAt?: number | Date | null;
+}
+
+export interface GetConnectorAccountCredentialRefParams {
+	accountId: UUID;
+	credentialType: string;
+}
+
+export interface ListConnectorAccountCredentialRefsParams {
+	accountId: UUID;
+}
+
+export interface ConnectorAccountAuditEventRecord {
+	id: UUID;
+	accountId?: UUID | null;
+	agentId: UUID;
+	provider: string;
+	actorId?: string | null;
+	action: string;
+	outcome: ConnectorAccountAuditOutcome;
+	metadata: ConnectorAccountJsonObject;
+	createdAt: number;
+}
+
+export interface AppendConnectorAccountAuditEventParams {
+	accountId?: UUID | null;
+	agentId?: UUID;
+	provider?: string;
+	actorId?: string | null;
+	action: string;
+	outcome?: ConnectorAccountAuditOutcome;
+	metadata?: Record<string, unknown>;
+	createdAt?: number | Date;
+}
+
+export interface OAuthFlowRecord {
+	stateHash: string;
+	agentId: UUID;
+	provider: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes: string[];
+	metadata: ConnectorAccountJsonObject;
+	createdAt: number;
+	expiresAt: number;
+	consumedAt?: number | null;
+	consumedBy?: string | null;
+}
+
+export interface CreateOAuthFlowStateParams {
+	state: string;
+	agentId?: UUID;
+	provider: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes?: string[];
+	metadata?: ConnectorAccountJsonObject;
+	ttlMs?: number;
+	expiresAt?: number | Date;
+}
+
+export interface ConsumeOAuthFlowStateParams {
+	state: string;
+	agentId?: UUID;
+	provider?: string;
+	consumedBy?: string;
+	now?: number | Date;
+}
+
 export interface AgentRunCounts
 	extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
 
@@ -1187,6 +1352,42 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<void>;
 
 	deletePairingAllowlistEntries(ids: UUID[]): Promise<void>;
+
+	// ── Connector account storage ────────────────────────────────────────
+	listConnectorAccounts(
+		params?: ListConnectorAccountsParams,
+	): Promise<ConnectorAccountRecord[]>;
+	getConnectorAccount(
+		params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null>;
+	upsertConnectorAccount(
+		params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord>;
+	deleteConnectorAccount(
+		params: DeleteConnectorAccountParams,
+	): Promise<boolean>;
+	setConnectorAccountCredentialRef(
+		params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord>;
+	getConnectorAccountCredentialRef(
+		params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null>;
+	listConnectorAccountCredentialRefs(
+		params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	/**
+	 * Append a connector account audit event. Implementations must redact
+	 * credential-like metadata values before persistence.
+	 */
+	appendConnectorAccountAuditEvent(
+		params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord>;
+	createOAuthFlowState(
+		params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord>;
+	consumeOAuthFlowState(
+		params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
 
 	// ── Plugin Schema Registration ──────────────────────────────────────────
 	// WHY: Plugins need custom tables (goals, todos) but shouldn't cast runtime.db

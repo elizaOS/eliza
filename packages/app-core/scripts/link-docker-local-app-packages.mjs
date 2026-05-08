@@ -16,7 +16,7 @@ const { workspaceDirs } = collectWorkspaceMaps(
 const localPackages = [
   "eliza/plugins/app-companion",
   "eliza/plugins/app-elizamaker",
-  "eliza/plugins/app-knowledge",
+  "eliza/plugins/app-documents",
   "eliza/plugins/app-lifeops",
   "eliza/plugins/app-steward",
   "eliza/plugins/app-task-coordinator",

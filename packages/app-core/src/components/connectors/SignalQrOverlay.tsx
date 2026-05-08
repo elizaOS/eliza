@@ -1,6 +1,7 @@
 import { Button } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
 import { useSignalPairing } from "../../hooks";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
 import { useApp } from "../../state";
 
 interface SignalQrOverlayProps {
@@ -9,7 +10,7 @@ interface SignalQrOverlayProps {
 }
 
 export function SignalQrOverlay({
-  accountId = "default",
+  accountId = DEFAULT_CONNECTOR_ACCOUNT_ID,
   onConnected,
 }: SignalQrOverlayProps) {
   const {

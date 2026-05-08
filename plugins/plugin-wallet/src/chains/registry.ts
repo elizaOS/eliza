@@ -33,6 +33,7 @@ import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
 import { initWalletProvider } from "./evm/providers/wallet";
+import { routeEvmGovernance } from "./evm/gov-router";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
@@ -324,7 +325,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     chain: key,
     name: chain.name,
     aliases,
-    supportedActions: ["transfer", "swap"],
+    supportedActions: ["transfer", "swap", "gov"],
     tokens: [
       {
         symbol: chain.nativeCurrency.symbol,
@@ -341,7 +342,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     },
     dryRun: {
       supported: true,
-      supportedActions: ["transfer", "swap"],
+      supportedActions: ["transfer", "swap", "gov"],
       description:
         "Prepare mode and dry-run return route metadata without signing.",
     },
@@ -351,6 +352,9 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
       }
       if (params.subaction === "swap") {
         return executeEvmSwap(params, context, key, chain);
+      }
+      if (params.subaction === "gov") {
+        return routeEvmGovernance(params, context, key, chain);
       }
       throw new Error(`${chain.name} does not support ${params.subaction}.`);
     },
