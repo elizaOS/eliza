@@ -97,6 +97,11 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 					items: { type: "string" },
 				},
 				reply: { type: "string" },
+				requiresTool: {
+					type: "boolean",
+					description:
+						"True when the current turn needs a tool/action/subagent/provider/runtime inspection/browser-or-network lookup/side effect/verification. The router upgrades empty or simple-only plans to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
+				},
 			},
 			required: ["contexts"],
 		},

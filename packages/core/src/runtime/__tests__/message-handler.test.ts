@@ -52,6 +52,31 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("plans against 'general' when requiresTool=true and contexts is empty", () => {
+		// Stage 1's escape hatch: even when the model didn't pick any context,
+		// `requiresTool: true` forces planning so the planner can attempt a tool.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Needs a tool.",
+			plan: { contexts: [], requiresTool: true },
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
+	});
+
+	it("preserves requiresTool through parsing", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "Tool needed.",
+  "plan": { "contexts": ["general"], "requiresTool": true }
+}`);
+		expect(parsed?.plan?.requiresTool).toBe(true);
+	});
+
 	it("strips 'simple' from a mixed selection before planning", () => {
 		const output = {
 			processMessage: "RESPOND" as const,
