@@ -7,10 +7,7 @@
 // every connected platform. Triage / inbox / draft ops delegate to the
 // existing triage actions in features/messaging/triage.
 //
-// All other former leaf actions (SEND_MESSAGE, READ_MESSAGES, MESSAGE,
-// LIST_CHANNELS, LIST_SERVERS, REACT_TO_MESSAGE, EDIT_MESSAGE, DELETE_MESSAGE,
-// PIN_MESSAGE, JOIN_CHANNEL, LEAVE_CHANNEL, GET_USER, READ_CHANNEL,
-// SEARCH_CONVERSATIONS) are gone — MESSAGE is the only registration.
+// Former leaf message actions are gone — MESSAGE is the only registration.
 
 import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";

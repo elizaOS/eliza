@@ -390,7 +390,7 @@ export function UploadZone({
                 className="h-10 border-border/55 bg-bg/72 text-xs shadow-none"
               />
               <Textarea
-                placeholder={t("documentsview.PasteKnowledgeText", {
+                placeholder={t("documentsview.PasteText", {
                   defaultValue: "Paste knowledge text...",
                 })}
                 value={textInput}
