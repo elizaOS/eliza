@@ -101,7 +101,10 @@ function unique(values: string[]): string[] {
 
 function normalizeSubaction(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return normalized.length > 0 ? normalized : null;
 }
 

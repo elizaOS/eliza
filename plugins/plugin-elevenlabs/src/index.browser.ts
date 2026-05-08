@@ -1,3 +1,4 @@
-// Browser entry: re-export plugin
 export * from "./index";
-export { default } from "./index";
+import elevenLabsPlugin from "./index";
+
+export default elevenLabsPlugin;

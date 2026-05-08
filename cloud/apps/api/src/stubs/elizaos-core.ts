@@ -252,6 +252,14 @@ export const MemoryType = {
   CUSTOM: "custom",
 } as const;
 
+export const documentsPluginCore = {
+  name: "documents",
+  description: "Cloud Worker stub for the documents runtime plugin.",
+  actions: [],
+  providers: [],
+  services: [],
+};
+
 export const addHeader = (header: string, body: string) => (body ? `${header}\n${body}` : "");
 
 export const UUID = asUUID as unknown as (value?: string) => string;
@@ -397,6 +405,12 @@ export class AgentRuntime {
   }
 }
 
+export class DefaultMessageService {
+  constructor(..._args: unknown[]) {
+    unavailable("DefaultMessageService");
+  }
+}
+
 export class Semaphore {
   constructor(_max: number = 1) {
     unavailable("Semaphore");
@@ -458,6 +472,7 @@ export default {
   ServiceType,
   VECTOR_DIMS,
   MemoryType,
+  documentsPluginCore,
   addHeader,
   UUID,
   composeActionExamples,
@@ -490,6 +505,7 @@ export default {
   Service,
   IMediaGenerationService,
   AgentRuntime,
+  DefaultMessageService,
   Semaphore,
   BM25,
 };

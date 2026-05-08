@@ -26,7 +26,10 @@ const DEFAULT_PROVIDER_BY_SUBACTION: Record<TokenInfoSubaction, string> = {
 };
 
 function normalizeProviderKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
 }
 
 export class TokenInfoService extends Service {

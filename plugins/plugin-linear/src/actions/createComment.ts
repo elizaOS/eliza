@@ -268,10 +268,13 @@ export const createCommentAction: Action = {
 
       const issue = await linearService.getIssue(issueId, accountId);
 
-      const comment = await linearService.createComment({
-        issueId: issue.id,
-        body: commentBody,
-      }, accountId);
+      const comment = await linearService.createComment(
+        {
+          issueId: issue.id,
+          body: commentBody,
+        },
+        accountId
+      );
 
       const successMessage = `✅ Comment added to issue ${issue.identifier}: "${commentBody}"`;
       await callback?.({

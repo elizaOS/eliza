@@ -13,9 +13,7 @@ export interface LinearAccountConfig {
 type RawAccountRecord = Record<string, unknown>;
 
 function nonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -28,13 +26,13 @@ export function normalizeLinearAccountId(value: unknown): string {
 
 export function resolveLinearAccountId(
   runtime: IAgentRuntime,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ): string {
   return normalizeLinearAccountId(
     options?.accountId ??
       options?.linearAccountId ??
       readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID") ??
-      readSetting(runtime, "LINEAR_ACCOUNT_ID"),
+      readSetting(runtime, "LINEAR_ACCOUNT_ID")
   );
 }
 
@@ -45,7 +43,7 @@ function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
     if (Array.isArray(parsed)) {
       return parsed.filter(
         (item): item is RawAccountRecord =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item),
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
       );
     }
     if (parsed && typeof parsed === "object") {
@@ -62,10 +60,7 @@ function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
   return [];
 }
 
-function readRawField(
-  record: RawAccountRecord,
-  keys: readonly string[],
-): string | undefined {
+function readRawField(record: RawAccountRecord, keys: readonly string[]): string | undefined {
   const credentials =
     record.credentials && typeof record.credentials === "object"
       ? (record.credentials as RawAccountRecord)
@@ -89,9 +84,7 @@ function readRawField(
 }
 
 function accountFromRecord(record: RawAccountRecord): LinearAccountConfig | null {
-  const accountId = normalizeLinearAccountId(
-    record.accountId ?? record.id ?? record.name,
-  );
+  const accountId = normalizeLinearAccountId(record.accountId ?? record.id ?? record.name);
   const apiKey = readRawField(record, [
     "LINEAR_API_KEY",
     "apiKey",
@@ -103,21 +96,15 @@ function accountFromRecord(record: RawAccountRecord): LinearAccountConfig | null
   return {
     accountId,
     apiKey,
-    workspaceId: readRawField(record, [
-      "LINEAR_WORKSPACE_ID",
-      "workspaceId",
-    ]),
-    defaultTeamKey: readRawField(record, [
-      "LINEAR_DEFAULT_TEAM_KEY",
-      "defaultTeamKey",
-    ]),
+    workspaceId: readRawField(record, ["LINEAR_WORKSPACE_ID", "workspaceId"]),
+    defaultTeamKey: readRawField(record, ["LINEAR_DEFAULT_TEAM_KEY", "defaultTeamKey"]),
     label: nonEmptyString(record.label ?? record.displayName),
   };
 }
 
 function addAccount(
   accounts: Map<string, LinearAccountConfig>,
-  account: LinearAccountConfig | null,
+  account: LinearAccountConfig | null
 ): void {
   if (account) {
     accounts.set(account.accountId, account);
@@ -126,9 +113,7 @@ function addAccount(
 
 export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[] {
   const accounts = new Map<string, LinearAccountConfig>();
-  const characterConfig = runtime.character?.settings?.linear as
-    | { accounts?: unknown }
-    | undefined;
+  const characterConfig = runtime.character?.settings?.linear as { accounts?: unknown } | undefined;
   const characterAccounts = characterConfig?.accounts;
 
   if (Array.isArray(characterAccounts)) {
@@ -138,24 +123,20 @@ export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[
       }
     }
   } else if (characterAccounts && typeof characterAccounts === "object") {
-    for (const [id, value] of Object.entries(
-      characterAccounts as Record<string, unknown>,
-    )) {
+    for (const [id, value] of Object.entries(characterAccounts as Record<string, unknown>)) {
       if (value && typeof value === "object") {
         addAccount(
           accounts,
           accountFromRecord({
             ...(value as RawAccountRecord),
             accountId: (value as RawAccountRecord).accountId ?? id,
-          }),
+          })
         );
       }
     }
   }
 
-  for (const record of parseAccountsJson(
-    readSetting(runtime, "LINEAR_ACCOUNTS"),
-  )) {
+  for (const record of parseAccountsJson(readSetting(runtime, "LINEAR_ACCOUNTS"))) {
     addAccount(accounts, accountFromRecord(record));
   }
 
@@ -164,7 +145,7 @@ export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[
     addAccount(accounts, {
       accountId: normalizeLinearAccountId(
         readSetting(runtime, "LINEAR_ACCOUNT_ID") ??
-          readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID"),
+          readSetting(runtime, "LINEAR_DEFAULT_ACCOUNT_ID")
       ),
       apiKey,
       workspaceId: readSetting(runtime, "LINEAR_WORKSPACE_ID"),
@@ -177,7 +158,7 @@ export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[
 
 export function resolveLinearAccount(
   accounts: readonly LinearAccountConfig[],
-  accountId: string,
+  accountId: string
 ): LinearAccountConfig | null {
   return (
     accounts.find((account) => account.accountId === accountId) ??
@@ -189,7 +170,7 @@ export function resolveLinearAccount(
 
 export function hasLinearAccountConfig(
   runtime: IAgentRuntime,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ): boolean {
   const accountId = resolveLinearAccountId(runtime, options);
   return Boolean(resolveLinearAccount(readLinearAccounts(runtime), accountId));

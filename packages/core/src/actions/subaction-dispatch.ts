@@ -26,7 +26,8 @@ export function readSubaction<TSubaction extends string>(
 		keys?: readonly string[];
 		aliases?: Partial<Record<string, TSubaction>>;
 		defaultValue?: TSubaction;
-	}): TSubaction | undefined {
+	},
+): TSubaction | undefined {
 	const keys = options.keys ?? ["op", "subaction", "action"];
 	const allowed = new Set<string>(options.allowed);
 	const aliases = options.aliases ?? {};
@@ -52,9 +53,7 @@ export async function dispatchSubaction<TSubaction extends string, TContext>(
 		return {
 			success: false,
 			error: "UNKNOWN_SUBACTION",
-			text: subaction
-				? `Unknown subaction: ${subaction}`
-				: "Missing subaction",
+			text: subaction ? `Unknown subaction: ${subaction}` : "Missing subaction",
 			data: { subaction },
 		};
 	}

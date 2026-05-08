@@ -341,9 +341,12 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
 
     async readSignalInbound(
       limit = 25,
+      side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsSignalInboundMessage[]> {
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
-      const status = await this.getSignalConnectorStatus("owner");
+      const resolvedSide =
+        normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      const status = await this.getSignalConnectorStatus(resolvedSide);
       const delegated = await readSignalRecentWithRuntimeService({
         runtime: this.runtime,
         grant: status.grant,

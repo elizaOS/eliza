@@ -93,9 +93,11 @@ export function useConnectorSendAsAccount(
   );
 
   const connectAccount = useCallback(async () => {
-    const result = await connectorAccounts.add({
-      role: "OWNER",
-      privacy: "owner_only",
+    const result = await connectorAccounts.startOAuth({
+      metadata: {
+        requestedRole: "OWNER",
+        privacy: "owner_only",
+      },
     });
     openAuthUrl(result.authUrl);
     return result;
@@ -103,7 +105,7 @@ export function useConnectorSendAsAccount(
 
   const reconnectAccount = useCallback(
     async (accountId: string) => {
-      const result = await connectorAccounts.refreshAccount(accountId);
+      const result = await connectorAccounts.startOAuth({ accountId });
       openAuthUrl(result.authUrl);
       return result;
     },

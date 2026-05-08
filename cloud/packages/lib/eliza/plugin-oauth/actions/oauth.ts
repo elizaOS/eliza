@@ -607,7 +607,7 @@ export const oauthAction: ActionWithParams = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: {
           actionName: "OAUTH",
           availableOps: [...OAUTH_OPS],

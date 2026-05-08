@@ -1,10 +1,13 @@
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import { handleChatRoutes } from "./chat-routes.js";
 import { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud/routes/cloud-billing-routes";
 import { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud/routes/cloud-compat-routes";
 import { handleCloudRelayRoute } from "@elizaos/plugin-elizacloud/routes/cloud-relay-routes";
-import { type CloudRouteState, handleCloudRoute } from "@elizaos/plugin-elizacloud/routes/cloud-routes-autonomous";
+import {
+  type CloudRouteState,
+  handleCloudRoute,
+} from "@elizaos/plugin-elizacloud/routes/cloud-routes-autonomous";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { handleChatRoutes } from "./chat-routes.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleInboxRoute } from "./inbox-routes.js";

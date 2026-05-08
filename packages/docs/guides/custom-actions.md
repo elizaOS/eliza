@@ -52,7 +52,7 @@ Similar to plugin ejection but for the elizaOS core framework itself.
 
 ### Communication
 
-**SEND_MESSAGE** -- Send a message to a user or room on a specific platform/service. Requires `targetType` (`user` or `room`), `source` (service name like `telegram`), `target` (entity/room ID), and `text`. Looks up the service via `runtime.getService()` and calls the appropriate send method.
+**MESSAGE** -- Send a message to a user or room on a specific platform/service. Requires `targetType` (`user` or `room`), `source` (service name like `telegram`), `target` (entity/room ID), and `text`. Looks up the service via `runtime.getService()` and calls the appropriate send method.
 
 ### Media Generation
 

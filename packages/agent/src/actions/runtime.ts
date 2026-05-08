@@ -464,11 +464,11 @@ export const runtimeAction: Action = {
       return {
         success: false,
         text: `Unknown op "${opRaw}". Valid: ${RUNTIME_OPS.join(", ")}.`,
-        values: { error: "RUNTIME_INVALID_OP", op: opRaw },
+        values: { error: "RUNTIME_INVALID", op: opRaw },
         data: {
           actionName: "RUNTIME",
           op: opRaw,
-          error: "RUNTIME_INVALID_OP",
+          error: "RUNTIME_INVALID",
         },
       };
     }

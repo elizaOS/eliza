@@ -61,8 +61,8 @@ import {
 	type Component,
 	type ConnectorAccountAuditEventRecord,
 	type ConnectorAccountCredentialRefRecord,
-	type ConnectorAccountRef,
 	type ConnectorAccountRecord,
+	type ConnectorAccountRef,
 	type ConsumeOAuthFlowStateParams,
 	type Content,
 	type ControlMessage,
@@ -127,10 +127,10 @@ import {
 	type RuntimeEventStorage,
 	type RuntimeSettings,
 	type SendHandlerFunction,
-	type SetConnectorAccountCredentialRefParams,
 	type Service,
 	type ServiceClass,
 	type ServiceTypeName,
+	type SetConnectorAccountCredentialRefParams,
 	type State,
 	type StateValue,
 	type StreamChunkCallback,
@@ -8132,7 +8132,12 @@ ${section_end}`;
 		const routeKey = connectorRouteKey(source, accountId);
 		if (this.postConnectors.has(routeKey)) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source, accountId },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
 				"Post connector already registered, overwriting",
 			);
 		}

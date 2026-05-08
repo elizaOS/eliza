@@ -10,8 +10,8 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
-	DeleteOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
+	DeleteOAuthFlowStateParams,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -26,6 +26,7 @@ import type {
 	Memory,
 	MemoryMetadata,
 	Metadata,
+	OAuthFlowRecord,
 	PairingAllowlistEntry,
 	PairingAllowlistsResult,
 	PairingChannel,
@@ -38,7 +39,6 @@ import type {
 	PatchOp,
 	Relationship,
 	Room,
-	OAuthFlowRecord,
 	SetConnectorAccountCredentialRefParams,
 	Task,
 	UpdateOAuthFlowStateParams,
@@ -78,6 +78,14 @@ function connectorCredentialKey(params: {
 	credentialType: string;
 }): string {
 	return `${String(params.accountId)}::${params.credentialType}`;
+}
+
+function oauthFlowKey(params: {
+	agentId: UUID;
+	provider: string;
+	stateHash: string;
+}): string {
+	return `${String(params.agentId)}::${params.provider}::${params.stateHash}`;
 }
 
 function connectorDateToMillis(
@@ -1649,6 +1657,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const limit = params.limit ?? 100;
 		return Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
+			.filter((account) => account.deletedAt == null)
 			.filter(
 				(account) => !params.provider || account.provider === params.provider,
 			)
@@ -1687,7 +1696,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				? this.connectorAccountsById.get(accountId)
 				: undefined;
 		}
-		if (!account) return null;
+		if (!account || account.deletedAt != null) return null;
 		return {
 			...account,
 			scopes: [...account.scopes],
@@ -1749,7 +1758,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				? [...params.purpose]
 				: [...(existing?.purpose ?? ["messaging"])],
 			accessGate: params.accessGate ?? existing?.accessGate ?? "open",
-			status: params.status ?? existing?.status ?? "active",
+			status: params.status ?? existing?.status ?? "connected",
 			scopes: params.scopes
 				? [...params.scopes]
 				: [...(existing?.scopes ?? [])],
@@ -1766,7 +1775,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					: cloneConnectorJsonObject(existing?.metadata),
 			connectedAt: connectedAt ?? existing?.connectedAt ?? now,
 			lastSyncAt: lastSyncAt !== undefined ? lastSyncAt : existing?.lastSyncAt,
-			deletedAt: deletedAt !== undefined ? deletedAt : existing?.deletedAt,
+			deletedAt: deletedAt === undefined ? null : deletedAt,
 			createdAt: existing?.createdAt ?? now,
 			updatedAt: now,
 		};
@@ -1780,7 +1789,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<boolean> {
 		const account = await this.getConnectorAccount(params);
 		if (!account) return false;
-		this.connectorAccountsById.delete(String(account.id));
+		const now = Date.now();
+		this.connectorAccountsById.set(String(account.id), {
+			...account,
+			status: "disabled",
+			deletedAt: now,
+			updatedAt: now,
+		});
 		this.connectorAccountIdsByKey.delete(
 			connectorAccountKey({
 				agentId: account.agentId,
@@ -1788,11 +1803,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				accountKey: account.accountKey,
 			}),
 		);
-		for (const [key, credential] of this.connectorCredentialRefs.entries()) {
-			if (credential.accountId === account.id) {
-				this.connectorCredentialRefs.delete(key);
-			}
-		}
 		return true;
 	}
 
@@ -1837,6 +1847,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async getConnectorAccountCredentialRef(
 		params: GetConnectorAccountCredentialRefParams,
 	): Promise<ConnectorAccountCredentialRefRecord | null> {
+		const account = await this.getConnectorAccount({ id: params.accountId });
+		if (!account) return null;
 		const credential = this.connectorCredentialRefs.get(
 			connectorCredentialKey(params),
 		);
@@ -1851,6 +1863,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		const account = await this.getConnectorAccount({ id: params.accountId });
+		if (!account) return [];
 		return Array.from(this.connectorCredentialRefs.values())
 			.filter((credential) => credential.accountId === params.accountId)
 			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
@@ -1901,14 +1915,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		params: CreateOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord> {
 		const stateHash = await sha256Hex(params.state);
-		const existing = this.oauthFlowsByStateHash.get(stateHash);
+		const agentId = params.agentId ?? DEFAULT_UUID;
+		const key = oauthFlowKey({
+			agentId,
+			provider: params.provider,
+			stateHash,
+		});
+		const existing = this.oauthFlowsByStateHash.get(key);
 		const now = Date.now();
 		const expiresAt =
 			connectorDateToMillis(params.expiresAt) ??
 			now + (params.ttlMs ?? 10 * 60_000);
 		const record: OAuthFlowRecord = {
 			stateHash,
-			agentId: params.agentId ?? DEFAULT_UUID,
+			agentId,
 			provider: params.provider,
 			accountId: params.accountId ?? null,
 			redirectUri: params.redirectUri ?? null,
@@ -1920,7 +1940,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			consumedAt: null,
 			consumedBy: null,
 		};
-		this.oauthFlowsByStateHash.set(stateHash, record);
+		this.oauthFlowsByStateHash.set(key, record);
 		return {
 			...record,
 			scopes: [...record.scopes],
@@ -1931,8 +1951,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async consumeOAuthFlowState(
 		params: ConsumeOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
-		const stateHash = await sha256Hex(params.state);
-		const existing = this.oauthFlowsByStateHash.get(stateHash);
+		const existing = await this.findOAuthFlowState(params);
 		const now = connectorDateToMillis(params.now) ?? Date.now();
 		if (
 			!existing ||
@@ -1948,7 +1967,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			consumedAt: now,
 			consumedBy: params.consumedBy ?? null,
 		};
-		this.oauthFlowsByStateHash.set(stateHash, record);
+		this.oauthFlowsByStateHash.set(
+			oauthFlowKey({
+				agentId: record.agentId,
+				provider: record.provider,
+				stateHash: record.stateHash,
+			}),
+			record,
+		);
 		return {
 			...record,
 			scopes: [...record.scopes],
@@ -1957,26 +1983,38 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	private async findOAuthFlowState(
-		params: GetOAuthFlowStateParams | UpdateOAuthFlowStateParams | DeleteOAuthFlowStateParams,
+		params:
+			| GetOAuthFlowStateParams
+			| UpdateOAuthFlowStateParams
+			| DeleteOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
 		let stateHash = params.stateHash;
 		if (!stateHash && params.state) {
 			stateHash = await sha256Hex(params.state);
 		}
+		const agentId = params.agentId ?? DEFAULT_UUID;
 		let existing = stateHash
-			? this.oauthFlowsByStateHash.get(stateHash)
+			? Array.from(this.oauthFlowsByStateHash.values()).find(
+					(flow) =>
+						flow.stateHash === stateHash &&
+						flow.agentId === agentId &&
+						(!params.provider || flow.provider === params.provider),
+				)
 			: undefined;
 		if (!existing && params.flowId) {
 			existing = Array.from(this.oauthFlowsByStateHash.values()).find(
-				(flow) => flow.metadata.flowId === params.flowId,
+				(flow) =>
+					flow.metadata.flowId === params.flowId &&
+					flow.agentId === agentId &&
+					(!params.provider || flow.provider === params.provider),
 			);
 		}
 		if (!existing) return null;
-		const now = connectorDateToMillis(
-			(params as GetOAuthFlowStateParams).now,
-		) ?? Date.now();
+		const now =
+			connectorDateToMillis((params as GetOAuthFlowStateParams).now) ??
+			Date.now();
 		const query = params as GetOAuthFlowStateParams;
-		if (params.agentId && existing.agentId !== params.agentId) return null;
+		if (existing.agentId !== agentId) return null;
 		if (params.provider && existing.provider !== params.provider) return null;
 		if (!query.includeConsumed && existing.consumedAt != null) return null;
 		if (!query.includeExpired && existing.expiresAt <= now) return null;
@@ -2023,15 +2061,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			},
 			expiresAt: expiresAt ?? existing.expiresAt,
 			consumedAt:
-				params.consumedAt !== undefined
-					? consumedAt
-					: existing.consumedAt,
+				params.consumedAt !== undefined ? consumedAt : existing.consumedAt,
 			consumedBy:
 				params.consumedBy !== undefined
 					? params.consumedBy
 					: existing.consumedBy,
 		};
-		this.oauthFlowsByStateHash.set(record.stateHash, record);
+		this.oauthFlowsByStateHash.set(
+			oauthFlowKey({
+				agentId: record.agentId,
+				provider: record.provider,
+				stateHash: record.stateHash,
+			}),
+			record,
+		);
 		return {
 			...record,
 			scopes: [...record.scopes],
@@ -2048,6 +2091,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			includeExpired: true,
 		});
 		if (!existing) return false;
-		return this.oauthFlowsByStateHash.delete(existing.stateHash);
+		return this.oauthFlowsByStateHash.delete(
+			oauthFlowKey({
+				agentId: existing.agentId,
+				provider: existing.provider,
+				stateHash: existing.stateHash,
+			}),
+		);
 	}
 }

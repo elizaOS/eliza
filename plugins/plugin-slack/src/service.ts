@@ -286,15 +286,14 @@ const getMessageService = (runtime: IAgentRuntime): IMessageService | null => {
   return null;
 };
 
-import { markdownToSlackMrkdwn } from "./formatting";
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledSlackAccounts,
   normalizeAccountId,
-  resolveDefaultSlackAccountId,
-  resolveSlackAccount,
   type ResolvedSlackAccount,
+  resolveDefaultSlackAccountId,
 } from "./accounts";
+import { markdownToSlackMrkdwn } from "./formatting";
 import {
   getSlackChannelType,
   getSlackUserDisplayName,
@@ -353,7 +352,6 @@ export class SlackService extends Service implements ISlackService {
   private dynamicChannelIds: Set<string> = new Set();
   private userCache: Map<string, SlackUser> = new Map();
   private channelCache: Map<string, SlackChannel> = new Map();
-  private isStarting = false;
   private isConnected = false;
 
   constructor(runtime: IAgentRuntime) {
@@ -779,93 +777,6 @@ export class SlackService extends Service implements ISlackService {
     } finally {
       this.accountStarts.delete(accountId);
     }
-  }
-
-  private async initialize(): Promise<void> {
-    if (this.isStarting || this.isConnected) {
-      return;
-    }
-
-    this.isStarting = true;
-    const account = resolveSlackAccount(this.runtime, this.defaultAccountId);
-    const botToken = this.botToken ?? account.botToken;
-    const appToken = this.appToken ?? account.appToken;
-
-    if (!botToken || !appToken) {
-      this.isStarting = false;
-      throw new Error("Slack service requires bot and app tokens");
-    }
-
-    await this.initializeAccount({
-      ...account,
-      botToken,
-      appToken,
-      signingSecret: this.signingSecret ?? account.signingSecret,
-    });
-
-    this.isStarting = false;
-  }
-
-  private async initializeLegacySingleton(): Promise<void> {
-    if (this.isStarting || this.isConnected) {
-      return;
-    }
-
-    this.isStarting = true;
-    const botToken = this.botToken;
-    const appToken = this.appToken;
-
-    if (!botToken || !appToken) {
-      this.isStarting = false;
-      throw new Error("Slack service requires bot and app tokens");
-    }
-
-    this.runtime.logger.info(
-      { src: "plugin:slack", agentId: this.runtime.agentId },
-      "Initializing Slack service with Socket Mode",
-    );
-
-    this.app = new App({
-      token: botToken,
-      appToken,
-      socketMode: true,
-      logLevel: LogLevel.INFO,
-      ...(this.signingSecret ? { signingSecret: this.signingSecret } : {}),
-    });
-
-    this.client = this.app.client;
-
-    // Get bot user info
-    const authResult = await this.client.auth.test();
-    this.botUserId = authResult.user_id as string;
-    this.teamId = authResult.team_id as string;
-
-    this.runtime.logger.info(
-      {
-        src: "plugin:slack",
-        agentId: this.runtime.agentId,
-        botUserId: this.botUserId,
-        teamId: this.teamId,
-      },
-      "Slack bot authenticated",
-    );
-
-    // Register event handlers
-    this.registerEventHandlers();
-
-    // Start the Socket Mode connection
-    await this.app.start();
-
-    this.isConnected = true;
-    this.isStarting = false;
-
-    this.runtime.logger.info(
-      { src: "plugin:slack", agentId: this.runtime.agentId },
-      "Slack service started successfully",
-    );
-
-    // Ensure all workspaces exist
-    await this.ensureWorkspaceExists();
   }
 
   private async shutdown(): Promise<void> {

@@ -220,7 +220,7 @@ const PROVIDER_PLUGIN_MAP = {
   CUA_HOST:                       "@elizaos/plugin-cua",
   OBSIDIAN_VAULT_PATH:            "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH:            "@elizaos/plugin-repoprompt",
-  CLAUDE_CODE_WORKBENCH_ENABLED:  "@elizaos/plugin-claude-code-workbench",
+
 };
 ```
 

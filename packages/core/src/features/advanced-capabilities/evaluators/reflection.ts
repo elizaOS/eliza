@@ -7,8 +7,6 @@ import type {
 	Action,
 	ActionResult,
 	Entity,
-	EvaluationExample,
-	Evaluator,
 	IAgentRuntime,
 	Memory,
 	State,
@@ -480,7 +478,7 @@ function formatActionResults(actionResults: ActionResult[]): string {
 			}
 			return lines.join("\n");
 		})
-			.join("\n\n");
+		.join("\n\n");
 }
 
 function actionResultsFromState(state: State | undefined): ActionResult[] {
@@ -603,7 +601,9 @@ async function handler(
 		return undefined;
 	}
 
-	const cachedActionResults = message.id ? runtime.getActionResults(message.id) : [];
+	const cachedActionResults = message.id
+		? runtime.getActionResults(message.id)
+		: [];
 	const actionResults =
 		cachedActionResults.length > 0
 			? cachedActionResults

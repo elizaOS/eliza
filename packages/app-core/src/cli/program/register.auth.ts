@@ -181,7 +181,9 @@ export async function runElizaAuthReset(
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
 
   log(theme.heading("Eliza auth reset"));
-  log(theme.muted("This revokes every active session. Identities and password"));
+  log(
+    theme.muted("This revokes every active session. Identities and password"),
+  );
   log(theme.muted("hashes are NOT touched — log in afterwards as usual."));
   log("");
   log("To prove filesystem access, write the following 32-byte hex token");

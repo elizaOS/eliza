@@ -6,7 +6,7 @@
 export const CALENDLY_SERVICE_TYPE = "calendly";
 
 export const CalendlyActions = {
-  CALENDLY_OP: "CALENDLY_OP",
+  CALENDLY_OP: "CALENDLY",
 } as const;
 
 export interface CalendlyEventType {

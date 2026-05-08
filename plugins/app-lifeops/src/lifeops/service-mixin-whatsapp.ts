@@ -93,6 +93,25 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
             "The WhatsApp runtime service is registered but not connected. Reconnect the WhatsApp connector in @elizaos/plugin-whatsapp.",
           retryable: true,
         });
+      } else {
+        if (!outboundReady) {
+          degradations.push({
+            axis: "delivery-degraded",
+            code: "whatsapp_plugin_send_unavailable",
+            message:
+              "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose a send path.",
+            retryable: true,
+          });
+        }
+        if (!inboundReady) {
+          degradations.push({
+            axis: "transport-offline",
+            code: "whatsapp_plugin_inbound_unavailable",
+            message:
+              "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose webhook or message fetch handling.",
+            retryable: true,
+          });
+        }
       }
       if (degradations.length > 0) {
         status.degradations = degradations;

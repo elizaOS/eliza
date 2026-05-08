@@ -1,7 +1,7 @@
 import type {
   ConnectorAccountRecord as CoreConnectorAccountRecord,
-  IDatabaseAdapter,
   UpsertConnectorAccountParams as CoreUpsertConnectorAccountParams,
+  IDatabaseAdapter,
 } from "@elizaos/core";
 import { describe, expectTypeOf, it } from "vitest";
 import type {

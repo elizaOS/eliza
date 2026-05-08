@@ -76,7 +76,7 @@ Eliza 在运行时自动从 `src/actions/` 注册以下内置操作。
 
 </div>
 
-**SEND_MESSAGE** -- 在特定平台/服务上向用户或房间发送消息。需要 `targetType`（`user` 或 `room`）、`source`（服务名称如 `telegram`）、`target`（实体/房间 ID）和 `text`。通过 `runtime.getService()` 查找服务并调用相应的发送方法。
+**MESSAGE** -- 在特定平台/服务上向用户或房间发送消息。需要 `targetType`（`user` 或 `room`）、`source`（服务名称如 `telegram`）、`target`（实体/房间 ID）和 `text`。通过 `runtime.getService()` 查找服务并调用相应的发送方法。
 
 <div id="media-generation">
 

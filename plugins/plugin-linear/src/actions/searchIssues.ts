@@ -266,10 +266,10 @@ export const searchIssuesAction: Action = {
           success: true,
           data: {
             issues: [],
-          filters: filters ? { ...filters } : undefined,
-          count: 0,
-          accountId,
-        },
+            filters: filters ? { ...filters } : undefined,
+            count: 0,
+            accountId,
+          },
         };
       }
 

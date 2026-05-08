@@ -16,14 +16,8 @@ import {
   SearchCategoryRegistryError,
   ServiceType,
 } from "@elizaos/core";
-import {
-  databaseAction,
-  registerVectorSearchCategory,
-} from "./database.js";
-import {
-  contactAction,
-  registerEntitySearchCategory,
-} from "./contact.js";
+import { contactAction, registerEntitySearchCategory } from "./contact.js";
+import { databaseAction, registerVectorSearchCategory } from "./database.js";
 import { extractActionParamsViaLlm } from "./extract-params.js";
 
 const CONVERSATIONS_CATEGORY: SearchCategoryRegistration = {
@@ -36,8 +30,7 @@ const CONVERSATIONS_CATEGORY: SearchCategoryRegistration = {
     {
       name: "source",
       label: "Source",
-      description:
-        'Optional platform source, e.g. "discord" or "slack".',
+      description: 'Optional platform source, e.g. "discord" or "slack".',
       type: "string",
     },
     {
@@ -653,18 +646,12 @@ async function runCategorySearch(
       );
     case "entities":
       return resultWithActionName(
-        await dispatchLegacyAction(
-          contactAction,
-          runtime,
-          message,
-          state,
-          {
-            op: "search",
-            query,
-            limit,
-            ...filters,
-          },
-        ),
+        await dispatchLegacyAction(contactAction, runtime, message, state, {
+          op: "search",
+          query,
+          limit,
+          ...filters,
+        }),
         category,
       );
     default:

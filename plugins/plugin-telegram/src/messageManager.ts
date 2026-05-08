@@ -9,6 +9,7 @@ import {
   logger,
   type Media,
   type Memory,
+  type MessagePayload,
   ModelType,
   ServiceType,
   type UUID,
@@ -1270,7 +1271,10 @@ export class MessageManager {
           source: 'telegram',
           accountId: this.accountId,
           metadata: { accountId: this.accountId },
-        } as any);
+        } as MessagePayload & {
+          accountId: string;
+          metadata: { accountId: string };
+        });
 
         // Also emit platform-specific event
         const telegramMessageSentPayload = {

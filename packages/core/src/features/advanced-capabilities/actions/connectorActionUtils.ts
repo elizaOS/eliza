@@ -179,9 +179,11 @@ export function refreshMessageConnectorActionDescription(
 ): void {
 	const connectors = options.hook
 		? getMessageConnectorsWithHook(runtime, options.hook)
-		: ((runtime as IAgentRuntime & {
-				getMessageConnectors?: () => MessageConnector[];
-			}).getMessageConnectors?.call(runtime) ?? []);
+		: ((
+				runtime as IAgentRuntime & {
+					getMessageConnectors?: () => MessageConnector[];
+				}
+			).getMessageConnectors?.call(runtime) ?? []);
 	const visible = connectors
 		.slice(0, 12)
 		.map((connector) =>
@@ -240,7 +242,10 @@ export function connectorSelectionFailure(
 			data: { actionName, error: "NO_CONNECTORS_REGISTERED" },
 		};
 	}
-	if (source && !connectors.some((connector) => connectorMatchesSource(connector, source))) {
+	if (
+		source &&
+		!connectors.some((connector) => connectorMatchesSource(connector, source))
+	) {
 		return {
 			success: false,
 			text: `No connector for source "${source}" supports ${actionName}. Available sources: ${connectors.map((connector) => connector.source).join(", ")}.`,

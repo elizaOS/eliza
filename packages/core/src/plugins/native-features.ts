@@ -15,11 +15,11 @@ import {
 } from "../features/advanced-capabilities/providers/index";
 import {
 	__setDocumentUrlFetchImplForTests,
-	documentsPlugin,
 	DocumentService,
+	documentsPlugin,
+	type FetchDocumentFromUrlOptions,
 	type FetchedDocumentUrl,
 	type FetchedDocumentUrlKind,
-	type FetchDocumentFromUrlOptions,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "../features/documents/index";
@@ -121,9 +121,9 @@ export {
 	documentsPluginHeadless,
 } from "../features/documents/index";
 export type {
+	FetchDocumentFromUrlOptions,
 	FetchedDocumentUrl,
 	FetchedDocumentUrlKind,
-	FetchDocumentFromUrlOptions,
 };
 export {
 	__setDocumentUrlFetchImplForTests,

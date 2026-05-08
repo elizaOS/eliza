@@ -54,7 +54,9 @@ function normalizeOp(value: unknown): McpOp | null {
 
 function inferOpFromText(text: string): McpOp | null {
   if (
-    /\b(read|get|fetch|access|open|list)\b.*\b(resource|resources|document|docs?|file)\b/i.test(text)
+    /\b(read|get|fetch|access|open|list)\b.*\b(resource|resources|document|docs?|file)\b/i.test(
+      text
+    )
   ) {
     return "read_resource";
   }

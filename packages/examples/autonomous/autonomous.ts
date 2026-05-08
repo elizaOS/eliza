@@ -10,8 +10,8 @@ import {
   createMessageMemory,
   logger,
   MemoryType,
-  parseJSONObjectFromText,
   type Plugin,
+  parseJSONObjectFromText,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

@@ -6,10 +6,10 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
+import type { CloudRouteState } from "@elizaos/plugin-elizacloud/routes/cloud-routes-autonomous";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
-import type { CloudRouteState } from "@elizaos/plugin-elizacloud/routes/cloud-routes-autonomous";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
 
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency

@@ -1,7 +1,7 @@
 import type { HandlerOptions, Memory, State } from "@elizaos/core";
 import {
-  type TokenInfoParams,
   TOKEN_INFO_SUBACTIONS,
+  type TokenInfoParams,
   type TokenInfoSubaction,
 } from "./types";
 
@@ -83,11 +83,16 @@ export function normalizeTokenInfoSubaction(
   value: unknown,
 ): TokenInfoSubaction | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
   if ((TOKEN_INFO_SUBACTIONS as readonly string[]).includes(normalized)) {
     return normalized as TokenInfoSubaction;
   }
-  return SUBACTION_ALIASES[normalized] ?? SUBACTION_ALIASES[value.toLowerCase()];
+  return (
+    SUBACTION_ALIASES[normalized] ?? SUBACTION_ALIASES[value.toLowerCase()]
+  );
 }
 
 export function inferTokenInfoSubaction(
@@ -106,10 +111,18 @@ export function inferTokenInfoSubaction(
   if (/\b(wallet|portfolio|holdings)\b/.test(text)) return "wallet";
   if (/\b(boosted|promoted|sponsored)\b/.test(text)) return "boosted";
   if (/\b(profile|profiles)\b/.test(text)) return "profiles";
-  if (/\b(new|latest|fresh)\b/.test(text) && /\b(pair|pairs|tokens?)\b/.test(text)) {
+  if (
+    /\b(new|latest|fresh)\b/.test(text) &&
+    /\b(pair|pairs|tokens?)\b/.test(text)
+  ) {
     return "new-pairs";
   }
-  if (/\b(pair|pairs)\b/.test(text) && /\b(chain|ethereum|solana|base|bsc|polygon|arbitrum|optimism|avalanche)\b/.test(text)) {
+  if (
+    /\b(pair|pairs)\b/.test(text) &&
+    /\b(chain|ethereum|solana|base|bsc|polygon|arbitrum|optimism|avalanche)\b/.test(
+      text,
+    )
+  ) {
     return "chain-pairs";
   }
   if (/\b(trending|hot|popular|gainers)\b/.test(text)) return "trending";

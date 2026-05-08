@@ -363,7 +363,7 @@ async function applyOp(args: {
 				newState: args.cfg.nextState ?? "NONE",
 			},
 			data: {
-				actionName: "ROOM_OP",
+				actionName: "ROOM",
 				op: args.op,
 				roomId: args.roomId,
 				roomName: args.roomName,
@@ -387,7 +387,7 @@ async function applyOp(args: {
 				error: `ROOM_${args.op.toUpperCase()}_FAILED`,
 			},
 			data: {
-				actionName: "ROOM_OP",
+				actionName: "ROOM",
 				op: args.op,
 				roomId: args.roomId,
 				error: error instanceof Error ? error.message : String(error),
@@ -399,7 +399,7 @@ async function applyOp(args: {
 }
 
 export const roomOpAction: Action = {
-	name: "ROOM_OP",
+	name: "ROOM",
 	contexts: ["messaging", "contacts", "settings"],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
@@ -474,7 +474,7 @@ export const roomOpAction: Action = {
 			},
 			{
 				name: "{{agentName}}",
-				content: { text: "Got it, muting.", actions: ["ROOM_OP"] },
+				content: { text: "Got it, muting.", actions: ["ROOM"] },
 			},
 		],
 		[
@@ -484,7 +484,7 @@ export const roomOpAction: Action = {
 			},
 			{
 				name: "{{agentName}}",
-				content: { text: "Unmuted.", actions: ["ROOM_OP"] },
+				content: { text: "Unmuted.", actions: ["ROOM"] },
 			},
 		],
 		[
@@ -496,7 +496,7 @@ export const roomOpAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Sure, I will now follow this room.",
-					actions: ["ROOM_OP"],
+					actions: ["ROOM"],
 				},
 			},
 		],
@@ -509,7 +509,7 @@ export const roomOpAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Okay, I'll stop following this room.",
-					actions: ["ROOM_OP"],
+					actions: ["ROOM"],
 				},
 			},
 		],
@@ -524,7 +524,7 @@ export const roomOpAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Muted crypto signals on Telegram for 360 minutes.",
-					actions: ["ROOM_OP"],
+					actions: ["ROOM"],
 				},
 			},
 		],
@@ -541,12 +541,13 @@ export const roomOpAction: Action = {
 		const params = ((options as { parameters?: RoomOpParams } | undefined)
 			?.parameters ?? {}) as RoomOpParams;
 
-		const op = normalizeOp(params.op) ?? inferOpFromText(getMessageText(message));
+		const op =
+			normalizeOp(params.op) ?? inferOpFromText(getMessageText(message));
 		if (!op) {
 			return {
 				text: "Specify op: mute, unmute, follow, or unfollow.",
 				values: { success: false, error: "ROOM_OP_REQUIRED" },
-				data: { actionName: "ROOM_OP", error: "ROOM_OP_REQUIRED" },
+				data: { actionName: "ROOM", error: "ROOM_OP_REQUIRED" },
 				success: false,
 			};
 		}
@@ -572,7 +573,7 @@ export const roomOpAction: Action = {
 					text: `I couldn't find that ${platform} chat yet.`,
 					values: { success: false, error: "ROOM_NOT_FOUND" },
 					data: {
-						actionName: "ROOM_OP",
+						actionName: "ROOM",
 						op,
 						platform,
 						roomId: explicitRoomId ?? null,
@@ -623,18 +624,18 @@ export const roomOpAction: Action = {
 		// behavior).
 		if (!state) {
 			return {
-				text: "State is required for ROOM_OP",
+				text: "State is required for ROOM",
 				values: {
 					success: false,
 					error: `ROOM_${op.toUpperCase()}_FAILED`,
 				},
 				data: {
-					actionName: "ROOM_OP",
+					actionName: "ROOM",
 					op,
 					error: "STATE_REQUIRED",
 				},
 				success: false,
-				error: new Error("State is required for ROOM_OP"),
+				error: new Error("State is required for ROOM"),
 			};
 		}
 
@@ -653,7 +654,7 @@ export const roomOpAction: Action = {
 					error: `ROOM_${op.toUpperCase()}_PRECONDITION_FAILED`,
 				},
 				data: {
-					actionName: "ROOM_OP",
+					actionName: "ROOM",
 					op,
 					error: `ROOM_${op.toUpperCase()}_PRECONDITION_FAILED`,
 					currentState: current ?? "NONE",
@@ -670,7 +671,7 @@ export const roomOpAction: Action = {
 			return {
 				text: `Could not find room to ${op}`,
 				values: { success: false, error: "ROOM_NOT_FOUND" },
-				data: { actionName: "ROOM_OP", op, error: "ROOM_NOT_FOUND" },
+				data: { actionName: "ROOM", op, error: "ROOM_NOT_FOUND" },
 				success: false,
 			};
 		}
@@ -688,7 +689,7 @@ export const roomOpAction: Action = {
 					reason: "NOT_APPROPRIATE",
 				},
 				data: {
-					actionName: "ROOM_OP",
+					actionName: "ROOM",
 					op,
 					roomId,
 					roomName,

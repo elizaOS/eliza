@@ -71,11 +71,7 @@ export {
 	truncateText,
 } from "./formatting";
 export * from "./types";
-export {
-	FEISHU_SERVICE_NAME,
-	FeishuService,
-	MessageManager,
-};
+export { FEISHU_SERVICE_NAME, FeishuService, MessageManager };
 
 export default feishuPlugin;
 

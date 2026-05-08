@@ -488,7 +488,9 @@ export class NostrService extends Service implements INostrService {
       target.accountId ?? readNostrAccountId(content, target) ?? this.getAccountId()
     );
     if (requestedAccountId !== this.getAccountId()) {
-      throw new Error(`Nostr account '${requestedAccountId}' is not available in this service instance`);
+      throw new Error(
+        `Nostr account '${requestedAccountId}' is not available in this service instance`
+      );
     }
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
@@ -521,7 +523,9 @@ export class NostrService extends Service implements INostrService {
       readNostrAccountId(content) ?? this.getAccountId()
     );
     if (requestedAccountId !== this.getAccountId()) {
-      throw new Error(`Nostr account '${requestedAccountId}' is not available in this service instance`);
+      throw new Error(
+        `Nostr account '${requestedAccountId}' is not available in this service instance`
+      );
     }
 
     const text = typeof content.text === "string" ? content.text.trim() : "";

@@ -159,7 +159,6 @@ class RequestQueue {
  */
 export class ClientBase {
   twitterClient: Client;
-  accountId: string;
   runtime: IAgentRuntime;
   /**
    * Connector account this client represents. Used to stamp Memory.metadata

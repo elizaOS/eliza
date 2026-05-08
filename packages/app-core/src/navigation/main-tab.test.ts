@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { RegistryAppInfo } from "@elizaos/shared";
+import { describe, expect, it, vi } from "vitest";
 import { getMainTabApp } from "./main-tab";
 
 function buildApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {

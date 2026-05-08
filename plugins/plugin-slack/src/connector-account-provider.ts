@@ -14,8 +14,8 @@ import {
   type ConnectorAccount,
   type ConnectorAccountManager,
   type ConnectorAccountPatch,
-  type ConnectorAccountPurpose,
   type ConnectorAccountProvider,
+  type ConnectorAccountPurpose,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -29,6 +29,7 @@ import {
   resolveDefaultSlackAccountId,
   resolveSlackAccount,
 } from "./accounts";
+import { persistConnectorCredentialRefs } from "./connector-credential-refs";
 import { SLACK_SERVICE_NAME } from "./types";
 
 const SLACK_OAUTH_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
@@ -61,6 +62,8 @@ interface SlackOAuthV2Response {
   ok: boolean;
   error?: string;
   access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
   token_type?: string;
   scope?: string;
   bot_user_id?: string;
@@ -71,6 +74,8 @@ interface SlackOAuthV2Response {
     id: string;
     scope?: string;
     access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
     token_type?: string;
   };
   incoming_webhook?: {
@@ -279,6 +284,7 @@ export function createSlackConnectorAccountProvider(
 
     completeOAuth: async (
       request: ConnectorOAuthCallbackRequest,
+      manager: ConnectorAccountManager,
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
@@ -327,6 +333,64 @@ export function createSlackConnectorAccountProvider(
       }
       const teamName = parsed.team?.name;
       const grantedScopes = parsed.scope ? parsed.scope.split(",") : [];
+      const expiresAt =
+        typeof parsed.expires_in === "number"
+          ? Date.now() + parsed.expires_in * 1000
+          : undefined;
+      const authedUserExpiresAt =
+        typeof parsed.authed_user?.expires_in === "number"
+          ? Date.now() + parsed.authed_user.expires_in * 1000
+          : undefined;
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: SLACK_SERVICE_NAME,
+        accountIdForRef: request.flow.accountId ?? teamId,
+        storageAccountId: request.flow.accountId,
+        caller: "plugin-slack",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: parsed.access_token,
+              ...(parsed.refresh_token
+                ? { refresh_token: parsed.refresh_token }
+                : {}),
+              token_type: parsed.token_type ?? "bot",
+              scope: parsed.scope ?? grantedScopes.join(","),
+              ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+              ...(parsed.authed_user?.access_token
+                ? {
+                    authed_user: {
+                      id: parsed.authed_user.id,
+                      access_token: parsed.authed_user.access_token,
+                      ...(parsed.authed_user.refresh_token
+                        ? { refresh_token: parsed.authed_user.refresh_token }
+                        : {}),
+                      ...(parsed.authed_user.token_type
+                        ? { token_type: parsed.authed_user.token_type }
+                        : {}),
+                      ...(parsed.authed_user.scope
+                        ? { scope: parsed.authed_user.scope }
+                        : {}),
+                      ...(authedUserExpiresAt !== undefined
+                        ? { expires_at: authedUserExpiresAt }
+                        : {}),
+                    },
+                  }
+                : {}),
+            }),
+            ...(expiresAt !== undefined ? { expiresAt } : {}),
+            metadata: {
+              provider: SLACK_SERVICE_NAME,
+              hasRefreshToken: Boolean(
+                parsed.refresh_token ?? parsed.authed_user?.refresh_token,
+              ),
+              hasAuthedUserToken: Boolean(parsed.authed_user?.access_token),
+            },
+          },
+        ],
+      });
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: SLACK_SERVICE_NAME,
@@ -346,6 +410,16 @@ export function createSlackConnectorAccountProvider(
           authedUserId: parsed.authed_user?.id ?? null,
           tokenType: parsed.token_type ?? "bot",
           grantedScopes,
+          hasRefreshToken: Boolean(
+            parsed.refresh_token ?? parsed.authed_user?.refresh_token,
+          ),
+          expiresAt,
+          credentialRefs: credentialPersist.refs,
+          credentialRefStorage: {
+            vaultAvailable: credentialPersist.vaultAvailable,
+            storageAvailable: credentialPersist.storageAvailable,
+          },
+          oauthCredentialVersion: String(Date.now()),
         },
       };
 

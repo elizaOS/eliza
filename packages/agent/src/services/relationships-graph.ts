@@ -48,9 +48,7 @@ type RelationshipsFeatureRuntime = IAgentRuntime & {
 type RelationshipsServiceWithGraph = RelationshipsServiceLike &
   RelationshipsGraphService & {
     setGraphResolvers?: (resolvers: {
-      resolveOwnerEntityId: (
-        runtime: IAgentRuntime,
-      ) => Promise<string | null>;
+      resolveOwnerEntityId: (runtime: IAgentRuntime) => Promise<string | null>;
       fetchConfiguredOwnerName: () => Promise<string | null>;
     }) => void;
   };

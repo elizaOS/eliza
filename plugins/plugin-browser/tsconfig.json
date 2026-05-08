@@ -16,7 +16,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "bun-types"],
+    "types": ["node"],
     "typeRoots": [
       "../app-core/node_modules/@types",
       "../../node_modules/@types",

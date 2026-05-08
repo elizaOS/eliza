@@ -17,10 +17,10 @@ import {
 	canModifyRole,
 	getLiveEntityMetadataFromMessage,
 	normalizeRole,
+	type RoleName,
 	resolveCanonicalOwnerId,
 	resolveEntityRole,
 	resolveWorldForMessage,
-	type RoleName,
 	setEntityRole,
 } from "../../../roles.ts";
 import type {
@@ -242,10 +242,7 @@ function normalizeComparisonValue(value: string): string {
 	return value.trim().replace(/^@+/, "").replace(/\s+/g, " ").toLowerCase();
 }
 
-function scoreNameMatch(
-	target: string,
-	candidate: CandidateRecord,
-): number {
+function scoreNameMatch(target: string, candidate: CandidateRecord): number {
 	const t = normalizeComparisonValue(target);
 	let best = 0;
 	for (const raw of [...candidate.names, ...candidate.aliases]) {
@@ -503,8 +500,7 @@ async function applyAssignments(args: {
 			newRole !== "OWNER"
 		) {
 			const otherOwners = Object.entries(metadata.roles ?? {}).filter(
-				([id, r]) =>
-					id !== message.entityId && normalizeRole(r) === "OWNER",
+				([id, r]) => id !== message.entityId && normalizeRole(r) === "OWNER",
 			);
 			if (otherOwners.length === 0) {
 				failures.push({
@@ -544,9 +540,7 @@ async function applyAssignments(args: {
 
 	await callback?.({
 		text:
-			failures.length > 0
-				? `${summary}; ${failures.length} failed.`
-				: summary,
+			failures.length > 0 ? `${summary}; ${failures.length} failed.` : summary,
 		actions: ["ROLE"],
 	});
 
@@ -588,9 +582,7 @@ async function handleList(args: {
 	const text =
 		entries.length === 0
 			? "No role assignments."
-			: entries
-					.map(([entityId, role]) => `${entityId}: ${role}`)
-					.join("\n");
+			: entries.map(([entityId, role]) => `${entityId}: ${role}`).join("\n");
 	await callback?.({ text, actions: ["ROLE"] });
 	return {
 		success: true,
@@ -706,7 +698,7 @@ export const roleAction: Action = {
 			return {
 				success: false,
 				text: "Invalid op",
-				error: "ROLE_INVALID_OP",
+				error: "ROLE_INVALID",
 				data: { actionName: "ROLE", op: params.op ?? null },
 			};
 		}
@@ -730,8 +722,7 @@ export const roleAction: Action = {
 			return {
 				success: false,
 				text: reason,
-				error:
-					op === "revoke" ? "ROLE_REVOKE_FAILED" : "ROLE_ASSIGN_FAILED",
+				error: op === "revoke" ? "ROLE_REVOKE_FAILED" : "ROLE_ASSIGN_FAILED",
 				data: { actionName: "ROLE", op, errors },
 			};
 		}

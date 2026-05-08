@@ -10,17 +10,16 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getSendPolicy } from "../send-policy.ts";
-import { getDefaultTriageService } from "../triage-service.ts";
 import type { TriageService } from "../triage-service.ts";
-import type { DraftRequest } from "../types.ts";
+import { getDefaultTriageService } from "../triage-service.ts";
+import type { DraftRequest, MessageRef } from "../types.ts";
 import {
 	bodyParameter,
 	messageIdParameter,
-	type RespondToMessageParams,
 	parseRespondToMessageParams,
+	type RespondToMessageParams,
 	validateMessageAction,
 } from "./_shared.ts";
-import type { MessageRef } from "../types.ts";
 
 async function resolveTargetMessageId(
 	runtime: IAgentRuntime,

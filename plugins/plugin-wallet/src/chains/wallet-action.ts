@@ -40,7 +40,7 @@ const LEGACY_TRANSFER_ACTIONS = new Set([
 ]);
 
 const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
-const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV", "WALLET_GOV_OP"]);
+const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV", "WALLET_GOV"]);
 const GOV_OPS = new Set(["propose", "vote", "queue", "execute"]);
 
 function selectedContextMatches(
@@ -272,7 +272,7 @@ export const walletRouterAction: Action = {
     "PREPARE_TRANSFER",
     "WALLET_ACTION",
     "WALLET_GOV",
-    "WALLET_GOV_OP",
+    "WALLET_GOV",
   ],
   parameters: [
     {
@@ -381,25 +381,29 @@ export const walletRouterAction: Action = {
     },
     {
       name: "targets",
-      description: "Target contract addresses for governance propose, queue, or execute.",
+      description:
+        "Target contract addresses for governance propose, queue, or execute.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
     {
       name: "values",
-      description: "Native token values as strings for governance propose, queue, or execute.",
+      description:
+        "Native token values as strings for governance propose, queue, or execute.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
     {
       name: "calldatas",
-      description: "Hex calldata values for governance propose, queue, or execute.",
+      description:
+        "Hex calldata values for governance propose, queue, or execute.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
     {
       name: "description",
-      description: "Proposal description for governance propose, queue, or execute.",
+      description:
+        "Proposal description for governance propose, queue, or execute.",
       required: false,
       schema: { type: "string" },
     },

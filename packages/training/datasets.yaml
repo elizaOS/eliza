@@ -1447,18 +1447,18 @@ synthesized:
   #   plugin-discord     (17 intents) CHAT_WITH_ATTACHMENTS, CREATE_POLL,
   #                           DELETE_MESSAGE, DOWNLOAD_MEDIA, EDIT_MESSAGE,
   #                           GET_USER, JOIN_CHANNEL, LEAVE_CHANNEL,
-  #                           LIST_CHANNELS, PIN_MESSAGE, SEND_MESSAGE,
+  #                           LIST_CHANNELS, PIN_MESSAGE, MESSAGE,
   #                           SERVER_INFO, SETUP_CREDENTIALS,
   #                           SUMMARIZE_CONVERSATION, TRANSCRIBE_MEDIA
-  #   plugin-twitter     (7 intents)  READ_FEED, SEND_POST, READ_MESSAGES,
-  #                           SEND_MESSAGE, SEARCH_POSTS
+  #   plugin-twitter     (7 intents)  READ_FEED, POST, READ_MESSAGES,
+  #                           MESSAGE, SEARCH_POSTS
   #   plugin-signal      (5 intents)  GET_USER, LIST_CHANNELS,
   #                           READ_MESSAGES,
-  #                           SEND_MESSAGE, REACT_TO_MESSAGE
+  #                           MESSAGE, REACT_TO_MESSAGE
   #   plugin-bluebubbles (2 intents)  REACT_TO_MESSAGE,
-  #                           SEND_MESSAGE
-  #   plugin-imessage    (1 intent)   SEND_MESSAGE
-  #   plugin-whatsapp    (2 intents)  SEND_MESSAGE, REACT_TO_MESSAGE
+  #                           MESSAGE
+  #   plugin-imessage    (1 intent)   MESSAGE
+  #   plugin-whatsapp    (2 intents)  MESSAGE, REACT_TO_MESSAGE
   # 100 records per connector intent (3,400 total). 70% English /
   # 30% multilingual (zh/es/fr/ja/de/pt — exactly 5 per language per
   # intent) across 10

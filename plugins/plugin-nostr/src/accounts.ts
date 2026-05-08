@@ -103,7 +103,8 @@ export function listNostrAccountIds(runtime: IAgentRuntime): string[] {
 
 export function resolveDefaultNostrAccountId(runtime: IAgentRuntime): string {
   const requested =
-    stringSetting(runtime, "NOSTR_DEFAULT_ACCOUNT_ID") ?? stringSetting(runtime, "NOSTR_ACCOUNT_ID");
+    stringSetting(runtime, "NOSTR_DEFAULT_ACCOUNT_ID") ??
+    stringSetting(runtime, "NOSTR_ACCOUNT_ID");
   if (requested) return normalizeNostrAccountId(requested);
 
   const ids = listNostrAccountIds(runtime);
@@ -118,7 +119,10 @@ export function readNostrAccountId(...sources: unknown[]): string | undefined {
       record.parameters && typeof record.parameters === "object"
         ? (record.parameters as Record<string, unknown>)
         : {};
-    const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : {};
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
     const metadata =
       record.metadata && typeof record.metadata === "object"
         ? (record.metadata as Record<string, unknown>)
@@ -126,7 +130,11 @@ export function readNostrAccountId(...sources: unknown[]): string | undefined {
     const nostr =
       data.nostr && typeof data.nostr === "object" ? (data.nostr as Record<string, unknown>) : {};
     const value =
-      record.accountId ?? parameters.accountId ?? data.accountId ?? nostr.accountId ?? metadata.accountId;
+      record.accountId ??
+      parameters.accountId ??
+      data.accountId ??
+      nostr.accountId ??
+      metadata.accountId;
     if (typeof value === "string" && value.trim()) return normalizeNostrAccountId(value);
   }
   return undefined;
@@ -142,9 +150,13 @@ export function resolveNostrAccountSettings(
   const base = characterConfig(runtime);
   const account = accountConfig(runtime, accountId);
   const allowEnv = accountId === DEFAULT_NOSTR_ACCOUNT_ID;
-  const relays = stringList(account.relays ?? base.relays ?? (allowEnv ? stringSetting(runtime, "NOSTR_RELAYS") : undefined));
+  const relays = stringList(
+    account.relays ?? base.relays ?? (allowEnv ? stringSetting(runtime, "NOSTR_RELAYS") : undefined)
+  );
   const allowFrom = stringList(
-    account.allowFrom ?? base.allowFrom ?? (allowEnv ? stringSetting(runtime, "NOSTR_ALLOW_FROM") : undefined)
+    account.allowFrom ??
+      base.allowFrom ??
+      (allowEnv ? stringSetting(runtime, "NOSTR_ALLOW_FROM") : undefined)
   );
 
   return {
@@ -163,7 +175,9 @@ export function resolveNostrAccountSettings(
     allowFrom,
     profile: account.profile ?? base.profile,
     enabled: boolValue(
-      account.enabled ?? base.enabled ?? (allowEnv ? stringSetting(runtime, "NOSTR_ENABLED") : undefined)
+      account.enabled ??
+        base.enabled ??
+        (allowEnv ? stringSetting(runtime, "NOSTR_ENABLED") : undefined)
     ),
   };
 }

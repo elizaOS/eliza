@@ -459,7 +459,16 @@ export const appBlockAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: ["APP_BLOCKER", "SHIELD_APPS", "FAMILY_CONTROLS", "PHONE_FOCUS"],
+  similes: [
+    "APP_BLOCKER",
+    "SHIELD_APPS",
+    "FAMILY_CONTROLS",
+    "PHONE_FOCUS",
+    "SET_APP_BLOCK",
+    "PHONE_SET_APP_BLOCK",
+    "PHONE_BLOCK_APPS",
+    "BLOCK_APPS",
+  ],
   description:
     "Owner-only. Manage native phone app blocking via Family Controls (iPhone) or Usage Access (Android). " +
     "Subactions: block (start a block on selected apps for a duration; LLM-extracts apps from intent if not provided), " +

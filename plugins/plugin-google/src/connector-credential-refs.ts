@@ -152,9 +152,7 @@ function credentialRefFromRecord(
   record: JsonRecord | undefined
 ): ConnectorCredentialRefRecordLike | null {
   if (!record) return null;
-  const credentialType = nonEmptyString(
-    record.credentialType ?? record.type ?? record.name
-  );
+  const credentialType = nonEmptyString(record.credentialType ?? record.type ?? record.name);
   const vaultRef = nonEmptyString(record.vaultRef ?? record.ref);
   if (!credentialType || !vaultRef) return null;
   return {
@@ -163,8 +161,8 @@ function credentialRefFromRecord(
     metadata: asRecord(record.metadata) ?? null,
     expiresAt: record.expiresAt as ConnectorCredentialRefRecordLike["expiresAt"],
     updatedAt: record.updatedAt as ConnectorCredentialRefRecordLike["updatedAt"],
-    version: (record.version ?? record.credentialVersion) as
-      | ConnectorCredentialRefRecordLike["version"],
+    version: (record.version ??
+      record.credentialVersion) as ConnectorCredentialRefRecordLike["version"],
   };
 }
 
@@ -178,19 +176,17 @@ function resolveVaultWriters(
     "CONNECTOR_CREDENTIAL_STORE",
     "connectorCredentialStore",
     "credential_store",
-  ]) as
-    | {
-        putSecret?: (params: {
-          vaultRef?: string;
-          agentId: string;
-          provider: string;
-          accountId: string;
-          credentialType: string;
-          value: string;
-          caller?: string;
-        }) => Promise<string> | string;
-      }
-    | null;
+  ]) as {
+    putSecret?: (params: {
+      vaultRef?: string;
+      agentId: string;
+      provider: string;
+      accountId: string;
+      credentialType: string;
+      value: string;
+      caller?: string;
+    }) => Promise<string> | string;
+  } | null;
   if (typeof credentialStore?.putSecret === "function") {
     writers.push({
       name: "connector_credential_store",
@@ -207,15 +203,13 @@ function resolveVaultWriters(
     });
   }
 
-  const vault = getFirstService(runtime, ["vault", "VAULT"]) as
-    | {
-        set?: (
-          key: string,
-          value: string,
-          options?: { sensitive?: boolean; caller?: string }
-        ) => Promise<void> | void;
-      }
-    | null;
+  const vault = getFirstService(runtime, ["vault", "VAULT"]) as {
+    set?: (
+      key: string,
+      value: string,
+      options?: { sensitive?: boolean; caller?: string }
+    ) => Promise<void> | void;
+  } | null;
   if (typeof vault?.set === "function") {
     writers.push({
       name: "vault",
@@ -229,21 +223,19 @@ function resolveVaultWriters(
     });
   }
 
-  const secrets = getService(runtime, "SECRETS") as
-    | {
-        setGlobal?: (
-          key: string,
-          value: string,
-          config?: { sensitive?: boolean }
-        ) => Promise<boolean> | boolean;
-        set?: (
-          key: string,
-          value: string,
-          context: JsonRecord,
-          config?: { sensitive?: boolean }
-        ) => Promise<boolean> | boolean;
-      }
-    | null;
+  const secrets = getService(runtime, "SECRETS") as {
+    setGlobal?: (
+      key: string,
+      value: string,
+      config?: { sensitive?: boolean }
+    ) => Promise<boolean> | boolean;
+    set?: (
+      key: string,
+      value: string,
+      context: JsonRecord,
+      config?: { sensitive?: boolean }
+    ) => Promise<boolean> | boolean;
+  } | null;
   if (typeof secrets?.setGlobal === "function" || typeof secrets?.set === "function") {
     writers.push({
       name: "SECRETS",

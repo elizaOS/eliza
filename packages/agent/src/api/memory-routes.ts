@@ -10,8 +10,8 @@ import {
 } from "@elizaos/core";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
-  getDocumentsService,
   type DocumentsServiceResult,
+  getDocumentsService,
 } from "./documents-service-loader.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 

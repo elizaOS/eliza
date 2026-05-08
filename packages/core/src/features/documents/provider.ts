@@ -1,7 +1,7 @@
 import {
-	MemoryType,
 	type IAgentRuntime,
 	type Memory,
+	MemoryType,
 	type Provider,
 } from "../../types";
 import { addHeader } from "../../utils";

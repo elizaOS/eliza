@@ -31,12 +31,12 @@ export const linearPlugin: Plugin = {
           src: "plugin:linear",
           err: err instanceof Error ? err.message : String(err),
         },
-        "Failed to register Linear provider with ConnectorAccountManager",
+        "Failed to register Linear provider with ConnectorAccountManager"
       );
     }
   },
 };
 
+export * from "./accounts";
 export { createLinearConnectorAccountProvider } from "./connector-account-provider";
 export { LinearService } from "./services/linear";
-export * from "./accounts";

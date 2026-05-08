@@ -2,7 +2,7 @@ import type { HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { resolveLinearAccountId } from "../accounts";
 
 export function getLinearActionOptions(
-  options?: HandlerOptions | Record<string, unknown>,
+  options?: HandlerOptions | Record<string, unknown>
 ): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;
   const parameters =
@@ -14,7 +14,7 @@ export function getLinearActionOptions(
 
 export function getLinearAccountId(
   runtime: IAgentRuntime,
-  options?: HandlerOptions | Record<string, unknown>,
+  options?: HandlerOptions | Record<string, unknown>
 ): string {
   return resolveLinearAccountId(runtime, getLinearActionOptions(options));
 }

@@ -167,17 +167,39 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["PROPOSE_MEETING_TIMES", "CALENDAR"],
   ["CHECK_AVAILABILITY", "CALENDAR"],
   ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
+  ["CALENDAR_READ", "CALENDAR"],
+  ["CALENDAR_CREATE_EVENT", "CALENDAR"],
+  ["CALENDAR_FEED", "CALENDAR"],
   ["ADD_TODO", "LIFE"],
   ["CREATE_TODO", "LIFE"],
   ["LIST_TODOS", "LIFE"],
+  ["GET_TODOS", "LIFE"],
+  ["LIFE_GET_TODOS", "LIFE"],
+  ["LIFE_TODO", "LIFE"],
   ["ADD_HABIT", "LIFE"],
   ["CREATE_HABIT", "LIFE"],
   ["LIST_HABITS", "LIFE"],
   ["ADD_GOAL", "LIFE"],
   ["CREATE_GOAL", "LIFE"],
-  ["SEND_MESSAGE", "MESSAGE"],
+  ["CREATE_REMINDER", "LIFE"],
+  ["SET_REMINDER_RULE", "LIFE"],
+  ["MESSAGE", "MESSAGE"],
   ["DISPATCH_DRAFT", "MESSAGE"],
   ["CONFIRM_AND_SEND", "MESSAGE"],
+  ["SOCIAL_POSTING", "POST"],
+  ["GET_TIMELINE", "POST"],
+  ["READ_TIMELINE", "POST"],
+  ["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
+  ["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
+  ["SET_APP_BLOCK", "APP_BLOCK"],
+  ["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
+  ["PHONE_BLOCK_APPS", "APP_BLOCK"],
+  ["BLOCK_APPS", "APP_BLOCK"],
+  ["BROADCAST_INTENT", "DEVICE_INTENT"],
+  ["BROADCAST_REMINDER", "DEVICE_INTENT"],
+  ["DEVICE_BROADCAST", "DEVICE_INTENT"],
+  ["MOBILE_REMINDER", "DEVICE_INTENT"],
+  ["INTENT_SYNC", "DEVICE_INTENT"],
   ["FILE_ACTION", "COMPUTER_USE"],
   ["TERMINAL_ACTION", "COMPUTER_USE"],
   ["BROWSER_ACTION", "COMPUTER_USE"],
@@ -240,7 +262,14 @@ export function normalizeActionName(
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
-  const normalized = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  const normalized = trimmed
+    .toUpperCase()
+    .replace(/^FUNCTIONS\./, "")
+    .replace(/[\s-]+/g, "_");
+  const compoundMatch = normalized.match(/^([A-Z0-9_]+)\.[A-Z0-9_]+$/);
+  if (compoundMatch?.[1]) {
+    return ACTION_CANONICAL_NAMES.get(compoundMatch[1]) ?? compoundMatch[1];
+  }
   return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 

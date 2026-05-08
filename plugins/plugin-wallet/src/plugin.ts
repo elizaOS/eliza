@@ -2,8 +2,8 @@ import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   type Plugin,
-  type ServiceClass,
   parseBooleanFromText,
+  type ServiceClass,
 } from "@elizaos/core";
 import { walletSearchAddressAction } from "./analytics/birdeye/actions/wallet-search-address.js";
 import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";

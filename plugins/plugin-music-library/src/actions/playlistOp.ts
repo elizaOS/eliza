@@ -527,7 +527,7 @@ async function handleAdd(
 
 export const playlistOpSimiles = [
   "PLAYLIST",
-  "PLAYLIST_OP",
+  "PLAYLIST",
   "MUSIC_PLAYLIST",
   "SAVE_PLAYLIST",
   "LOAD_PLAYLIST",

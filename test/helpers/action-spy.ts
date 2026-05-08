@@ -9,7 +9,7 @@ import { EventType } from "@elizaos/core";
  * Captured action invocation from the runtime event bus.
  */
 export interface SpiedAction {
-  /** Action name (e.g. "SEND_MESSAGE") */
+  /** Action name (e.g. "MESSAGE") */
   name: string;
   /** Whether this event represents a start or completion */
   status: "started" | "completed";
@@ -54,7 +54,7 @@ function extractActionName(payload: ActionEventPayload): string {
  *
  * // ... trigger some agent interaction ...
  *
- * const action = await spy.waitForAction("SEND_MESSAGE", 5000);
+ * const action = await spy.waitForAction("MESSAGE", 5000);
  * expect(action.success).toBe(true);
  *
  * spy.detach();

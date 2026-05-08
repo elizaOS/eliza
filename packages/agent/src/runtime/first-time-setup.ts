@@ -368,7 +368,9 @@ export async function runFirstTimeSetup(
       "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
-    const { runCloudOnboarding } = await import("@elizaos/plugin-elizacloud/onboarding");
+    const { runCloudOnboarding } = await import(
+      "@elizaos/plugin-elizacloud/onboarding"
+    );
     cloudOnboardingResult = await runCloudOnboarding(
       clack,
       name,

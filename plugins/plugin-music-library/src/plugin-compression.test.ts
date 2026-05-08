@@ -26,7 +26,7 @@ describe("music library plugin compression", () => {
     expect(action?.similes).toEqual(
       expect.arrayContaining([
         "PLAYLIST",
-        "PLAYLIST_OP",
+        "PLAYLIST",
         "PLAY_MUSIC_QUERY",
         "SEARCH_YOUTUBE",
         "DOWNLOAD_MUSIC",

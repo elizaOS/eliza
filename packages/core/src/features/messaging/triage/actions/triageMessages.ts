@@ -24,11 +24,7 @@ export const triageMessagesAction: Action = {
 	roleGate: { minRole: "ADMIN" },
 	description:
 		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp), score each one with deterministic contact+urgency heuristics, and return a priority-ranked list.",
-	similes: [
-		"PRIORITIZE_MESSAGES",
-		"RANK_INBOX",
-		"SCAN_MESSAGES",
-	],
+	similes: ["PRIORITIZE_MESSAGES", "RANK_INBOX", "SCAN_MESSAGES"],
 	parameters: [messageSourceParameter, limitParameter, sinceMsParameter],
 	examples: [
 		[

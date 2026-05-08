@@ -314,12 +314,21 @@ export interface ConnectorAccountUpdateInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface ConnectorAccountOAuthStartInput {
+  redirectUri?: string;
+  accountId?: string;
+  label?: string;
+  scopes?: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface ConnectorAccountActionResult {
   ok: boolean;
   account?: ConnectorAccountRecord;
   accounts?: ConnectorAccountRecord[];
   defaultAccountId?: string | null;
   authUrl?: string;
+  flow?: Record<string, unknown>;
   status?: ConnectorAccountStatus | string;
   error?: string;
 }
@@ -509,6 +518,11 @@ declare module "./client-base" {
       provider: string,
       connectorId: string | undefined,
       body?: ConnectorAccountCreateInput,
+    ): Promise<ConnectorAccountActionResult>;
+    startConnectorAccountOAuth(
+      provider: string,
+      connectorId: string | undefined,
+      body?: ConnectorAccountOAuthStartInput,
     ): Promise<ConnectorAccountActionResult>;
     patchConnectorAccount(
       provider: string,
@@ -1467,6 +1481,13 @@ function connectorAccountsPath(
   return action ? `${withAccount}/${action}` : withAccount;
 }
 
+function connectorAccountOAuthPath(
+  provider: string,
+  action: "start" | "status",
+): string {
+  return `/api/connectors/${encodeURIComponent(provider)}/oauth/${action}`;
+}
+
 function normalizeConnectorAccountRole(
   value: unknown,
 ): ConnectorAccountRole | undefined {
@@ -1508,11 +1529,20 @@ function isConnectorRoleValue(value: unknown): value is ConnectorAccountRole {
   return normalizeConnectorAccountRole(value) !== undefined;
 }
 
-function normalizeConnectorPurposeList(value: unknown): ConnectorAccountPurpose[] {
-  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+function normalizeConnectorPurposeList(
+  value: unknown,
+): ConnectorAccountPurpose[] {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? [value]
+      : [];
   return values
     .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter((item): item is ConnectorAccountPurpose => Boolean(item) && !isConnectorRoleValue(item));
+    .filter(
+      (item): item is ConnectorAccountPurpose =>
+        Boolean(item) && !isConnectorRoleValue(item),
+    );
 }
 
 function normalizeConnectorAccountRecord(
@@ -1585,7 +1615,12 @@ function normalizeConnectorAccountsListResponse(
   const defaultAccountId =
     typeof record.defaultAccountId === "string"
       ? record.defaultAccountId
-      : (accounts.find((account) => account.isDefault)?.id ?? null);
+      : (accounts.find(
+          (account) =>
+            account.isDefault === true &&
+            account.enabled !== false &&
+            account.status === "connected",
+        )?.id ?? null);
   return {
     provider:
       typeof record.provider === "string" && record.provider
@@ -1608,6 +1643,12 @@ function normalizeConnectorAccountActionResult(
       : {};
   const account =
     record.account ?? (typeof record.id === "string" ? record : null);
+  const flow =
+    record.flow &&
+    typeof record.flow === "object" &&
+    !Array.isArray(record.flow)
+      ? (record.flow as Record<string, unknown>)
+      : null;
   return {
     ...(record as Partial<ConnectorAccountActionResult>),
     ok:
@@ -1626,10 +1667,19 @@ function normalizeConnectorAccountActionResult(
       typeof record.defaultAccountId === "string"
         ? record.defaultAccountId
         : null,
+    flow: flow ?? undefined,
+    authUrl:
+      typeof record.authUrl === "string"
+        ? record.authUrl
+        : typeof flow?.authUrl === "string"
+          ? flow.authUrl
+          : undefined,
     status:
       typeof record.status === "string"
         ? normalizeConnectorStatus(record.status)
-        : undefined,
+        : typeof flow?.status === "string"
+          ? normalizeConnectorStatus(flow.status)
+          : undefined,
     error: typeof record.error === "string" ? record.error : undefined,
   };
 }
@@ -1674,6 +1724,22 @@ ElizaClient.prototype.addConnectorAccount = async function (
 ) {
   const response = await this.fetch<unknown>(
     connectorAccountsPath(provider, connectorId),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  return normalizeConnectorAccountActionResult(provider, connectorId, response);
+};
+
+ElizaClient.prototype.startConnectorAccountOAuth = async function (
+  this: ElizaClient,
+  provider,
+  connectorId = provider,
+  body = {},
+) {
+  const response = await this.fetch<unknown>(
+    connectorAccountOAuthPath(provider, "start"),
     {
       method: "POST",
       body: JSON.stringify(body),

@@ -27,8 +27,18 @@ function sortConnectorAccounts(
   defaultAccountId: string | null,
 ): ConnectorAccountRecord[] {
   return [...accounts].sort((a, b) => {
-    const aDefault = a.id === defaultAccountId || a.isDefault === true;
-    const bDefault = b.id === defaultAccountId || b.isDefault === true;
+    const aDefault =
+      a.id === defaultAccountId ||
+      (defaultAccountId === null &&
+        a.isDefault === true &&
+        a.enabled !== false &&
+        a.status === "connected");
+    const bDefault =
+      b.id === defaultAccountId ||
+      (defaultAccountId === null &&
+        b.isDefault === true &&
+        b.enabled !== false &&
+        b.status === "connected");
     if (aDefault !== bDefault) return aDefault ? -1 : 1;
     return a.label.localeCompare(b.label);
   });
@@ -132,7 +142,10 @@ export function ConnectorAccountList({
           {sortedAccounts.map((account) => {
             const isDefault =
               account.id === connectorAccounts.defaultAccountId ||
-              account.isDefault === true;
+              (connectorAccounts.defaultAccountId === null &&
+                account.isDefault === true &&
+                account.enabled !== false &&
+                account.status === "connected");
             return (
               <ConnectorAccountCard
                 key={account.id}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Action, ActionParameterSchema } from "../../types";
 import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import type { Action, ActionParameterSchema } from "../../types";
 import { validateToolArgs } from "../validate-tool-args.ts";
 
 function makeAction(overrides: Partial<Action>): Action {

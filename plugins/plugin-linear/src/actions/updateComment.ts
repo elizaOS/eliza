@@ -35,11 +35,7 @@ export const updateCommentAction: Action = {
     },
     linearAccountIdParameter,
   ],
-  similes: [
-    "edit-linear-comment",
-    "modify-linear-comment",
-    "change-linear-comment",
-  ],
+  similes: ["edit-linear-comment", "modify-linear-comment", "change-linear-comment"],
 
   examples: [
     [
@@ -57,11 +53,7 @@ export const updateCommentAction: Action = {
     ],
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> =>
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     validateLinearActionIntent(runtime, message, state, {
       keywords: ["update", "edit", "linear", "comment"],
       regexAlternation: "update|edit|linear|comment",
@@ -72,7 +64,7 @@ export const updateCommentAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
       const linearService = runtime.getService<LinearService>("linear");
@@ -81,15 +73,12 @@ export const updateCommentAction: Action = {
       }
       const accountId = getLinearAccountId(runtime, _options);
 
-      const params = _options?.parameters as
-        | UpdateCommentParameters
-        | undefined;
+      const params = _options?.parameters as UpdateCommentParameters | undefined;
       const commentId = params?.commentId?.trim() ?? "";
       const body = params?.body?.trim() ?? "";
 
       if (!commentId || !body) {
-        const errorMessage =
-          "Please provide both commentId and body to update a comment.";
+        const errorMessage = "Please provide both commentId and body to update a comment.";
         await callback?.({ text: errorMessage, source: message.content.source });
         return { text: errorMessage, success: false };
       }

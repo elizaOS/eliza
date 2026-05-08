@@ -266,7 +266,7 @@ Workflow details now render as an interactive node graph instead of a plain list
 
 ## Updates
 
-- **Action surface consolidated** — Twenty-six legacy actions have been collapsed into seven owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_SEND_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
+- **Action surface consolidated** — Twenty-six legacy actions have been collapsed into owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
 - **Action selection accuracy** — The action planner now achieves 100% selection accuracy across a 69-case benchmark suite covering all 27 action categories. Improved action descriptions and rate-limit-aware retry logic contribute to more reliable routing, especially for health, calendar, and cross-channel actions.
 - **iOS companion consolidated** — The separate iOS companion app has been merged into the main Eliza iOS bundle. Companion mode — pairing, chat mirroring, and remote sessions — is now accessible within the main app, eliminating the need to install a second app.
 - **Life-ops onboarding polish** — The [life-ops](/rest/lifeops) page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.

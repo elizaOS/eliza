@@ -123,10 +123,7 @@ export async function handleInteractionCreate(
 		worldName: interaction.guild?.name || undefined,
 		userId: interaction.user.id as unknown as UUID,
 		metadata: {
-			...buildDiscordWorldMetadata(
-				service.runtime,
-				interaction.guild?.ownerId,
-			),
+			...buildDiscordWorldMetadata(service.runtime, interaction.guild?.ownerId),
 			accountId,
 		},
 	});
@@ -642,7 +639,9 @@ export async function onReady(
 	readyClient: any,
 ): Promise<void> {
 	const accountId = service.accountId ?? "default";
-	service.runtime.logger.success(`Discord client ready for account ${accountId}`);
+	service.runtime.logger.success(
+		`Discord client ready for account ${accountId}`,
+	);
 	const discordApiToken =
 		service.accountToken ?? service.runtime.getSetting("DISCORD_API_TOKEN");
 	if (

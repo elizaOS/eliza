@@ -76,7 +76,7 @@ Similaire à l'éjection de plugins mais pour le framework noyau elizaOS lui-mê
 
 </div>
 
-**SEND_MESSAGE** -- Envoie un message à un utilisateur ou une salle sur une plateforme/service spécifique. Nécessite `targetType` (`user` ou `room`), `source` (nom du service comme `telegram`), `target` (ID d'entité/salle), et `text`. Recherche le service via `runtime.getService()` et appelle la méthode d'envoi appropriée.
+**MESSAGE** -- Envoie un message à un utilisateur ou une salle sur une plateforme/service spécifique. Nécessite `targetType` (`user` ou `room`), `source` (nom du service comme `telegram`), `target` (ID d'entité/salle), et `text`. Recherche le service via `runtime.getService()` et appelle la méthode d'envoi appropriée.
 
 <div id="media-generation">
 

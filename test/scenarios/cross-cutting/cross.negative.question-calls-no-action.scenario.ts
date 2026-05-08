@@ -12,7 +12,7 @@ export default scenario({
   domain: "cross-cutting",
   tags: ["cross-cutting", "negative", "critical"],
   description:
-    "'What is the capital of France?' must be answered in the response text (Paris) without the agent firing SEND_MESSAGE, CREATE_TASK, SCHEDULE_FOLLOW_UP, or ADD_CONTACT.",
+    "'What is the capital of France?' must be answered in the response text (Paris) without the agent firing MESSAGE, CREATE_TASK, SCHEDULE_FOLLOW_UP, or ADD_CONTACT.",
 
   isolation: "per-scenario",
 
@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "What is the capital of France?",
       forbiddenActions: [
-        "SEND_MESSAGE",
+        "MESSAGE",
         "CREATE_TASK",
         "SCHEDULE_FOLLOW_UP",
         "ADD_CONTACT",

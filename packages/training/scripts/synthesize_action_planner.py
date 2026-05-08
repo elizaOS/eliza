@@ -18,7 +18,7 @@ Output: data/synthesized/action_planner_coverage.jsonl
 Usage:
     uv run python scripts/synthesize_action_planner.py
     uv run python scripts/synthesize_action_planner.py --n-per-action 50
-    uv run python scripts/synthesize_action_planner.py --only TRANSFER_TOKEN,SEND_MESSAGE
+    uv run python scripts/synthesize_action_planner.py --only TRANSFER_TOKEN,MESSAGE
 """
 
 from __future__ import annotations
@@ -82,9 +82,9 @@ UNIVERSAL_ACTIONS = ["REPLY", "IGNORE", "STOP", "NONE"]
 # planner emits TOON, with the right action name, and with params iff
 # they are clearly mentioned in the user message*.
 PARAM_TEMPLATES: dict[str, list[dict[str, Any]]] = {
-    "SEND_MESSAGE": [
-        {"to": "{user}", "body": "ok, will do"},
-        {"to": "{user}", "body": "sounds good"},
+    "MESSAGE": [
+        {"operation": "send", "to": "{user}", "body": "ok, will do"},
+        {"operation": "send", "to": "{user}", "body": "sounds good"},
     ],
     "TRANSFER_TOKEN": [
         {"to": "{wallet}", "amount": "{amount}", "token": "{token}"},
@@ -108,7 +108,7 @@ PARAM_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "PLAY_TRACK": [{"title": "{track}"}],
     "STOP_MUSIC": [{}],
     "SET_VOLUME": [{"level": "{volume}"}],
-    "SEND_POST": [{"text": "{tweet_text}"}],
+    "POST": [{"operation": "send", "text": "{tweet_text}"}],
     "REPLY_TO_TWEET": [{"to": "{tweet_id}", "text": "{tweet_text}"}],
 }
 

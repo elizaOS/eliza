@@ -1,3 +1,4 @@
+/// <reference path="../ambient-jsdom.d.ts" />
 import type { JSDOM } from "jsdom";
 
 export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";

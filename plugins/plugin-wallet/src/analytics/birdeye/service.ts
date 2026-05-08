@@ -7,8 +7,8 @@ import {
 } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
-  type ServiceTypeName,
   Service,
+  type ServiceTypeName,
 } from "@elizaos/core";
 import Birdeye from "./birdeye-task";
 import { BIRDEYE_ENDPOINTS, BIRDEYE_SERVICE_NAME } from "./constants";

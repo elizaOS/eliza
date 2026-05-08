@@ -5,14 +5,13 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "types": ["bun-types"],
-    "baseUrl": ".",
     "paths": {
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"],
-      "@babylon/engine": ["../engine/src/index.ts"],
-      "@babylon/engine/*": ["../engine/src/*"],
+      "@babylon/shared": ["./../shared/src/index.ts"],
+      "@babylon/shared/*": ["./../shared/src/*"],
+      "@babylon/db": ["./../db/src/index.ts"],
+      "@babylon/db/*": ["./../db/src/*"],
+      "@babylon/engine": ["./../engine/src/index.ts"],
+      "@babylon/engine/*": ["./../engine/src/*"],
       "@babylon/sim": ["./core/index.ts"],
       "@babylon/sim/*": ["./core/*"]
     }

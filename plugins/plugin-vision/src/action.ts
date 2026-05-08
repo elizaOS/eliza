@@ -1433,7 +1433,7 @@ export const visionAction: Action = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: {
           actionName: "VISION",
           availableOps: VISION_OPS,

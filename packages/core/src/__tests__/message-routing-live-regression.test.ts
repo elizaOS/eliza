@@ -5,6 +5,7 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
+	resolvePlannerActionName,
 	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
@@ -41,6 +42,24 @@ describe("live routing regressions", () => {
 				["RESPOND", "REPLY"],
 			),
 		).toEqual(["RESPOND"]);
+	});
+
+	it("routes dotted planner subactions through the registered umbrella action", () => {
+		const runtime = {
+			actions: [{ name: "LIFE" }, { name: "CALENDAR" }],
+			logger,
+		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+
+		expect(
+			resolvePlannerActionName(runtime, undefined, "LIFE.add_goal"),
+		).toEqual(["LIFE"]);
+		expect(
+			resolvePlannerActionName(
+				runtime,
+				undefined,
+				"functions.CALENDAR.create_event",
+			),
+		).toEqual(["CALENDAR"]);
 	});
 
 	it("infers safe params for explicit local shell checks", () => {

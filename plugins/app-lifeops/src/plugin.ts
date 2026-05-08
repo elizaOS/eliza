@@ -11,6 +11,7 @@ import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { connectorAction } from "./actions/connector.js";
+import { deviceIntentAction } from "./actions/device-intent.js";
 import { healthAction } from "./actions/health.js";
 import { lifeAction } from "./actions/life.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
@@ -204,6 +205,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     appBlockAction,
     calendarAction,
     resolveRequestAction,
+    deviceIntentAction,
     lifeAction,
     bookTravelAction,
     profileAction,

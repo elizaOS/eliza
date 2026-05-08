@@ -148,22 +148,21 @@ const optionalPositiveAmount = optionalString.refine(
   { message: "amount must be a positive number" },
 );
 
-const optionalStringArray = z
-  .preprocess((value) => {
-    if (value === null || value === undefined) return undefined;
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => String(item).trim())
-        .filter((item) => item.length > 0);
-    }
-    if (typeof value === "string") {
-      return value
-        .split(",")
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-    }
-    return undefined;
-  }, z.array(z.string()).optional());
+const optionalStringArray = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  return undefined;
+}, z.array(z.string()).optional());
 
 export const WalletRouterParamsSchema = z.object({
   subaction: z.enum(WALLET_ROUTER_SUBACTIONS),

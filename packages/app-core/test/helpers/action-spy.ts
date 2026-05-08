@@ -12,7 +12,7 @@
  *
  * // ... trigger some agent interaction ...
  *
- * const action = await spy.waitForAction("SEND_MESSAGE", 5000);
+ * const action = await spy.waitForAction("MESSAGE", 5000);
  * expect(action?.actionStatus).not.toBe("failed");
  *
  * spy.detach(runtime);

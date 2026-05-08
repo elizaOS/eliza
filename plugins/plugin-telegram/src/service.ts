@@ -17,6 +17,7 @@ import {
   type TargetInfo,
   type UUID,
   type World,
+  type WorldPayload,
 } from '@elizaos/core';
 import { type Context, Telegraf } from 'telegraf';
 import type {
@@ -1377,7 +1378,10 @@ export class TelegramService extends Service {
       source: 'telegram',
       accountId,
       metadata: { accountId },
-    } as any);
+    } as WorldPayload & {
+      accountId: string;
+      metadata: { accountId: string };
+    });
   }
 
   /**

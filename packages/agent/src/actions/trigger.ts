@@ -35,26 +35,20 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import {
+  executeTriggerTask,
+  readTriggerConfig,
+  TRIGGER_TASK_NAME,
+  TRIGGER_TASK_TAGS,
+} from "../triggers/runtime.js";
+import {
   buildTriggerMetadata,
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
 } from "../triggers/scheduling.js";
 import type { TriggerTaskMetadata } from "../triggers/types.js";
-import {
-  executeTriggerTask,
-  readTriggerConfig,
-  TRIGGER_TASK_NAME,
-  TRIGGER_TASK_TAGS,
-} from "../triggers/runtime.js";
 
-const TRIGGER_OPS = [
-  "create",
-  "update",
-  "delete",
-  "run",
-  "toggle",
-] as const;
+const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
 
 const TRIGGER_ACTION = "TRIGGER";
@@ -345,8 +339,7 @@ async function opUpdate(
       "TRIGGER_NOT_FOUND",
     );
   const { task, trigger } = loaded;
-  if (!task.id)
-    return failed("update", "Task missing id.", "TASK_NOT_FOUND");
+  if (!task.id) return failed("update", "Task missing id.", "TASK_NOT_FOUND");
 
   const next: TriggerConfig = { ...trigger };
   const displayName = readString(params.displayName);
@@ -471,8 +464,7 @@ async function opToggle(
       "TRIGGER_NOT_FOUND",
     );
   const { task, trigger } = loaded;
-  if (!task.id)
-    return failed("toggle", "Task missing id.", "TASK_NOT_FOUND");
+  if (!task.id) return failed("toggle", "Task missing id.", "TASK_NOT_FOUND");
   const enabled =
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
@@ -530,7 +522,7 @@ export const triggerAction: Action = {
       const result = failed(
         "invalid",
         `Invalid op. Expected one of: ${TRIGGER_OPS.join(", ")}.`,
-        "TRIGGER_INVALID_OP",
+        "TRIGGER_INVALID",
       );
       if (callback) {
         await callback({ text: result.text ?? "", action: TRIGGER_ACTION });
@@ -648,7 +640,9 @@ export const triggerAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "Create a trigger every 12 hours to review open PRs." },
+        content: {
+          text: "Create a trigger every 12 hours to review open PRs.",
+        },
       },
       {
         name: "{{agent}}",

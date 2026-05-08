@@ -398,7 +398,9 @@ const ELIZAGOTCHI_SIMILES = [
   "cap nhat",
 ];
 
-function inferElizagotchiOpFromMessage(text: string): ElizagotchiOp | undefined {
+function inferElizagotchiOpFromMessage(
+  text: string,
+): ElizagotchiOp | undefined {
   if (text === "__tick__") return "tick";
   if (text === "__export__") return "export";
   if (text.startsWith("__import__:")) return "import";
@@ -409,7 +411,10 @@ function inferElizagotchiOpFromMessage(text: string): ElizagotchiOp | undefined 
 
 function normalizeElizagotchiOp(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return normalized.length > 0 ? normalized : undefined;
 }
 

@@ -38,16 +38,6 @@ const X_CONNECTOR_CAPABILITIES = [
   "user_context",
 ];
 
-type XFeedTweet = {
-  id: string;
-  authorId?: string | null;
-  username?: string | null;
-  text: string;
-  createdAt?: string | null;
-  likeCount: number;
-  retweetCount: number;
-  replyCount: number;
-};
 const X_USER_ID_PATTERN = /^\d+$/;
 const X_MAX_POST_LENGTH = 280;
 
@@ -1271,27 +1261,6 @@ export class XService extends Service {
       }
     }
     return messages;
-  }
-
-  private buildXFeedTweetMemory(
-    runtime: IAgentRuntime,
-    tweet: XFeedTweet,
-    accountId: string = this.defaultAccountId,
-  ): Memory {
-    return this.buildXPostMemory(runtime, {
-      id: tweet.id,
-      userId: tweet.authorId ?? "unknown",
-      username: tweet.username ?? undefined,
-      text: tweet.text,
-      timestamp: tweet.createdAt ? Date.parse(tweet.createdAt) : Date.now(),
-      metrics: {
-        likes: tweet.likeCount,
-        reposts: tweet.retweetCount,
-        replies: tweet.replyCount,
-        quotes: 0,
-      },
-      accountId,
-    });
   }
 
   private buildXPostMemory(

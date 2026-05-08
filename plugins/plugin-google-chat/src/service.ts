@@ -525,8 +525,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   getAccountId(runtime?: IAgentRuntime): string {
     return normalizeGoogleChatAccountId(
-      this.settings?.accountId ??
-        (runtime ? resolveDefaultGoogleChatAccountId(runtime) : undefined)
+      this.settings?.accountId ?? (runtime ? resolveDefaultGoogleChatAccountId(runtime) : undefined)
     );
   }
 

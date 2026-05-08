@@ -454,7 +454,12 @@ export function parseManageMessageParams(
 				"operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)",
 		};
 	}
-	return { messageId, source, operation, lookup: parseMessageLookupHints(params) };
+	return {
+		messageId,
+		source,
+		operation,
+		lookup: parseMessageLookupHints(params),
+	};
 }
 
 function parseOperation(

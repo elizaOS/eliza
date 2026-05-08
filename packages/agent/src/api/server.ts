@@ -88,6 +88,8 @@ function isVaultConfigRef(value: string): boolean {
   return value.startsWith("vault://") && value.length > "vault://".length;
 }
 
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -98,7 +100,6 @@ import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.j
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -144,6 +145,7 @@ import {
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -187,8 +189,6 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
-import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
@@ -711,7 +711,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-  // Documents + wallet context augmentation moved to server-helpers.ts;
+// Documents + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,

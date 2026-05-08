@@ -2986,6 +2986,11 @@ export const calendarAction: Action & {
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
+    "CALENDAR_READ",
+    "CALENDAR_FEED",
+    "CALENDAR_NEXT_EVENT",
+    "CALENDAR_CREATE_EVENT",
+    "CALENDAR_SEARCH_EVENTS",
     "SHOW_CALENDAR_TODAY",
     "TODAY_SCHEDULE",
     "WEEK_AHEAD",

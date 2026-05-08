@@ -116,14 +116,16 @@ function parseEventListenerConfig(
 	const listenCids = service.listenChannelIds
 		? service.listenChannelIds
 		: Array.isArray(listenCidsRaw)
-		? listenCidsRaw
-		: listenCidsRaw && typeof listenCidsRaw === "string" && listenCidsRaw.trim()
 			? listenCidsRaw
-					.trim()
-					.split(",")
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0)
-			: [];
+			: listenCidsRaw &&
+					typeof listenCidsRaw === "string" &&
+					listenCidsRaw.trim()
+				? listenCidsRaw
+						.trim()
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0)
+				: [];
 
 	const debounceMsSetting = service.runtime.getSetting("DISCORD_DEBOUNCE_MS") as
 		| string

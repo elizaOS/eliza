@@ -1,10 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  readLinearAccounts,
-  resolveLinearAccount,
-  resolveLinearAccountId,
-} from "./accounts";
+import { readLinearAccounts, resolveLinearAccount, resolveLinearAccountId } from "./accounts";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {

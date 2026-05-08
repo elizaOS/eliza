@@ -7,14 +7,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  parseTokenInfoParams,
-  selectedContextMatches,
-} from "./params";
-import {
-  TOKEN_INFO_SERVICE_TYPE,
-  type TokenInfoService,
-} from "./service";
+import { parseTokenInfoParams, selectedContextMatches } from "./params";
+import { TOKEN_INFO_SERVICE_TYPE, type TokenInfoService } from "./service";
 import { TOKEN_INFO_SUBACTIONS } from "./types";
 
 const TOKEN_INFO_CONTEXTS = ["finance", "crypto", "wallet"] as const;
@@ -52,7 +46,7 @@ function hasTokenInfoIntent(message: Memory, state?: State): boolean {
 function unavailable(
   callback: HandlerCallback | undefined,
   text: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
 ): ActionResult {
   callback?.({ text, actions: ["TOKEN_INFO"], data });
   return {
@@ -105,7 +99,8 @@ export const tokenInfoAction: Action = {
     },
     {
       name: "query",
-      description: "Search query, coin id, token symbol, token address, or wallet address.",
+      description:
+        "Search query, coin id, token symbol, token address, or wallet address.",
       required: false,
       schema: { type: "string" },
     },

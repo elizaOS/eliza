@@ -255,6 +255,25 @@ function attachInlinePlannerActionParams(
 	parsedPlanner.params = nextParams;
 }
 
+function splitPlannerCompoundActionName(
+	actionName: string,
+): { actionName: string; subaction: string } | null {
+	const parts = unwrapPlannerIdentifier(actionName)
+		.split(".")
+		.map((part) => part.trim())
+		.filter(Boolean);
+	if (parts[0]?.toLowerCase() === "functions") {
+		parts.shift();
+	}
+	if (parts.length !== 2) {
+		return null;
+	}
+	return {
+		actionName: parts[0],
+		subaction: parts[1],
+	};
+}
+
 export function extractPlannerActionNames(
 	parsedPlanner: Record<string, unknown>,
 ): string[] {
@@ -311,6 +330,17 @@ function _normalizePlannerActions(
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
 			return [resolvedAction.name];
+		}
+
+		const compoundAction = splitPlannerCompoundActionName(actionName);
+		if (compoundAction) {
+			const resolvedCompoundAction = resolveRuntimeAction(
+				actionLookup,
+				compoundAction.actionName,
+			);
+			if (resolvedCompoundAction) {
+				return [resolvedCompoundAction.name];
+			}
 		}
 
 		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
@@ -382,6 +412,17 @@ export function resolvePlannerActionName(
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
+	}
+
+	const compoundAction = splitPlannerCompoundActionName(actionName);
+	if (compoundAction) {
+		const resolvedCompoundAction = resolveRuntimeAction(
+			lookup,
+			compoundAction.actionName,
+		);
+		if (resolvedCompoundAction) {
+			return [resolvedCompoundAction.name];
+		}
 	}
 
 	const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
@@ -1622,8 +1663,10 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	}
 	const params = toolCall.params ?? {};
 	const rawAction = params.action;
-	const actionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const rawSubaction = params.subaction;
+	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
+	const compoundAction = splitPlannerCompoundActionName(rawActionName);
+	const actionName = compoundAction?.actionName ?? rawActionName;
+	const rawSubaction = params.subaction ?? compoundAction?.subaction;
 	const subaction =
 		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
 			? rawSubaction.trim()
@@ -1645,6 +1688,27 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	};
 }
 
+function normalizeCompoundPlannerToolCall(
+	toolCall: PlannerToolCall,
+): PlannerToolCall {
+	const compoundAction = splitPlannerCompoundActionName(toolCall.name);
+	if (!compoundAction) {
+		return toolCall;
+	}
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? { ...toolCall.params }
+			: {};
+	if (params.subaction === undefined) {
+		params.subaction = compoundAction.subaction;
+	}
+	return {
+		...toolCall,
+		name: compoundAction.actionName,
+		params,
+	};
+}
+
 function stringParam(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -1660,7 +1724,9 @@ type PlannerLifeAliasDefaults = {
 function normalizedPlannerAliasDefaults(
 	actionName: string,
 ): PlannerLifeAliasDefaults | undefined {
-	return PLANNER_ACTION_ALIAS_DEFAULTS.get(normalizeActionIdentifier(actionName));
+	return PLANNER_ACTION_ALIAS_DEFAULTS.get(
+		normalizeActionIdentifier(actionName),
+	);
 }
 
 function normalizedLifeSubactionDefaults(
@@ -1669,7 +1735,9 @@ function normalizedLifeSubactionDefaults(
 	if (typeof subaction !== "string") {
 		return undefined;
 	}
-	return PLANNER_LIFE_SUBACTION_DEFAULTS.get(normalizeActionIdentifier(subaction));
+	return PLANNER_LIFE_SUBACTION_DEFAULTS.get(
+		normalizeActionIdentifier(subaction),
+	);
 }
 
 const LIFE_SUBACTIONS = new Set([
@@ -1739,7 +1807,9 @@ function buildNormalizedLifePlannerParams(args: {
 			? { ...args.toolCall.params }
 			: {};
 	const existingDetails =
-		params.details && typeof params.details === "object" && !Array.isArray(params.details)
+		params.details &&
+		typeof params.details === "object" &&
+		!Array.isArray(params.details)
 			? (params.details as Record<string, unknown>)
 			: {};
 	const rawSubaction = params.subaction;
@@ -1807,7 +1877,9 @@ function buildNormalizedLifePlannerParams(args: {
 		...(topLevelKind ? { kind: topLevelKind } : {}),
 		...(intent ? { intent } : {}),
 		...(title ? { title } : {}),
-		...(stringParam(params.target) ? { target: stringParam(params.target) } : {}),
+		...(stringParam(params.target)
+			? { target: stringParam(params.target) }
+			: {}),
 		...(typeof params.minutes === "number" ? { minutes: params.minutes } : {}),
 		...(Object.keys(details).length > 0 ? { details } : {}),
 	};
@@ -1817,7 +1889,10 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	toolCall: PlannerToolCall,
 	message: Memory,
 ): boolean {
-	if (normalizeActionIdentifier(toolCall.name) !== normalizeActionIdentifier("ADD_CONTACT")) {
+	if (
+		normalizeActionIdentifier(toolCall.name) !==
+		normalizeActionIdentifier("ADD_CONTACT")
+	) {
 		return false;
 	}
 	const text = (getUserMessageText(message) ?? "").toLowerCase();
@@ -1836,7 +1911,8 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	if (
-		normalizeActionIdentifier(resolvedName) !== normalizeActionIdentifier("LIFE")
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("LIFE")
 	) {
 		return { ...toolCall, name: resolvedName };
 	}
@@ -1855,7 +1931,9 @@ function normalizeAliasedPlannerToolCall(
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
-	const unwrappedToolCall = unwrapPlanActionsToolCall(args.toolCall);
+	const unwrappedToolCall = normalizeCompoundPlannerToolCall(
+		unwrapPlanActionsToolCall(args.toolCall),
+	);
 	if (!unwrappedToolCall.name) {
 		return {
 			success: false,
@@ -1871,11 +1949,14 @@ async function executeV5PlannedToolCall(
 		unwrappedToolCall.name,
 	);
 	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
-	const forceContactReminderToLife = shouldTreatPlannerContactAliasAsLifeReminder(
-		unwrappedToolCall,
-		args.executorCtx.message,
-	);
-	const effectiveResolvedName = forceContactReminderToLife ? "LIFE" : resolvedName;
+	const forceContactReminderToLife =
+		shouldTreatPlannerContactAliasAsLifeReminder(
+			unwrappedToolCall,
+			args.executorCtx.message,
+		);
+	const effectiveResolvedName = forceContactReminderToLife
+		? "LIFE"
+		: resolvedName;
 	const toolCallForNormalization = forceContactReminderToLife
 		? {
 				...unwrappedToolCall,
@@ -2339,7 +2420,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			{ selectedContexts },
 		);
 
-		const actionResults = collectPreviousActionResults(plannerResult.trajectory);
+		const actionResults = collectPreviousActionResults(
+			plannerResult.trajectory,
+		);
 		const finalPlannerState =
 			actionResults.length > 0
 				? withActionResultsForPrompt(plannerState, actionResults)
@@ -2781,15 +2864,18 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CONTEXTUAL_BUMP", "MESSAGE"],
 		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
 		["GET_PENDING_DRAFTS", "MESSAGE"],
-			["ADD_TODO", "LIFE"],
-			["CREATE_TODO", "LIFE"],
-			["LIST_TODOS", "LIFE"],
-			["GET_TODOS", "LIFE"],
-			["LIFE_GET_TODOS", "LIFE"],
-			["LIFE_TODO", "LIFE"],
-			["ADD_HABIT", "LIFE"],
-			["CREATE_HABIT", "LIFE"],
-			["LIST_HABITS", "LIFE"],
+		["SOCIAL_POSTING", "POST"],
+		["GET_TIMELINE", "POST"],
+		["READ_TIMELINE", "POST"],
+		["ADD_TODO", "LIFE"],
+		["CREATE_TODO", "LIFE"],
+		["LIST_TODOS", "LIFE"],
+		["GET_TODOS", "LIFE"],
+		["LIFE_GET_TODOS", "LIFE"],
+		["LIFE_TODO", "LIFE"],
+		["ADD_HABIT", "LIFE"],
+		["CREATE_HABIT", "LIFE"],
+		["LIST_HABITS", "LIFE"],
 		["ADD_GOAL", "LIFE"],
 		["CREATE_GOAL", "LIFE"],
 		["CREATE_REMINDER", "LIFE"],
@@ -2799,6 +2885,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
 		["FLIGHT_CONFLICT_REBOOKING", "CALENDAR"],
 		["REBOOK_CONFLICTING_EVENT", "CALENDAR"],
+		["CALENDAR_READ", "CALENDAR"],
+		["CALENDAR_CREATE_EVENT", "CALENDAR"],
+		["CALENDAR_FEED", "CALENDAR"],
+		["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
+		["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
+		["SET_APP_BLOCK", "APP_BLOCK"],
+		["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
+		["PHONE_BLOCK_APPS", "APP_BLOCK"],
+		["BLOCK_APPS", "APP_BLOCK"],
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
 	].map(([from, to]) => [
@@ -2827,8 +2922,14 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 		],
 		["ADD_GOAL", { subaction: "create", kind: "goal" }],
 		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
-		["CREATE_REMINDER", { subaction: "create", kind: "definition", definitionKind: "task" }],
-		["SET_REMINDER_RULE", { subaction: "create", kind: "definition", definitionKind: "task" }],
+		[
+			"CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"SET_REMINDER_RULE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
 		["LIST_TODOS", { subaction: "review" }],
 		["GET_TODOS", { subaction: "review" }],
 		["LIFE_GET_TODOS", { subaction: "review" }],
@@ -4431,9 +4532,9 @@ async function shouldUseDocumentProviders(
 	}
 }
 
-function buildRuntimeActionLookup(
-	runtime: { actions?: readonly Action[] },
-): Map<string, Action> {
+function buildRuntimeActionLookup(runtime: {
+	actions?: readonly Action[];
+}): Map<string, Action> {
 	const actionMap = new Map<string, Action>();
 
 	for (const action of runtime.actions ?? []) {

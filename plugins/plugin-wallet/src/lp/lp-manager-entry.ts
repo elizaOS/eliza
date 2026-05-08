@@ -285,14 +285,14 @@ export { raydiumPlugin } from "../chains/solana/dex/raydium/index.ts";
 // Export types
 export * from "./types.ts";
 // Export all services and utilities
+// Back-compat alias for older imports.
 export {
   ConcentratedLiquidityService,
   DexInteractionService,
-  liquidityAction,
   LpManagementService,
+  liquidityAction,
+  liquidityAction as LpManagementAgentAction,
   UserLpProfileService,
   VaultService,
   YieldOptimizationService,
 };
-// Back-compat alias for older imports.
-export { liquidityAction as LpManagementAgentAction };

@@ -110,7 +110,6 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   OBSIDIAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   OBSIDAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH: "@elizaos/plugin-repoprompt",
-  CLAUDE_CODE_WORKBENCH_ENABLED: "@elizaos/plugin-claude-code-workbench",
   // NOTE: EVM signing auto-enable is NOT via this map — see resolveEvmAutoEnableReason().
   SOLANA_PRIVATE_KEY: "@elizaos/plugin-wallet",
   LASTFM_API_KEY: "@elizaos/plugin-music-library",
@@ -152,7 +151,6 @@ const FEATURE_PLUGINS: Record<string, string> = {
   vision: "@elizaos/plugin-vision",
   computeruse: "@elizaos/plugin-computeruse",
   repoprompt: "@elizaos/plugin-repoprompt",
-  claudeCodeWorkbench: "@elizaos/plugin-claude-code-workbench",
   rs2004scape: "@elizaos/app-2004scape",
 };
 

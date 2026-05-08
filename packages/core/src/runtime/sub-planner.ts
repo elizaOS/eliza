@@ -56,6 +56,29 @@ function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	};
 }
 
+function normalizeSubPlannerActionIdentifier(actionName: string): string {
+	return actionName
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
+}
+
+function buildSubPlannerActionLookup(
+	actions: readonly Action[],
+): Map<string, Action> {
+	const lookup = new Map<string, Action>();
+	for (const action of actions) {
+		const names = [action.name, ...(action.similes ?? [])];
+		for (const name of names) {
+			if (typeof name !== "string" || name.trim().length === 0) {
+				continue;
+			}
+			lookup.set(normalizeSubPlannerActionIdentifier(name), action);
+		}
+	}
+	return lookup;
+}
+
 export function actionHasSubActions(action: Action): boolean {
 	return Array.isArray(action.subActions) && action.subActions.length > 0;
 }
@@ -174,6 +197,7 @@ export async function runSubPlanner(
 	}
 
 	const childActionNames = new Set(childActions.map((action) => action.name));
+	const childActionLookup = buildSubPlannerActionLookup(childActions);
 	// Sub-planner only ever needs the Stage 2 PLAN_ACTIONS tool — Stage 1
 	// routing already happened at the top level. Holding the tool list to a
 	// single stable entry keeps the prompt-cache key byte-stable across
@@ -239,7 +263,14 @@ export async function runSubPlanner(
 					error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action in sub-planner ${params.action.name}`,
 				};
 			}
-			if (!childActionNames.has(unwrapped.name)) {
+			const resolvedChildAction =
+				childActionLookup.get(
+					normalizeSubPlannerActionIdentifier(unwrapped.name),
+				) ??
+				(childActionNames.has(unwrapped.name)
+					? { name: unwrapped.name }
+					: null);
+			if (!resolvedChildAction) {
 				return {
 					success: false,
 					error: `Action ${unwrapped.name} is not available to sub-planner ${params.action.name}`,
@@ -249,7 +280,7 @@ export async function runSubPlanner(
 			const result = await execute(
 				params.runtime,
 				subPlannerCtx,
-				unwrapped,
+				{ ...unwrapped, name: resolvedChildAction.name },
 				{
 					...(params.options ?? {}),
 					actions: childActions,

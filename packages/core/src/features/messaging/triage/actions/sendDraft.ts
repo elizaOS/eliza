@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,
-	ActionParameter,
 	ActionExample,
+	ActionParameter,
 	ActionResult,
 	HandlerCallback,
 	HandlerOptions,
@@ -55,7 +55,9 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
 	},
 ];
 
-function getParameters(options: HandlerOptions | undefined): Record<string, unknown> {
+function getParameters(
+	options: HandlerOptions | undefined,
+): Record<string, unknown> {
 	const params = options?.parameters;
 	return params && typeof params === "object" && !Array.isArray(params)
 		? (params as Record<string, unknown>)
@@ -98,8 +100,14 @@ function inferBodyFromText(text: string): string | undefined {
 
 function cleanRecipient(value: string): string {
 	return value
-		.replace(/\b(on|via|using)\s+(telegram|discord|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\b/gi, "")
-		.replace(/\b(discord|telegram|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\s+(channel|room|dm|message)\b/gi, "")
+		.replace(
+			/\b(on|via|using)\s+(telegram|discord|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\b/gi,
+			"",
+		)
+		.replace(
+			/\b(discord|telegram|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\s+(channel|room|dm|message)\b/gi,
+			"",
+		)
 		.replace(/\b(channel|room|dm|message)\b/gi, "")
 		.trim();
 }
@@ -124,13 +132,16 @@ function outboundDraftOptionsFromMessage(
 	options: HandlerOptions | undefined,
 ): HandlerOptions | undefined {
 	const params = getParameters(options);
-	const text = typeof message.content?.text === "string" ? message.content.text : "";
-	const source = normalizeSource(
-		params.source ?? params.platform ?? params.connector ?? params.service,
-	) ?? inferSourceFromText(text);
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	const source =
+		normalizeSource(
+			params.source ?? params.platform ?? params.connector ?? params.service,
+		) ?? inferSourceFromText(text);
 	const body =
-		nonEmptyString(params.body ?? params.text ?? params.message ?? params.content) ??
-		inferBodyFromText(text);
+		nonEmptyString(
+			params.body ?? params.text ?? params.message ?? params.content,
+		) ?? inferBodyFromText(text);
 	const rawTo =
 		params.to ??
 		params.recipient ??
@@ -155,7 +166,9 @@ function outboundDraftOptionsFromMessage(
 	};
 }
 
-function previewOutboundDraft(record: Pick<DraftRecord, "source" | "to" | "body" | "subject">): string {
+function previewOutboundDraft(
+	record: Pick<DraftRecord, "source" | "to" | "body" | "subject">,
+): string {
 	const recipients = record.to
 		.map((recipient) => recipient.displayName ?? recipient.identifier)
 		.join(", ");
@@ -288,7 +301,8 @@ export const sendDraftAction: Action = {
 					channelId: draftParsed.channelId,
 				});
 			} catch (error) {
-				const messageText = error instanceof Error ? error.message : String(error);
+				const messageText =
+					error instanceof Error ? error.message : String(error);
 				if (!/NotYetImplemented|createDraft/i.test(messageText)) {
 					throw error;
 				}

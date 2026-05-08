@@ -13,6 +13,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["convex/**/*", "test-client.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "convex/**/*",
+    "test-client.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "extends": "../../../tsconfig.workspace-paths.json"
 }

@@ -11,7 +11,7 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "paths": {
       "@elizaos/app-core": ["../app-core/src/index.ts"],

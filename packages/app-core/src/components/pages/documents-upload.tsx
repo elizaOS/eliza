@@ -4,10 +4,10 @@ import {
   FileUp,
   Globe2,
   Link2,
+  type LucideIcon,
   NotebookPen,
   Shield,
   User,
-  type LucideIcon,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -178,7 +178,9 @@ export function UploadZone({
     (event: DragEvent<HTMLFieldSetElement>) => {
       event.preventDefault();
       setDragOver(false);
-      const files = Array.from(event.dataTransfer.files) as DocumentUploadFile[];
+      const files = Array.from(
+        event.dataTransfer.files,
+      ) as DocumentUploadFile[];
       if (files.length > 0 && !uploading) {
         onFilesUpload(files, uploadOptions);
       }
@@ -190,10 +192,7 @@ export function UploadZone({
     (event: ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (files && files.length > 0 && !uploading) {
-        onFilesUpload(
-          Array.from(files) as DocumentUploadFile[],
-          uploadOptions,
-        );
+        onFilesUpload(Array.from(files) as DocumentUploadFile[], uploadOptions);
       }
       event.target.value = "";
     },
@@ -318,14 +317,21 @@ export function UploadZone({
           </div>
         </div>
 
-        <div
-          className="mt-3 flex flex-wrap items-center gap-1.5"
-          aria-label={t("documentsview.ScopeSelectorLabel", {
-            defaultValue: "Document scope",
-          })}
-        >
+        <fieldset className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0">
+          <legend className="sr-only">
+            {t("documentsview.ScopeSelectorLabel", {
+              defaultValue: "Document scope",
+            })}
+          </legend>
           {DOCUMENT_UPLOAD_SCOPE_OPTIONS.map(
-            ({ value, labelKey, defaultLabel, titleKey, defaultTitle, Icon }) => {
+            ({
+              value,
+              labelKey,
+              defaultLabel,
+              titleKey,
+              defaultTitle,
+              Icon,
+            }) => {
               const active = selectedScope === value;
               return (
                 <button
@@ -347,7 +353,7 @@ export function UploadZone({
               );
             },
           )}
-        </div>
+        </fieldset>
 
         {showUrlInput && (
           <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">

@@ -65,8 +65,11 @@ export async function validateTailscaleConfig(
   const account = resolveTailscaleAccount(readTailscaleAccounts(runtime), resolvedAccountId);
   const config = {
     TAILSCALE_AUTH_KEY:
-      account?.authKey ?? readSetting(runtime, 'TAILSCALE_AUTH_KEY') ?? process.env.TAILSCALE_AUTH_KEY,
-    TAILSCALE_TAGS: account?.tags ?? readSetting(runtime, 'TAILSCALE_TAGS') ?? process.env.TAILSCALE_TAGS,
+      account?.authKey ??
+      readSetting(runtime, 'TAILSCALE_AUTH_KEY') ??
+      process.env.TAILSCALE_AUTH_KEY,
+    TAILSCALE_TAGS:
+      account?.tags ?? readSetting(runtime, 'TAILSCALE_TAGS') ?? process.env.TAILSCALE_TAGS,
     TAILSCALE_FUNNEL:
       account?.funnel ?? readSetting(runtime, 'TAILSCALE_FUNNEL') ?? process.env.TAILSCALE_FUNNEL,
     TAILSCALE_DEFAULT_PORT:
@@ -74,7 +77,9 @@ export async function validateTailscaleConfig(
       readSetting(runtime, 'TAILSCALE_DEFAULT_PORT') ??
       process.env.TAILSCALE_DEFAULT_PORT,
     TAILSCALE_BACKEND:
-      account?.backend ?? readSetting(runtime, 'TAILSCALE_BACKEND') ?? process.env.TAILSCALE_BACKEND,
+      account?.backend ??
+      readSetting(runtime, 'TAILSCALE_BACKEND') ??
+      process.env.TAILSCALE_BACKEND,
     TAILSCALE_AUTH_KEY_EXPIRY_SECONDS:
       account?.authKeyExpirySeconds ??
       readSetting(runtime, 'TAILSCALE_AUTH_KEY_EXPIRY_SECONDS') ??

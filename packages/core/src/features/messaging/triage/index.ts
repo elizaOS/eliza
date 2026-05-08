@@ -47,6 +47,4 @@ export * from "./types.ts";
 import type { Action } from "../../../types/index.ts";
 import { messageAction } from "../../advanced-capabilities/actions/message.ts";
 
-export const messagingTriageActions: readonly Action[] = [
-	messageAction,
-];
+export const messagingTriageActions: readonly Action[] = [messageAction];

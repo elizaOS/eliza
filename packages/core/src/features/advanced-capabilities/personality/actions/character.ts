@@ -211,7 +211,7 @@ export const characterAction: Action = {
 			return {
 				text,
 				success: false,
-				values: { error: "INVALID_OP" },
+				values: { error: "INVALID" },
 				data: { action: "CHARACTER" },
 			};
 		}
@@ -344,7 +344,8 @@ async function runUpdateIdentity(
 	const systemPrompt = trimToString(params.system, IDENTITY_SYSTEM_MAX_LENGTH);
 
 	if (!name && !systemPrompt) {
-		const text = "Either `name` or `system` must be provided to update_identity.";
+		const text =
+			"Either `name` or `system` must be provided to update_identity.";
 		await callback?.({ text, thought: "Missing parameters" });
 		return {
 			text,
@@ -407,7 +408,11 @@ async function runUpdateIdentity(
 	const text = name
 		? `Identity updated. Name is now ${name}.`
 		: "System prompt updated.";
-	await callback?.({ text, thought: "Identity updated", actions: ["CHARACTER"] });
+	await callback?.({
+		text,
+		thought: "Identity updated",
+		actions: ["CHARACTER"],
+	});
 	return {
 		text,
 		success: true,
@@ -858,9 +863,7 @@ function normalizeStringList(value: unknown): string[] | undefined {
 	return delimited.length > 0 ? delimited : undefined;
 }
 
-function normalizeStyle(
-	value: unknown,
-): Record<string, string[]> | undefined {
+function normalizeStyle(value: unknown): Record<string, string[]> | undefined {
 	if (!isRecord(value)) return undefined;
 	const style: Record<string, string[]> = {};
 	const all = normalizeStringList(value.all);
@@ -1275,11 +1278,15 @@ function summarizeModification(modification: Record<string, unknown>): string {
 		);
 	}
 	const bio = modification.bio as string[] | undefined;
-	if (bio && bio.length > 0) parts.push(`Added ${bio.length} new bio element(s)`);
+	if (bio && bio.length > 0)
+		parts.push(`Added ${bio.length} new bio element(s)`);
 	const topics = modification.topics as string[] | undefined;
-	if (topics && topics.length > 0) parts.push(`Added topics: ${topics.join(", ")}`);
+	if (topics && topics.length > 0)
+		parts.push(`Added topics: ${topics.join(", ")}`);
 	if (modification.style && typeof modification.style === "object") {
-		parts.push(`Updated ${Object.keys(modification.style).length} style preference(s)`);
+		parts.push(
+			`Updated ${Object.keys(modification.style).length} style preference(s)`,
+		);
 	}
 	const messageExamples = modification.messageExamples as unknown[] | undefined;
 	if (messageExamples && messageExamples.length > 0) {
@@ -1306,7 +1313,9 @@ function extractEvolutionModification(
 		: null;
 }
 
-function parseEvolutionData(serialized: string): Record<string, unknown> | null {
+function parseEvolutionData(
+	serialized: string,
+): Record<string, unknown> | null {
 	try {
 		const parsed = JSON.parse(serialized);
 		return parsed && typeof parsed === "object"
@@ -1318,7 +1327,8 @@ function parseEvolutionData(serialized: string): Record<string, unknown> | null 
 }
 
 function inferPreferenceCategory(text: string): string {
-	if (/\b(verbose|concise|brief|shorter|detailed)\b/i.test(text)) return "verbosity";
+	if (/\b(verbose|concise|brief|shorter|detailed)\b/i.test(text))
+		return "verbosity";
 	if (/\b(formal|casual|professional|polite)\b/i.test(text)) return "formality";
 	if (/\b(warm|direct|skeptical|encouraging|supportive|friendly)\b/i.test(text))
 		return "tone";
@@ -1373,7 +1383,10 @@ Set action: none only if the request truly does not specify any interaction pref
 		const raw = parseStructuredRecord(response as string);
 		if (!raw) return null;
 
-		if (typeof raw.action === "string" && raw.action.trim().toLowerCase() === "none") {
+		if (
+			typeof raw.action === "string" &&
+			raw.action.trim().toLowerCase() === "none"
+		) {
 			return null;
 		}
 		const action = raw.action === "reset" ? "reset" : "set";

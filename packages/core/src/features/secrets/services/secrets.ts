@@ -248,13 +248,7 @@ export class SecretsService extends Service {
 				timestamp: Date.now(),
 			});
 		} else {
-			this.logAccess(
-				key,
-				"write",
-				context,
-				false,
-				"Storage operation failed",
-			);
+			this.logAccess(key, "write", context, false, "Storage operation failed");
 		}
 
 		return success;

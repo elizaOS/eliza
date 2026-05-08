@@ -16,15 +16,15 @@
 import {
   type Action,
   type ActionResult,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Setting,
-  type WorldSettings,
   findWorldsForOwner,
   getSalt,
+  type HandlerOptions,
+  type IAgentRuntime,
   logger,
+  type Setting,
   saltWorldSettings,
   unsaltWorldSettings,
+  type WorldSettings,
 } from "@elizaos/core";
 import {
   getOnboardingProviderOption,
@@ -36,8 +36,8 @@ import {
 } from "../api/provider-switch-config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import {
-  OWNER_NAME_MAX_LENGTH,
   fetchConfiguredOwnerName,
+  OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "../services/owner-name.js";
 
@@ -219,9 +219,7 @@ async function handleUpdateAiProvider(
 
 // ── op: toggle_capability ────────────────────────────────────────────────
 
-function handleToggleCapability(
-  params: Record<string, unknown>,
-): ActionResult {
+function handleToggleCapability(params: Record<string, unknown>): ActionResult {
   const capability = params.capability;
   if (!isCapabilityKey(capability)) {
     return fail(
@@ -380,7 +378,8 @@ interface SettingUpdate {
 
 function normalizeSettingValue(value: unknown): string | boolean | null {
   if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  if (typeof value === "number" || typeof value === "bigint")
+    return String(value);
   return null;
 }
 
@@ -640,7 +639,7 @@ export const settingsAction: Action = {
         return handleSet(runtime, message?.entityId, params);
       default:
         return fail(
-          "SETTINGS_INVALID_OP",
+          "SETTINGS_INVALID",
           `SETTINGS requires \`op\`. One of: ${SETTINGS_OPS.join(", ")}.`,
           { op: typeof op === "string" ? op : null },
         );
