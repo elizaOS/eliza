@@ -13,12 +13,5 @@
     }
   },
   "include": ["**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__",
-    "**/*.test.ts",
-    "build.ts",
-    "vitest.config.ts"
-  ]
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "build.ts", "vitest.config.ts"]
 }

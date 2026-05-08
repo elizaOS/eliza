@@ -467,8 +467,12 @@ async function run() {
       ...process.env,
       FORCE_COLOR: "0",
       ELIZA_DEV_NO_WATCH: process.env.ELIZA_DEV_NO_WATCH || "1",
+      ELIZA_DEV_PLUGIN_BUILD: process.env.ELIZA_DEV_PLUGIN_BUILD || "0",
+      ELIZA_SKIP_PLUGIN_BUILD: process.env.ELIZA_SKIP_PLUGIN_BUILD || "1",
       ELIZA_DISABLE_PROACTIVE_AGENT:
         process.env.ELIZA_DISABLE_PROACTIVE_AGENT || "1",
+      ELIZA_DISABLE_TRAINING_CRONS:
+        process.env.ELIZA_DISABLE_TRAINING_CRONS || "1",
       ELIZAOS_CLOUD_API_KEY:
         process.env.ELIZA_DEV_HEALTH_USE_CLOUD === "1"
           ? process.env.ELIZAOS_CLOUD_API_KEY || ""

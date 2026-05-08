@@ -201,7 +201,7 @@ function scoreCandidateRegex(
 					Math.max(scores.get(parent.normalizedName) ?? 0, pattern.score),
 				);
 			}
-	}
+		}
 	}
 
 	return scores;

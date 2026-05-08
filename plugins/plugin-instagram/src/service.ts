@@ -175,9 +175,7 @@ export class InstagramService extends Service {
     for (const accountId of accountIds) {
       const normalizedAccountId = normalizeInstagramAccountId(accountId);
       const accountService =
-        normalizedAccountId === service.defaultAccountId
-          ? service
-          : new InstagramService(runtime);
+        normalizedAccountId === service.defaultAccountId ? service : new InstagramService(runtime);
       accountService.defaultAccountId = normalizedAccountId;
       await accountService.initialize(normalizedAccountId);
       if (!accountService.validateConfig()) {
@@ -409,9 +407,7 @@ export class InstagramService extends Service {
     const normalized = normalizeInstagramAccountId(accountId);
     const services = this.accountServices ?? new Map<string, InstagramService>();
     return (
-      services.get(normalized) ??
-      (normalized === this.getAccountId() ? this : undefined) ??
-      this
+      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
     );
   }
 
@@ -463,9 +459,7 @@ export class InstagramService extends Service {
 
   async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
     const requestedAccountId = readInstagramAccountId(content);
-    const accountService = requestedAccountId
-      ? this.getAccountService(requestedAccountId)
-      : this;
+    const accountService = requestedAccountId ? this.getAccountService(requestedAccountId) : this;
     if (accountService !== this) {
       return accountService.handleSendPost(runtime, content);
     }

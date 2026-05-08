@@ -1,8 +1,5 @@
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-} from "../../test/vitest/provider-sdk-aliases";
+import { providerSdkAliases, providerSdkShimPlugin } from "../../test/vitest/provider-sdk-aliases";
 
 export default defineConfig({
   resolve: {

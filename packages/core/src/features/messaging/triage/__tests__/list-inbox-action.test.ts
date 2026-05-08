@@ -64,7 +64,9 @@ describe("listInboxAction", () => {
 		expect(result.success).toBe(true);
 		expect(result.data).toMatchObject({ total: 2, returned: 2 });
 		expect(
-			(result.data?.messages as Array<{ id: string }>).map((message) => message.id),
+			(result.data?.messages as Array<{ id: string }>).map(
+				(message) => message.id,
+			),
 		).toEqual(["gmail-1", "signal-1"]);
 	});
 });

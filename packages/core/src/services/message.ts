@@ -1297,7 +1297,9 @@ async function collectV5PlannerCandidateActions(args: {
 		args.selectedContexts,
 		args.userRoles,
 	);
-	const actionsByName = new Map(args.runtime.actions.map((action) => [action.name, action]));
+	const actionsByName = new Map(
+		args.runtime.actions.map((action) => [action.name, action]),
+	);
 	const actionsByNormalizedName = new Map(
 		args.runtime.actions.map((action) => [
 			normalizeActionIdentifier(action.name),
@@ -1446,7 +1448,9 @@ function buildV5PlannerActionSurface(params: {
 		});
 	}
 
-	const catalog = buildActionCatalog(params.actions as RuntimeActionLike[]);
+	const catalog = buildActionCatalog(
+		params.actions as unknown as RuntimeActionLike[],
+	);
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -3002,8 +3006,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				plan: {
 					contexts: messageHandler.plan.contexts,
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
-					parentActionHints:
-						getMessageHandlerParentActionHints(messageHandler),
+					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),

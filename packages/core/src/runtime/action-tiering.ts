@@ -190,7 +190,9 @@ function emptyResult(parent: ActionCatalogParent): ActionRetrievalResult {
 	};
 }
 
-function parentOnlyTieredParent(parent: TieredParentAction): TieredParentAction {
+function parentOnlyTieredParent(
+	parent: TieredParentAction,
+): TieredParentAction {
 	return {
 		...parent,
 		childNames: [],
