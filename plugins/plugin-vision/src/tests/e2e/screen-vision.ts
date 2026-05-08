@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
-import { setVisionModeAction } from "../../action";
+import { visionAction } from "../../action";
 import type { VisionService } from "../../service";
 import { VisionMode } from "../../types";
 
@@ -206,7 +206,7 @@ export class ScreenVisionE2ETestSuite {
         }
 
         // Test with action
-        console.log("  Testing SET_VISION_MODE action...");
+        console.log("  Testing VISION action with op=set_mode...");
 
         const message: Memory = {
           id: createUniqueUuid(runtime, "test-msg"),
@@ -218,11 +218,11 @@ export class ScreenVisionE2ETestSuite {
         };
 
         let callbackCalled = false;
-        await setVisionModeAction.handler(
+        await visionAction.handler(
           runtime,
           message,
           { values: {}, data: {}, text: "" },
-          {},
+          { parameters: { op: "set_mode" } },
           async (response) => {
             callbackCalled = true;
             console.log(`  Action response: ${response.text}`);
@@ -231,7 +231,7 @@ export class ScreenVisionE2ETestSuite {
         );
 
         if (!callbackCalled) {
-          throw new Error("SET_VISION_MODE action did not call callback");
+          throw new Error("VISION set_mode op did not call callback");
         }
 
         const finalMode = visionService.getVisionMode();

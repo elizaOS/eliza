@@ -65,7 +65,7 @@ import {
   getErrorMessage,
   hasBlockedObjectKeyDeep,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithKnowledge,
+  maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -268,7 +268,7 @@ async function generateMobileLocalSimpleReply(
 
 const EXACT_GROUNDED_VALUE_REQUEST =
   /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
-const KNOWLEDGE_VALUE_CAPTURE =
+const DOCUMENT_VALUE_CAPTURE =
   /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
 const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
 const UUID_IDENTIFIER_CAPTURE =
@@ -293,32 +293,32 @@ function collectRegexMatches(
 
 function extractExactGroundedValueFromText(
   messageText: string,
-  knowledgeText: string,
+  documentText: string,
 ): string | null {
   if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
     return null;
   }
 
-  if (!knowledgeText) {
+  if (!documentText) {
     return null;
   }
 
-  const capturedKnowledgeValues = uniqueMatches(
-    collectRegexMatches(knowledgeText, KNOWLEDGE_VALUE_CAPTURE, 1),
+  const capturedDocumentValues = uniqueMatches(
+    collectRegexMatches(documentText, DOCUMENT_VALUE_CAPTURE, 1),
   );
-  if (capturedKnowledgeValues.length === 1) {
-    return capturedKnowledgeValues[0];
+  if (capturedDocumentValues.length === 1) {
+    return capturedDocumentValues[0];
   }
 
   const uppercaseCandidates = uniqueMatches(
-    collectRegexMatches(knowledgeText, UPPERCASE_IDENTIFIER_CAPTURE),
+    collectRegexMatches(documentText, UPPERCASE_IDENTIFIER_CAPTURE),
   );
   if (uppercaseCandidates.length === 1) {
     return uppercaseCandidates[0];
   }
 
   const uuidCandidates = uniqueMatches(
-    collectRegexMatches(knowledgeText, UUID_IDENTIFIER_CAPTURE),
+    collectRegexMatches(documentText, UUID_IDENTIFIER_CAPTURE),
   );
   if (uuidCandidates.length === 1) {
     return uuidCandidates[0];
@@ -327,7 +327,7 @@ function extractExactGroundedValueFromText(
   return null;
 }
 
-async function resolveExactKnowledgeValueForChat(
+async function resolveExactDocumentValueForChat(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<string | null> {
@@ -339,9 +339,9 @@ async function resolveExactKnowledgeValueForChat(
     return null;
   }
 
-  const knowledgeService = runtime.getService?.("knowledge") as
+  const documentsService = runtime.getService?.("documents") as
     | {
-        getKnowledge?: (
+        searchDocuments?: (
           message: ReturnType<typeof createMessageMemory>,
         ) => Promise<
           Array<{
@@ -353,14 +353,14 @@ async function resolveExactKnowledgeValueForChat(
     | null
     | undefined;
   if (
-    !knowledgeService ||
-    typeof knowledgeService.getKnowledge !== "function"
+    !documentsService ||
+    typeof documentsService.searchDocuments !== "function"
   ) {
     return null;
   }
 
   try {
-    const matches = await knowledgeService.getKnowledge(message);
+    const matches = await documentsService.searchDocuments(message);
     if (!Array.isArray(matches) || matches.length === 0) {
       return null;
     }
@@ -390,7 +390,7 @@ async function resolveExactKnowledgeValueForChat(
       return exactMatchCandidates[0];
     }
 
-    const knowledgeText = preferredMatches
+    const documentsText = preferredMatches
       .map((match) =>
         typeof match?.content?.text === "string"
           ? match.content.text.trim()
@@ -398,7 +398,7 @@ async function resolveExactKnowledgeValueForChat(
       )
       .filter((text) => text.length > 0)
       .join("\n\n");
-    return extractExactGroundedValueFromText(messageText, knowledgeText);
+    return extractExactGroundedValueFromText(messageText, documentsText);
   } catch {
     return null;
   }
@@ -1425,7 +1425,7 @@ export async function generateChatResponse(
                 languageAugmentedMessage,
               );
             const generationMessage =
-              await maybeAugmentChatMessageWithKnowledge(
+              await maybeAugmentChatMessageWithDocuments(
                 runtime,
                 walletAugmentedMessage,
               );
@@ -1702,12 +1702,12 @@ export async function generateChatResponse(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactKnowledgeValue = await resolveExactKnowledgeValueForChat(
+    const exactDocumentValue = await resolveExactDocumentValueForChat(
       runtime,
       message,
     );
     const normalizedResponseText = trimWalletProgressPrefix(
-      exactKnowledgeValue || responseText || resultText || "",
+      exactDocumentValue || responseText || resultText || "",
     );
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,

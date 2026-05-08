@@ -244,57 +244,223 @@
       "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
-      "name": "SEND_MESSAGE",
-      "description": "Send a message to a user or room (other than the current one)",
-      "similes": [
-        "DM",
-        "MESSAGE",
-        "SEND_DM",
-        "POST_MESSAGE",
-        "DIRECT_MESSAGE",
-        "NOTIFY"
-      ],
+      "name": "MESSAGE",
+      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
       "parameters": [
         {
-          "name": "targetType",
-          "description": "Whether the message target is a user or a room.",
-          "required": true,
+          "name": "operation",
+          "description": "Message subaction: send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+          "required": false,
           "schema": {
             "type": "string",
-            "enum": ["user", "room"]
+            "enum": [
+              "send",
+              "read",
+              "search",
+              "list_channels",
+              "list_servers",
+              "react",
+              "edit",
+              "delete",
+              "pin",
+              "join",
+              "leave",
+              "get_user",
+              "triage",
+              "list_inbox",
+              "search_inbox",
+              "draft_reply",
+              "draft_followup",
+              "respond",
+              "send_draft",
+              "schedule_draft_send",
+              "manage"
+            ]
           },
-          "examples": ["user", "room"],
-          "descriptionCompressed": "user or room target."
+          "descriptionCompressed": "message operation"
         },
         {
           "name": "source",
-          "description": "The platform/source to send the message on (e.g. telegram, discord, x).",
+          "description": "Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
           "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["telegram", "discord"],
-          "descriptionCompressed": "source platform (telegram, discord, x)."
+          "schema": { "type": "string" },
+          "descriptionCompressed": "connector or inbox source"
+        },
+        {
+          "name": "sources",
+          "description": "Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+          "required": false,
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "descriptionCompressed": "inbox sources"
         },
         {
           "name": "target",
-          "description": "Identifier of the target. For user targets, a name/handle/id; for room targets, a room name/id.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["dev_guru", "announcements"],
-          "descriptionCompressed": "Target name/handle/id."
+          "description": "Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "loose message target"
         },
         {
-          "name": "text",
-          "description": "The message content to send.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["Hello!", "Important announcement!"],
-          "descriptionCompressed": "Message content."
+          "name": "channel",
+          "description": "Loose channel, room, or group name/reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "channel reference"
+        },
+        {
+          "name": "server",
+          "description": "Loose server, guild, workspace, or team name/reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "server reference"
+        },
+        {
+          "name": "message",
+          "description": "Message text for operation=send or replacement text for operation=edit.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message text"
+        },
+        {
+          "name": "query",
+          "description": "Search term for operation=search or operation=search_inbox.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "search query"
+        },
+        {
+          "name": "content",
+          "description": "Inbox search text or message lookup hint for draft/respond/manage operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message lookup text"
+        },
+        {
+          "name": "sender",
+          "description": "Sender identifier, handle, or display name for inbox search or reply lookup.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "sender lookup"
+        },
+        {
+          "name": "body",
+          "description": "Draft or response body for operation=draft_reply, draft_followup, or respond.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "draft body"
+        },
+        {
+          "name": "to",
+          "description": "Recipient identifiers for operation=draft_followup.",
+          "required": false,
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "descriptionCompressed": "draft recipients"
+        },
+        {
+          "name": "subject",
+          "description": "Optional subject for email-like draft operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "draft subject"
+        },
+        {
+          "name": "messageId",
+          "description": "Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message id"
+        },
+        {
+          "name": "draftId",
+          "description": "Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "draft id"
+        },
+        {
+          "name": "confirmed",
+          "description": "Whether the user explicitly confirmed sending for operation=send_draft.",
+          "required": false,
+          "schema": { "type": "boolean" },
+          "descriptionCompressed": "send confirmed"
+        },
+        {
+          "name": "sendAt",
+          "description": "Scheduled send time for operation=schedule_draft_send.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "send time"
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction value for operation=react.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "reaction emoji"
+        },
+        {
+          "name": "pin",
+          "description": "Pin state for operation=pin. Use false to unpin when supported.",
+          "required": false,
+          "schema": { "type": "boolean" },
+          "descriptionCompressed": "pin state"
+        },
+        {
+          "name": "manageOperation",
+          "description": "Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "manage operation"
+        },
+        {
+          "name": "label",
+          "description": "Label for operation=manage when adding or removing labels.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message label"
+        },
+        {
+          "name": "tag",
+          "description": "Tag for operation=manage when adding or removing tags.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "message tag"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of messages/channels/servers/inbox items to return.",
+          "required": false,
+          "schema": { "type": "integer" },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for read/search/list operations.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "sinceMs",
+          "description": "Start timestamp in milliseconds for inbox list/search/triage operations.",
+          "required": false,
+          "schema": { "type": "number" },
+          "descriptionCompressed": "since timestamp"
+        },
+        {
+          "name": "since",
+          "description": "Start timestamp or parseable date for operation=search_inbox.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "search start"
+        },
+        {
+          "name": "until",
+          "description": "End timestamp or parseable date for operation=search_inbox.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "search end"
         }
       ],
       "examples": [
@@ -309,37 +475,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Post 'Important announcement!' in #announcements"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to announcements.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to Jimmy.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": ["MESSAGE"]
             }
           }
         ]
@@ -347,18 +483,146 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": ["REPLY", "SEND_MESSAGE"],
+          "actions": ["REPLY", "MESSAGE"],
           "params": {
-            "SEND_MESSAGE": {
-              "targetType": "user",
+            "MESSAGE": {
+              "operation": "send",
               "source": "telegram",
               "target": "dev_guru",
-              "text": "Hello!"
+              "message": "Hello!"
+            }
+          }
+        },
+        {
+          "user": "Triage my Gmail inbox",
+          "actions": ["MESSAGE"],
+          "params": {
+            "MESSAGE": {
+              "operation": "triage",
+              "source": "gmail"
             }
           }
         }
       ],
-      "descriptionCompressed": "Send msg to another user or room (not current)."
+      "descriptionCompressed": "primary message action operations send read search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft"
+    },
+    {
+      "name": "POST",
+      "description": "Primary action for public feed surfaces and timelines. Choose operation=send to publish a post, operation=read to fetch recent feed posts, or operation=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+      "similes": ["POST", "PUBLISH", "TWEET", "CAST"],
+      "parameters": [
+        {
+          "name": "operation",
+          "description": "Post subaction: send, read, or search.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["send", "read", "search"]
+          },
+          "descriptionCompressed": "post operation"
+        },
+        {
+          "name": "source",
+          "description": "Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post connector source"
+        },
+        {
+          "name": "text",
+          "description": "Public post text for operation=send.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post text"
+        },
+        {
+          "name": "target",
+          "description": "Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "feed target"
+        },
+        {
+          "name": "feed",
+          "description": "Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "feed"
+        },
+        {
+          "name": "query",
+          "description": "Search term for operation=search.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "post search query"
+        },
+        {
+          "name": "replyTo",
+          "description": "Post/comment/reply target for operation=send.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "reply target"
+        },
+        {
+          "name": "mediaId",
+          "description": "Media id for connector-specific comment surfaces such as Instagram.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "media id"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of posts to return.",
+          "required": false,
+          "schema": { "type": "integer" },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for operation=read or operation=search.",
+          "required": false,
+          "schema": { "type": "string" },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "attachments",
+          "description": "Optional post attachments.",
+          "required": false,
+          "schema": { "type": "array", "items": { "type": "object" } },
+          "descriptionCompressed": "post attachments"
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Post this on X: shipping today"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Posted to X.",
+              "actions": ["POST"]
+            }
+          }
+        ]
+      ],
+      "exampleCalls": [
+        {
+          "user": "Post this on X: shipping today",
+          "actions": ["POST"],
+          "params": {
+            "POST": {
+              "operation": "send",
+              "source": "x",
+              "text": "shipping today"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "primary post action operations send read search public feed timeline posts"
     },
     {
       "name": "ADD_CONTACT",

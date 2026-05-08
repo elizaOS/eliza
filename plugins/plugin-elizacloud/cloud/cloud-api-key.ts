@@ -13,7 +13,7 @@
  * `cloud/` matches their actual ownership.
  */
 
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "@elizaos/agent/config/config";
 
 export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
 

@@ -37,5 +37,3 @@ export * from "./time.js";
 export * from "./twilio.js";
 export * from "./voice-affect.js";
 export * from "./whatsapp-client.js";
-export * from "./x-poster.js";
-export * from "./x-reader.js";

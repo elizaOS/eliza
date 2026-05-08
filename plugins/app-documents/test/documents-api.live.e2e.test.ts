@@ -1,13 +1,13 @@
 /**
- * App-Knowledge live e2e tests.
+ * App Documents live e2e tests.
  *
- * Boots a real runtime and tests the knowledge management API
- * endpoints: availability check, document upload, and search.
+ * Boots a real runtime and tests the document management API endpoints:
+ * availability/listing, document upload, and search.
  *
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import path from "node:path";
-import { knowledgePlugin } from "@elizaos/app-knowledge/setup-routes";
+import { documentsPlugin } from "@elizaos/app-documents/setup-routes";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,
@@ -26,13 +26,13 @@ try {
   /* dotenv optional */
 }
 
-describeIf(LIVE)("App-Knowledge: API e2e", () => {
+describeIf(LIVE)("App Documents: API e2e", () => {
   let runtime: Runtime;
 
   beforeAll(async () => {
     runtime = await startLiveRuntimeServer({
-      plugins: [knowledgePlugin],
-      tempPrefix: "eliza-knowledge-e2e-",
+      plugins: [documentsPlugin],
+      tempPrefix: "eliza-documents-e2e-",
     });
   }, 180_000);
 
@@ -40,51 +40,49 @@ describeIf(LIVE)("App-Knowledge: API e2e", () => {
     await runtime?.close();
   });
 
-  it("GET /api/knowledge returns availability status", async () => {
-    const res = await req(runtime.port, "GET", "/api/knowledge");
+  it("GET /api/documents returns document list status", async () => {
+    const res = await req(runtime.port, "GET", "/api/documents");
     expect(res.status).toBe(200);
     expect(res.data).toBeTruthy();
-    // The knowledge endpoint returns service availability info
     const data = res.data as Record<string, unknown>;
     expect(data).toHaveProperty("ok");
     expect(data).toHaveProperty("available");
+    expect(data).toHaveProperty("documents");
   }, 30_000);
 
-  it("knowledge routes respond to all endpoints", async () => {
+  it("document routes respond to expected endpoints", async () => {
     const endpoints = [
-      { method: "GET", path: "/api/knowledge" },
-      { method: "GET", path: "/api/knowledge/stats" },
+      { method: "GET", path: "/api/documents" },
+      { method: "GET", path: "/api/documents/stats" },
     ];
 
-    for (const { method, path: p } of endpoints) {
-      const res = await req(runtime.port, method, p);
-      // Routes should respond — 200 for success, other codes for service-specific responses
+    for (const { method, path: endpoint } of endpoints) {
+      const res = await req(runtime.port, method, endpoint);
       expect(res.status).toBeLessThan(500);
       expect(res.data).toBeTruthy();
     }
   }, 30_000);
 
-  it("POST /api/knowledge/documents accepts document upload", async () => {
-    const res = await req(runtime.port, "POST", "/api/knowledge/documents", {
+  it("POST /api/documents accepts document upload", async () => {
+    const res = await req(runtime.port, "POST", "/api/documents", {
       content:
         "The quick brown fox jumps over the lazy dog. This is a test document.",
+      filename: "test-document.txt",
+      contentType: "text/plain",
       metadata: {
         title: "Test Document",
         source: "e2e-test",
       },
     });
-    // Document upload may return 200/201 on success, 400 for invalid format,
-    // or 503 if the knowledge service is unavailable
     expect([200, 201, 400, 503]).toContain(res.status);
   }, 60_000);
 
-  it("GET /api/knowledge/search handles queries", async () => {
+  it("GET /api/documents/search handles queries", async () => {
     const res = await req(
       runtime.port,
       "GET",
-      "/api/knowledge/search?q=test&limit=5",
+      "/api/documents/search?q=test&limit=5",
     );
-    // Search may return results or error when embeddings aren't configured
     expect([200, 400, 500, 503]).toContain(res.status);
   }, 30_000);
 });

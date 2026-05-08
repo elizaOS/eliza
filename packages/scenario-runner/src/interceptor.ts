@@ -485,8 +485,8 @@ function captureConnectorDispatchesFromAction(
   };
 
   if (
-    actionName === "SEND_DRAFT" ||
-    actionName === "RESPOND_TO_MESSAGE"
+    actionName === "MESSAGE" ||
+    actionName === "MESSAGE"
   ) {
     const channels = [
       ...toStringArray(params?.channel),

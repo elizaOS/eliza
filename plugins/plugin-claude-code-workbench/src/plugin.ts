@@ -1,8 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
-import { claudeCodeWorkbenchListAction } from "./actions/list-workflows.ts";
-import { claudeCodeWorkbenchRunAction } from "./actions/run-workflow.ts";
 import { loadClaudeCodeWorkbenchConfig } from "./config.ts";
 import { claudeCodeWorkbenchStatusProvider } from "./providers/status.ts";
 import { claudeCodeWorkbenchRoutes } from "./routes.ts";
@@ -66,7 +64,6 @@ export const claudeCodeWorkbenchPlugin: Plugin = {
   },
 
   services: [ClaudeCodeWorkbenchService],
-  actions: [claudeCodeWorkbenchListAction, claudeCodeWorkbenchRunAction],
   providers: [claudeCodeWorkbenchStatusProvider],
   routes: claudeCodeWorkbenchRoutes,
 };

@@ -1,5 +1,5 @@
 /**
- * MCP Assistant Trending Tokens Test
+ * MCP Chat Trending Tokens Test
  *
  * Tests the MCP assistant with "can you get trending tokens" query.
  * Uses local database (same as running server).
@@ -100,11 +100,11 @@ async function cleanupTestEnvironment(): Promise<void> {
   if (testData && connectionString) {
     await cleanupTestData(connectionString, testData.organization.id).catch(() => {});
   }
-  logTimings("MCP Assistant Trending Tests", timings);
+  logTimings("MCP Chat Trending Tests", timings);
   console.log("✅ Cleanup complete\n");
 }
 
-describe.skipIf(skipLiveModelSuite)("MCP Assistant - Trending Tokens Query", () => {
+describe.skipIf(skipLiveModelSuite)("MCP Chat - Trending Tokens Query", () => {
   beforeAll(async () => {
     await setupTestEnvironment();
   });
@@ -116,7 +116,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Assistant - Trending Tokens Query", () 
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: "CHAT" as any,
       webSearchEnabled: false,
     });
 

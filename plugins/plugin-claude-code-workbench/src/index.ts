@@ -1,7 +1,5 @@
 import { claudeCodeWorkbenchPlugin } from "./plugin.ts";
 
-export { claudeCodeWorkbenchListAction } from "./actions/list-workflows.ts";
-export { claudeCodeWorkbenchRunAction } from "./actions/run-workflow.ts";
 export type { ClaudeCodeWorkbenchConfig } from "./config.ts";
 export {
   claudeCodeWorkbenchConfigSchema,

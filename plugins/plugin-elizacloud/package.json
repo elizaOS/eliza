@@ -46,6 +46,21 @@
       "types": "./lib/*.ts",
       "import": "./lib/*.ts",
       "default": "./lib/*.ts"
+    },
+    "./cloud": {
+      "types": "./cloud/index.ts",
+      "import": "./cloud/index.ts",
+      "default": "./cloud/index.ts"
+    },
+    "./cloud/*": {
+      "types": "./cloud/*.ts",
+      "import": "./cloud/*.ts",
+      "default": "./cloud/*.ts"
+    },
+    "./onboarding": {
+      "types": "./onboarding.ts",
+      "import": "./onboarding.ts",
+      "default": "./onboarding.ts"
     }
   },
   "files": [
@@ -60,7 +75,8 @@
     "ai": "^6.0.30",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
-    "undici": "^8.0.0"
+    "undici": "^8.0.0",
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

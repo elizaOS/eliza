@@ -63,7 +63,7 @@
     "pluginParameters": {
       "TWITTER_AUTH_MODE": {
         "type": "string",
-        "description": "Auth mode: 'env' (legacy keys/tokens), 'oauth' (3-legged OAuth2 PKCE), or 'broker' (stub).",
+        "description": "Auth mode: 'env' (legacy keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
         "required": false,
         "default": "env",
         "sensitive": false
@@ -109,12 +109,6 @@
         "description": "OAuth2 scopes (space-separated).",
         "required": false,
         "default": "tweet.read tweet.write users.read offline.access",
-        "sensitive": false
-      },
-      "TWITTER_BROKER_URL": {
-        "type": "string",
-        "description": "Broker URL (required for TWITTER_AUTH_MODE=broker; stub only).",
-        "required": false,
         "sensitive": false
       },
       "TWITTER_TARGET_USERS": {

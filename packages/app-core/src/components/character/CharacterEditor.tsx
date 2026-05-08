@@ -14,7 +14,7 @@ import {
   PREMADE_VOICES,
   sanitizeApiKey,
 } from "../../voice/types";
-import { KnowledgeView } from "../pages/KnowledgeView";
+import { DocumentsView } from "../pages/DocumentsView";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -118,7 +118,7 @@ const CHARACTER_EDITOR_PAGES = [
   "personality",
   "style",
   "examples",
-  "knowledge",
+  "documents",
 ] as const;
 type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
 
@@ -226,7 +226,7 @@ export function CharacterEditor({
   );
 
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
-    tab === "knowledge" ? "knowledge" : "personality",
+    tab === "documents" ? "documents" : "personality",
   );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
@@ -245,8 +245,8 @@ export function CharacterEditor({
 
   // Sync activePage when tab changes externally (e.g. nav to /knowledge)
   useEffect(() => {
-    if (tab === "knowledge" && activePage !== "knowledge") {
-      setActivePage("knowledge");
+    if (tab === "documents" && activePage !== "documents") {
+      setActivePage("documents");
     }
   }, [tab, activePage]);
 
@@ -1204,13 +1204,13 @@ export function CharacterEditor({
                           ? t("charactereditor.TabExamples", {
                               defaultValue: "Examples",
                             })
-                          : t("nav.knowledge", {
+                          : t("nav.documents", {
                               defaultValue: "Knowledge",
                             })}
                   </button>
                 ))}
               </div>
-              {activePage !== "knowledge" && (
+              {activePage !== "documents" && (
                 <div className="ml-auto">
                   {renderContentActionButtons("ce-vrm-upload")}
                 </div>
@@ -1267,9 +1267,9 @@ export function CharacterEditor({
                 </div>
               </div>
               <div
-                className={`flex flex-col flex-1 min-h-0 overflow-hidden${activePage !== "knowledge" ? " hidden" : ""}`}
+                className={`flex flex-col flex-1 min-h-0 overflow-hidden${activePage !== "documents" ? " hidden" : ""}`}
               >
-                <KnowledgeView inModal />
+                <DocumentsView inModal />
               </div>
             </div>
           </div>
@@ -1400,7 +1400,7 @@ export function CharacterEditor({
                               ? t("charactereditor.TabExamples", {
                                   defaultValue: "Examples",
                                 })
-                              : t("nav.knowledge", {
+                              : t("nav.documents", {
                                   defaultValue: "Knowledge",
                                 }),
                     })}`

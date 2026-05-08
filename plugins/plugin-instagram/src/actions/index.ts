@@ -4,4 +4,4 @@
  * Contains action implementations for Instagram operations.
  */
 
-export { instagramReplyAction } from "./reply";
+// Instagram DMs route through MESSAGE. Instagram comments route through POST.

@@ -21,7 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "whatsapp-delivery-degraded",
       text: "Read the WhatsApp chat and try to send the reply, but if delivery is degraded after dispatch, tell me that explicitly instead of saying it definitely went through.",
       responseIncludesAny: ["whatsapp", "delivery", "degraded", "reply"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["whatsapp", "delivery", "degraded", "reply"],
     },
   ],

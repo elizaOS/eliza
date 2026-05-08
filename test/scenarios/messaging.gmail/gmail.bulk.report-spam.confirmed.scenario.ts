@@ -54,13 +54,13 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: ["search", "read"],
       minCount: 1,
     },
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: "manage",
       operation: "report_spam",
       fields: {
@@ -71,7 +71,7 @@ export default scenario({
       type: "gmailBatchModify",
       body: {
         addLabelIds: "SPAM",
-        removeLabelIds: "TRIAGE_MESSAGES",
+        removeLabelIds: "MESSAGE",
       },
     },
     {

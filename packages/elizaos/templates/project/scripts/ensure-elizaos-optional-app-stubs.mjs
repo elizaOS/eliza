@@ -17,7 +17,7 @@ const optionalPackages = [
   "@elizaos/app-companion",
   "@elizaos/app-elizamaker",
   "@elizaos/app-hyperliquid",
-  "@elizaos/app-knowledge",
+  "@elizaos/app-documents",
   "@elizaos/app-lifeops",
   "@elizaos/app-polymarket",
   "@elizaos/app-shopify",

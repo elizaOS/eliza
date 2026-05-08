@@ -45,7 +45,7 @@ export type BuiltinTab =
   | "character"
   | "character-select"
   | "inventory"
-  | "knowledge"
+  | "documents"
   | "connectors"
   | "triggers"
   | "plugins"
@@ -194,7 +194,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   },
   {
     label: "Character",
-    tabs: ["character", "character-select", "knowledge"],
+    tabs: ["character", "character-select", "documents"],
     icon: UserRound,
     description: "Avatar identity, style, examples, and knowledge",
   },
@@ -304,7 +304,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   automations: "/automations",
   triggers: "/automations",
   inventory: "/wallet",
-  knowledge: "/character/knowledge",
+  knowledge: "/character/documents",
   connectors: "/connectors",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
@@ -434,7 +434,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /character/<sub> — resolve nested character paths
   if (normalized.startsWith("/character/")) {
     const sub = normalized.slice("/character/".length);
-    if (sub === "knowledge") return "knowledge";
+    if (sub === "documents") return "documents";
     if (sub === "select") return "character-select";
     return "character";
   }
@@ -511,7 +511,7 @@ export function titleForTab(tab: Tab): string {
       return "Automations";
     case "inventory":
       return "Wallet";
-    case "knowledge":
+    case "documents":
       return "Knowledge";
     case "connectors":
       return "Connectors";

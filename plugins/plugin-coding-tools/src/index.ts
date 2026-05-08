@@ -14,7 +14,6 @@ import {
   taskStopAction,
   todoWriteAction,
   webFetchAction,
-  webSearchAction,
   writeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
@@ -29,7 +28,7 @@ import {
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, CODE_WEB_SEARCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. Blocks user-private paths (~/pvt, ~/Library, ~/.ssh, etc.) by default; otherwise unrestricted.",
+    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. Blocks user-private paths (~/pvt, ~/Library, ~/.ssh, etc.) by default; otherwise unrestricted.",
   services: [
     FileStateService,
     SandboxService,
@@ -50,7 +49,6 @@ export const codingToolsPlugin: Plugin = {
     globAction,
     lsAction,
     webFetchAction,
-    webSearchAction,
     todoWriteAction,
     askUserQuestionAction,
     enterWorktreeAction,

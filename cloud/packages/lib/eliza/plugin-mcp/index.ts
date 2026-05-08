@@ -1,6 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { readResourceAction } from "./actions/readResourceAction";
-import { listConnectionsAction, searchActionsAction } from "./actions/search-actions";
+import { mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";
 
@@ -40,7 +39,7 @@ const mcpPlugin = {
   },
 
   services: [McpService],
-  actions: [readResourceAction, searchActionsAction, listConnectionsAction],
+  actions: [mcpAction],
   providers: [provider],
 } satisfies Record<string, unknown> as unknown as Plugin;
 

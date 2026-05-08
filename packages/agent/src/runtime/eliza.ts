@@ -172,7 +172,7 @@ import discordLocalPlugin from "./discord-local-plugin.js";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {
-  runtimeKnowledgeEnabled,
+  runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
 } from "./native-runtime-features.js";
 import {
@@ -3764,16 +3764,16 @@ export async function startEliza(
     }
 
     try {
-      if (runtimeKnowledgeEnabled(runtime)) {
+      if (runtimeDocumentsEnabled(runtime)) {
         await seedBundledDocuments(runtime);
       } else {
         logger.info(
-          "[eliza] Native knowledge disabled; skipping bundled knowledge seeding",
+          "[eliza] Native documents disabled; skipping bundled document seeding",
         );
       }
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to seed bundled knowledge: ${formatError(err)}`,
+        `[eliza] Failed to seed bundled documents: ${formatError(err)}`,
       );
     }
 

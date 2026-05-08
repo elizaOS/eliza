@@ -15,7 +15,7 @@ import {
   type WalletExportRejection,
   type WalletExportRequestBody,
 } from "@elizaos/shared";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";

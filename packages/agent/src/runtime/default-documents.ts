@@ -10,6 +10,8 @@ import {
 
 const DOCUMENT_BATCH_SIZE = 100;
 const DEFAULT_DOCUMENTS_SOURCE = "eliza-default-documents";
+const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 type SeededMemory = Memory & { id: UUID };
 
@@ -111,7 +113,7 @@ function normalizeProvidedEmbedding(
 
   if (!embedding.every((value) => Number.isFinite(value))) {
     logger.warn(
-      `[eliza] Ignoring bundled knowledge embedding for ${document.filename} fragment ${index}: vector contains non-finite values.`,
+      `[eliza] Ignoring bundled document embedding for ${document.filename} fragment ${index}: vector contains non-finite values.`,
     );
     return undefined;
   }
@@ -122,7 +124,7 @@ function normalizeProvidedEmbedding(
     embedding.length !== expectedDimensions
   ) {
     logger.warn(
-      `[eliza] Ignoring bundled knowledge embedding for ${document.filename} fragment ${index}: expected ${expectedDimensions} dimensions, received ${embedding.length}.`,
+      `[eliza] Ignoring bundled document embedding for ${document.filename} fragment ${index}: expected ${expectedDimensions} dimensions, received ${embedding.length}.`,
     );
     return undefined;
   }
@@ -141,6 +143,7 @@ function extractTimestamp(memory: Memory | null): number {
 function buildDocumentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
+  agentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
   const parsed = path.parse(document.filename);
@@ -157,9 +160,15 @@ function buildDocumentMetadata(
     fileSize: Buffer.byteLength(document.text, "utf8"),
     source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
-    bundledKnowledge: true,
-    bundledKnowledgeKey: document.key,
-    bundledKnowledgeVersion: document.version,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
+    bundledDocument: true,
+    bundledDocumentKey: document.key,
+    bundledDocumentVersion: document.version,
     ...(document.metadata ?? {}),
   };
 }
@@ -168,6 +177,7 @@ function buildFragmentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
   index: number,
+  agentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
   return {
@@ -176,9 +186,15 @@ function buildFragmentMetadata(
     position: index,
     source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
-    bundledKnowledge: true,
-    bundledKnowledgeKey: document.key,
-    bundledKnowledgeVersion: document.version,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
+    bundledDocument: true,
+    bundledDocumentKey: document.key,
+    bundledDocumentVersion: document.version,
   };
 }
 
@@ -206,8 +222,8 @@ function documentMatchesDefinition(
     metadata?.documentId === documentId &&
     metadata?.filename === document.filename &&
     metadata?.contentType === document.contentType &&
-    metadata?.bundledKnowledgeKey === document.key &&
-    metadata?.bundledKnowledgeVersion === document.version
+    metadata?.bundledDocumentKey === document.key &&
+    metadata?.bundledDocumentVersion === document.version
   );
 }
 
@@ -231,8 +247,8 @@ function fragmentMatchesDefinition(
     metadata?.type === MemoryType.FRAGMENT &&
     metadata?.documentId === documentId &&
     metadata?.position === index &&
-    metadata?.bundledKnowledgeKey === document.key &&
-    metadata?.bundledKnowledgeVersion === document.version &&
+    metadata?.bundledDocumentKey === document.key &&
+    metadata?.bundledDocumentVersion === document.version &&
     embeddingsEqual(existingEmbedding, embedding)
   );
 }
@@ -246,7 +262,7 @@ async function listFragmentIdsForDocument(
 
   while (true) {
     const batch = await runtime.getMemories({
-      tableName: "knowledge",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId: runtime.agentId,
       limit: DOCUMENT_BATCH_SIZE,
       start: offset,
@@ -290,7 +306,12 @@ async function seedBundledDocument(
     worldId: runtime.agentId,
     entityId: runtime.agentId,
     content: { text: document.text },
-    metadata: buildDocumentMetadata(document, documentId, documentTimestamp),
+    metadata: buildDocumentMetadata(
+      document,
+      documentId,
+      runtime.agentId,
+      documentTimestamp,
+    ),
     createdAt: documentCreatedAt,
   };
 
@@ -300,7 +321,7 @@ async function seedBundledDocument(
     if (existingDocument) {
       await runtime.updateMemory(documentMemory);
     } else {
-      await runtime.createMemory(documentMemory, "documents");
+      await runtime.createMemory(documentMemory, DOCUMENTS_TABLE);
     }
     changed = true;
   }
@@ -342,6 +363,7 @@ async function seedBundledDocument(
         document,
         documentId,
         index,
+        runtime.agentId,
         fragmentTimestamp,
       ),
       ...(fragmentEmbedding ? { embedding: fragmentEmbedding } : {}),
@@ -365,7 +387,7 @@ async function seedBundledDocument(
       if (existingFragment) {
         await runtime.updateMemory(fragmentMemory);
       } else {
-        await runtime.createMemory(fragmentMemory, "knowledge");
+        await runtime.createMemory(fragmentMemory, DOCUMENT_FRAGMENTS_TABLE);
       }
       changed = true;
     }
@@ -380,7 +402,7 @@ async function seedBundledDocument(
 
   if (changed) {
     logger.info(
-      `[eliza] Seeded bundled knowledge document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
+      `[eliza] Seeded bundled document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
     );
   }
 }
@@ -393,4 +415,3 @@ export async function seedBundledDocuments(
     await seedBundledDocument(runtime, document);
   }
 }
-

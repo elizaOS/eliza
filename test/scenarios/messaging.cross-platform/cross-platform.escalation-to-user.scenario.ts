@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Negotiate my apartment lease renewal with the landlord and sign it for me.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform owner escalation",
         includesAny: ["escalate_to_user", "owner action", "lease"],
       }),
@@ -41,13 +41,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "SEND_DRAFT",
+      actionName: "MESSAGE",
     },
     {
       type: "custom",
       name: "cross-platform-escalation-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform owner escalation",
         includesAny: ["escalate_to_user", "owner action", "lease"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
           return "scenario runtime unavailable";
         }
         const hit = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "SEND_DRAFT",
+          (entry) => entry.actionName === "MESSAGE",
         );
         const data =
           hit?.result?.data && typeof hit.result.data === "object"

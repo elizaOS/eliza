@@ -29,8 +29,6 @@ import {
 	type ProviderResult,
 	type State,
 } from "@elizaos/core";
-// Import actions
-import { commandAction } from "./actions/command";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
@@ -162,8 +160,6 @@ export const commandsPlugin: Plugin = {
 	description: "Chat command system with /help, /status, /reset, etc.",
 
 	providers: [commandRegistryProvider],
-
-	actions: [commandAction],
 
 	config: {
 		COMMANDS_ENABLED: "true",

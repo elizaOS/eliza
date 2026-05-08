@@ -216,17 +216,6 @@ describe("App Credits API", () => {
 });
 
 // =============================================================================
-// Character Assistant API (auth required)
-// =============================================================================
-
-describe("Character Assistant API", () => {
-  test("POST /api/v1/character-assistant requires auth", async () => {
-    const response = await api.post("/api/v1/character-assistant", {});
-    expect([401, 403]).toContain(response.status);
-  });
-});
-
-// =============================================================================
 // Affiliate API — Security Details
 // =============================================================================
 

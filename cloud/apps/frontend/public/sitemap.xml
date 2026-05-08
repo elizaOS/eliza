@@ -46,11 +46,6 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://elizacloud.ai/dashboard/build</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://elizacloud.ai/dashboard/my-agents</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -61,4 +56,3 @@
     <priority>0.6</priority>
   </url>
 </urlset>
-

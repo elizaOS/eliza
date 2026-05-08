@@ -1095,7 +1095,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
-    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose OWNER_CALENDAR, TRIAGE_MESSAGES, or SEND_DRAFT instead.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose OWNER_CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     'Example: {"subaction":"start","shouldAct":true,"response":null}',
@@ -1182,8 +1182,7 @@ export const schedulingAction: Action & {
     "finalize the winning proposal, cancel, or list negotiations/proposals. " +
     "Do not use this for first-turn calendar requests, recurring blocks, " +
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
-    "searches; those belong to OWNER_CALENDAR, TRIAGE_MESSAGES, " +
-    "or SEND_DRAFT.",
+    "searches; those belong to OWNER_CALENDAR or MESSAGE with the appropriate inbox/draft operation.",
   descriptionCompressed:
     "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
   contexts: ["calendar", "contacts", "tasks", "messaging"],

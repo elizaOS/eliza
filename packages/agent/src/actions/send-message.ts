@@ -1,16 +1,16 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
+  messageAction,
   resolveCanonicalOwnerIdForMessage,
-  sendMessageAction,
   stringToUuid,
 } from "@elizaos/core";
 
 /**
  * Compatibility helper used by agent-side inbox/admin flows.
  *
- * The SEND_MESSAGE action itself is defined in @elizaos/core so there is only
- * one routed send implementation. Keep this helper exported for existing
- * imports that need to resolve the owner's client-chat entity.
+ * Sending is handled by the polymorphic MESSAGE action (op=send) in
+ * @elizaos/core. This helper just resolves the owner's client-chat entity
+ * so callers can target it.
  */
 export async function resolveAdminEntityId(
   runtime: IAgentRuntime,
@@ -25,5 +25,5 @@ export async function resolveAdminEntityId(
   return stringToUuid(`${agentName}-admin-entity`) as UUID;
 }
 
-export { sendMessageAction };
-export default sendMessageAction;
+export { messageAction };
+export default messageAction;

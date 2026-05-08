@@ -7,16 +7,6 @@ export * from "./apps-routes.js";
 export * from "./auth-routes.js";
 export * from "./bug-report-routes.js";
 export * from "./character-routes.js";
-export * from "./cloud-billing-routes.js";
-export * from "./cloud-compat-routes.js";
-export {
-  type CloudRouteState,
-  handleCloudRoute,
-} from "./cloud-routes.js";
-export {
-  type CloudStatusRouteContext,
-  handleCloudStatusRoutes,
-} from "./cloud-status-routes.js";
 export * from "./compat-utils.js";
 export * from "./connector-health.js";
 export * from "./credit-detection.js";

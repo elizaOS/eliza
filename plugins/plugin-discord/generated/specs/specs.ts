@@ -44,48 +44,6 @@ export const coreActionsSpec = {
       "parameters": []
     },
     {
-      "name": "DISCORD_MESSAGE_OP",
-      "description": "Run a Discord message operation: send a channel message, reply to a message, send a direct message, edit one of the bot's messages, delete one of the bot's messages, react with an emoji, pin a message, or unpin a message. Pick the op that matches the user request.",
-      "descriptionCompressed": "Discord message ops: send, reply, dm, edit, delete, react, pin, unpin.",
-      "similes": [
-        "DISCORD_SEND_MESSAGE",
-        "DISCORD_POST_MESSAGE",
-        "DISCORD_MESSAGE_CHANNEL",
-        "DISCORD_REPLY",
-        "DISCORD_SEND_DM",
-        "DISCORD_DIRECT_MESSAGE",
-        "DISCORD_DM_USER",
-        "DISCORD_EDIT_MESSAGE",
-        "DISCORD_UPDATE_MESSAGE",
-        "DISCORD_DELETE_MESSAGE",
-        "DISCORD_REMOVE_MESSAGE",
-        "DISCORD_REACT_TO_MESSAGE",
-        "DISCORD_ADD_REACTION",
-        "DISCORD_PIN_MESSAGE",
-        "DISCORD_UNPIN_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DISCORD_CHANNEL_OP",
-      "description": "Run a Discord channel operation: join a voice or text channel, leave a voice or text channel, read or summarize recent channel messages, or search messages in a channel.",
-      "descriptionCompressed": "Discord channel ops: join, leave, read, search.",
-      "similes": [
-        "DISCORD_JOIN_CHANNEL",
-        "DISCORD_JOIN_VOICE",
-        "DISCORD_LEAVE_CHANNEL",
-        "DISCORD_LEAVE_VOICE",
-        "DISCORD_READ_CHANNEL",
-        "DISCORD_READ_MESSAGES",
-        "DISCORD_SHOW_MESSAGES",
-        "DISCORD_SUMMARIZE_CHANNEL",
-        "DISCORD_CATCH_UP_CHANNEL",
-        "DISCORD_SEARCH_MESSAGES",
-        "DISCORD_FIND_MESSAGES"
-      ],
-      "parameters": []
-    },
-    {
       "name": "DISCORD_MEDIA_OP",
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
@@ -102,7 +60,7 @@ export const coreActionsSpec = {
     },
     {
       "name": "DISCORD_SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use DISCORD_CHANNEL_OP with op='read' instead.",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
         "DISCORD_SUMMARIZE_HISTORY",
@@ -118,17 +76,6 @@ export const coreActionsSpec = {
       "similes": [
         "DISCORD_MAKE_POLL",
         "DISCORD_START_VOTE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DISCORD_GET_USER_INFO",
-      "description": "Get Discord profile or server-member information for a user.",
-      "descriptionCompressed": "Get Discord user info.",
-      "similes": [
-        "DISCORD_USER_INFO",
-        "DISCORD_MEMBER_INFO",
-        "DISCORD_PROFILE_INFO"
       ],
       "parameters": []
     },
@@ -160,48 +107,6 @@ export const allActionsSpec = {
       "parameters": []
     },
     {
-      "name": "DISCORD_MESSAGE_OP",
-      "description": "Run a Discord message operation: send a channel message, reply to a message, send a direct message, edit one of the bot's messages, delete one of the bot's messages, react with an emoji, pin a message, or unpin a message. Pick the op that matches the user request.",
-      "descriptionCompressed": "Discord message ops: send, reply, dm, edit, delete, react, pin, unpin.",
-      "similes": [
-        "DISCORD_SEND_MESSAGE",
-        "DISCORD_POST_MESSAGE",
-        "DISCORD_MESSAGE_CHANNEL",
-        "DISCORD_REPLY",
-        "DISCORD_SEND_DM",
-        "DISCORD_DIRECT_MESSAGE",
-        "DISCORD_DM_USER",
-        "DISCORD_EDIT_MESSAGE",
-        "DISCORD_UPDATE_MESSAGE",
-        "DISCORD_DELETE_MESSAGE",
-        "DISCORD_REMOVE_MESSAGE",
-        "DISCORD_REACT_TO_MESSAGE",
-        "DISCORD_ADD_REACTION",
-        "DISCORD_PIN_MESSAGE",
-        "DISCORD_UNPIN_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DISCORD_CHANNEL_OP",
-      "description": "Run a Discord channel operation: join a voice or text channel, leave a voice or text channel, read or summarize recent channel messages, or search messages in a channel.",
-      "descriptionCompressed": "Discord channel ops: join, leave, read, search.",
-      "similes": [
-        "DISCORD_JOIN_CHANNEL",
-        "DISCORD_JOIN_VOICE",
-        "DISCORD_LEAVE_CHANNEL",
-        "DISCORD_LEAVE_VOICE",
-        "DISCORD_READ_CHANNEL",
-        "DISCORD_READ_MESSAGES",
-        "DISCORD_SHOW_MESSAGES",
-        "DISCORD_SUMMARIZE_CHANNEL",
-        "DISCORD_CATCH_UP_CHANNEL",
-        "DISCORD_SEARCH_MESSAGES",
-        "DISCORD_FIND_MESSAGES"
-      ],
-      "parameters": []
-    },
-    {
       "name": "DISCORD_MEDIA_OP",
       "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
       "descriptionCompressed": "Discord media ops: download, transcribe.",
@@ -218,7 +123,7 @@ export const allActionsSpec = {
     },
     {
       "name": "DISCORD_SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use DISCORD_CHANNEL_OP with op='read' instead.",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use MESSAGE with operation=read and source=discord instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
         "DISCORD_SUMMARIZE_HISTORY",
@@ -234,17 +139,6 @@ export const allActionsSpec = {
       "similes": [
         "DISCORD_MAKE_POLL",
         "DISCORD_START_VOTE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DISCORD_GET_USER_INFO",
-      "description": "Get Discord profile or server-member information for a user.",
-      "descriptionCompressed": "Get Discord user info.",
-      "similes": [
-        "DISCORD_USER_INFO",
-        "DISCORD_MEMBER_INFO",
-        "DISCORD_PROFILE_INFO"
       ],
       "parameters": []
     },
@@ -265,30 +159,8 @@ export const coreProvidersSpec = {
   "version": "1.0.0",
   "providers": [
     {
-      "name": "channelState",
-      "description": "Provides information about the current Discord channel state, including whether it's a DM or group channel, channel name, and server name.",
-      "dynamic": true
-    },
-    {
-      "name": "guildInfo",
-      "description": "Provides information about the current Discord server/guild including member count, creation date, channels, roles, and bot permissions.",
-      "dynamic": true
-    },
-    {
       "name": "voiceState",
       "description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
-      "dynamic": true
-    },
-    {
-      "name": "discordChannels",
-      "description": "Lists Discord channels the bot is currently listening to, grouped by server.",
-      "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
-      "dynamic": true
-    },
-    {
-      "name": "discordServerInfo",
-      "description": "Discord server overview: members, channels, roles, owner, premium tier.",
-      "descriptionCompressed": "Discord server overview (members, channels, roles).",
       "dynamic": true
     }
   ]
@@ -297,30 +169,8 @@ export const allProvidersSpec = {
   "version": "1.0.0",
   "providers": [
     {
-      "name": "channelState",
-      "description": "Provides information about the current Discord channel state, including whether it's a DM or group channel, channel name, and server name.",
-      "dynamic": true
-    },
-    {
-      "name": "guildInfo",
-      "description": "Provides information about the current Discord server/guild including member count, creation date, channels, roles, and bot permissions.",
-      "dynamic": true
-    },
-    {
       "name": "voiceState",
       "description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
-      "dynamic": true
-    },
-    {
-      "name": "discordChannels",
-      "description": "Lists Discord channels the bot is currently listening to, grouped by server.",
-      "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
-      "dynamic": true
-    },
-    {
-      "name": "discordServerInfo",
-      "description": "Discord server overview: members, channels, roles, owner, premium tier.",
-      "descriptionCompressed": "Discord server overview (members, channels, roles).",
       "dynamic": true
     }
   ]

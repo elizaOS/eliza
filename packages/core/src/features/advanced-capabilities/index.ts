@@ -22,9 +22,8 @@ import {
 
 // Personality imports
 import {
+	characterAction,
 	characterEvolutionEvaluator,
-	modifyCharacterAction,
-	persistCharacterAction,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
@@ -72,33 +71,11 @@ export const advancedProviders = [
  * Advanced actions - extended agent capabilities
  */
 export const advancedActions = [
-	withCanonicalActionDocs(actions.createTaskAction),
-	withCanonicalActionDocs(actions.followRoomAction),
-	withCanonicalActionDocs(actions.muteRoomAction),
-	withCanonicalActionDocs(actions.unfollowRoomAction),
-	withCanonicalActionDocs(actions.unmuteRoomAction),
+	withCanonicalActionDocs(actions.roomOpAction),
 	withCanonicalActionDocs(actions.updateRoleAction),
-	withCanonicalActionDocs(actions.updateSettingsAction),
 	withCanonicalActionDocs(searchExperiencesAction),
 	actions.messageAction,
 	actions.postAction,
-	// MESSAGE sub-actions — explicit per-op canonical actions (v4 plan).
-	actions.sendMessageAction,
-	actions.readMessagesAction,
-	actions.searchMessagesAction,
-	actions.listChannelsAction,
-	actions.listServersAction,
-	actions.reactToMessageAction,
-	actions.editMessageAction,
-	actions.deleteMessageAction,
-	actions.pinMessageAction,
-	actions.joinChannelAction,
-	actions.leaveChannelAction,
-	actions.getUserAction,
-	// POST sub-actions.
-	actions.sendPostAction,
-	actions.readFeedAction,
-	actions.searchPostsAction,
 	// Todo actions
 	todoAction,
 	createTodoAction,
@@ -107,8 +84,7 @@ export const advancedActions = [
 	editTodoAction,
 	deleteTodoAction,
 	// Personality actions
-	modifyCharacterAction,
-	persistCharacterAction,
+	characterAction,
 ];
 
 /**

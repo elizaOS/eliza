@@ -194,7 +194,7 @@ test.describe("Public Pages", () => {
 
       await expect(
         page.getByRole("heading", {
-          name: "Build AI Agents Faster. Ship Them Instantly. Introducing Eliza Cloud.",
+          name: "Chat AI Agents Faster. Ship Them Instantly. Introducing Eliza Cloud.",
         }),
       ).toBeVisible();
       await expect(page.locator("body")).not.toContainText("Post not found");

@@ -1,12 +1,5 @@
 import type { Plugin, TestSuite } from "@elizaos/core";
-import {
-  captureImageAction,
-  describeSceneAction,
-  identifyPersonAction,
-  nameEntityAction,
-  setVisionModeAction,
-  trackEntityAction,
-} from "./action";
+import { visionAction } from "./action";
 import { visionProvider } from "./provider";
 import { VisionService } from "./service";
 import { testSuites } from "./tests/e2e/index";
@@ -17,14 +10,7 @@ export const visionPlugin: Plugin = {
     "Provides visual perception through camera integration and scene analysis",
   services: [VisionService],
   providers: [visionProvider],
-  actions: [
-    describeSceneAction,
-    captureImageAction,
-    setVisionModeAction,
-    nameEntityAction,
-    identifyPersonAction,
-    trackEntityAction,
-  ],
+  actions: [visionAction],
   tests: testSuites as unknown as TestSuite[],
   init: async (_config, _runtime) => {},
 };

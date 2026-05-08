@@ -134,6 +134,13 @@ export interface RegistryAppInfo {
    * TODO: server-side population pending
    */
   visibleInAppStore?: boolean;
+  /**
+   * If true, the app declares itself as the default landing tab. Exactly one
+   * installed app should set this. Sourced from `package.json` →
+   * `elizaos.app.mainTab`. Consumed by `getMainTabApp()` in `@elizaos/app-core`
+   * to compute the shell's landing tab at boot.
+   */
+  mainTab?: boolean;
 }
 
 export interface AppSessionState {

@@ -1,13 +1,6 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import getUserInfo from "./actions/getUserInfo";
-import messageOp from "./actions/messageOp";
-import readChannel from "./actions/readChannel";
-
-import { memberListProvider } from "./providers/memberList";
-import { slackChannelsProvider } from "./providers/slackChannels";
 import { slackEmojisProvider } from "./providers/slackEmojis";
 import { slackPinsProvider } from "./providers/slackPins";
-import { workspaceInfoProvider } from "./providers/workspaceInfo";
 
 import { SlackService } from "./service";
 
@@ -15,14 +8,8 @@ const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
   services: [SlackService],
-  actions: [messageOp, readChannel, getUserInfo],
-  providers: [
-    workspaceInfoProvider,
-    memberListProvider,
-    slackChannelsProvider,
-    slackPinsProvider,
-    slackEmojisProvider,
-  ],
+  actions: [],
+  providers: [slackPinsProvider, slackEmojisProvider],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
     const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
@@ -138,9 +125,6 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
-export { getUserInfo } from "./actions/getUserInfo";
-export { messageOp } from "./actions/messageOp";
-export { readChannel } from "./actions/readChannel";
 // Channel configuration types
 export type {
   SlackConfig,
@@ -174,11 +158,8 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
-export { memberListProvider } from "./providers/memberList";
-export { slackChannelsProvider } from "./providers/slackChannels";
 export { slackEmojisProvider } from "./providers/slackEmojis";
 export { slackPinsProvider } from "./providers/slackPins";
-export { workspaceInfoProvider } from "./providers/workspaceInfo";
 // Export service for direct access
 export { SlackService } from "./service";
 // Export types

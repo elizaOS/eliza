@@ -1,12 +1,12 @@
 /**
- * Live E2E tests for knowledge integration.
+ * Live E2E tests for document integration.
  *
- * These tests use a real runtime, real embeddings, and a real LLM-backed
- * chat route for retrieval.
+ * These tests use a real runtime, real embeddings, and a real LLM-backed chat
+ * route for retrieval.
  */
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
   createConversation,
@@ -36,21 +36,21 @@ try {
 
 const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
-const KNOWLEDGE_CODEWORD = "VELVET-MOON-4821";
+const DOCUMENT_CODEWORD = "VELVET-MOON-4821";
 
-type StartedKnowledgeServer = {
+type StartedDocumentServer = {
   close: () => Promise<void>;
   port: number;
 };
 
-async function askForExactKnowledgeCodeword(
+async function askForExactDocumentCodeword(
   port: number,
   conversationId: string,
 ): Promise<string> {
   const prompts = [
-    "What is the exact deployment codeword from the uploaded knowledge document? Reply with only the exact codeword, including hyphens and digits. Do not execute any actions.",
-    "Search the uploaded knowledge document and copy the exact string from the sentence 'The deployment codeword is ...'. Reply with the codeword only. Do not update any profile or entity.",
-    "Return only the exact uppercase-and-hyphen codeword from knowledge. No actions. No explanation.",
+    "What is the exact deployment codeword from the uploaded document? Reply with only the exact codeword, including hyphens and digits. Do not execute any actions.",
+    "Search the uploaded document and copy the exact string from the sentence 'The deployment codeword is ...'. Reply with the codeword only. Do not update any profile or entity.",
+    "Return only the exact uppercase-and-hyphen codeword from documents. No actions. No explanation.",
   ];
 
   let lastText = "";
@@ -66,7 +66,7 @@ async function askForExactKnowledgeCodeword(
     expect(status).toBe(200);
     lastText = String(data.text ?? data.response ?? "");
     expect(lastText.length).toBeGreaterThan(0);
-    if (lastText.includes(KNOWLEDGE_CODEWORD)) {
+    if (lastText.includes(DOCUMENT_CODEWORD)) {
       return lastText;
     }
   }
@@ -74,7 +74,7 @@ async function askForExactKnowledgeCodeword(
   return lastText;
 }
 
-async function startKnowledgeServer(): Promise<StartedKnowledgeServer> {
+async function startDocumentServer(): Promise<StartedDocumentServer> {
   const runtimeResult = await createRealTestRuntime({
     withLLM: true,
     preferredProvider: LIVE_PROVIDER?.name,
@@ -97,23 +97,23 @@ async function startKnowledgeServer(): Promise<StartedKnowledgeServer> {
   };
 }
 
-describeIf(CAN_RUN)("Live: Knowledge management flow", () => {
-  let server: StartedKnowledgeServer | null = null;
+describeIf(CAN_RUN)("Live: document management flow", () => {
+  let server: StartedDocumentServer | null = null;
   let uploadedDocumentId: string | null = null;
 
   beforeAll(async () => {
-    server = await startKnowledgeServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
     await server?.close();
   });
 
-  it("step 1: gets knowledge stats", async () => {
+  it("step 1: gets document stats", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/stats",
+      "/api/documents/stats",
     );
     expect(status).toBe(200);
     expect(typeof data.documentCount).toBe("number");
@@ -123,11 +123,11 @@ describeIf(CAN_RUN)("Live: Knowledge management flow", () => {
 
   it("step 2: uploads a text document", async () => {
     const testContent = `
-# Test Knowledge Document
+# Test Document
 
-The deployment codeword is ${KNOWLEDGE_CODEWORD}.
+The deployment codeword is ${DOCUMENT_CODEWORD}.
 
-This document verifies that knowledge upload, semantic search, and chat
+This document verifies that document upload, semantic search, and chat
 retrieval all use the real runtime path.
 
 RAG retrieval should answer questions about this codeword from the document.
@@ -136,10 +136,10 @@ RAG retrieval should answer questions about this codeword from the document.
     const { status, data } = await req(
       server?.port ?? 0,
       "POST",
-      "/api/knowledge/documents",
+      "/api/documents",
       {
         content: testContent,
-        filename: "test-knowledge-doc.md",
+        filename: "test-document-doc.md",
         contentType: "text/markdown",
       },
     );
@@ -156,21 +156,21 @@ RAG retrieval should answer questions about this codeword from the document.
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/documents",
+      "/api/documents",
     );
     expect(status).toBe(200);
     expect(Array.isArray(data.documents)).toBe(true);
 
     const docs = data.documents as Array<{ filename: string; id: string }>;
     const uploadedDoc = docs.find((entry) => entry.id === uploadedDocumentId);
-    expect(uploadedDoc?.filename).toContain("test-knowledge-doc");
+    expect(uploadedDoc?.filename).toContain("test-document-doc");
   });
 
   it("step 4: gets document details", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      `/api/knowledge/documents/${encodeURIComponent(uploadedDocumentId ?? "")}`,
+      `/api/documents/${encodeURIComponent(uploadedDocumentId ?? "")}`,
     );
 
     expect(status).toBe(200);
@@ -181,7 +181,7 @@ RAG retrieval should answer questions about this codeword from the document.
       id: string;
     };
     expect(doc.id).toBe(uploadedDocumentId);
-    expect(doc.filename).toContain("test-knowledge-doc");
+    expect(doc.filename).toContain("test-document-doc");
     expect(doc.contentType).toBe("text/markdown");
   });
 
@@ -189,7 +189,7 @@ RAG retrieval should answer questions about this codeword from the document.
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      `/api/knowledge/fragments/${encodeURIComponent(uploadedDocumentId ?? "")}`,
+      `/api/documents/fragments/${encodeURIComponent(uploadedDocumentId ?? "")}`,
     );
 
     expect(status).toBe(200);
@@ -199,15 +199,15 @@ RAG retrieval should answer questions about this codeword from the document.
     const fragments = data.fragments as Array<{ text: string }>;
     expect(fragments.length).toBeGreaterThan(0);
     expect(
-      fragments.some((fragment) => fragment.text.includes(KNOWLEDGE_CODEWORD)),
+      fragments.some((fragment) => fragment.text.includes(DOCUMENT_CODEWORD)),
     ).toBe(true);
   });
 
-  it("step 6: searches knowledge with semantic matching", async () => {
+  it("step 6: searches documents with semantic matching", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/search?q=deployment%20codeword&threshold=0.2&limit=5",
+      "/api/documents/search?q=deployment%20codeword&threshold=0.2&limit=5",
     );
 
     expect(status).toBe(200);
@@ -218,7 +218,7 @@ RAG retrieval should answer questions about this codeword from the document.
     }>;
     expect(results.length).toBeGreaterThan(0);
     expect(
-      results.some((result) => result.text.includes(KNOWLEDGE_CODEWORD)),
+      results.some((result) => result.text.includes(DOCUMENT_CODEWORD)),
     ).toBe(true);
     for (let index = 1; index < results.length; index += 1) {
       expect(results[index].similarity).toBeLessThanOrEqual(
@@ -227,22 +227,22 @@ RAG retrieval should answer questions about this codeword from the document.
     }
   });
 
-  it("step 7: chat retrieves the uploaded knowledge through the real runtime", async () => {
+  it("step 7: chat retrieves the uploaded document through the real runtime", async () => {
     const conversation = await createConversation(server?.port ?? 0, {
-      title: "Knowledge retrieval",
+      title: "Document retrieval",
     });
-    const text = await askForExactKnowledgeCodeword(
+    const text = await askForExactDocumentCodeword(
       server?.port ?? 0,
-      conversationId,
+      conversation.id,
     );
-    expect(text).toContain(KNOWLEDGE_CODEWORD);
+    expect(text).toContain(DOCUMENT_CODEWORD);
   }, 120_000);
 
   it("step 8: deletes document and fragments", async () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "DELETE",
-      `/api/knowledge/documents/${encodeURIComponent(uploadedDocumentId ?? "")}`,
+      `/api/documents/${encodeURIComponent(uploadedDocumentId ?? "")}`,
     );
 
     expect(status).toBe(200);
@@ -253,7 +253,7 @@ RAG retrieval should answer questions about this codeword from the document.
     const { data: listData } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/documents",
+      "/api/documents",
     );
     const docs = listData.documents as Array<{ id: string }>;
     expect(docs.some((doc) => doc.id === uploadedDocumentId)).toBe(false);
@@ -261,10 +261,10 @@ RAG retrieval should answer questions about this codeword from the document.
 });
 
 describeIf(CAN_RUN)("Live: URL import validation", () => {
-  let server: StartedKnowledgeServer | null = null;
+  let server: StartedDocumentServer | null = null;
 
   beforeAll(async () => {
-    server = await startKnowledgeServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
@@ -275,7 +275,7 @@ describeIf(CAN_RUN)("Live: URL import validation", () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "POST",
-      "/api/knowledge/documents/url",
+      "/api/documents/url",
       {
         url: "not-a-valid-url",
       },
@@ -288,7 +288,7 @@ describeIf(CAN_RUN)("Live: URL import validation", () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "POST",
-      "/api/knowledge/documents/url",
+      "/api/documents/url",
       {},
     );
     expect(status).toBe(400);
@@ -296,36 +296,36 @@ describeIf(CAN_RUN)("Live: URL import validation", () => {
   });
 });
 
-describeIf(CAN_RUN)("Live: empty knowledge base behavior", () => {
-  let server: StartedKnowledgeServer | null = null;
+describeIf(CAN_RUN)("Live: empty document store behavior", () => {
+  let server: StartedDocumentServer | null = null;
 
   beforeAll(async () => {
-    server = await startKnowledgeServer();
+    server = await startDocumentServer();
   }, 120_000);
 
   afterAll(async () => {
     await server?.close();
   });
 
-  it("knowledge stats work when empty", async () => {
+  it("document stats work when empty", async () => {
     const { data: listData } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/documents",
+      "/api/documents",
     );
     const docs = listData.documents as Array<{ id: string }>;
     for (const doc of docs) {
       await req(
         server?.port ?? 0,
         "DELETE",
-        `/api/knowledge/documents/${encodeURIComponent(doc.id)}`,
+        `/api/documents/${encodeURIComponent(doc.id)}`,
       );
     }
 
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/stats",
+      "/api/documents/stats",
     );
     expect(status).toBe(200);
     expect(data.documentCount).toBe(0);
@@ -336,7 +336,7 @@ describeIf(CAN_RUN)("Live: empty knowledge base behavior", () => {
     const { status, data } = await req(
       server?.port ?? 0,
       "GET",
-      "/api/knowledge/search?q=test%20query&threshold=0.3",
+      "/api/documents/search?q=test%20query&threshold=0.3",
     );
 
     expect(status).toBe(200);

@@ -11,7 +11,7 @@ import {
 export interface AppShellState {
   ownerName: string | null;
   appsSubTab: "browse" | "running" | "games";
-  agentSubTab: "character" | "inventory" | "knowledge";
+  agentSubTab: "character" | "inventory" | "documents";
   pluginsSubTab: "features" | "connectors" | "plugins";
   databaseSubTab: "tables" | "media" | "vectors";
   favoriteApps: string[];
@@ -36,7 +36,7 @@ export function useAppShellState() {
     return "browse";
   });
   const [agentSubTab, setAgentSubTab] = useState<
-    "character" | "inventory" | "knowledge"
+    "character" | "inventory" | "documents"
   >("character");
   const [pluginsSubTab, setPluginsSubTab] = useState<
     "features" | "connectors" | "plugins"

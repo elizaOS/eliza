@@ -39,6 +39,14 @@ interface LocalPackageAppMeta {
   session?: RegistryAppSessionMeta;
   developerOnly?: boolean;
   visibleInAppStore?: boolean;
+  /**
+   * If true, this app declares itself as the default landing tab for the
+   * shell. Exactly one installed app should set this; if multiple do, the
+   * shell picks the first one alphabetically by package name and logs a
+   * warning. Used by `getMainTabApp()` in app-core to compute the
+   * landing tab at boot.
+   */
+  mainTab?: boolean;
 }
 
 interface LocalPackageElizaConfig {
@@ -232,6 +240,7 @@ function toLocalAppMeta(
     session: app?.session ?? legacy?.session,
     developerOnly: app?.developerOnly,
     visibleInAppStore: app?.visibleInAppStore,
+    mainTab: app?.mainTab,
   };
 }
 

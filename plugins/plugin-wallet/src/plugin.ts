@@ -1,4 +1,23 @@
-import type { Plugin, ServiceClass } from "@elizaos/core";
+import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
+import {
+  type IAgentRuntime,
+  type Plugin,
+  type ServiceClass,
+  parseBooleanFromText,
+} from "@elizaos/core";
+import { walletSearchAddressAction } from "./analytics/birdeye/actions/wallet-search-address.js";
+import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";
+import { marketProvider } from "./analytics/birdeye/providers/market.js";
+import { trendingProvider } from "./analytics/birdeye/providers/trending.js";
+import { registerBirdeyeSearchCategories } from "./analytics/birdeye/search-category.js";
+import {
+  BIRDEYE_ROUTE_SPEC,
+  BirdeyeService,
+} from "./analytics/birdeye/service.js";
+import { DexScreenerService } from "./analytics/dexscreener/service.js";
+import { registerDexScreenerSearchCategory } from "./analytics/dexscreener/search-category.js";
+import { tokenInfoAction } from "./analytics/token-info/action.js";
+import { TokenInfoService } from "./analytics/token-info/service.js";
 import evmPlugin from "./chains/evm/index.js";
 import solanaPlugin from "./chains/solana/index.js";
 import { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
@@ -32,6 +51,49 @@ function concatPlugins<T>(...chunks: (readonly T[] | undefined)[]): T[] {
   return out;
 }
 
+async function initBirdeyeAnalytics(runtime: IAgentRuntime): Promise<void> {
+  const birdeyeRoute = resolveCloudRoute(
+    toRuntimeSettings(runtime),
+    BIRDEYE_ROUTE_SPEC,
+  );
+  registerBirdeyeSearchCategories(runtime, {
+    enabled: birdeyeRoute.source !== "disabled",
+    disabledReason:
+      birdeyeRoute.source === "disabled"
+        ? "BIRDEYE_API_KEY or Eliza Cloud route is not configured."
+        : undefined,
+  });
+  if (birdeyeRoute.source === "disabled") {
+    runtime.logger.log(
+      "birdeye: no BIRDEYE_API_KEY and Eliza Cloud not connected, skipping plugin-birdeye init",
+    );
+    return;
+  }
+
+  const walletAddr = runtime.getSetting("BIRDEYE_WALLET_ADDR");
+  if (walletAddr) {
+    runtime.registerProvider(agentPortfolioProvider);
+  }
+  runtime.registerProvider(marketProvider);
+
+  const beNoTrending = parseBooleanFromText(
+    String(runtime.getSetting("BIRDEYE_NO_TRENDING") ?? ""),
+  );
+  if (!beNoTrending) {
+    runtime.registerProvider(trendingProvider);
+  } else {
+    runtime.logger.log(
+      "BIRDEYE_NO_TRENDING is set, skipping trending provider",
+    );
+  }
+}
+
+const analyticsServices: ServiceClass[] = [
+  BirdeyeService,
+  DexScreenerService,
+  TokenInfoService,
+] as ServiceClass[];
+
 /**
  * Single plugin surface: EVM + Solana wallet backend.
  * Consumers should depend only on `@elizaos/plugin-wallet`.
@@ -44,15 +106,21 @@ export const walletPlugin: Plugin = {
     coreWalletPlugin.services,
     evmPlugin.services as ServiceClass[] | undefined,
     solanaPlugin.services as ServiceClass[] | undefined,
+    analyticsServices,
   ),
   providers: concatPlugins(coreWalletPlugin.providers, evmPlugin.providers),
   evaluators: concatPlugins(coreWalletPlugin.evaluators, evmPlugin.evaluators),
-  actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions),
+  actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions, [
+    tokenInfoAction,
+    walletSearchAddressAction,
+  ]),
   routes: concatPlugins(solanaPlugin.routes),
   init: async (config, runtime) => {
     await coreWalletPlugin.init?.(config, runtime);
     await evmPlugin.init?.(config, runtime);
     await solanaPlugin.init?.(config, runtime);
+    registerDexScreenerSearchCategory(runtime);
+    await initBirdeyeAnalytics(runtime);
   },
 };
 

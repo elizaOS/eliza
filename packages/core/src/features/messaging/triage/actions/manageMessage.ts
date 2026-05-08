@@ -33,7 +33,7 @@ async function resolveTargetMessageId(
 }
 
 export const manageMessageAction: Action = {
-	name: "MANAGE_MESSAGE",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
@@ -91,7 +91,7 @@ export const manageMessageAction: Action = {
 			},
 			{
 				name: "Agent",
-				content: { text: "Archived.", action: "MANAGE_MESSAGE" },
+				content: { text: "Archived.", action: "MESSAGE" },
 			},
 		],
 	] as ActionExample[][],
@@ -140,7 +140,7 @@ export const manageMessageAction: Action = {
 				`[ManageMessage] op=${opLabel} messageId=${parsed.messageId} not ok: ${text}`,
 			);
 			if (callback) {
-				await callback({ text, action: "MANAGE_MESSAGE" });
+				await callback({ text, action: "MESSAGE" });
 			}
 			return {
 				success: false,
@@ -159,7 +159,7 @@ export const manageMessageAction: Action = {
 			`[ManageMessage] op=${opLabel} messageId=${messageId} ok`,
 		);
 		if (callback) {
-			await callback({ text, action: "MANAGE_MESSAGE" });
+			await callback({ text, action: "MESSAGE" });
 		}
 		return {
 			success: true,

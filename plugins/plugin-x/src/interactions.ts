@@ -730,7 +730,11 @@ Response (YES/NO):`;
           },
           agentId: this.runtime.agentId,
           roomId,
-          metadata: buildTwitterMessageMetadata(tweet, entityId),
+          metadata: buildTwitterMessageMetadata(
+            tweet,
+            entityId,
+            this.client.accountId,
+          ),
           createdAt: getEpochMs(tweet.timestamp),
         };
 
@@ -818,6 +822,9 @@ Response (YES/NO):`;
         ),
         agentId: this.runtime.agentId,
         createdAt: Date.now(),
+        metadata: {
+          accountId: this.client.accountId,
+        },
       };
 
       // Emit specific event for each type of interaction
@@ -926,6 +933,9 @@ Response (YES/NO):`;
         source: "twitter",
       },
       createdAt: Date.now(),
+      metadata: {
+        accountId: this.client.accountId,
+      },
     };
   }
 

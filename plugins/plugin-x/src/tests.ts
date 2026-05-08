@@ -42,7 +42,6 @@ export class ClientBaseTestSuite implements TestSuite {
       TWITTER_CLIENT_ID: "",
       TWITTER_REDIRECT_URI: "",
       TWITTER_SCOPES: "tweet.read tweet.write users.read offline.access",
-      TWITTER_BROKER_URL: "",
       TWITTER_DRY_RUN: "false",
       TWITTER_TARGET_USERS: "",
       TWITTER_ENABLE_POST: "false",

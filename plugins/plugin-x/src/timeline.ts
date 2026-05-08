@@ -146,6 +146,7 @@ export class TwitterTimelineClient {
       metadata: buildTwitterMessageMetadata(
         tweet,
         createUniqueUuid(runtime, tweet.userId),
+        this.client.accountId,
       ),
       createdAt: getEpochMs(tweet.timestamp),
     };

@@ -1,28 +1,21 @@
 // @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
+// methods belonging to sibling mixins. Real type safety is enforced at the
+// composed-service level.
 import crypto from "node:crypto";
+import type { Memory } from "@elizaos/core";
 import type {
+  LifeOpsConnectorGrant,
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
 } from "@elizaos/shared";
+import {
+  fetchXDirectMessagesWithRuntimeService,
+  fetchXFeedWithRuntimeService,
+  searchXPostsWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
-import { readXPosterCredentialsFromEnv } from "./x-poster.js";
-import {
-  pullXFeed,
-  readXDms,
-  searchX,
-  type XRawDm,
-  type XRawFeedItem,
-  XReadError,
-  type XReaderCredentials,
-} from "./x-reader.js";
 
 type XReadOpts = {
   limit?: number;
@@ -31,20 +24,6 @@ type XReadOpts = {
 type XFeedReadOpts = XReadOpts & {
   query?: string;
 };
-
-function toReaderCredentials(): XReaderCredentials | null {
-  const posterCreds = readXPosterCredentialsFromEnv();
-  if (!posterCreds) return null;
-  const userId = (process.env.TWITTER_USER_ID ?? "").trim();
-  if (userId.length === 0) return null;
-  return {
-    apiKey: posterCreds.apiKey,
-    apiSecret: posterCreds.apiSecretKey,
-    accessToken: posterCreds.accessToken,
-    accessTokenSecret: posterCreds.accessTokenSecret,
-    userId,
-  };
-}
 
 type OptionalXGrantResolver = {
   resolveXGrant?: () => Promise<LifeOpsConnectorGrant | null>;
@@ -59,110 +38,148 @@ async function resolveOptionalXGrant(
   return service.resolveXGrant();
 }
 
-function rawDmToLifeOpsXDm(args: {
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function isoFromMemory(memory: Memory, fallback: string): string {
+  const createdAt = Number(memory.createdAt);
+  return Number.isFinite(createdAt) && createdAt > 0
+    ? new Date(createdAt).toISOString()
+    : fallback;
+}
+
+function lifeOpsReadDelegationFailed(
+  operation: string,
+  result: { reason: string; error?: unknown },
+): never {
+  const detail =
+    result.error instanceof Error
+      ? result.error.message
+      : result.error
+        ? String(result.error)
+        : result.reason;
+  fail(
+    result.reason.includes("not registered") ? 409 : 502,
+    `[${operation}] ${detail}`,
+  );
+}
+
+function memoryToLifeOpsXDm(args: {
   agentId: string;
-  raw: XRawDm;
+  memory: Memory;
   syncedAt: string;
 }): LifeOpsXDm {
+  const metadata = record(args.memory.metadata);
+  const x = record(metadata.x);
+  const sender = record(metadata.sender);
+  const externalDmId = stringField(
+    x.dmEventId ?? metadata.messageIdFull ?? args.memory.id,
+    crypto.randomUUID(),
+  );
+  const senderId = stringField(
+    x.senderId ?? sender.id ?? args.memory.entityId,
+    "unknown",
+  );
+  const senderHandle = stringField(
+    x.senderUsername ?? sender.username ?? sender.name,
+  );
+  const receivedAt = isoFromMemory(args.memory, args.syncedAt);
   return {
-    id: crypto.randomUUID(),
+    id: `${args.agentId}:x:${externalDmId}`,
     agentId: args.agentId,
-    externalDmId: args.raw.id,
-    conversationId: args.raw.conversationId,
-    senderHandle: args.raw.senderHandle,
-    senderId: args.raw.senderId,
-    isInbound: args.raw.isInbound,
-    text: args.raw.text,
-    receivedAt: args.raw.createdAt,
+    externalDmId,
+    conversationId: stringField(
+      x.conversationId ?? args.memory.roomId,
+      `dm:${senderId}`,
+    ),
+    senderHandle,
+    senderId,
+    isInbound:
+      typeof x.isInbound === "boolean"
+        ? x.isInbound
+        : metadata.fromBot === true
+          ? false
+          : true,
+    text: stringField(args.memory.content?.text),
+    receivedAt,
     readAt: null,
     repliedAt: null,
-    metadata: args.raw.metadata,
-    syncedAt: args.syncedAt,
-    updatedAt: args.syncedAt,
-  };
-}
-
-function rawFeedItemToLifeOpsXFeedItem(args: {
-  agentId: string;
-  feedType: LifeOpsXFeedType;
-  raw: XRawFeedItem;
-  syncedAt: string;
-}): LifeOpsXFeedItem {
-  return {
-    id: crypto.randomUUID(),
-    agentId: args.agentId,
-    externalTweetId: args.raw.id,
-    authorHandle: args.raw.authorHandle,
-    authorId: args.raw.authorId,
-    text: args.raw.text,
-    createdAtSource: args.raw.createdAt,
-    feedType: args.feedType,
-    metadata: args.raw.metadata,
-    syncedAt: args.syncedAt,
-    updatedAt: args.syncedAt,
-  };
-}
-
-function managedFeedItemToLifeOpsXFeedItem(args: {
-  agentId: string;
-  feedType: LifeOpsXFeedType;
-  item: {
-    id: string;
-    authorHandle: string;
-    authorId: string;
-    text: string;
-    createdAt: string | null;
-    conversationId: string | null;
-    referencedTweets: Array<{ type: string; id: string }>;
-    publicMetrics: Record<string, unknown> | null;
-    entities: Record<string, unknown> | null;
-  };
-  syncedAt: string;
-}): LifeOpsXFeedItem {
-  return {
-    id: `${args.agentId}:x-feed:${args.feedType}:${args.item.id}`,
-    agentId: args.agentId,
-    externalTweetId: args.item.id,
-    authorHandle: args.item.authorHandle,
-    authorId: args.item.authorId,
-    text: args.item.text,
-    createdAtSource: args.item.createdAt ?? args.syncedAt,
-    feedType: args.feedType,
     metadata: {
-      raw: {
-        id: args.item.id,
-        text: args.item.text,
-        author_id: args.item.authorId,
-        created_at: args.item.createdAt,
-        conversation_id: args.item.conversationId,
-        referenced_tweets: args.item.referencedTweets,
-        public_metrics: args.item.publicMetrics,
-        entities: args.item.entities,
-      },
-      source: "cloud",
+      ...metadata,
+      source: "plugin-x-runtime",
     },
     syncedAt: args.syncedAt,
     updatedAt: args.syncedAt,
   };
 }
 
-function translateXReadError(operation: string, error: unknown): never {
-  if (error instanceof XReadError) {
-    const status =
-      error.category === "auth"
-        ? 409
-        : error.category === "not_found"
-          ? 404
-          : error.category === "rate_limit"
-            ? 429
-            : (error.status ?? 502);
-    const message =
-      error.category === "rate_limit" && error.retryAfterSeconds
-        ? `${error.message} (retry after ${error.retryAfterSeconds}s)`
-        : error.message;
-    fail(status, `[${operation}] ${message}`);
-  }
-  throw error;
+function memoryToLifeOpsXFeedItem(args: {
+  agentId: string;
+  feedType: LifeOpsXFeedType;
+  memory: Memory;
+  syncedAt: string;
+}): LifeOpsXFeedItem {
+  const metadata = record(args.memory.metadata);
+  const x = record(metadata.x);
+  const sender = record(metadata.sender);
+  const externalTweetId = stringField(
+    x.tweetId ?? metadata.messageIdFull ?? args.memory.id,
+    crypto.randomUUID(),
+  );
+  const authorId = stringField(
+    x.userId ?? sender.id ?? args.memory.entityId,
+    "unknown",
+  );
+  return {
+    id: `${args.agentId}:x-feed:${args.feedType}:${externalTweetId}`,
+    agentId: args.agentId,
+    externalTweetId,
+    authorHandle: stringField(x.username ?? sender.username),
+    authorId,
+    text: stringField(args.memory.content?.text),
+    createdAtSource: isoFromMemory(args.memory, args.syncedAt),
+    feedType: args.feedType,
+    metadata: {
+      ...metadata,
+      source: "plugin-x-runtime",
+    },
+    syncedAt: args.syncedAt,
+    updatedAt: args.syncedAt,
+  };
+}
+
+function cachedLimit(opts: XReadOpts): number {
+  return Math.max(opts.limit ?? 20, 20);
+}
+
+async function hasCachedXDms(
+  service: LifeOpsServiceBase,
+  opts: XReadOpts,
+): Promise<boolean> {
+  const cached = await service.repository.listXDms(service.agentId(), {
+    limit: opts.limit ?? 1,
+  });
+  return cached.length > 0;
+}
+
+async function hasCachedXFeed(
+  service: LifeOpsServiceBase,
+  feedType: LifeOpsXFeedType,
+  opts: XReadOpts,
+): Promise<boolean> {
+  const cached = await service.repository.listXFeedItems(
+    service.agentId(),
+    feedType,
+    { limit: opts.limit ?? 1 },
+  );
+  return cached.length > 0;
 }
 
 function matchesCachedXSearchQuery(
@@ -209,129 +226,55 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
 ) {
   class LifeOpsXReadServiceMixin extends Base {
     async syncXDms(opts: XReadOpts = {}): Promise<{ synced: number }> {
-      const credentials = toReaderCredentials();
       const grant = await resolveOptionalXGrant(this);
-      if (grant?.mode === "cloud_managed") {
-        const digest = await this.xManagedClient.getDmDigest({
-          side: grant.side,
-          maxResults: opts.limit,
-        });
-        const syncedAt = digest.syncedAt;
-        for (const message of digest.messages) {
-          await this.repository.upsertXDm({
-            id: `${this.agentId()}:x:${message.id}`,
-            agentId: this.agentId(),
-            externalDmId: message.id,
-            conversationId: message.conversationId,
-            senderHandle: "",
-            senderId: message.senderId,
-            isInbound: message.direction === "received",
-            text: message.text,
-            receivedAt: message.createdAt ?? syncedAt,
-            readAt: null,
-            repliedAt: null,
-            metadata: {
-              participantId: message.participantId,
-              participantIds: message.participantIds,
-              recipientId: message.recipientId,
-              entities: message.entities,
-              hasAttachment: message.hasAttachment,
-              source: "cloud",
-            },
-            syncedAt,
-            updatedAt: syncedAt,
-          });
-        }
-        return { synced: digest.messages.length };
-      }
-      if (!credentials) {
-        const cached = await this.repository.listXDms(this.agentId(), {
-          limit: 1,
-        });
-        if (cached.length > 0) {
+      const delegated = await fetchXDirectMessagesWithRuntimeService({
+        runtime: this.runtime,
+        grant,
+        limit: opts.limit,
+      });
+      if (delegated.status !== "handled") {
+        if (await hasCachedXDms(this, opts)) {
           return { synced: 0 };
         }
-        fail(409, "X credentials are not configured.");
-      }
-      let page: Awaited<ReturnType<typeof readXDms>>;
-      try {
-        page = await readXDms(credentials, { limit: opts.limit });
-      } catch (error) {
-        translateXReadError("x_read_dms", error);
+        lifeOpsReadDelegationFailed("x_read_dms", delegated);
       }
       const syncedAt = new Date().toISOString();
-      for (const raw of page.items) {
+      for (const memory of delegated.value) {
         await this.repository.upsertXDm(
-          rawDmToLifeOpsXDm({
+          memoryToLifeOpsXDm({
             agentId: this.agentId(),
-            raw,
+            memory,
             syncedAt,
           }),
         );
       }
-      return { synced: page.items.length };
+      return { synced: delegated.value.length };
     }
 
     async syncXFeed(
       feedType: LifeOpsXFeedType,
       opts: XFeedReadOpts = {},
     ): Promise<{ synced: number }> {
-      const credentials = toReaderCredentials();
       const grant = await resolveOptionalXGrant(this);
-      if (grant?.mode === "cloud_managed") {
-        const feed = await this.xManagedClient.getFeed({
-          side: grant.side,
-          feedType,
-          query: opts.query,
-          maxResults: opts.limit,
-        });
-        for (const item of feed.items) {
-          await this.repository.upsertXFeedItem(
-            managedFeedItemToLifeOpsXFeedItem({
-              agentId: this.agentId(),
-              feedType: feed.feedType,
-              item,
-              syncedAt: feed.syncedAt,
-            }),
-          );
-        }
-        await this.repository.upsertXSyncState({
-          id: `${this.agentId()}:x:${feedType}`,
-          agentId: this.agentId(),
-          feedType,
-          lastCursor: null,
-          syncedAt: feed.syncedAt,
-          updatedAt: feed.syncedAt,
-        });
-        return { synced: feed.items.length };
-      }
-      if (!credentials) {
-        const cached = await this.repository.listXFeedItems(
-          this.agentId(),
-          feedType,
-          { limit: 1 },
-        );
-        if (cached.length > 0) {
+      const delegated = await fetchXFeedWithRuntimeService({
+        runtime: this.runtime,
+        grant,
+        feedType,
+        limit: opts.limit,
+      });
+      if (delegated.status !== "handled") {
+        if (await hasCachedXFeed(this, feedType, opts)) {
           return { synced: 0 };
         }
-        fail(409, "X credentials are not configured.");
-      }
-      let page: Awaited<ReturnType<typeof pullXFeed>>;
-      try {
-        page = await pullXFeed(credentials, feedType, {
-          limit: opts.limit,
-          query: opts.query,
-        });
-      } catch (error) {
-        translateXReadError(`x_read_feed_${feedType}`, error);
+        lifeOpsReadDelegationFailed(`x_read_feed_${feedType}`, delegated);
       }
       const syncedAt = new Date().toISOString();
-      for (const raw of page.items) {
+      for (const memory of delegated.value) {
         await this.repository.upsertXFeedItem(
-          rawFeedItemToLifeOpsXFeedItem({
+          memoryToLifeOpsXFeedItem({
             agentId: this.agentId(),
             feedType,
-            raw,
+            memory,
             syncedAt,
           }),
         );
@@ -340,11 +283,11 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
         id: `${this.agentId()}:x:${feedType}`,
         agentId: this.agentId(),
         feedType,
-        lastCursor: page.nextCursor,
+        lastCursor: null,
         syncedAt,
         updatedAt: syncedAt,
       });
-      return { synced: page.items.length };
+      return { synced: delegated.value.length };
     }
 
     async searchXPosts(
@@ -355,30 +298,15 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
       if (trimmed.length === 0) {
         fail(400, "searchXPosts requires a non-empty query.");
       }
-      const credentials = toReaderCredentials();
       const grant = await resolveOptionalXGrant(this);
-      if (grant?.mode === "cloud_managed") {
-        const feed = await this.xManagedClient.getFeed({
-          side: grant.side,
-          feedType: "search",
-          query: trimmed,
-          maxResults: opts.limit,
-        });
-        const items: LifeOpsXFeedItem[] = [];
-        for (const item of feed.items) {
-          const normalized = managedFeedItemToLifeOpsXFeedItem({
-            agentId: this.agentId(),
-            feedType: "search",
-            item,
-            syncedAt: feed.syncedAt,
-          });
-          await this.repository.upsertXFeedItem(normalized);
-          items.push(normalized);
-        }
-        return items;
-      }
-      if (!credentials) {
-        const searchLimit = Math.max(opts.limit ?? 20, 20);
+      const delegated = await searchXPostsWithRuntimeService({
+        runtime: this.runtime,
+        grant,
+        query: trimmed,
+        limit: opts.limit,
+      });
+      if (delegated.status !== "handled") {
+        const searchLimit = cachedLimit(opts);
         const cached = dedupeCachedSearchResults([
           ...(await this.repository.listXFeedItems(this.agentId(), "search", {
             limit: searchLimit,
@@ -386,9 +314,7 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
           ...(await this.repository.listXFeedItems(
             this.agentId(),
             "home_timeline",
-            {
-              limit: searchLimit,
-            },
+            { limit: searchLimit },
           )),
           ...(await this.repository.listXFeedItems(this.agentId(), "mentions", {
             limit: searchLimit,
@@ -397,21 +323,15 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
         if (cached.length > 0) {
           return cached.slice(0, opts.limit ?? cached.length);
         }
-        fail(409, "X credentials are not configured.");
-      }
-      let page: Awaited<ReturnType<typeof searchX>>;
-      try {
-        page = await searchX(credentials, trimmed, { limit: opts.limit });
-      } catch (error) {
-        translateXReadError("x_search", error);
+        lifeOpsReadDelegationFailed("x_search", delegated);
       }
       const syncedAt = new Date().toISOString();
       const items: LifeOpsXFeedItem[] = [];
-      for (const raw of page.items) {
-        const item = rawFeedItemToLifeOpsXFeedItem({
+      for (const memory of delegated.value) {
+        const item = memoryToLifeOpsXFeedItem({
           agentId: this.agentId(),
           feedType: "search",
-          raw,
+          memory,
           syncedAt,
         });
         await this.repository.upsertXFeedItem(item);
@@ -433,14 +353,6 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
       return this.repository.listXFeedItems(this.agentId(), feedType, opts);
     }
 
-    /**
-     * Pull and return only inbound X DMs (messages the authenticated user received,
-     * not sent). Performs a live sync against the X API, persists the results, and
-     * then returns the inbound subset from the local store.
-     *
-     * Callers that want the full conversation including outbound messages should
-     * call `syncXDms()` followed by `getXDms()` directly.
-     */
     async readXInboundDms(
       opts: { limit?: number } = {},
     ): Promise<LifeOpsXDm[]> {

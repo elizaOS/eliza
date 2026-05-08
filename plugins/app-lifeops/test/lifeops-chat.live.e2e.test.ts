@@ -803,7 +803,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes sender-style Gmail searches toward TRIAGE_MESSAGES across name and address variants",
+      "routes sender-style Gmail searches toward MESSAGE across name and address variants",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [
@@ -877,7 +877,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes broad Gmail filters toward TRIAGE_MESSAGES and preserves the key search terms",
+      "routes broad Gmail filters toward MESSAGE and preserves the key search terms",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [

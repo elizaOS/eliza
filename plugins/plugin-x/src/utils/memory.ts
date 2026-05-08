@@ -37,6 +37,7 @@ type TwitterMetadataTweet = Pick<
 export function buildTwitterMessageMetadata(
   tweet: TwitterMetadataTweet,
   entityId: UUID,
+  accountId?: string,
 ): Memory["metadata"] {
   const createdAt = getEpochMs(tweet.timestamp);
   return {
@@ -51,6 +52,7 @@ export function buildTwitterMessageMetadata(
     sourceId: entityId,
     chatType: ChannelType.FEED,
     messageIdFull: tweet.id,
+    accountId: accountId ?? "default",
     sender: {
       id: tweet.userId,
       name: tweet.name,

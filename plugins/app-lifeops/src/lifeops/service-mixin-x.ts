@@ -5,6 +5,7 @@
 // safety is enforced at the composed-service level (LifeOpsService class).
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
+import crypto from "node:crypto";
 import type {
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsXConnectorRequest,
@@ -20,6 +21,14 @@ import type {
 } from "../contracts/index.js";
 import { LIFEOPS_X_CAPABILITIES } from "../contracts/index.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
+import {
+  createXDirectMessageGroupWithRuntimeService,
+  createXPostWithRuntimeService,
+  fetchXDirectMessagesWithRuntimeService,
+  getXAccountStatusWithRuntimeService,
+  sendXConversationMessageWithRuntimeService,
+  sendXDirectMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import { normalizeOptionalRecord } from "./service-helpers-misc.js";
 import type {
   Constructor,
@@ -37,11 +46,6 @@ import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
-import {
-  ManagedXClientError,
-  type ManagedXConnectorStatusResponse,
-} from "./x-managed-client.js";
-import { postToX, readXPosterCredentialsFromEnv, sendXDm } from "./x-poster.js";
 
 export interface LifeOpsXService {
   resolveXGrant(
@@ -140,7 +144,7 @@ function createSyntheticXGrant(
     capabilities,
     tokenRef: null,
     mode,
-    metadata: { source: "env" },
+    metadata: { source: "plugin-x-runtime" },
     lastRefreshAt: new Date().toISOString(),
   });
 }
@@ -179,25 +183,6 @@ function xCapabilitiesForSide(
   return ["x.read", "x.dm.read", "x.dm.write"];
 }
 
-function hasLocalXReadIdentity(): boolean {
-  return (process.env.TWITTER_USER_ID ?? "").trim().length > 0;
-}
-
-function localXAvailableCapabilities(
-  side: LifeOpsConnectorSide,
-): LifeOpsXConnectorCapability[] {
-  if (!readXPosterCredentialsFromEnv()) {
-    return [];
-  }
-  const canRead = hasLocalXReadIdentity();
-  return xCapabilitiesForSide(side).filter((capability) => {
-    if (capability === "x.read" || capability === "x.dm.read") {
-      return canRead;
-    }
-    return true;
-  });
-}
-
 function constrainXCapabilities(
   requested: readonly LifeOpsXConnectorCapability[],
   available: readonly LifeOpsXConnectorCapability[],
@@ -206,12 +191,31 @@ function constrainXCapabilities(
   return requested.filter((capability) => availableSet.has(capability));
 }
 
-function xDefaultMode(cloudConfigured: boolean): LifeOpsConnectorMode {
-  return cloudConfigured ? "cloud_managed" : "local";
+function xDefaultMode(): LifeOpsConnectorMode {
+  return "local";
 }
 
-function xAvailableModes(cloudConfigured: boolean): LifeOpsConnectorMode[] {
-  return cloudConfigured ? ["cloud_managed", "local"] : ["local"];
+function xAvailableModes(): LifeOpsConnectorMode[] {
+  return ["local"];
+}
+
+function xDelegationFailureStatus(reason: string): number {
+  return reason.includes("not registered") ? 409 : 502;
+}
+
+function xRuntimeAvailableCapabilities(
+  side: LifeOpsConnectorSide,
+  runtimeCapabilities: readonly string[] | undefined,
+): LifeOpsXConnectorCapability[] {
+  const sideCapabilities = xCapabilitiesForSide(side);
+  const normalizedRuntimeCapabilities = resolveXCapabilities(
+    runtimeCapabilities,
+    Boolean(runtimeCapabilities?.length),
+  );
+  return constrainXCapabilities(
+    normalizedRuntimeCapabilities,
+    sideCapabilities,
+  );
 }
 
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
@@ -224,7 +228,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsConnectorGrant | null> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      const defaultMode = xDefaultMode(this.xManagedClient.configured);
+      const defaultMode = xDefaultMode();
       const mode =
         normalizeOptionalConnectorMode(requestedMode, "mode") ?? defaultMode;
       const grant = await this.repository.getConnectorGrant(
@@ -236,8 +240,21 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (grant) {
         return grant;
       }
-      const localCapabilities = localXAvailableCapabilities(side);
-      if (mode === "local" && localCapabilities.length > 0) {
+      if (mode === "local") {
+        const runtimeStatus = await getXAccountStatusWithRuntimeService({
+          runtime: this.runtime,
+          accountId: "default",
+        });
+        const localCapabilities =
+          runtimeStatus.status === "handled" && runtimeStatus.value.connected
+            ? xRuntimeAvailableCapabilities(
+                side,
+                runtimeStatus.value.grantedCapabilities,
+              )
+            : [];
+        if (localCapabilities.length === 0) {
+          return null;
+        }
         return createSyntheticXGrant(
           this.agentId(),
           mode,
@@ -248,127 +265,32 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       return null;
     }
 
-    private async upsertManagedXGrant(
-      status: ManagedXConnectorStatusResponse,
-    ): Promise<LifeOpsConnectorGrant | null> {
-      const existing = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "x",
-        "cloud_managed",
-        status.side,
-      );
-      if (!existing && !status.connected) {
-        return null;
-      }
-      const nowIso = new Date().toISOString();
-      const grant = existing
-        ? {
-            ...existing,
-            identity: status.identity ? { ...status.identity } : {},
-            grantedScopes: [...status.grantedScopes],
-            capabilities: [...status.grantedCapabilities],
-            mode: "cloud_managed" as const,
-            executionTarget: "cloud" as const,
-            sourceOfTruth: "cloud_connection" as const,
-            cloudConnectionId: status.connectionId,
-            metadata: {
-              ...existing.metadata,
-              linkedAt: status.linkedAt,
-              lastUsedAt: status.lastUsedAt,
-              authState:
-                status.reason === "needs_reauth" ? "needs_reauth" : undefined,
-            },
-            lastRefreshAt: nowIso,
-            updatedAt: nowIso,
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "x",
-            side: status.side,
-            identity: status.identity ? { ...status.identity } : {},
-            grantedScopes: [...status.grantedScopes],
-            capabilities: [...status.grantedCapabilities],
-            tokenRef: null,
-            mode: "cloud_managed",
-            executionTarget: "cloud",
-            sourceOfTruth: "cloud_connection",
-            preferredByAgent: status.side === "owner",
-            cloudConnectionId: status.connectionId,
-            metadata: {
-              linkedAt: status.linkedAt,
-              lastUsedAt: status.lastUsedAt,
-              authState:
-                status.reason === "needs_reauth" ? "needs_reauth" : undefined,
-            },
-            lastRefreshAt: nowIso,
-          });
-      await this.repository.upsertConnectorGrant(grant);
-      return grant;
-    }
-
     async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
     ): Promise<LifeOpsXConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      const cloudConfigured = this.xManagedClient.configured;
-      const defaultMode = xDefaultMode(cloudConfigured);
+      const defaultMode = xDefaultMode();
       const mode =
         normalizeOptionalConnectorMode(requestedMode, "mode") ?? defaultMode;
-      const availableModes = xAvailableModes(cloudConfigured);
-      if (mode === "cloud_managed") {
-        const localGrant = await this.repository.getConnectorGrant(
-          this.agentId(),
-          "x",
-          "cloud_managed",
-          side,
-        );
-        let managedStatus: ManagedXConnectorStatusResponse;
-        try {
-          managedStatus = await this.xManagedClient.getStatus(side);
-        } catch (error) {
-          if (error instanceof ManagedXClientError) {
-            fail(error.status, error.message);
-          }
-          throw error;
-        }
-        const grant =
-          (await this.upsertManagedXGrant(managedStatus)) ?? localGrant ?? null;
-        const capabilities = resolveXCapabilities(
-          grant?.capabilities ?? managedStatus.grantedCapabilities,
-          managedStatus.connected,
-        );
-        const capabilityFlags = capabilitySummary(capabilities);
-        return {
-          provider: "x",
-          side,
-          mode,
-          defaultMode,
-          availableModes,
-          executionTarget: "cloud",
-          sourceOfTruth: "cloud_connection",
-          configured: managedStatus.configured,
-          connected: managedStatus.connected,
-          reason: managedStatus.reason,
-          preferredByAgent: grant?.preferredByAgent ?? false,
-          cloudConnectionId: managedStatus.connectionId,
-          grantedCapabilities: capabilities,
-          grantedScopes: grant?.grantedScopes ?? managedStatus.grantedScopes,
-          identity: managedStatus.identity,
-          hasCredentials: managedStatus.connected,
-          ...capabilityFlags,
-          dmInbound: capabilityFlags.dmRead,
-          grant,
-        };
-      }
-
+      const availableModes = xAvailableModes();
+      const runtimeStatus = await getXAccountStatusWithRuntimeService({
+        runtime: this.runtime,
+        accountId: "default",
+      });
+      const runtimeConnected =
+        runtimeStatus.status === "handled" && runtimeStatus.value.connected;
       const grant = await this.resolveXGrant(mode, side);
-      const localCredentials = readXPosterCredentialsFromEnv();
-      const hasCredentials = Boolean(localCredentials);
-      const availableLocalCapabilities = localXAvailableCapabilities(side);
+      const availableLocalCapabilities =
+        runtimeStatus.status === "handled"
+          ? xRuntimeAvailableCapabilities(
+              side,
+              runtimeStatus.value.grantedCapabilities,
+            )
+          : [];
       const capabilities = constrainXCapabilities(
-        resolveXCapabilities(grant?.capabilities, hasCredentials),
+        resolveXCapabilities(grant?.capabilities, runtimeConnected),
         availableLocalCapabilities,
       );
       const capabilityFlags = capabilitySummary(capabilities);
@@ -379,24 +301,28 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         defaultMode,
         availableModes,
         executionTarget: "local",
-        sourceOfTruth: "local_storage",
-        configured: hasCredentials,
-        connected:
-          mode === "cloud_managed"
-            ? Boolean(grant?.cloudConnectionId ?? grant)
-            : hasCredentials,
-        reason: hasCredentials ? "connected" : "config_missing",
+        sourceOfTruth: "plugin_runtime",
+        configured: runtimeStatus.status === "handled",
+        connected: runtimeConnected,
+        reason:
+          runtimeStatus.status === "handled"
+            ? runtimeStatus.value.reason
+            : runtimeStatus.reason,
         preferredByAgent: grant?.preferredByAgent ?? false,
         cloudConnectionId: grant?.cloudConnectionId ?? null,
         grantedCapabilities: capabilities,
-        grantedScopes: grant?.grantedScopes ?? [],
+        grantedScopes:
+          grant?.grantedScopes ??
+          (runtimeStatus.status === "handled"
+            ? runtimeStatus.value.grantedScopes
+            : []),
         identity:
           grant && Object.keys(grant.identity).length > 0
             ? grant.identity
-            : hasLocalXReadIdentity()
-              ? { userId: (process.env.TWITTER_USER_ID ?? "").trim() }
+            : runtimeStatus.status === "handled"
+              ? runtimeStatus.value.identity
               : null,
-        hasCredentials,
+        hasCredentials: runtimeConnected,
         ...capabilityFlags,
         dmInbound: capabilityFlags.dmRead,
         grant,
@@ -409,25 +335,41 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
-      if (mode === "cloud_managed") {
-        return this.xManagedClient.startConnector({
-          side,
-          redirectUrl: normalizeOptionalString(request.redirectUrl),
-        });
-      }
-      const capabilities = localXAvailableCapabilities(side);
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
+      const runtimeStatus = await getXAccountStatusWithRuntimeService({
+        runtime: this.runtime,
+        accountId: "default",
+      });
+      const capabilities =
+        runtimeStatus.status === "handled" && runtimeStatus.value.connected
+          ? xRuntimeAvailableCapabilities(
+              side,
+              runtimeStatus.value.grantedCapabilities,
+            )
+          : [];
       if (capabilities.length === 0) {
-        fail(409, "X credentials are not configured.");
+        fail(
+          xDelegationFailureStatus(
+            runtimeStatus.status === "handled"
+              ? runtimeStatus.value.reason
+              : runtimeStatus.reason,
+          ),
+          "X plugin runtime service is not connected.",
+        );
       }
       const status = await this.upsertXConnector({
         side,
         mode: "local",
         capabilities,
-        grantedScopes: [],
-        identity: {},
-        metadata: { source: "local_env" },
+        grantedScopes:
+          runtimeStatus.status === "handled"
+            ? runtimeStatus.value.grantedScopes
+            : [],
+        identity:
+          runtimeStatus.status === "handled"
+            ? (runtimeStatus.value.identity ?? {})
+            : {},
+        metadata: { source: "plugin-x-runtime" },
       });
       return {
         provider: "x",
@@ -445,11 +387,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
-      if (mode === "cloud_managed" && this.xManagedClient.configured) {
-        await this.xManagedClient.disconnectConnector(side);
-      }
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       await this.repository.deleteConnectorGrant(
         this.agentId(),
         "x",
@@ -532,36 +470,88 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!grant) {
         fail(409, "X is not connected.");
       }
-      if (grant.mode === "cloud_managed") {
-        const digest = await this.xManagedClient.getDmDigest({
-          side: grant.side,
-          maxResults: opts.limit,
-        });
-        const syncedAt = digest.syncedAt;
-        for (const message of digest.messages) {
+      const delegated = await fetchXDirectMessagesWithRuntimeService({
+        runtime: this.runtime,
+        grant,
+        limit: opts.limit,
+      });
+      if (delegated.status === "handled") {
+        const syncedAt = new Date().toISOString();
+        for (const memory of delegated.value) {
+          const metadata =
+            memory.metadata && typeof memory.metadata === "object"
+              ? (memory.metadata as Record<string, unknown>)
+              : {};
+          const x =
+            metadata.x && typeof metadata.x === "object"
+              ? (metadata.x as Record<string, unknown>)
+              : {};
+          const sender =
+            metadata.sender && typeof metadata.sender === "object"
+              ? (metadata.sender as Record<string, unknown>)
+              : {};
+          const externalDmId =
+            typeof x.dmEventId === "string"
+              ? x.dmEventId
+              : typeof metadata.messageIdFull === "string"
+                ? metadata.messageIdFull
+                : String(memory.id ?? crypto.randomUUID());
+          const senderId =
+            typeof x.senderId === "string"
+              ? x.senderId
+              : typeof sender.id === "string"
+                ? sender.id
+                : String(memory.entityId ?? "unknown");
+          const conversationId =
+            typeof x.conversationId === "string"
+              ? x.conversationId
+              : String(memory.roomId ?? `dm:${senderId}`);
           await this.repository.upsertXDm({
-            id: `${this.agentId()}:x:${message.id}`,
+            id: `${this.agentId()}:x:${externalDmId}`,
             agentId: this.agentId(),
-            externalDmId: message.id,
-            conversationId: message.conversationId,
-            senderHandle: "",
-            senderId: message.senderId,
-            isInbound: message.direction === "received",
-            text: message.text,
-            receivedAt: message.createdAt ?? syncedAt,
+            externalDmId,
+            conversationId,
+            senderHandle:
+              typeof x.senderUsername === "string"
+                ? x.senderUsername
+                : typeof sender.username === "string"
+                  ? sender.username
+                  : "",
+            senderId,
+            isInbound:
+              typeof x.isInbound === "boolean"
+                ? x.isInbound
+                : metadata.fromBot === true
+                  ? false
+                  : true,
+            text: memory.content?.text ?? "",
+            receivedAt:
+              Number.isFinite(Number(memory.createdAt)) &&
+              Number(memory.createdAt) > 0
+                ? new Date(Number(memory.createdAt)).toISOString()
+                : syncedAt,
             readAt: null,
             repliedAt: null,
             metadata: {
-              participantId: message.participantId,
-              participantIds: message.participantIds,
-              recipientId: message.recipientId,
-              entities: message.entities,
-              hasAttachment: message.hasAttachment,
-              source: "cloud",
+              ...metadata,
+              source: "plugin-x-runtime",
             },
             syncedAt,
             updatedAt: syncedAt,
           });
+        }
+      } else {
+        const cached = await this.repository.listXDms(this.agentId(), {
+          conversationId: opts.conversationId,
+          limit: opts.limit ?? 25,
+        });
+        if (cached.length === 0) {
+          fail(
+            xDelegationFailureStatus(delegated.reason),
+            delegated.error instanceof Error
+              ? delegated.error.message
+              : delegated.reason,
+          );
         }
       }
       const dms = await this.repository.listXDms(this.agentId(), {
@@ -630,17 +620,13 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const grant = await this.resolveXGrant(mode, side);
       if (!grant) {
         fail(409, "X is not connected.");
       }
       const capabilities = new Set(
-        resolveXCapabilities(
-          grant.capabilities,
-          mode === "cloud_managed" || Boolean(readXPosterCredentialsFromEnv()),
-        ),
+        resolveXCapabilities(grant.capabilities, true),
       );
       if (!capabilities.has("x.dm.write")) {
         fail(403, "X DM write access has not been granted.");
@@ -658,27 +644,22 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (request.confirmSend !== true) {
         fail(409, "X DM sending requires explicit confirmation.");
       }
-      if (mode === "cloud_managed") {
-        const result = await this.xManagedClient.sendDm({
-          side,
-          participantId,
-          text,
-        });
-        return { ok: result.sent, status: 201 };
-      }
-      const credentials = readXPosterCredentialsFromEnv();
-      if (!credentials) {
-        fail(409, "X credentials are not configured.");
-      }
-      const result = await sendXDm({
+      const result = await sendXDirectMessageWithRuntimeService({
+        runtime: this.runtime,
+        grant,
         participantId,
         text,
-        credentials,
       });
-      if (!result.ok) {
-        fail(result.status ?? 502, result.error ?? "Failed to send X DM.");
+      if (result.status !== "handled") {
+        fail(
+          xDelegationFailureStatus(result.reason),
+          result.error instanceof Error ? result.error.message : result.reason,
+        );
       }
-      return { ok: true, status: result.status };
+      return {
+        ok: result.value.ok === true,
+        status: result.value.status ?? 201,
+      };
     }
 
     async sendXConversationMessage(request: {
@@ -691,11 +672,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
-      if (mode !== "cloud_managed") {
-        fail(501, "X conversation replies require Eliza Cloud-managed X.");
-      }
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const grant = await this.resolveXGrant(mode, side);
       if (!grant) {
         fail(409, "X is not connected.");
@@ -719,12 +696,22 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (request.confirmSend !== true) {
         fail(409, "X DM sending requires explicit confirmation.");
       }
-      const result = await this.xManagedClient.sendDmToConversation({
-        side,
+      const result = await sendXConversationMessageWithRuntimeService({
+        runtime: this.runtime,
+        grant,
         conversationId,
         text,
       });
-      return { ok: result.sent, status: 201 };
+      if (result.status !== "handled") {
+        fail(
+          xDelegationFailureStatus(result.reason),
+          result.error instanceof Error ? result.error.message : result.reason,
+        );
+      }
+      return {
+        ok: result.value.ok === true,
+        status: result.value.status ?? 201,
+      };
     }
 
     async createXDirectMessageGroup(request: {
@@ -742,11 +729,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
-      if (mode !== "cloud_managed") {
-        fail(501, "X group DMs require Eliza Cloud-managed X.");
-      }
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const grant = await this.resolveXGrant(mode, side);
       if (!grant) {
         fail(409, "X is not connected.");
@@ -776,16 +759,22 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       if (request.confirmSend !== true) {
         fail(409, "X group DM creation requires explicit confirmation.");
       }
-      const result = await this.xManagedClient.createDmGroup({
-        side,
+      const result = await createXDirectMessageGroupWithRuntimeService({
+        runtime: this.runtime,
+        grant,
         participantIds: uniqueParticipantIds,
         text,
       });
+      if (result.status !== "handled") {
+        fail(
+          xDelegationFailureStatus(result.reason),
+          result.error instanceof Error ? result.error.message : result.reason,
+        );
+      }
       return {
-        ok: result.sent,
-        status: 201,
-        conversationId:
-          result.conversationId ?? result.message.conversationId ?? null,
+        ok: result.value.ok === true,
+        status: result.value.status ?? 201,
+        conversationId: result.value.conversationId ?? null,
       };
     }
 
@@ -795,17 +784,13 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ??
-        xDefaultMode(this.xManagedClient.configured);
+        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const grant = await this.resolveXGrant(mode, side);
       if (!grant) {
         fail(409, "X is not connected.");
       }
       const capabilities = new Set(
-        resolveXCapabilities(
-          grant.capabilities,
-          mode === "cloud_managed" || Boolean(readXPosterCredentialsFromEnv()),
-        ),
+        resolveXCapabilities(grant.capabilities, true),
       );
       if (!capabilities.has("x.write")) {
         fail(403, "X write access has not been granted.");
@@ -823,47 +808,16 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           "X posting requires explicit confirmation or a trusted posting policy.",
         );
       }
-      if (mode === "cloud_managed") {
-        const result = await this.xManagedClient.createPost({
-          side,
-          text,
-          confirmPost: true,
-        });
-        await this.recordXPostAudit(
-          `x:${grant.mode}`,
-          "x post sent",
-          {
-            text,
-            confirmPost,
-            trustedPosting,
-          },
-          {
-            postId: result.postId ?? null,
-            status: result.status,
-            side,
-          },
-        );
-        return result;
-      }
-      const credentials = readXPosterCredentialsFromEnv();
-      if (!credentials) {
-        fail(409, "X credentials are not configured.");
-      }
-      const result = await postToX({
+      const result = await createXPostWithRuntimeService({
+        runtime: this.runtime,
+        grant,
         text,
-        credentials,
       });
-      if (!result.ok) {
-        this.logLifeOpsWarn(
-          "x_post",
-          result.error ?? "Failed to create X post.",
-          {
-            mode: grant.mode,
-            statusCode: result.status,
-            category: result.category,
-          },
+      if (result.status !== "handled") {
+        fail(
+          xDelegationFailureStatus(result.reason),
+          result.error instanceof Error ? result.error.message : result.reason,
         );
-        fail(result.status ?? 502, result.error ?? "Failed to create X post.");
       }
       await this.recordXPostAudit(
         `x:${grant.mode}`,
@@ -874,15 +828,15 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
           trustedPosting,
         },
         {
-          postId: result.postId ?? null,
-          status: result.status,
+          postId: result.value.id ?? null,
+          status: 201,
         },
       );
       return {
         ok: true,
-        status: result.status,
-        postId: result.postId,
-        category: result.category,
+        status: 201,
+        postId: result.value.id,
+        category: "plugin_runtime",
       };
     }
   } as MixinClass<TBase, LifeOpsXService>;

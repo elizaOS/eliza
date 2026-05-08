@@ -152,6 +152,7 @@ export function mergeAppMeta(
     session: mergeSession(base.session, patch.session),
     developerOnly: patch.developerOnly ?? base.developerOnly,
     visibleInAppStore: patch.visibleInAppStore ?? base.visibleInAppStore,
+    mainTab: patch.mainTab ?? base.mainTab,
   };
 }
 

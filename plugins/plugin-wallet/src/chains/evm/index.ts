@@ -1,6 +1,5 @@
 import type { Action, Plugin, ServiceClass } from "@elizaos/core";
 import { walletRouterAction } from "../wallet-action";
-import { govOpAction } from "./actions/gov-op";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";
 import { EVMService } from "./service";
@@ -24,7 +23,7 @@ export const evmPlugin: Plugin = {
   providers: [evmWalletProvider, tokenBalanceProvider],
   evaluators: [],
   services: [EVMService] as ServiceClass[],
-  actions: [walletRouterAction as Action, govOpAction as Action],
+  actions: [walletRouterAction as Action],
 };
 
 export default evmPlugin;

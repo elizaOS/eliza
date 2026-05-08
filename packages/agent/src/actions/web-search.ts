@@ -12,22 +12,46 @@ import type {
 } from "@elizaos/core";
 import {
   logger,
+  messageAction,
   SearchCategoryRegistryError,
   ServiceType,
 } from "@elizaos/core";
 import {
+  databaseAction,
   registerVectorSearchCategory,
-  searchVectorsAction,
 } from "./database.js";
 import {
+  contactAction,
   registerEntitySearchCategory,
-  searchEntityAction,
-} from "./entity-actions.js";
+} from "./contact.js";
 import { extractActionParamsViaLlm } from "./extract-params.js";
-import {
-  registerConversationSearchCategory,
-  searchConversationsAction,
-} from "./search-conversations.js";
+
+const CONVERSATIONS_CATEGORY: SearchCategoryRegistration = {
+  category: "conversations",
+  label: "Conversations",
+  description:
+    "Search stored conversation messages across connected platforms.",
+  contexts: ["social_posting", "documents"],
+  filters: [
+    {
+      name: "source",
+      label: "Source",
+      description:
+        'Optional platform source, e.g. "discord" or "slack".',
+      type: "string",
+    },
+    {
+      name: "entityId",
+      label: "Entity ID",
+      description: "Optional participant entity ID.",
+      type: "string",
+    },
+  ],
+  resultSchemaSummary:
+    "Message results with line, id, roomId, entityId, text, and createdAt.",
+  capabilities: ["semantic", "messages", "cross-platform"],
+  source: "core:conversations",
+};
 
 type SearchFilters = Record<string, JsonValue | undefined>;
 
@@ -65,8 +89,8 @@ type PluginRegistrySearchService = {
   ) => Promise<PluginSearchResult[]>;
 };
 
-type KnowledgeSearchService = {
-  getKnowledge: (
+type DocumentSearchService = {
+  searchDocuments: (
     message: Memory,
     scope?: Record<string, string | undefined>,
   ) => Promise<
@@ -92,12 +116,12 @@ const CATEGORY_ALIASES: Record<string, string> = {
   contacts: "entities",
   conversation: "conversations",
   conversations: "conversations",
-  docs: "knowledge",
-  documents: "knowledge",
+  docs: "documents",
+  documents: "documents",
   entity: "entities",
   entities: "entities",
   internet: "web",
-  knowledge_base: "knowledge",
+  knowledge_base: "documents",
   message: "conversations",
   messages: "conversations",
   plugin: "plugins",
@@ -107,11 +131,11 @@ const CATEGORY_ALIASES: Record<string, string> = {
   web: "web",
 };
 
-const KNOWLEDGE_CATEGORY: SearchCategoryRegistration = {
-  category: "knowledge",
-  label: "Knowledge base",
-  description: "Search stored knowledge documents and fragments.",
-  contexts: ["knowledge"],
+const DOCUMENTS_CATEGORY: SearchCategoryRegistration = {
+  category: "documents",
+  label: "Knowledge",
+  description: "Search stored documents and fragments.",
+  contexts: ["documents"],
   filters: [
     {
       name: "scope",
@@ -129,15 +153,15 @@ const KNOWLEDGE_CATEGORY: SearchCategoryRegistration = {
   resultSchemaSummary:
     "StoredDocument[] with id, content.text, similarity, metadata, and worldId.",
   capabilities: ["semantic", "documents", "fragments"],
-  source: "core:knowledge",
-  serviceType: "knowledge",
+  source: "core:documents",
+  serviceType: "documents",
 };
 
 const PLUGIN_CATEGORY: SearchCategoryRegistration = {
   category: "plugins",
   label: "Plugin registry",
   description: "Search the elizaOS plugin registry.",
-  contexts: ["admin", "knowledge"],
+  contexts: ["admin", "documents"],
   filters: [
     {
       name: "tags",
@@ -191,9 +215,9 @@ function registerCategoryIfMissing(
 }
 
 function ensureBuiltInSearchCategories(runtime: IAgentRuntime): void {
-  registerCategoryIfMissing(runtime, KNOWLEDGE_CATEGORY);
+  registerCategoryIfMissing(runtime, DOCUMENTS_CATEGORY);
   registerCategoryIfMissing(runtime, PLUGIN_CATEGORY);
-  registerConversationSearchCategory(runtime);
+  registerCategoryIfMissing(runtime, CONVERSATIONS_CATEGORY);
   registerEntitySearchCategory(runtime);
   registerVectorSearchCategory(runtime);
 }
@@ -424,23 +448,23 @@ async function runWebSearch(
   };
 }
 
-async function runKnowledgeSearch(
+async function runDocumentsSearch(
   runtime: IAgentRuntime,
   message: Memory,
   query: string,
   filters: SearchFilters,
   limit: number,
 ): Promise<ActionResult> {
-  const service = runtime.getService("knowledge") as unknown as
-    | KnowledgeSearchService
+  const service = runtime.getService("documents") as unknown as
+    | DocumentSearchService
     | null
     | undefined;
-  if (!service?.getKnowledge) {
+  if (!service?.searchDocuments) {
     return {
       success: false,
-      text: "Knowledge service is not available.",
+      text: "Documents service is not available.",
       values: { error: "SERVICE_NOT_FOUND" },
-      data: { actionName: "SEARCH", category: "knowledge", query },
+      data: { actionName: "SEARCH", category: "documents", query },
     };
   }
 
@@ -460,7 +484,7 @@ async function runKnowledgeSearch(
           ),
         }
       : undefined;
-  const results = (await service.getKnowledge(searchMessage, scope)).slice(
+  const results = (await service.searchDocuments(searchMessage, scope)).slice(
     0,
     limit,
   );
@@ -477,12 +501,12 @@ async function runKnowledgeSearch(
     success: true,
     text:
       results.length === 0
-        ? `No knowledge results found for "${query}".`
-        : [`Knowledge results for "${query}":`, "", ...lines].join("\n"),
-    values: { resultCount: results.length, category: "knowledge" },
+        ? `No document results found for "${query}".`
+        : [`Document results for "${query}":`, "", ...lines].join("\n"),
+    values: { resultCount: results.length, category: "documents" },
     data: {
       actionName: "SEARCH",
-      category: "knowledge",
+      category: "documents",
       query,
       results,
     },
@@ -603,48 +627,39 @@ async function runCategorySearch(
   switch (category) {
     case "web":
       return runWebSearch(runtime, query, filters, limit, freshness);
-    case "knowledge":
-      return runKnowledgeSearch(runtime, message, query, filters, limit);
+    case "documents":
+      return runDocumentsSearch(runtime, message, query, filters, limit);
     case "plugins":
       return runPluginSearch(runtime, query, filters, limit);
     case "vectors":
       return resultWithActionName(
-        await dispatchLegacyAction(
-          searchVectorsAction,
-          runtime,
-          message,
-          state,
-          {
-            query,
-            limit,
-            ...filters,
-          },
-        ),
+        await dispatchLegacyAction(databaseAction, runtime, message, state, {
+          op: "search_vectors",
+          query,
+          limit,
+          ...filters,
+        }),
         category,
       );
     case "conversations":
       return resultWithActionName(
-        await dispatchLegacyAction(
-          searchConversationsAction,
-          runtime,
-          message,
-          state,
-          {
-            query,
-            limit,
-            ...filters,
-          },
-        ),
+        await dispatchLegacyAction(messageAction, runtime, message, state, {
+          operation: "search",
+          query,
+          limit,
+          ...filters,
+        }),
         category,
       );
     case "entities":
       return resultWithActionName(
         await dispatchLegacyAction(
-          searchEntityAction,
+          contactAction,
           runtime,
           message,
           state,
           {
+            op: "search",
             query,
             limit,
             ...filters,
@@ -677,7 +692,7 @@ export const searchAction: Action = {
     "Search a registered backend by category. Use category/query plus optional filters, limit, and freshness.",
   descriptionCompressed:
     "search registered backend by category query filters limit freshness",
-  contexts: ["general", "knowledge", "browser", "admin", "social_posting"],
+  contexts: ["general", "documents", "browser", "admin", "social_posting"],
   roleGate: { minRole: "USER" },
   suppressPostActionContinuation: true,
 
@@ -800,7 +815,7 @@ export const searchAction: Action = {
     {
       name: "category",
       description:
-        'Search category to use, for example "web", "knowledge", "plugins", "vectors", "conversations", or "entities".',
+        'Search category to use, for example "web", "documents", "plugins", "vectors", "conversations", or "entities".',
       required: true,
       schema: { type: "string" as const },
     },

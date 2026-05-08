@@ -39,7 +39,7 @@ export {
   type PromptDialogProps as PromptModalProps,
   SaveFooter as ConfigSaveFooter,
 } from "@elizaos/ui";
-export * from "../utils/knowledge-upload-image";
+export * from "../utils/documents-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";
 export * from "./apps/extensions/registry";
@@ -86,7 +86,7 @@ export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-export * from "./pages/KnowledgeView";
+export * from "./pages/DocumentsView";
 
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";

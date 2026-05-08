@@ -5,7 +5,12 @@ import {
   resolveCloudRoute,
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type ServiceTypeName,
+  Service,
+} from "@elizaos/core";
+import Birdeye from "./birdeye-task";
 import { BIRDEYE_ENDPOINTS, BIRDEYE_SERVICE_NAME } from "./constants";
 import { searchBirdeyeTokens } from "./search-category";
 import type {
@@ -855,6 +860,107 @@ export class BirdeyeService extends Service {
   static async start(runtime: IAgentRuntime): Promise<BirdeyeService> {
     runtime.logger.log("Initializing Birdeye Service");
     const birdEyeService = new BirdeyeService(runtime);
+
+    // Clean any stale recurring birdeye tasks left over from previous runs.
+    runtime.initPromise
+      .then(async () => {
+        const tasks = await runtime.getTasks({
+          tags: ["queue", "repeat", "plugin_birdeye"],
+          agentIds: [runtime.agentId],
+        });
+        for (const task of tasks) {
+          if (task.id) {
+            await runtime.deleteTask(task.id);
+          }
+        }
+
+        // Register the BIRDEYE_SYNC_WALLET task worker + recurring task
+        // when the agent owns a tracked wallet address.
+        const walletAddr = runtime.getSetting("BIRDEYE_WALLET_ADDR");
+        if (walletAddr) {
+          const birdeye = new Birdeye(runtime);
+          runtime.registerTaskWorker({
+            name: "BIRDEYE_SYNC_WALLET",
+            validate: async () => true,
+            execute: async (rt) => {
+              try {
+                await birdeye.syncWallet();
+              } catch (error) {
+                rt.logger.error(
+                  `Failed to sync trending tokens: ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
+              return undefined;
+            },
+          });
+
+          await runtime.createTask({
+            name: "BIRDEYE_SYNC_WALLET",
+            description: "Sync wallet from Birdeye",
+            worldId: runtime.agentId,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: Date.now(),
+              updateInterval: 1000 * 60 * 5, // 5 minutes
+            },
+            tags: ["queue", "repeat", "plugin_birdeye", "immediate"],
+          });
+          runtime.logger.log("birdeye init - tasks registered");
+        }
+      })
+      .catch((error) => {
+        runtime.logger.error(
+          `birdeye task setup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+
+    // Register Birdeye as a data provider with INTEL_DATAPROVIDER once
+    // both services have loaded.
+    Promise.all(
+      ["INTEL_DATAPROVIDER", BIRDEYE_SERVICE_NAME].map((p) =>
+        runtime.getServiceLoadPromise(p as ServiceTypeName),
+      ),
+    )
+      .then(() => {
+        const infoService = runtime.getService("INTEL_DATAPROVIDER") as
+          | { registerDataProvder?: (provider: unknown) => void }
+          | undefined;
+
+        if (!infoService) {
+          runtime.logger?.warn(
+            "INTEL_DATAPROVIDER service not available, skipping data provider registration",
+          );
+          return;
+        }
+
+        if (typeof infoService.registerDataProvder !== "function") {
+          runtime.logger?.warn(
+            "INTEL_DATAPROVIDER service does not have registerDataProvder method",
+          );
+          return;
+        }
+
+        try {
+          infoService.registerDataProvder({
+            name: "Birdeye",
+            trendingService: BIRDEYE_SERVICE_NAME,
+            lookupService: BIRDEYE_SERVICE_NAME,
+          });
+          runtime.logger?.log(
+            "Birdeye data provider registered with INTEL_DATAPROVIDER",
+          );
+        } catch (error) {
+          runtime.logger?.error(
+            `Failed to register Birdeye data provider: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      })
+      .catch((e) => {
+        runtime.logger?.error(
+          `Failed to load services for data provider registration: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+
     runtime.logger.log("Birdeye service initialized");
     return birdEyeService;
   }

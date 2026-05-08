@@ -161,6 +161,12 @@ export class ClientBase {
   static _twitterClients: { [accountIdentifier: string]: Client } = {};
   twitterClient: Client;
   runtime: IAgentRuntime;
+  /**
+   * Connector account this client represents. Used to stamp Memory.metadata
+   * and routing context for inbound X traffic. Defaults to "default" when the
+   * plugin is running in single-account mode.
+   */
+  accountId = "default";
   lastCheckedTweetId: bigint | null = null;
   temperature = 0.5;
 
@@ -250,17 +256,17 @@ export class ClientBase {
   constructor(runtime: IAgentRuntime, state: TwitterClientState) {
     this.runtime = runtime;
     this.state = state;
+    if (typeof state?.accountId === "string" && state.accountId.trim()) {
+      this.accountId = state.accountId.trim();
+    }
 
     // Use a stable identifier for client reuse per auth mode.
     const mode = getTwitterAuthMode(runtime, state);
     const reuseKey =
       mode === "env"
         ? (state?.TWITTER_API_KEY ?? getSetting(runtime, "TWITTER_API_KEY"))
-        : mode === "oauth"
-          ? (state?.TWITTER_CLIENT_ID ??
-            getSetting(runtime, "TWITTER_CLIENT_ID"))
-          : (state?.TWITTER_BROKER_URL ??
-            getSetting(runtime, "TWITTER_BROKER_URL"));
+        : (state?.TWITTER_CLIENT_ID ??
+          getSetting(runtime, "TWITTER_CLIENT_ID"));
 
     if (reuseKey && ClientBase._twitterClients[reuseKey]) {
       this.twitterClient = ClientBase._twitterClients[reuseKey];
@@ -536,7 +542,11 @@ export class ClientBase {
               content: content,
               agentId: this.runtime.agentId,
               roomId,
-              metadata: buildTwitterMessageMetadata(tweet, entityId),
+              metadata: buildTwitterMessageMetadata(
+                tweet,
+                entityId,
+                this.accountId,
+              ),
               createdAt: getEpochMs(tweet.timestamp),
             },
             "messages",
@@ -655,7 +665,11 @@ export class ClientBase {
           content: content,
           agentId: this.runtime.agentId,
           roomId,
-          metadata: buildTwitterMessageMetadata(tweet, entityId),
+          metadata: buildTwitterMessageMetadata(
+            tweet,
+            entityId,
+            this.accountId,
+          ),
           createdAt: getEpochMs(tweet.timestamp),
         },
         "messages",

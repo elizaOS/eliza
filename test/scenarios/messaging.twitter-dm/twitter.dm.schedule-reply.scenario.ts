@@ -35,7 +35,7 @@ export default scenario({
       room: "main",
       text: "Schedule a reply to @devfriend's Twitter DM for 9am tomorrow saying thanks for the intro.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SCHEDULE_DRAFT_SEND"],
+        acceptedActions: ["MESSAGE"],
         description: "scheduled X DM reply",
         includesAny: ["devfriend", "thanks for the intro", "send X DM"],
       }),
@@ -44,13 +44,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "SCHEDULE_DRAFT_SEND",
+      actionName: "MESSAGE",
     },
     {
       type: "custom",
       name: "twitter-dm-schedule-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SCHEDULE_DRAFT_SEND"],
+        acceptedActions: ["MESSAGE"],
         description: "scheduled X DM reply",
         includesAny: ["devfriend", "thanks for the intro", "send X DM"],
       }),
@@ -64,7 +64,7 @@ export default scenario({
           return "scenario runtime unavailable";
         }
         const hit = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "SCHEDULE_DRAFT_SEND",
+          (entry) => entry.actionName === "MESSAGE",
         );
         const data =
           hit?.result?.data && typeof hit.result.data === "object"

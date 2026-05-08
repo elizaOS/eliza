@@ -143,7 +143,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       async () => {
         // Create a runtime
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -213,7 +213,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate OLD eviction behavior causes pool closure",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -265,7 +265,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate NEW eviction behavior preserves pool",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -321,7 +321,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate parallel queries succeed with NEW eviction",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -396,12 +396,12 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
         // For this test, we'll create runtimes with different cache keys
 
         const userContextA = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false, // This creates cache key: agentId
         });
 
         const userContextB = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
           appPromptConfig: { prompt: "pool-race-context-b" },
         });
@@ -490,7 +490,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should show direct adapter.close() terminates shared pool",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -557,7 +557,7 @@ describe.skipIf(!hasDatabaseUrl)("Production Error Reproduction", () => {
 
       // Step 1: Create an initial runtime (simulates existing cached runtime)
       const userContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 

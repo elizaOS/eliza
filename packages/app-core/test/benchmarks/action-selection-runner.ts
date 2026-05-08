@@ -142,6 +142,21 @@ const BENCHMARK_USER_NAME = "Owner";
 const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
+const ACTION_CANONICAL_NAMES = new Map<string, string>([
+  ["GOOGLE_CALENDAR", "CALENDAR"],
+  ["CALENDLY", "CALENDAR"],
+  ["SCHEDULING", "CALENDAR"],
+  ["PROPOSE_MEETING_TIMES", "CALENDAR"],
+  ["CHECK_AVAILABILITY", "CALENDAR"],
+  ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
+  ["SEND_MESSAGE", "MESSAGE"],
+  ["DISPATCH_DRAFT", "SEND_DRAFT"],
+  ["CONFIRM_AND_SEND", "SEND_DRAFT"],
+  ["FILE_ACTION", "COMPUTER_USE"],
+  ["TERMINAL_ACTION", "COMPUTER_USE"],
+  ["BROWSER_ACTION", "COMPUTER_USE"],
+  ["MANAGE_WINDOW", "COMPUTER_USE"],
+]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   const configured = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
@@ -197,7 +212,8 @@ function normalizeActionName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
-  return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  const normalized = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -239,7 +255,7 @@ function caseThrottleMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function caseMatches(
+export function caseMatches(
   actual: string | null,
   expected: string | null,
   acceptable: string[] | undefined,
@@ -280,7 +296,7 @@ function isGenericActionName(name: string | null | undefined): boolean {
   return normalized !== null && GENERIC_ACTION_NAMES.has(normalized);
 }
 
-function pickObservedAction(
+export function pickObservedAction(
   records: ReadonlyArray<{
     phase: "started" | "completed";
     actionName: string;
@@ -421,7 +437,7 @@ function parseAvailableActionsFromPrompt(prompt: string): string[] {
   return available;
 }
 
-function parsePlannedActionsFromResponse(response: string): string[] {
+export function parsePlannedActionsFromResponse(response: string): string[] {
   const parsed = parseJSONObjectFromText(response);
   if (!parsed) {
     return [];
@@ -442,6 +458,22 @@ function parsePlannedActionsFromResponse(response: string): string[] {
       if (action && typeof action === "object") {
         const record = action as Record<string, unknown>;
         const rawName = record.name ?? record.action ?? record.actionName;
+        const input =
+          record.input && typeof record.input === "object"
+            ? (record.input as Record<string, unknown>)
+            : undefined;
+        const canonicalRawName =
+          typeof rawName === "string" ? normalizeActionName(rawName) : null;
+        if (canonicalRawName === "CALL_ACTION") {
+          const nestedName =
+            input?.actionName ??
+            input?.name ??
+            (record.actionParameters &&
+            typeof record.actionParameters === "object"
+              ? (record.actionParameters as Record<string, unknown>).actionName
+              : undefined);
+          return typeof nestedName === "string" ? [nestedName] : [];
+        }
         return typeof rawName === "string" ? [rawName] : [];
       }
       return [];

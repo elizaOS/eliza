@@ -345,6 +345,12 @@ export async function buildMemoryFromMessage(
 		processedAttachments?: Media[];
 		extraContent?: Record<string, unknown>;
 		extraMetadata?: Record<string, unknown>;
+		/**
+		 * Connector account ID this message arrived on. Stamped into
+		 * `Memory.metadata.accountId` so downstream actions (and policy
+		 * evaluation) can route outbound replies through the same account.
+		 */
+		accountId?: string;
 	},
 ): Promise<Memory | null> {
 	if (!message.author || !message.channel) {
@@ -407,6 +413,10 @@ export async function buildMemoryFromMessage(
 		type: "message" as const,
 		source: "discord",
 		provider: "discord",
+		// Top-level accountId per MessageMetadata contract. Inbound connector
+		// stamps this so outbound resolution can route replies back through the
+		// same connector account.
+		...(options?.accountId ? { accountId: options.accountId } : {}),
 		timestamp: message.createdTimestamp ?? Date.now(),
 		entityName,
 		entityUserName: message.author.username,

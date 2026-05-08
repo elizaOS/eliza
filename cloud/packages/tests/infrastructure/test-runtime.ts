@@ -75,7 +75,7 @@ export interface CreateTestRuntimeOptions {
   testData: TestDataSet;
   /** Character ID to load (optional - uses default if not provided) */
   characterId?: string;
-  /** Agent mode (defaults to ASSISTANT) */
+  /** Agent mode (defaults to CHAT) */
   agentMode?: AgentMode;
   /** Enable web search (defaults to false for tests) */
   webSearchEnabled?: boolean;
@@ -190,7 +190,7 @@ export async function createTestRuntime(
 }
 
 /**
- * Build a UserContext from test data
+ * Chat a UserContext from test data
  * This creates the exact interface that RuntimeFactory expects
  *
  * ALWAYS sets isAnonymous: false - anonymous is blocked in tests
@@ -227,7 +227,7 @@ export function buildUserContext(
     );
   }
 
-  const mode = options.agentMode || AgentMode.ASSISTANT;
+  const mode = options.agentMode || AgentMode.CHAT;
 
   return {
     userId: testData.user.id,
@@ -419,12 +419,12 @@ export async function sendTestMessage(
   const { createMessageHandler } = await import("../../lib/eliza/message-handler");
   const { AgentMode } = await import("../../lib/eliza/agent-mode-types");
 
-  // Build proper UserContext like production does
+  // Chat proper UserContext like production does
   const fullUserContext = {
     userId: userContext.userId,
     entityId: userContext.entityId as string,
     organizationId: testData.organization.id,
-    agentMode: AgentMode.ASSISTANT,
+    agentMode: AgentMode.CHAT,
     apiKey: testData.apiKey.key,
     isAnonymous: false,
     webSearchEnabled: false,
@@ -453,7 +453,7 @@ export async function sendTestMessage(
         handler.process({
           roomId: userContext.roomId as string,
           text,
-          agentModeConfig: { mode: AgentModeEnum.ASSISTANT },
+          agentModeConfig: { mode: AgentModeEnum.CHAT },
           onStreamChunk: onStreamChunk
             ? async (chunk) => {
                 await onStreamChunk(chunk);

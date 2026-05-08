@@ -293,7 +293,6 @@ import _route_v1_browser_sessions_route from "../v1/browser/sessions/route";
 import _route_v1_chain_nfts_p_chain_p_address_route from "../v1/chain/nfts/[chain]/[address]/route";
 import _route_v1_chain_tokens_p_chain_p_address_route from "../v1/chain/tokens/[chain]/[address]/route";
 import _route_v1_chain_transfers_p_chain_p_address_route from "../v1/chain/transfers/[chain]/[address]/route";
-import _route_v1_character_assistant_route from "../v1/character-assistant/route";
 import _route_v1_chat_completions_route from "../v1/chat/completions/route";
 import _route_v1_chat_route from "../v1/chat/route";
 import _route_v1_connections_p_platform_route from "../v1/connections/[platform]/route";
@@ -891,7 +890,6 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/chain/transfers/:chain/:address",
     _route_v1_chain_transfers_p_chain_p_address_route,
   );
-  app.route("/api/v1/character-assistant", _route_v1_character_assistant_route);
   app.route("/api/v1/chat/completions", _route_v1_chat_completions_route);
   app.route("/api/v1/chat", _route_v1_chat_route);
   app.route("/api/v1/connections/:platform", _route_v1_connections_p_platform_route);

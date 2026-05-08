@@ -22,7 +22,7 @@ export default buildConnectorCertificationScenario({
       name: "gmail-missing-scope",
       text: "Read Sarah Lee's unread Gmail thread and prepare the reply, but if Gmail send access is missing, tell me exactly that and ask for the reconnect or scope upgrade instead of claiming it was sent.",
       responseIncludesAny: ["gmail", "missing", "scope", "reconnect"],
-      acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["gmail", "missing", "scope", "reconnect"],
     },
   ],

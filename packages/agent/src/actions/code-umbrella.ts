@@ -8,8 +8,6 @@
  *   - SUBMIT_WORKSPACE        (commit + push + optional PR)
  *   - ARCHIVE_CODING_TASK     (hide a coding-agent thread)
  *   - REOPEN_CODING_TASK      (return an archived thread to active list)
- *   - CLAUDE_CODE_WORKBENCH_LIST  (list allowlisted workbench workflows)
- *   - CLAUDE_CODE_WORKBENCH_RUN   (execute an allowlisted workbench workflow)
  *
  * Children are referenced by name; they remain registered as standalone
  * actions in their owning plugins. The sub-planner enumerates only this
@@ -31,8 +29,6 @@ const CODE_SUB_ACTIONS = [
   "SUBMIT_WORKSPACE",
   "ARCHIVE_CODING_TASK",
   "REOPEN_CODING_TASK",
-  "CLAUDE_CODE_WORKBENCH_LIST",
-  "CLAUDE_CODE_WORKBENCH_RUN",
 ] as const;
 
 export const codeAction: Action = {
@@ -44,18 +40,16 @@ export const codeAction: Action = {
   roleGate: { minRole: "USER" },
   similes: ["CODING", "WORKSPACE", "CODE_TASK"],
   description:
-    "Parent action for coding workspaces, coding-agent task threads, and Claude Code workbench workflows. " +
-    "Dispatches to CREATE_WORKSPACE, SUBMIT_WORKSPACE, ARCHIVE_CODING_TASK, REOPEN_CODING_TASK, " +
-    "CLAUDE_CODE_WORKBENCH_LIST, or CLAUDE_CODE_WORKBENCH_RUN.",
+    "Parent action for coding workspaces and coding-agent task threads. " +
+    "Dispatches to CREATE_WORKSPACE, SUBMIT_WORKSPACE, ARCHIVE_CODING_TASK, or REOPEN_CODING_TASK.",
   descriptionCompressed:
-    "code umbrella: workspace(create+submit) coding-task(archive+reopen) workbench(list+run)",
+    "code umbrella: workspace(create+submit) coding-task(archive+reopen)",
   suppressPostActionContinuation: true,
   subActions: [...CODE_SUB_ACTIONS],
   subPlanner: {
     name: "code_subplanner",
     description:
-      "Explodes CREATE_WORKSPACE, SUBMIT_WORKSPACE, ARCHIVE_CODING_TASK, REOPEN_CODING_TASK, " +
-      "CLAUDE_CODE_WORKBENCH_LIST, and CLAUDE_CODE_WORKBENCH_RUN so the planner can chain " +
+      "Explodes CREATE_WORKSPACE, SUBMIT_WORKSPACE, ARCHIVE_CODING_TASK, and REOPEN_CODING_TASK so the planner can chain " +
       "multi-step coding-task and workspace operations.",
   },
   parameters: [],
@@ -74,8 +68,7 @@ export const codeAction: Action = {
   ): Promise<ActionResult> => {
     const text =
       "Pick a specific code sub-action: CREATE_WORKSPACE, SUBMIT_WORKSPACE, " +
-      "ARCHIVE_CODING_TASK, REOPEN_CODING_TASK, CLAUDE_CODE_WORKBENCH_LIST, " +
-      "or CLAUDE_CODE_WORKBENCH_RUN.";
+      "ARCHIVE_CODING_TASK, or REOPEN_CODING_TASK.";
     await callback?.({ text });
     return {
       text,
@@ -108,19 +101,6 @@ export const codeAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Archiving coding task abc-123.",
-          actions: ["CODE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Run the workbench check workflow." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Running workbench workflow `check`.",
           actions: ["CODE"],
         },
       },

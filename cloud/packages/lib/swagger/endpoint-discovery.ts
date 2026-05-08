@@ -229,52 +229,6 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     tags: ["ai-generation", "text"],
   },
 
-  // Character Assistant
-  {
-    id: "character-assistant",
-    path: "/api/v1/character-assistant",
-    method: "POST",
-    category: "AI Completions",
-    name: "Character Assistant",
-    description: "AI assistant for creating character definitions (session auth only)",
-    requiresAuth: true,
-    pricing: {
-      cost: 0.0025,
-      unit: "1k tokens",
-      description: "Input tokens (output varies by model)",
-      isVariable: true,
-      estimatedRange: { min: 0.001, max: 0.03 },
-    },
-    parameters: {
-      body: [
-        {
-          name: "messages",
-          type: "array",
-          required: true,
-          description: "Conversation messages (AI SDK UIMessage format)",
-          defaultValue:
-            '[{"role":"user","parts":[{"type":"text","text":"Help me create a character"}]}]',
-          example: '[{"role":"user","parts":[{"type":"text","text":"Create a sci-fi character"}]}]',
-        },
-        {
-          name: "characterData",
-          type: "object",
-          required: false,
-          description: "Existing character data to refine",
-          defaultValue: "{}",
-          example: '{"name": "Agent X"}',
-        },
-      ],
-    },
-    responses: [
-      {
-        statusCode: 200,
-        description: "Character assistant response generated",
-      },
-    ],
-    tags: ["ai-generation", "characters"],
-  },
-
   // Generate Prompts
   {
     id: "generate-prompts",

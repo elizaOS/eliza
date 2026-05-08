@@ -1,8 +1,8 @@
 /**
  * Configuration Change Race Condition Tests
  *
- * These tests verify that runtime configuration changes (mode switches, plugin
- * changes) don't cause pool closure issues during:
+ * These tests verify that runtime configuration changes and invalidations don't
+ * cause pool closure issues during:
  * - Long-running evaluator operations (like long-term-extraction)
  * - Knowledge service access
  * - Memory service operations
@@ -109,34 +109,33 @@ async function ignoreExpectedProbeFailure(promise: Promise<unknown>, label: stri
 }
 
 // ============================================================================
-// Test Suite: Mode Switching During Operations
+// Test Suite: Runtime Invalidation During Operations
 // ============================================================================
 
-describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
+describe.skipIf(!hasDatabaseUrl)("Runtime Invalidation During Operations", () => {
   beforeAll(setupTestEnvironment, TEST_TIMEOUT);
   afterAll(cleanupTestEnvironment);
 
   /**
    * Simulates the scenario:
-   * 1. Runtime created in ASSISTANT mode
+   * 1. Runtime created in CHAT mode
    * 2. Long-running database operations start (simulating evaluator)
-   * 3. Mode change triggers invalidation
+   * 3. Config change triggers invalidation
    * 4. Operations should complete without pool closure errors
    */
   it(
-    "should handle mode switch from ASSISTANT to CHAT during DB operations",
+    "should handle runtime invalidation during DB operations",
     async () => {
-      console.log("\n=== MODE SWITCH TEST: ASSISTANT → CHAT ===");
+      console.log("\n=== RUNTIME INVALIDATION TEST ===");
 
-      // Create ASSISTANT mode runtime
-      const assistantContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+      const chatContext = buildUserContext(testData, {
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
-      const assistantRuntime = await runtimeFactory.createRuntimeForUser(assistantContext);
-      const agentId = assistantRuntime.agentId as string;
-      console.log(`Created ASSISTANT runtime: ${agentId}`);
+      const chatRuntime = await runtimeFactory.createRuntimeForUser(chatContext);
+      const agentId = chatRuntime.agentId as string;
+      console.log(`Created CHAT runtime: ${agentId}`);
 
       // Get adapter reference to simulate evaluator holding a reference
       const adapterEntries = _testing.getAdapterEntries();
@@ -151,17 +150,17 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
       const simulateEvaluatorOperations = async (label: string): Promise<void> => {
         try {
           console.log(`${label}: Starting simulated evaluator operations...`);
-          const selfRoomId = assistantRuntime.agentId as any;
+          const selfRoomId = chatRuntime.agentId as any;
 
           // Simulate runtime.countMemories()
           await ignoreExpectedProbeFailure(
-            assistantRuntime.countMemories(selfRoomId, false, "messages"),
+            chatRuntime.countMemories(selfRoomId, false, "messages"),
             `${label}: countMemories`,
           );
 
           // Simulate runtime.getMemories()
           await ignoreExpectedProbeFailure(
-            assistantRuntime.getMemories({
+            chatRuntime.getMemories({
               tableName: "messages",
               roomId: selfRoomId,
               count: 10,
@@ -172,7 +171,7 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
 
           // Simulate getAgents (a real DB query)
           const agents = await Promise.race([
-            assistantRuntime.getAgents(),
+            chatRuntime.getAgents(),
             new Promise<never>((_, reject) => {
               const t = setTimeout(
                 () => reject(new Error(`${label}: getAgents probe timed out`)),
@@ -196,10 +195,10 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
         operations.push(simulateEvaluatorOperations(`Op${i}`));
       }
 
-      // Trigger mode change (invalidation) while operations are running
+      // Trigger invalidation while operations are running
       const invalidationPromise = (async () => {
         await new Promise((r) => setTimeout(r, 50)); // Let operations start
-        console.log("\n>>> Triggering invalidation (simulating mode switch) <<<");
+        console.log("\n>>> Triggering invalidation <<<");
         await invalidateRuntime(agentId);
         console.log(">>> Invalidation complete <<<\n");
       })();
@@ -208,7 +207,7 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
       await Promise.all([...operations, invalidationPromise]);
 
       // Report results
-      console.log(`\n=== MODE SWITCH RESULTS ===`);
+      console.log(`\n=== RUNTIME INVALIDATION RESULTS ===`);
       console.log(`Errors: ${errors.length}`);
 
       if (errors.length > 0) {
@@ -242,24 +241,22 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
   );
 
   /**
-   * Test rapid mode switching
+   * Test rapid runtime recreation.
    */
   it(
-    "should handle rapid mode switches between CHAT and ASSISTANT",
+    "should handle rapid runtime recreation",
     async () => {
-      console.log("\n=== RAPID MODE SWITCH TEST ===");
+      console.log("\n=== RAPID RUNTIME RECREATION TEST ===");
 
       const errors: string[] = [];
       let runtime: TestRuntime | null = null;
 
-      // Rapidly switch between modes while running queries
       for (let i = 0; i < 5; i++) {
-        const mode = i % 2 === 0 ? AgentMode.CHAT : AgentMode.ASSISTANT;
-        console.log(`\nSwitch ${i + 1}: Creating runtime in ${mode} mode`);
+        console.log(`\nCycle ${i + 1}: Creating CHAT runtime`);
 
         try {
           const context = buildUserContext(testData, {
-            agentMode: mode,
+            agentMode: AgentMode.CHAT,
             webSearchEnabled: false,
           });
 
@@ -271,7 +268,7 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
             runtime.getAgents(),
             new Promise<never>((_, reject) => {
               const t = setTimeout(
-                () => reject(new Error(`Switch ${i + 1}: getAgents probe timed out`)),
+                () => reject(new Error(`Cycle ${i + 1}: getAgents probe timed out`)),
                 DB_PROBE_TIMEOUT_MS,
               );
               (t as { unref?: () => void }).unref?.();
@@ -284,18 +281,18 @@ describe.skipIf(!hasDatabaseUrl)("Mode Switching During Operations", () => {
           console.log(`  Invalidated`);
         } catch (error) {
           const msg = (error as Error).message;
-          errors.push(`Switch ${i + 1}: ${msg}`);
+          errors.push(`Cycle ${i + 1}: ${msg}`);
           console.log(`  ERROR: ${msg}`);
         }
       }
 
-      console.log(`\n=== RAPID SWITCH RESULTS ===`);
+      console.log(`\n=== RAPID RECREATION RESULTS ===`);
       console.log(`Total errors: ${errors.length}`);
 
       if (errors.length > 0) {
         errors.forEach((e) => console.log(`  ${e}`));
       } else {
-        console.log("SUCCESS: All rapid switches completed without errors!");
+        console.log("SUCCESS: All rapid recreation cycles completed without errors!");
       }
 
       // No pool errors should occur
@@ -317,15 +314,15 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
   afterAll(cleanupTestEnvironment);
 
   /**
-   * Simulates knowledge service access during runtime invalidation
+   * Simulates documents service access during runtime invalidation
    */
   it(
-    "should handle knowledge service access during invalidation",
+    "should handle documents service access during invalidation",
     async () => {
-      console.log("\n=== KNOWLEDGE SERVICE ACCESS TEST ===");
+      console.log("\n=== DOCUMENTS SERVICE ACCESS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -333,9 +330,9 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
       const agentId = runtime.agentId as string;
       console.log(`Created runtime: ${agentId}`);
 
-      // Get knowledge service if available
-      const knowledgeService = runtime.getService("knowledge");
-      console.log(`Knowledge service: ${knowledgeService ? "available" : "not available"}`);
+      // Get documents service if available
+      const documentsService = runtime.getService("documents");
+      console.log(`Documents service: ${documentsService ? "available" : "not available"}`);
 
       const errors: string[] = [];
 
@@ -345,7 +342,7 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
           try {
             await new Promise((r) => setTimeout(r, i * 20));
             // Try to get service (should work even during invalidation)
-            const _svc = runtime.getService("knowledge");
+            const _svc = runtime.getService("documents");
             // Also try a DB operation
             await runtime.getAgents();
             console.log(`Service op ${i}: success`);
@@ -386,7 +383,7 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
       console.log("\n=== MEMORY SERVICE OPERATIONS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -464,7 +461,7 @@ describe.skipIf(!hasDatabaseUrl)("Concurrent Configuration Changes", () => {
       console.log("\n=== CONCURRENT INVALIDATIONS TEST ===");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
@@ -528,12 +525,12 @@ describe.skipIf(!hasDatabaseUrl)("Concurrent Configuration Changes", () => {
 
       // Create runtime with web search (different config)
       const contextA = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 
       const contextB = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: true, // Different config = different cache key
       });
 
@@ -618,7 +615,7 @@ describe.skipIf(!hasDatabaseUrl)("Long-Running Operation Simulation", () => {
       console.log("Simulating long-term-extraction evaluator operations...");
 
       const context = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       });
 

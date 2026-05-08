@@ -711,7 +711,7 @@ export interface AppState {
 
   // Sub-tabs
   appsSubTab: "browse" | "running" | "games";
-  agentSubTab: "character" | "inventory" | "knowledge";
+  agentSubTab: "character" | "inventory" | "documents";
   pluginsSubTab: "features" | "connectors" | "plugins";
   databaseSubTab: "tables" | "media" | "vectors";
 

@@ -1247,7 +1247,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/knowledge/documents") {
+  if (req.method === "GET" && url.pathname === "/api/documents") {
     sendJson(req, res, 200, {
       documents: [],
       total: 0,

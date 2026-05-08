@@ -361,7 +361,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "I'm venting, not asking you to do anything: email has been overwhelming lately. Do not check inboxes, triage mail, draft, send, or take any action.",
           );
-          expectActionNotCalled(h.spy, "TRIAGE_MESSAGES");
+          expectActionNotCalled(h.spy, "MESSAGE");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -437,29 +437,8 @@ describe("Action Invocation E2E", () => {
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
-    itIf(canRunLiveTests)(
-      "morning check-in request triggers CHECKIN",
-      async () => {
-        if (!requireAction("CHECKIN")) return;
-        await withHarness(async (h) => {
-          await h.send("Run my morning check-in.");
-          expectActionCalled(h.spy, "CHECKIN");
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
-
-    itIf(canRunLiveTests)(
-      "night check-in request triggers CHECKIN",
-      async () => {
-        if (!requireAction("CHECKIN")) return;
-        await withHarness(async (h) => {
-          await h.send("Give me my night check-in.");
-          expectActionCalled(h.spy, "CHECKIN");
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
+    // Morning/night CHECKIN tests removed: the CHECKIN action was deleted in
+    // favor of scheduled tasks. See plugins/app-lifeops/src/actions/CHECKIN_MIGRATION.TODO.md.
   });
 
   // ===================================================================
@@ -468,55 +447,55 @@ describe("Action Invocation E2E", () => {
 
   describe("messaging", () => {
     itIf(canRunLiveTests)(
-      "telegram request triggers SEND_DRAFT",
+      "telegram request triggers MESSAGE",
       async () => {
-        if (!requireAction("SEND_DRAFT")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a telegram message to Jane saying I'm running 10 minutes late.",
           );
-          expectAnySelectedAction(h, ["SEND_DRAFT", "RESPOND_TO_MESSAGE"]);
+          expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "signal request triggers SEND_DRAFT",
+      "signal request triggers MESSAGE",
       async () => {
-        if (!requireAction("SEND_DRAFT")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a Signal message to Priya saying thanks for the review.",
           );
-          expectAnySelectedAction(h, ["SEND_DRAFT", "RESPOND_TO_MESSAGE"]);
+          expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "signal draft request triggers DRAFT_REPLY",
+      "signal draft request triggers MESSAGE",
       async () => {
-        if (!requireAction("DRAFT_REPLY")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Draft a Signal message to Priya saying thanks for the review.",
           );
-          expectAnySelectedAction(h, ["DRAFT_REPLY", "SEND_DRAFT"]);
+          expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "email draft request triggers DRAFT_REPLY",
+      "email draft request triggers MESSAGE",
       async () => {
-        if (!requireAction("DRAFT_REPLY")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["DRAFT_REPLY", "SEND_DRAFT", "TRIAGE_MESSAGES"],
+            ["MESSAGE", "MESSAGE", "MESSAGE"],
             [
               "Email alice@example.com the meeting notes from today.",
               "Send an email to alice@example.com with the meeting notes from today.",
@@ -529,38 +508,38 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "gmail triage request selects TRIAGE_MESSAGES",
+      "gmail triage request selects MESSAGE",
       async () => {
-        if (!requireAction("TRIAGE_MESSAGES")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send("Triage my gmail inbox.");
-          expectAnyCompletedAction(h, ["TRIAGE_MESSAGES"]);
+          expectAnyCompletedAction(h, ["MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "generic inbox triage triggers TRIAGE_MESSAGES",
+      "generic inbox triage triggers MESSAGE",
       async () => {
-        if (!requireAction("TRIAGE_MESSAGES")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send("Triage my inbox.");
-          expectActionCalled(h.spy, "TRIAGE_MESSAGES");
+          expectActionCalled(h.spy, "MESSAGE");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "gmail send-reply request triggers RESPOND_TO_MESSAGE",
+      "gmail send-reply request triggers MESSAGE",
       async () => {
-        if (!requireAction("RESPOND_TO_MESSAGE")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a reply to the last email from finance confirming receipt.",
           );
-          expectAnySelectedAction(h, ["RESPOND_TO_MESSAGE", "SEND_DRAFT"]);
+          expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -974,14 +953,14 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "email unsubscribe request triggers MANAGE_MESSAGE",
+      "email unsubscribe request triggers MESSAGE",
       async () => {
-        if (!requireAction("MANAGE_MESSAGE")) return;
+        if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Unsubscribe me from newsletters@medium.com and block them.",
           );
-          expectAnySelectedAction(h, ["MANAGE_MESSAGE"]);
+          expectAnySelectedAction(h, ["MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,

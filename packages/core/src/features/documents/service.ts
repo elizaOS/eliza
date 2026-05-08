@@ -59,6 +59,8 @@ const HYBRID_VECTOR_WEIGHT = 0.6;
 /** Weight given to the normalized BM25 score in hybrid mode. */
 const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
+const PRE_DOCUMENTS_TABLE = "knowledge";
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
 	"owner-private",
@@ -208,6 +210,10 @@ export class DocumentService extends Service {
 				logger.error({ error }, "Error loading initial documents");
 			});
 		}
+
+		await service.migratePreDocumentsPartition().catch((err) => {
+			logger.error({ error: err }, "Error migrating pre-documents rows");
+		});
 
 		await service.backfillDocumentScopes().catch((err) => {
 			logger.error({ error: err }, "Error backfilling document scopes");
@@ -416,7 +422,7 @@ export class DocumentService extends Service {
 		}
 
 		const memories = await this.runtime.getMemories({
-			tableName: DOCUMENTS_TABLE,
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			count: 10_000,
 		});
@@ -478,7 +484,107 @@ export class DocumentService extends Service {
 		};
 
 		await backfillTable(DOCUMENTS_TABLE);
-		await backfillTable("document_fragments");
+		await backfillTable(DOCUMENT_FRAGMENTS_TABLE);
+	}
+
+	private buildScopedMetadata(
+		memory: Memory,
+		type: MemoryType.DOCUMENT | MemoryType.FRAGMENT,
+	): Record<string, unknown> {
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		if (typeof metadata.scope === "string") {
+			return { ...metadata, type };
+		}
+		return {
+			...metadata,
+			type,
+			scope: "global",
+			scopedToEntityId: undefined,
+			addedBy: memory.entityId ?? this.runtime.agentId,
+			addedByRole: "RUNTIME",
+			addedFrom:
+				metadata.source === "eliza-default-documents" ||
+				metadata.source === "eliza-default-knowledge"
+					? "default-seed"
+					: "runtime-internal",
+			addedAt:
+				typeof memory.createdAt === "number" ? memory.createdAt : Date.now(),
+		};
+	}
+
+	private async migratePreDocumentsPartition(): Promise<void> {
+		const memories: Memory[] = [];
+		let offset = 0;
+		while (true) {
+			const batch = await this.runtime.getMemories({
+				tableName: PRE_DOCUMENTS_TABLE,
+				agentId: this.runtime.agentId,
+				count: 500,
+				offset,
+			});
+			if (batch.length === 0) break;
+			memories.push(...batch);
+			if (batch.length < 500) break;
+			offset += batch.length;
+		}
+		if (memories.length === 0) return;
+
+		const documents = memories.filter((memory) => this.isDocumentMemory(memory));
+		const fragments = memories.filter((memory) =>
+			this.isDocumentFragmentMemory(memory),
+		);
+		const migratedFragmentIds = new Set<UUID>();
+
+		for (const document of documents) {
+			if (!document.id) continue;
+			const documentId = document.id as UUID;
+			const relatedFragments = fragments.filter((fragment) => {
+				const metadata = fragment.metadata as Record<string, unknown> | undefined;
+				return metadata?.documentId === documentId;
+			});
+
+			await this.runtime.deleteMemory(documentId);
+			await this.runtime.createMemory(
+				{
+					...document,
+					id: documentId,
+					metadata: this.buildScopedMetadata(document, MemoryType.DOCUMENT),
+				},
+				DOCUMENTS_TABLE,
+			);
+
+			for (const fragment of relatedFragments) {
+				if (!fragment.id) continue;
+				const fragmentId = fragment.id as UUID;
+				await this.runtime.createMemory(
+					{
+						...fragment,
+						id: fragmentId,
+						metadata: this.buildScopedMetadata(fragment, MemoryType.FRAGMENT),
+					},
+					DOCUMENT_FRAGMENTS_TABLE,
+				);
+				migratedFragmentIds.add(fragmentId);
+			}
+		}
+
+		for (const fragment of fragments) {
+			if (!fragment.id || migratedFragmentIds.has(fragment.id as UUID)) continue;
+			const fragmentId = fragment.id as UUID;
+			await this.runtime.deleteMemory(fragmentId);
+			await this.runtime.createMemory(
+				{
+					...fragment,
+					id: fragmentId,
+					metadata: this.buildScopedMetadata(fragment, MemoryType.FRAGMENT),
+				},
+				DOCUMENT_FRAGMENTS_TABLE,
+			);
+		}
+
+		logger.info(
+			`Migrated ${documents.length} document(s) and ${fragments.length} fragment(s) into document partitions`,
+		);
 	}
 
 	async addDocument(options: AddDocumentOptions): Promise<{
@@ -508,7 +614,7 @@ export class DocumentService extends Service {
 				logger.info(`"${options.originalFilename}" already exists - skipping`);
 
 				const fragments = await this.runtime.getMemories({
-					tableName: DOCUMENTS_TABLE,
+					tableName: DOCUMENT_FRAGMENTS_TABLE,
 				});
 
 				const relatedFragments = fragments.filter(
@@ -783,7 +889,7 @@ export class DocumentService extends Service {
 		});
 
 		const fragments = await this.runtime.searchMemories({
-			tableName: DOCUMENTS_TABLE,
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
 			query: queryText,
 			...filterScope,
@@ -817,7 +923,7 @@ export class DocumentService extends Service {
 		message?: Memory,
 	): Promise<StoredDocument[]> {
 		const allFragments = await this.runtime.getMemories({
-			tableName: DOCUMENTS_TABLE,
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			...filterScope,
 			count: 1000,
@@ -871,7 +977,7 @@ export class DocumentService extends Service {
 
 		// Fetch a larger candidate set so BM25 can re-rank meaningfully
 		const candidates = await this.runtime.searchMemories({
-			tableName: DOCUMENTS_TABLE,
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
 			query: queryText,
 			...filterScope,
@@ -1268,7 +1374,7 @@ export class DocumentService extends Service {
 		});
 
 		const existingFragments = await this.runtime.getMemories({
-			tableName: DOCUMENTS_TABLE,
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			roomId: existingDocument.roomId,
 			count: 10_000,
@@ -1416,7 +1522,7 @@ export class DocumentService extends Service {
 		try {
 			await this.runtime.addEmbeddingToMemory(fragment);
 
-			await this.runtime.createMemory(fragment, DOCUMENTS_TABLE);
+			await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
 		} catch (error) {
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
 			throw error;

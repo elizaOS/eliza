@@ -10,7 +10,7 @@
 
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { formatSpeakerLabel } from "../providers/conversation-utils.js";
+import { formatSpeakerLabel } from "../shared/conversation-format.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
