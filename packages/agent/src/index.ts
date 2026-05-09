@@ -87,6 +87,13 @@ export type {
   TradePermissionMode,
 } from "./api/server-types.js";
 export * from "./api/wallet-capability.js";
+export { getWalletAddresses } from "./api/wallet.js";
+export { RegistryService } from "./api/registry-service.js";
+export {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "./api/tx-service.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";

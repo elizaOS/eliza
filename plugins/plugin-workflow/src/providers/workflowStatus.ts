@@ -14,8 +14,8 @@ export const workflowStatusProvider: Provider = {
 
       if (!service) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:provider:workflowStatus' },
-          'N8n Workflow service not available for provider'
+          { src: 'plugin:workflow:provider:workflowStatus' },
+          'Workflow service not available for provider'
         );
         return {
           text: '',
@@ -31,13 +31,13 @@ export const workflowStatusProvider: Provider = {
 
       if (workflows.length === 0) {
         return {
-          text: 'No n8n workflows configured yet.',
+          text: 'No workflows configured yet.',
           data: {},
           values: {},
         };
       }
 
-      let status = `Current n8n workflows (${workflows.length}):\n\n`;
+      let status = `Current workflows (${workflows.length}):\n\n`;
 
       for (const workflow of workflows.slice(0, 10)) {
         const statusEmoji = workflow.active ? '✅' : '⏸️';
@@ -56,7 +56,7 @@ export const workflowStatusProvider: Provider = {
         } catch (_error) {
           // Ignore execution fetch errors
           logger.debug(
-            { src: 'plugin:n8n-workflow:provider:workflowStatus' },
+            { src: 'plugin:workflow:provider:workflowStatus' },
             `Could not fetch executions for workflow ${workflow.id}`
           );
         }
@@ -75,7 +75,7 @@ export const workflowStatusProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:provider:workflowStatus' },
+        { src: 'plugin:workflow:provider:workflowStatus' },
         `Failed to get workflow status: ${error instanceof Error ? error.message : String(error)}`
       );
       return {

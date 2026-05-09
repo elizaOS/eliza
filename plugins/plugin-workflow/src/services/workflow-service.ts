@@ -1,5 +1,4 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
-import { WorkflowApiClient } from '../utils/api';
 import { EmbeddedWorkflowService, EMBEDDED_WORKFLOW_SERVICE_TYPE } from './embedded-workflow-service';
 import { searchNodes, filterNodesByIntegrationSupport } from '../utils/catalog';
 import { getUserTagName } from '../utils/context';
@@ -48,17 +47,17 @@ import {
   UnsupportedIntegrationError,
 } from '../types/index';
 
-export const WORKFLOW_SERVICE_TYPE = 'n8n_workflow';
+export const WORKFLOW_SERVICE_TYPE = 'workflow';
 
 export interface WorkflowServiceConfig {
-  apiKey: string;
-  host: string;
-  backend?: 'http' | 'embedded';
+  apiKey: 'embedded';
+  host: 'in-process';
+  backend: 'embedded';
   credentials?: Record<string, string>; // Pre-configured credential IDs
 }
 
 type WorkflowDefinitionClient = Pick<
-  WorkflowApiClient,
+  EmbeddedWorkflowService,
   | 'createWorkflow'
   | 'listWorkflows'
   | 'getWorkflow'
@@ -80,51 +79,24 @@ type WorkflowDefinitionClient = Pick<
   supportsWorkflow?(workflow: WorkflowDefinition): { supported: boolean; missing: string[] };
 };
 
-function settingAsString(runtime: IAgentRuntime, key: string): string {
-  const value = runtime.getSetting(key);
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function isTruthySetting(value: string): boolean {
-  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
-}
-
-function isEmbeddedBackendEnabled(runtime: IAgentRuntime): boolean {
-  const backend = settingAsString(runtime, 'WORKFLOW_BACKEND').toLowerCase();
-  const mode = settingAsString(runtime, 'WORKFLOW_MODE').toLowerCase();
-  const host = settingAsString(runtime, 'WORKFLOW_HOST').toLowerCase();
-  return (
-    backend === 'embedded' ||
-    mode === 'embedded' ||
-    host.startsWith('embedded://') ||
-    isTruthySetting(settingAsString(runtime, 'WORKFLOW_EMBEDDED_ENABLED'))
-  );
-}
-
 /**
- * N8n Workflow Service - Orchestrates the RAG pipeline for workflow generation.
+ * Workflow Service - Orchestrates the RAG pipeline for workflow generation.
  *
  * generateWorkflowDraft(): keywords → node search → LLM generation → validation → positioning
- * deployWorkflow(): credential resolution → n8n Cloud API → tagging
+ * deployWorkflow(): credential resolution → in-process runtime → tagging
  */
 export class WorkflowService extends Service {
   static override readonly serviceType = WORKFLOW_SERVICE_TYPE;
 
   override capabilityDescription =
-    'Generate and deploy n8n workflows from natural language using RAG pipeline. ' +
+    'Generate and deploy workflows from natural language using RAG pipeline. ' +
     'Supports workflow CRUD, execution management, and credential resolution.';
 
   private apiClient: WorkflowDefinitionClient | null = null;
   private serviceConfig: WorkflowServiceConfig | null = null;
-  private fallbackClient: WorkflowDefinitionClient | null = null;
-  private fallbackConfig: WorkflowServiceConfig | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<WorkflowService> {
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Starting N8n Workflow Service...');
-
-    const apiKey = runtime.getSetting('WORKFLOW_API_KEY');
-    const host = runtime.getSetting('WORKFLOW_HOST');
-    const embeddedEnabled = isEmbeddedBackendEnabled(runtime);
+    logger.info({ src: 'plugin:workflow:service:main' }, 'Starting Workflow Service...');
 
     // Get optional pre-configured credentials from character.settings.workflows
     // Note: runtime.getSetting() only returns primitives — nested objects must be read directly
@@ -134,56 +106,20 @@ export class WorkflowService extends Service {
     const credentials = workflowSettings?.credentials;
 
     const service = new WorkflowService(runtime);
-    if (embeddedEnabled) {
-      const embedded =
-        (runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE) as EmbeddedWorkflowService | null) ??
-        (await EmbeddedWorkflowService.start(runtime));
-      service.serviceConfig = {
-        apiKey: 'embedded',
-        host: embedded.host,
-        backend: 'embedded',
-        credentials,
-      };
-      service.apiClient = embedded;
-
-      const fallbackHost =
-        settingAsString(runtime, 'N8N_FALLBACK_HOST') ||
-        settingAsString(runtime, 'N8N_CLOUD_FALLBACK_HOST');
-      const fallbackApiKey =
-        settingAsString(runtime, 'N8N_FALLBACK_API_KEY') ||
-        settingAsString(runtime, 'N8N_CLOUD_FALLBACK_API_KEY');
-      if (fallbackHost && fallbackApiKey) {
-        service.fallbackConfig = {
-          apiKey: fallbackApiKey,
-          host: fallbackHost,
-          backend: 'http',
-          credentials,
-        };
-        service.fallbackClient = new WorkflowApiClient(fallbackHost, fallbackApiKey);
-      }
-    } else {
-      if (!apiKey || typeof apiKey !== 'string') {
-        throw new Error('WORKFLOW_API_KEY is required in settings');
-      }
-
-      if (!host || typeof host !== 'string') {
-        throw new Error('WORKFLOW_HOST is required in settings (e.g., https://your.n8n.cloud)');
-      }
-
-      service.serviceConfig = {
-        apiKey,
-        host,
-        backend: 'http',
-        credentials,
-      };
-
-      // Initialize API client
-      service.apiClient = new WorkflowApiClient(host, apiKey);
-    }
+    const embedded =
+      (runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE) as EmbeddedWorkflowService | null) ??
+      (await EmbeddedWorkflowService.start(runtime));
+    service.serviceConfig = {
+      apiKey: 'embedded',
+      host: 'in-process',
+      backend: 'embedded',
+      credentials,
+    };
+    service.apiClient = embedded;
 
     logger.info(
-      { src: 'plugin:n8n-workflow:service:main' },
-      `N8n Workflow Service started - connected to ${service.serviceConfig.host} (${service.serviceConfig.backend ?? 'http'})`
+      { src: 'plugin:workflow:service:main' },
+      `Workflow Service started - connected to ${service.serviceConfig.host}`
     );
     if (credentials) {
       const configured = Object.entries(credentials)
@@ -191,7 +127,7 @@ export class WorkflowService extends Service {
         .map(([k]) => k);
       if (configured.length > 0) {
         logger.info(
-          { src: 'plugin:n8n-workflow:service:main' },
+          { src: 'plugin:workflow:service:main' },
           `Pre-configured credentials: ${configured.join(', ')}`
         );
       }
@@ -201,12 +137,10 @@ export class WorkflowService extends Service {
   }
 
   override async stop(): Promise<void> {
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Stopping N8n Workflow Service...');
+    logger.info({ src: 'plugin:workflow:service:main' }, 'Stopping Workflow Service...');
     this.apiClient = null;
     this.serviceConfig = null;
-    this.fallbackClient = null;
-    this.fallbackConfig = null;
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'N8n Workflow Service stopped');
+    logger.info({ src: 'plugin:workflow:service:main' }, 'Workflow Service stopped');
   }
 
   private filterForEmbeddedBackend<T extends { node: NodeDefinition }>(results: T[]): T[] {
@@ -237,20 +171,8 @@ export class WorkflowService extends Service {
       return { client, config, routedToFallback: false };
     }
 
-    if (this.fallbackClient && this.fallbackConfig) {
-      logger.info(
-        { src: 'plugin:n8n-workflow:service:main', missingNodes: support.missing },
-        'Embedded runtime missing node(s); routing workflow deployment to configured n8n fallback'
-      );
-      return {
-        client: this.fallbackClient,
-        config: this.fallbackConfig,
-        routedToFallback: true,
-      };
-    }
-
     throw new WorkflowApiError(
-      `Embedded n8n runtime does not support node type(s): ${support.missing.join(', ')}`,
+      `Embedded workflow runtime does not support node type(s): ${support.missing.join(', ')}`,
       400
     );
   }
@@ -274,7 +196,7 @@ export class WorkflowService extends Service {
 
     if (catalogWarnings.length > 0) {
       logger.warn(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Catalog validation: ${catalogWarnings.join(', ')}`
       );
       const clarifications = catalogWarnings.map((w) => `${w} ${CATALOG_CLARIFICATION_SUFFIX}`);
@@ -286,14 +208,14 @@ export class WorkflowService extends Service {
 
   private getClient(): WorkflowDefinitionClient {
     if (!this.apiClient) {
-      throw new Error('N8n Workflow Service not initialized');
+      throw new Error('Workflow Service not initialized');
     }
     return this.apiClient;
   }
 
   private getConfig(): WorkflowServiceConfig {
     if (!this.serviceConfig) {
-      throw new Error('N8n Workflow Service not initialized');
+      throw new Error('Workflow Service not initialized');
     }
     return this.serviceConfig;
   }
@@ -329,7 +251,7 @@ export class WorkflowService extends Service {
     } catch (err) {
       logger.warn(
         {
-          src: 'plugin:n8n-workflow:service:main',
+          src: 'plugin:workflow:service:main',
           err: err instanceof Error ? err.message : String(err),
         },
         'RuntimeContextProvider threw — generating without runtime facts'
@@ -343,7 +265,7 @@ export class WorkflowService extends Service {
     opts?: { userId?: string; triggerContext?: TriggerContext }
   ): Promise<WorkflowDefinition> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       'Generating workflow draft from prompt'
     );
 
@@ -359,19 +281,19 @@ export class WorkflowService extends Service {
 
     const keywords = await extractKeywords(this.runtime, prompt, preferredProviders);
     logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
     );
 
     let relevantNodes = this.filterForEmbeddedBackend(searchNodes(keywords, 15));
     logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Found ${relevantNodes.length} relevant nodes`
     );
 
     if (relevantNodes.length === 0) {
       throw new Error(
-        'No relevant n8n nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
+        'No relevant p1p3s nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
       );
     }
 
@@ -416,7 +338,7 @@ export class WorkflowService extends Service {
           }
 
           logger.debug(
-            { src: 'plugin:n8n-workflow:service:main' },
+            { src: 'plugin:workflow:service:main' },
             `Feasibility OK: ${feasibility.reason}. Proceeding with ${remaining.length} nodes.`
           );
           relevantNodes = remaining;
@@ -434,7 +356,7 @@ export class WorkflowService extends Service {
 
     let workflow = await generateWorkflow(this.runtime, prompt, finalNodeDefs, runtimeContext);
     logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Generated workflow with ${workflow.nodes?.length || 0} nodes`
     );
 
@@ -446,7 +368,7 @@ export class WorkflowService extends Service {
     const injectedCreds = injectMissingCredentialBlocks(workflow, finalNodeDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Injected ${injectedCreds} missing credentials block(s) (LLM omitted)`
       );
     }
@@ -459,10 +381,10 @@ export class WorkflowService extends Service {
     // sends a surgical fix prompt to the LLM. Cap at 3 retries to bound
     // worst-case cost.
     //
-    // Fetch the live n8n runtime's node-type registry once per deploy so
+    // Fetch the live workflow runtime's node-type registry once per deploy so
     // typeVersion clamping intersects catalog ∩ runtime — necessary
     // because the bundled `defaultNodes.json` can be ahead of the user's
-    // actually-installed n8n binary (e.g. catalog says Gmail v2.2 but
+    // actually-installed p1p3s binary (e.g. catalog says Gmail v2.2 but
     // runtime only ships up to v2.1).
     const generateClient = this.getClient();
     const runtimeVersions = (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
@@ -480,7 +402,7 @@ export class WorkflowService extends Service {
       if (attempt === 2) {
         logger.warn(
           {
-            src: 'plugin:n8n-workflow:service:main',
+            src: 'plugin:workflow:service:main',
             errors: repairResult.errors,
           },
           `validateAndRepair: ${repairResult.errors.length} unrecoverable error(s) after 3 retries — proceeding to deploy with _meta.errors`
@@ -504,7 +426,7 @@ export class WorkflowService extends Service {
       } catch (err) {
         logger.warn(
           {
-            src: 'plugin:n8n-workflow:service:main',
+            src: 'plugin:workflow:service:main',
             err: err instanceof Error ? err.message : String(err),
           },
           'fixWorkflowErrors threw — exiting retry loop'
@@ -518,7 +440,7 @@ export class WorkflowService extends Service {
     const optionFixes = correctOptionParameters(workflow);
     if (optionFixes > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Corrected ${optionFixes} invalid option parameter(s)`
       );
     }
@@ -526,7 +448,7 @@ export class WorkflowService extends Service {
     const unknownParams = detectUnknownParameters(workflow);
     if (unknownParams.length > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Found ${unknownParams.length} node(s) with unknown parameters, auto-correcting...`
       );
       workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
@@ -535,7 +457,7 @@ export class WorkflowService extends Service {
     const invalidRefs = validateOutputReferences(workflow);
     if (invalidRefs.length > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Found ${invalidRefs.length} invalid field reference(s), auto-correcting...`
       );
       workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
@@ -544,7 +466,7 @@ export class WorkflowService extends Service {
     const exprPrefixed = ensureExpressionPrefix(workflow);
     if (exprPrefixed > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Prefixed ${exprPrefixed} expression value(s) with "="`
       );
     }
@@ -552,14 +474,14 @@ export class WorkflowService extends Service {
     const validationResult = validateWorkflow(workflow);
     if (!validationResult.valid) {
       logger.error(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Validation errors: ${validationResult.errors.join(', ')}`
       );
       throw new Error(`Generated workflow is invalid: ${validationResult.errors[0]}`);
     }
     if (validationResult.warnings.length > 0) {
       logger.warn(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Validation warnings: ${validationResult.warnings.join(', ')}`
       );
     }
@@ -574,7 +496,7 @@ export class WorkflowService extends Service {
     opts?: { userId?: string; triggerContext?: TriggerContext }
   ): Promise<WorkflowDefinition> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Modifying workflow draft: ${modificationRequest.slice(0, 100)}`
     );
 
@@ -597,7 +519,7 @@ export class WorkflowService extends Service {
     }
 
     logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Modify context: ${existingDefs.length} existing + ${newDefs.length} searched → ${combinedDefs.length} unique node defs`
     );
 
@@ -621,7 +543,7 @@ export class WorkflowService extends Service {
     const injectedCreds = injectMissingCredentialBlocks(workflow, combinedDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Injected ${injectedCreds} missing credentials block(s) on modify (LLM omitted)`
       );
     }
@@ -647,7 +569,7 @@ export class WorkflowService extends Service {
       if (attempt === 2) {
         logger.warn(
           {
-            src: 'plugin:n8n-workflow:service:main',
+            src: 'plugin:workflow:service:main',
             errors: repairResult.errors,
           },
           `validateAndRepair (modify): ${repairResult.errors.length} unrecoverable error(s) after 3 retries`
@@ -671,7 +593,7 @@ export class WorkflowService extends Service {
       } catch (err) {
         logger.warn(
           {
-            src: 'plugin:n8n-workflow:service:main',
+            src: 'plugin:workflow:service:main',
             err: err instanceof Error ? err.message : String(err),
           },
           'fixWorkflowErrors (modify) threw — exiting retry loop'
@@ -685,7 +607,7 @@ export class WorkflowService extends Service {
     const optionFixes = correctOptionParameters(workflow);
     if (optionFixes > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Corrected ${optionFixes} invalid option parameter(s) in modified workflow`
       );
     }
@@ -693,7 +615,7 @@ export class WorkflowService extends Service {
     const unknownParams = detectUnknownParameters(workflow);
     if (unknownParams.length > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Found ${unknownParams.length} node(s) with unknown parameters in modified workflow, auto-correcting...`
       );
       workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
@@ -702,7 +624,7 @@ export class WorkflowService extends Service {
     const invalidRefs = validateOutputReferences(workflow);
     if (invalidRefs.length > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Found ${invalidRefs.length} invalid field reference(s) in modified workflow, auto-correcting...`
       );
       workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
@@ -711,7 +633,7 @@ export class WorkflowService extends Service {
     const exprPrefixed = ensureExpressionPrefix(workflow);
     if (exprPrefixed > 0) {
       logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Prefixed ${exprPrefixed} expression value(s) with "=" in modified workflow`
       );
     }
@@ -719,7 +641,7 @@ export class WorkflowService extends Service {
     const validationResult = validateWorkflow(workflow);
     if (!validationResult.valid) {
       logger.error(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Modified workflow validation errors: ${validationResult.errors.join(', ')}`
       );
       throw new Error(`Modified workflow is invalid: ${validationResult.errors[0]}`);
@@ -731,7 +653,7 @@ export class WorkflowService extends Service {
 
   async deployWorkflow(workflow: WorkflowDefinition, userId: string): Promise<WorkflowCreationResult> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Deploying workflow "${workflow.name}" for user ${userId}`
     );
 
@@ -770,7 +692,7 @@ export class WorkflowService extends Service {
     }
 
     // Determine if this is an update (existing workflow) or create (new workflow).
-    // If update fails (workflow deleted on n8n), fallback to create.
+    // If update fails (workflow deleted on p1p3s), fallback to create.
     let deployedWorkflow;
     let wasUpdate = false;
     if (workflow.id) {
@@ -779,7 +701,7 @@ export class WorkflowService extends Service {
         wasUpdate = true;
       } catch {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main' },
+          { src: 'plugin:workflow:service:main' },
           `Update failed for workflow ${workflow.id}, creating new workflow instead`
         );
         const { id: _, ...rest } = credentialResult.workflow as unknown as Record<string, unknown>;
@@ -790,7 +712,7 @@ export class WorkflowService extends Service {
     }
 
     logger.info(
-      { src: 'plugin:n8n-workflow:service:main' },
+      { src: 'plugin:workflow:service:main' },
       `Workflow ${wasUpdate ? 'updated' : 'created'}: ${deployedWorkflow.id}`
     );
 
@@ -800,12 +722,12 @@ export class WorkflowService extends Service {
       await client.activateWorkflow(deployedWorkflow.id);
       active = true;
       logger.info(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Workflow ${deployedWorkflow.id} activated`
       );
     } catch (error) {
       logger.warn(
-        { src: 'plugin:n8n-workflow:service:main' },
+        { src: 'plugin:workflow:service:main' },
         `Failed to activate workflow: ${error instanceof Error ? error.message : String(error)}`
       );
     }
@@ -816,12 +738,12 @@ export class WorkflowService extends Service {
         const userTag = await client.getOrCreateTag(tagName);
         await client.updateWorkflowTags(deployedWorkflow.id, [userTag.id]);
         logger.debug(
-          { src: 'plugin:n8n-workflow:service:main' },
+          { src: 'plugin:workflow:service:main' },
           `Tagged workflow ${deployedWorkflow.id} with "${tagName}"`
         );
       } catch (error) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main' },
+          { src: 'plugin:workflow:service:main' },
           `Failed to tag workflow: ${error instanceof Error ? error.message : String(error)}`
         );
       }
@@ -860,19 +782,19 @@ export class WorkflowService extends Service {
   async activateWorkflow(workflowId: string): Promise<void> {
     const client = this.getClient();
     await client.activateWorkflow(workflowId);
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, `Workflow ${workflowId} activated`);
+    logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} activated`);
   }
 
   async deactivateWorkflow(workflowId: string): Promise<void> {
     const client = this.getClient();
     await client.deactivateWorkflow(workflowId);
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, `Workflow ${workflowId} deactivated`);
+    logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} deactivated`);
   }
 
   async deleteWorkflow(workflowId: string): Promise<void> {
     const client = this.getClient();
     await client.deleteWorkflow(workflowId);
-    logger.info({ src: 'plugin:n8n-workflow:service:main' }, `Workflow ${workflowId} deleted`);
+    logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} deleted`);
   }
 
   async getWorkflow(workflowId: string): Promise<WorkflowDefinitionResponse> {

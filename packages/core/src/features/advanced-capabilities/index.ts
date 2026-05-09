@@ -6,17 +6,17 @@
  *
  * These provide additional agent features:
  * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
- * - Advanced actions (contacts management, room management, todos, personality,
- *   plus post-message ALWAYS_AFTER actions: experience, skill extraction/refinement,
- *   fact extraction, reflection)
+ * - Advanced actions (contacts management, room management, todos, personality)
+ * - Registered post-turn evaluators (experience, skills, facts, relationships,
+ *   identities, task success)
  * - Additional services (experience, todos, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
-import type { IAgentRuntime } from "../../types/index.ts";
+import type { Evaluator, IAgentRuntime } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
-	experienceEvaluator,
+	experiencePatternEvaluator,
 	experienceProvider,
 	searchExperiencesAction,
 } from "./experience/index.ts";
@@ -70,10 +70,8 @@ export const advancedProviders = [
 /**
  * Advanced actions - extended agent capabilities.
  *
- * Includes both planner actions and post-message `ALWAYS_AFTER` hooks
- * (formerly evaluators) for the reflection evaluator (facts + relationships
- * + platform identities + task completion in one LLM call), skill
- * extraction/refinement, and experience learning.
+ * Includes planner actions only. Post-turn evaluation is registered through
+ * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
 	withCanonicalActionDocs(actions.roomOpAction),
@@ -90,11 +88,13 @@ export const advancedActions = [
 	deleteTodoAction,
 	// Personality actions
 	characterAction,
-	// Post-message ALWAYS_AFTER hooks (replaces legacy evaluators)
-	postMessageActions.reflectionEvaluator,
-	postMessageActions.skillEvaluator,
-	experienceEvaluator,
 ];
+
+export const advancedEvaluators = [
+	...postMessageActions.reflectionItems,
+	...postMessageActions.skillItems,
+	experiencePatternEvaluator,
+] as unknown as Evaluator[];
 
 /**
  * Advanced services - extended service infrastructure
@@ -124,6 +124,7 @@ export const advancedServices: ServiceClass[] = [
 export const advancedCapabilities = {
 	providers: advancedProviders,
 	actions: advancedActions,
+	evaluators: advancedEvaluators,
 	services: advancedServices,
 };
 

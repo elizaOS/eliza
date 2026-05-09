@@ -15,6 +15,7 @@ export * from "./contexts";
 export * from "./database";
 export * from "./documents";
 export * from "./environment";
+export * from "./evaluator";
 export * from "./events";
 export * from "./hook";
 export * from "./memory";

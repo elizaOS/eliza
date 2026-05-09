@@ -1,13 +1,6 @@
 {
   "$schema": "./keywords.schema.json",
-  "locales": [
-    "es",
-    "ko",
-    "pt",
-    "tl",
-    "vi",
-    "zh-CN"
-  ],
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
   "entries": {
     "action.agentInbox.request": {
       "base": [
@@ -7745,85 +7738,6 @@
         "进程"
       ]
     },
-    "action.experienceEvaluator.request": {
-      "base": [
-        "analyzes",
-        "analyzes conversation",
-        "conversation",
-        "experience evaluator",
-        "experience recorder",
-        "experience_evaluator",
-        "experience_recorder",
-        "experiences",
-        "extract",
-        "extract novel",
-        "learning",
-        "learning evaluator",
-        "learning_evaluator",
-        "novel",
-        "patterns",
-        "patterns extract",
-        "periodically",
-        "periodically analyzes",
-        "self reflection",
-        "self_reflection",
-        "self-reflection"
-      ],
-      "es": [
-        "accion",
-        "analizar",
-        "extraer",
-        "herramienta",
-        "reflexion",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "분석",
-        "성찰",
-        "요청",
-        "작업",
-        "추출"
-      ],
-      "pt": [
-        "acao",
-        "analisar",
-        "extrair",
-        "ferramenta",
-        "reflexao",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "kunin",
-        "pagninilay",
-        "suriin"
-      ],
-      "vi": [
-        "cong cu",
-        "công cụ",
-        "hanh dong",
-        "hành động",
-        "phan anh",
-        "phản ánh",
-        "phan tich",
-        "phân tích",
-        "trich xuat",
-        "trích xuất",
-        "yeu cau",
-        "yêu cầu"
-      ],
-      "zh-CN": [
-        "分析",
-        "反思",
-        "工具",
-        "提取",
-        "操作",
-        "请求"
-      ]
-    },
     "action.extractPage.request": {
       "base": [
         "browser extract page",
@@ -8323,33 +8237,11 @@
       ]
     },
     "action.finish.request": {
-      "base": [
-        "finish"
-      ],
-      "es": [
-        "accion",
-        "finalizar",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "완료",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "finalizar",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "tapusin"
-      ],
+      "base": ["finish"],
+      "es": ["accion", "finalizar", "herramienta", "solicitud"],
+      "ko": ["도구", "완료", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "finalizar", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "tapusin"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -8360,12 +8252,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "结束",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "结束", "请求"]
     },
     "action.formEvaluator.request": {
       "base": [
@@ -15240,90 +15127,6 @@
         "长期记忆"
       ]
     },
-    "action.memoryEvaluator.request": {
-      "base": [
-        "context",
-        "context compression",
-        "context_compression",
-        "conversation",
-        "entity",
-        "extracts",
-        "extracts long",
-        "feeds",
-        "forward",
-        "items",
-        "long",
-        "long term memory extraction",
-        "long_term_memory_extraction",
-        "memory",
-        "memory consolidation",
-        "memory evaluator",
-        "memory items",
-        "memory provider",
-        "memory summarization",
-        "memory_consolidation",
-        "memory_evaluator",
-        "memory_summarization",
-        "pass",
-        "provider",
-        "rolls",
-        "single",
-        "summary",
-        "summary extracts",
-        "tagged",
-        "tagged memory",
-        "term",
-        "term memory"
-      ],
-      "es": [
-        "accion",
-        "extraer",
-        "herramienta",
-        "memoria",
-        "solicitud"
-      ],
-      "ko": [
-        "기억",
-        "도구",
-        "요청",
-        "작업",
-        "추출"
-      ],
-      "pt": [
-        "acao",
-        "extrair",
-        "ferramenta",
-        "memoria",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "alaala",
-        "kahilingan",
-        "kasangkapan",
-        "kunin",
-        "memory"
-      ],
-      "vi": [
-        "cong cu",
-        "công cụ",
-        "hanh dong",
-        "hành động",
-        "ky uc",
-        "ký ức",
-        "trich xuat",
-        "trích xuất",
-        "yeu cau",
-        "yêu cầu"
-      ],
-      "zh-CN": [
-        "工具",
-        "提取",
-        "操作",
-        "记忆",
-        "请求"
-      ]
-    },
     "action.message.request": {
       "base": [
         "add remove",
@@ -17142,33 +16945,10 @@
         "ring",
         "telecom"
       ],
-      "es": [
-        "accion",
-        "herramienta",
-        "llamada",
-        "llamar",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업",
-        "전화",
-        "통화"
-      ],
-      "pt": [
-        "acao",
-        "chamada",
-        "ferramenta",
-        "ligar",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "tawag"
-      ],
+      "es": ["accion", "herramienta", "llamada", "llamar", "solicitud"],
+      "ko": ["도구", "요청", "작업", "전화", "통화"],
+      "pt": ["acao", "chamada", "ferramenta", "ligar", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "tawag"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -17179,13 +16959,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "拨打",
-        "操作",
-        "请求",
-        "通话"
-      ]
+      "zh-CN": ["工具", "拨打", "操作", "请求", "通话"]
     },
     "action.playAudio.request": {
       "base": [
@@ -20766,11 +20540,7 @@
       ]
     },
     "action.role.request": {
-      "base": [
-        "admin role",
-        "role",
-        "settings role"
-      ],
+      "base": ["admin role", "role", "settings role"],
       "es": [
         "accion",
         "activar",
@@ -23038,31 +22808,11 @@
       ]
     },
     "action.securityEvaluator.request": {
-      "base": [
-        "security evaluator",
-        "security_evaluator",
-        "securityevaluator"
-      ],
-      "es": [
-        "accion",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "base": ["security evaluator", "security_evaluator", "securityevaluator"],
+      "es": ["accion", "herramienta", "solicitud"],
+      "ko": ["도구", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -23071,11 +22821,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "请求"]
     },
     "action.sendToAdmin.request": {
       "base": [

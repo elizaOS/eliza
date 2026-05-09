@@ -2,7 +2,7 @@
  * WalletStatusCard — displays agent wallet addresses and token balances.
  */
 
-import { Button, StatusBadge } from "@elizaos/app-core";
+import { Button, StatusBadge } from "@elizaos/ui";
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { Copy, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";

@@ -581,29 +581,11 @@ export type CloudConfig = {
   container?: CloudContainerDefaults;
 };
 
-/**
- * Workflow integration configuration.
- *
- * Populates WORKFLOW_HOST + WORKFLOW_API_KEY for `@elizaos/plugin-workflow`
- * via the Eliza Cloud gateway: when `cloud.apiKey` is set and
- * `cloud.enabled` is not false, the runtime pumps
- * `${cloud.baseUrl}/api/v1/agents/${agentId}/workflow` into WORKFLOW_HOST and
- * `cloud.apiKey` into WORKFLOW_API_KEY.
- *
- * `enabled` acts as a master gate (default true). Setting it to false disables
- * auto-enable of the plugin regardless of cloud state.
- */
+/** Workflow integration configuration. */
 export type WorkflowConfig = {
   /** Master gate. Default: true. When false, plugin auto-enable is skipped. */
   enabled?: boolean;
-  /** Cloud-populated workflow host URL. */
-  host?: string;
-  /** Cloud-populated workflow API key. */
-  apiKey?: string;
 };
-
-/** @deprecated use {@link WorkflowConfig}. */
-export type N8nConfig = WorkflowConfig;
 
 /** CUA (Computer Use Agent) configuration. Supports local (Lume VM) and cloud modes. */
 export type CuaConfig = {
@@ -798,10 +780,8 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
-  /** Workflow integration (cloud gateway). */
+  /** In-process workflow integration. */
   workflow?: WorkflowConfig;
-  /** @deprecated alias for {@link ElizaConfig.workflow}. */
-  n8n?: N8nConfig;
   /** Wallet source selection and cached cloud wallet descriptors. */
   wallet?: {
     primary?: Partial<Record<"evm" | "solana", "local" | "cloud">>;

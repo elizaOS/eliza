@@ -15,7 +15,7 @@ import type {
 export function createTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: "Schedule Trigger",
-    type: "n8n-nodes-base.scheduleTrigger",
+    type: "p1p3s-nodes-base.scheduleTrigger",
     typeVersion: 1,
     position: [250, 300],
     parameters: { rule: { interval: [{ field: "hours", hoursInterval: 1 }] } },
@@ -26,7 +26,7 @@ export function createTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNo
 export function createGmailNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: "Gmail",
-    type: "n8n-nodes-base.gmail",
+    type: "p1p3s-nodes-base.gmail",
     typeVersion: 2,
     position: [500, 300],
     parameters: {
@@ -46,14 +46,14 @@ export function createGmailNode(overrides?: Partial<WorkflowNode>): WorkflowNode
 export function createSlackNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: "Slack",
-    type: "n8n-nodes-base.slack",
+    type: "p1p3s-nodes-base.slack",
     typeVersion: 2,
     position: [750, 300],
     parameters: {
       resource: "message",
       operation: "post",
       channel: "#general",
-      text: "Hello from n8n",
+      text: "Hello from p1p3s",
     },
     credentials: {
       slackApi: { id: "cred-456", name: "Slack Bot" },
@@ -65,7 +65,7 @@ export function createSlackNode(overrides?: Partial<WorkflowNode>): WorkflowNode
 export function createGmailTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: "Gmail Trigger",
-    type: "n8n-nodes-base.gmailTrigger",
+    type: "p1p3s-nodes-base.gmailTrigger",
     typeVersion: 1,
     position: [250, 300],
     parameters: {},
@@ -76,7 +76,7 @@ export function createGmailTriggerNode(overrides?: Partial<WorkflowNode>): Workf
 export function createGithubTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: "GitHub Trigger",
-    type: "n8n-nodes-base.githubTrigger",
+    type: "p1p3s-nodes-base.githubTrigger",
     typeVersion: 1,
     position: [250, 300],
     parameters: {},
@@ -201,7 +201,7 @@ export function createSimpleWorkflowNoCredentials(
       createTriggerNode(),
       {
         name: "Set",
-        type: "n8n-nodes-base.set",
+        type: "p1p3s-nodes-base.set",
         typeVersion: 3,
         position: [500, 300],
         parameters: {

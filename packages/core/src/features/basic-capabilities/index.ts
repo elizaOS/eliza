@@ -19,6 +19,7 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
+import { EvaluatorService } from "../../services/evaluator.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptService,
@@ -72,6 +73,7 @@ import { generateMediaAction } from "../advanced-capabilities/actions/generateMe
 import {
 	advancedActions,
 	advancedCapabilities,
+	advancedEvaluators,
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
@@ -91,6 +93,7 @@ export * from "../advanced-capabilities/actions/index.ts";
 export {
 	advancedActions,
 	advancedCapabilities,
+	advancedEvaluators,
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
@@ -1249,6 +1252,7 @@ export const basicActions = [
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
+	EvaluatorService,
 ];
 
 /**
@@ -1343,6 +1347,7 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableSecretsManager ? secretsCapability.providers : []),
 			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
 		],
+		evaluators: [...(useAdvanced ? advancedEvaluators : [])],
 		services: [
 			...(config.disableBasic ? [] : basicServices),
 			...(useAdvanced ? advancedServices : []),

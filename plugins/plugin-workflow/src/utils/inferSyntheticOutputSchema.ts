@@ -12,8 +12,8 @@
 
 import type { WorkflowNode } from '../types/index';
 
-/** n8n Summarize node aggregation → output prefix. Verified against actual
- *  n8n output during Session 20 dogfood (concatenate→concatenated_<field>,
+/** p1p3s Summarize node aggregation → output prefix. Verified against actual
+ *  p1p3s output during Session 20 dogfood (concatenate→concatenated_<field>,
  *  count→count_<field>). Update this map when new aggregations show up. */
 const SUMMARIZE_AGG_PREFIX: Record<string, string> = {
   concatenate: 'concatenated',
@@ -126,7 +126,7 @@ const GMAIL_SIMPLE_MODE_FIELDS = [
 
 function inferGmailSimpleFields(node: WorkflowNode): string[] | null {
   const params = node.parameters as Record<string, unknown> | undefined;
-  // simple=true is the default in n8n's Gmail node. Treat both `true` and
+  // simple=true is the default in p1p3s's Gmail node. Treat both `true` and
   // `undefined` as simple-mode unless explicitly disabled.
   if (params?.simple === false) {
     return null;
@@ -142,20 +142,20 @@ function inferGmailSimpleFields(node: WorkflowNode): string[] | null {
  */
 export function inferSyntheticOutputSchema(node: WorkflowNode): string[] | null {
   switch (node.type) {
-    case 'n8n-nodes-base.summarize':
+    case 'p1p3s-nodes-base.summarize':
       return inferSummarizeFields(node);
-    case 'n8n-nodes-base.set':
-    case 'n8n-nodes-base.editFields':
+    case 'p1p3s-nodes-base.set':
+    case 'p1p3s-nodes-base.editFields':
       return inferSetFields(node);
-    case 'n8n-nodes-base.gmail':
+    case 'p1p3s-nodes-base.gmail':
       // simple-mode override — only applies when simple !== false.
       // For simple=false, return null so the caller falls back to the
       // static schema (which captures the non-simple lowercase shape).
       return inferGmailSimpleFields(node);
     // Arbitrary user output — schema unknowable without execution.
-    case 'n8n-nodes-base.code':
-    case 'n8n-nodes-base.function':
-    case 'n8n-nodes-base.functionItem':
+    case 'p1p3s-nodes-base.code':
+    case 'p1p3s-nodes-base.function':
+    case 'p1p3s-nodes-base.functionItem':
       return null;
     default:
       return null;

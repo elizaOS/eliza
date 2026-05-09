@@ -36,6 +36,8 @@ slots.
 |------|---------|
 | `worker.py` | PyWorker process; tails `llama-server` log for readiness, registers handlers, reports per-request workload to the Vast Serverless Engine. |
 | `onstart.sh` | Inline `on_start` script for the Vast template. Clones the repo, downloads the GGUF, launches `llama-server`, exec's `worker.py`. Idempotent — reruns reuse the cached weight file. |
+| `onstart-vllm.sh` | vLLM flavor for safetensors/AWQ/FP8 deployments. Reads a manifest, launches `vllm serve`, then execs the same PyWorker. |
+| `manifests/` | Cloud-owned Vast manifests for `vast/eliza-1-{2b,9b,27b}`. These mirror the model catalog and are embedded into vLLM templates by `upsert-template.ts`. |
 | `requirements.txt` | Python deps for `worker.py`. The image already provides `llama-server` and CUDA. |
 
 ## How Vast deploys this
@@ -126,6 +128,62 @@ when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
 `LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
 images will reject those cache types.
+
+## vLLM Manifests
+
+Set `VAST_RUNTIME=vllm` to make `upsert-template.ts` inline
+`onstart-vllm.sh` instead of the GGUF `llama-server` script. The script embeds
+the selected manifest JSON into the Vast template, so workers do not depend on
+training-repo paths at cold start.
+
+```bash
+VAST_RUNTIME=vllm \
+MILADY_VAST_MANIFEST=eliza-1-27b.json \
+VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b-vllm \
+PYWORKER_REF=<commit-sha> \
+bun cloud/scripts/vast/upsert-template.ts
+```
+
+The committed manifests cover the catalog references:
+
+- `eliza-1-2b.json`: vLLM 2B debug tier, AWQ-Marlin field present, KV cache left
+  on `auto`.
+- `eliza-1-9b.json`: `elizaos/eliza-1-9b-polarquant` with AWQ-Marlin and the
+  TurboQuant quality KV preset.
+- `eliza-1-27b.json`: `elizaos/eliza-1-27b-fp8` with FP8 weights and the
+  TurboQuant quality KV preset.
+
+TurboQuant is opt-in by env when a manifest does not set it:
+`VLLM_ENABLE_TURBOQUANT=1` uses `VLLM_TURBOQUANT_PRESET=quality`, which maps to
+vLLM's `turboquant_k8v4` preset. Use `VLLM_TURBOQUANT_PRESET=4bit` or
+`KV_CACHE_DTYPE=turboquant_4bit_nc` only after a regression run.
+
+vLLM speculative decoding can be enabled with either raw
+`SPECULATIVE_CONFIG_JSON` or DFlash helpers:
+
+```bash
+DFLASH_MODEL=org/model-dflash \
+MILADY_VLLM_DFLASH=1 \
+SPECULATIVE_TOKENS=15 \
+DRAFT_TENSOR_PARALLEL_SIZE=1 \
+bun cloud/scripts/vast/upsert-template.ts
+```
+
+For Apple Silicon/vllm-metal images, pass `VLLM_METAL_ADDITIONAL_CONFIG_JSON`.
+If `VLLM_ENABLE_METAL_TURBOQUANT=1`, the script also exports
+`VLLM_METAL_USE_PAGED_ATTENTION=1` and maps the quality preset to
+`{"turboquant":true,"k_quant":"q8_0","v_quant":"q3_0"}`.
+
+QJL is not enabled by any manifest. To run a benchmark-only experiment, set
+`VLLM_EXPERIMENTAL_QJL=1` and `VLLM_QJL_BENCHMARK_GATE=passed`; otherwise the
+startup script exits before launching vLLM.
+
+Run the cloud-side validation before changing a template:
+
+```bash
+cd cloud
+bun run vast:doctor
+```
 
 ## Routing from eliza/cloud
 

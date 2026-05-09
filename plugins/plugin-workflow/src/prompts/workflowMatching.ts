@@ -1,4 +1,4 @@
-export const WORKFLOW_MATCHING_SYSTEM_PROMPT = `You are a workflow matching assistant. Your job is to analyze a user's request and match it to the most appropriate n8n workflow from their available workflows.
+export const WORKFLOW_MATCHING_SYSTEM_PROMPT = `You are a workflow matching assistant. Your job is to analyze a user's request and match it to the most appropriate workflow from their available workflows.
 
 Consider:
 - Keywords and phrases in the workflow name that match the request

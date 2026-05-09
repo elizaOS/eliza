@@ -1,5 +1,5 @@
 /**
- * AutomationsView — list/detail UI for tasks and n8n workflows.
+ * AutomationsView — list/detail UI for tasks and workflows.
  */
 
 import {
@@ -337,7 +337,7 @@ function syncAutomationSubpagePath(
 
 function getSelectionKind(item: AutomationItem | null): SelectionKind {
   if (!item) return null;
-  if (item.type === "n8n_workflow") return "workflow";
+  if (item.type === "workflow") return "workflow";
   if (item.task) return "task";
   if (item.trigger) return "trigger";
   return null;
@@ -358,7 +358,7 @@ function getOverviewDisplayTitle(item: AutomationItem): string {
 }
 
 function getAutomationGroupLabel(item: AutomationItem): string {
-  if (item.type === "n8n_workflow") {
+  if (item.type === "workflow") {
     return "Workflow";
   }
   if (item.system) {
@@ -423,7 +423,7 @@ function sortAutomationsByUpdatedAtDesc(
 function getAutomationIndicatorTone(
   item: AutomationItem,
 ): "accent" | undefined {
-  if (item.type === "n8n_workflow") {
+  if (item.type === "workflow") {
     return item.enabled ? "accent" : undefined;
   }
   if (item.task) {
@@ -439,7 +439,7 @@ function getAutomationStatusTone(
   item: AutomationItem,
 ): "success" | "warning" | "muted" | "danger" {
   if (item.isDraft) return "warning";
-  if (item.type === "n8n_workflow") {
+  if (item.type === "workflow") {
     return item.enabled ? "success" : "muted";
   }
   if (item.trigger) {
@@ -484,7 +484,7 @@ function buildTriggerSchedulePrompt(trigger: TriggerSummary): string {
 
 function buildWorkflowCompilationPrompt(item: AutomationItem): string {
   const lines = [
-    "Compile this coordinator automation into an n8n workflow.",
+    "Compile this coordinator automation into an workflow.",
     `Automation title: ${item.title}`,
     `Description: ${item.description || "No additional description provided."}`,
     "Keep the workflow in this dedicated automation room.",
@@ -608,7 +608,7 @@ function useAutomationsViewController() {
   const [automationsLoading, setAutomationsLoading] = useState(false);
   const [automationsLoaded, setAutomationsLoaded] = useState(false);
   const [automationsError, setAutomationsError] = useState<string | null>(null);
-  const [n8nStatus, setN8nStatus] = useState<WorkflowStatusResponse | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatusResponse | null>(null);
   const [workflowFetchError, setWorkflowFetchError] = useState<string | null>(
     null,
   );
@@ -625,7 +625,7 @@ function useAutomationsViewController() {
         ]);
         setAutomationItems(automationData.automations ?? []);
         setAutomationNodes(nodeCatalog.nodes ?? []);
-        setN8nStatus(automationData.n8nStatus ?? null);
+        setWorkflowStatus(automationData.workflowStatus ?? null);
         setWorkflowFetchError(automationData.workflowFetchError ?? null);
         setAutomationsError(null);
         return automationData;
@@ -779,7 +779,7 @@ function useAutomationsViewController() {
       case "coordinator":
         return allItems.filter((item) => item.type === "coordinator_text");
       case "workflows":
-        return allItems.filter((item) => item.type === "n8n_workflow");
+        return allItems.filter((item) => item.type === "workflow");
       case "scheduled":
         return allItems.filter((item) => item.schedules.length > 0);
       default:
@@ -1201,7 +1201,7 @@ function useAutomationsViewController() {
     automationsLoading,
     automationsLoaded,
     automationsError,
-    n8nStatus,
+    workflowStatus,
     workflowFetchError,
     triggers,
     triggerRunsById,
@@ -1871,21 +1871,12 @@ function WorkflowRuntimeNotice({
   workflowFetchError,
   busy,
   onRefresh,
-  onStartLocal,
 }: {
   status: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
   busy: boolean;
   onRefresh: () => void;
-  onStartLocal: () => void;
 }) {
-  // Auto-start kicks the local sidecar at runtime boot. While it is
-  // starting (or briefly stopped before the first tick), suppress the
-  // alarm UI — the fetch error is expected and resolves itself.
-  const isAutoStarting =
-    status?.mode === "local" &&
-    (status.status === "starting" || status.status === "stopped");
-
   if (!status && !workflowFetchError) {
     return null;
   }
@@ -1894,27 +1885,8 @@ function WorkflowRuntimeNotice({
     return (
       <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-1.5 text-xs-tight">
         <span className="text-muted">
-          Workflow deploy requires n8n. Text tasks still work without it.
+          Workflow runtime is unavailable. Text tasks still work without it.
         </span>
-        {status.platform !== "mobile" && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onStartLocal}
-            className="text-2xs font-semibold uppercase tracking-[0.12em] text-accent hover:text-accent/80 disabled:opacity-50"
-          >
-            Enable
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (isAutoStarting) {
-    return (
-      <div className="mb-2 flex items-center gap-2 px-3 py-1 text-2xs text-muted/70">
-        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
-        <span>Starting local n8n…</span>
       </div>
     );
   }
@@ -1927,16 +1899,6 @@ function WorkflowRuntimeNotice({
           <span className="truncate text-danger/90">{workflowFetchError}</span>
         </div>
         <div className="flex items-center gap-3">
-          {status?.mode === "local" && status.status !== "ready" && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onStartLocal}
-              className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
-            >
-              Restart
-            </button>
-          )}
           <button
             type="button"
             disabled={busy}
@@ -1955,17 +1917,9 @@ function WorkflowRuntimeNotice({
       <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
         <div className="flex min-w-0 items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
-          <span className="text-danger/90">Local n8n failed to start.</span>
+          <span className="text-danger/90">Workflow runtime is unavailable.</span>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onStartLocal}
-            className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
-          >
-            Retry
-          </button>
           <button
             type="button"
             disabled={busy}
@@ -2773,14 +2727,14 @@ function AutomationsDashboard({
   const taskHighlights = useMemo(
     () =>
       sortAutomationsByUpdatedAtDesc(
-        visibleItems.filter((item) => item.type !== "n8n_workflow"),
+        visibleItems.filter((item) => item.type !== "workflow"),
       ).slice(0, 6),
     [visibleItems],
   );
   const workflowHighlights = useMemo(
     () =>
       sortAutomationsByUpdatedAtDesc(
-        visibleItems.filter((item) => item.type === "n8n_workflow"),
+        visibleItems.filter((item) => item.type === "workflow"),
       ).slice(0, 6),
     [visibleItems],
   );
@@ -2797,10 +2751,10 @@ function AutomationsDashboard({
   );
 
   const taskCount = visibleItems.filter(
-    (item) => item.type !== "n8n_workflow",
+    (item) => item.type !== "workflow",
   ).length;
   const workflowCount = visibleItems.filter(
-    (item) => item.type === "n8n_workflow",
+    (item) => item.type === "workflow",
   ).length;
 
   const activeCount = visibleItems.filter(
@@ -3820,7 +3774,7 @@ function TriggerAutomationDetailPane({
 
 function WorkflowAutomationDetailPane({
   automation,
-  n8nStatus,
+  workflowStatus,
   workflowFetchError,
   workflowBusyId,
   workflowOpsBusy,
@@ -3830,11 +3784,10 @@ function WorkflowAutomationDetailPane({
   onGenerateWorkflow,
   onRefreshWorkflows,
   onScheduleWorkflow,
-  onStartLocalN8n,
   onToggleWorkflowActive,
 }: {
   automation: AutomationItem;
-  n8nStatus: WorkflowStatusResponse | null;
+  workflowStatus: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
   workflowBusyId: string | null;
   workflowOpsBusy: boolean;
@@ -3844,7 +3797,6 @@ function WorkflowAutomationDetailPane({
   onGenerateWorkflow: (item: AutomationItem, prompt: string) => Promise<void>;
   onRefreshWorkflows: () => Promise<void>;
   onScheduleWorkflow: (item: AutomationItem) => void;
-  onStartLocalN8n: () => Promise<void>;
   onToggleWorkflowActive: (item: AutomationItem) => Promise<void>;
 }) {
   const { t, uiLanguage } = useApp();
@@ -3951,11 +3903,10 @@ function WorkflowAutomationDetailPane({
   return (
     <div className="space-y-4">
       <WorkflowRuntimeNotice
-        status={n8nStatus}
+        status={workflowStatus}
         workflowFetchError={workflowFetchError}
         busy={busy}
         onRefresh={() => void onRefreshWorkflows()}
-        onStartLocal={() => void onStartLocalN8n()}
       />
 
       <DetailHeader
@@ -4186,7 +4137,7 @@ function WorkflowAutomationDetailPane({
               input?.focus();
               if (!input) handleDescribeWorkflow();
             }}
-            status={n8nStatus}
+            status={workflowStatus}
           />
         </div>
       </DetailSection>
@@ -4235,7 +4186,7 @@ function WorkflowAutomationDetailPane({
               items={[
                 {
                   label: "Type",
-                  value: automation.isDraft ? "Draft" : "n8n workflow",
+                  value: automation.isDraft ? "Draft" : "workflow",
                 },
                 {
                   label: "Nodes",
@@ -4273,7 +4224,7 @@ function AutomationSidebarItem({
   let tone: "success" | "warning" | "muted" | "danger" = "muted";
   let titleClass = "text-txt";
 
-  if (item.type === "n8n_workflow") {
+  if (item.type === "workflow") {
     Icon = Workflow;
     tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
   } else if (item.type === "automation_draft") {
@@ -4381,7 +4332,7 @@ function AutomationsSidebarChat({
       conversations,
     );
 
-    if (scopedActiveItem.type === "n8n_workflow") {
+    if (scopedActiveItem.type === "workflow") {
       const metadata = scopedActiveItem.workflowId
         ? buildWorkflowConversationMetadata(
             scopedActiveItem.workflowId,
@@ -4441,7 +4392,7 @@ function AutomationsSidebarChat({
     refreshAutomations,
   ]);
 
-  if (scopedActiveItem?.type === "n8n_workflow") {
+  if (scopedActiveItem?.type === "workflow") {
     return (
       <PageScopedChatPane
         scope="page-automations"
@@ -4536,7 +4487,7 @@ function AutomationsLayout() {
     automationNodes,
     combinedError,
     isLoading,
-    n8nStatus,
+    workflowStatus,
     workflowFetchError,
   } = ctx;
   const [showDashboard, setShowDashboard] = useState(true);
@@ -4726,7 +4677,7 @@ function AutomationsLayout() {
         ctx.allItems
           .filter(
             (item) =>
-              item.type === "n8n_workflow" &&
+              item.type === "workflow" &&
               item.workflowId != null &&
               !item.isDraft,
           )
@@ -4752,15 +4703,15 @@ function AutomationsLayout() {
       const bridgeConversationId =
         draftConversation.metadata?.terminalBridgeConversationId;
 
-      // Workflow-draft scope: rebind on new n8n workflow (existing path).
+      // Workflow-draft scope: rebind on new workflow (existing path).
       if (
         draftScope === "automation-workflow-draft" &&
-        draftConversation.metadata?.automationType === "n8n_workflow"
+        draftConversation.metadata?.automationType === "workflow"
       ) {
         const createdWorkflows =
           data?.automations.filter(
             (item) =>
-              item.type === "n8n_workflow" &&
+              item.type === "workflow" &&
               item.workflowId != null &&
               !item.isDraft &&
               !previousWorkflowIds.has(item.workflowId),
@@ -4797,7 +4748,7 @@ function AutomationsLayout() {
         const createdWorkflows =
           data?.automations.filter(
             (item) =>
-              item.type === "n8n_workflow" &&
+              item.type === "workflow" &&
               item.workflowId != null &&
               !item.isDraft &&
               !previousWorkflowIds.has(item.workflowId),
@@ -4978,7 +4929,7 @@ function AutomationsLayout() {
           setClarification((prev) => (prev ? { ...prev, busy: false } : prev));
           return;
         }
-        const result = await client.resolveN8nClarification({
+        const result = await client.resolveWorkflowClarification({
           draft: draftRecord,
           resolutions: [{ paramPath, value }],
         });
@@ -5179,25 +5130,6 @@ function AutomationsLayout() {
     refreshAutomationsWithDraftBinding,
   ]);
 
-  const handleStartLocalN8n = useCallback(async () => {
-    setWorkflowOpsBusy(true);
-    setPageNotice(null);
-    try {
-      await client.startN8nSidecar();
-      await ctx.refreshAutomations();
-    } catch (error) {
-      setPageNotice(
-        error instanceof Error
-          ? error.message
-          : t("automations.n8n.startFailed", {
-              defaultValue: "Failed to start local automations.",
-            }),
-      );
-    } finally {
-      setWorkflowOpsBusy(false);
-    }
-  }, [ctx, t]);
-
   const handleToggleWorkflowActive = useCallback(
     async (item: AutomationItem) => {
       if (!item.workflowId) {
@@ -5317,7 +5249,7 @@ function AutomationsLayout() {
         // Also delete the chat conversation/room that backed this workflow.
         // Without this, the `/api/automations` aggregator keeps surfacing the
         // workflow row as a ghost entry because rooms with workflowId
-        // metadata are listed even when the underlying n8n workflow is gone.
+        // metadata are listed even when the underlying workflow is gone.
         const conversationId = item.room?.conversationId;
         if (conversationId) {
           try {
@@ -5447,7 +5379,7 @@ function AutomationsLayout() {
   );
 
   const workflowItems = useMemo(
-    () => visibleItems.filter((item) => item.type === "n8n_workflow"),
+    () => visibleItems.filter((item) => item.type === "workflow"),
     [visibleItems],
   );
   const taskItems = useMemo(
@@ -5810,10 +5742,10 @@ function AutomationsLayout() {
             onDeleteDraft={handleDeleteDraft}
             isGenerating={workflowOpsBusy}
           />
-        ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
+        ) : resolvedSelectedItem?.type === "workflow" ? (
           <WorkflowAutomationDetailPane
             automation={resolvedSelectedItem}
-            n8nStatus={n8nStatus}
+            workflowStatus={workflowStatus}
             workflowFetchError={workflowFetchError}
             workflowBusyId={workflowBusyId}
             workflowOpsBusy={workflowOpsBusy}
@@ -5823,7 +5755,6 @@ function AutomationsLayout() {
             onGenerateWorkflow={handleGenerateWorkflow}
             onRefreshWorkflows={handleRefreshWorkflows}
             onScheduleWorkflow={handleScheduleWorkflow}
-            onStartLocalN8n={handleStartLocalN8n}
             onToggleWorkflowActive={handleToggleWorkflowActive}
           />
         ) : resolvedSelectedItem?.trigger ? (

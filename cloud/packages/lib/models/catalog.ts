@@ -473,10 +473,10 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 9B (Qwen3.5)",
     description:
-      "Workstation-tier Milady fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
+      "Workstation-tier Milady fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
     type: "language",
     context_window: 131072,
-    tags: ["self-hosted", "vllm", "polarquant", "milady-eliza-1"],
+    tags: ["self-hosted", "vllm", "polarquant", "awq-marlin", "turboquant", "milady-eliza-1"],
   },
   {
     id: "vast/eliza-1-27b",
@@ -485,7 +485,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 27B (Qwen3.6)",
     description:
-      "Cloud-tier Milady flagship. Served via vLLM with FP8 weights + TurboQuant 4-bit KV on 2× H200 SXM. HF: elizaos/eliza-1-27b-fp8",
+      "Cloud-tier Milady flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1-27b-fp8",
     type: "language",
     context_window: 131072,
     tags: ["self-hosted", "vllm", "fp8", "turboquant", "milady-eliza-1"],
@@ -534,8 +534,7 @@ export function getGroqApiModelId(modelId: string): string {
 
 export function isVastNativeModel(modelId: string): boolean {
   return (
-    modelId in VAST_NATIVE_MODEL_ID_MAP ||
-    VAST_NATIVE_MODELS.some((model) => model.id === modelId)
+    modelId in VAST_NATIVE_MODEL_ID_MAP || VAST_NATIVE_MODELS.some((model) => model.id === modelId)
   );
 }
 

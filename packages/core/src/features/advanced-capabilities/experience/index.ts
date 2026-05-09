@@ -2,7 +2,7 @@
  * Experience learning bundled with advanced capabilities.
  */
 
-export { experienceEvaluator } from "./evaluators/experienceEvaluator.ts";
+export { experiencePatternEvaluator } from "./evaluators/experience-items.ts";
 export { searchExperiencesAction } from "./actions/search-experiences.ts";
 export { experienceProvider } from "./providers/experienceProvider.ts";
 // ExperienceService is lazy-loaded in advancedServices (advanced-capabilities/index.ts)

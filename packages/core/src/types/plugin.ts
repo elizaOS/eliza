@@ -5,6 +5,7 @@ import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
 import type { UUID } from "./primitives";
+import type { Evaluator } from "./evaluator";
 import type {
 	JsonValue,
 	ComponentTypeDefinition as ProtoComponentTypeDefinition,
@@ -444,6 +445,7 @@ export interface PluginOwnership {
 	registeredPlugin: Plugin | null;
 	actions: Action[];
 	providers: Provider[];
+	evaluators: Evaluator[];
 	routes: Route[];
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
@@ -494,6 +496,7 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
+	evaluators?: Evaluator[];
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database

@@ -7,11 +7,13 @@ describe("local inference catalog", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.some((model) => model.category === "drafter")).toBe(false);
     expect(
-      MODEL_CATALOG.some((model) => model.id === "qwen3.5-4b-dflash-drafter-q4"),
+      MODEL_CATALOG.some(
+        (model) => model.id === "qwen3.5-4b-dflash-drafter-q4",
+      ),
     ).toBe(true);
-    expect(findCatalogModel("qwen3.5-4b-dflash-drafter-q4")?.hiddenFromCatalog).toBe(
-      true,
-    );
+    expect(
+      findCatalogModel("qwen3.5-4b-dflash-drafter-q4")?.hiddenFromCatalog,
+    ).toBe(true);
   });
 
   it("wires Qwen DFlash targets to their hidden drafter companions", () => {

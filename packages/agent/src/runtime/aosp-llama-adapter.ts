@@ -314,6 +314,15 @@ export interface AospLlamaLoadOptions {
   contextSize?: number;
   useGpu?: boolean;
   maxThreads?: number;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: KvCacheTypeName;
+  cacheTypeV?: KvCacheTypeName;
+  disableThinking?: boolean;
   /**
    * KV-cache type override. When undefined we auto-pick:
    *   - Bonsai-by-filename → { k: "tbq4_0", v: "tbq3_0" }
@@ -800,7 +809,13 @@ class AospLlamaAdapter implements AospLoader {
     // Android.
     const maxThreads = resolveThreads(args.maxThreads);
     const useGpu = args.useGpu ?? false;
-    const kvCacheType = resolveKvCacheType(args.modelPath, args.kvCacheType);
+    const kvCacheType = resolveKvCacheType(
+      args.modelPath,
+      args.kvCacheType ??
+        (args.cacheTypeK || args.cacheTypeV
+          ? { k: args.cacheTypeK, v: args.cacheTypeV }
+          : undefined),
+    );
 
     // Materialize llama_model_params via the shim. The shim runs
     // llama_model_default_params() under the hood, so use_mmap=true,

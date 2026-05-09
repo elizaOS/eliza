@@ -27,7 +27,7 @@ async function getRuntimeDb(
 }
 
 function sqlQuote(value: string): string {
-	return `'${value.replace(/'/g, "''")}'`;
+	return `'${value.split("'").join("''")}'`;
 }
 
 function sqlJsonbLiteral(value: unknown): string {

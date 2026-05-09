@@ -26,7 +26,9 @@ const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "master";
 const MIN_COMMIT = "b9d01582b";
 
 function stateDir() {
-  return process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+  return (
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
+  );
 }
 
 function run(cmd, args, opts = {}) {
@@ -40,7 +42,9 @@ function run(cmd, args, opts = {}) {
     const detail = opts.capture
       ? `\nstdout:\n${result.stdout || ""}\nstderr:\n${result.stderr || ""}`
       : "";
-    throw new Error(`${cmd} ${args.join(" ")} failed with ${result.status}${detail}`);
+    throw new Error(
+      `${cmd} ${args.join(" ")} failed with ${result.status}${detail}`,
+    );
   }
   return result.stdout?.trim() ?? "";
 }
@@ -98,7 +102,12 @@ function parseArgs(argv) {
   const platformKey = `${process.platform}-${process.arch}-${backend}`;
   const root = path.join(stateDir(), "local-inference");
   const args = {
-    cacheDir: path.join(os.homedir(), ".cache", "eliza-dflash", "buun-llama-cpp"),
+    cacheDir: path.join(
+      os.homedir(),
+      ".cache",
+      "eliza-dflash",
+      "buun-llama-cpp",
+    ),
     outDir: path.join(root, "bin", "dflash", platformKey),
     backend,
     ref: REF,
@@ -108,7 +117,8 @@ function parseArgs(argv) {
     const arg = argv[i];
     const next = () => {
       const value = argv[i + 1];
-      if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
+      if (!value || value.startsWith("--"))
+        throw new Error(`${arg} requires a value`);
       i += 1;
       return value;
     };
@@ -116,7 +126,8 @@ function parseArgs(argv) {
     else if (arg === "--out-dir") args.outDir = path.resolve(next());
     else if (arg === "--backend") args.backend = next();
     else if (arg === "--ref") args.ref = next();
-    else if (arg === "--jobs" || arg === "-j") args.jobs = Number.parseInt(next(), 10);
+    else if (arg === "--jobs" || arg === "-j")
+      args.jobs = Number.parseInt(next(), 10);
     else if (arg === "--help" || arg === "-h") {
       console.log(
         "Usage: node packages/app-core/scripts/build-llama-cpp-dflash.mjs [--backend cuda|metal|rocm|cpu] [--ref <git-ref>] [--out-dir <path>] [--jobs N]",
@@ -137,21 +148,44 @@ function ensureCheckout(cacheDir, ref) {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
   }
-  const head = run("git", ["rev-parse", "HEAD"], { cwd: cacheDir, capture: true });
-  console.log(`[dflash-build] checkout ${head}`);
-  const ancestor = spawnSync("git", ["merge-base", "--is-ancestor", MIN_COMMIT, "HEAD"], {
+  const head = run("git", ["rev-parse", "HEAD"], {
     cwd: cacheDir,
-    stdio: "ignore",
+    capture: true,
   });
+  console.log(`[dflash-build] checkout ${head}`);
+  const ancestor = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", MIN_COMMIT, "HEAD"],
+    {
+      cwd: cacheDir,
+      stdio: "ignore",
+    },
+  );
   if (ancestor.status !== 0) {
-    console.warn(
-      `[dflash-build] warning: HEAD does not contain minimum known-good DFlash/SWA commit ${MIN_COMMIT}`,
-    );
+    const shallow = run("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: cacheDir,
+      capture: true,
+    });
+    if (shallow === "true") {
+      console.log(
+        `[dflash-build] shallow checkout; skipping ancestry check for minimum known-good DFlash/SWA commit ${MIN_COMMIT}`,
+      );
+    } else {
+      console.warn(
+        `[dflash-build] warning: HEAD does not contain minimum known-good DFlash/SWA commit ${MIN_COMMIT}`,
+      );
+    }
   }
 }
 
 function patchMetalTurbo4(cacheDir) {
-  const metalPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal.metal");
+  const metalPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal.metal",
+  );
   if (!fs.existsSync(metalPath)) return;
 
   let source = fs.readFileSync(metalPath, "utf8");
@@ -178,7 +212,7 @@ constant float turbo_mid_4bit[15] = {
   }
 
   source = source.replace(
-    /    \/\/ Step 3: 3-bit quantization[\s\S]*?    \/\/ Step 5: QJL WHT signs[\s\S]*?    for \(int i = 0; i < 128; i\+\+\) \{\n        if \(x\[i\] >= 0\.0f\) \{\n            dst\.signs\[i \/ 8\] \|= \(1 << \(i % 8\)\);\n        \}\n    \}\n/,
+    / {4}\/\/ Step 3: 3-bit quantization[\s\S]*? {4}\/\/ Step 5: QJL WHT signs[\s\S]*? {4}for \(int i = 0; i < 128; i\+\+\) \{\n {8}if \(x\[i\] >= 0\.0f\) \{\n {12}dst\.signs\[i \/ 8\] \|= \(1 << \(i % 8\)\);\n {8}\}\n {4}\}\n/,
     `    // Step 3: 4-bit quantization
 
     float recon[128];
@@ -280,13 +314,26 @@ function build(args) {
   });
   run(
     "cmake",
-    ["--build", buildDir, "--target", "llama-server", "llama-cli", "llama-speculative-simple", "-j", String(args.jobs)],
+    [
+      "--build",
+      buildDir,
+      "--target",
+      "llama-server",
+      "llama-cli",
+      "llama-speculative-simple",
+      "-j",
+      String(args.jobs),
+    ],
     { cwd: args.cacheDir },
   );
 
   const binDir = path.join(buildDir, "bin");
   fs.mkdirSync(args.outDir, { recursive: true });
-  const executableNames = ["llama-server", "llama-cli", "llama-speculative-simple"];
+  const executableNames = [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+  ];
   const runtimeNames = fs
     .readdirSync(binDir)
     .filter((name) => executableNames.includes(name) || isRuntimeLibrary(name));
@@ -305,13 +352,19 @@ function build(args) {
     fs.cpSync(ggufPySrc, ggufPyDst, { recursive: true });
   }
   makeDarwinInstallSelfContained(args.outDir, runtimeNames, binDir);
-  console.log(`[dflash-build] installed ${args.backend} binaries to ${args.outDir}`);
-  console.log(`[dflash-build] set ELIZA_DFLASH_ENABLED=1 to force this backend, or leave it unset for auto-detect from the managed path.`);
+  console.log(
+    `[dflash-build] installed ${args.backend} binaries to ${args.outDir}`,
+  );
+  console.log(
+    `[dflash-build] set ELIZA_DFLASH_ENABLED=1 to force this backend, or leave it unset for auto-detect from the managed path.`,
+  );
 }
 
 try {
   build(parseArgs(process.argv.slice(2)));
 } catch (err) {
-  console.error(`[dflash-build] ${err instanceof Error ? err.message : String(err)}`);
+  console.error(
+    `[dflash-build] ${err instanceof Error ? err.message : String(err)}`,
+  );
   process.exit(1);
 }

@@ -98,7 +98,8 @@ const LOCAL_PROVIDER: ProviderDefinition = {
       const hasModel = entries.some(
         (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
       );
-      if (!hasModel) return { enabled: false, reason: "No local model installed" };
+      if (!hasModel)
+        return { enabled: false, reason: "No local model installed" };
       const dflash = getDflashRuntimeStatus();
       return dflash.enabled
         ? { enabled: true, reason: "GGUF model installed; DFlash available" }

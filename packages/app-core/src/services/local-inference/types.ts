@@ -179,6 +179,17 @@ export interface DownloadJob {
   error?: string;
 }
 
+export interface LocalInferenceDownloadStatus {
+  state: DownloadState | "missing";
+  receivedBytes: number;
+  totalBytes: number;
+  percent: number | null;
+  bytesPerSec: number;
+  etaMs: number | null;
+  updatedAt: string | null;
+  errors: string[];
+}
+
 export interface ActiveModelState {
   modelId: string | null;
   loadedAt: string | null;
@@ -207,6 +218,11 @@ export type AgentModelSlot =
   | "OBJECT_SMALL"
   | "OBJECT_LARGE";
 
+export type TextGenerationSlot = Extract<
+  AgentModelSlot,
+  "TEXT_SMALL" | "TEXT_LARGE"
+>;
+
 export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
@@ -215,8 +231,43 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "OBJECT_LARGE",
 ];
 
+export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
+  "TEXT_SMALL",
+  "TEXT_LARGE",
+];
+
 /** User-configured mapping of agent model slots → installed model ids. */
 export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
+
+export interface LocalInferenceSlotReadiness {
+  slot: TextGenerationSlot;
+  assigned: boolean;
+  assignedModelId: string | null;
+  displayName: string | null;
+  primaryDownloaded: boolean;
+  downloaded: boolean;
+  active: boolean;
+  ready: boolean;
+  state:
+    | "unassigned"
+    | "missing"
+    | "downloading"
+    | "downloaded"
+    | "active"
+    | "failed"
+    | "cancelled";
+  requiredModelIds: string[];
+  missingModelIds: string[];
+  installedBytes: number;
+  expectedBytes: number;
+  download: LocalInferenceDownloadStatus;
+  errors: string[];
+}
+
+export interface LocalInferenceReadiness {
+  updatedAt: string;
+  slots: Record<TextGenerationSlot, LocalInferenceSlotReadiness>;
+}
 
 export interface ModelHubSnapshot {
   catalog: CatalogModel[];
@@ -225,4 +276,5 @@ export interface ModelHubSnapshot {
   downloads: DownloadJob[];
   hardware: HardwareProbe;
   assignments: ModelAssignments;
+  textReadiness: LocalInferenceReadiness;
 }

@@ -241,6 +241,9 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["SLACK_POST_MESSAGE", "MESSAGE"],
   ["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
   ["EMAIL_FETCH_LATEST", "MESSAGE"],
+  ["EMAIL_SEARCH_LATEST_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH", "MESSAGE"],
   ["EMAIL_DRAFT_REPLY", "MESSAGE"],
   ["EMAIL_FETCH_UNREAD", "MESSAGE"],
   ["FETCH_UNREAD_EMAIL", "MESSAGE"],
@@ -436,6 +439,13 @@ export function normalizeActionName(
   const compoundMatch = normalized.match(/^([A-Z0-9_]+)\.[A-Z0-9_]+$/);
   if (compoundMatch?.[1]) {
     return ACTION_CANONICAL_NAMES.get(compoundMatch[1]) ?? compoundMatch[1];
+  }
+  if (
+    /^EMAIL_(?:FETCH|SEARCH|READ|LIST|SUMMARIZE|SUMMARISE|DRAFT|REPLY|RESPOND|SEND|UNREAD)/.test(
+      normalized,
+    )
+  ) {
+    return "MESSAGE";
   }
   return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }

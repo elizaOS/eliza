@@ -18,10 +18,10 @@
 
 import { findCatalogModel } from "./catalog";
 import {
+  type DflashServerPlan,
   dflashLlamaServer,
   dflashRequired,
   getDflashRuntimeStatus,
-  type DflashServerPlan,
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
 

@@ -72,6 +72,7 @@ import {
 	type EventPayload,
 	type EventPayloadMap,
 	EventType,
+	type Evaluator,
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
@@ -615,6 +616,7 @@ export class AgentRuntime implements IAgentRuntime {
 	static #anonymousAgentCounter = 0;
 	readonly actions: Action[] = [];
 	readonly providers: Provider[] = [];
+	readonly evaluators: Evaluator[] = [];
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1528,6 +1530,27 @@ export class AgentRuntime implements IAgentRuntime {
 		if (pluginToRegister.providers) {
 			for (const provider of pluginToRegister.providers) {
 				this.registerProvider(provider);
+			}
+		}
+		if (pluginToRegister.evaluators) {
+			const existingEvaluatorNames = new Set(
+				this.evaluators.map((evaluator) => evaluator.name),
+			);
+			for (const evaluator of pluginToRegister.evaluators) {
+				if (existingEvaluatorNames.has(evaluator.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							evaluator: evaluator.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin evaluator",
+					);
+					continue;
+				}
+				this.registerEvaluator(evaluator);
+				existingEvaluatorNames.add(evaluator.name);
 			}
 		}
 		if (pluginToRegister.models) {
@@ -2503,6 +2526,36 @@ export class AgentRuntime implements IAgentRuntime {
 				"Action registered",
 			);
 		}
+	}
+
+	registerEvaluator(evaluator: Evaluator) {
+		if (this.evaluators.find((item) => item.name === evaluator.name)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+				"Evaluator already registered, skipping",
+			);
+			return;
+		}
+		this.evaluators.push(evaluator);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+			"Evaluator registered",
+		);
+	}
+
+	unregisterEvaluator(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.evaluators.findIndex(
+			(evaluator) => evaluator.name === normalized,
+		);
+		if (index === -1) return false;
+		this.evaluators.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: normalized },
+			"Evaluator unregistered",
+		);
+		return true;
 	}
 
 	unregisterAction(name: string): boolean {

@@ -19,11 +19,13 @@ import {
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
+  ChatFailureKind,
   ChatTokenUsage,
   ConnectionStateInfo,
   ConversationChannelType,
   ConversationMode,
   ImageAttachment,
+  LocalInferenceChatMetadata,
   WebSocketConnectionState,
   WsEventHandler,
 } from "./client-types";
@@ -779,6 +781,8 @@ export class ElizaClient {
     completed: boolean;
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
+    failureKind?: ChatFailureKind;
+    localInference?: LocalInferenceChatMetadata;
   }> {
     const res = await this.rawRequest(path, {
       method: "POST",
@@ -808,6 +812,8 @@ export class ElizaClient {
     let doneAgentName: string | null = null;
     let doneNoResponseReason: "ignored" | null = null;
     let doneUsage: ChatTokenUsage | undefined;
+    let doneFailureKind: ChatFailureKind | undefined;
+    let doneLocalInference: LocalInferenceChatMetadata | undefined;
     let receivedDone = false;
 
     const findSseEventBreak = (
@@ -835,6 +841,8 @@ export class ElizaClient {
         agentName?: string;
         message?: string;
         noResponseReason?: string;
+        failureKind?: ChatFailureKind;
+        localInference?: LocalInferenceChatMetadata;
         usage?: {
           promptTokens?: number;
           completionTokens?: number;
@@ -874,6 +882,15 @@ export class ElizaClient {
         }
         if (parsed.noResponseReason === "ignored") {
           doneNoResponseReason = "ignored";
+        }
+        if (typeof parsed.failureKind === "string") {
+          doneFailureKind = parsed.failureKind;
+        }
+        if (
+          parsed.localInference &&
+          typeof parsed.localInference === "object"
+        ) {
+          doneLocalInference = parsed.localInference;
         }
         if (parsed.usage) {
           doneUsage = {
@@ -951,6 +968,8 @@ export class ElizaClient {
         ? { noResponseReason: doneNoResponseReason }
         : {}),
       ...(doneUsage ? { usage: doneUsage } : {}),
+      ...(doneFailureKind ? { failureKind: doneFailureKind } : {}),
+      ...(doneLocalInference ? { localInference: doneLocalInference } : {}),
     };
   }
 }

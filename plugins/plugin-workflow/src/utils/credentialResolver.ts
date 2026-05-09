@@ -23,7 +23,7 @@ interface CredentialApiClient {
  *   1. Credential store DB — cached mappings from previous resolutions
  *   2. Static config — character.settings.workflows.credentials
  *   3. External provider — registered CredentialProvider service (e.g. cloud OAuth)
- *   4. Missing — reported for manual configuration in n8n
+ *   4. Missing — reported for manual configuration in p1p3s
  */
 export async function resolveCredentials(
   workflow: WorkflowDefinition,
@@ -87,7 +87,7 @@ async function resolveOneCredential(
   const cachedId = await credStore?.get(userId, credType);
   if (cachedId) {
     logger.debug(
-      { src: 'plugin:n8n-workflow:utils:credentials' },
+      { src: 'plugin:workflow:utils:credentials' },
       `Resolved ${credType} from credential store`
     );
     return cachedId;
@@ -109,31 +109,31 @@ async function resolveOneCredential(
       if (result?.status === 'credential_data') {
         if (!apiClient) {
           logger.error(
-            { src: 'plugin:n8n-workflow:utils:credentials' },
+            { src: 'plugin:workflow:utils:credentials' },
             `Received credential_data for ${credType} but no apiClient available`
           );
           missingConnections.push({ credType });
           return null;
         }
         const credName = `${credType}_${tagName}`;
-        const n8nCred = await apiClient.createCredential({
+        const p1p3sCred = await apiClient.createCredential({
           name: credName,
           type: credType,
           data: result.data,
         });
         try {
-          await credStore?.set(userId, credType, n8nCred.id);
+          await credStore?.set(userId, credType, p1p3sCred.id);
         } catch (cacheError) {
           logger.warn(
-            { src: 'plugin:n8n-workflow:utils:credentials' },
+            { src: 'plugin:workflow:utils:credentials' },
             `Failed to cache credential mapping for ${credType} (credential still usable): ${cacheError instanceof Error ? cacheError.message : String(cacheError)}`
           );
         }
         logger.info(
-          { src: 'plugin:n8n-workflow:utils:credentials' },
-          `Created n8n credential for ${credType}: ${n8nCred.id}`
+          { src: 'plugin:workflow:utils:credentials' },
+          `Created p1p3s credential for ${credType}: ${p1p3sCred.id}`
         );
-        return n8nCred.id;
+        return p1p3sCred.id;
       }
 
       if (result?.status === 'needs_auth') {
@@ -142,7 +142,7 @@ async function resolveOneCredential(
       }
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:utils:credentials' },
+        { src: 'plugin:workflow:utils:credentials' },
         `Credential provider failed for ${credType}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
@@ -166,7 +166,7 @@ function findCredentialId(credentials: Record<string, string>, credType: string)
   const withoutApi = credType.replace(/Api$/, '');
   if (withoutApi !== credType && credentials[withoutApi]) {
     logger.debug(
-      { src: 'plugin:n8n-workflow:utils:credentials' },
+      { src: 'plugin:workflow:utils:credentials' },
       `Fuzzy credential match: "${credType}" → "${withoutApi}" (removed Api suffix)`
     );
     return credentials[withoutApi];
@@ -176,7 +176,7 @@ function findCredentialId(credentials: Record<string, string>, credType: string)
   const withApi = `${credType}Api`;
   if (credentials[withApi]) {
     logger.debug(
-      { src: 'plugin:n8n-workflow:utils:credentials' },
+      { src: 'plugin:workflow:utils:credentials' },
       `Fuzzy credential match: "${credType}" → "${withApi}" (added Api suffix)`
     );
     return credentials[withApi];

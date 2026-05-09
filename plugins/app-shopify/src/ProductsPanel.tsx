@@ -7,7 +7,7 @@ import {
   DialogTitle,
   Input,
   Skeleton,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   ChevronLeft,
   ChevronRight,

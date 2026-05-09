@@ -221,6 +221,13 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
+    runtime: {
+      kvCache: {
+        typeK: "tbq4_0",
+        typeV: "tbq3_0",
+        requiresFork: "apothic-turboquant",
+      },
+    },
     blurb:
       '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },

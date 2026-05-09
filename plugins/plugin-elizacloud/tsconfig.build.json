@@ -16,7 +16,7 @@
     },
     "types": ["node", "bun-types"]
   },
-  "include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
+  "include": ["src"],
   "exclude": [
     "node_modules",
     "dist",

@@ -12,8 +12,8 @@ rules:
 - if more tool work remains, emit native toolCalls; never narrate or simulate tool calls in text
 - after a tool result, if partially complete call the next grounded tool, not messageToUser
 - if context includes a tool-required router decision, do not return a terminal answer until at least one exposed non-terminal tool runs for this request
-- task is incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, app builds, PR work, deployment, verification, or another side effect and a relevant exposed tool can attempt it
-- prior attachments/memory/snippets do not substitute for an explicit current request to run/check/fetch/inspect/build/deploy/verify/look up now; call the relevant exposed tool
+- task is not complete while the user still needs live/current/external data, filesystem/runtime state, command output, repo work, app builds, PR work, deployment, verification, or another side effect and a relevant exposed tool can attempt it
+- prior attachments, memory, or conversation snippets are not a substitute for an explicit current request to run/check/fetch/inspect/build/deploy/verify/look up now; call the relevant exposed tool
 - when a relevant exposed tool can attempt the needed work, call it instead of replying "I cannot browse/search/run/inspect/build/deploy/verify"
 - if no tool fits or task is complete, return no toolCalls and set messageToUser
 

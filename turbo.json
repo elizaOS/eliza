@@ -34,7 +34,8 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/agent#build",
-        "@elizaos/shared#build"
+        "@elizaos/shared#build",
+        "@elizaos/ui#build"
       ],
       "env": [
         "LOG_LEVEL"
@@ -45,6 +46,7 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "@elizaos/agent#build",
         "@elizaos/core#build",
         "@elizaos/plugin-pdf#build"
       ],

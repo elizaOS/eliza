@@ -1,5 +1,5 @@
 /**
- * Clarification helpers for n8n workflow generation routes.
+ * Clarification helpers for workflow generation routes.
  *
  * - `coerceClarifications`: normalizes the plugin's mixed-shape
  *   `_meta.requiresClarification` (legacy strings + structured objects)
@@ -8,14 +8,32 @@
  *   workflow JSON in place. Supports dot segments and bracketed-string
  *   segments (`nodes["Discord Send"].parameters.channelId`).
  *
- * Kept out of `n8n-routes.ts` so the handlers stay focused on transport.
+ * Kept out of `p1p3s-routes.ts` so the handlers stay focused on transport.
  */
 
-import type {
-  WorkflowClarificationRequest,
-  WorkflowClarificationResolution,
-  WorkflowClarificationTargetGroup,
-} from '@elizaos/app-core';
+export interface WorkflowClarificationRequest {
+  kind: 'target_channel' | 'target_server' | 'recipient' | 'value' | 'free_text';
+  platform?: string;
+  scope?: { guildId?: string };
+  question: string;
+  paramPath: string;
+}
+
+export interface WorkflowClarificationResolution {
+  paramPath: string;
+  value: string;
+}
+
+export interface WorkflowClarificationTargetGroup {
+  platform: string;
+  groupId: string;
+  groupName: string;
+  targets: Array<{
+    id: string;
+    name: string;
+    kind: 'channel' | 'recipient' | 'chat';
+  }>;
+}
 
 const VALID_KINDS: ReadonlySet<WorkflowClarificationRequest['kind']> = new Set([
   'target_channel',
@@ -147,7 +165,7 @@ export function parseParamPath(path: string): string[] {
  *
  * Numeric segments index into arrays. If the segment expects an array but
  * the existing intermediate is a non-array object, we treat it as an
- * object key (n8n workflow shapes mix arrays and objects fairly freely;
+ * object key (workflow shapes mix arrays and objects fairly freely;
  * we err on the side of preserving the existing structure).
  */
 export function setByDotPath(

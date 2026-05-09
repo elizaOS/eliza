@@ -36,7 +36,10 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { LocalInferenceLoader } from "./active-model";
+import type {
+  LocalInferenceLoadArgs,
+  LocalInferenceLoader,
+} from "./active-model";
 import { localInferenceRoot } from "./paths";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
@@ -92,13 +95,7 @@ type DeviceOutbound =
   | { type: "pong"; at: number };
 
 type AgentOutbound =
-  | {
-      type: "load";
-      correlationId: string;
-      modelPath: string;
-      contextSize?: number;
-      useGpu?: boolean;
-    }
+  | ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
   | { type: "unload"; correlationId: string }
   | {
       type: "generate";
@@ -707,11 +704,7 @@ export class DeviceBridge {
 
   // ── LocalInferenceLoader surface ──────────────────────────────────────
 
-  async loadModel(args: {
-    modelPath: string;
-    contextSize?: number;
-    useGpu?: boolean;
-  }): Promise<void> {
+  async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
     const best = this.pickBestDevice({ preferLoadedPath: args.modelPath });
     if (!best) {
       throw new Error(
@@ -739,9 +732,7 @@ export class DeviceBridge {
         this.sendToDevice(best.deviceId, {
           type: "load",
           correlationId,
-          modelPath: args.modelPath,
-          contextSize: args.contextSize,
-          useGpu: args.useGpu,
+          ...args,
         });
       } catch (err) {
         clearTimeout(timeout);
@@ -1038,7 +1029,7 @@ export function registerDeviceBridgeLoader(
 ): void {
   if (typeof runtime.registerService !== "function") return;
   const loader: LocalInferenceLoader = {
-    async loadModel(args: { modelPath: string }) {
+    async loadModel(args: LocalInferenceLoadArgs) {
       await deviceBridge.loadModel(args);
     },
     async unloadModel() {

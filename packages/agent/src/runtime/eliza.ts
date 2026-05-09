@@ -102,6 +102,13 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+
+async function importAppCoreRuntime(): Promise<Record<string, any>> {
+  const moduleId = "@elizaos/app-core";
+  return import(/* webpackIgnore: true */ moduleId) as Promise<
+    Record<string, any>
+  >;
+}
 import { buildCharacterFromConfig } from "./build-character-config.js";
 import {
   resolvePreferredProviderId,
@@ -1409,7 +1416,6 @@ export async function autoFetchCloudGithubToken(
  * Propagate cloud config from Eliza config into process.env so the
  * ElizaCloud plugin can discover settings at startup.
  */
-/** @internal Exported for testing. */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const cloud = config.cloud;
@@ -2704,9 +2710,7 @@ export async function startEliza(
   // legacy hydration loop below sees real values.
   {
     try {
-      const { hydrateWalletKeysFromNodePlatformSecureStore } = await import(
-        "@elizaos/app-core"
-      );
+      const { hydrateWalletKeysFromNodePlatformSecureStore } = await importAppCoreRuntime();
       await hydrateWalletKeysFromNodePlatformSecureStore();
     } catch (err) {
       logger.warn(
@@ -2714,12 +2718,8 @@ export async function startEliza(
       );
     }
 
-    const { runVaultBootstrap } = await import(
-      "@elizaos/app-core"
-    );
-    const { sharedVault } = await import(
-      "@elizaos/app-core"
-    );
+    const { runVaultBootstrap } = await importAppCoreRuntime();
+    const { sharedVault } = await importAppCoreRuntime();
     const bootResult = await runVaultBootstrap();
     logger.info(
       `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
@@ -2886,7 +2886,7 @@ export async function startEliza(
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
   try {
-    const accountPool = await import("@elizaos/app-core");
+    const accountPool = await importAppCoreRuntime();
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
       activeBackend: resolveServiceRoutingInConfig(
@@ -2968,9 +2968,7 @@ export async function startEliza(
   // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
   if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
     try {
-      const { sharedVault } = await import(
-        "@elizaos/app-core"
-      );
+      const { sharedVault } = await importAppCoreRuntime();
       const { applyVaultProfilesForAgent } = await import(
         "./vault-profile-resolver.js"
       );
@@ -2989,9 +2987,7 @@ export async function startEliza(
   // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
   if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
     try {
-      const { sharedVault } = await import(
-        "@elizaos/app-core"
-      );
+      const { sharedVault } = await importAppCoreRuntime();
       const { ensureAgentWallets } = await import("./agent-wallets.js");
       const descriptors = await ensureAgentWallets(
         sharedVault(),
@@ -3615,42 +3611,23 @@ export async function startEliza(
       );
     }
 
-    // 8b. Register lightweight conversation-proximity post-message hook.
-    // Updates relationship strength when people post near each other in a room.
-    // No LLM calls — deterministic, runs on every message.
+    // 8b. Register conversation-proximity provider for post-turn evaluators.
+    // This is read-only context; relationship writes are handled by the
+    // evaluator service from model-extracted relationship updates.
     try {
-      const { updateProximityRelationships } = await import(
-        "../services/conversation-proximity.js"
+      const { conversationProximityProvider } = await import(
+        "../providers/conversation-proximity.js"
       );
-      const { ActionMode } = await import("@elizaos/core");
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
         description:
-          "Lightweight relationship updates from conversation co-occurrence",
-        actions: [
-          {
-            name: "CONVERSATION_PROXIMITY",
-            description:
-              "Update relationship strength for co-participants in a room",
-            similes: [],
-            examples: [],
-            mode: ActionMode.ALWAYS_AFTER,
-            modePriority: 100,
-            validate: async (_runtime, message) => {
-              const text = (message.content as { text?: string })?.text;
-              return Boolean(text) && message.entityId !== _runtime.agentId;
-            },
-            handler: async (_runtime, message) => {
-              await updateProximityRelationships(_runtime, message);
-              return undefined;
-            },
-          },
-        ],
+          "Read-only co-participant context for post-turn evaluators",
+        providers: [conversationProximityProvider],
       });
-      logger.info("[eliza] ✓ conversation-proximity hook registered");
+      logger.info("[eliza] ✓ conversation-proximity provider registered");
     } catch (err) {
       logger.debug(
-        `[eliza] Conversation-proximity hook skipped: ${formatError(err)}`,
+        `[eliza] Conversation-proximity provider skipped: ${formatError(err)}`,
       );
     }
 
@@ -3890,7 +3867,7 @@ export async function startEliza(
           );
 
           try {
-            const accountPool = await import("@elizaos/app-core");
+            const accountPool = await importAppCoreRuntime();
             accountPool.getDefaultAccountPool();
             await accountPool.applyAccountPoolApiCredentials({
               activeBackend: resolveServiceRoutingInConfig(

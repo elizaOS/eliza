@@ -24,7 +24,9 @@ const TRIGGER_SCHEMAS = (
   triggerSchemaIndex as unknown as {
     triggers: Record<string, { outputSchema: SchemaContent }>;
   }
-).triggers;
+).triggers ?? {};
+
+const NODE_SCHEMAS = SCHEMA_INDEX.nodeTypes ?? {};
 
 export interface OutputSchemaResult {
   schema: SchemaContent;
@@ -32,11 +34,11 @@ export interface OutputSchemaResult {
 }
 
 export function hasOutputSchema(nodeType: string): boolean {
-  return nodeType in SCHEMA_INDEX.nodeTypes;
+  return nodeType in NODE_SCHEMAS;
 }
 
 export function getAvailableResources(nodeType: string): string[] {
-  const entry = SCHEMA_INDEX.nodeTypes[nodeType];
+  const entry = NODE_SCHEMAS[nodeType];
   if (!entry) {
     return [];
   }
@@ -44,7 +46,7 @@ export function getAvailableResources(nodeType: string): string[] {
 }
 
 export function getAvailableOperations(nodeType: string, resource: string): string[] {
-  const entry = SCHEMA_INDEX.nodeTypes[nodeType];
+  const entry = NODE_SCHEMAS[nodeType];
   if (!entry) {
     return [];
   }
@@ -60,7 +62,7 @@ export function loadOutputSchema(
   resource: string,
   operation: string
 ): OutputSchemaResult | null {
-  const entry = SCHEMA_INDEX.nodeTypes[nodeType];
+  const entry = NODE_SCHEMAS[nodeType];
   if (!entry) {
     return null;
   }

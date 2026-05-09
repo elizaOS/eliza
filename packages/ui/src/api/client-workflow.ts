@@ -22,7 +22,7 @@ import type {
 
 declare module "./client-base" {
   interface ElizaClient {
-    getN8nStatus(): Promise<WorkflowStatusResponse>;
+    getWorkflowStatus(): Promise<WorkflowStatusResponse>;
     getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     listWorkflowDefinitions(): Promise<WorkflowDefinition[]>;
     createWorkflowDefinition(request: WorkflowDefinitionWriteRequest): Promise<WorkflowDefinition>;
@@ -33,13 +33,12 @@ declare module "./client-base" {
     generateWorkflowDefinition(
       request: WorkflowDefinitionGenerateRequest,
     ): Promise<WorkflowDefinitionGenerateResponse>;
-    resolveN8nClarification(
+    resolveWorkflowClarification(
       request: WorkflowDefinitionResolveClarificationRequest,
     ): Promise<WorkflowDefinitionGenerateResponse>;
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
-    startN8nSidecar(): Promise<{ ok: boolean }>;
   }
 }
 
@@ -47,7 +46,7 @@ declare module "./client-base" {
 // Implementations
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getN8nStatus = async function (
+ElizaClient.prototype.getWorkflowStatus = async function (
   this: ElizaClient,
 ): Promise<WorkflowStatusResponse> {
   return this.fetch<WorkflowStatusResponse>("/api/workflow/status");
@@ -115,7 +114,7 @@ ElizaClient.prototype.generateWorkflowDefinition = async function (
   );
 };
 
-ElizaClient.prototype.resolveN8nClarification = async function (
+ElizaClient.prototype.resolveWorkflowClarification = async function (
   this: ElizaClient,
   request: WorkflowDefinitionResolveClarificationRequest,
 ): Promise<WorkflowDefinitionGenerateResponse> {
@@ -163,12 +162,4 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
     `/api/workflow/workflows/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
-};
-
-ElizaClient.prototype.startN8nSidecar = async function (
-  this: ElizaClient,
-): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>("/api/workflow/sidecar/start", {
-    method: "POST",
-  });
 };

@@ -15,6 +15,13 @@ import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
+import { buildTextGenerationReadiness } from "./readiness";
+import {
+  chooseSmallerFallbackModel,
+  type RecommendedModelSelection,
+  selectRecommendedModelForSlot,
+  selectRecommendedModels,
+} from "./recommendation";
 import {
   listInstalledModels,
   removeElizaModel,
@@ -27,8 +34,10 @@ import type {
   DownloadEvent,
   DownloadJob,
   HardwareProbe,
+  LocalInferenceReadiness,
   ModelAssignments,
   ModelHubSnapshot,
+  TextGenerationSlot,
 } from "./types";
 import { type VerifyResult, verifyInstalledModel } from "./verify";
 
@@ -92,20 +101,81 @@ export class LocalInferenceService {
       this.getHardware(),
       this.getAssignments(),
     ]);
+    const active = this.getActive();
+    const downloads = this.getDownloads();
     return {
       catalog: this.getCatalog(),
       installed,
-      active: this.getActive(),
-      downloads: this.getDownloads(),
+      active,
+      downloads,
       hardware,
       assignments,
+      textReadiness: buildTextGenerationReadiness({
+        assignments,
+        installed,
+        active,
+        downloads,
+        catalog: MODEL_CATALOG,
+      }),
     };
+  }
+
+  async getTextReadiness(): Promise<LocalInferenceReadiness> {
+    const [installed, assignments] = await Promise.all([
+      this.getInstalled(),
+      this.getAssignments(),
+    ]);
+    return buildTextGenerationReadiness({
+      assignments,
+      installed,
+      active: this.getActive(),
+      downloads: this.getDownloads(),
+      catalog: MODEL_CATALOG,
+    });
+  }
+
+  async getRecommendedModel(
+    slot: TextGenerationSlot,
+    hardware?: HardwareProbe,
+  ): Promise<RecommendedModelSelection> {
+    return selectRecommendedModelForSlot(
+      slot,
+      hardware ?? (await this.getHardware()),
+      MODEL_CATALOG,
+    );
+  }
+
+  async getRecommendedModels(
+    hardware?: HardwareProbe,
+  ): Promise<Record<TextGenerationSlot, RecommendedModelSelection>> {
+    return selectRecommendedModels(
+      hardware ?? (await this.getHardware()),
+      MODEL_CATALOG,
+    );
   }
 
   async startDownload(
     modelIdOrSpec: string | CatalogModel,
   ): Promise<DownloadJob> {
     return this.downloader.start(modelIdOrSpec);
+  }
+
+  async startSmallerFallbackDownload(
+    currentModelId: string,
+    slot: TextGenerationSlot = "TEXT_LARGE",
+    hardware?: HardwareProbe,
+  ): Promise<{ model: CatalogModel; job: DownloadJob } | null> {
+    const model = chooseSmallerFallbackModel(
+      currentModelId,
+      hardware ?? (await this.getHardware()),
+      slot,
+      MODEL_CATALOG,
+    );
+    if (!model) return null;
+    return {
+      model,
+      job: await this.startDownload(model.id),
+    };
   }
 
   async searchHuggingFace(

@@ -8,7 +8,10 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { estimateTokenCount } from "../runtime/prompt-optimization.js";
-import { generateChatResponse } from "./chat-routes.js";
+import {
+  detectLocalInferenceCommandIntent,
+  generateChatResponse,
+} from "./chat-routes.js";
 
 type RuntimeOverrides = Partial<AgentRuntime> & {
   messageService?: NonNullable<AgentRuntime["messageService"]>;
@@ -174,5 +177,41 @@ describe("generateChatResponse usage reporting", () => {
       usedActionCallbacks: true,
     });
     expect(result.actionCallbackHistory).toBeUndefined();
+  });
+});
+
+describe("local inference chat command intent detection", () => {
+  it("detects flexible local model management phrasing", () => {
+    expect(
+      detectLocalInferenceCommandIntent("can you re-download the llama model?"),
+    ).toBe("redownload");
+    expect(
+      detectLocalInferenceCommandIntent("switch to something smaller locally"),
+    ).toBe("switch_smaller");
+    expect(detectLocalInferenceCommandIntent("use cloud")).toBe("use_cloud");
+    expect(
+      detectLocalInferenceCommandIntent("how far is the model download?"),
+    ).toBe("status");
+  });
+
+  it("does not hijack ordinary chat without local inference context", () => {
+    expect(detectLocalInferenceCommandIntent("download the report")).toBeNull();
+    expect(detectLocalInferenceCommandIntent("retry that joke")).toBeNull();
+    expect(
+      detectLocalInferenceCommandIntent("what is your status?"),
+    ).toBeNull();
+  });
+
+  it("allows short commands when the UI marks local inference context", () => {
+    expect(
+      detectLocalInferenceCommandIntent("status", {
+        localInferenceContext: true,
+      }),
+    ).toBe("status");
+    expect(
+      detectLocalInferenceCommandIntent("download it", {
+        localInferenceContext: true,
+      }),
+    ).toBe("download");
   });
 });

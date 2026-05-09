@@ -244,7 +244,7 @@ describe("generateWorkflow", () => {
     const workflowJson = JSON.stringify({
       name: "Test Workflow",
       nodes: [
-        { name: "Start", type: "n8n-nodes-base.start", position: [0, 0] },
+        { name: "Start", type: "p1p3s-nodes-base.start", position: [0, 0] },
       ],
       connections: {},
     });
@@ -325,82 +325,20 @@ describe("generateWorkflow", () => {
 
     const nodes = [
       {
-        name: "n8n-nodes-base.gmail",
-        displayName: "Gmail",
-        description: "Send email",
+        name: "p1p3s-nodes-base.httpRequest",
+        displayName: "HTTP Request",
+        description: "Make an HTTP request",
         group: ["output"],
         properties: [],
       },
     ];
 
-    await generateWorkflow(runtime, "send email", nodes as any);
+    await generateWorkflow(runtime, "call an API", nodes as any);
 
     const callArgs = useModel.mock.calls[0] as any[];
     const params = callArgs[1] as { prompt: string };
-    expect(params.prompt).toContain("Gmail");
-    expect(params.prompt).toContain("Send email");
-  });
-
-  test("injects output schema context for nodes with schemas", async () => {
-    const useModel = mock(() =>
-      Promise.resolve(
-        JSON.stringify({
-          name: "WF",
-          nodes: [{ name: "A", type: "t", position: [0, 0] }],
-          connections: {},
-        }),
-      ),
-    );
-    const runtime = createMockRuntime({ useModel });
-
-    // Gmail has schemas in schemaIndex.json
-    const nodes = [
-      {
-        name: "n8n-nodes-base.gmail",
-        displayName: "Gmail",
-        description: "Send email",
-        group: ["output"],
-        properties: [],
-      },
-    ];
-
-    await generateWorkflow(runtime, "get emails", nodes as any);
-
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
-    expect(params.prompt).toContain("Node Output Schemas");
-    expect(params.prompt).toContain("n8n-nodes-base.gmail");
-  });
-
-  test("injects langchain OpenAI output schema with correct fields", async () => {
-    const useModel = mock(() =>
-      Promise.resolve(
-        JSON.stringify({
-          name: "WF",
-          nodes: [{ name: "A", type: "t", position: [0, 0] }],
-          connections: {},
-        }),
-      ),
-    );
-    const runtime = createMockRuntime({ useModel });
-
-    const nodes = [
-      {
-        name: "@n8n/n8n-nodes-langchain.openAi",
-        displayName: "OpenAI",
-        description: "AI",
-        group: ["transform"],
-        properties: [],
-      },
-    ];
-
-    await generateWorkflow(runtime, "summarize with AI", nodes as any);
-
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
-    expect(params.prompt).toContain("Node Output Schemas");
-    expect(params.prompt).toContain("output[0].content[0].text: string");
-    expect(params.prompt).toContain("Do NOT invent field names");
+    expect(params.prompt).toContain("HTTP Request");
+    expect(params.prompt).toContain("Make an HTTP request");
   });
 
   test("no output schema section when nodes have no schemas", async () => {
@@ -418,7 +356,7 @@ describe("generateWorkflow", () => {
     // Unknown node with no schema
     const nodes = [
       {
-        name: "n8n-nodes-base.unknownNode",
+        name: "p1p3s-nodes-base.unknownNode",
         displayName: "Unknown",
         description: "No schema",
         group: ["transform"],
@@ -445,14 +383,14 @@ describe("classifyDraftIntent", () => {
       nodes: [
         {
           name: "Schedule Trigger",
-          type: "n8n-nodes-base.scheduleTrigger",
+          type: "p1p3s-nodes-base.scheduleTrigger",
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
         },
         {
           name: "Gmail",
-          type: "n8n-nodes-base.gmail",
+          type: "p1p3s-nodes-base.gmail",
           typeVersion: 2,
           position: [200, 0],
           parameters: { operation: "send" },

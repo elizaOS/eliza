@@ -32,6 +32,16 @@ type AgentInbound =
       modelPath: string;
       contextSize?: number;
       useGpu?: boolean;
+      maxThreads?: number;
+      draftModelPath?: string;
+      draftContextSize?: number;
+      draftMin?: number;
+      draftMax?: number;
+      speculativeSamples?: number;
+      mobileSpeculative?: boolean;
+      cacheTypeK?: string;
+      cacheTypeV?: string;
+      disableThinking?: boolean;
     }
   | { type: "unload"; correlationId: string }
   | {
@@ -259,6 +269,16 @@ export class DeviceBridgeClient {
           modelPath: msg.modelPath,
           contextSize: msg.contextSize,
           useGpu: msg.useGpu,
+          maxThreads: msg.maxThreads,
+          draftModelPath: msg.draftModelPath,
+          draftContextSize: msg.draftContextSize,
+          draftMin: msg.draftMin,
+          draftMax: msg.draftMax,
+          speculativeSamples: msg.speculativeSamples,
+          mobileSpeculative: msg.mobileSpeculative,
+          cacheTypeK: msg.cacheTypeK,
+          cacheTypeV: msg.cacheTypeV,
+          disableThinking: msg.disableThinking,
         });
         this.send(ws, {
           type: "loadResult",

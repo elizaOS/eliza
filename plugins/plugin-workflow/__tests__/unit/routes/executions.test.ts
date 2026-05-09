@@ -49,7 +49,7 @@ const getHandler = executionRoutes[1].handler!;
 function runtimeWithService(serviceOverrides?: Record<string, unknown>) {
   const service = createMockService(serviceOverrides);
   return {
-    runtime: createMockRuntime({ services: { n8n_workflow: service } }),
+    runtime: createMockRuntime({ services: { workflow: service } }),
     service,
   };
 }

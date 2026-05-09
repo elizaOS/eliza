@@ -1,13 +1,13 @@
 # Evaluator synthesis spec — closing the Phase 4 gap
 
-The runtime makes one LLM call per registered evaluator that passes its
-`validate()` gate. That's the `purpose: "evaluation"` slice — see
-`runtime.ts:3421`. The corpus currently has near-zero coverage of these
-calls (only `reflection` and `reflection_evaluator`, ~5k records combined).
+The runtime makes one structured LLM call for all registered evaluator items
+that pass their `shouldRun()` gate. That's the `purpose: "evaluation"` slice
+owned by `EvaluatorService`. The corpus needs coverage for the merged
+post-turn output object and each registered evaluator section.
 
-This doc specifies what to synthesize for each evaluator. Output target:
-**~3k records per evaluator, ~21k total**, lifting Phase 4 from <0.1% of
-the corpus to ~3%.
+This doc specifies what to synthesize for each evaluator section. Output
+target: **~3k records per section**, lifting Phase 4 from <0.1% of the
+corpus to ~3%.
 
 Implementation: extend `scripts/synthesize_core_prompts.py` (or add
 `scripts/synthesize_evaluator_prompts.py`) to generate one JSONL per
@@ -44,11 +44,12 @@ template registry, so it must match the evaluator's prompt template.
 
 ---
 
-## 1. `reflection_evaluator` — relationship + reflection (TOON)
+## 1. `post_turn_evaluator` — registered evaluator sections (TOON)
 
-Template: `reflectionEvaluatorTemplate` at `prompts.ts:699`.
+Template sections live on the registered evaluator items in
+`packages/core/src/features/advanced-capabilities/evaluators/reflection-items.ts`.
 
-**task_type**: `reflection_evaluator`
+**task_type**: `post_turn_evaluator`
 
 **Input window** the synthesizer must build:
 - `entitiesInRoom` — 2-5 fake entities with stable UUIDs
@@ -56,16 +57,17 @@ Template: `reflectionEvaluatorTemplate` at `prompts.ts:699`.
 - `recentMessages` — 4-12 turn snippet
 - `actionResults` — JSON array of 0-2 prior action outcomes
 
-**Expected output (TOON)**:
-```toon
-thought: <one-paragraph self-reflection>
-task_completed: true | false
-task_completion_reason: <one-line justification grounded in messages>
-relationships[N]:
-  - sourceEntityId: <UUID from entitiesInRoom>
-    targetEntityId: <UUID from entitiesInRoom>
-    tags[M]:
-      - dm_interaction | mention | help_offered | …
+**Expected output (JSON)**:
+```json
+{
+  "factMemory": {"ops": []},
+  "relationship": {"relationships": []},
+  "identity": {"identities": []},
+  "success": {
+    "completed": true,
+    "reason": "The request was completed in the just-finished turn."
+  }
+}
 ```
 
 **Status**: corpus already has ~3k records. Top up to 5k with more
@@ -141,19 +143,15 @@ non-empty examples, the model will hallucinate facts on every turn.
 
 ---
 
-## 4. `relationship_extraction` — relationships only (TOON)
+## 4. `relationship` — relationships only (JSON section)
 
-Template: same `reflectionEvaluatorTemplate` but the synthesizer can
-omit the `thought` / `task_completed` fields by emitting only the
-`relationships` block. The runtime treats this as a thinner variant of
-`reflection_evaluator`.
+Template section: `relationshipEvaluator` in `reflection-items.ts`. The
+synthesizer emits only the `relationship` top-level section for this task.
 
-**task_type**: `relationship_extraction`
+**task_type**: `post_turn_evaluator`
 
-Skip if we choose to consolidate everything under
-`reflection_evaluator`. Decision (2026-05-04): **consolidate**. Do not
-emit a separate `relationship_extraction` task_type — the model learns
-the same surface from `reflection_evaluator` records.
+Do not emit a separate relationship-extraction task type. Relationship data is
+one section of the unified post-turn evaluator object.
 
 ---
 
@@ -249,7 +247,7 @@ Single script `scripts/synthesize_evaluator_prompts.py`:
 """Generate synthetic Phase-4 evaluator records via Opus 4.7."""
 
 EVALUATORS = {
-    "reflection_evaluator": {...},
+    "post_turn_evaluator": {...},
     "reflection":           {...},
     "fact_extractor":       {...},
     "summarization":        {...},
@@ -268,7 +266,7 @@ TARGET_PER_EVALUATOR = 3000
 ```
 
 Output files:
-- `data/synthesized/evaluators/reflection_evaluator.jsonl`
+- `data/synthesized/evaluators/post_turn_evaluator.jsonl`
 - `data/synthesized/evaluators/reflection.jsonl`
 - `data/synthesized/evaluators/fact_extractor.jsonl`
 - `data/synthesized/evaluators/summarization.jsonl`

@@ -7,7 +7,7 @@ import type { WorkflowCredentialStoreApi, CredentialMapping } from '../types/ind
 
 /**
  * Default DB-backed credential store.
- * Maps (userId, credType) → n8n credential ID.
+ * Maps (userId, credType) → p1p3s credential ID.
  *
  * On the cloud, a different plugin can register its own implementation
  * under the same service type — runtime.getService() returns the first registered.
@@ -16,7 +16,7 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
   static override readonly serviceType = WORKFLOW_CREDENTIAL_STORE_TYPE;
 
   override capabilityDescription =
-    'Stores n8n credential ID mappings per user and credential type, backed by PostgreSQL.';
+    'Stores p1p3s credential ID mappings per user and credential type, backed by PostgreSQL.';
 
   private getDb(): NodePgDatabase {
     const db = this.runtime.db;
@@ -28,21 +28,21 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
 
   static async start(runtime: IAgentRuntime): Promise<WorkflowCredentialStore> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'Starting N8n Credential Store...'
+      { src: 'plugin:workflow:service:credential-store' },
+      'Starting Workflow Credential Store...'
     );
     const service = new WorkflowCredentialStore(runtime);
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store started'
+      { src: 'plugin:workflow:service:credential-store' },
+      'Workflow Credential Store started'
     );
     return service;
   }
 
   override async stop(): Promise<void> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store stopped'
+      { src: 'plugin:workflow:service:credential-store' },
+      'Workflow Credential Store stopped'
     );
   }
 
@@ -53,17 +53,17 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
       .from(credentialMappings)
       .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)))
       .limit(1);
-    return rows[0]?.n8nCredentialId ?? null;
+    return rows[0]?.workflowCredentialId ?? null;
   }
 
-  async set(userId: string, credType: string, n8nCredId: string): Promise<void> {
+  async set(userId: string, credType: string, workflowCredId: string): Promise<void> {
     const db = this.getDb();
     await db
       .insert(credentialMappings)
-      .values({ userId, credType, n8nCredentialId: n8nCredId })
+      .values({ userId, credType, workflowCredentialId: workflowCredId })
       .onConflictDoUpdate({
         target: [credentialMappings.userId, credentialMappings.credType],
-        set: { n8nCredentialId: n8nCredId, updatedAt: sql`now()` },
+        set: { workflowCredentialId: workflowCredId, updatedAt: sql`now()` },
       });
   }
 
@@ -72,7 +72,7 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
     const rows = await db
       .select({
         credType: credentialMappings.credType,
-        n8nCredentialId: credentialMappings.n8nCredentialId,
+        workflowCredentialId: credentialMappings.workflowCredentialId,
       })
       .from(credentialMappings)
       .where(eq(credentialMappings.userId, userId));

@@ -65,6 +65,7 @@
     "admin:promote": "bun run packages/scripts/promote-admin.ts",
     "admin:list": "bun run packages/scripts/promote-admin.ts --list",
     "admin:revoke": "bun run packages/scripts/promote-admin.ts --revoke",
+    "vast:doctor": "bun run scripts/vast/doctor.ts",
     "test:unit": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit",
     "test:repo-unit:bulk": "find packages/tests/unit -name '*.test.ts' ! -path 'packages/tests/unit/credits.test.ts' ! -path 'packages/tests/unit/docker-infrastructure.test.ts' ! -path 'packages/tests/unit/eliza-app/discord-auth.test.ts' ! -path 'packages/tests/unit/eliza-agent-web-ui.test.ts' ! -path 'packages/tests/unit/oauth/secrets-adapter-utils.test.ts' ! -path 'packages/tests/unit/market-price-preview-route.test.ts' | sort | xargs -n 1 env SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/lib/services/gateway-discord/__tests__ services/gateway-discord/tests/hash-router.test.ts services/gateway-discord/tests/leader-election.test.ts services/gateway-discord/tests/voice-message-handler.test.ts",
     "test:repo-unit:special": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/credits.test.ts packages/tests/unit/eliza-app/discord-auth.test.ts packages/tests/unit/eliza-agent-web-ui.test.ts",

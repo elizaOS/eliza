@@ -7,6 +7,7 @@ import type { DatabaseProviderType } from "@elizaos/agent";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  ChatFailureKind,
   ChatTokenUsage,
   ConnectionTestResult,
   ContentBlock,
@@ -29,6 +30,7 @@ import type {
   DocumentUpdateResult,
   DocumentUploadResult,
   ImageAttachment,
+  LocalInferenceChatMetadata,
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
@@ -113,6 +115,8 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       noResponseReason?: "ignored";
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
     }>;
     sendChatStream(
       text: string,
@@ -126,6 +130,8 @@ declare module "./client-base" {
       completed: boolean;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
     }>;
     listConversations(): Promise<{ conversations: Conversation[] }>;
     createConversation(
@@ -232,7 +238,8 @@ declare module "./client-base" {
        * "Connect a provider" CTA instead of treating the fallback
        * as a normal assistant reply.
        */
-      failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
     }>;
     sendConversationMessageStream(
       id: string,
@@ -250,7 +257,8 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */
-      failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
     }>;
     requestGreeting(
       id: string,
@@ -734,6 +742,8 @@ ElizaClient.prototype.sendConversationMessage = async function (
     agentName: string;
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
+    failureKind?: ChatFailureKind;
+    localInference?: LocalInferenceChatMetadata;
   }>(`/api/conversations/${encodeURIComponent(id)}/messages`, {
     method: "POST",
     body: JSON.stringify({

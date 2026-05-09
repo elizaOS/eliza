@@ -2123,11 +2123,18 @@ function parseSchedulingProposal(
 function isMissingTableError(error: unknown, table: string): boolean {
   const message = errorMessagesWithCauses(error).join("\n");
   const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const schema = table.includes(".") ? table.split(".")[0] : "";
   const pattern = new RegExp(
     `no such table: ${escaped}|relation ["']?${escaped}["']? does not exist|undefined table`,
     "i",
   );
-  return pattern.test(message);
+  return (
+    pattern.test(message) ||
+    (schema.length > 0 &&
+      new RegExp(`schema ["']?${schema}["']? does not exist`, "i").test(
+        message,
+      ))
+  );
 }
 
 /**
@@ -2161,6 +2168,52 @@ async function tableExists(
     }
     throw error;
   }
+}
+
+type BrowserBridgeTableKey =
+  | "companions"
+  | "settings"
+  | "tabs"
+  | "pageContexts";
+
+const BROWSER_BRIDGE_TABLE_NAMES = {
+  companions: "browser_bridge_companions",
+  settings: "browser_bridge_settings",
+  tabs: "browser_bridge_tabs",
+  pageContexts: "browser_bridge_page_contexts",
+} as const satisfies Record<BrowserBridgeTableKey, string>;
+
+const browserBridgeTableCache = new WeakMap<
+  IAgentRuntime,
+  Partial<Record<BrowserBridgeTableKey, string>>
+>();
+
+async function resolveBrowserBridgeTable(
+  runtime: IAgentRuntime,
+  key: BrowserBridgeTableKey,
+): Promise<string> {
+  let cached = browserBridgeTableCache.get(runtime);
+  if (!cached) {
+    cached = {};
+    browserBridgeTableCache.set(runtime, cached);
+  }
+  if (cached[key]) {
+    return cached[key];
+  }
+
+  const publicTable = BROWSER_BRIDGE_TABLE_NAMES[key];
+  const schemaTable = `browser.${publicTable}`;
+  if (await tableExists(runtime, schemaTable)) {
+    cached[key] = schemaTable;
+    return schemaTable;
+  }
+  if (await tableExists(runtime, publicTable)) {
+    cached[key] = publicTable;
+    return publicTable;
+  }
+
+  cached[key] = schemaTable;
+  return schemaTable;
 }
 
 function errorMessagesWithCauses(error: unknown): string[] {
@@ -2271,12 +2324,16 @@ export class LifeOpsRepository {
   static async ensureBrowserBridgeCompanionTokenColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
-    if (!(await tableExists(runtime, "browser_bridge_companions"))) {
+    const companionsTable = await resolveBrowserBridgeTable(
+      runtime,
+      "companions",
+    );
+    if (!(await tableExists(runtime, companionsTable))) {
       return;
     }
     const companionTokenColumnRepairs = [
-      "ALTER TABLE browser_bridge_companions ADD COLUMN IF NOT EXISTS pairing_token_expires_at TEXT",
-      "ALTER TABLE browser_bridge_companions ADD COLUMN IF NOT EXISTS pairing_token_revoked_at TEXT",
+      `ALTER TABLE ${companionsTable} ADD COLUMN IF NOT EXISTS pairing_token_expires_at TEXT`,
+      `ALTER TABLE ${companionsTable} ADD COLUMN IF NOT EXISTS pairing_token_revoked_at TEXT`,
     ];
     for (const statement of companionTokenColumnRepairs) {
       await executeRawSql(runtime, statement);
@@ -5602,10 +5659,14 @@ export class LifeOpsRepository {
   async getBrowserSettings(
     agentId: string,
   ): Promise<BrowserBridgeSettings | null> {
+    const settingsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "settings",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_settings
+         FROM ${settingsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         LIMIT 1`,
     );
@@ -5618,9 +5679,13 @@ export class LifeOpsRepository {
     settings: BrowserBridgeSettings,
   ): Promise<void> {
     const createdAt = settings.updatedAt ?? isoNow();
+    const settingsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "settings",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_settings (
+      `INSERT INTO ${settingsTable} (
         agent_id, enabled, tracking_mode, allow_browser_control,
         require_confirmation_for_account_affecting, incognito_enabled,
         site_access_mode, granted_origins_json, blocked_origins_json,
@@ -5662,10 +5727,14 @@ export class LifeOpsRepository {
     browser: BrowserBridgeCompanionStatus["browser"],
     profileId: string,
   ): Promise<BrowserBridgeCompanionStatus | null> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND browser = ${sqlQuote(browser)}
           AND profile_id = ${sqlQuote(profileId)}
@@ -5679,10 +5748,14 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
   ): Promise<BrowserCompanionCredential | null> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}
         LIMIT 1`,
@@ -5694,9 +5767,13 @@ export class LifeOpsRepository {
   async upsertBrowserCompanion(
     companion: BrowserBridgeCompanionStatus,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_companions (
+      `INSERT INTO ${companionsTable} (
         id, agent_id, browser, profile_id, profile_label, label,
         extension_version, connection_state, permissions_json, last_seen_at,
         paired_at, metadata_json, created_at, updated_at
@@ -5723,7 +5800,7 @@ export class LifeOpsRepository {
         connection_state = excluded.connection_state,
         permissions_json = excluded.permissions_json,
         last_seen_at = excluded.last_seen_at,
-        paired_at = COALESCE(browser_bridge_companions.paired_at, excluded.paired_at),
+        paired_at = COALESCE(${companionsTable}.paired_at, excluded.paired_at),
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
     );
@@ -5737,9 +5814,13 @@ export class LifeOpsRepository {
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
               pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
               pairing_token_revoked_at = NULL,
@@ -5759,9 +5840,13 @@ export class LifeOpsRepository {
     >,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               updated_at = ${sqlQuote(updatedAt)}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -5780,9 +5865,13 @@ export class LifeOpsRepository {
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
               pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
               pairing_token_revoked_at = NULL,
@@ -5799,9 +5888,13 @@ export class LifeOpsRepository {
     companionId: string,
     revokedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pairing_token_revoked_at = ${sqlQuote(revokedAt)},
               pending_pairing_token_hashes_json = '[]',
               connection_state = 'disconnected',
@@ -5814,10 +5907,14 @@ export class LifeOpsRepository {
   async listBrowserCompanions(
     agentId: string,
   ): Promise<BrowserBridgeCompanionStatus[]> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY browser ASC, profile_label ASC, label ASC`,
     );
@@ -5825,9 +5922,10 @@ export class LifeOpsRepository {
   }
 
   async upsertBrowserTab(tab: BrowserBridgeTabSummary): Promise<void> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_tabs (
+      `INSERT INTO ${tabsTable} (
         id, agent_id, companion_id, browser, profile_id, window_id, tab_id,
         url, title, active_in_window, focused_window, focused_active,
         incognito, favicon_url, last_seen_at, last_focused_at, metadata_json,
@@ -5870,10 +5968,11 @@ export class LifeOpsRepository {
   }
 
   async listBrowserTabs(agentId: string): Promise<BrowserBridgeTabSummary[]> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_tabs
+         FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY focused_active DESC,
                  active_in_window DESC,
@@ -5886,18 +5985,20 @@ export class LifeOpsRepository {
   async deleteBrowserTabsByIds(agentId: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_tabs
+      `DELETE FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
   }
 
   async deleteAllBrowserTabs(agentId: string): Promise<void> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_tabs
+      `DELETE FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
@@ -5905,9 +6006,13 @@ export class LifeOpsRepository {
   async upsertBrowserPageContext(
     context: BrowserBridgePageContext,
   ): Promise<void> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_page_contexts (
+      `INSERT INTO ${pageContextsTable} (
         id, agent_id, browser, profile_id, window_id, tab_id, url, title,
         selection_text, main_text, headings_json, links_json, forms_json,
         captured_at, metadata_json
@@ -5944,10 +6049,14 @@ export class LifeOpsRepository {
   async listBrowserPageContexts(
     agentId: string,
   ): Promise<BrowserBridgePageContext[]> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_page_contexts
+         FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY captured_at DESC`,
     );
@@ -5960,18 +6069,26 @@ export class LifeOpsRepository {
   ): Promise<void> {
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_page_contexts
+      `DELETE FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
   }
 
   async deleteAllBrowserPageContexts(agentId: string): Promise<void> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_page_contexts
+      `DELETE FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }

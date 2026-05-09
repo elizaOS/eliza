@@ -1,26 +1,26 @@
 import { mock } from "bun:test";
-import type { WorkflowService } from "../../src/services/n8n-workflow-service";
+import type { WorkflowService } from "../../src/services/workflow-service";
 import { createWorkflowResponse, createExecution } from "../fixtures/workflows";
 
 export function createMockService(
   overrides?: Partial<Record<keyof WorkflowService, unknown>>,
 ): WorkflowService {
   return {
-    serviceType: "n8n_workflow",
+    serviceType: "workflow",
     generateWorkflowDraft: mock(() =>
       Promise.resolve({
         name: "Generated Workflow",
         nodes: [
           {
             name: "Schedule Trigger",
-            type: "n8n-nodes-base.scheduleTrigger",
+            type: "p1p3s-nodes-base.scheduleTrigger",
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
           },
           {
             name: "Gmail",
-            type: "n8n-nodes-base.gmail",
+            type: "p1p3s-nodes-base.gmail",
             typeVersion: 2,
             position: [200, 0],
             parameters: { operation: "send" },
@@ -50,14 +50,14 @@ export function createMockService(
         nodes: [
           {
             name: "Schedule Trigger",
-            type: "n8n-nodes-base.scheduleTrigger",
+            type: "p1p3s-nodes-base.scheduleTrigger",
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
           },
           {
             name: "Outlook",
-            type: "n8n-nodes-base.microsoftOutlook",
+            type: "p1p3s-nodes-base.microsoftOutlook",
             typeVersion: 2,
             position: [200, 0],
             parameters: { operation: "send" },

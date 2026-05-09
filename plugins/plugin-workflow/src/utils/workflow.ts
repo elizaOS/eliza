@@ -189,7 +189,7 @@ export function validateNodeParameters(workflow: WorkflowDefinition): string[] {
  * Pass 2: props whose displayOptions are satisfied by pass-1 defaults — e.g. `operation`
  *   default "send" becomes visible once `resource` is known.
  *
- * Two passes resolve the depth-2 chains present in n8n node definitions
+ * Two passes resolve the depth-2 chains present in p1p3s node definitions
  * (root prop → one level of conditional). The `@version` key is injected as the
  * node's typeVersion so displayOptions conditions that reference it work correctly.
  */
@@ -226,7 +226,7 @@ function buildEffectiveParams(
 }
 
 /**
- * n8n displayOptions logic:
+ * p1p3s displayOptions logic:
  * - `show`: ALL conditions must match for visible
  * - `hide`: ANY match hides the property
  */
@@ -297,7 +297,7 @@ export function validateNodeInputs(workflow: WorkflowDefinition): string[] {
       continue;
     }
 
-    // Dynamic inputs (n8n expression string) can't be validated statically
+    // Dynamic inputs (p1p3s expression string) can't be validated statically
     if (!Array.isArray(nodeDef.inputs)) {
       continue;
     }
@@ -464,7 +464,7 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
 
     if (node.type !== nodeDef.name) {
       logger.warn(
-        { src: 'plugin:n8n-workflow:correctOptions' },
+        { src: 'plugin:workflow:correctOptions' },
         `Node "${node.name}": type "${node.type}" → "${nodeDef.name}"`
       );
       node.type = nodeDef.name;
@@ -475,7 +475,7 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
     if (node.typeVersion && !validVersions.includes(node.typeVersion)) {
       const maxVersion = Math.max(...validVersions);
       logger.warn(
-        { src: 'plugin:n8n-workflow:correctOptions' },
+        { src: 'plugin:workflow:correctOptions' },
         `Node "${node.name}": typeVersion ${node.typeVersion} → ${maxVersion}`
       );
       node.typeVersion = maxVersion;
@@ -528,7 +528,7 @@ function fixOptionValue(node: WorkflowDefinition['nodes'][0], prop: NodeProperty
       : allowedValues[0];
 
   logger.warn(
-    { src: 'plugin:n8n-workflow:correctOptions' },
+    { src: 'plugin:workflow:correctOptions' },
     `Node "${node.name}": ${prop.name} "${currentValue}" → "${corrected}"`
   );
   node.parameters[prop.name] = corrected;
@@ -737,8 +737,8 @@ export function detectUnknownParameters(workflow: WorkflowDefinition): UnknownPa
 }
 
 /**
- * Prefix all string parameter values containing {{ }} with = so n8n evaluates them as expressions.
- * Without =, n8n treats {{ }} as literal text.
+ * Prefix all string parameter values containing {{ }} with = so p1p3s evaluates them as expressions.
+ * Without =, p1p3s treats {{ }} as literal text.
  * Returns the number of values prefixed.
  */
 /**
@@ -747,7 +747,7 @@ export function detectUnknownParameters(workflow: WorkflowDefinition): UnknownPa
  * `MANDATORY INVARIANT` rule in the system prompt, the LLM occasionally omits
  * the block — and resolveCredentials only fires when a block is present, so
  * an omission means the credential never gets minted server-side and the user
- * has to wire it in n8n's UI.
+ * has to wire it in p1p3s's UI.
  *
  * Selection rule:
  *  1. Skip nodes that already have at least one credentials entry.
@@ -760,7 +760,7 @@ export function detectUnknownParameters(workflow: WorkflowDefinition): UnknownPa
  *       displayOptions.show.authentication is set; otherwise unconditional).
  *  4. Inject `node.credentials = { [credType]: { id: "{{CREDENTIAL_ID}}", name } }`.
  *     The plugin's `resolveCredentials` later replaces `{{CREDENTIAL_ID}}` with
- *     the real n8n credential id.
+ *     the real p1p3s credential id.
  *
  * Returns the number of nodes that received an injected block (for logging).
  */
@@ -802,7 +802,7 @@ export function injectMissingCredentialBlocks(
       continue;
     }
     // Resolve which credential type matches this node's authentication choice.
-    // n8n nodes typically gate credentials by `displayOptions.show.authentication`
+    // p1p3s nodes typically gate credentials by `displayOptions.show.authentication`
     // (e.g. discord's discordBotApi shows when authentication=botToken).
     const auth =
       typeof node.parameters?.authentication === 'string'
@@ -832,7 +832,7 @@ export function injectMissingCredentialBlocks(
     };
     logger.debug(
       {
-        src: 'plugin:n8n-workflow:utils:workflow',
+        src: 'plugin:workflow:utils:workflow',
         node: node.name,
         nodeType: node.type,
         credType: candidate.name,

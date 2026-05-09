@@ -1,5 +1,5 @@
 export {
-  n8nWorkflowSchema,
+  workflowSchema,
   credentialMappings,
   embeddedWorkflows,
   embeddedExecutions,

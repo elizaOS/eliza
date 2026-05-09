@@ -28,7 +28,10 @@ import {
   ModelType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import type { LocalInferenceLoader } from "../services/local-inference/active-model";
+import {
+  type LocalInferenceLoader,
+  resolveLocalInferenceLoadArgs,
+} from "../services/local-inference/active-model";
 import {
   autoAssignAtBoot,
   readEffectiveAssignments,
@@ -146,7 +149,7 @@ async function ensureAssignedModelLoaded(
 
   if (loader) {
     await loader.unloadModel();
-    await loader.loadModel({ modelPath: target.path });
+    await loader.loadModel(await resolveLocalInferenceLoadArgs(target));
   } else {
     await localInferenceEngine.load(target.path);
   }

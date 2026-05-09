@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-workflow",
   "version": "2.0.0-beta.0",
-  "description": "ElizaOS plugin for generating and managing n8n workflows from natural language",
+  "description": "ElizaOS plugin for generating and running p1p3s workflows in-process",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -38,27 +38,24 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc --noEmitOnError false || true",
+    "build": "tsc -p tsconfig.json",
     "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
-    "test:integration": "bun test __tests__/integration/",
     "test:e2e": "bun test __tests__/e2e/",
-    "lint": "eslint src/**/*.ts",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "crawl": "bun run scripts/crawl.ts",
-    "crawl:nodes": "bun run scripts/crawl-nodes.ts",
-    "crawl:schemas": "bun run scripts/crawl-output-schemas.ts"
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "keywords": [
     "elizaos",
     "plugin",
-    "n8n",
+    "p1p3s",
     "workflow",
     "automation",
-    "ai",
-    "natural-language"
+    "ai"
   ],
   "author": "Eliza Cloud Team",
   "license": "MIT",
@@ -70,21 +67,13 @@
     "url": "https://github.com/elizaos-plugins/plugin-workflow/issues"
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
-  "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*"
-  },
+  "peerDependencies": {},
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@elizaos/config": "^1.7.2",
-    "@eslint/js": "^10.0.0",
-    "@types/bun": "^1.3.7",
+    "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
-    "@typescript-eslint/eslint-plugin": "^8",
-    "@typescript-eslint/parser": "^8",
     "bun-types": "^1.3.8",
-    "eslint": "^10.0.0",
-    "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   },
   "publishConfig": {
@@ -92,21 +81,16 @@
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "WORKFLOW_API_KEY": {
-        "type": "string",
-        "description": "n8n API key for authentication"
-      },
-      "WORKFLOW_HOST": {
-        "type": "string",
-        "description": "n8n instance URL (e.g., https://your.n8n.cloud)"
-      }
-    }
+    "pluginParameters": {}
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/p1p3s": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"
   }
