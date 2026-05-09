@@ -35,7 +35,6 @@
 import type {
   GenerateTextParams,
   IAgentRuntime,
-  ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
   TextStreamResult,
@@ -48,7 +47,6 @@ const _globalThis = globalThis as typeof globalThis & {
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextEmbedding } from "./models/embedding";
-import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import {
   handleActionPlanner,
   handleResponseHandler,
@@ -190,19 +188,6 @@ export const ollamaPlugin: Plugin = {
       return handleActionPlanner(runtime, params);
     },
 
-    [ModelType.OBJECT_SMALL]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectSmall(runtime, params);
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectLarge(runtime, params);
-    },
   },
 
   tests: [
@@ -274,36 +259,44 @@ export const ollamaPlugin: Plugin = {
           },
         },
         {
-          name: "ollama_test_object_small",
+          name: "ollama_test_structured_output_via_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const runModel = runtime.useModel.bind(runtime);
-              const object = await runModel(ModelType.OBJECT_SMALL, {
+              const result = await runModel(ModelType.TEXT_SMALL, {
                 prompt:
                   "Generate a JSON object representing a user profile with name, age, and hobbies",
                 temperature: 0.7,
-                schema: undefined,
-              });
-              logger.log({ object }, "Generated object");
+                responseSchema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    age: { type: "number" },
+                    hobbies: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["name", "age", "hobbies"],
+                },
+              } as Parameters<typeof runModel>[1]);
+              logger.log({ result }, "Generated structured output via TEXT_SMALL");
             } catch (error) {
-              logger.error({ error }, "Error in test_object_small");
+              logger.error({ error }, "Error in test_structured_output_via_text_small");
             }
           },
         },
         {
-          name: "ollama_test_object_large",
+          name: "ollama_test_structured_output_via_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const runModel = runtime.useModel.bind(runtime);
-              const object = await runModel(ModelType.OBJECT_LARGE, {
+              const result = await runModel(ModelType.TEXT_LARGE, {
                 prompt:
                   "Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews",
                 temperature: 0.7,
-                schema: undefined,
-              });
-              logger.log({ object }, "Generated object");
+                responseSchema: { type: "object" },
+              } as Parameters<typeof runModel>[1]);
+              logger.log({ result }, "Generated structured output via TEXT_LARGE");
             } catch (error) {
-              logger.error({ error }, "Error in test_object_large");
+              logger.error({ error }, "Error in test_structured_output_via_text_large");
             }
           },
         },

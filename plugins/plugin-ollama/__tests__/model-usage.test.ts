@@ -115,7 +115,7 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     expect(tokens.total).toBeGreaterThanOrEqual(tokens.prompt + tokens.completion);
   }, 60_000);
 
-  it("records OBJECT_SMALL generation in active trajectories", async () => {
+  it("records structured-output generation via TEXT_LARGE in active trajectories", async () => {
     if (!serverReachable) return;
     const { default: plugin } = await import("../index");
 
@@ -134,18 +134,22 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     };
 
     await runWithTrajectoryContext({ trajectoryStepId: "step-ollama-live" }, async () => {
-      await plugin.models?.[ModelType.OBJECT_SMALL]?.(runtime as unknown as IAgentRuntime, {
+      await plugin.models?.[ModelType.TEXT_LARGE]?.(runtime as unknown as IAgentRuntime, {
         prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
-      });
+        responseSchema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+        },
+      } as never);
     });
 
     expect(llmCalls.length).toBeGreaterThanOrEqual(1);
     const call = llmCalls[0];
     expect(call).toMatchObject({
       stepId: "step-ollama-live",
-      actionType: "ai.generateObject",
     });
-    expect(typeof call.response).toBe("string");
+    expect(typeof call.actionType).toBe("string");
     expect((call.promptTokens as number) ?? 0).toBeGreaterThan(0);
   }, 60_000);
 
