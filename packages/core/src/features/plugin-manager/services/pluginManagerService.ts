@@ -93,7 +93,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 	private originalPlugins: ElizaPlugin[] = [];
 	private originalActions: Set<string> = new Set();
 	private originalProviders: Set<string> = new Set();
-	private originalEvaluators: Set<string> = new Set();
 	private originalServices: Set<string> = new Set();
 
 	// Component tracking
@@ -164,12 +163,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			}
 		}
 
-		if (this.runtime.evaluators) {
-			for (const evaluator of this.runtime.evaluators) {
-				this.originalEvaluators.add(evaluator.name);
-			}
-		}
-
 		if (this.runtime.services) {
 			for (const [serviceType] of this.runtime.services) {
 				this.originalServices.add(serviceType);
@@ -190,7 +183,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				components: {
 					actions: new Set(),
 					providers: new Set(),
-					evaluators: new Set(),
 					services: new Set(),
 					eventHandlers: new Map(),
 				},
@@ -204,11 +196,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			if (plugin.providers) {
 				for (const provider of plugin.providers) {
 					state.components?.providers.add(provider.name);
-				}
-			}
-			if (plugin.evaluators) {
-				for (const evaluator of plugin.evaluators) {
-					state.components?.evaluators.add(evaluator.name);
 				}
 			}
 			if (plugin.services) {
@@ -368,7 +355,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			components: {
 				actions: new Set(),
 				providers: new Set(),
-				evaluators: new Set(),
 				services: new Set(),
 				eventHandlers: new Map(),
 			},
@@ -421,18 +407,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					pluginState.id,
 					"provider",
 					provider.name,
-				);
-			}
-		}
-
-		if (plugin.evaluators) {
-			for (const evaluator of plugin.evaluators) {
-				await this.runtime.registerEvaluator(evaluator);
-				pluginState.components?.evaluators.add(evaluator.name);
-				this.trackComponentRegistration(
-					pluginState.id,
-					"evaluator",
-					evaluator.name,
 				);
 			}
 		}
@@ -513,21 +487,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						this.runtime.providers.splice(index, 1);
 						pluginState.components.providers.delete(provider.name);
 						logger.debug(`Unregistered provider: ${provider.name}`);
-					}
-				}
-			}
-		}
-
-		if (plugin.evaluators && this.runtime.evaluators) {
-			for (const evaluator of plugin.evaluators) {
-				if (!this.originalEvaluators.has(evaluator.name)) {
-					const index = this.runtime.evaluators.findIndex(
-						(e) => e.name === evaluator.name,
-					);
-					if (index !== -1) {
-						this.runtime.evaluators.splice(index, 1);
-						pluginState.components.evaluators.delete(evaluator.name);
-						logger.debug(`Unregistered evaluator: ${evaluator.name}`);
 					}
 				}
 			}
