@@ -2403,7 +2403,8 @@ main().catch((err) => {
 			"utf8",
 		);
 	} catch {}
-	void runShutdownCleanup("fatal-startup").finally(() => {
-		process.exit(1);
-	});
+	void runShutdownCleanup("fatal-startup").finally(shutdownAfterFatalError);
 });
+
+import { shutdownAfterFatalError } from "./fatal-shutdown";
+export { shutdownAfterFatalError };
