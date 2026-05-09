@@ -917,25 +917,6 @@ export async function withProviderStep<T>(
 	);
 }
 
-/**
- * Same as {@link withActionStep} but for evaluator dispatch.
- */
-export async function withEvaluatorStep<T>(
-	runtime: IAgentRuntime | null | undefined,
-	evaluatorName: string,
-	fn: () => Promise<T> | T,
-): Promise<T> {
-	return withChildTrajectoryStep(
-		runtime,
-		{
-			stepIdPrefix: "evaluator",
-			purpose: "evaluator",
-			actionName: evaluatorName,
-		},
-		fn,
-	);
-}
-
 export type SpawnTrajectoryHandle = {
 	/** The currently-active step id at spawn time, if any. */
 	parentStepId: string | undefined;
