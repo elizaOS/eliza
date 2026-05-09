@@ -1,0 +1,273 @@
+/**
+ * Unified local-inference backend interface and dispatcher.
+ *
+ * Two real implementations live behind this interface:
+ *
+ *   - `node-llama-cpp`  → in-process via the node-llama-cpp binding. Stock
+ *     GGUFs, no drafter, no MoE expert offload, no `--lookahead`. Fastest
+ *     to start, lowest IPC overhead, narrowest feature surface.
+ *   - `llama-server`    → out-of-process llama-server (the buun-llama-cpp
+ *     fork). Full optimization surface — DFlash, n-gram drafter, lookahead,
+ *     `-ot` MoE offload, TurboQuant KV cache, mlock/no-mmap/mmproj, etc.
+ *
+ * The dispatcher decides which one to use per-load based on:
+ *
+ *   1. `ELIZA_LOCAL_BACKEND=node-llama-cpp|llama-server|auto` — operator
+ *      override. `auto` (the default) hands the decision to the catalog.
+ *   2. Catalog `runtime.optimizations.requiresKernel` — if any specialised
+ *      llama-server kernel is required (e.g. `dflash`, `turbo3`), the
+ *      dispatcher MUST pick `llama-server`. The in-process binding cannot
+ *      provide these kernels at all.
+ *   3. Catalog `runtime.preferredBackend` — soft preference. We pick
+ *      `llama-server` when this is set AND the binary is available;
+ *      otherwise we fall back to `node-llama-cpp` unless DFlash is
+ *      explicitly required (`ELIZA_DFLASH_REQUIRED=1`).
+ *   4. Default: `node-llama-cpp` for stock GGUFs without runtime metadata.
+ *
+ * The dispatcher does NOT own the spawn body — `llama-server` and the
+ * node binding own that. It owns selection only, plus a small load-state
+ * cache so callers can swap models without touching either backend
+ * directly.
+ */
+
+import { findCatalogModel } from "./catalog";
+import type { CatalogModel, LocalRuntimeKernel } from "./types";
+
+export interface BackendPlan {
+  /** Absolute path to the GGUF on disk. */
+  modelPath: string;
+  /**
+   * Catalog model id, when known. The dispatcher uses this to pull
+   * `runtime.optimizations` and `runtime.dflash` — without it, we can
+   * only honour the env override and fall back to `node-llama-cpp`.
+   */
+  modelId?: string;
+  /** Catalog entry, when the caller already resolved it. */
+  catalog?: CatalogModel;
+}
+
+export interface GenerateArgs {
+  prompt: string;
+  stopSequences?: string[];
+  /** Upper bound on output tokens; defaults to 2048. */
+  maxTokens?: number;
+  /** 0..1; 0.7 default. */
+  temperature?: number;
+  /** Nucleus sampling; defaults to 0.9. */
+  topP?: number;
+}
+
+export type GenerateResult = string;
+
+export interface EmbedArgs {
+  input: string;
+}
+
+export interface EmbedResult {
+  embedding: number[];
+  tokens: number;
+}
+
+/**
+ * The backend contract every local-inference implementation satisfies.
+ *
+ * `available()` is a soft probe — it should NOT spawn anything; it just
+ * reports whether the backend can be used at all (e.g. is the binding
+ * loadable, is the binary on disk). Loading a specific model is `load()`.
+ */
+export interface LocalInferenceBackend {
+  /** Identifier — `"node-llama-cpp"` or `"llama-server"`. */
+  readonly id: "node-llama-cpp" | "llama-server";
+  available(): Promise<boolean>;
+  load(plan: BackendPlan): Promise<void>;
+  unload(): Promise<void>;
+  generate(args: GenerateArgs): Promise<GenerateResult>;
+  embed?(args: EmbedArgs): Promise<EmbedResult>;
+  hasLoadedModel(): boolean;
+  currentModelPath(): string | null;
+}
+
+export type BackendOverride = "auto" | "node-llama-cpp" | "llama-server";
+
+export function readBackendOverride(): BackendOverride {
+  const raw = process.env.ELIZA_LOCAL_BACKEND?.trim().toLowerCase();
+  if (raw === "node-llama-cpp" || raw === "llama-server" || raw === "auto") {
+    return raw;
+  }
+  return "auto";
+}
+
+export interface BackendDecision {
+  backend: "node-llama-cpp" | "llama-server";
+  /** Why this backend was chosen — for diagnostics and warnings. */
+  reason:
+    | "env-override"
+    | "kernel-required"
+    | "dflash-required"
+    | "preferred-backend"
+    | "default";
+  /** Required kernels declared by the catalog, when any. */
+  kernels: LocalRuntimeKernel[];
+}
+
+/**
+ * Pure decision function. Easy to unit-test without spawning anything.
+ *
+ * Inputs are deliberately explicit — the caller resolves the catalog entry,
+ * the binary availability, and the env override before calling us.
+ */
+export function decideBackend(input: {
+  override: BackendOverride;
+  catalog: CatalogModel | undefined;
+  llamaServerAvailable: boolean;
+  dflashRequired: boolean;
+}): BackendDecision {
+  const { override, catalog, llamaServerAvailable, dflashRequired } = input;
+  const optimizations = catalog?.runtime?.optimizations;
+  const kernels = optimizations?.requiresKernel ?? [];
+  const dflashConfigured = catalog?.runtime?.dflash;
+  const preferredBackend = catalog?.runtime?.preferredBackend;
+
+  if (override === "node-llama-cpp") {
+    if (kernels.length > 0 || dflashRequired) {
+      // The override conflicts with a hard requirement. Prefer the kernel
+      // requirement — silently honoring the override would silently break
+      // the model. Surface as a llama-server pick; the load itself will
+      // fail clearly if the binary really is missing.
+      return {
+        backend: "llama-server",
+        reason: "kernel-required",
+        kernels,
+      };
+    }
+    return { backend: "node-llama-cpp", reason: "env-override", kernels };
+  }
+  if (override === "llama-server") {
+    return { backend: "llama-server", reason: "env-override", kernels };
+  }
+
+  if (kernels.length > 0) {
+    return { backend: "llama-server", reason: "kernel-required", kernels };
+  }
+  if (dflashConfigured && dflashRequired) {
+    return {
+      backend: "llama-server",
+      reason: "dflash-required",
+      kernels,
+    };
+  }
+  if (preferredBackend === "llama-server" && llamaServerAvailable) {
+    return {
+      backend: "llama-server",
+      reason: "preferred-backend",
+      kernels,
+    };
+  }
+  if (preferredBackend === "node-llama-cpp") {
+    return { backend: "node-llama-cpp", reason: "preferred-backend", kernels };
+  }
+  return { backend: "node-llama-cpp", reason: "default", kernels };
+}
+
+/**
+ * Resolve the catalog entry for a `BackendPlan`. Plans may carry the entry
+ * already (when the caller has it on hand), reference it by id, or carry
+ * neither — in which case the dispatcher falls back to the default backend.
+ */
+export function resolveCatalogForPlan(
+  plan: BackendPlan,
+): CatalogModel | undefined {
+  if (plan.catalog) return plan.catalog;
+  if (plan.modelId) return findCatalogModel(plan.modelId);
+  return undefined;
+}
+
+/**
+ * Dispatcher that fronts both backends behind the `LocalInferenceBackend`
+ * contract. Holds at most one active backend at a time — load() unloads
+ * the previous backend before loading the new one if they differ.
+ */
+export class BackendDispatcher implements LocalInferenceBackend {
+  readonly id = "node-llama-cpp" as const;
+  // The dispatcher's `id` is informational; the active backend's id is what
+  // matters for diagnostics. We expose `activeBackendId()` for that.
+
+  private active: LocalInferenceBackend | null = null;
+
+  constructor(
+    private readonly nodeLlamaCpp: LocalInferenceBackend,
+    private readonly llamaServer: LocalInferenceBackend,
+    private readonly probeLlamaServerAvailable: () => boolean,
+    private readonly probeDflashRequired: () => boolean,
+  ) {}
+
+  async available(): Promise<boolean> {
+    const a = await this.nodeLlamaCpp.available();
+    if (a) return true;
+    return this.llamaServer.available();
+  }
+
+  activeBackendId(): "node-llama-cpp" | "llama-server" | null {
+    return this.active ? this.active.id : null;
+  }
+
+  hasLoadedModel(): boolean {
+    return this.active?.hasLoadedModel() ?? false;
+  }
+
+  currentModelPath(): string | null {
+    return this.active?.currentModelPath() ?? null;
+  }
+
+  decide(plan: BackendPlan): BackendDecision {
+    const catalog = resolveCatalogForPlan(plan);
+    return decideBackend({
+      override: readBackendOverride(),
+      catalog,
+      llamaServerAvailable: this.probeLlamaServerAvailable(),
+      dflashRequired: this.probeDflashRequired(),
+    });
+  }
+
+  async load(plan: BackendPlan): Promise<void> {
+    const decision = this.decide(plan);
+    const target =
+      decision.backend === "llama-server"
+        ? this.llamaServer
+        : this.nodeLlamaCpp;
+    if (this.active && this.active !== target) {
+      await this.active.unload();
+    }
+    this.active = target;
+    await target.load(plan);
+  }
+
+  async unload(): Promise<void> {
+    const active = this.active;
+    this.active = null;
+    if (active) await active.unload();
+  }
+
+  async generate(args: GenerateArgs): Promise<GenerateResult> {
+    if (!this.active) {
+      throw new Error(
+        "[local-inference] No backend loaded. Call load() before generate().",
+      );
+    }
+    return this.active.generate(args);
+  }
+
+  async embed(args: EmbedArgs): Promise<EmbedResult> {
+    if (!this.active) {
+      throw new Error(
+        "[local-inference] No backend loaded. Call load() before embed().",
+      );
+    }
+    if (!this.active.embed) {
+      throw new Error(
+        `[local-inference] Active backend (${this.active.id}) does not implement embed.`,
+      );
+    }
+    return this.active.embed(args);
+  }
+}
