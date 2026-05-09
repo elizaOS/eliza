@@ -6,8 +6,108 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "bun": {
+        "types": "./src/ui.ts",
+        "import": "./src/ui.ts",
+        "default": "./src/ui.ts"
+      },
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "bun": {
+        "types": "./src/plugin.ts",
+        "import": "./src/plugin.ts",
+        "default": "./src/plugin.ts"
+      },
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "bun": {
+        "types": "./src/register.ts",
+        "import": "./src/register.ts",
+        "default": "./src/register.ts"
+      },
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
+    "./inventory/ChainIcon": {
+      "types": "./dist/inventory/ChainIcon.d.ts",
+      "bun": {
+        "types": "./src/inventory/ChainIcon.tsx",
+        "import": "./src/inventory/ChainIcon.tsx",
+        "default": "./src/inventory/ChainIcon.tsx"
+      },
+      "import": "./dist/inventory/ChainIcon.js",
+      "default": "./dist/inventory/ChainIcon.js"
+    },
+    "./inventory/TokenLogo": {
+      "types": "./dist/inventory/TokenLogo.d.ts",
+      "bun": {
+        "types": "./src/inventory/TokenLogo.tsx",
+        "import": "./src/inventory/TokenLogo.tsx",
+        "default": "./src/inventory/TokenLogo.tsx"
+      },
+      "import": "./dist/inventory/TokenLogo.js",
+      "default": "./dist/inventory/TokenLogo.js"
+    },
+    "./widgets/wallet-status": {
+      "types": "./dist/widgets/wallet-status.d.ts",
+      "bun": {
+        "types": "./src/widgets/wallet-status.tsx",
+        "import": "./src/widgets/wallet-status.tsx",
+        "default": "./src/widgets/wallet-status.tsx"
+      },
+      "import": "./dist/widgets/wallet-status.js",
+      "default": "./dist/widgets/wallet-status.js"
+    },
+    "./wallet-rpc": {
+      "types": "./dist/wallet-rpc.d.ts",
+      "bun": {
+        "types": "./src/wallet-rpc.ts",
+        "import": "./src/wallet-rpc.ts",
+        "default": "./src/wallet-rpc.ts"
+      },
+      "import": "./dist/wallet-rpc.js",
+      "default": "./dist/wallet-rpc.js"
+    },
+    "./state/*": {
+      "types": "./dist/state/*.d.ts",
+      "bun": {
+        "types": "./src/state/*.ts",
+        "import": "./src/state/*.ts",
+        "default": "./src/state/*.ts"
+      },
+      "import": "./dist/state/*.js",
+      "default": "./dist/state/*.js"
+    },
+    "./inventory/*": {
+      "types": "./dist/inventory/*.d.ts",
+      "bun": {
+        "types": "./src/inventory/*.ts",
+        "import": "./src/inventory/*.ts",
+        "default": "./src/inventory/*.ts"
+      },
+      "import": "./dist/inventory/*.js",
+      "default": "./dist/inventory/*.js"
+    },
+    "./*": {
+      "types": "./dist/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
     }
   },
   "dependencies": {
