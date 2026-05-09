@@ -1,8 +1,9 @@
-export {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
+// CYCLE BREAK: re-exporting from @elizaos/agent here created an
+// agent ↔ shared cycle that broke node ESM resolution at the bench
+// server boot. Consumers should import these directly from
+// `@elizaos/agent` instead. Type-only forwarder kept so existing
+// `import type { ElizaConfig } from "@elizaos/shared"` still resolves.
+export type { ElizaConfig } from "@elizaos/agent";
 
 export interface LegacyCloudConfig {
   cloud?: { enabled?: boolean } | null;

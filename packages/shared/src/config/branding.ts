@@ -1,5 +1,3 @@
-import { createContext, useContext } from "react";
-
 /**
  * Custom provider that apps can inject into the onboarding flow.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.
@@ -63,11 +61,10 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   packageScope: "elizaos",
 };
 
-export const BrandingContext = createContext<BrandingConfig>(DEFAULT_BRANDING);
-
-export function useBranding(): BrandingConfig {
-  return useContext(BrandingContext);
-}
+// React-bound BrandingContext + useBranding live in
+// `./branding-react.tsx` so `@elizaos/shared` can be imported from
+// node-side benchmark / agent code without dragging React into the
+// runtime closure (the bench server fails to boot otherwise).
 
 /** Pass to `t(key, appNameInterpolationVars(branding))` when the string contains `{{appName}}`. */
 export function appNameInterpolationVars(branding: BrandingConfig): {
