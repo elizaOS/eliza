@@ -3,9 +3,8 @@
  */
 
 import { BabylonLLMClient } from "@babylon/engine";
-import type { LLMJsonSchema } from "@babylon/engine/llm/types";
-import { renderPrompt } from "@babylon/engine/prompts";
-import type { JsonValue } from "@babylon/engine/types/common";
+import type { JsonValue, LLMJsonSchema } from "@babylon/engine";
+import { renderPrompt } from "@babylon/engine";
 import type { LLMExecuteOptions, LLMOrchestrator } from "./types";
 
 export class DefaultLLMOrchestrator implements LLMOrchestrator {

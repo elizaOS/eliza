@@ -2,7 +2,7 @@
  * @babylon/sim — Standalone simulation engine with CLI, config, and auto-import scanning.
  */
 
-export type { PromptDefinition } from "@babylon/engine/prompts/define-prompt";
+export type { PromptDefinition } from "@babylon/engine";
 // Augmentation interfaces (declare module '@babylon/sim' { ... })
 export type {
   BabylonConfig,

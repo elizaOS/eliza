@@ -4,7 +4,7 @@
  */
 
 import type { DrizzleClient } from "@babylon/db";
-import type { PromptDefinition } from "@babylon/engine/prompts/define-prompt";
+import type { PromptDefinition } from "@babylon/engine";
 import type { Logger } from "@babylon/shared";
 import type {
   BabylonConfig,

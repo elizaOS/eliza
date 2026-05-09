@@ -1836,6 +1836,16 @@ function appendStage1PlanHints(
 	delete messageHandler.plan.reply;
 }
 
+function replaceStage1PlanContexts(
+	messageHandler: MessageHandlerResult,
+	contexts: readonly AgentContext[],
+): void {
+	messageHandler.plan.contexts = mergeAgentContexts([], contexts);
+	messageHandler.plan.requiresTool = true;
+	messageHandler.plan.simple = false;
+	delete messageHandler.plan.reply;
+}
+
 function repairStage1PlanForKnownToolRequests(args: {
 	message: Memory;
 	messageHandler: MessageHandlerResult;
@@ -1868,6 +1878,41 @@ function repairStage1PlanForKnownToolRequests(args: {
 			contexts,
 			candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
 			parentActionHints: ["MESSAGE"],
+		});
+	}
+
+	const explicitDocumentArtifactIntent =
+		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
+			lower,
+		);
+	const stablePreferenceIntent =
+		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
+			lower,
+		) ||
+		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
+			lower,
+		);
+	const travelPreferenceIntent =
+		stablePreferenceIntent &&
+		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
+			lower,
+		);
+	if (stablePreferenceIntent && !explicitDocumentArtifactIntent) {
+		const contexts = (["memory", "settings", "calendar"] as AgentContext[]).filter(
+			(context) => contextAvailableForRepair(context, args.availableContexts),
+		);
+		if (contexts.length > 0) {
+			replaceStage1PlanContexts(args.messageHandler, contexts);
+		}
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: travelPreferenceIntent
+				? [
+						"save_travel_preferences",
+						"store_travel_preferences",
+						"store_preference",
+					]
+				: ["store_preference", "save_owner_profile"],
+			parentActionHints: ["PROFILE"],
 		});
 	}
 

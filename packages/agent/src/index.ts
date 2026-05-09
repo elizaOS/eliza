@@ -147,6 +147,7 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.js";
+export * from "./runtime/operations/vault-bridge.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
 export * from "./triggers/runtime.js";

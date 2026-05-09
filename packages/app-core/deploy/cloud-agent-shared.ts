@@ -229,6 +229,11 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         .catch(() => null);
       if (sqlPlugin) plugins.push(sqlPlugin);
 
+      const workflowPlugin = await import("@elizaos/plugin-workflow")
+        .then((m) => m.default ?? m.workflowPlugin)
+        .catch(() => null);
+      if (workflowPlugin) plugins.push(workflowPlugin);
+
       const runtime = new AgentRuntimeCtor({ character, plugins });
       await runtime.initialize();
       const runtimeWithBridge = runtime as typeof runtime & {
