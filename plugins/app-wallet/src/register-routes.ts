@@ -8,10 +8,10 @@
 
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
-import { InventoryView } from "./InventoryView";
+import { InventoryView } from "./InventoryView.tsx";
 
 registerAppRoutePluginLoader("@elizaos/app-wallet", async () => {
-  const { walletAppPlugin } = await import("./plugin");
+  const { walletAppPlugin } = await import("./plugin.ts");
   return walletAppPlugin;
 });
 
@@ -27,7 +27,9 @@ registerAppShellPage({
 
 queueMicrotask(async () => {
   try {
-    const { WALLET_STATUS_WIDGET } = await import("./widgets/wallet-status");
+    const { WALLET_STATUS_WIDGET } = await import(
+      "./widgets/wallet-status.tsx"
+    );
     registerBuiltinWidgets([WALLET_STATUS_WIDGET]);
   } catch {
     // Widget registration is best-effort; route registration above is the critical path.

@@ -10,6 +10,56 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts.d.ts",
+      "bun": {
+        "types": "./src/contracts.ts",
+        "import": "./src/contracts.ts",
+        "default": "./src/contracts.ts"
+      },
+      "import": "./dist/contracts.js",
+      "default": "./dist/contracts.js"
+    },
+    "./packaging": {
+      "types": "./dist/packaging.d.ts",
+      "bun": {
+        "types": "./src/packaging.ts",
+        "import": "./src/packaging.ts",
+        "default": "./src/packaging.ts"
+      },
+      "import": "./dist/packaging.js",
+      "default": "./dist/packaging.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "bun": {
+        "types": "./src/plugin.ts",
+        "import": "./src/plugin.ts",
+        "default": "./src/plugin.ts"
+      },
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "bun": {
+        "types": "./src/schema.ts",
+        "import": "./src/schema.ts",
+        "default": "./src/schema.ts"
+      },
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
+    },
+    "./workspace": {
+      "types": "./dist/workspace/index.d.ts",
+      "bun": {
+        "types": "./src/workspace/index.ts",
+        "import": "./src/workspace/index.ts",
+        "default": "./src/workspace/index.ts"
+      },
+      "import": "./dist/workspace/index.js",
+      "default": "./dist/workspace/index.js"
     }
   },
   "scripts": {

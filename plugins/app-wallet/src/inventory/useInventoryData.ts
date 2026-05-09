@@ -5,20 +5,20 @@ import type {
   WalletConfigStatus,
   WalletNftsResponse,
 } from "@elizaos/shared";
-import { useMemo } from "react";
 import type { InventoryChainFilters } from "@elizaos/ui";
+import { useMemo } from "react";
 import {
   CHAIN_CONFIGS,
   type ChainKey,
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
-} from "./chainConfig";
-import { isBscChainName, type NftItem, type TokenRow } from "./constants";
+} from "./chainConfig.ts";
+import { isBscChainName, type NftItem, type TokenRow } from "./constants.ts";
 import {
   computeSingleChainFocus,
   matchesInventoryChainFilter,
   type PrimaryInventoryChainKey,
-} from "./inventory-chain-filters";
+} from "./inventory-chain-filters.ts";
 
 export interface InventoryDataInput {
   walletBalances: WalletBalancesResponse | null;
