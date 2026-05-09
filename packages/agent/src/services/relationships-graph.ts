@@ -70,19 +70,18 @@ export async function resolveRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  const service = runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsServiceWithGraph | null;
-  if (!service) {
+  const service = runtime.getService("relationships");
+  if (!service || typeof service !== "object") {
     return null;
   }
+  const graphService = service as RelationshipsServiceWithGraph;
 
-  if (typeof service.setGraphResolvers === "function") {
-    service.setGraphResolvers({
+  if (typeof graphService.setGraphResolvers === "function") {
+    graphService.setGraphResolvers({
       resolveOwnerEntityId: (rt) => resolveOwnerEntityId(rt),
       fetchConfiguredOwnerName: () => fetchConfiguredOwnerName(),
     });
   }
 
-  return service;
+  return graphService;
 }

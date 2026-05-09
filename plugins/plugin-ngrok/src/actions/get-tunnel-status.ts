@@ -8,7 +8,7 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import type { ITunnelService } from '@elizaos/plugin-tunnel';
+import { getTunnelService } from '@elizaos/plugin-tunnel';
 
 export const getTunnelStatusAction: Action = {
   name: 'GET_TUNNEL_STATUS',
@@ -16,20 +16,19 @@ export const getTunnelStatusAction: Action = {
   description:
     'Get the current status of the ngrok tunnel including URL, port, and uptime information. Supports action chaining by providing tunnel metadata for monitoring workflows, health checks, or conditional tunnel management.',
   validate: async (runtime: IAgentRuntime, _message: Memory) => {
-    const tunnelService = runtime.getService<ITunnelService>('tunnel');
-    return !!tunnelService;
+    return !!getTunnelService(runtime);
   },
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
       elizaLogger.info('Getting ngrok tunnel status...');
 
-      const tunnelService = runtime.getService<ITunnelService>('tunnel');
+      const tunnelService = getTunnelService(runtime);
       if (!tunnelService) {
         throw new Error('Tunnel service not found');
       }
@@ -63,17 +62,26 @@ export const getTunnelStatusAction: Action = {
           '❌ No active ngrok tunnel.\n\nTo start a tunnel, say "start ngrok tunnel on port [PORT]"';
       }
 
+      const startedAtIso = status.startedAt ? status.startedAt.toISOString() : null;
+
       if (callback) {
         await callback({
           text: responseText,
           metadata: {
-            ...response,
             action: 'tunnel_status',
+            uptime: response.uptime,
+            active: status.active,
+            url: status.url,
+            port: status.port,
+            startedAt: startedAtIso,
+            provider: status.provider,
+            backend: status.backend ?? null,
           },
         });
       }
 
       return {
+        success: true,
         text: responseText,
         values: {
           success: true,
@@ -86,35 +94,43 @@ export const getTunnelStatusAction: Action = {
         data: {
           action: 'GET_TUNNEL_STATUS',
           tunnelStatus: {
-            ...status,
+            active: status.active,
+            url: status.url,
+            port: status.port,
+            startedAt: startedAtIso,
+            provider: status.provider,
+            backend: status.backend ?? null,
             uptime: response.uptime,
             checkedAt: new Date().toISOString(),
           },
         },
       };
-    } catch (error: any) {
-      elizaLogger.error('Failed to get tunnel status:', error);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? (error.stack ?? null) : null;
+      elizaLogger.error(`Failed to get tunnel status: ${message}`);
 
       if (callback) {
         await callback({
-          text: `❌ Failed to get tunnel status: ${error.message}`,
+          text: `❌ Failed to get tunnel status: ${message}`,
           metadata: {
-            error: error.message,
+            error: message,
             action: 'tunnel_status_failed',
           },
         });
       }
 
       return {
-        text: `❌ Failed to get tunnel status: ${error.message}`,
+        success: false,
+        text: `❌ Failed to get tunnel status: ${message}`,
         values: {
           success: false,
-          error: error.message,
+          error: message,
         },
         data: {
           action: 'GET_TUNNEL_STATUS',
           errorType: 'status_check_failed',
-          errorDetails: error.stack,
+          errorDetails: stack,
         },
       };
     }

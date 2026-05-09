@@ -9,7 +9,7 @@ import {
   ModelType,
   type State,
 } from '@elizaos/core';
-import type { ITunnelService } from '@elizaos/plugin-tunnel';
+import { getTunnelService } from '@elizaos/plugin-tunnel';
 
 const startTunnelTemplate = `
 Respond with a JSON object containing the port number to start the ngrok tunnel on.
@@ -31,7 +31,7 @@ export const startTunnelAction: Action = {
   description:
     'Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.',
   validate: async (runtime: IAgentRuntime, _message: Memory) => {
-    const tunnelService = runtime.getService<ITunnelService>('tunnel');
+    const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {
       return false;
     }
@@ -48,10 +48,10 @@ export const startTunnelAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const tunnelService = runtime.getService<ITunnelService>('tunnel');
+    const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {
       elizaLogger.error('Tunnel service is not available');
       if (callback) {
@@ -60,6 +60,7 @@ export const startTunnelAction: Action = {
         });
       }
       return {
+        success: false,
         text: 'Tunnel service is not available. Please ensure the ngrok plugin is properly configured.',
         values: { success: false, error: 'service_unavailable' },
         data: { action: 'START_TUNNEL' },
@@ -74,6 +75,7 @@ export const startTunnelAction: Action = {
         });
       }
       return {
+        success: false,
         text: 'Tunnel is already active. Please stop the existing tunnel before starting a new one.',
         values: { success: false, error: 'tunnel_already_active' },
         data: { action: 'START_TUNNEL' },
@@ -83,14 +85,13 @@ export const startTunnelAction: Action = {
     elizaLogger.info('Starting ngrok tunnel...');
 
     try {
-      // Extract port from message
-      const context = {
-        userMessage: message.content.text,
-      };
+      // Extract port from message — inline the user message into the prompt
+      // (TEXT_SMALL no longer accepts a separate `context` param).
+      const userMessage = message.content.text ?? '';
+      const prompt = startTunnelTemplate.replace('{{userMessage}}', userMessage);
 
       const portResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: startTunnelTemplate,
-        context,
+        prompt,
         temperature: 0.3,
       });
 
@@ -132,46 +133,50 @@ export const startTunnelAction: Action = {
       }
 
       return {
+        success: true,
         text: responseText,
         values: {
           success: true,
-          tunnelUrl: url,
+          tunnelUrl: url ?? null,
           port,
           isActive: true,
         },
         data: {
           action: 'START_TUNNEL',
           tunnelMetadata: {
-            url,
+            url: url ?? null,
             port,
             startedAt: new Date().toISOString(),
             provider: 'ngrok',
           },
         },
       };
-    } catch (error: any) {
-      elizaLogger.error('Failed to start tunnel:', error);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? (error.stack ?? null) : null;
+      elizaLogger.error(`Failed to start tunnel: ${message}`);
 
       if (callback) {
         await callback({
-          text: `❌ Failed to start ngrok tunnel: ${error.message}\n\nPlease make sure ngrok is installed and configured properly.`,
+          text: `❌ Failed to start ngrok tunnel: ${message}\n\nPlease make sure ngrok is installed and configured properly.`,
           metadata: {
-            error: error.message,
+            error: message,
             action: 'tunnel_failed',
           },
         });
       }
 
       return {
-        text: `❌ Failed to start ngrok tunnel: ${error.message}\n\nPlease make sure ngrok is installed and configured properly.`,
+        success: false,
+        text: `❌ Failed to start ngrok tunnel: ${message}\n\nPlease make sure ngrok is installed and configured properly.`,
         values: {
           success: false,
-          error: error.message,
+          error: message,
         },
         data: {
           action: 'START_TUNNEL',
           errorType: 'tunnel_start_failed',
-          errorDetails: error.stack,
+          errorDetails: stack,
         },
       };
     }

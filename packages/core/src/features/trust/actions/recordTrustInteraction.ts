@@ -8,6 +8,7 @@ import type {
 } from "../../../types/index.ts";
 import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
+import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import { TrustEvidenceType, type TrustInteraction } from "../types/trust.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";
 
@@ -76,11 +77,10 @@ export const recordTrustInteractionAction: ElizaAction = {
 	},
 
 	handler: async (runtime: IAgentRuntime, message: Memory, _state, options) => {
-		const trustEngine = runtime.getService("trust-engine") as unknown as {
-			recordInteraction: (interaction: TrustInteraction) => Promise<void>;
-		} | null;
+		const trustEngineService =
+			runtime.getService<TrustEngineServiceWrapper>("trust-engine");
 
-		if (!trustEngine) {
+		if (!trustEngineService) {
 			throw new Error("Trust engine service not available");
 		}
 
@@ -157,7 +157,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 		};
 
 		try {
-			await trustEngine.recordInteraction(interaction);
+		await trustEngineService.trustEngine.recordInteraction(interaction);
 
 			logger.info(
 				{

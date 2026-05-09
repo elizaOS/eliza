@@ -162,6 +162,29 @@ const PayloadSchema = z.object({
   logs: LooseRecordArray,
 });
 
+type ValidatedAgentExportPayload = z.infer<typeof PayloadSchema>;
+
+function toAgentExportPayload(
+  payload: ValidatedAgentExportPayload,
+): AgentExportPayload {
+  return {
+    version: payload.version,
+    exportedAt: payload.exportedAt,
+    sourceAgentId: payload.sourceAgentId,
+    agent: payload.agent as Partial<Agent>,
+    characterConfig: payload.characterConfig,
+    entities: payload.entities as Entity[],
+    memories: payload.memories as Memory[],
+    components: payload.components as Component[],
+    rooms: payload.rooms as Room[],
+    participants: payload.participants,
+    relationships: payload.relationships as Relationship[],
+    worlds: payload.worlds as World[],
+    tasks: payload.tasks as Task[],
+    logs: payload.logs as Log[],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Crypto helpers
 // ---------------------------------------------------------------------------
@@ -914,7 +937,7 @@ export async function importAgent(
     );
   }
 
-  const payload = parseResult.data as unknown as AgentExportPayload;
+  const payload = toAgentExportPayload(parseResult.data);
 
   if (payload.version > EXPORT_VERSION) {
     throw new AgentExportError(

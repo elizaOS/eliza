@@ -45,7 +45,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}): IAgentRunti
   const settings = options.settings || {};
   const cache: Record<string, unknown> = options.cache || {};
 
-  return {
+  const runtime = {
     agentId: options.agentId || 'agent-001',
     getService: mock((type: string) => services[type] || null),
     getSetting: mock((key: string) => settings[key] ?? null),
@@ -59,7 +59,9 @@ export function createMockRuntime(options: MockRuntimeOptions = {}): IAgentRunti
       delete cache[key];
       return Promise.resolve(true);
     }),
-  } as unknown as IAgentRuntime;
+  } satisfies Partial<IAgentRuntime>;
+
+  return runtime as IAgentRuntime;
 }
 
 export function createMockMessage(overrides?: Partial<Memory>): Memory {

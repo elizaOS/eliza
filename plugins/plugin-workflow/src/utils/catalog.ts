@@ -195,7 +195,7 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
     });
   }
 
-  return slim as unknown as NodeProperty;
+  return slim as NodeProperty;
 }
 
 /**

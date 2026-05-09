@@ -61,6 +61,23 @@ export type ElizaPluginConfig = {
   agentId?: string;
 };
 
+type AgentSkillsService = {
+  getLoadedSkills: () => Array<{
+    slug: string;
+    name: string;
+    description: string;
+  }>;
+};
+
+function isAgentSkillsService(value: unknown): value is AgentSkillsService {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { getLoadedSkills?: unknown }).getLoadedSkills ===
+      "function"
+  );
+}
+
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
     config?.workspaceDir ?? resolveDefaultAgentWorkspaceDir();
@@ -107,18 +124,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // after this init() returns.
       const registerSkillsAsCommands = () => {
         try {
-          const skillsService = runtime.getService(
-            "AGENT_SKILLS_SERVICE",
-          ) as unknown as
-            | {
-                getLoadedSkills: () => Array<{
-                  slug: string;
-                  name: string;
-                  description: string;
-                }>;
-              }
-            | undefined;
-          if (!skillsService) return false;
+          const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
+          if (!isAgentSkillsService(skillsService)) return false;
 
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;

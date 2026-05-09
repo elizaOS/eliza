@@ -1826,7 +1826,7 @@ export class IMessageService extends Service implements IIMessageService {
       createTask?: (task: Record<string, unknown>) => Promise<unknown>;
       getTasksByName?: (name: string) => Promise<unknown[]>;
     };
-    const taskRuntime = this.runtime as TaskCapableRuntime;
+    const taskRuntime = this.runtime as unknown as TaskCapableRuntime;
 
     if (typeof taskRuntime.registerTaskWorker !== "function") {
       logger.debug("[imessage][heartbeat] runtime does not support registerTaskWorker — skipping");

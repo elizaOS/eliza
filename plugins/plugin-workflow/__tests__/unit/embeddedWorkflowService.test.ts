@@ -14,13 +14,15 @@ function runtime(
   services: Record<string, unknown> = {},
   db?: unknown
 ) {
-  return {
+  const mockRuntime = {
     agentId: 'agent-test',
     character: { settings: {} },
     db,
     getSetting: (key: string) => settings[key] ?? null,
     getService: (type: string) => services[type] ?? null,
-  } as unknown as IAgentRuntime;
+  } satisfies Partial<IAgentRuntime> & { db?: unknown };
+
+  return mockRuntime as IAgentRuntime;
 }
 
 async function persistentRuntime(

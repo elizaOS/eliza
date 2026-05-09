@@ -18,6 +18,7 @@ import {
 import {
 	type Channel,
 	ChannelType as DiscordChannelType,
+	type Client as DiscordClient,
 	type Guild,
 	type GuildMember,
 	type Interaction,
@@ -59,7 +60,7 @@ export interface InteractionServiceInternals {
 	resolveDiscordEntityId(userId: string): UUID;
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	registerSlashCommands(commands: DiscordSlashCommand[]): Promise<void>;
-	refreshOwnerDiscordUserIds(client: unknown): Promise<void>;
+	refreshOwnerDiscordUserIds(client: DiscordClient): Promise<void>;
 }
 
 /**
@@ -636,7 +637,7 @@ export async function buildStandardizedUsers(
  */
 export async function onReady(
 	service: InteractionServiceInternals,
-	readyClient: any,
+	readyClient: DiscordClient<true>,
 ): Promise<void> {
 	const accountId = service.accountId ?? "default";
 	service.runtime.logger.success(

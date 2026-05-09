@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+import {
+  type IAgentRuntime,
+  logger,
+  Service,
+  type Task,
+  type UUID,
+} from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -19,6 +25,22 @@ import type {
 import { WorkflowApiError } from '../types/index';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
+
+/** TaskWorker name for scheduled workflow runs. Tasks created with this name
+ *  carry metadata.workflowId + metadata.kind = 'workflow' and get fired by
+ *  the core TaskService on the configured updateInterval. */
+export const WORKFLOW_RUN_TASK_WORKER_NAME = 'workflow.run';
+
+/** TaskWorker name for one-shot webhook-triggered workflow runs. A future
+ *  webhook trigger provider creates a one-shot Task pointing at this worker;
+ *  payload travels in metadata.payload. */
+export const WORKFLOW_WEBHOOK_TASK_WORKER_NAME = 'workflow.webhook';
+
+/** Discriminator on TaskMetadata so the UI can route workflow tasks. */
+export const WORKFLOW_TASK_KIND = 'workflow';
+
+/** Stable tag used on every workflow-backed Task so we can list+delete them. */
+const WORKFLOW_TASK_TAG = 'workflow';
 
 type WorkflowExecuteMode = WorkflowExecution['mode'];
 
@@ -66,11 +88,6 @@ interface StoredWorkflowRow {
   createdAt: string;
   updatedAt: string;
   versionId: string;
-}
-
-interface ScheduleHandle {
-  workflowId: string;
-  timer: ReturnType<typeof setInterval>;
 }
 
 interface ExecuteOptions {
@@ -207,7 +224,10 @@ function normalizeExecutionItem(
   pairedItem?: INodeExecutionData['pairedItem']
 ): INodeExecutionData {
   if (isRecord(item) && 'json' in item) {
-    return item as unknown as INodeExecutionData;
+    return {
+      json: item.json as INodeExecutionData['json'],
+      ...(item.pairedItem ? { pairedItem: item.pairedItem as INodeExecutionData['pairedItem'] } : {}),
+    };
   }
   return {
     json: (isRecord(item) ? item : { value: item }) as INodeExecutionData['json'],
@@ -845,11 +865,8 @@ function createMergeNode(): INodeType {
       ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-      const getInput = this.getInputData as unknown as (
-        inputIndex?: number
-      ) => INodeExecutionData[];
-      const first = getInput(0) ?? [];
-      const second = getInput(1) ?? [];
+      const first = this.getInputData(0) ?? [];
+      const second = this.getInputData(1) ?? [];
       return [[...first, ...second]];
     },
   };
@@ -1150,7 +1167,6 @@ export class EmbeddedWorkflowService extends Service {
   override capabilityDescription =
     'Feature-flagged embedded workflow runtime for local plugin-owned workflow execution.';
 
-  private readonly scheduleHandles = new Map<string, ScheduleHandle[]>();
   private readonly nodeTypes = new EmbeddedNodeTypes();
   private schemaReady: Promise<void> | null = null;
 
@@ -1160,6 +1176,7 @@ export class EmbeddedWorkflowService extends Service {
       { src: 'plugin:workflow:embedded' },
       'Embedded workflow service registered (lazy runtime load)'
     );
+    service.registerTaskWorkers();
     if (runtime.db) {
       await service.ensureSchema();
       await service.rehydrateSchedules();
@@ -1168,8 +1185,51 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   override async stop(): Promise<void> {
-    for (const workflowId of this.scheduleHandles.keys()) {
-      this.clearSchedules(workflowId);
+    // Scheduling lives in core's TaskService. Tasks persist across restart;
+    // there is nothing in-process to tear down here.
+  }
+
+  /** Register the workflow.run + workflow.webhook task workers with the
+   *  runtime's TaskService. Idempotent — safe to call once per service start. */
+  private registerTaskWorkers(): void {
+    if (typeof this.runtime.registerTaskWorker !== 'function') return;
+
+    if (!this.runtime.getTaskWorker?.(WORKFLOW_RUN_TASK_WORKER_NAME)) {
+      this.runtime.registerTaskWorker({
+        name: WORKFLOW_RUN_TASK_WORKER_NAME,
+        execute: async (_rt, _opts, task: Task) => {
+          const workflowId =
+            typeof task.metadata?.workflowId === 'string'
+              ? task.metadata.workflowId
+              : null;
+          if (!workflowId) {
+            throw new Error(
+              `${WORKFLOW_RUN_TASK_WORKER_NAME} task ${task.id ?? '?'} missing metadata.workflowId`
+            );
+          }
+          await this.executeWorkflow(workflowId, { mode: 'trigger' });
+          return undefined;
+        },
+      });
+    }
+
+    if (!this.runtime.getTaskWorker?.(WORKFLOW_WEBHOOK_TASK_WORKER_NAME)) {
+      this.runtime.registerTaskWorker({
+        name: WORKFLOW_WEBHOOK_TASK_WORKER_NAME,
+        execute: async (_rt, _opts, task: Task) => {
+          const meta = task.metadata as Record<string, unknown> | undefined;
+          const path = typeof meta?.path === 'string' ? meta.path : null;
+          const method = typeof meta?.method === 'string' ? meta.method : 'POST';
+          const payload = isRecord(meta?.payload) ? meta.payload : {};
+          if (!path) {
+            throw new Error(
+              `${WORKFLOW_WEBHOOK_TASK_WORKER_NAME} task ${task.id ?? '?'} missing metadata.path`
+            );
+          }
+          await this.executeWebhook(path, payload, method);
+          return undefined;
+        },
+      });
     }
   }
 
@@ -1601,12 +1661,24 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   async triggerSchedulesOnce(workflowId?: string): Promise<WorkflowExecution[]> {
-    const targets = workflowId ? [workflowId] : [...this.scheduleHandles.keys()];
+    // Fire scheduled workflows once on demand (used by tests / debug). Reads
+    // active workflows directly from the DB rather than from in-process state
+    // because scheduling state now lives in core's task table.
     const executions: WorkflowExecution[] = [];
-    for (const id of targets) {
-      const entry = await this.getStoredWorkflow(id);
-      if (!entry.workflow.active) continue;
+    if (workflowId) {
+      const entry = await this.getStoredWorkflow(workflowId);
+      if (!entry.workflow.active) return executions;
       executions.push(await this.runWorkflow(entry.workflow, 'trigger'));
+      return executions;
+    }
+    await this.ensureSchema();
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedWorkflows)
+      .where(eq(embeddedWorkflows.active, true));
+    for (const row of rows) {
+      const wf = cloneJson(row.workflow);
+      executions.push(await this.runWorkflow(wf, 'trigger'));
     }
     return executions;
   }
@@ -1640,6 +1712,10 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
+  /** Re-create core Tasks for every active workflow on service start.
+   *  Tasks themselves persist across restart; this is a reconcile step that
+   *  ensures workflows whose schedule changed (or whose tasks were never
+   *  created in the first place) end up correctly scheduled. */
   private async rehydrateSchedules(): Promise<void> {
     await this.ensureSchema();
     const rows = await this.getDb()
@@ -1651,45 +1727,53 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
+  /** Create one recurring core Task per scheduleTrigger node on the workflow.
+   *  Idempotent: existing tasks for this workflow are removed first so the
+   *  task set always reflects the current workflow definition. */
   private async armSchedules(workflowId: string): Promise<void> {
-    this.clearSchedules(workflowId);
+    await this.clearSchedules(workflowId);
+    if (typeof this.runtime.createTask !== 'function') return;
     const entry = await this.getStoredWorkflow(workflowId);
     const scheduleNodes = entry.workflow.nodes.filter(
       (node) => !node.disabled && node.type === 'workflows-nodes-base.scheduleTrigger'
     );
     if (scheduleNodes.length === 0) return;
 
-    const handles: ScheduleHandle[] = [];
     for (const node of scheduleNodes) {
       const intervalMs = resolveScheduleIntervalMs(node.parameters);
-      const timer = setInterval(() => {
-        void (async () => {
-          const latest = await this.getStoredWorkflow(workflowId);
-          if (latest.workflow.active) {
-            await this.runWorkflow(latest.workflow, 'trigger');
-          }
-        })().catch((error: unknown) => {
-          logger.warn(
-            { src: 'plugin:workflow:embedded' },
-            `Scheduled workflow ${workflowId} failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        });
-      }, intervalMs);
-      timer.unref?.();
-      handles.push({ workflowId, timer });
+      await this.runtime.createTask({
+        name: WORKFLOW_RUN_TASK_WORKER_NAME,
+        description: `Scheduled workflow run: ${entry.workflow.name}`,
+        tags: ['queue', 'repeat', WORKFLOW_TASK_TAG],
+        metadata: {
+          kind: WORKFLOW_TASK_KIND,
+          workflowId,
+          scheduleNodeId: node.id,
+          updateInterval: intervalMs,
+          baseInterval: intervalMs,
+          updatedAt: Date.now(),
+        },
+      });
     }
-    this.scheduleHandles.set(workflowId, handles);
   }
 
-  private clearSchedules(workflowId: string): void {
-    const handles = this.scheduleHandles.get(workflowId);
-    if (!handles) return;
-    for (const handle of handles) {
-      clearInterval(handle.timer);
+  /** Remove every core Task tagged for this workflow. */
+  private async clearSchedules(workflowId: string): Promise<void> {
+    if (typeof this.runtime.getTasks !== 'function') return;
+    const tasks = await this.runtime.getTasks({
+      tags: [WORKFLOW_TASK_TAG],
+      agentIds: [this.runtime.agentId],
+    });
+    if (!tasks?.length) return;
+    for (const task of tasks) {
+      if (
+        task.id &&
+        (task.metadata as Record<string, unknown> | undefined)?.workflowId ===
+          workflowId
+      ) {
+        await this.runtime.deleteTask(task.id as UUID);
+      }
     }
-    this.scheduleHandles.delete(workflowId);
   }
 
   private async saveExecution(execution: WorkflowExecution): Promise<void> {

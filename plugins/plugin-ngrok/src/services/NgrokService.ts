@@ -8,10 +8,11 @@ interface TunnelConfig {
   subdomain?: string;
 }
 
-/** Coerce runtime.getSetting() (string | number | true | undefined) to string. */
-function settingString(value: string | number | true | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (value === true) return 'true';
+/** Coerce runtime.getSetting() (string | number | boolean | null) to string. */
+function settingString(
+  value: string | number | boolean | null | undefined
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
   return String(value);
 }
 

@@ -36,13 +36,13 @@ export const ngrokEnvSchema = z.object({
 export type NgrokConfig = z.infer<typeof ngrokEnvSchema>;
 
 /**
- * Coerce a runtime setting (which may be string | number | true | undefined) to
- * a string suitable for schema parsing. `true` and numeric values are stringified;
- * `undefined` is returned as `undefined` so optional schema fields work.
+ * Coerce a runtime setting (string | number | boolean | null) to a string suitable
+ * for schema parsing. Null/undefined return undefined so optional schema fields work.
  */
-function settingToString(value: string | number | true | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (value === true) return 'true';
+function settingToString(
+  value: string | number | boolean | null | undefined
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
   return String(value);
 }
 
@@ -64,7 +64,7 @@ export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<Ngrok
         process.env.NGROK_TUNNEL_PORT,
     };
 
-    elizaLogger.debug('Parsing configuration with schema', config);
+    elizaLogger.debug({ config }, 'Parsing configuration with schema');
     const validated = ngrokEnvSchema.parse(config);
     elizaLogger.debug('Configuration validated successfully');
     return validated;
@@ -73,7 +73,7 @@ export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<Ngrok
       const errorMessages = error.issues
         .map((e) => `${e.path.join('.')}: ${e.message}`)
         .join('\n');
-      elizaLogger.error('Configuration validation failed:', errorMessages);
+      elizaLogger.error(`Configuration validation failed: ${errorMessages}`);
       throw new Error(`Ngrok configuration validation failed:\n${errorMessages}`);
     }
     throw error;

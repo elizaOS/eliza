@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
 import { NONEXISTENT_UUID } from "../helpers/test-data";
+
+type ContainersResponse =
+  | {
+      data?: unknown[];
+      containers?: unknown[];
+    }
+  | unknown[];
 
 /**
  * Agents API E2E Tests
@@ -75,8 +83,8 @@ describe("Containers API", () => {
       authenticated: true,
     });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
-    const containers = body.data || body.containers || body;
+    const body = await readJson<ContainersResponse>(response);
+    const containers = Array.isArray(body) ? body : (body.data ?? body.containers ?? []);
     expect(Array.isArray(containers)).toBe(true);
   });
 

@@ -124,7 +124,39 @@ function normalizeViewerConfig(value: unknown): AppViewerConfig | null {
   if (!isRecord(value) || typeof value.url !== "string") {
     return null;
   }
-  return value as unknown as AppViewerConfig;
+  return {
+    url: value.url,
+    ...(isRecord(value.embedParams) &&
+    Object.values(value.embedParams).every((entry) => typeof entry === "string")
+      ? { embedParams: value.embedParams as Record<string, string> }
+      : {}),
+    ...(typeof value.postMessageAuth === "boolean"
+      ? { postMessageAuth: value.postMessageAuth }
+      : {}),
+    ...(typeof value.sandbox === "string" ? { sandbox: value.sandbox } : {}),
+    ...(isRecord(value.authMessage) && typeof value.authMessage.type === "string"
+      ? {
+          authMessage: {
+            type: value.authMessage.type,
+            ...(typeof value.authMessage.authToken === "string"
+              ? { authToken: value.authMessage.authToken }
+              : {}),
+            ...(typeof value.authMessage.characterId === "string"
+              ? { characterId: value.authMessage.characterId }
+              : {}),
+            ...(typeof value.authMessage.sessionToken === "string"
+              ? { sessionToken: value.authMessage.sessionToken }
+              : {}),
+            ...(typeof value.authMessage.agentId === "string"
+              ? { agentId: value.authMessage.agentId }
+              : {}),
+            ...(typeof value.authMessage.followEntity === "string"
+              ? { followEntity: value.authMessage.followEntity }
+              : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 function normalizeSessionState(value: unknown): AppSessionState | null {
@@ -137,7 +169,62 @@ function normalizeSessionState(value: unknown): AppSessionState | null {
   ) {
     return null;
   }
-  return value as unknown as AppSessionState;
+  return {
+    sessionId: value.sessionId,
+    appName: value.appName,
+    mode:
+      value.mode === "viewer" ||
+      value.mode === "spectate-and-steer" ||
+      value.mode === "external"
+        ? value.mode
+        : "external",
+    status: value.status,
+    ...(typeof value.displayName === "string"
+      ? { displayName: value.displayName }
+      : {}),
+    ...(typeof value.agentId === "string" ? { agentId: value.agentId } : {}),
+    ...(typeof value.characterId === "string"
+      ? { characterId: value.characterId }
+      : {}),
+    ...(typeof value.followEntity === "string"
+      ? { followEntity: value.followEntity }
+      : {}),
+    ...(typeof value.canSendCommands === "boolean"
+      ? { canSendCommands: value.canSendCommands }
+      : {}),
+    ...(Array.isArray(value.controls)
+      ? {
+          controls: value.controls.filter(
+            (control): control is "pause" | "resume" =>
+              control === "pause" || control === "resume",
+          ),
+        }
+      : {}),
+    ...(typeof value.summary === "string" || value.summary === null
+      ? { summary: value.summary }
+      : {}),
+    ...(typeof value.goalLabel === "string" || value.goalLabel === null
+      ? { goalLabel: value.goalLabel }
+      : {}),
+    ...(Array.isArray(value.suggestedPrompts)
+      ? {
+          suggestedPrompts: value.suggestedPrompts.filter(
+            (prompt): prompt is string => typeof prompt === "string",
+          ),
+        }
+      : {}),
+    ...(isRecord(value.telemetry) || value.telemetry === null
+      ? {
+          telemetry:
+            value.telemetry === null
+              ? null
+              : (normalizeSessionJsonValue(value.telemetry) as Record<
+                  string,
+                  AppSessionJsonValue
+                >),
+        }
+      : {}),
+  };
 }
 
 function normalizeSessionJsonValue(value: unknown): AppSessionJsonValue | null {

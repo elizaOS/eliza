@@ -1,26 +1,35 @@
-import type http from "node:http";
+import * as http from "node:http";
+import { Socket } from "node:net";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyCors,
   CORS_ALLOWED_HEADERS,
 } from "../../src/api/server-helpers-auth";
 
-class HeaderCapture {
+class HeaderCapture extends http.ServerResponse {
   readonly headers = new Map<string, string | number | readonly string[]>();
 
-  setHeader(name: string, value: string | number | readonly string[]) {
+  constructor() {
+    super(new http.IncomingMessage(new Socket()));
+  }
+
+  override setHeader(name: string, value: string | number | readonly string[]) {
+    super.setHeader(name, value);
     this.headers.set(name, value);
     return this;
   }
 }
 
+class RequestWithOrigin extends http.IncomingMessage {
+  constructor(origin: string) {
+    super(new Socket());
+    this.headers.host = "127.0.0.1:31337";
+    this.headers.origin = origin;
+  }
+}
+
 function requestWithOrigin(origin: string): http.IncomingMessage {
-  return {
-    headers: {
-      host: "127.0.0.1:31337",
-      origin,
-    },
-  } as http.IncomingMessage;
+  return new RequestWithOrigin(origin);
 }
 
 describe("applyCors", () => {
@@ -33,13 +42,9 @@ describe("applyCors", () => {
   it("allows app-core client headers used by Capacitor WebViews", () => {
     const res = new HeaderCapture();
 
-    expect(
-      applyCors(
-        requestWithOrigin("https://localhost"),
-        res as unknown as http.ServerResponse,
-        "/api/status",
-      ),
-    ).toBe(true);
+    expect(applyCors(requestWithOrigin("https://localhost"), res, "/api/status")).toBe(
+      true,
+    );
 
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://localhost",
