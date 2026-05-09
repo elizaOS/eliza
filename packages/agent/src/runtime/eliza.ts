@@ -271,22 +271,26 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   }
 };
 
-let pluginAgentOrchestrator: unknown = await loadOptionalPlugin(
+const pluginAgentOrchestrator: unknown = await loadOptionalPlugin(
   "@elizaos/plugin-agent-orchestrator",
 );
-let pluginShell: unknown = await loadOptionalPlugin("@elizaos/plugin-shell");
-let pluginCommands: unknown = await loadOptionalPlugin(
+const pluginShell: unknown = await loadOptionalPlugin("@elizaos/plugin-shell");
+const pluginCommands: unknown = await loadOptionalPlugin(
   "@elizaos/plugin-commands",
 );
-let pluginVideo: unknown = await loadOptionalPlugin("@elizaos/plugin-video");
-let pluginElizacloud: unknown = await loadOptionalPlugin(
+const pluginVideo: unknown = await loadOptionalPlugin("@elizaos/plugin-video");
+const pluginElizacloud: unknown = await loadOptionalPlugin(
   "@elizaos/plugin-elizacloud",
 );
-let pluginOllama: unknown = await loadOptionalPlugin("@elizaos/plugin-ollama");
-let pluginAnthropic: unknown = await loadOptionalPlugin(
+const pluginOllama: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-ollama",
+);
+const pluginAnthropic: unknown = await loadOptionalPlugin(
   "@elizaos/plugin-anthropic",
 );
-let pluginOpenai: unknown = await loadOptionalPlugin("@elizaos/plugin-openai");
+const pluginOpenai: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-openai",
+);
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
 type SignalShutdownContext = {

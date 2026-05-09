@@ -19,22 +19,9 @@ export * from "./character";
 export * from "./character-utils";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
+export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/privacy";
-export {
-	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-	type DeploymentTargetConfig,
-	type LinkedAccountFlagsConfig,
-	type ServiceCapability,
-	type ServiceRoutingConfig,
-} from "./contracts/service-routing";
-export {
-	isCloudInferenceSelectedInConfig,
-	migrateLegacyRuntimeConfig,
-	type StylePreset,
-} from "./contracts/onboarding";
-export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 // Export additional constants not re-exported by character-utils
 export {
 	CANONICAL_SECRET_KEYS,
@@ -48,6 +35,20 @@ export {
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
 } from "./constants";
+export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
+export {
+	isCloudInferenceSelectedInConfig,
+	migrateLegacyRuntimeConfig,
+	type StylePreset,
+} from "./contracts/onboarding";
+export {
+	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+	type DeploymentTargetConfig,
+	type LinkedAccountFlagsConfig,
+	type ServiceCapability,
+	type ServiceRoutingConfig,
+} from "./contracts/service-routing";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";

@@ -5,13 +5,7 @@ import type { Evaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
-import type { UUID } from "./primitives";
-import type {
-	JsonValue,
-	ComponentTypeDefinition as ProtoComponentTypeDefinition,
-	JSONSchemaDefinition as ProtoJSONSchemaDefinition,
-	RouteManifest as ProtoRouteManifest,
-} from "./proto.js";
+import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { TestSuite } from "./testing";
@@ -134,13 +128,20 @@ export type PaymentEnabledRoute = Route;
 /**
  * JSON Schema type definition for component validation
  */
-export type JSONSchemaDefinition = ProtoJSONSchemaDefinition;
+export interface JSONSchemaDefinition {
+	type: string;
+	properties?: { [key: string]: JSONSchemaDefinition };
+	items?: JSONSchemaDefinition;
+	required?: string[];
+	enumValues?: string[];
+	description?: string;
+}
 
 /**
  * Component type definition for entity components
  */
-export interface ComponentTypeDefinition
-	extends Omit<ProtoComponentTypeDefinition, "schema"> {
+export interface ComponentTypeDefinition {
+	name: string;
 	schema: JSONSchemaDefinition;
 	validator?: (data: Record<string, RouteBodyValue>) => boolean;
 }
@@ -580,4 +581,14 @@ export interface Project {
 	agents: ProjectAgent[];
 }
 
-export type RouteManifest = ProtoRouteManifest;
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+
+export interface RouteManifest {
+	method: HttpMethod;
+	path: string;
+	name?: string;
+	public?: boolean;
+	isMultipart?: boolean;
+	filePath?: string;
+	x402?: X402Config;
+}

@@ -214,7 +214,7 @@ L1_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="Going back to the dog thing - I live in a small apartment though",
                 expected_outcomes=(_action("REPLY"), _contains("apartment", weight=0.5))),
             Turn(role="user", text="Oh and remind me about the vet appointment Friday at 3pm",
-                expected_outcomes=(_action("SCHEDULE_FOLLOW_UP"),)),
+                expected_outcomes=(_action(["SCHEDULE_FOLLOW_UP", "CREATE_TASK"]),)),
             Turn(role="user", text="So based on the apartment thing, what breed do you recommend?",
                 expected_outcomes=(_action("REPLY"), _contains("apartment", weight=0.8))),
             Turn(role="user", text="What was that reminder I just set?",

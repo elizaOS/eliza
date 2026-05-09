@@ -5,14 +5,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { Memory } from "./memory";
-import type { Content } from "./primitives";
-import type {
-	JsonValue,
-	ActionExample as ProtoActionExample,
-	ActionParameter as ProtoActionParameter,
-	ActionParameterSchema as ProtoActionParameterSchema,
-	ActionParameters as ProtoActionParametersType,
-} from "./proto.js";
+import type { Content, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -27,19 +20,9 @@ export type {
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
-export interface ActionParameterSchema
-	extends Omit<
-		ProtoActionParameterSchema,
-		| "$typeName"
-		| "$unknown"
-		| "defaultValue"
-		| "properties"
-		| "items"
-		| "enumValues"
-		| "required"
-		| "type"
-	> {
+export interface ActionParameterSchema {
 	type: string;
+	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
@@ -60,6 +43,10 @@ export interface ActionParameterSchema
 	maxLength?: number;
 	/** Regular expression pattern for string-valued parameters */
 	pattern?: string;
+	/** Numeric minimum */
+	minimum?: number;
+	/** Numeric maximum */
+	maximum?: number;
 	/** JSON Schema `oneOf`: value must match exactly one sub-schema */
 	oneOf?: ReadonlyArray<ActionParameterSchema>;
 	/** JSON Schema `anyOf`: value must match at least one sub-schema */
@@ -70,8 +57,7 @@ export interface ActionParameterSchema
  * Defines a single parameter for an action.
  * Parameters are extracted from the conversation by the LLM and passed to the action handler.
  */
-export interface ActionParameter
-	extends Omit<ProtoActionParameter, "$typeName" | "$unknown" | "schema"> {
+export interface ActionParameter {
 	/** Parameter name (used as the key in the parameters object) */
 	name: string;
 	/** Human-readable description for LLM guidance */
@@ -121,13 +107,11 @@ export interface ActionParameters {
 		| JsonValue;
 }
 
-export type ProtoActionParameters = ProtoActionParametersType;
-
 /**
  * Example content with associated user for demonstration purposes
  */
-export interface ActionExample
-	extends Omit<ProtoActionExample, "$typeName" | "$unknown" | "content"> {
+export interface ActionExample {
+	name: string;
 	content: Content;
 }
 

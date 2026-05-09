@@ -134,6 +134,10 @@ export * from "./runtime/trajectory-persistence.js";
 export * from "./runtime/trajectory-query.js";
 export * from "./runtime/version.js";
 export * from "./security/index.js";
+export {
+  isStewardEvmBridgeActive,
+  setStewardEvmBridgeActive,
+} from "./services/external-bridge-state.js";
 export * from "./services/index.js";
 export {
   type ClusterMemoriesQuery,
@@ -151,10 +155,6 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.js";
-export {
-  isStewardEvmBridgeActive,
-  setStewardEvmBridgeActive,
-} from "./services/external-bridge-state.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
 export * from "./triggers/runtime.js";

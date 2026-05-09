@@ -380,7 +380,8 @@ describe("v5 tiered action surface", () => {
 		});
 		const connector = makeAction({
 			name: "CONNECTOR",
-			description: "Connect, disconnect, or verify external connector accounts.",
+			description:
+				"Connect, disconnect, or verify external connector accounts.",
 			contexts: ["connectors"],
 		});
 		const runtime = makeRuntime({

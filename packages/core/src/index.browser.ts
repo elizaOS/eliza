@@ -13,6 +13,7 @@ export * from "./app-registry";
 // Export core modules (all browser-compatible after refactoring)
 export * from "./app-route-plugin-registry";
 export * from "./character";
+export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/privacy";
 export * from "./database";

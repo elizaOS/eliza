@@ -1945,9 +1945,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 	}
 	const lower = text.toLowerCase();
 	const lookupVerb =
-		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(
-			lower,
-		);
+		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(lower);
 	const credentialNoun =
 		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
 			lower,
@@ -2044,7 +2042,10 @@ function repairStage1PlanForKnownToolRequests(args: {
 		availableContexts: args.availableContexts,
 	});
 	if (passwordManagerRepair) {
-		replaceStage1PlanContexts(args.messageHandler, passwordManagerRepair.contexts);
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			passwordManagerRepair.contexts,
+		);
 		appendStage1PlanHints(args.messageHandler, {
 			candidateActions: passwordManagerRepair.candidateActions,
 			parentActionHints: passwordManagerRepair.parentActionHints,

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions, RouteHelpers } from "./imessage-routes.js";
+import type { RouteHelpers } from "./imessage-routes.js";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
@@ -15,11 +15,7 @@ type BlueBubblesMessage = Record<string, unknown>;
 
 interface BlueBubblesClientLike {
   listChats(limit?: number, offset?: number): Promise<BlueBubblesChat[]>;
-  getMessages(
-    chatGuid: string,
-    limit?: number,
-    offset?: number,
-  ): Promise<BlueBubblesMessage[]>;
+  getMessages(chatGuid: string, limit?: number, offset?: number): Promise<BlueBubblesMessage[]>;
 }
 
 interface BlueBubblesServiceLike {
@@ -35,9 +31,7 @@ export interface BlueBubblesRouteState {
   };
 }
 
-function resolveService(
-  state: BlueBubblesRouteState,
-): BlueBubblesServiceLike | null {
+function resolveService(state: BlueBubblesRouteState): BlueBubblesServiceLike | null {
   if (!state.runtime) {
     return null;
   }
@@ -45,9 +39,7 @@ function resolveService(
   return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
 }
 
-export function resolveBlueBubblesWebhookPath(
-  state: BlueBubblesRouteState,
-): string {
+export function resolveBlueBubblesWebhookPath(state: BlueBubblesRouteState): string {
   const service = resolveService(state);
   const configuredPath = service?.getWebhookPath();
   if (typeof configuredPath === "string" && configuredPath.trim().length > 0) {
@@ -62,7 +54,7 @@ export async function handleBlueBubblesRoute(
   pathname: string,
   method: string,
   state: BlueBubblesRouteState,
-  helpers: RouteHelpers,
+  helpers: RouteHelpers
 ): Promise<boolean> {
   const webhookPath = resolveBlueBubblesWebhookPath(state);
   const isWebhookPath = pathname === webhookPath;
@@ -107,16 +99,10 @@ export async function handleBlueBubblesRoute(
 
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = Math.min(
-      Math.max(
-        1,
-        Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
-      ),
-      500,
+      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100),
+      500
     );
-    const offset = Math.max(
-      0,
-      Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-    );
+    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
 
     try {
       const chats = await client.listChats(limit, offset);
@@ -125,7 +111,7 @@ export async function handleBlueBubblesRoute(
       helpers.error(
         res,
         `failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -152,16 +138,10 @@ export async function handleBlueBubblesRoute(
     }
 
     const limit = Math.min(
-      Math.max(
-        1,
-        Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-      ),
-      500,
+      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
+      500
     );
-    const offset = Math.max(
-      0,
-      Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-    );
+    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
 
     try {
       const messages = await client.getMessages(chatGuid, limit, offset);
@@ -176,7 +156,7 @@ export async function handleBlueBubblesRoute(
       helpers.error(
         res,
         `failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -189,11 +169,9 @@ export async function handleBlueBubblesRoute(
       return true;
     }
 
-    const payload = await helpers.readJsonBody<BlueBubblesWebhookPayload>(
-      req,
-      res,
-      { maxBytes: MAX_BODY_BYTES },
-    );
+    const payload = await helpers.readJsonBody<BlueBubblesWebhookPayload>(req, res, {
+      maxBytes: MAX_BODY_BYTES,
+    });
     if (!payload) {
       return true;
     }
@@ -216,7 +194,7 @@ export async function handleBlueBubblesRoute(
       helpers.error(
         res,
         `failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;

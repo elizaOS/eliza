@@ -120,6 +120,32 @@ type DeclaredPluginDependency = {
 
 const SOURCE_STAGED_WORKSPACE_DEPENDENCIES = new Set(["@elizaos/agent"]);
 
+const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
+  string,
+  { path: string; source: string }
+> = {
+  "@elizaos/agent": {
+    path: "./src/staged-runtime-index.ts",
+    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.js";
+export { renderGroundedActionReply } from "./actions/grounded-action-reply.js";
+export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.js";
+export { handleConnectorAccountRoutes } from "./api/connector-account-routes.js";
+export { checkRateLimit } from "./api/rate-limiter.js";
+export { loadElizaConfig, saveElizaConfig } from "./config/config.js";
+export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.js";
+export { resolveOAuthDir, resolveStateDir } from "./config/paths.js";
+export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.js";
+export { getAgentEventService } from "./runtime/agent-event-service.js";
+export { resolveOwnerEntityId } from "./runtime/owner-entity.js";
+export { hasOwnerAccess } from "./security/access.js";
+export { gatePluginSessionForHostedApp } from "./services/app-session-gate.js";
+export { registerEscalationChannel } from "./services/escalation.js";
+export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.js";
+export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.js";
+`,
+  },
+};
+
 function packageNodeModulesEntryPath(
   nodeModulesDir: string,
   packageName: string,
@@ -228,9 +254,7 @@ async function stageDependencyIntoNodeModules(params: {
 
 function rewriteDistExportTargetToSource(value: unknown): unknown {
   if (typeof value === "string") {
-    return value
-      .replace(/^\.(\/dist\/)/, "./src/")
-      .replace(/\.js$/, ".ts");
+    return value.replace(/^\.(\/dist\/)/, "./src/").replace(/\.js$/, ".ts");
   }
 
   if (Array.isArray(value)) {
@@ -250,6 +274,7 @@ function rewriteDistExportTargetToSource(value: unknown): unknown {
 }
 
 async function writeSourceStagedPackageManifest(params: {
+  dependencyName: string;
   sourcePackageRoot: string;
   targetPackageRoot: string;
 }): Promise<void> {
@@ -265,18 +290,48 @@ async function writeSourceStagedPackageManifest(params: {
     await fs.readFile(sourcePackageJsonPath, "utf8"),
   ) as Record<string, unknown>;
 
+  const rootEntrypoint = SOURCE_STAGED_ROOT_ENTRYPOINTS[params.dependencyName];
+  const rootExport = rootEntrypoint
+    ? {
+        types: rootEntrypoint.path,
+        import: rootEntrypoint.path,
+        default: rootEntrypoint.path,
+      }
+    : undefined;
+  const rewrittenExports = rewriteDistExportTargetToSource(manifest.exports);
   const rewrittenManifest = {
     ...manifest,
-    main: "./src/index.ts",
-    module: "./src/index.ts",
-    types: "./src/index.ts",
-    exports: rewriteDistExportTargetToSource(manifest.exports),
+    main: rootEntrypoint?.path ?? "./src/index.ts",
+    module: rootEntrypoint?.path ?? "./src/index.ts",
+    types: rootEntrypoint?.path ?? "./src/index.ts",
+    exports:
+      rootExport && rewrittenExports && typeof rewrittenExports === "object"
+        ? { ...(rewrittenExports as Record<string, unknown>), ".": rootExport }
+        : (rewrittenExports ?? rootEntrypoint?.path),
   };
 
   await fs.writeFile(
     targetPackageJsonPath,
     `${JSON.stringify(rewrittenManifest, null, 2)}\n`,
   );
+}
+
+async function writeSourceStagedRootEntrypoint(params: {
+  dependencyName: string;
+  targetPackageRoot: string;
+}): Promise<void> {
+  const rootEntrypoint = SOURCE_STAGED_ROOT_ENTRYPOINTS[params.dependencyName];
+  if (!rootEntrypoint) {
+    return;
+  }
+
+  const relativeEntrypointPath = rootEntrypoint.path.replace(/^\.\//, "");
+  const targetPath = path.join(
+    params.targetPackageRoot,
+    relativeEntrypointPath,
+  );
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, rootEntrypoint.source);
 }
 
 async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
@@ -328,7 +383,12 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
     },
   });
   await writeSourceStagedPackageManifest({
+    dependencyName: params.dependencyName,
     sourcePackageRoot: resolvedSourcePath,
+    targetPackageRoot: targetPath,
+  });
+  await writeSourceStagedRootEntrypoint({
+    dependencyName: params.dependencyName,
     targetPackageRoot: targetPath,
   });
   return true;

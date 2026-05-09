@@ -152,6 +152,59 @@ def _parse_tool_calls(
     return actions, text
 
 
+def _parse_tool_calls_from_content(
+    content: str,
+    valid_actions: set[str],
+) -> tuple[list[str], str]:
+    """Recover action selections when the model emits JSON-as-text instead of
+    real tool_calls. gpt-oss-120b on Cerebras occasionally serializes its tool
+    calls into the assistant content channel as a JSON object of the form:
+
+        {"content": "...", "tool_calls": [{"name": "REPLY", "arguments": "..."}]}
+
+    Without this fallback those turns score zero on ACTION_MATCH outcomes even
+    though the model picked the correct action — a mechanical loss, not a
+    capability gap.
+    """
+    if not content:
+        return [], ""
+    stripped = content.strip()
+    if not (stripped.startswith("{") and "tool_calls" in stripped):
+        return [], ""
+    try:
+        parsed = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError):
+        return [], ""
+    if not isinstance(parsed, dict):
+        return [], ""
+    raw_calls = parsed.get("tool_calls")
+    if not isinstance(raw_calls, list):
+        return [], ""
+    actions: list[str] = []
+    text = ""
+    inner_content = parsed.get("content")
+    if isinstance(inner_content, str):
+        text = inner_content
+    for call in raw_calls:
+        if not isinstance(call, dict):
+            continue
+        name = str(call.get("name", "")).upper()
+        if name not in valid_actions:
+            continue
+        actions.append(name)
+        args_raw = call.get("arguments", "")
+        if args_raw and not text:
+            try:
+                args_parsed = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                if isinstance(args_parsed, dict):
+                    candidate = args_parsed.get("text")
+                    if isinstance(candidate, str) and candidate.strip():
+                        text = candidate.strip()
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return actions, text
+
+
 class OpenAICompatibleADHDBenchRunner:
     """Runs ADHDBench scenarios against an OpenAI-compatible chat endpoint."""
 
@@ -389,6 +442,16 @@ class OpenAICompatibleADHDBenchRunner:
         content_text = message.content or ""
         tool_calls = getattr(message, "tool_calls", None) or []
         actions, parsed_text = _parse_tool_calls(tool_calls, content_text, valid_actions)
+        if not actions:
+            # Models sometimes serialize their intended tool_calls into the
+            # content channel as JSON instead of emitting real tool_calls.
+            recovered, recovered_text = _parse_tool_calls_from_content(
+                content_text, valid_actions
+            )
+            if recovered:
+                actions = recovered
+                if recovered_text and not parsed_text:
+                    parsed_text = recovered_text
         # Synthesize a raw record that captures both the structured tool calls
         # and any free-form text the model emitted so traces stay debuggable.
         raw_payload = {

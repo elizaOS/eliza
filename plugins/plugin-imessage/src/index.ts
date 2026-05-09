@@ -158,11 +158,11 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
-// Channel configuration types
-export type {
-  IMessageConfig,
-  IMessageReactionNotificationMode,
-} from "./config.js";
+export {
+  type BlueBubblesRouteState,
+  handleBlueBubblesRoute,
+  resolveBlueBubblesWebhookPath,
+} from "./api/bluebubbles-routes.js";
 
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
 // These are the moved counterparts of the agent's old api/imessage-routes.ts
@@ -175,8 +175,8 @@ export {
   type RouteHelpers as IMessageRouteHelpers,
   type RouteRequestMeta as IMessageRouteRequestMeta,
 } from "./api/imessage-routes.js";
-export {
-  type BlueBubblesRouteState,
-  handleBlueBubblesRoute,
-  resolveBlueBubblesWebhookPath,
-} from "./api/bluebubbles-routes.js";
+// Channel configuration types
+export type {
+  IMessageConfig,
+  IMessageReactionNotificationMode,
+} from "./config.js";
