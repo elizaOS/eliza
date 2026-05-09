@@ -39,12 +39,15 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["social-posting"]
+      "capabilities": [
+        "social-posting"
+      ]
     }
   },
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@neynar/nodejs-sdk": "^3.34.0",
     "lru-cache": "^11.1.0",
     "typescript": "^6.0.3",

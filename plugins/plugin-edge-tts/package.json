@@ -46,11 +46,14 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["text-to-speech"]
+      "capabilities": [
+        "text-to-speech"
+      ]
     }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "node-edge-tts": "^1.0.7"
   },
   "devDependencies": {

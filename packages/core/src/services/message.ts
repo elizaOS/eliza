@@ -66,6 +66,7 @@ import {
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
+	type PlannerLoopResult,
 	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -2531,6 +2532,223 @@ function messageTextMatches(message: Memory, pattern: RegExp): boolean {
 	return pattern.test((getUserMessageText(message) ?? "").toLowerCase());
 }
 
+function plannerErrorLooksTransient(error: unknown): boolean {
+	const message =
+		error instanceof Error
+			? `${error.name} ${error.message} ${String(error.cause ?? "")}`
+			: String(error ?? "");
+	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts)\b/i.test(
+		message,
+	);
+}
+
+function trimExtractedUrl(value: string): string {
+	return value.replace(/[),.;:!?]+$/u, "");
+}
+
+function extractCalendlyAvailabilityFallbackParams(
+	message: Memory,
+): Record<string, unknown> | null {
+	const text = getUserMessageText(message) ?? "";
+	const lower = text.toLowerCase();
+	if (
+		!/\bcalendly\b|api\.calendly\.com/u.test(lower) ||
+		!/\b(?:availability|available|open|slots?|times?)\b/u.test(lower)
+	) {
+		return null;
+	}
+	const eventTypeUri = /https?:\/\/api\.calendly\.com\/event_types\/[^\s),.;:!?]+/iu.exec(
+		text,
+	)?.[0];
+	const dates = Array.from(text.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)).map(
+		(match) => match[0],
+	);
+	return {
+		subaction: "calendly_availability",
+		intent: text,
+		...(eventTypeUri ? { eventTypeUri: trimExtractedUrl(eventTypeUri) } : {}),
+		...(dates[0] ? { startDate: dates[0] } : {}),
+		...(dates[1] ? { endDate: dates[1] } : {}),
+	};
+}
+
+function buildDeterministicPlannerFallbackToolCall(args: {
+	message: Memory;
+	actions: readonly Action[];
+}): PlannerToolCall | null {
+	const calendlyParams = extractCalendlyAvailabilityFallbackParams(args.message);
+	if (!calendlyParams) {
+		return null;
+	}
+	const hasCalendarAction = args.actions.some(
+		(action) =>
+			normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier("CALENDAR"),
+	);
+	if (!hasCalendarAction) {
+		return null;
+	}
+	return {
+		id: `deterministic-calendar-${Date.now()}`,
+		name: "CALENDAR",
+		params: calendlyParams,
+	};
+}
+
+async function runDeterministicPlannerFallback(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	plannerState: State;
+	selectedContexts: AgentContext[];
+	senderRole: RoleGateRole;
+	plannerContext: ContextObject;
+	plannerRuntime: PlannerRuntime;
+	actions: readonly Action[];
+	evaluatorEffects: EvaluatorEffects;
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	plannerLoopConfig?: PlannerLoopParams["config"];
+	plannerError: unknown;
+}): Promise<PlannerLoopResult | null> {
+	if (!plannerErrorLooksTransient(args.plannerError)) {
+		return null;
+	}
+	const toolCall = buildDeterministicPlannerFallbackToolCall({
+		message: args.message,
+		actions: args.actions,
+	});
+	if (!toolCall) {
+		return null;
+	}
+
+	const queuedAt = Date.now();
+	const serializedParams = JSON.stringify(toolCall.params ?? {});
+	const queuedContext = appendContextEvent(
+		{
+			...args.plannerContext,
+			plannedQueue: [
+				...(args.plannerContext.plannedQueue ?? []),
+				{
+					id: toolCall.id,
+					name: toolCall.name,
+					args: serializedParams,
+					status: "queued" as const,
+					sourceStageId: "planner:fallback",
+				},
+			],
+		},
+		{
+			id: `queue:${toolCall.id ?? toolCall.name}:fallback`,
+			type: "planned_tool_call",
+			source: "message-service",
+			createdAt: queuedAt,
+			metadata: {
+				iteration: 1,
+				toolCallId: toolCall.id,
+				name: toolCall.name,
+				params: serializedParams,
+				status: "queued",
+				reason: "deterministic_fallback_after_transient_planner_error",
+			},
+		},
+	);
+	const trajectory: PlannerTrajectory = {
+		context: queuedContext,
+		steps: [],
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	};
+
+	args.runtime.logger?.warn?.(
+		{
+			src: "service:message",
+			action: toolCall.name,
+			error:
+				args.plannerError instanceof Error
+					? args.plannerError.message
+					: String(args.plannerError),
+		},
+		"Planner hit a transient model error; using deterministic Calendly fallback",
+	);
+
+	const result = await executeV5PlannedToolCall({
+		runtime: args.runtime,
+		toolCall,
+		plannerContext: trajectory.context,
+		executorCtx: {
+			message: args.message,
+			state: args.plannerState,
+			activeContexts: args.selectedContexts,
+			userRoles: [args.senderRole],
+			previousResults: [],
+		},
+		plannerRuntime: args.plannerRuntime,
+		executorOptions: { actions: args.actions },
+		evaluatorEffects: args.evaluatorEffects,
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		plannerLoopConfig: args.plannerLoopConfig,
+	});
+	trajectory.steps.push({
+		iteration: 1,
+		thought: "Deterministic fallback executed after transient planner error.",
+		toolCall,
+		result,
+	});
+	trajectory.context = appendContextEvent(
+		{
+			...trajectory.context,
+			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+				entry.id === toolCall.id
+					? { ...entry, status: result.success ? "completed" : "failed" }
+					: entry,
+			),
+		},
+		{
+			id: `tool-result:${toolCall.id ?? toolCall.name}:fallback`,
+			type: "tool_result",
+			source: "message-service",
+			createdAt: Date.now(),
+			metadata: {
+				iteration: 1,
+				toolCallId: toolCall.id,
+				name: toolCall.name,
+				params: serializedParams,
+				result: JSON.stringify({
+					success: result.success,
+					text: result.text,
+					error:
+						result.error instanceof Error
+							? result.error.message
+							: result.error,
+				}),
+				status: result.success ? "completed" : "failed",
+			},
+		},
+	);
+	const fallbackMessage =
+		result.text ??
+		(result.success
+			? "Done."
+			: "I tried to check that Calendly availability, but the calendar action failed.");
+	const evaluator: EvaluatorOutput = {
+		success: result.success,
+		decision: "FINISH",
+		thought: result.success
+			? "Deterministic Calendly fallback completed."
+			: "Deterministic Calendly fallback failed.",
+		messageToUser: fallbackMessage,
+	};
+	trajectory.evaluatorOutputs.push(evaluator);
+	return {
+		status: "finished",
+		trajectory,
+		evaluator,
+		finalMessage: fallbackMessage,
+	};
+}
+
 function shouldTreatPlannerLifeAsDeviceIntent(
 	resolvedName: string,
 	message: Memory,
@@ -3635,44 +3853,67 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 			.catch(() => {});
 
-		const plannerResult = await runPlannerLoop({
-			runtime: plannerRuntime,
-			context: effectivePlannerContext,
-			config: args.plannerLoopConfig,
-			tools: plannerTools.length > 0 ? plannerTools : undefined,
-			requireNonTerminalToolCall,
-			evaluatorEffects,
-			recorder,
-			trajectoryId,
-			executeToolCall: (toolCall, ctx) =>
-				executeV5PlannedToolCall({
-					runtime: args.runtime,
-					toolCall,
-					plannerContext: effectivePlannerContext,
-					executorCtx: {
-						message: args.message,
-						state: plannerState,
-						activeContexts: selectedContexts,
-						userRoles: [senderRole],
-						previousResults: collectPreviousActionResults(ctx.trajectory),
-					},
-					plannerRuntime,
-					executorOptions: { actions: exposedPlannerActions },
-					evaluatorEffects,
-					recorder,
-					trajectoryId,
-					plannerLoopConfig: args.plannerLoopConfig,
-				}),
-			evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
-				runEvaluator({
-					runtime: plannerRuntimeForEval,
-					context,
-					trajectory,
-					effects: evaluatorEffects,
-					recorder,
-					trajectoryId,
-				}),
-		});
+		let plannerResult: PlannerLoopResult;
+		try {
+			plannerResult = await runPlannerLoop({
+				runtime: plannerRuntime,
+				context: effectivePlannerContext,
+				config: args.plannerLoopConfig,
+				tools: plannerTools.length > 0 ? plannerTools : undefined,
+				requireNonTerminalToolCall,
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				executeToolCall: (toolCall, ctx) =>
+					executeV5PlannedToolCall({
+						runtime: args.runtime,
+						toolCall,
+						plannerContext: effectivePlannerContext,
+						executorCtx: {
+							message: args.message,
+							state: plannerState,
+							activeContexts: selectedContexts,
+							userRoles: [senderRole],
+							previousResults: collectPreviousActionResults(ctx.trajectory),
+						},
+						plannerRuntime,
+						executorOptions: { actions: exposedPlannerActions },
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						plannerLoopConfig: args.plannerLoopConfig,
+					}),
+				evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+					runEvaluator({
+						runtime: plannerRuntimeForEval,
+						context,
+						trajectory,
+						effects: evaluatorEffects,
+						recorder,
+						trajectoryId,
+					}),
+			});
+		} catch (error) {
+			const fallbackResult = await runDeterministicPlannerFallback({
+				runtime: args.runtime,
+				message: args.message,
+				plannerState,
+				selectedContexts,
+				senderRole,
+				plannerContext: effectivePlannerContext,
+				plannerRuntime,
+				actions: exposedPlannerActions,
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				plannerLoopConfig: args.plannerLoopConfig,
+				plannerError: error,
+			});
+			if (!fallbackResult) {
+				throw error;
+			}
+			plannerResult = fallbackResult;
+		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
 		// the response is delivered. Lets a context post-process planner

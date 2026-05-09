@@ -20,7 +20,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["messaging"]
+      "capabilities": [
+        "messaging"
+      ]
     }
   },
   "publishConfig": {
@@ -38,6 +40,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "google-auth-library": "^10.0.0",
     "zod": "^4.4.3"
   },

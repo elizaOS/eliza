@@ -28,7 +28,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["messaging"]
+      "capabilities": [
+        "messaging"
+      ]
     }
   },
   "scripts": {
@@ -68,5 +70,8 @@
     "connector",
     "messaging"
   ],
-  "packageType": "plugin"
+  "packageType": "plugin",
+  "dependencies": {
+    "@elizaos/shared": "workspace:*"
+  }
 }

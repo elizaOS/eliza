@@ -82,7 +82,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["browser-automation"]
+      "capabilities": [
+        "browser-automation"
+      ]
     }
   },
   "publishConfig": {

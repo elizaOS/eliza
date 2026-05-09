@@ -14,13 +14,18 @@ prerequisites:
   - setup
 
 prompt: |
-  Implement a CLI tool that fetches weather data. Create a file called
-  src/weather.ts that:
+  The setup task already created package.json, tsconfig.json, src/index.ts,
+  tests/.gitkeep, .gitignore, and initialized git. DO NOT recreate or
+  overwrite any of those files. Run `ls -R` first if you want to verify
+  what is already there.
 
-  1. Accepts a city name as a command line argument
-  2. Fetches weather data from a mock API endpoint
-  3. Displays temperature, humidity, and conditions
-  4. Includes error handling for invalid cities and network errors
+  Your job is to add ONE new file: src/weather.ts. Implement a CLI tool
+  that fetches weather data. The file should:
+
+  1. Accept a city name as a command line argument
+  2. Fetch weather data from a mock API endpoint
+  3. Display temperature, humidity, and conditions
+  4. Include error handling for invalid cities and network errors
 
   For this exercise, use a mock API that returns:
   - GET /weather?city=Berlin → {"temp": 15, "humidity": 65, "condition": "cloudy"}

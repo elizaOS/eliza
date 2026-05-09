@@ -36,10 +36,13 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["messaging"]
+      "capabilities": [
+        "messaging"
+      ]
     }
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.16.0",

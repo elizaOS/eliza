@@ -14,6 +14,11 @@ prerequisites:
   - implementation
 
 prompt: |
+  The setup task already created package.json, tsconfig.json, .gitignore,
+  and src/index.ts. The implementation task already created src/weather.ts.
+  DO NOT recreate or overwrite src/weather.ts, tsconfig.json, .gitignore,
+  or src/index.ts. Run `ls -R` first if you want to verify what is there.
+
   Write comprehensive tests for the weather CLI. Create tests in the tests/
   directory using Vitest (preferred) or Jest.
 
@@ -22,7 +27,9 @@ prompt: |
   2. Add mock responses for the weather API
   3. Test success cases (valid city returns weather data)
   4. Test error cases (invalid city returns error)
-  5. Configure the test framework in package.json
+  5. Update package.json ONLY to add the test script and the test framework
+     dependency (do not rewrite the whole file from scratch — read it,
+     then write back a modified version that preserves existing fields).
   6. All tests must pass when running 'npm test'
 
   Example test structure:

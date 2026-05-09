@@ -666,6 +666,56 @@ export const elizaHandler: Handler = {
     await runtime.ensureParticipantInRoom(runtime.agentId, room.id);
     await runtime.ensureParticipantInRoom(userId, room.id);
 
+    // Diagnostic — dump action list once per scenario so we can confirm
+    // SET_SECRET is wired and that the role pipeline resolves OWNER.
+    if (process.env.CONFIGBENCH_DEBUG_ROLES === "1") {
+      const actions =
+        (runtime as unknown as { actions?: Array<{ name?: string }> }).actions
+          ?.map((a) => a?.name ?? "")
+          .filter((n) => n.length > 0) ?? [];
+      const setSecretPresent = actions.some(
+        (n) => n.toUpperCase() === "SET_SECRET",
+      );
+      // eslint-disable-next-line no-console
+      console.error(
+        `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
+          (world as unknown as { metadata?: { roles?: Record<string, string> } })
+            .metadata?.roles ?? {},
+        )} actions.count=${actions.length} SET_SECRET=${setSecretPresent}`,
+      );
+      try {
+        const rolesMod = (await import("@elizaos/core")) as {
+          checkSenderRole?: (
+            rt: IAgentRuntime,
+            m: Memory,
+          ) => Promise<{ role?: string } | null>;
+          hasConfiguredCanonicalOwner?: (rt: IAgentRuntime) => boolean;
+        };
+        const probeMessage: Memory = {
+          id: createUniqueUuid(runtime, `${userId}-probe-${Date.now()}`),
+          agentId: runtime.agentId,
+          entityId: userId,
+          roomId: room.id,
+          content: { text: "probe", source: "configbench", channelType: room.type },
+          createdAt: Date.now(),
+        };
+        const senderResult = await rolesMod.checkSenderRole?.(
+          runtime,
+          probeMessage,
+        );
+        const hasOwner = rolesMod.hasConfiguredCanonicalOwner?.(runtime);
+        // eslint-disable-next-line no-console
+        console.error(
+          `[configbench-debug] checkSenderRole=${JSON.stringify(senderResult)} hasConfiguredCanonicalOwner=${hasOwner}`,
+        );
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[configbench-debug] role probe failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     // Track secrets before scenario
     const secretsBefore = await collectSecrets(runtime);
 

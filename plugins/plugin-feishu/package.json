@@ -1,101 +1,104 @@
 {
-	"name": "@elizaos/plugin-feishu",
-	"version": "2.0.0-beta.0",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist",
-		"auto-enable.ts"
-	],
-	"elizaos": {
-		"plugin": {
-			"autoEnableModule": "./auto-enable.ts",
-			"capabilities": ["messaging"]
-		}
-	},
-	"dependencies": {
-		"@elizaos/core": "workspace:*",
-		"@larksuiteoapi/node-sdk": "^1.40.0",
-		"@types/node": "^25.0.3",
-		"typescript": "^6.0.3"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.4.14",
-		"vitest": "^4.0.0"
-	},
-	"scripts": {
-		"build": "bun run build.ts",
-		"dev": "bun --hot build.ts",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"lint": "bunx @biomejs/biome check --write --unsafe .",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-		"format": "bunx @biomejs/biome format --write .",
-		"format:check": "bunx @biomejs/biome format .",
-		"lint:check": "bunx @biomejs/biome check .",
-		"build:ts": "bun run build",
-		"typecheck": "tsc --noEmit"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/elizaos/eliza.git"
-	},
-	"agentConfig": {
-		"pluginType": "elizaos:plugin:1.0.0",
-		"pluginParameters": {
-			"FEISHU_APP_ID": {
-				"type": "string",
-				"description": "Feishu/Lark application ID (cli_xxx format) for bot authentication.",
-				"required": true,
-				"sensitive": false
-			},
-			"FEISHU_APP_SECRET": {
-				"type": "string",
-				"description": "Feishu/Lark application secret for bot authentication.",
-				"required": true,
-				"sensitive": true
-			},
-			"FEISHU_DOMAIN": {
-				"type": "string",
-				"description": "Domain to use: 'feishu' for China or 'lark' for global.",
-				"required": false,
-				"sensitive": false
-			},
-			"FEISHU_ALLOWED_CHATS": {
-				"type": "string",
-				"description": "JSON-encoded array of chat IDs authorized to interact with the bot.",
-				"required": false,
-				"sensitive": false
-			},
-			"FEISHU_TEST_CHAT_ID": {
-				"type": "string",
-				"description": "Chat ID used by the test suite for validation.",
-				"required": false,
-				"sensitive": false
-			}
-		}
-	},
-	"eliza": {
-		"platforms": [
-			"node"
-		],
-		"runtime": "node",
-		"platformDetails": {
-			"node": "ESM build available via exports.import"
-		}
-	}
+  "name": "@elizaos/plugin-feishu",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@larksuiteoapi/node-sdk": "^1.40.0",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build:ts": "bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "FEISHU_APP_ID": {
+        "type": "string",
+        "description": "Feishu/Lark application ID (cli_xxx format) for bot authentication.",
+        "required": true,
+        "sensitive": false
+      },
+      "FEISHU_APP_SECRET": {
+        "type": "string",
+        "description": "Feishu/Lark application secret for bot authentication.",
+        "required": true,
+        "sensitive": true
+      },
+      "FEISHU_DOMAIN": {
+        "type": "string",
+        "description": "Domain to use: 'feishu' for China or 'lark' for global.",
+        "required": false,
+        "sensitive": false
+      },
+      "FEISHU_ALLOWED_CHATS": {
+        "type": "string",
+        "description": "JSON-encoded array of chat IDs authorized to interact with the bot.",
+        "required": false,
+        "sensitive": false
+      },
+      "FEISHU_TEST_CHAT_ID": {
+        "type": "string",
+        "description": "Chat ID used by the test suite for validation.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
+  }
 }
