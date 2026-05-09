@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import {
   type AgentRuntime,
   ChannelType,
+  composePrompt,
   createMessageMemory,
   type Memory,
+  memoryContextQaTemplate,
   ModelType,
   stringToUuid,
   type UUID,
@@ -228,19 +230,10 @@ function buildQuickContextPrompt(params: {
           .join("\n")
       : "- none";
 
-  return [
-    "You are a concise context assistant.",
-    "Answer only from the provided context. If context is insufficient, say so explicitly.",
-    "Keep the answer under 120 words.",
-    "",
-    `Query: ${query}`,
-    "",
-    "Saved memory notes:",
-    memorySection,
-    "",
-    "Document snippets:",
-    documentsSection,
-  ].join("\n");
+  return composePrompt({
+    state: { query, memorySection, knowledgeSection: documentsSection },
+    template: memoryContextQaTemplate,
+  });
 }
 
 type MemoryBrowseItem = {

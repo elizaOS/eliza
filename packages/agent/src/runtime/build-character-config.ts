@@ -1,4 +1,8 @@
-import { type Character, mergeCharacterDefaults } from "@elizaos/core";
+import {
+  type Character,
+  defaultCharacterSystemTemplate,
+  mergeCharacterDefaults,
+} from "@elizaos/core";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
@@ -52,7 +56,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const systemPrompt =
     agentEntry?.system ??
     bundledPreset?.system ??
-    "You are {{name}}, an autonomous AI agent powered by elizaOS.";
+    defaultCharacterSystemTemplate;
   const style = agentEntry?.style ?? bundledPreset?.style;
   const adjectives = agentEntry?.adjectives ?? bundledPreset?.adjectives;
   const topics =

@@ -16,9 +16,11 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   ChannelType,
+  composePrompt,
   type Content,
   createMessageMemory,
   logger,
+  mobileDirectReplyTemplate,
   ModelType,
   runWithTrajectoryContext,
   stringToUuid,
@@ -237,15 +239,10 @@ async function generateMobileLocalSimpleReply(
     runtime.character.system.trim().length > 0
       ? runtime.character.system.trim()
       : `You are ${agentName}. Reply briefly and directly.`;
-  const prompt = [
-    system,
-    "",
-    "Mobile local mode: answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.",
-    "If the user asks for exact words, output exactly those words and nothing else.",
-    "",
-    `User: ${userText}`,
-    `${agentName}:`,
-  ].join("\n");
+  const prompt = composePrompt({
+    state: { system, userText, agentName },
+    template: mobileDirectReplyTemplate,
+  });
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
     maxTokens: 64,
