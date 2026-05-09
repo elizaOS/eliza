@@ -487,6 +487,18 @@ async def main() -> None:
 
     from eliza_adapter.evm import ElizaBridgeEVMExplorer
 
+    # Auto-spawn the eliza benchmark server when no external URL is configured.
+    # Matches the pattern used by clawbench / swe_bench / gaia / rlm-bench so
+    # the orchestrator can run evm without a manually started server.
+    bench_server = None
+    if not os.environ.get("ELIZA_BENCH_URL"):
+        from eliza_adapter.server_manager import ElizaServerManager
+
+        bench_server = ElizaServerManager()
+        bench_server.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = bench_server.token
+        os.environ.setdefault("ELIZA_BENCH_URL", f"http://localhost:{bench_server.port}")
+
     explorer = ElizaBridgeEVMExplorer(
         model_name=model_name,
         max_messages=max_messages,
@@ -503,32 +515,39 @@ async def main() -> None:
         logger.info("=== FINAL ===  reward=%d  contracts=%d", m.get("final_reward", 0), m.get("final_contracts", 0))
         await env.close()
 
-    if use_external:
-        from benchmarks.evm.anvil_env import ANVIL_DEFAULT_PRIVATE_KEY, ANVIL_DEFAULT_ADDRESS
-        actual_key = private_key or ANVIL_DEFAULT_PRIVATE_KEY
-        if private_key:
-            from eth_account import Account
-            actual_address = Account.from_key(actual_key).address
-        else:
-            actual_address = ANVIL_DEFAULT_ADDRESS
-        env = AnvilEnv(
-            rpc_url=rpc_url,
-            chain_id=chain_id,
-            chain=chain,
-            use_external_node=True,
-            agent_private_key=actual_key,
-            agent_address=actual_address,
-        )
-        await go(env)
-    else:
-        async with anvil_node(fork_url=fork_url, chain_id=chain_id):
+    try:
+        if use_external:
+            from benchmarks.evm.anvil_env import ANVIL_DEFAULT_PRIVATE_KEY, ANVIL_DEFAULT_ADDRESS
+            actual_key = private_key or ANVIL_DEFAULT_PRIVATE_KEY
+            if private_key:
+                from eth_account import Account
+                actual_address = Account.from_key(actual_key).address
+            else:
+                actual_address = ANVIL_DEFAULT_ADDRESS
             env = AnvilEnv(
                 rpc_url=rpc_url,
                 chain_id=chain_id,
                 chain=chain,
-                use_external_node=False,
+                use_external_node=True,
+                agent_private_key=actual_key,
+                agent_address=actual_address,
             )
             await go(env)
+        else:
+            async with anvil_node(fork_url=fork_url, chain_id=chain_id):
+                env = AnvilEnv(
+                    rpc_url=rpc_url,
+                    chain_id=chain_id,
+                    chain=chain,
+                    use_external_node=False,
+                )
+                await go(env)
+    finally:
+        if bench_server is not None:
+            try:
+                bench_server.stop()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
