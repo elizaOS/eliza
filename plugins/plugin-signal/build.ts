@@ -11,30 +11,15 @@ await build({
   external: ["@elizaos/core", "zod"],
 });
 
-// Generate type declarations
-const proc = Bun.spawn(
-  [
-    "bunx",
-    "tsc",
-    "-p",
-    "tsconfig.json",
-    "--emitDeclarationOnly",
-    "--declaration",
-    "--declarationMap",
-    "--noEmit",
-    "false",
-    "--outDir",
-    "./dist",
-    "--rootDir",
-    "./src",
-  ],
-  {
-    cwd: import.meta.dir,
-    stdout: "inherit",
-    stderr: "inherit",
-  },
-);
+const dts = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.dts.json"], {
+  cwd: import.meta.dir,
+  stdout: "inherit",
+  stderr: "inherit",
+});
 
-await proc.exited;
+const dtsExit = await dts.exited;
+if (dtsExit !== 0) {
+  process.exit(dtsExit);
+}
 
 console.log("Build complete!");

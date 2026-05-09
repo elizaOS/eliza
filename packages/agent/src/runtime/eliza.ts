@@ -4381,6 +4381,12 @@ export async function startEliza(
  * Start in cloud mode — connect to a remote cloud agent via the thin client.
  * Skips all local runtime construction (plugins, database, etc.).
  */
+type CloudRuntimeProxyLike = {
+  agentName: string;
+  handleChatMessageStream: (text: string) => AsyncIterable<string>;
+  handleChatMessage: (text: string) => Promise<string>;
+};
+
 export async function startInCloudMode(
   config: ElizaConfig,
   agentId: string,
@@ -4410,7 +4416,7 @@ export async function startInCloudMode(
 
   try {
     await manager.init();
-    const proxy = await manager.connect(agentId);
+    const proxy = (await manager.connect(agentId)) as CloudRuntimeProxyLike;
 
     if (opts?.headless || opts?.serverOnly) {
       // In headless/server mode, start the API server with the cloud proxy.

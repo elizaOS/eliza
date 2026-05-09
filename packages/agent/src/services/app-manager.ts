@@ -1992,7 +1992,7 @@ export class AppManager {
           // picked up by the app-package-modules resolver without restart.
           const { installPlugin: installPluginDirect } = (await import(
             /* webpackIgnore: true */ "@elizaos/app-core"
-          )) as {
+          )) as unknown as {
             installPlugin: (
               name: string,
               onProgress?: (progress: InstallProgressLike) => void,
