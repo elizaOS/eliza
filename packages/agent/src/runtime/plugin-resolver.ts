@@ -24,7 +24,7 @@ import {
   evaluatePluginManifests,
   formatError,
   isMobilePlatform,
-  type PluginCandidate,
+  type PluginManifestCandidate,
 } from "@elizaos/shared";
 
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
@@ -974,9 +974,9 @@ function resolveStaticElizaPlugin(pluginName: string): unknown | null {
  * block — this discovery step is intentionally cheap (a single readdir + stat
  * per candidate, no module imports).
  */
-async function discoverPluginCandidates(): Promise<PluginCandidate[]> {
+async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
   const seen = new Set<string>();
-  const candidates: PluginCandidate[] = [];
+  const candidates: PluginManifestCandidate[] = [];
 
   const tryAdd = async (pkgRoot: string, pkgName: string): Promise<void> => {
     if (seen.has(pkgName)) return;
