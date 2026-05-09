@@ -15,10 +15,8 @@ function createRuntime() {
   } as unknown as IAgentRuntime;
 }
 
-const originalFetch = globalThis.fetch;
-
 afterEach(() => {
-  globalThis.fetch = originalFetch;
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
   vi.resetModules();
 });
@@ -58,7 +56,7 @@ describe("xAI native text plumbing", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock);
 
     const { handleTextSmall } = await import("../models/grok");
     const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
@@ -105,7 +103,7 @@ describe("xAI native text plumbing", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock);
 
     const { handleTextSmall } = await import("../models/grok");
     const result = await handleTextSmall(createRuntime(), { prompt: "hi" });

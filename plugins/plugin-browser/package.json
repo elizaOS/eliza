@@ -79,11 +79,18 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
   },
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["browser-automation"]
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ]
 }

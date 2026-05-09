@@ -381,11 +381,11 @@
       "@elizaos/example-rest-api-hono/*": [
         "./packages/examples/rest-api/hono/dist/*"
       ],
-      "@elizaos/p1p3s": [
-        "./packages/p1p3s/dist/index.d.ts"
+      "@elizaos/workflows": [
+        "./packages/workflows/dist/index.d.ts"
       ],
-      "@elizaos/p1p3s/*": [
-        "./packages/p1p3s/dist/*"
+      "@elizaos/workflows/*": [
+        "./packages/workflows/dist/*"
       ],
       "@elizaos/benchmark-framework": [
         "./packages/benchmarks/framework/typescript/dist/index.d.ts"

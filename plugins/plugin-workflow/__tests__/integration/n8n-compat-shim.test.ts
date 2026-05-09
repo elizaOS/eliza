@@ -92,10 +92,9 @@ describe('n8n compatibility shim', () => {
       expect(execution.status).toBe('success');
       expect(execution.finished).toBe(true);
 
-      const setRunData =
-        execution.data?.resultData?.runData?.['Set greeting']?.[0] as
-          | { data?: { main?: Array<Array<{ json: Record<string, unknown> }>> } }
-          | undefined;
+      const setRunData = execution.data?.resultData?.runData?.['Set greeting']?.[0] as
+        | { data?: { main?: Array<Array<{ json: Record<string, unknown> }>> } }
+        | undefined;
       const greeting = setRunData?.data?.main?.[0]?.[0]?.json?.greeting;
       expect(greeting).toBe('hello from n8n shim');
 

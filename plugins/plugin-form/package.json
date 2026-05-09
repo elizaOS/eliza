@@ -24,6 +24,10 @@
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
+    },
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["forms"]
     }
   },
   "publishConfig": {
@@ -39,7 +43,8 @@
     "build:types": "tsc -p tsconfig.build.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
   "devDependencies": {
     "@types/node": "^25.0.3",

@@ -12,8 +12,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["messaging"]
+    }
+  },
   "scripts": {
     "build": "bun run build.ts",
     "test": "vitest run",

@@ -55,9 +55,7 @@ export interface PluginAutoEnableContext {
  * loads dozens of these per boot.
  */
 export interface PluginAutoEnableModule {
-  shouldEnable: (
-    ctx: PluginAutoEnableContext,
-  ) => boolean | Promise<boolean>;
+  shouldEnable: (ctx: PluginAutoEnableContext) => boolean | Promise<boolean>;
   /**
    * Optional override predicate. When `shouldForce(ctx)` returns true, the
    * plugin gets force-enabled regardless of `config.plugins.entries[X].enabled
@@ -151,7 +149,10 @@ export async function readPluginPackageManifest(
   return parsed;
 }
 
-const CHECK_MODULE_CACHE = new Map<string, PluginAutoEnableModule | "missing">();
+const CHECK_MODULE_CACHE = new Map<
+  string,
+  PluginAutoEnableModule | "missing"
+>();
 
 /**
  * Dynamic-import the check module declared by a manifest. Cached per absolute
@@ -328,7 +329,9 @@ export async function evaluatePluginManifests(
         };
       }
     }),
-  ).then((entries) => entries.filter((v): v is PluginManifestVerdict => v !== null));
+  ).then((entries) =>
+    entries.filter((v): v is PluginManifestVerdict => v !== null),
+  );
 }
 
 /**
