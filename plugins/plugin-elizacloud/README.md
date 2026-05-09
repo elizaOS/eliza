@@ -112,8 +112,14 @@ const text = await runtime.useModel(ModelType.TEXT_LARGE, {
   prompt: "Summarize the current agent state.",
 });
 
-const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
+// Structured output: route through TEXT_* with `responseSchema` (native tool calling).
+const structured = await runtime.useModel(ModelType.TEXT_LARGE, {
   prompt: "Return a JSON user profile with name and role.",
+  responseSchema: {
+    type: "object",
+    properties: { name: { type: "string" }, role: { type: "string" } },
+    required: ["name", "role"],
+  },
 });
 
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
