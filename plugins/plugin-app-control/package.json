@@ -27,8 +27,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/core": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",

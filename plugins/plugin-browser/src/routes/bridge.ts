@@ -22,7 +22,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-} from "@elizaos/shared";
+} from "../lifeops-session-contracts.js";
 import {
   type BrowserBridgeCompanionAuthErrorCode,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,

@@ -18,8 +18,6 @@ import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
 import {
-  type ApplyPluginAutoEnableParams,
-  applyPluginAutoEnable,
   applyPluginManifestVerdicts,
   evaluatePluginManifests,
   formatError,
@@ -27,11 +25,9 @@ import {
   type PluginManifestCandidate,
 } from "@elizaos/shared";
 
-import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
 import type { PluginInstallRecord } from "../config/types.eliza.js";
-import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import {
@@ -1094,16 +1090,11 @@ export async function resolvePlugins(
   // silently dropped. Capture the result and assign back so both the allow
   // list and any downstream config reads see the mutation.
   //
-  // Two-pass auto-enable:
-  // 1. Manifest pre-pass: walk every @elizaos/* package.json on disk, run
-  //    each plugin's autoEnableModule.shouldEnable(ctx). Plugins that have
-  //    migrated to the manifest pattern register themselves here without
-  //    appearing in the central maps.
-  // 2. Central-map fallback: applyPluginAutoEnable handles plugins that
-  //    haven't migrated yet (still listed in CONNECTOR_PLUGINS,
-  //    AUTH_PROVIDER_PLUGINS, FEATURE_PLUGINS, etc.). Both passes are
-  //    additive and `addToAllowlist` dedupes.
-  const manifestChanges: string[] = [];
+  // Auto-enable is sourced exclusively from per-plugin manifests: walk every
+  // @elizaos/* package.json on disk and run each plugin's
+  // autoEnableModule.shouldEnable(ctx). Each plugin owns its own enable
+  // conditions in auto-enable.ts — no central map exists.
+  const changes: string[] = [];
   try {
     const candidates = await discoverPluginCandidates();
     const verdicts = await evaluatePluginManifests(candidates, {
@@ -1111,35 +1102,17 @@ export async function resolvePlugins(
       config,
       isNativePlatform: isMobilePlatform(),
     });
-    applyPluginManifestVerdicts(config, verdicts, manifestChanges);
+    applyPluginManifestVerdicts(config, verdicts, changes);
   } catch (err) {
     logger.warn(
-      `[eliza] Plugin manifest pre-pass failed (continuing with central-map fallback): ${
+      `[eliza] Plugin manifest auto-enable failed: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
   }
-  if (manifestChanges.length > 0) {
-    logger.info(
-      `[eliza] Plugin manifest auto-enable: ${manifestChanges.join("; ")}`,
-    );
+  if (changes.length > 0) {
+    logger.info(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
-
-  const autoEnableResult = applyPluginAutoEnable({
-    config,
-    env: process.env,
-    isNativePlatform: isMobilePlatform(),
-    subscriptionProviderMap: SUBSCRIPTION_PROVIDER_MAP,
-    evmAutoEnableReason: evmAutoEnableReasonFromCapability,
-  } satisfies ApplyPluginAutoEnableParams);
-  if (autoEnableResult.changes.length > 0) {
-    logger.info(
-      `[eliza] Plugin auto-enable: ${autoEnableResult.changes.join("; ")}`,
-    );
-  }
-  // Merge the cloned plugins.allow back into the caller's config so both
-  // this function and subsequent consumers see the updated allow list.
-  config.plugins = autoEnableResult.config.plugins;
 
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
