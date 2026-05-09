@@ -33,7 +33,7 @@ import {
   resolveServerOnlyPort,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
-import { requestRestart } from "../runtime/restart.js";
+import { requestRestart } from "../runtime/restart.ts";
 
 const RUNTIME_OPS = [
   "status",

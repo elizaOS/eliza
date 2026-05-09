@@ -26,21 +26,21 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
-import { runFirstTimeSetup } from "./first-time-setup.js";
-import { resolveConfigEnvForProcess } from "./operations/vault-bridge.js";
-import { resolvePlugins } from "./plugin-resolver.js";
+import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import { resolvePlugins } from "./plugin-resolver.ts";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
-} from "./plugin-types.js";
+} from "./plugin-types.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
-} from "./plugin-collector.js";
+} from "./plugin-collector.ts";
 
 export {
   CUSTOM_PLUGINS_DIRNAME,
@@ -56,7 +56,7 @@ export {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-} from "./plugin-types.js";
+} from "./plugin-types.ts";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
@@ -136,12 +136,12 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   ) as Promise<AppCoreRuntimeModule>;
 }
 
-import { buildCharacterFromConfig } from "./build-character-config.js";
+import { buildCharacterFromConfig } from "./build-character-config.ts";
 import {
   resolvePreferredProviderId,
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
-} from "./model-resolution.js";
+} from "./model-resolution.ts";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
 const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
@@ -170,51 +170,51 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
-} from "../api/plugin-validation.js";
-import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.js";
+} from "../api/plugin-validation.ts";
+import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
 import {
   configFileExists,
   type ElizaConfig,
   loadElizaConfig,
-} from "../config/config.js";
+} from "../config/config.ts";
 import {
   CONNECTOR_ENV_MAP,
   collectConfigEnvVars,
   collectConnectorEnvVars,
-} from "../config/env-vars.js";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
+} from "../config/env-vars.ts";
+import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
   loadHooks,
   triggerHook,
-} from "../hooks/index.js";
-import { ensureAgentWorkspace } from "../providers/workspace.js";
-import { SandboxAuditLog } from "../security/audit-log.js";
+} from "../hooks/index.ts";
+import { ensureAgentWorkspace } from "../providers/workspace.ts";
+import { SandboxAuditLog } from "../security/audit-log.ts";
 import {
   SandboxManager,
   type SandboxMode,
-} from "../services/sandbox-manager.js";
+} from "../services/sandbox-manager.ts";
 import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
-} from "../shared/workspace-resolution.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
-import { seedBundledDocuments } from "./default-documents.js";
-import { createElizaPlugin } from "./eliza-plugin.js";
-import { detectEmbeddingPreset } from "./embedding-presets.js";
+} from "../shared/workspace-resolution.ts";
+import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
+import { seedBundledDocuments } from "./default-documents.ts";
+import { createElizaPlugin } from "./eliza-plugin.ts";
+import { detectEmbeddingPreset } from "./embedding-presets.ts";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.js";
+} from "./native-runtime-features.ts";
 import {
   createPgliteInitError,
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
-} from "./pglite-error-compat.js";
-import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
-import rolesPlugin from "./roles.js";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
+} from "./pglite-error-compat.ts";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import rolesPlugin from "./roles.ts";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -1124,7 +1124,7 @@ async function installPromptOptimizationLayer(
 ): Promise<void> {
   try {
     const { installPromptOptimizations } = await import(
-      "./prompt-optimization.js"
+      "./prompt-optimization.ts"
     );
     installPromptOptimizations(runtime, config);
   } catch (err) {
@@ -2716,7 +2716,7 @@ export async function startEliza(
   await ensureCoreStaticPluginsRegistered();
 
   // Start buffering logs early so startup messages appear in the UI log viewer
-  const { captureEarlyLogs } = await import("../api/early-logs.js");
+  const { captureEarlyLogs } = await import("../api/early-logs.ts");
   captureEarlyLogs();
 
   // Register log listener for chat mirroring
@@ -2975,7 +2975,7 @@ export async function startEliza(
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
   try {
-    const { applySubscriptionCredentials } = await import("../auth/index.js");
+    const { applySubscriptionCredentials } = await import("../auth/index.ts");
     await applySubscriptionCredentials(config);
   } catch (err) {
     logger.warn(
@@ -3034,7 +3034,7 @@ export async function startEliza(
     try {
       const { sharedVault } = await importAppCoreRuntime();
       const { applyVaultProfilesForAgent } = await import(
-        "./vault-profile-resolver.js"
+        "./vault-profile-resolver.ts"
       );
       await applyVaultProfilesForAgent(sharedVault(), agentId);
     } catch (err) {
@@ -3052,7 +3052,7 @@ export async function startEliza(
   if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
     try {
       const { sharedVault } = await importAppCoreRuntime();
-      const { ensureAgentWallets } = await import("./agent-wallets.js");
+      const { ensureAgentWallets } = await import("./agent-wallets.ts");
       const descriptors = await ensureAgentWallets(
         sharedVault(),
         agentId,
@@ -3647,7 +3647,7 @@ export async function startEliza(
     //     shared config/escalation/owner-contact helpers via runtime.getService().
     try {
       const { ConnectorSetupService } = await import(
-        "../services/connector-setup-service.js"
+        "../services/connector-setup-service.ts"
       );
       await runtime.registerService(ConnectorSetupService);
     } catch (err) {
@@ -3667,7 +3667,7 @@ export async function startEliza(
 
     // 8a. Apply legacy role redaction to protected plugin providers.
     try {
-      const { applyPluginRoleGating } = await import("./plugin-role-gating.js");
+      const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
       logger.debug(
@@ -3680,7 +3680,7 @@ export async function startEliza(
     // evaluator service from model-extracted relationship updates.
     try {
       const { conversationProximityProvider } = await import(
-        "../providers/conversation-proximity.js"
+        "../providers/conversation-proximity.ts"
       );
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
@@ -3722,7 +3722,7 @@ export async function startEliza(
 
     try {
       const { installAnthropicWebSearch } = await import(
-        "./web-search-tools.js"
+        "./web-search-tools.ts"
       );
       installAnthropicWebSearch(runtime);
     } catch (err) {
@@ -3866,7 +3866,7 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    const { startApiServer } = await import("../api/server.js");
+    const { startApiServer } = await import("../api/server.ts");
     const apiPort = resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
@@ -3957,7 +3957,7 @@ export async function startEliza(
           // that may have been set up during onboarding.
           try {
             const { applySubscriptionCredentials } = await import(
-              "../auth/index.js"
+              "../auth/index.ts"
             );
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
@@ -4079,7 +4079,7 @@ export async function startEliza(
           assertPersistentDatabaseRequired(newRuntime);
           try {
             const { ConnectorSetupService: CSSReload } = await import(
-              "../services/connector-setup-service.js"
+              "../services/connector-setup-service.ts"
             );
             await newRuntime.registerService(CSSReload);
           } catch {
@@ -4102,7 +4102,7 @@ export async function startEliza(
 
           try {
             const { applyPluginRoleGating } = await import(
-              "./plugin-role-gating.js"
+              "./plugin-role-gating.ts"
             );
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {

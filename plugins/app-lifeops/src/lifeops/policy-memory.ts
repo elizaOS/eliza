@@ -1528,7 +1528,7 @@ export function evaluateLifeOpsPolicyMemory(
 
   for (const rule of rules) {
     const result = matchRule(rule, request, effectiveNow);
-    if (result.matched) {
+    if (result.matched === true) {
       matchedRules.push({
         rule: result.rule,
         auditRef: result.auditRef,

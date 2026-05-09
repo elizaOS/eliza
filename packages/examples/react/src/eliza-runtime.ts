@@ -64,7 +64,7 @@ const elizaCharacter: Character = createCharacter({
 // ============================================================================
 
 // Hook into the global singletons that plugin-sql uses
-const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
 interface PGliteClientManager {
   getConnection(): unknown;

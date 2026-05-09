@@ -158,7 +158,10 @@ export class AcpService {
     const agentType = opts.agentType ?? this.defaultAgent;
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
-      opts.workdir ?? this.setting("ACPX_DEFAULT_CWD") ?? DEFAULT_WORKDIR_ROOT,
+      opts.workdir ??
+        this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
+        this.setting("ACPX_DEFAULT_CWD") ??
+        DEFAULT_WORKDIR_ROOT,
     );
     await mkdir(workdir, { recursive: true });
     await this.enforceSessionLimit();

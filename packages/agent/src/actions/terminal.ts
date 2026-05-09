@@ -21,7 +21,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { ContentType, logger, stringToUuid } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
+import { hasOwnerAccess } from "../security/access.ts";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";

@@ -21,7 +21,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { AgentSkillsServiceLike } from "../types/agent-skills.js";
+import type { AgentSkillsServiceLike } from "../types/agent-skills.ts";
 
 /** Set of registered skill slugs — populated by registerSkillCommands(). */
 const registeredSkillSlugs = new Set<string>();

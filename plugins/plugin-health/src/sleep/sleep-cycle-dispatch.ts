@@ -3,7 +3,7 @@ import type {
   LifeOpsPersonalBaseline,
   LifeOpsRegularityClass,
   LifeOpsScheduleRegularity,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
 import { parseIsoMs } from "../util/time-util.js";
 import type { SleepRecap } from "./sleep-recap.js";

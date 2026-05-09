@@ -13,8 +13,8 @@ import type {
   WalletTradingProfileTokenBreakdown,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
-import { resolveStateDir } from "../config/paths.js";
-import { writeJsonAtomicSync } from "../utils/atomic-json.js";
+import { resolveStateDir } from "../config/paths.ts";
+import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;
 const MAX_WALLET_PROFILE_LEDGER_ENTRIES = 2000;

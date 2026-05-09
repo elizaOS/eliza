@@ -1,4 +1,4 @@
-import type { LifeOpsActivitySignalSource } from "@elizaos/shared";
+import type { LifeOpsActivitySignalSource } from "../contracts/health.js";
 
 export type LifeOpsReliabilityKey =
   | { kind: "manual_override" }

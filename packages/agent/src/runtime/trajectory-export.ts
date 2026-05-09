@@ -14,7 +14,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryProviderAccess,
   TrajectoryStep,
-} from "../types/trajectory.js";
+} from "../types/trajectory.ts";
 import {
   enrichTrajectoryLlmCall,
   normalizeStatus,
@@ -27,7 +27,7 @@ import {
   toNumber,
   toOptionalNumber,
   toText,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 export type RuntimeTrajectoryExportOptions = TrajectoryExportOptions;
 
@@ -195,4 +195,4 @@ export {
   TRAJECTORY_ARCHIVE_DIRNAME,
   toArchiveSafeTimestamp,
   writeCompressedJsonlRows,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";

@@ -6,7 +6,10 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun"],
+    "types": [
+      "node",
+      "bun"
+    ],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -21,49 +24,48 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "drizzle-orm": [
+        "../plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/app-core": [
+        "../../packages/app-core/src/index.ts"
+      ],
+      "@elizaos/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@elizaos/core": [
+        "../../packages/core/src/index.node.ts"
+      ],
+      "@elizaos/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@elizaos/agent": [
+        "../../packages/agent/src/index.ts"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
-      ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/src/*"
       ],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/src/index.ts"
       ],
-      "@elizaos/plugin-browser/*": [
-        "../../plugins/plugin-browser/src/*"
-      ],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
-      "@elizaos/plugin-computeruse/*": [
-        "../../plugins/plugin-computeruse/src/*"
+      "@elizaos/plugin-signal": [
+        "../../plugins/plugin-signal/src/index.ts"
       ],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
-      ],
-      "@elizaos/app-task-coordinator/*": [
-        "../../plugins/app-task-coordinator/src/*"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-whatsapp/*": [
-        "../../plugins/plugin-whatsapp/src/*"
+      "react": [
+        "../../packages/app-core/node_modules/@types/react/index.d.ts"
       ],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
@@ -73,8 +75,9 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"]
+      "lucide-react": [
+        "../app-companion/node_modules/lucide-react"
+      ]
     }
   },
   "include": [

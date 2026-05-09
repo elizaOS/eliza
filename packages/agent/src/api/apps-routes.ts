@@ -17,18 +17,18 @@ import {
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
-} from "../services/app-package-modules.js";
-import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
+} from "../services/app-package-modules.ts";
+import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
-} from "../services/plugin-manager-types.js";
+} from "../services/plugin-manager-types.ts";
 import {
   scoreEntries,
   toSearchResults,
-} from "../services/registry-client-queries.js";
+} from "../services/registry-client-queries.ts";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",

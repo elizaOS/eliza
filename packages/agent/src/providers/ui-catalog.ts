@@ -6,8 +6,8 @@ import {
   type State,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.js";
-import { COMPONENT_CATALOG } from "../shared/ui-catalog-prompt.js";
+import { hasAdminAccess } from "../security/access.ts";
+import { COMPONENT_CATALOG } from "../shared/ui-catalog-prompt.ts";
 
 // Core components to describe in detail — subset to keep context short.
 const DETAIL_COMPONENTS = new Set([

@@ -14,14 +14,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { writeJsonAtomicSync } from "../utils/atomic-json.js";
+import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
-} from "./types.js";
+} from "./types.ts";
 
 export interface AccountCredentialRecord {
   /** accountId, e.g. "default" or a uuid */

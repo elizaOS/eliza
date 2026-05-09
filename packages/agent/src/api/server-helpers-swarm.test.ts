@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+} from "./server-helpers-swarm.ts";
 
 const runtime = {
   getService() {

@@ -285,7 +285,7 @@ export async function createScenarioRuntime(
   // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
   // plugin to load — they only gate individual action execution at call time.
   try {
-    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops/plugin";
+    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops";
     const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
       string,
       unknown
@@ -312,7 +312,7 @@ export async function createScenarioRuntime(
   // Load the separate LifeOps route bridge plugin so scenario API turns can
   // exercise the same HTTP handlers the app exposes at runtime.
   try {
-    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops/routes/plugin";
+    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops";
     const lifeOpsRoutesModule = (await import(
       lifeOpsRoutesPluginSpecifier
     )) as Record<string, unknown>;
@@ -331,12 +331,12 @@ export async function createScenarioRuntime(
       }
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops/routes/plugin did not export a Plugin; skipping",
+        "[scenario-runner] @elizaos/app-lifeops did not export the LifeOps route Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
-      `[scenario-runner] @elizaos/app-lifeops/routes/plugin unavailable: ${
+      `[scenario-runner] @elizaos/app-lifeops route plugin unavailable: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

@@ -1,11 +1,11 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { ClmmPoolInfo } from "@raydium-io/raydium-sdk";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type { JupiterQuoteResponse } from "../types.ts";
 
 type RaydiumRegisteredProvider = { name: string };
 type RaydiumPositionInfo = { id: PublicKey; [key: string]: unknown };
+type ClmmPoolInfo = Record<string, unknown>;
 
 const Position = {
   getPositionsByOwner: unsupportedRaydiumPositionMethod,

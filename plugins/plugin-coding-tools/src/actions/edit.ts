@@ -83,12 +83,7 @@ export const editAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return Boolean(
-      runtime.getService(SANDBOX_SERVICE) &&
-        runtime.getService(FILE_STATE_SERVICE),
-    );
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -138,7 +133,7 @@ export const editAction: Action = {
     }
 
     const validated = await sandbox.validatePath(conversationId, filePath);
-    if (!validated.ok) {
+    if (validated.ok === false) {
       const reason =
         validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
@@ -147,7 +142,7 @@ export const editAction: Action = {
     const resolved = validated.resolved;
 
     const gate = await fileState.assertWritable(conversationId, resolved);
-    if (!gate.ok) {
+    if (gate.ok === false) {
       const reason =
         gate.reason === "stale_read" ? "stale_read" : "invalid_param";
       return failureToActionResult({ reason, message: gate.message });

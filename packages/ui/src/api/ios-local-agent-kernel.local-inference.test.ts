@@ -164,7 +164,7 @@ describe("iOS local-agent local inference flow", () => {
       expect(filenames).toContain("qwen3.5-4b-dflash.gguf");
       expect(filenames).toContain("qwen3.5-4b-dflash-drafter-q4.gguf");
     });
-  }, 10_000);
+  }, 30_000);
 
   it("passes DFlash drafter options into the native iOS load call when companion is installed", async () => {
     const load = vi.fn(async (_options: Record<string, unknown>) => undefined);

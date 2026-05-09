@@ -825,6 +825,9 @@ if (!uiOnly) {
 let apiProcess = null;
 let viteProcess = null;
 let shuttingDown = false;
+let vitePluginBuildAttempted = false;
+let viteRestartCount = 0;
+let viteRestartTimer = null;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -842,6 +845,10 @@ function cleanup(exitCode = 0) {
 
   terminateChild(viteProcess, "SIGTERM");
   terminateChild(apiProcess, "SIGTERM");
+  if (viteRestartTimer) {
+    clearTimeout(viteRestartTimer);
+    viteRestartTimer = null;
+  }
 
   setTimeout(() => {
     terminateChild(viteProcess, "SIGKILL");
@@ -862,7 +869,8 @@ if (process.platform !== "win32") {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
   const pkgPath = path.join(cwd, appDir, "package.json");
-  if (existsSync(pkgPath)) {
+  if (!vitePluginBuildAttempted && existsSync(pkgPath)) {
+    vitePluginBuildAttempted = true;
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.scripts?.["plugin:build"]) {
@@ -953,13 +961,26 @@ function startVite() {
     process.stderr.write(data);
   });
 
-  viteProcess.on("exit", (code) => {
+  viteProcess.on("exit", (code, signal) => {
     if (shuttingDown) return;
-    if (code !== 0) {
+    viteProcess = null;
+    const exitLabel =
+      signal ? `signal ${signal}` : `code ${code === null ? "null" : code}`;
+    viteRestartCount += 1;
+    if (viteRestartCount > 5) {
       console.error(
-        `${green(logPrefix)} vite exited with code ${code} — API server continues without UI`,
+        `${green(logPrefix)} vite exited with ${exitLabel} ${viteRestartCount} times — giving up`,
       );
+      cleanup(code ?? 1);
+      return;
     }
+    console.error(
+      `${green(logPrefix)} vite exited with ${exitLabel} — restarting UI (attempt ${viteRestartCount}/5)`,
+    );
+    viteRestartTimer = setTimeout(() => {
+      viteRestartTimer = null;
+      if (!shuttingDown) startVite();
+    }, 400);
   });
 }
 

@@ -10,11 +10,11 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
-} from "./advanced-capabilities-config.js";
+} from "./advanced-capabilities-config.ts";
 
 /**
  * Build a Character object from the runtime ElizaConfig.

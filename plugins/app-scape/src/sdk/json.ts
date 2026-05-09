@@ -42,7 +42,9 @@ function isPerceptionFrame(value: Record<string, unknown>): boolean {
   return isRecord(snapshot) && isRecord(snapshot.self);
 }
 
-function isServerFrame(value: Record<string, unknown>): value is ServerFrame {
+function isServerFrame(
+  value: Record<string, unknown>,
+): value is ServerFrame & Record<string, unknown> {
   switch (value.kind) {
     case "authOk":
       return hasString(value, "server") && hasNumber(value, "version");

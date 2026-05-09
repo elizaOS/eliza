@@ -89,9 +89,6 @@ function resolveAppCoreSourceFile(relativePath: string): string {
   return path.join(appCoreSrcRoot, `${relativePath}${extensionCandidates[0]}`);
 }
 
-const appCoreNativePluginEntrypoints = resolveAppCoreSourceFile(
-  "platform/native-plugin-entrypoints",
-);
 const emptyNodeModuleEntry = resolveAppCoreSourceFile(
   "platform/empty-node-module",
 );
@@ -277,11 +274,6 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function wildcardReplacement(value: string): string {
-  let index = 0;
-  return value.replace(/\*/g, () => `$${++index}`);
-}
-
 function resolvePackageExportTarget(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object") return null;
@@ -303,22 +295,12 @@ function createPackageExportAliases(options: {
   const aliases: Array<{ find: RegExp; replacement: string }> = [];
 
   for (const [key, value] of Object.entries(options.packageExports || {})) {
+    if (key !== ".") continue;
     const target = resolvePackageExportTarget(value);
     if (!target) continue;
 
-    const aliasKey =
-      key === "."
-        ? options.packageName
-        : `${options.packageName}/${key.replace(/^\.\//, "")}`;
+    const aliasKey = options.packageName;
     const replacementPath = path.resolve(options.packageDir, target);
-
-    if (aliasKey.includes("*") || target.includes("*")) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegex(aliasKey).replace(/\\\*/g, "(.*)")}$`),
-        replacement: wildcardReplacement(replacementPath),
-      });
-      continue;
-    }
 
     aliases.push({
       find: new RegExp(`^${escapeRegex(aliasKey)}$`),
@@ -1135,14 +1117,6 @@ export default defineConfig({
           replacement: emptyNodeModuleEntry,
         },
       ]),
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints\.js$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
       // Capacitor plugins — local source mode resolves real plugin sources;
       // package mode uses browser-safe stubs for renderer builds.
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
@@ -1174,20 +1148,15 @@ export default defineConfig({
               packageName: pkgName,
             }),
           );
-          // Catch-all subpath for direct src/ access
-          aliases.push({
-            find: new RegExp(`^${escapeRegex(pkgName)}/(.*)`),
-            replacement: path.resolve(pkgDir, "src/$1"),
-          });
         }
         return aliases;
       })(),
       {
-        find: /^@clawville\/app-clawville(\/.*)?$/,
+        find: /^@clawville\/app-clawville$/,
         replacement: optionalElizaAppStubEntry,
       },
       {
-        find: /^@elizaos\/app-(?!core(\/|$)).+$/,
+        find: /^@elizaos\/app-(?!core$)[^/]+$/,
         replacement: optionalElizaAppStubEntry,
       },
       ...(() => {
@@ -1253,11 +1222,6 @@ export default defineConfig({
             packageExports: uiPkg.exports,
             packageName: "@elizaos/ui",
           }),
-          // NOTE: @elizaos/agent barrel re-exports server-only code (eliza.ts,
-          // server.ts) that imports native modules (node-llama-cpp, node:module).
-          // Nothing in the browser needs the barrel — only subpath imports like
-          // @elizaos/agent/contracts/onboarding are used.  Map the bare import
-          // to an empty module so Vite never traverses the server-side tree.
           {
             find: /^@elizaos\/agent$/,
             replacement: emptyNodeModuleEntry,

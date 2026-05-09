@@ -30,10 +30,6 @@ vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({ meta: {}, agents: {} }),
 }));
 
-vi.mock("@elizaos/agent/config", () => ({
-  loadElizaConfig: () => ({ meta: {}, agents: {} }),
-}));
-
 vi.mock("@elizaos/shared", () => ({
   isLoopbackBindHost: (host: string) => {
     const trimmed = host.trim().toLowerCase();

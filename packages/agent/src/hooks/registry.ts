@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import type { HookEvent, HookHandler } from "./types.js";
+import type { HookEvent, HookHandler } from "./types.ts";
 
 const registry = new Map<string, HookHandler[]>();
 

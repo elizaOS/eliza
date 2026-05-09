@@ -5,8 +5,8 @@ import {
   getDiscordAvatarCacheDir,
   getDiscordAvatarCachePath,
 } from "@elizaos/plugin-discord";
-import { resolveStateDir } from "../config/paths.js";
-import { readRequestBodyBuffer } from "./http-helpers.js";
+import { resolveStateDir } from "../config/paths.ts";
+import { readRequestBodyBuffer } from "./http-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Types

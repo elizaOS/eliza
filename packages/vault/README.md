@@ -143,7 +143,7 @@ the log shows who asked.
 ## Testing
 
 ```ts
-import { createTestVault } from "@elizaos/vault/testing";
+import { createTestVault } from "@elizaos/vault";
 
 const test = await createTestVault({
   values:  { "ui.theme": "dark" },
