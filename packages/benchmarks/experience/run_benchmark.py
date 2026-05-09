@@ -244,8 +244,11 @@ async def _run_local_agent_fallback(
             for exp in query_results[:5]
         ]
         prompt = (
-            "The user is facing a familiar problem. Use relevant past "
-            "experiences from the context when answering.\n\n"
+            "The user is facing a familiar problem. Reuse the most relevant "
+            "past learning verbatim when answering — quote the matching "
+            "'learned: ...' line from the context word-for-word so the "
+            "concrete tokens (commands, flags, identifiers) appear in your "
+            "reply, then add any clarifying instructions.\n\n"
             f"User problem: {scenario.similar_query}\n\n"
             "Past experiences:\n"
             + ("\n".join(context_lines) if context_lines else "- none")
