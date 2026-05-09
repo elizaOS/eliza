@@ -5,22 +5,22 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./routes": {
-      "types": "./src/routes.ts",
+      "types": "./dist/routes.d.ts",
       "import": "./dist/routes.js",
       "default": "./dist/routes.js"
     },
     "./service-loader": {
-      "types": "./src/service-loader.ts",
+      "types": "./dist/service-loader.d.ts",
       "import": "./dist/service-loader.js",
       "default": "./dist/service-loader.js"
     },
     "./setup-routes": {
-      "types": "./src/setup-routes.ts",
+      "types": "./dist/setup-routes.d.ts",
       "import": "./dist/setup-routes.js",
       "default": "./dist/setup-routes.js"
     },
@@ -43,7 +43,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

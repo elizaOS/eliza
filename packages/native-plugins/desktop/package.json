@@ -22,7 +22,8 @@
   "unpkg": "dist/plugin.js",
   "files": [
     "dist/",
-    "electrobun/"
+    "electrobun/",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

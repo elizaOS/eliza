@@ -16,7 +16,8 @@
   "files": [
     "dist/",
     "native/macos/activity-collector",
-    "native/macos/activity-collector.swift"
+    "native/macos/activity-collector.swift",
+    "dist"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",

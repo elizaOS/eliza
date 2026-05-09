@@ -26,7 +26,8 @@
     "dist/",
     "ios/Sources/",
     "ios/Plugin.xcodeproj/",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

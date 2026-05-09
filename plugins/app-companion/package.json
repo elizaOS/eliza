@@ -18,73 +18,73 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./src/ui.ts",
+      "types": "./dist/ui.d.ts",
       "import": "./dist/ui.js",
       "default": "./dist/ui.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
     "./assets.json": "./assets.json",
     "./character-catalog": {
-      "types": "./src/character-catalog.ts",
+      "types": "./dist/character-catalog.d.ts",
       "import": "./dist/character-catalog.js",
       "default": "./dist/character-catalog.js"
     },
     "./vrm-assets": {
-      "types": "./src/vrm-assets.ts",
+      "types": "./dist/vrm-assets.d.ts",
       "import": "./dist/vrm-assets.js",
       "default": "./dist/vrm-assets.js"
     },
     "./components/avatar/vector-browser-three": {
-      "types": "./src/components/avatar/vector-browser-three.ts",
+      "types": "./dist/components/avatar/vector-browser-three.d.ts",
       "import": "./dist/components/avatar/vector-browser-three.js",
       "default": "./dist/components/avatar/vector-browser-three.js"
     },
     "./components/avatar/vector-browser-utils": {
-      "types": "./src/components/avatar/vector-browser-utils.ts",
+      "types": "./dist/components/avatar/vector-browser-utils.d.ts",
       "import": "./dist/components/avatar/vector-browser-utils.js",
       "default": "./dist/components/avatar/vector-browser-utils.js"
     },
     "./components/avatar/VrmEngine": {
-      "types": "./src/components/avatar/VrmEngine.ts",
+      "types": "./dist/components/avatar/VrmEngine.d.ts",
       "import": "./dist/components/avatar/VrmEngine.js",
       "default": "./dist/components/avatar/VrmEngine.js"
     },
     "./components/companion/shell-control-styles": {
-      "types": "./src/components/companion/shell-control-styles.ts",
+      "types": "./dist/components/companion/shell-control-styles.d.ts",
       "import": "./dist/components/companion/shell-control-styles.js",
       "default": "./dist/components/companion/shell-control-styles.js"
     },
     "./components/*": {
-      "types": "./src/components/*",
+      "types": "./dist/components/*",
       "import": "./dist/components/*",
       "default": "./dist/components/*"
     },
     "./types/*": {
-      "types": "./src/types/*",
+      "types": "./dist/types/*",
       "import": "./dist/types/*",
       "default": "./dist/types/*"
     },
     "./emotes": {
-      "types": "./src/emotes/index.ts",
+      "types": "./dist/emotes/index.d.ts",
       "import": "./dist/emotes/index.js",
       "default": "./dist/emotes/index.js"
     },
     "./emotes/*": {
-      "types": "./src/emotes/*.ts",
+      "types": "./dist/emotes/*.d.ts",
       "import": "./dist/emotes/*.js",
       "default": "./dist/emotes/*.js"
     }
@@ -133,7 +133,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ]

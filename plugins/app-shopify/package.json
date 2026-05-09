@@ -5,22 +5,22 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
     "./*": {
-      "types": "./src/*",
+      "types": "./dist/*",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -37,7 +37,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

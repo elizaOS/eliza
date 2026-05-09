@@ -27,7 +27,8 @@
     "dist/",
     "ios/Sources/",
     "scripts/validate-ios-screen-time.mjs",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

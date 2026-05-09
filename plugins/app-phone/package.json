@@ -7,37 +7,37 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./src/ui.ts",
+      "types": "./dist/ui.d.ts",
       "import": "./dist/ui.js",
       "default": "./dist/ui.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
     "./register-companion-page": {
-      "types": "./src/register-companion-page.ts",
+      "types": "./dist/register-companion-page.d.ts",
       "import": "./dist/register-companion-page.js",
       "default": "./dist/register-companion-page.js"
     },
     "./companion": {
-      "types": "./src/companion/index.ts",
+      "types": "./dist/companion/index.d.ts",
       "import": "./dist/companion/index.js",
       "default": "./dist/companion/index.js"
     },
     "./companion/services": {
-      "types": "./src/companion/services/index.ts",
+      "types": "./dist/companion/services/index.d.ts",
       "import": "./dist/companion/services/index.js",
       "default": "./dist/companion/services/index.js"
     }
@@ -79,7 +79,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],

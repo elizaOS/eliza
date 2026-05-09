@@ -6,7 +6,8 @@
     "eliza",
     "buf.yaml",
     "buf.gen.yaml",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "publishConfig": {
     "access": "public"

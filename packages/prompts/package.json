@@ -30,7 +30,8 @@
   "files": [
     "prompts/",
     "dist/",
-    "scripts/"
+    "scripts/",
+    "dist"
   ],
   "keywords": [
     "elizaos",
