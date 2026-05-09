@@ -566,7 +566,7 @@ export function createLifeOpsChatTestRuntime(options: {
     },
   };
 
-  const runtime = runtimeSubset as unknown as AgentRuntime;
+  const runtime = runtimeSubset as AgentRuntime;
   runtime.messageService = {
     handleMessage: async (
       runtimeArg: AgentRuntime,

@@ -6,7 +6,7 @@ import {
   Spinner,
   useApp,
   useMediaQuery,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsGmailNeedsResponseFeed,

@@ -21,9 +21,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isLoopbackBindHost, resolveApiBindHost } from "@elizaos/shared";
+import { isLoopbackBindHost, resolveApiBindHost, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
@@ -57,7 +56,9 @@ async function openAuthStoreFromCli(): Promise<{
   store: import("../../services/auth-store").AuthStore;
   close: () => Promise<void>;
 }> {
-  const sql = (await import("@elizaos/plugin-sql")) as unknown as {
+  const sql = (await import(
+    "@elizaos/plugin-sql"
+  )) as typeof import("@elizaos/plugin-sql") & {
     createDatabaseAdapter: (
       cfg: { dataDir: string },
       id: `${string}-${string}-${string}-${string}-${string}`,
@@ -79,7 +80,7 @@ async function openAuthStoreFromCli(): Promise<{
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as RuntimeAdapter;
+  ) as RuntimeAdapter;
   if (typeof adapter.initialize === "function") {
     await adapter.initialize();
   } else if (typeof adapter.init === "function") {
@@ -88,7 +89,7 @@ async function openAuthStoreFromCli(): Promise<{
   if (!adapter.db) {
     throw new Error("CLI auth: adapter has no .db handle");
   }
-  const db = adapter.db as import("@elizaos/plugin-sql/types").DrizzleDatabase;
+  const db = adapter.db as import("@elizaos/plugin-sql").DrizzleDatabase;
   const migrations = new DatabaseMigrationService();
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([plugin]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui/primitives";
+import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";

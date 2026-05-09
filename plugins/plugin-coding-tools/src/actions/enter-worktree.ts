@@ -74,7 +74,10 @@ export const enterWorktreeAction: Action = {
     },
   ],
   validate: async (runtime: IAgentRuntime) => {
-    return true;
+    return Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(SESSION_CWD_SERVICE),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

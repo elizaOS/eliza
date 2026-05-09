@@ -720,7 +720,9 @@ export class CharactersService {
       .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
       .where(and(eq(participantTable.entityId, userId), eq(roomTable.agentId, agentId)));
 
-    const roomIds = userRooms.map((r) => r.roomId);
+    const roomIds = userRooms
+      .map((r) => r.roomId)
+      .filter((roomId): roomId is string => typeof roomId === "string");
 
     // Use transaction to ensure atomicity of all delete operations
     const { deletedMemories, deletedParticipants, deletedRooms } = await dbWrite.transaction(

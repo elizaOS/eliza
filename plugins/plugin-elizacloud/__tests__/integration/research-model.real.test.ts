@@ -1,6 +1,6 @@
 import * as http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { handleResearch } from "../../models/research";
+import { handleResearch } from "../../src/models/research";
 
 let server: http.Server;
 let baseUrl: string;

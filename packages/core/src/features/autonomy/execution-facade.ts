@@ -11,6 +11,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { createUniqueUuid } from "../../entities.ts";
 import { executePlannedToolCall } from "../../runtime/execute-planned-tool-call.ts";
+import { runPostTurnEvaluators } from "../../services/evaluator.ts";
 import type {
 	ActionResult,
 	AgentContext,
@@ -122,11 +123,10 @@ export async function runAutonomyPostResponse(
 		},
 	];
 
-	// WHY: Same provider list as message pipeline before planned tool execution/evaluate so action names and evaluator context are available.
+	// Same provider list as message pipeline before planned tool execution.
 	const state: State = await runtime.composeState(autonomousMessage, [
 		"ACTIONS",
 		"RECENT_MESSAGES",
-		"EVALUATORS",
 	]);
 
 	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = planned tools).
@@ -202,7 +202,8 @@ export async function runAutonomyPostResponse(
 		}
 	}
 
-	// WHY: didRespond gates some evaluators; autonomy "responded" when there is text or non-IGNORE actions.
+	// WHY: didRespond gates ALWAYS_AFTER hook actions; autonomy "responded"
+	// when there is text or non-IGNORE actions.
 	const didRespond =
 		(typeof responseContent.text === "string" &&
 			responseContent.text.trim().length > 0) ||
@@ -211,29 +212,14 @@ export async function runAutonomyPostResponse(
 			responseContent.actions[0]?.toUpperCase() !== "IGNORE" &&
 			responseContent.actions[0]?.toUpperCase() !== "STOP");
 
-	await runtime.evaluate(
-		autonomousMessage,
-		state,
+	await runPostTurnEvaluators(runtime, autonomousMessage, state, {
 		didRespond,
-		async (content) => {
-			runtime.logger.debug(
-				{ src: "autonomy:facade", content },
-				"Autonomy evaluate callback",
-			);
-			if (callback) {
-				await runtime.applyPipelineHooks(
-					"outgoing_before_deliver",
-					outgoingPipelineHookContext(content, {
-						source: "autonomy_evaluate",
-						roomId: autonomousMessage.roomId,
-						message: autonomousMessage,
-						responseId: content.responseId,
-					}),
-				);
-				return callback(content);
-			}
-			return [];
-		},
-		responseMessages,
-	);
+		responses: responseMessages,
+	});
+	await runtime.runActionsByMode("ALWAYS_AFTER", autonomousMessage, state, {
+		didRespond,
+		responses: responseMessages,
+	});
+	void callback;
+	void outgoingPipelineHookContext;
 }

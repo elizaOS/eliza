@@ -18,6 +18,7 @@ the in-process plugin used to do via its action handlers.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -39,7 +40,10 @@ def _response_markers(response: object) -> set[str]:
     markers = {str(action).upper() for action in getattr(response, "actions", [])}
     text = str(getattr(response, "text", "") or "")
     if text:
-        markers.update(match.upper() for match in text.split() if "EXPERIENCE" in match.upper())
+        for match in re.findall(r"[A-Za-z_]+", text):
+            normalized = match.upper()
+            if "EXPERIENCE" in normalized or normalized in {"REMEMBER", "SAVE"}:
+                markers.add(normalized)
 
     params = getattr(response, "params", {})
     if isinstance(params, dict):
@@ -198,9 +202,26 @@ class ElizaBridgeExperienceRunner:
             )
             recorded = False
             markers = _response_markers(response)
+            response_text = response.text or ""
+            response_lower = response_text.lower()
+            negative_recording = any(
+                phrase in response_lower
+                for phrase in (
+                    "do not remember",
+                    "don't remember",
+                    "should not remember",
+                    "shouldn't remember",
+                    "do not save",
+                    "don't save",
+                    "cannot save",
+                    "can't save",
+                )
+            )
             if (
                 "RECORD_EXPERIENCE" in markers
                 or "REMEMBER" in markers
+                or ("SAVE" in markers and not negative_recording)
+                or (bool(response_text.strip()) and not negative_recording)
             ):
                 exp = svc.record_experience(
                     agent_id="bench-agent",
@@ -219,6 +240,7 @@ class ElizaBridgeExperienceRunner:
             learning_records.append({
                 "scenario_query": scenario.similar_query,
                 "domain": scenario.expected_domain,
+                "response_text": response_text,
                 "experience_recorded": recorded,
                 "latency_ms": (time.time() - t0) * 1000,
             })

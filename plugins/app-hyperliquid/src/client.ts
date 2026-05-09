@@ -1,4 +1,4 @@
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/app-core";
 import type {
   HyperliquidMarketsResponse,
   HyperliquidOrdersResponse,

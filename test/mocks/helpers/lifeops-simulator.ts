@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import { resolveOAuthDir } from "@elizaos/agent";
 import type {
   AgentRuntime,
   Content,
@@ -25,7 +25,6 @@ import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
 } from "../../../plugins/app-lifeops/src/lifeops/signal-local-client.ts";
-import { buildTelegramTokenRef } from "../../../plugins/app-lifeops/src/lifeops/telegram-auth.ts";
 import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../plugins/app-lifeops/src/lifeops/telegram-local-client.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
@@ -62,6 +61,13 @@ interface SignalMockService {
   getRecentMessages(limit?: number): Promise<SignalRecentMessage[]>;
   sendMessage(recipient: string, text: string): Promise<{ timestamp: number }>;
   stop(): Promise<void>;
+}
+
+interface WhatsAppMockService {
+  connected: boolean;
+  phoneNumber: string;
+  handleWebhook(payload: Record<string, unknown>): Promise<void>;
+  fetchConnectorMessages(limit?: number): Promise<Memory[]>;
 }
 
 interface BrowserWorkspaceTab {
@@ -180,6 +186,31 @@ function installSignalMockService(runtime: AgentRuntime): Cleanup {
       services.set("signal", previous);
     } else {
       services.delete("signal");
+    }
+  };
+}
+
+function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
+  const services = servicesMap(runtime);
+  const previous = services.get("whatsapp");
+  const buffered: Record<string, unknown>[] = [];
+  const whatsappService: WhatsAppMockService = {
+    connected: true,
+    phoneNumber: LIFEOPS_SIMULATOR_OWNER.phone,
+    async handleWebhook(payload) {
+      buffered.push(payload);
+    },
+    async fetchConnectorMessages(limit = 25) {
+      return [];
+    },
+  };
+  services.set("whatsapp", [whatsappService]);
+  return () => {
+    buffered.length = 0;
+    if (previous) {
+      services.set("whatsapp", previous);
+    } else {
+      services.delete("whatsapp");
     }
   };
 }
@@ -304,15 +335,18 @@ export function createLifeOpsSimulatorRuntimeFixtures(): LifeOpsSimulatorRuntime
   return {
     async applyRuntimeFixtures(runtime) {
       const cleanupSignal = installSignalMockService(runtime);
+      const cleanupWhatsApp = installWhatsAppMockService(runtime);
       let cleanupDiscord: Cleanup;
       try {
         cleanupDiscord = installDiscordMockSendTarget(runtime);
       } catch (err) {
+        await cleanupWhatsApp();
         await cleanupSignal();
         throw err;
       }
       return async () => {
         await cleanupDiscord();
+        await cleanupWhatsApp();
         await cleanupSignal();
       };
     },
@@ -429,9 +463,17 @@ function writeTelegramMockSession(stateDir: string): void {
   );
 }
 
+function sanitizeTokenPathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function buildTelegramTokenRef(agentId: string): string {
+  return path.join(sanitizeTokenPathSegment(agentId), "owner", "telegram.json");
+}
+
 function writeTelegramToken(runtime: AgentRuntime): string {
   const telegramIdentity = LIFEOPS_SIMULATOR_OWNER_IDENTITIES.telegram;
-  const tokenRef = buildTelegramTokenRef(runtime.agentId, "owner");
+  const tokenRef = buildTelegramTokenRef(runtime.agentId);
   const tokenPath = path.join(
     resolveOAuthDir(process.env),
     "lifeops",

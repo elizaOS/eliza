@@ -52,28 +52,77 @@ export function parseMessageHandlerOutput(
 		? plan.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
 	const reply = typeof plan.reply === "string" ? plan.reply : undefined;
+	const requiresTool =
+		typeof plan.requiresTool === "boolean" ? plan.requiresTool : undefined;
+	const simple =
+		typeof plan.simple === "boolean"
+			? plan.simple
+			: typeof (parsed as { simple?: unknown }).simple === "boolean"
+				? ((parsed as { simple?: boolean }).simple as boolean)
+				: undefined;
+	const contextSlices = normalizeStringHints(plan.contextSlices, 12);
+	const candidateActions = normalizeStringHints(plan.candidateActions, 12);
+	const parentActionHints = normalizeStringHints(plan.parentActionHints, 6);
 
 	// Backward-compatibility shim: legacy `plan.simple === true` (or root-level
 	// `simple: true`) with empty contexts is treated as `["simple"]`. New
 	// callers should emit `contexts: ["simple"]` directly.
-	const legacySimpleFlag =
-		plan.simple === true || (parsed as { simple?: unknown }).simple === true;
 	const contexts =
-		rawContexts.length === 0 && legacySimpleFlag
+		rawContexts.length === 0 && simple === true
 			? [SIMPLE_CONTEXT_ID]
 			: rawContexts;
 
 	const extract = parseExtract(parsed.extract);
 
+	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
+		contexts,
+		reply,
+		...(requiresTool !== undefined ? { requiresTool } : {}),
+		...(simple !== undefined ? { simple } : {}),
+	};
+	if (contextSlices.length > 0) {
+		normalizedPlan.contextSlices = contextSlices;
+	}
+	if (candidateActions.length > 0) {
+		normalizedPlan.candidateActions = candidateActions;
+	}
+	if (parentActionHints.length > 0) {
+		normalizedPlan.parentActionHints = parentActionHints;
+	}
+
 	return {
 		processMessage,
-		plan: {
-			contexts,
-			reply,
-		},
+		plan: normalizedPlan,
 		thought: typeof parsed.thought === "string" ? parsed.thought : "",
 		...(extract ? { extract } : {}),
 	};
+}
+
+function normalizeStringHints(raw: unknown, maxItems: number): string[] {
+	if (!Array.isArray(raw) || maxItems <= 0) {
+		return [];
+	}
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of raw) {
+		if (typeof item !== "string") {
+			continue;
+		}
+		const value = item.trim();
+		if (!value) {
+			continue;
+		}
+		const dedupeKey = value.toLowerCase();
+		if (seen.has(dedupeKey)) {
+			continue;
+		}
+		seen.add(dedupeKey);
+		result.push(value);
+		if (result.length >= maxItems) {
+			break;
+		}
+	}
+	return result;
 }
 
 function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
@@ -105,12 +154,22 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 						entry !== null,
 				)
 		: [];
-	if (facts.length === 0 && relationships.length === 0) {
+	const addressedTo = Array.isArray(source.addressedTo)
+		? source.addressedTo
+				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+				.filter((entry): entry is string => entry.length > 0)
+		: [];
+	if (
+		facts.length === 0 &&
+		relationships.length === 0 &&
+		addressedTo.length === 0
+	) {
 		return undefined;
 	}
 	const result: MessageHandlerExtract = {};
 	if (facts.length > 0) result.facts = facts;
 	if (relationships.length > 0) result.relationships = relationships;
+	if (addressedTo.length > 0) result.addressedTo = addressedTo;
 	return result;
 }
 
@@ -125,13 +184,28 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const allContexts = [...(output.plan?.contexts ?? [])];
+	const legacyContexts = (output as { contexts?: AgentContext[] }).contexts;
+	const allContexts = [...(output.plan?.contexts ?? legacyContexts ?? [])];
+	const requiresTool = output.plan?.requiresTool === true;
+	const explicitlyNonSimple =
+		output.plan?.simple === false ||
+		(output as { simple?: unknown }).simple === false;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
-	// is empty), Stage 1 owns the reply and we never enter the planner.
+	// is empty), Stage 1 owns the reply and we never enter the planner — unless
+	// the route explicitly says this turn needs a tool, in which case we fall
+	// through to planning against `general`.
 	const nonSimpleContexts = allContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
+
+	if ((requiresTool || explicitlyNonSimple) && nonSimpleContexts.length === 0) {
+		return {
+			type: "planning_needed",
+			output,
+			contexts: ["general"],
+		};
+	}
 
 	if (nonSimpleContexts.length === 0) {
 		return {

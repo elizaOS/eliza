@@ -394,9 +394,7 @@ const modelCommand: SlashCommand = {
 		});
 	},
 	async autocomplete(interaction) {
-		const runtime = (
-			interaction.client as unknown as { runtime?: IAgentRuntime }
-		).runtime;
+		const runtime = (interaction.client as { runtime?: IAgentRuntime }).runtime;
 		const models = runtime
 			? getKnownModels(runtime)
 			: [...FALLBACK_KNOWN_MODELS];
@@ -509,7 +507,7 @@ export async function handleSlashCommand(
 	if (command.requiredRole && command.requiredRole !== "GUEST" && context) {
 		try {
 			const accessModuleId = "@elizaos/agent/security/access";
-			const { hasRoleAccess } = (await import(accessModuleId)) as unknown as {
+			const { hasRoleAccess } = (await import(accessModuleId)) as {
 				hasRoleAccess?: (
 					runtime: unknown,
 					message: unknown,

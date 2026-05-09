@@ -504,9 +504,15 @@ export const ChatMessage = memo(function ChatMessage({
             <div
               className={cn(
                 "absolute top-0 flex items-center gap-1 transition-opacity duration-200",
+                // Below the `sm` breakpoint (narrow phones) anchor the
+                // action rail to the bubble's top-right corner so it can
+                // never overflow the viewport. From `sm` up the rail
+                // floats outside the bubble (left of right-aligned user
+                // bubbles, right of left-aligned bot bubbles) where there
+                // is enough horizontal room.
                 isRightAligned
-                  ? "left-0 -translate-x-full"
-                  : "right-0 translate-x-full",
+                  ? "right-1 sm:right-auto sm:left-0 sm:-translate-x-full"
+                  : "right-1 sm:right-0 sm:translate-x-full",
                 actionsVisible
                   ? "opacity-100"
                   : "pointer-events-none opacity-0",

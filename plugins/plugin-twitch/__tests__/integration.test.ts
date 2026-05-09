@@ -1,3 +1,10 @@
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  MessageConnectorRegistration,
+  State,
+} from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import twitchPlugin, {
   formatChannelForDisplay,
@@ -12,6 +19,7 @@ import twitchPlugin, {
   TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
+  type TwitchSettings,
   TwitchNotConnectedError,
   TwitchPluginError,
   type TwitchSendResult,
@@ -24,8 +32,32 @@ import twitchPlugin, {
 // Helpers: mock runtime, memory, state
 // ---------------------------------------------------------------------------
 
-function makeMockRuntime(overrides: Record<string, unknown> = {}) {
+type RegisterMessageConnectorMock = ReturnType<
+  typeof vi.fn<(registration: MessageConnectorRegistration) => void>
+>;
+
+type MockRuntime = IAgentRuntime & {
+  registerMessageConnector: RegisterMessageConnectorMock;
+  registerSendHandler: ReturnType<typeof vi.fn>;
+};
+
+type MockRuntimeOverrides = Partial<IAgentRuntime> &
+  Record<string, unknown> & {
+    modelResponse?: string;
+    service?: unknown;
+    registerMessageConnector?: RegisterMessageConnectorMock;
+    registerSendHandler?: ReturnType<typeof vi.fn>;
+  };
+
+type TwitchServiceHarnessFields = {
+  settings?: TwitchSettings;
+  joinedChannels?: Set<string>;
+  accountServices?: Map<string, TwitchService>;
+};
+
+function makeMockRuntime(overrides: MockRuntimeOverrides = {}): MockRuntime {
   return {
+    agentId: "agent-1",
     getSetting: (key: string) =>
       (overrides as Record<string, string>)[key] ?? null,
     getService: (_name: string) => overrides.service ?? null,
@@ -33,25 +65,49 @@ function makeMockRuntime(overrides: Record<string, unknown> = {}) {
     useModel: async (_type: string, _opts: unknown) =>
       overrides.modelResponse ?? "{}",
     emitEvent: async () => {},
+    registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
+    registerSendHandler: vi.fn(),
     ...overrides,
-  } as any;
+  } as MockRuntime;
 }
 
-function makeMemory(source: string = "twitch", text: string = "hello") {
+function makeMemory(source: string = "twitch", text: string = "hello"): Partial<Memory> {
   return {
     content: { text, source },
     userId: "user-1",
     roomId: "room-1",
-  } as any;
+  };
 }
 
-function makeState(extra: Record<string, unknown> = {}) {
+function makeState(extra: Record<string, unknown> = {}): Partial<State> {
   return {
     agentName: "TestBot",
     recentMessages: "",
     data: {},
     ...extra,
-  } as any;
+  };
+}
+
+function makeTwitchSettings(overrides: Partial<TwitchSettings>): TwitchSettings {
+  return {
+    username: "testbot",
+    clientId: "client-id",
+    accessToken: "access-token",
+    channel: "mainchannel",
+    additionalChannels: [],
+    requireMention: false,
+    allowedRoles: ["all"],
+    allowedUserIds: [],
+    enabled: true,
+    ...overrides,
+  };
+}
+
+function makeTwitchServiceHarness(
+  fields: TwitchServiceHarnessFields = {},
+): TwitchService & TwitchServiceHarnessFields {
+  return Object.assign(Object.create(TwitchService.prototype), fields) as TwitchService &
+    TwitchServiceHarnessFields;
 }
 
 function makeMockTwitchService(overrides: Record<string, unknown> = {}) {
@@ -311,20 +367,60 @@ describe("Custom Errors", () => {
 });
 
 describe("Twitch message connector accounts", () => {
+  test("registers one connector for each started account", () => {
+    const runtime = makeMockRuntime({
+      registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
+      registerSendHandler: vi.fn(),
+      logger: { info: vi.fn() },
+    });
+    const primary = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "primary",
+        username: "bot_one",
+        channel: "one",
+      }),
+      joinedChannels: new Set(["one"]),
+    });
+    const secondary = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "secondary",
+        username: "bot_two",
+        channel: "two",
+      }),
+      joinedChannels: new Set(["two"]),
+    });
+    const service = makeTwitchServiceHarness({
+      accountServices: new Map([
+        ["primary", primary],
+        ["secondary", secondary],
+      ]),
+    });
+
+    TwitchService.registerSendHandlers(runtime, service);
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledTimes(2);
+    expect(
+      runtime.registerMessageConnector.mock.calls.map(
+        ([registration]) => registration.accountId,
+      ),
+    ).toEqual(["primary", "secondary"]);
+  });
+
   test("registers accountId and routes sends through that account", async () => {
     const runtime = makeMockRuntime({
-      registerMessageConnector: vi.fn(),
+      registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
       logger: { info: vi.fn() },
       TWITCH_DEFAULT_ACCOUNT_ID: "streamer",
     });
-    const service = Object.create(TwitchService.prototype) as TwitchService;
-    (service as any).settings = {
-      accountId: "streamer",
-      username: "testbot",
-      channel: "mainchannel",
-    };
+    const service = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "streamer",
+        username: "testbot",
+        channel: "mainchannel",
+      }),
+    });
     const sendMessage = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, messageId: "msg-1" });
@@ -340,16 +436,15 @@ describe("Twitch message connector accounts", () => {
       }),
     );
 
-    const registration = (runtime.registerMessageConnector as any).mock
-      .calls[0][0];
+    const registration = runtime.registerMessageConnector.mock.calls[0][0];
     await registration.sendHandler!(
       runtime,
       {
         source: "twitch",
         accountId: "streamer",
         channelId: "mainchannel",
-      } as any,
-      { text: "hello" } as any,
+      },
+      { text: "hello" } satisfies Content,
     );
 
     expect(sendMessage).toHaveBeenCalledWith(

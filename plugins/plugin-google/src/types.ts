@@ -63,12 +63,15 @@ export interface GoogleMessageSummary {
   threadId?: string;
   subject?: string;
   from?: GoogleEmailAddress;
+  replyTo?: GoogleEmailAddress;
   to?: GoogleEmailAddress[];
+  cc?: GoogleEmailAddress[];
   snippet?: string;
   receivedAt?: string;
   labelIds?: string[];
   bodyText?: string;
   bodyHtml?: string;
+  headers?: Record<string, string>;
 }
 
 export interface GoogleSendEmailInput extends GoogleAccountRef {
@@ -79,6 +82,87 @@ export interface GoogleSendEmailInput extends GoogleAccountRef {
   text?: string;
   html?: string;
   threadId?: string;
+}
+
+export type GoogleGmailBulkOperation =
+  | "archive"
+  | "trash"
+  | "delete"
+  | "report_spam"
+  | "mark_read"
+  | "mark_unread"
+  | "apply_label"
+  | "remove_label";
+
+export interface GoogleGmailMessageSummary {
+  externalId: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  fromEmail: string | null;
+  replyTo: string | null;
+  to: string[];
+  cc: string[];
+  snippet: string;
+  receivedAt: string;
+  isUnread: boolean;
+  isImportant: boolean;
+  likelyReplyNeeded: boolean;
+  triageScore: number;
+  triageReason: string;
+  labels: string[];
+  htmlLink: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface GoogleGmailMessageDetail {
+  message: GoogleGmailMessageSummary;
+  bodyText: string;
+}
+
+export interface GoogleGmailUnrespondedThread {
+  threadId: string;
+  externalMessageId: string;
+  subject: string;
+  to: string[];
+  cc: string[];
+  lastOutboundAt: string;
+  lastInboundAt: string | null;
+  daysWaiting: number;
+  snippet: string;
+  labels: string[];
+  htmlLink: string | null;
+}
+
+export interface GoogleGmailSendResult {
+  messageId: string | null;
+  threadId: string | null;
+  labelIds: string[];
+}
+
+export interface GoogleGmailSubscriptionMessageHeaders {
+  messageId: string;
+  threadId: string;
+  receivedAt: string;
+  subject: string;
+  fromDisplay: string;
+  fromEmail: string | null;
+  listId: string | null;
+  listUnsubscribe: string | null;
+  listUnsubscribePost: string | null;
+  snippet: string;
+  labels: string[];
+}
+
+export interface GoogleGmailFilterCreateResult {
+  filterId: string | null;
+  trashed: boolean;
+}
+
+export interface GoogleParsedMailto {
+  recipient: string;
+  subject: string | null;
+  body: string | null;
 }
 
 export interface GoogleCalendarEventInput extends GoogleAccountRef {
@@ -109,13 +193,18 @@ export interface GoogleCalendarEvent {
   id: string;
   calendarId: string;
   title?: string;
+  status?: string;
   start?: string;
   end?: string;
+  isAllDay?: boolean;
+  timeZone?: string | null;
   htmlLink?: string;
   meetLink?: string;
   attendees?: GoogleEmailAddress[];
   location?: string;
   description?: string;
+  organizer?: GoogleEmailAddress & { self?: boolean };
+  metadata?: Record<string, unknown>;
 }
 
 export interface GoogleCalendarListEntry {
@@ -139,6 +228,33 @@ export interface GoogleDriveFile {
   modifiedTime?: string;
   size?: string;
   parents?: string[];
+}
+
+export interface GoogleDriveFileList {
+  files: GoogleDriveFile[];
+  nextPageToken: string | null;
+}
+
+export interface GoogleDocContent {
+  title: string;
+  plainText: string;
+}
+
+export interface GoogleSheetContent {
+  title: string;
+  rows: string[][];
+}
+
+export interface GoogleDriveCreateFileInput extends GoogleAccountRef {
+  name: string;
+  mimeType: string;
+  content?: string | Uint8Array;
+  parentFolderId?: string;
+}
+
+export interface GoogleSheetUpdateResult {
+  updatedRange: string;
+  updatedCells: number;
 }
 
 export type GoogleMeetAccessType = "OPEN" | "TRUSTED" | "RESTRICTED";
@@ -280,6 +396,74 @@ export interface IGoogleGmailService extends Service {
     params: GoogleAccountRef & { messageId: string; includeBody?: boolean }
   ): Promise<GoogleMessageSummary>;
   sendEmail(params: GoogleSendEmailInput): Promise<{ id: string; threadId?: string }>;
+  listGmailTriageMessages(
+    params: GoogleAccountRef & { selfEmail?: string | null; maxResults?: number }
+  ): Promise<GoogleGmailMessageSummary[]>;
+  searchGmailMessages(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      maxResults?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailMessageSummary[]>;
+  getGmailMessage(
+    params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
+  ): Promise<GoogleGmailMessageSummary | null>;
+  getGmailMessageDetail(
+    params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
+  ): Promise<GoogleGmailMessageDetail | null>;
+  listGmailUnrespondedThreads(
+    params: GoogleAccountRef & {
+      selfEmail?: string | null;
+      olderThanDays?: number;
+      maxResults?: number;
+      now?: Date;
+    }
+  ): Promise<GoogleGmailUnrespondedThread[]>;
+  modifyGmailMessages(
+    params: GoogleAccountRef & {
+      messageIds: readonly string[];
+      operation: GoogleGmailBulkOperation;
+      labelIds?: readonly string[];
+    }
+  ): Promise<void>;
+  sendGmailReply(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      subject: string;
+      bodyText: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailSendResult>;
+  sendGmailMessage(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+    }
+  ): Promise<GoogleGmailSendResult>;
+  getGmailSubscriptionHeaders(
+    params: GoogleAccountRef & { query?: string; maxMessages?: number }
+  ): Promise<GoogleGmailSubscriptionMessageHeaders[]>;
+  createGmailFilterForSender(
+    params: GoogleAccountRef & { fromAddress: string; trash?: boolean }
+  ): Promise<GoogleGmailFilterCreateResult>;
+  trashGmailThread(params: GoogleAccountRef & { threadId: string }): Promise<void>;
+  modifyGmailMessageLabels(
+    params: GoogleAccountRef & {
+      messageId: string;
+      addLabelIds?: string[];
+      removeLabelIds?: string[];
+    }
+  ): Promise<void>;
+  sendMailtoUnsubscribeEmail(
+    params: GoogleAccountRef & { mailto: GoogleParsedMailto }
+  ): Promise<void>;
 }
 
 export interface IGoogleCalendarService extends Service {
@@ -292,6 +476,9 @@ export interface IGoogleCalendarService extends Service {
       limit?: number;
     }
   ): Promise<GoogleCalendarEvent[]>;
+  getEvent(
+    params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent>;
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent>;
   updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent>;
   deleteEvent(params: GoogleAccountRef & { calendarId?: string; eventId: string }): Promise<void>;
@@ -302,6 +489,25 @@ export interface IGoogleDriveService extends Service {
     params: GoogleAccountRef & { query: string; limit?: number }
   ): Promise<GoogleDriveFile[]>;
   getFile(params: GoogleAccountRef & { fileId: string }): Promise<GoogleDriveFile>;
+  listDriveFiles(
+    params: GoogleAccountRef & { folderId?: string; maxResults?: number; pageToken?: string }
+  ): Promise<GoogleDriveFileList>;
+  searchDriveFiles(
+    params: GoogleAccountRef & { query: string; maxResults?: number; pageToken?: string }
+  ): Promise<GoogleDriveFileList>;
+  getDocContent(params: GoogleAccountRef & { documentId: string }): Promise<GoogleDocContent>;
+  getSheetContent(
+    params: GoogleAccountRef & { spreadsheetId: string; range?: string }
+  ): Promise<GoogleSheetContent>;
+  createDriveFile(params: GoogleDriveCreateFileInput): Promise<GoogleDriveFile>;
+  appendToDoc(params: GoogleAccountRef & { documentId: string; text: string }): Promise<void>;
+  updateSheetCells(
+    params: GoogleAccountRef & {
+      spreadsheetId: string;
+      range: string;
+      values: ReadonlyArray<ReadonlyArray<string | number>>;
+    }
+  ): Promise<GoogleSheetUpdateResult>;
 }
 
 export interface IGoogleMeetService extends Service {

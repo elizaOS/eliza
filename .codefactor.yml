@@ -4,7 +4,7 @@ exclude:
   # The Complex Method warnings flagged on these files predate this PR.
   # The PR diff touches them only as part of develop-side CI fixes
   # (revert + @ts-ignore + format pass), not to add complexity.
-  - "plugins/plugin-n8n-workflow/**"
+  - "plugins/plugin-workflow/**"
   - "packages/agent/src/runtime/aosp-llama-adapter.ts"
   - "packages/app-core/scripts/run-mobile-build.mjs"
   - "packages/app-core/src/state/startup-phase-restore.ts"

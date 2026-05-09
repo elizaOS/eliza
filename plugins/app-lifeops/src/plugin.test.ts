@@ -28,11 +28,32 @@ function createRuntimeWithPluginRegistration(initialPlugins: Plugin[] = []): {
       info: vi.fn(),
       warn: vi.fn(),
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
   return { runtime, plugins, registerPlugin };
 }
 
 describe("LifeOps Google plugin registration", () => {
+  it("exposes the LIFE action for todos-routed planner turns", () => {
+    const lifeAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "LIFE",
+    );
+
+    expect(lifeAction?.contexts).toContain("todos");
+  });
+
+  it("validates normal owner todo requests for the LIFE action", async () => {
+    const lifeAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "LIFE",
+    );
+
+    await expect(
+      lifeAction?.validate?.(
+        { getRoom: async () => null } as IAgentRuntime,
+        { content: { text: "add a todo: pick up dry cleaning tomorrow" } } as never,
+      ),
+    ).resolves.toBe(true);
+  });
+
   it("declares plugin-google for app and route plugin dependency resolution", () => {
     expect(appLifeOpsPlugin.dependencies).toContain("@elizaos/plugin-google");
     expect(lifeopsPlugin.dependencies).toContain("@elizaos/plugin-google");
@@ -54,15 +75,22 @@ describe("LifeOps Google plugin registration", () => {
     );
   });
 
-  it("keeps generic Google connector routes ahead of legacy LifeOps setup routes", () => {
+  it("registers generic Google connector routes without legacy LifeOps setup routes", () => {
     const routePaths = (lifeopsPlugin.routes ?? []).map((route) => route.path);
 
     expect(routePaths).toContain("/api/connectors/google/oauth/start");
     expect(routePaths).toContain("/api/connectors/google/oauth/callback");
-    expect(routePaths).toContain("/api/lifeops/connectors/google/start");
-    expect(
-      routePaths.indexOf("/api/connectors/google/oauth/start"),
-    ).toBeLessThan(routePaths.indexOf("/api/lifeops/connectors/google/start"));
+    expect(routePaths).toContain("/api/connectors/google/accounts");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/status");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/accounts");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/success");
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/start");
+    expect(routePaths).not.toContain(
+      "/api/lifeops/connectors/google/callback",
+    );
+    expect(routePaths).not.toContain(
+      "/api/lifeops/connectors/google/disconnect",
+    );
   });
 
   it("does not register plugin-google twice", async () => {

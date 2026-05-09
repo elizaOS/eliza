@@ -23,6 +23,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Trajectory } from "@elizaos/agent";
 import {
   type AnonymizerLookup,
   applyPrivacyFilter,
@@ -57,8 +58,10 @@ interface TrajectoryServiceLike {
   listTrajectories: (options: {
     limit?: number;
   }) => Promise<{ trajectories: Array<{ id: string }> }>;
-  getTrajectoryDetail: (id: string) => Promise<FilterableTrajectory | null>;
+  getTrajectoryDetail: (id: string) => Promise<ExportableTrajectory | null>;
 }
+
+type ExportableTrajectory = Trajectory & FilterableTrajectory;
 
 export type TriggerSource = "threshold" | "cron" | "manual";
 
@@ -151,7 +154,7 @@ function baselinePlaceholder(task: TrajectoryTrainingTask): string {
   return `# baseline placeholder for ${task}`;
 }
 
-const V5_PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
+const PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
 
 context_object:
 {{contextObject}}
@@ -379,7 +382,7 @@ async function loadBaselineForTask(
   const prompts = await import("@elizaos/core").catch(() => null);
   if (!prompts) {
     return task === "action_planner"
-      ? V5_PLANNER_BASELINE
+      ? PLANNER_BASELINE
       : baselinePlaceholder(task);
   }
   const promptModule = prompts as Record<string, unknown>;
@@ -402,9 +405,9 @@ async function loadBaselineForTask(
     case "action_planner":
       return (
         firstStringExport(promptModule, [
-          "v5PlannerTemplate",
           "plannerTemplate",
-        ]) ?? V5_PLANNER_BASELINE
+          "plannerTemplate",
+        ]) ?? PLANNER_BASELINE
       );
     case "media_description":
       return (
@@ -503,7 +506,7 @@ export async function triggerTraining(
 
   const limit = options.trajectoryLimit ?? 500;
   const list = await trajectoryService.listTrajectories({ limit });
-  const trajectories: FilterableTrajectory[] = [];
+  const trajectories: ExportableTrajectory[] = [];
   for (const item of list.trajectories ?? []) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);
@@ -520,7 +523,7 @@ export async function triggerTraining(
   await mkdir(outputDir, { recursive: true });
   // privacy filter applied above
   const dataset = await exportTrajectoryTaskDatasets(
-    filtered.trajectories as unknown as Parameters<
+    filtered.trajectories as Parameters<
       typeof exportTrajectoryTaskDatasets
     >[0],
     outputDir,

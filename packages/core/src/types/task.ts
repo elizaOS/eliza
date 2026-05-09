@@ -1,14 +1,19 @@
 import type { Memory } from "./memory";
-import type { UUID } from "./primitives";
-import type {
-	JsonValue,
-	Task as ProtoTask,
-	TaskMetadata as ProtoTaskMetadata,
-	TaskStatus as ProtoTaskStatus,
-} from "./proto.js";
+import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 import type { TriggerConfig, TriggerRunRecord } from "./trigger";
+
+export const TaskStatus = {
+	UNSPECIFIED: "UNSPECIFIED",
+	PENDING: "PENDING",
+	IN_PROGRESS: "IN_PROGRESS",
+	COMPLETED: "COMPLETED",
+	FAILED: "FAILED",
+	CANCELLED: "CANCELLED",
+} as const;
+
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 /**
  * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
@@ -53,8 +58,7 @@ export interface TaskWorker {
  * for presenting task options to a user.
  * The `[key: string]: unknown;` allows for additional, unspecified metadata fields.
  */
-export interface TaskMetadata
-	extends Omit<ProtoTaskMetadata, "$typeName" | "$unknown" | "values"> {
+export interface TaskMetadata {
 	targetEntityId?: string;
 	reason?: string;
 	priority?: "low" | "medium" | "high";
@@ -110,22 +114,11 @@ export interface TaskMetadata
  * They can be associated with a room, world, and tagged for categorization and retrieval.
  * The `IDatabaseAdapter` handles persistence of task data.
  */
-export interface Task
-	extends Omit<
-		ProtoTask,
-		| "$typeName"
-		| "$unknown"
-		| "id"
-		| "roomId"
-		| "worldId"
-		| "entityId"
-		| "metadata"
-		| "createdAt"
-		| "updatedAt"
-		| "dueAt"
-		| "status"
-	> {
+export interface Task {
 	id?: UUID;
+	name: string;
+	description?: string;
+	tags?: string[];
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;
@@ -135,7 +128,7 @@ export interface Task
 	createdAt?: number | bigint;
 	updatedAt?: number | bigint;
 	dueAt?: number | bigint;
-	status?: ProtoTaskStatus;
+	status?: TaskStatus;
 }
 
 /**

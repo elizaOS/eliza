@@ -1,5 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type UserResponse = {
+  success: boolean;
+  data?: {
+    id?: string;
+  };
+};
+
+type UserErrorResponse = {
+  error?: unknown;
+};
 
 /**
  * User API E2E Tests
@@ -15,7 +27,7 @@ describe("User API", () => {
     const response = await api.get("/api/v1/user", { authenticated: true });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<UserResponse>(response);
     expect(body.success).toBe(true);
     expect(body.data?.id).toBeTruthy();
   });
@@ -33,7 +45,7 @@ describe("User API", () => {
     );
 
     expect(response.status).toBe(400);
-    const body = (await response.json()) as any;
+    const body = await readJson<UserErrorResponse>(response);
     expect(body.error).toBeTruthy();
   });
 });

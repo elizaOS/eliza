@@ -9,7 +9,7 @@ describe("Signal message connector", () => {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(SignalService.prototype) as SignalService;
     const sendMessageSpy = vi.spyOn(service, "sendMessage").mockResolvedValue({ timestamp: 123 });
 
@@ -44,7 +44,7 @@ describe("Signal message connector", () => {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(async () => ({ id: roomId, source: "signal", channelId: "+15551234567" })),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(SignalService.prototype) as SignalService;
     const sendMessageSpy = vi.spyOn(service, "sendMessage").mockResolvedValue({ timestamp: 456 });
 
@@ -79,7 +79,7 @@ describe("Signal message connector", () => {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.assign(Object.create(SignalService.prototype), {
       defaultAccountId: "personal",
       clients: new Map([
@@ -113,7 +113,7 @@ describe("Signal message connector", () => {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.assign(Object.create(SignalService.prototype), {
       defaultAccountId: "personal",
       clients: new Map([

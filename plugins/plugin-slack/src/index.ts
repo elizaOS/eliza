@@ -7,13 +7,20 @@ import {
 import { createSlackConnectorAccountProvider } from "./connector-account-provider";
 
 import { SlackService } from "./service";
+import { SlackWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
-  services: [SlackService],
+  services: [SlackService, SlackWorkflowCredentialProvider],
   actions: [],
   providers: [],
+  // Self-declared auto-enable: activate when the "slack" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["slack"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register with the ConnectorAccountManager so the generic HTTP CRUD +
     // OAuth surface can list, create, patch, delete, and run OAuth v2 install

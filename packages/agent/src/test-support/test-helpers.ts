@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import type http from "node:http";
+import * as http from "node:http";
 import { createRequire } from "node:module";
+import { Socket } from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -178,32 +179,35 @@ export function createMockHttpResponse<T = unknown>(): MockResponsePayload<T> {
   let legacyStatus = 0;
   let payload = "";
 
-  const res = {
-    set statusCode(value: number) {
-      statusCode = value;
-      legacyStatus = value;
-    },
-    get statusCode() {
-      return statusCode;
-    },
-    _status: legacyStatus,
-    _body: payload,
-    setHeader: () => undefined,
-    writeHead: (value: number) => {
-      statusCode = value;
-      legacyStatus = value;
-    },
-    end: (chunk?: string | Buffer) => {
-      payload = chunk ? chunk.toString() : "";
-      res._body = payload;
-      legacyStatus = statusCode;
-      res._status = legacyStatus;
-    },
-  } as unknown as http.ServerResponse & {
+  const req = new http.IncomingMessage(new Socket());
+  const res = new http.ServerResponse(req) as http.ServerResponse & {
     _status: number;
     _body: string;
     writeHead: (statusCode: number) => void;
   };
+  Object.defineProperty(res, "statusCode", {
+    get: () => statusCode,
+    set: (value: number) => {
+      statusCode = value;
+      legacyStatus = value;
+    },
+    configurable: true,
+  });
+  res._status = legacyStatus;
+  res._body = payload;
+  res.setHeader = () => res;
+  res.writeHead = (value: number) => {
+    statusCode = value;
+    legacyStatus = value;
+    return res;
+  };
+  res.end = ((chunk?: string | Buffer) => {
+    payload = chunk ? chunk.toString() : "";
+    res._body = payload;
+    legacyStatus = statusCode;
+    res._status = legacyStatus;
+    return res;
+  }) as typeof res.end;
 
   return {
     res,

@@ -11,6 +11,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { Trajectory } from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
 import {
   type CronServiceLike,
@@ -35,6 +36,7 @@ interface MinimalLogger {
   info: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
+  debug: (message: string) => void;
 }
 
 interface RuntimeLike {
@@ -50,8 +52,10 @@ interface TrajectoryServiceLike {
   listTrajectories: (options: {
     limit?: number;
   }) => Promise<{ trajectories: Array<{ id: string }> }>;
-  getTrajectoryDetail: (id: string) => Promise<FilterableTrajectory | null>;
+  getTrajectoryDetail: (id: string) => Promise<ExportableTrajectory | null>;
 }
+
+type ExportableTrajectory = Trajectory & FilterableTrajectory;
 
 function todaySegment(): string {
   const now = new Date();
@@ -87,6 +91,7 @@ export async function runNightlyTrajectoryExport(
     info: () => {},
     warn: () => {},
     error: () => {},
+    debug: () => {},
   };
   const trajectoryService = runtime.getService(
     "trajectories",
@@ -102,7 +107,7 @@ export async function runNightlyTrajectoryExport(
 
   const limit = options.trajectoryLimit ?? DEFAULT_TRAJECTORY_LIMIT;
   const list = await trajectoryService.listTrajectories({ limit });
-  const trajectories: FilterableTrajectory[] = [];
+  const trajectories: ExportableTrajectory[] = [];
   for (const item of list.trajectories ?? []) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);
@@ -120,14 +125,8 @@ export async function runNightlyTrajectoryExport(
   await mkdir(outputDir, { recursive: true });
 
   // privacy filter applied above
-  // exportTrajectoryTaskDatasets expects the typed Trajectory shape from
-  // @elizaos/agent. Our FilterableTrajectory is structurally compatible
-  // for the fields the export reader uses; we cast through unknown to
-  // satisfy the boundary without a wider relax of the export signature.
   const summary = await exportTrajectoryTaskDatasets(
-    filtered.trajectories as unknown as Parameters<
-      typeof exportTrajectoryTaskDatasets
-    >[0],
+    filtered.trajectories,
     outputDir,
   );
 
@@ -160,11 +159,14 @@ export async function registerTrajectoryExportCron(
     info: () => {},
     warn: () => {},
     error: () => {},
+    debug: () => {},
   };
-  const cronService = await waitForService<CronServiceLike>(runtime, "CRON");
+  const cronService = await waitForService<CronServiceLike>(runtime, "CRON", {
+    timeoutMs: 2_000,
+  });
   if (!cronService || typeof cronService.createJob !== "function") {
-    log.warn(
-      "[TrajectoryExportCron] CRON service unavailable after 10s; export cron not scheduled",
+    log.debug(
+      `[TrajectoryExportCron] CRON service not registered; cron not scheduled (run on-demand via ${EXPORT_EVENT_NAME} event)`,
     );
     return;
   }

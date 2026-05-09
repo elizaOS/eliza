@@ -799,7 +799,7 @@ export class GatewayManager {
           });
         }
       };
-      conn.listeners.set(eventName, wrappedHandler as unknown as (...args: unknown[]) => void);
+      conn.listeners.set(eventName, wrappedHandler as (...args: unknown[]) => void);
       return wrappedHandler;
     };
 

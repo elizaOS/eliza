@@ -135,7 +135,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			(world as { metadata?: unknown }).metadata = {};
 		}
 		// Use type assertion to access secrets (stored in world metadata)
-		const worldMeta = world.metadata as unknown as WorldMetadataWithSecrets;
+		const worldMeta = world.metadata as WorldMetadataWithSecrets;
 		if (!worldMeta.secrets) {
 			worldMeta.secrets = {};
 		}

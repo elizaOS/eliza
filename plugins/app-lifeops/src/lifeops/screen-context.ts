@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { FRAME_FILE } from "@elizaos/plugin-browser/workspace/browser-capture";
+import { FRAME_FILE } from "@elizaos/plugin-browser";
 import { logger } from "@elizaos/core";
 import sharp from "sharp";
 

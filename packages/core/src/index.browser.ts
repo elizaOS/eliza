@@ -6,10 +6,16 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
-// Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
+export * from "./api/http-helpers";
+export * from "./api/route-helpers";
+export * from "./app-registry";
+// Export core modules (all browser-compatible after refactoring)
+export * from "./app-route-plugin-registry";
 export * from "./character";
+export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/connector-config";
 export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
@@ -37,6 +43,7 @@ export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
+export * from "./runtime-route-context";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
@@ -63,10 +70,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
-export type { JsonObject, JsonValue } from "./types/proto";
-// Keep proto JSON helpers as explicit runtime exports so browser plugin
-// bundles don't depend on Bun preserving the ./types barrel namespace export.
-export * as proto from "./types/proto";
+export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";

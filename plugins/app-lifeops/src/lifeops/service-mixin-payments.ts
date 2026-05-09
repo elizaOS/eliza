@@ -7,7 +7,7 @@
 // or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import { resolveOAuthDir } from "@elizaos/agent";
 import {
   type ParsedCsvTransaction,
   parseTransactionsCsv,
@@ -90,9 +90,6 @@ export function readPaymentMetadataToken(
   field: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  if (typeof value === "string") {
-    return value.trim().length > 0 ? value : null;
-  }
   if (value === null || value === undefined) {
     return null;
   }

@@ -129,8 +129,7 @@ export function buildMarkdownRules(
 			ruleId: "md-npm-global-install",
 			severity: "warn",
 			message: "Global package install instruction",
-			pattern:
-				/npm\s+i(nstall)?\s+(-g|--global)\b|pnpm\s+add\s+(-g|--global)\b/,
+			pattern: /npm\s+i(nstall)?\s+(-g|--global)\b/,
 		},
 		{
 			ruleId: "md-chmod-exec",

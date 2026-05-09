@@ -8085,13 +8085,6 @@ Install the official elizaOS packages:
   
     ```bash bun add @elizaos/core @elizaos/plugin-elizacloud ```
   
-  
-    ```bash pnpm add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-  
-    ```bash yarn add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-
 ## CLI Installation
 
 Install the elizaOS CLI for deployment and management:
@@ -9962,21 +9955,6 @@ console.log(data.video.url);
 ```
 
 ## Framework Integrations
-
-### LangChain
-
-```typescript
-
-const model = new ChatOpenAI({
-  openAIApiKey: process.env.ELIZA_API_KEY,
-  configuration: {
-    baseURL: "https://elizacloud.ai/api/v1",
-  },
-  modelName: "gpt-4o",
-});
-
-const response = await model.invoke("Hello!");
-```
 
 ### Vercel AI SDK
 

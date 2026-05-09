@@ -2,12 +2,13 @@ import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@e
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
+  normalizeCharacterMessageExamples,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
+  syncAppEnvToEliza,
+  syncElizaEnvAliases,
 } from "@elizaos/shared";
-import { normalizeCharacterMessageExamples } from "../utils/character-message-examples.js";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
 function syncBrandEnvAliases(): void {
   syncElizaEnvAliases();

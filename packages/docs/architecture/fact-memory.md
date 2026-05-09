@@ -129,12 +129,11 @@ flowchart TD
 |---|---|
 | `eliza/packages/core/src/types/memory.ts` | Extend fact metadata: `kind`, `category`, `structured_fields`, `valid_at`, `last_confirmed_at`, `verification_status` |
 | `eliza/packages/core/src/features/advanced-capabilities/providers/facts.ts` | Split retrieval into durable + current; per-kind time weight; two-section formatted output |
-| `eliza/packages/core/src/features/advanced-capabilities/evaluators/reflection.ts` | Replace fact-extraction block with delegation to new extractor; remove `TEMPORARY_REFLECTION_FACT_PATTERNS` regex; keep relationship + task-completion paths |
-| `eliza/packages/core/src/features/advanced-capabilities/evaluators/factRefinement.ts` | **DELETE** — folded into per-message extractor |
-| New: `eliza/packages/core/src/features/advanced-capabilities/evaluators/factExtractor.ts` | Single-call extractor with ops schema, embedding pre-filter, write-time dedup, zod-validated output |
-| New: `eliza/packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | Zod schema for ops + category taxonomy enums |
-| `eliza/packages/core/src/prompts.ts` (or specs) | New `factExtractionTemplate` |
-| Plugin registration site | Replace `factRefinementEvaluator` with `factExtractor`; keep `reflectionEvaluator` for relationship/task paths |
+| `eliza/packages/core/src/features/advanced-capabilities/evaluators/reflection-items.ts` | Register atomic evaluator items for facts, relationships, identities, and task success |
+| `eliza/packages/core/src/features/advanced-capabilities/evaluators/factRefinement.ts` | **DELETE** — folded into the fact-memory evaluator processor |
+| New: `eliza/packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | Schema for ops + category taxonomy enums |
+| `eliza/packages/core/src/services/evaluator.ts` | Merge active evaluator schemas and prompts into one structured post-turn model call |
+| Plugin registration site | Register `factMemoryEvaluator`, `relationshipEvaluator`, `identityEvaluator`, and `successEvaluator` through the evaluator registry |
 | Migration | Lazy reclassification: untouched legacy facts default to `kind=durable`, `category=uncategorized` |
 
 ## Tests

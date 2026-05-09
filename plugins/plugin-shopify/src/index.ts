@@ -13,7 +13,7 @@ const shopifyPlugin: Plugin = {
   providers: [storeContextProvider],
   services: [ShopifyService],
   // Self-declared auto-enable: activate when the SHOPIFY_ACCESS_TOKEN env var
-  // is set. The hardcoded AUTH_PROVIDER_PLUGINS map still serves as fallback.
+  // is set. (Manifest-only auto-enable — see ./auto-enable.ts.)
   autoEnable: {
     envKeys: ["SHOPIFY_ACCESS_TOKEN", "SHOPIFY_ACCOUNTS"],
   },

@@ -14,6 +14,8 @@
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-computeruse": ["../plugin-computeruse/src/index.ts"],
+      "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

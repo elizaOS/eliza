@@ -3,6 +3,7 @@ import { extractSecretRequestTemplate as extractRequestTemplate } from "../../..
 import {
 	type Action,
 	type ActionExample,
+	ChannelType,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -10,7 +11,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -53,26 +54,20 @@ export const requestSecretAction: Action = {
 		if (!runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE)) {
 			return false;
 		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
+			return false;
+		}
 		const params =
 			_options?.parameters && typeof _options.parameters === "object"
 				? (_options.parameters as Record<string, unknown>)
 				: {};
 		const hasStructuredKey =
 			typeof params.key === "string" && params.key.trim().length > 0;
-		const text = message.content?.text?.toLowerCase() ?? "";
 		return (
 			hasStructuredKey ||
-			/\b(?:request|need|missing|require).*\b(?:secret|key|token|credential)\b/i.test(
-				text,
-			) ||
-			hasActionContextOrKeyword(message, _state, {
+			hasActionContext(message, _state, {
 				contexts: ["secrets", "settings", "connectors"],
-				keywords: [
-					"request secret",
-					"need secret",
-					"missing secret",
-					"require api key",
-				],
 			})
 		);
 	},

@@ -54,7 +54,7 @@ import {
 /**
  * Subset of DiscordService fields needed by the event listeners.
  * Because many of the relevant fields are private, the caller passes
- * `this as unknown as DiscordServiceInternals`.
+ * `this as DiscordServiceInternals`.
  */
 export interface DiscordServiceInternals {
 	accountId?: string;

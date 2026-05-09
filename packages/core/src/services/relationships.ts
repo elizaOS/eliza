@@ -183,11 +183,15 @@ function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
 		customFields: contactInfo.customFields,
 		privacyLevel: contactInfo.privacyLevel,
 		lastModified: contactInfo.lastModified,
-		handles: contactInfo.handles as unknown as MetadataValue,
-		interactions: contactInfo.interactions as unknown as MetadataValue,
+		handles: contactInfo.handles.map((handle) => ({ ...handle })),
+		interactions: contactInfo.interactions.map((interaction) => ({
+			...interaction,
+		})),
 		followupThresholdDays: contactInfo.followupThresholdDays,
 		lastInteractionAt: contactInfo.lastInteractionAt,
-		relationshipGoal: contactInfo.relationshipGoal as unknown as MetadataValue,
+		relationshipGoal: contactInfo.relationshipGoal
+			? { ...contactInfo.relationshipGoal }
+			: undefined,
 		relationshipStatus: contactInfo.relationshipStatus,
 	};
 }
@@ -1954,6 +1958,7 @@ export class RelationshipsService extends Service {
 		logger.info(
 			`[RelationshipsService] Proposed merge candidate ${id} (${entityA} <-> ${entityB})`,
 		);
+		this.graphServiceInstance = null;
 		return asUUID(id);
 	}
 
@@ -2087,6 +2092,7 @@ export class RelationshipsService extends Service {
 		logger.info(
 			`[RelationshipsService] Accepted merge ${candidateId}; folded ${candidate.entityB} into ${candidate.entityA}`,
 		);
+		this.graphServiceInstance = null;
 	}
 
 	async rejectMerge(candidateId: UUID): Promise<void> {
@@ -2097,6 +2103,7 @@ export class RelationshipsService extends Service {
 				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
 		);
 		logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
+		this.graphServiceInstance = null;
 	}
 
 	/**

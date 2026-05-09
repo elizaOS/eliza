@@ -7,6 +7,8 @@ Compares predicted function calls against expected calls with flexible matching.
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 import math
 from typing import Optional
@@ -50,6 +52,7 @@ class ASTEvaluator:
         self,
         predicted: list[FunctionCall],
         expected: list[FunctionCall],
+        function_defs: list | None = None,
     ) -> bool:
         """
         Compare predicted and expected function calls.
@@ -60,10 +63,16 @@ class ASTEvaluator:
         Args:
             predicted: List of predicted function calls
             expected: List of expected function calls
+            function_defs: Optional list of FunctionDefinition objects used to
+                prune expected arguments whose value matches the declared
+                default when the model omitted them. Without this the matcher
+                punishes models for following the schema's "optional means
+                you may skip it" semantics.
 
         Returns:
             True if AST matches, False otherwise
         """
+        defs_by_name = self._index_function_defs(function_defs)
         if len(predicted) != len(expected):
             return False
 
@@ -71,23 +80,37 @@ class ASTEvaluator:
             return True
 
         if len(predicted) == 1:
-            return self._calls_match(predicted[0], expected[0])
+            return self._calls_match(predicted[0], expected[0], defs_by_name)
 
         # For multiple calls, try to match each predicted to an expected
-        return self._match_parallel_calls(predicted, expected)
+        return self._match_parallel_calls(predicted, expected, defs_by_name)
+
+    def _index_function_defs(self, function_defs: list | None) -> dict:
+        if not function_defs:
+            return {}
+        index: dict = {}
+        for fd in function_defs:
+            name = getattr(fd, "name", None)
+            if isinstance(name, str):
+                index[name] = fd
+        return index
 
     def _match_parallel_calls(
         self,
         predicted: list[FunctionCall],
         expected: list[FunctionCall],
+        defs_by_name: dict | None = None,
     ) -> bool:
         """Match parallel calls (order-independent)."""
+        defs_by_name = defs_by_name or {}
         expected_used = [False] * len(expected)
 
         for pred_call in predicted:
             found = False
             for i, exp_call in enumerate(expected):
-                if not expected_used[i] and self._calls_match(pred_call, exp_call):
+                if not expected_used[i] and self._calls_match(
+                    pred_call, exp_call, defs_by_name
+                ):
                     expected_used[i] = True
                     found = True
                     break
@@ -100,6 +123,7 @@ class ASTEvaluator:
         self,
         predicted: FunctionCall,
         expected: FunctionCall,
+        defs_by_name: dict | None = None,
     ) -> bool:
         """Check if two function calls match."""
         # Compare function names
@@ -119,7 +143,45 @@ class ASTEvaluator:
             pred_args = {k.lower(): v for k, v in pred_args.items()}
             exp_args = {k.lower(): v for k, v in exp_args.items()}
 
+        # Drop expected args that match the declared default when the model
+        # omitted them — BFCL ground truth often pins optional args to their
+        # default value, but a model that follows the schema's "optional"
+        # semantics by skipping them shouldn't be penalized.
+        if defs_by_name:
+            fdef = defs_by_name.get(predicted.name) or defs_by_name.get(expected.name)
+            if fdef is not None:
+                exp_args = self._prune_default_optionals(exp_args, pred_args, fdef)
+
         return self._arguments_match(pred_args, exp_args)
+
+    def _prune_default_optionals(
+        self,
+        expected: dict,
+        predicted: dict,
+        fdef,
+    ) -> dict:
+        """Remove expected args missing from predicted that match the default."""
+        params = getattr(fdef, "parameters", None)
+        required = set(getattr(fdef, "required_params", []) or [])
+        if not isinstance(params, dict) or not params:
+            return expected
+        pruned: dict = {}
+        for key, value in expected.items():
+            if key in predicted or key in required:
+                pruned[key] = value
+                continue
+            param = params.get(key)
+            default = getattr(param, "default", None) if param is not None else None
+            unwrapped = value
+            if isinstance(value, list) and len(value) == 1:
+                unwrapped = value[0]
+            if default is None and unwrapped not in (None, "", False, 0, []):
+                pruned[key] = value
+                continue
+            if self._values_match(unwrapped, default):
+                continue  # Drop — model was right to skip this optional.
+            pruned[key] = value
+        return pruned
 
     def _arguments_match(
         self,
@@ -195,6 +257,9 @@ class ASTEvaluator:
                 exp_norm = self._normalize_math_notation(expected)
                 if pred_norm == exp_norm:
                     return True
+                # SQL-condition quote tolerance: "Col = 'value'" vs "Col = value"
+                if self._normalize_sql_condition(predicted) == self._normalize_sql_condition(expected):
+                    return True
 
         # List comparison
         if isinstance(predicted, list) and isinstance(expected, list):
@@ -205,11 +270,63 @@ class ASTEvaluator:
                 for p, e in zip(predicted, expected, strict=True)
             )
 
+        # BFCL nested-arguments singleton-list convention: each leaf value in
+        # the possible_answer ground truth is wrapped in a list of acceptable
+        # values, even inside nested objects. _parse_ground_truth_calls only
+        # unwraps the top-level list. When the model emits a scalar that
+        # matches the single allowed value, accept it. Mirror it for the
+        # opposite direction so the matcher is symmetric.
+        if not self.strict_type_matching:
+            if isinstance(expected, list) and len(expected) == 1:
+                if self._values_match(predicted, expected[0]):
+                    return True
+            if isinstance(predicted, list) and len(predicted) == 1:
+                if self._values_match(predicted[0], expected):
+                    return True
+
+        # Stringified-list tolerance: the model sometimes emits a JSON-encoded
+        # or Python-repr list when the schema wants an actual list. Try to
+        # decode and re-compare. Common with Java argv parameters and SQL
+        # column lists where the ground truth is list[str].
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                parsed = self._try_parse_stringified_list(predicted)
+                if parsed is not None and self._values_match(parsed, expected):
+                    return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                parsed = self._try_parse_stringified_list(expected)
+                if parsed is not None and self._values_match(predicted, parsed):
+                    return True
+
+        # Comma-separated string vs list-of-strings tolerance — common when
+        # the model returns SQL-style "a, b, c" for a parameter the schema
+        # actually defines as list[str]. Only meaningful for primitive lists.
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                if self._delimited_string_matches_list(predicted, expected):
+                    return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                if self._delimited_string_matches_list(expected, predicted):
+                    return True
+
         # Dict comparison
         if isinstance(predicted, dict) and isinstance(expected, dict):
             return self._arguments_match(predicted, expected)
 
         return False
+
+    def _normalize_sql_condition(self, value: str) -> str:
+        """Normalize a SQL condition string for quote-insensitive comparison.
+
+        Strips single/double quotes around scalar literals so that
+        ``Col = 'foo'`` and ``Col = foo`` compare equal. Preserves operators
+        and whitespace structure. Only meant for short SQL fragments — not a
+        full SQL parser.
+        """
+        if not value:
+            return ""
+        normalized = value.replace("'", "").replace('"', "")
+        return " ".join(normalized.split()).lower()
 
     def _normalize_math_notation(self, value: str) -> str:
         """
@@ -237,6 +354,38 @@ class ASTEvaluator:
             except ValueError:
                 pass
         return None
+
+    def _delimited_string_matches_list(self, text: str, expected: list) -> bool:
+        """Treat a delimited string as a flat list and compare element-wise.
+
+        Accepts comma-separated, whitespace-separated, or space-after-comma
+        variants. Only fires for primitive (non-nested) expected lists.
+        """
+        if any(isinstance(e, (list, dict)) for e in expected):
+            return False
+        for parts in (
+            [p.strip().strip("'\"") for p in text.split(",") if p.strip()],
+            text.split(),
+        ):
+            if len(parts) == len(expected) and all(
+                self._values_match(p, e) for p, e in zip(parts, expected, strict=True)
+            ):
+                return True
+        return False
+
+    def _try_parse_stringified_list(self, value: str) -> Optional[list]:
+        """Decode a string that wraps a Python/JSON list literal."""
+        text = value.strip()
+        if not (text.startswith("[") and text.endswith("]")):
+            return None
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            try:
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return None
+        return parsed if isinstance(parsed, list) else None
 
     def _try_parse_bool(self, value: object) -> Optional[bool]:
         """Try to parse a value as a boolean."""

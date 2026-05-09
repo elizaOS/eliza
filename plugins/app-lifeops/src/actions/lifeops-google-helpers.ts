@@ -1,4 +1,4 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,
   IAgentRuntime,
@@ -58,7 +58,11 @@ function formatEmailSender(
 }
 
 export function toActionData<T extends object>(data: T): ProviderDataRecord {
-  return data as unknown as ProviderDataRecord;
+  const record: ProviderDataRecord = {};
+  for (const [key, value] of Object.entries(data)) {
+    record[key] = value as ProviderDataRecord[string];
+  }
+  return record;
 }
 
 export function messageSource(message: Memory): string | null {

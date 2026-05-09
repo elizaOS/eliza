@@ -38,6 +38,7 @@ class ModelProvider(str, Enum):
     OPENROUTER = "openrouter"
     GOOGLE = "google"
     XAI = "xai"
+    CEREBRAS = "cerebras"
     # Routes LLM calls through the elizaOS TypeScript benchmark bridge
     # (eliza/packages/app-core/src/benchmark/server.ts). The bridge uses
     # the runtime's configured model provider, so no per-request model is
@@ -55,6 +56,7 @@ DEFAULT_MODELS: dict[ModelProvider, str] = {
     ModelProvider.OPENROUTER: "meta-llama/llama-3.1-8b-instruct",
     ModelProvider.GOOGLE: "gemini-2.0-flash-exp",
     ModelProvider.XAI: "grok-2-latest",
+    ModelProvider.CEREBRAS: "gpt-oss-120b",
 }
 
 # Popular models per provider
@@ -137,6 +139,9 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "grok-2-vision-1212",
         "grok-beta",
     ],
+    ModelProvider.CEREBRAS: [
+        "gpt-oss-120b",
+    ],
 }
 
 # API base URLs
@@ -149,6 +154,7 @@ API_BASES: dict[ModelProvider, str] = {
     ModelProvider.OPENROUTER: "https://openrouter.ai/api/v1",
     ModelProvider.GOOGLE: "https://generativelanguage.googleapis.com/v1beta",
     ModelProvider.XAI: "https://api.x.ai/v1",
+    ModelProvider.CEREBRAS: "https://api.cerebras.ai/v1",
 }
 
 # Environment variable names for API keys
@@ -161,6 +167,7 @@ API_KEY_ENV_VARS: dict[ModelProvider, str] = {
     ModelProvider.OPENROUTER: "OPENROUTER_API_KEY",
     ModelProvider.GOOGLE: "GOOGLE_API_KEY",
     ModelProvider.XAI: "XAI_API_KEY",
+    ModelProvider.CEREBRAS: "CEREBRAS_API_KEY",
 }
 
 

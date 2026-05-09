@@ -3,6 +3,7 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
+	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
 	PLAN_ACTIONS_TOOL,
 	PLAN_ACTIONS_TOOL_NAME,
@@ -16,13 +17,16 @@ import {
 } from "../features/advanced-capabilities/evaluators/task-completion";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
-import { imageDescriptionTemplate } from "../prompts";
-import {
-	createV5MessageHandlerTool,
-	v5MessageHandlerTemplate,
-} from "../prompts/message-handler";
+import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
-import { filterByContextGate } from "../runtime/context-gates";
+import { buildActionCatalog } from "../runtime/action-catalog";
+import { retrieveActions } from "../runtime/action-retrieval";
+import { tierActionResults } from "../runtime/action-tiering";
+import { applyAddressedTo } from "../runtime/addressed-to";
+import {
+	filterByContextGate,
+	satisfiesContextGate,
+} from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -51,6 +55,7 @@ import {
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
+	SIMPLE_CONTEXT_ID,
 } from "../runtime/message-handler";
 import {
 	buildModelInputBudget,
@@ -60,6 +65,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	type PlannerLoopParams,
+	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -138,6 +144,7 @@ import type {
 	StreamingToolResultPayload,
 } from "../types/streaming";
 import {
+	composePrompt,
 	getLocalServerUrl,
 	parseBooleanFromText,
 	parseJSONObjectFromText,
@@ -164,6 +171,7 @@ import {
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
+import { runPostTurnEvaluators } from "./evaluator";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptService,
@@ -397,6 +405,43 @@ export function resolvePlannerActionName(
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
 ): string[] {
+	const lookup =
+		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
+	const resolved = resolvePlannerActionNameFromLookup(
+		runtime,
+		lookup,
+		actionName,
+	);
+	if (resolved.length > 0) {
+		return resolved;
+	}
+
+	if (actionLookup) {
+		const runtimeResolved = resolvePlannerActionNameFromLookup(
+			runtime,
+			buildRuntimeActionLookup(runtime as IAgentRuntime),
+			actionName,
+		);
+		if (runtimeResolved.length > 0) {
+			return runtimeResolved;
+		}
+	}
+
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			actionName,
+		},
+		"Dropping unknown planner action",
+	);
+	return [];
+}
+
+function resolvePlannerActionNameFromLookup(
+	runtime: Pick<IAgentRuntime, "actions" | "logger">,
+	lookup: Map<string, Action>,
+	actionName: string,
+): string[] {
 	const normalized = normalizeActionIdentifier(actionName);
 	if (!normalized) {
 		return [];
@@ -407,8 +452,6 @@ export function resolvePlannerActionName(
 		return [controlActionName];
 	}
 
-	const lookup =
-		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
@@ -441,13 +484,6 @@ export function resolvePlannerActionName(
 		}
 	}
 
-	runtime.logger.warn(
-		{
-			src: "service:message",
-			actionName,
-		},
-		"Dropping unknown planner action",
-	);
 	return [];
 }
 
@@ -696,9 +732,9 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 /**
  * Provider names that must NEVER be rendered as text blocks in the v5
  * ContextObject because they're already conveyed through another channel:
- *   - ACTIONS / EVALUATORS / PROVIDERS / ACTION_STATE: meta-listings — the
- *     planner sees actions as native function tools, so a parallel text block
- *     is duplicative and confusing.
+ *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
+ *     actions as native function tools, so a parallel text block is
+ *     duplicative and confusing.
  *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
  *     includes system + bio + role) so the text-block CHARACTER provider
  *     would duplicate the same content.
@@ -707,16 +743,15 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
  * provider. Structured prior turns are additionally rendered by
  * `appendPriorDialogueEvents`.
  */
-const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
+const MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"ACTIONS",
 	"ACTION_STATE",
 	"CHARACTER",
-	"EVALUATORS",
 	"PROVIDERS",
 ] as const;
 
-const V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
-	V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
+	MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
 );
 
 /**
@@ -809,7 +844,7 @@ function selectV5PlannerStateProviderNames(args: {
 		if (!name || provider.private) {
 			continue;
 		}
-		if (V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
+		if (MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
 			continue;
 		}
 		providerNames.add(name);
@@ -1195,6 +1230,40 @@ function appendPriorDialogueEvents(
 	}
 }
 
+function getRecentConversationSearchText(
+	state: State | undefined,
+	currentMessage: Memory,
+): string[] {
+	const providers = state?.data?.providers;
+	if (!providers || typeof providers !== "object") {
+		return [];
+	}
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") {
+		return [];
+	}
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) {
+		return [];
+	}
+	return recentMessages
+		.filter((memory): memory is Memory => {
+			if (!memory || typeof memory !== "object") return false;
+			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
+				return false;
+			}
+			return typeof memory.content?.text === "string";
+		})
+		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+		.slice(0, 8)
+		.map((memory) => memory.content.text?.trim() ?? "")
+		.filter(Boolean);
+}
+
 function appendStateProviderEvents(
 	events: ContextEvent[],
 	state: State,
@@ -1254,6 +1323,306 @@ function appendStateProviderEvents(
 	}
 }
 
+type V5PlannerActionSurfaceSummary = {
+	mode: "full" | "tiered";
+	candidateActionCount: number;
+	catalogParentCount: number;
+	exposedActionCount: number;
+	tierAParents: string[];
+	tierBParents: string[];
+	omittedParentCount: number;
+	omittedParentNamesPreview: string[];
+	actionSurfaceHash?: string;
+	warnings: number;
+	queryTokens: string[];
+	candidateActions: string[];
+	parentActionHints: string[];
+	fallback?: string;
+};
+
+type V5PlannerActionSurface = {
+	exposedActionNames: Set<string>;
+	summary: V5PlannerActionSurfaceSummary;
+};
+
+async function collectV5PlannerCandidateActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	selectedContexts?: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): Promise<Action[]> {
+	if (!args.selectedContexts?.length) {
+		return [];
+	}
+
+	const directlyGatedActions = filterByContextGate(
+		args.runtime.actions,
+		args.selectedContexts,
+		args.userRoles,
+	);
+	const actionsByName = new Map(
+		args.runtime.actions.map((action) => [action.name, action]),
+	);
+	const actionsByNormalizedName = new Map(
+		args.runtime.actions.map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	const selectedActions: Action[] = [];
+	const seen = new Set<string>();
+
+	const appendIfAllowed = async (
+		action: Action,
+		parentActionName?: string,
+		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+	): Promise<boolean> => {
+		const normalizedName = normalizeActionIdentifier(action.name);
+		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		const contextGate = action.contextGate ?? {
+			contexts: action.contexts,
+			roleGate: action.roleGate,
+		};
+		if (!satisfiesContextGate(activeContexts, contextGate, args.userRoles)) {
+			return false;
+		}
+		try {
+			const accountPolicy = await evaluateConnectorAccountPolicies(
+				args.runtime,
+				action,
+				{
+					message: args.message,
+				},
+			);
+			if (!accountPolicy.allowed) {
+				return false;
+			}
+			if (action.validate) {
+				const valid = await action.validate(
+					args.runtime,
+					args.message,
+					args.state,
+				);
+				if (!valid) {
+					return false;
+				}
+			}
+			seen.add(normalizedName);
+			selectedActions.push(action);
+			return true;
+		} catch (error) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					action: action.name,
+					parentAction: parentActionName,
+					error,
+				},
+				"Skipping action that cannot be exposed to the v5 planner",
+			);
+			return false;
+		}
+	};
+
+	for (const action of directlyGatedActions) {
+		await appendIfAllowed(action);
+	}
+
+	for (let index = 0; index < selectedActions.length; index += 1) {
+		const parentAction = selectedActions[index];
+		const childActiveContexts = mergeAgentContexts(
+			args.selectedContexts,
+			parentAction.contexts,
+		);
+		for (const subAction of parentAction.subActions ?? []) {
+			const childAction =
+				typeof subAction === "string"
+					? (actionsByName.get(subAction) ??
+						actionsByNormalizedName.get(normalizeActionIdentifier(subAction)))
+					: subAction;
+			if (!childAction) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						parentAction: parentAction.name,
+						subAction,
+					},
+					"Skipping unresolved sub-action while building planner action surface",
+				);
+				continue;
+			}
+			await appendIfAllowed(
+				childAction,
+				parentAction.name,
+				mergeAgentContexts(childActiveContexts, childAction.contexts),
+			);
+		}
+	}
+
+	return selectedActions;
+}
+
+function stringArrayProperty(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+		.filter((entry) => entry.length > 0);
+}
+
+function mergeAgentContexts(
+	...lists: Array<readonly AgentContext[] | undefined>
+): AgentContext[] {
+	const seen = new Set<string>();
+	const merged: AgentContext[] = [];
+	for (const list of lists) {
+		for (const context of list ?? []) {
+			const id = String(context);
+			if (!id || seen.has(id)) {
+				continue;
+			}
+			seen.add(id);
+			merged.push(context);
+		}
+	}
+	return merged;
+}
+
+function getMessageHandlerCandidateActions(
+	messageHandler: MessageHandlerResult,
+): string[] {
+	return stringArrayProperty(
+		(messageHandler.plan as { candidateActions?: unknown }).candidateActions,
+	);
+}
+
+function getMessageHandlerParentActionHints(
+	messageHandler: MessageHandlerResult,
+): string[] {
+	return stringArrayProperty(
+		(messageHandler.plan as { parentActionHints?: unknown }).parentActionHints,
+	);
+}
+
+function buildFullV5PlannerActionSurface(params: {
+	actions: readonly Action[];
+	candidateActions?: readonly string[];
+	parentActionHints?: readonly string[];
+}): V5PlannerActionSurface {
+	const exposedActionNames = new Set(
+		params.actions.map((action) => normalizeActionIdentifier(action.name)),
+	);
+	return {
+		exposedActionNames,
+		summary: {
+			mode: "full",
+			candidateActionCount: params.actions.length,
+			catalogParentCount: params.actions.length,
+			exposedActionCount: exposedActionNames.size,
+			tierAParents: params.actions.map((action) => action.name).sort(),
+			tierBParents: [],
+			omittedParentCount: 0,
+			omittedParentNamesPreview: [],
+			warnings: 0,
+			queryTokens: [],
+			candidateActions: [...(params.candidateActions ?? [])],
+			parentActionHints: [...(params.parentActionHints ?? [])],
+		},
+	};
+}
+
+function buildV5PlannerActionSurface(params: {
+	actions: readonly Action[];
+	message: Memory;
+	state?: State;
+	messageHandler: MessageHandlerResult;
+}): V5PlannerActionSurface {
+	const candidateActions = getMessageHandlerCandidateActions(
+		params.messageHandler,
+	);
+	const parentActionHints = getMessageHandlerParentActionHints(
+		params.messageHandler,
+	);
+
+	if (
+		params.actions.length === 0 ||
+		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+	) {
+		return buildFullV5PlannerActionSurface({
+			actions: params.actions,
+			candidateActions,
+			parentActionHints,
+		});
+	}
+
+	const catalog = buildActionCatalog([...params.actions]);
+	const retrieval = retrieveActions({
+		catalog,
+		messageText: getUserMessageText(params.message) ?? "",
+		recentConversationText: getRecentConversationSearchText(
+			params.state,
+			params.message,
+		),
+		candidateActions,
+		parentActionHints,
+	});
+	const tieredSurface = tierActionResults({
+		catalog,
+		results: retrieval.results,
+	});
+	const exposedActionNames = new Set(
+		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
+	);
+
+	let fallback: string | undefined;
+	if (
+		params.actions.every(
+			(action) =>
+				!exposedActionNames.has(normalizeActionIdentifier(action.name)),
+		)
+	) {
+		let addedFallbackAction = false;
+		for (const result of retrieval.results.slice(0, 3)) {
+			if (result.score <= 0) {
+				continue;
+			}
+			exposedActionNames.add(normalizeActionIdentifier(result.name));
+			addedFallbackAction = true;
+		}
+		if (addedFallbackAction) {
+			fallback = "top-ranked-parent-fallback";
+		}
+	}
+
+	const exposedActionCount = params.actions.filter((action) =>
+		exposedActionNames.has(normalizeActionIdentifier(action.name)),
+	).length;
+
+	return {
+		exposedActionNames,
+		summary: {
+			mode: "tiered",
+			candidateActionCount: params.actions.length,
+			catalogParentCount: catalog.parents.length,
+			exposedActionCount,
+			tierAParents: tieredSurface.sortedTierAParentNames,
+			tierBParents: tieredSurface.sortedTierBParentNames,
+			omittedParentCount: tieredSurface.omittedParentNames.length,
+			omittedParentNamesPreview: tieredSurface.omittedParentNames.slice(0, 20),
+			actionSurfaceHash: tieredSurface.actionSurfaceHash,
+			warnings: catalog.warnings.length,
+			queryTokens: retrieval.query.tokens.slice(0, 32),
+			candidateActions,
+			parentActionHints,
+			...(fallback ? { fallback } : {}),
+		},
+	};
+}
+
 async function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1263,12 +1632,14 @@ async function createV5MessageContextObject(args: {
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 	extraProviderExclusions?: readonly string[];
+	preselectedActions?: readonly Action[];
+	actionSurface?: V5PlannerActionSurface;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
 	const renderExclusions = args.extraProviderExclusions?.length
-		? [...V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
-		: V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
+		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
+		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
@@ -1290,21 +1661,24 @@ async function createV5MessageContextObject(args: {
 	});
 
 	if (args.includeTools && args.selectedContexts?.length) {
-		const actions = filterByContextGate(
-			args.runtime.actions,
-			args.selectedContexts,
-			args.userRoles,
-		);
-		for (const action of actions) {
+		const actions =
+			args.preselectedActions ??
+			(await collectV5PlannerCandidateActions({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				selectedContexts: args.selectedContexts,
+				userRoles: args.userRoles,
+			}));
+		const displayActions = args.actionSurface
+			? actions.filter((action) =>
+					args.actionSurface?.exposedActionNames.has(
+						normalizeActionIdentifier(action.name),
+					),
+				)
+			: actions;
+		for (const action of displayActions) {
 			try {
-				const accountPolicy = await evaluateConnectorAccountPolicies(
-					args.runtime,
-					action,
-					{ message: args.message },
-				);
-				if (!accountPolicy.allowed) {
-					continue;
-				}
 				const tool = actionToTool(action);
 				events.push({
 					id: `tool:${tool.function.name}`,
@@ -1353,6 +1727,9 @@ async function createV5MessageContextObject(args: {
 			roomId: args.message.roomId,
 			messageId: args.message.id,
 			selectedContexts: [...(args.selectedContexts ?? [])],
+			...(args.actionSurface
+				? { actionSurface: args.actionSurface.summary as JsonValue }
+				: {}),
 		},
 		staticPrefix: {
 			systemPrompt: systemPrompt
@@ -1408,6 +1785,442 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
+function contextAvailableForRepair(
+	context: AgentContext,
+	availableContexts: readonly ContextDefinition[],
+): boolean {
+	return (
+		availableContexts.length === 0 ||
+		availableContexts.some((definition) => definition.id === context)
+	);
+}
+
+function appendStage1PlanHints(
+	messageHandler: MessageHandlerResult,
+	args: {
+		contexts?: readonly AgentContext[];
+		candidateActions?: readonly string[];
+		parentActionHints?: readonly string[];
+	},
+): void {
+	if (args.contexts?.length) {
+		messageHandler.plan.contexts = mergeAgentContexts(
+			messageHandler.plan.contexts.filter((context) => context !== "simple"),
+			args.contexts,
+		);
+	}
+	if (args.candidateActions?.length) {
+		messageHandler.plan.candidateActions = [
+			...new Set([
+				...getMessageHandlerCandidateActions(messageHandler),
+				...args.candidateActions,
+			]),
+		];
+	}
+	if (args.parentActionHints?.length) {
+		messageHandler.plan.parentActionHints = [
+			...new Set([
+				...getMessageHandlerParentActionHints(messageHandler),
+				...args.parentActionHints,
+			]),
+		];
+	}
+	messageHandler.plan.requiresTool = true;
+	messageHandler.plan.simple = false;
+	delete messageHandler.plan.reply;
+}
+
+function replaceStage1PlanContexts(
+	messageHandler: MessageHandlerResult,
+	contexts: readonly AgentContext[],
+): void {
+	messageHandler.plan.contexts = mergeAgentContexts([], contexts);
+	messageHandler.plan.requiresTool = true;
+	messageHandler.plan.simple = false;
+	delete messageHandler.plan.reply;
+}
+
+function getStage1OwnerPreferenceRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const explicitDocumentArtifactIntent =
+		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
+			lower,
+		);
+	const stablePreferenceIntent =
+		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
+			lower,
+		) ||
+		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
+			lower,
+		);
+	if (!stablePreferenceIntent || explicitDocumentArtifactIntent) {
+		return null;
+	}
+	const travelPreferenceIntent =
+		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
+			lower,
+		);
+	const contexts = (
+		["memory", "settings", "calendar"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["general"],
+		candidateActions: travelPreferenceIntent
+			? [
+					"save_travel_preferences",
+					"store_travel_preferences",
+					"store_preference",
+				]
+			: ["store_preference", "save_owner_profile"],
+		parentActionHints: ["PROFILE"],
+	};
+}
+
+function getStage1ApprovalResolutionRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const resolutionIntent =
+		/\b(?:approve|accept|confirm|reject|deny|decline)\b[\s\S]{0,120}\b(?:pending\s+)?(?:approval|request)\b/.test(
+			lower,
+		) ||
+		/\b(?:pending\s+)?(?:approval|request)\b[\s\S]{0,120}\b(?:approve|accept|confirm|reject|deny|decline)\b/.test(
+			lower,
+		);
+	if (!resolutionIntent) {
+		return null;
+	}
+	const rejectIntent = /\b(?:reject|deny|decline)\b/.test(lower);
+	const contexts = (
+		["tasks", "automation", "admin", "general"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["general"],
+		candidateActions: rejectIntent
+			? ["resolve_pending_approval", "reject_approval", "deny_approval"]
+			: ["resolve_pending_approval", "approve_approval", "approve_request"],
+		parentActionHints: ["RESOLVE_REQUEST"],
+	};
+}
+
+function getStage1PasswordManagerRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const lookupVerb =
+		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(lower);
+	const credentialNoun =
+		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
+			lower,
+		);
+	const explicitFillIntent =
+		/\b(?:fill|autofill|type|enter)\b[\s\S]{0,80}\b(?:password|login|field|form)\b/.test(
+			lower,
+		);
+	if (!lookupVerb || !credentialNoun || explicitFillIntent) {
+		return null;
+	}
+	const contexts = (
+		["secrets", "settings", "browser", "automation"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["secrets"],
+		candidateActions: [
+			"password_manager_search",
+			"saved_login_lookup",
+			"credential_lookup",
+			"search_password_manager",
+		],
+		parentActionHints: ["PASSWORD_MANAGER"],
+	};
+}
+
+function getStage1CheckinRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const checkinIntent =
+		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
+			lower,
+		) ||
+		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
+			lower,
+		);
+	if (!checkinIntent) {
+		return null;
+	}
+	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
+	const morningIntent = /\bmorning\b/.test(lower);
+	const contexts = (
+		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["tasks"],
+		candidateActions: nightIntent
+			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
+			: morningIntent
+				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
+				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
+		parentActionHints: ["CHECKIN"],
+	};
+}
+
+function getStage1CalendlyRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
+	if (!calendlyIntent) {
+		return null;
+	}
+	const availabilityIntent =
+		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
+	const singleUseLinkIntent =
+		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
+			lower,
+		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
+	if (!availabilityIntent && !singleUseLinkIntent) {
+		return null;
+	}
+	const contexts = (
+		["calendar", "connectors", "tasks"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["calendar"],
+		candidateActions: singleUseLinkIntent
+			? [
+					"calendly_single_use_link",
+					"calendly_create_single_use_link",
+					"calendar_calendly_single_use_link",
+				]
+			: [
+					"calendly_availability",
+					"calendar_check_calendly_availability",
+					"check_calendly_availability",
+				],
+		parentActionHints: ["CALENDAR"],
+	};
+}
+
+function getStage1KnownToolRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	return (
+		getStage1ApprovalResolutionRepairPlan(args) ??
+		getStage1PasswordManagerRepairPlan(args) ??
+		getStage1CheckinRepairPlan(args) ??
+		getStage1CalendlyRepairPlan(args) ??
+		getStage1OwnerPreferenceRepairPlan(args)
+	);
+}
+
+function buildFallbackStage1PlanForKnownToolRequest(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): MessageHandlerResult | null {
+	const repair = getStage1KnownToolRepairPlan(args);
+	if (!repair) {
+		return null;
+	}
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Deterministic fallback: explicit owner tool request requires a known owning action.",
+		plan: {
+			contexts: repair.contexts,
+			requiresTool: true,
+			simple: false,
+			candidateActions: repair.candidateActions,
+			parentActionHints: repair.parentActionHints,
+		},
+	};
+}
+
+function repairStage1PlanForKnownToolRequests(args: {
+	message: Memory;
+	messageHandler: MessageHandlerResult;
+	availableContexts: readonly ContextDefinition[];
+}): void {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return;
+	}
+
+	const lower = text.toLowerCase();
+	const approvalResolutionRepair = getStage1ApprovalResolutionRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (approvalResolutionRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			approvalResolutionRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: approvalResolutionRepair.candidateActions,
+			parentActionHints: approvalResolutionRepair.parentActionHints,
+		});
+	}
+
+	const passwordManagerRepair = getStage1PasswordManagerRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (passwordManagerRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			passwordManagerRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: passwordManagerRepair.candidateActions,
+			parentActionHints: passwordManagerRepair.parentActionHints,
+		});
+	}
+
+	const checkinRepair = getStage1CheckinRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (checkinRepair) {
+		replaceStage1PlanContexts(args.messageHandler, checkinRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: checkinRepair.candidateActions,
+			parentActionHints: checkinRepair.parentActionHints,
+		});
+	}
+
+	const calendlyRepair = getStage1CalendlyRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (calendlyRepair) {
+		replaceStage1PlanContexts(args.messageHandler, calendlyRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: calendlyRepair.candidateActions,
+			parentActionHints: calendlyRepair.parentActionHints,
+		});
+	}
+
+	const targetLookupReplyIntent =
+		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
+			lower,
+		) ||
+		/\brepl(?:y|ies|ied|ying|respond)\b[\s\S]{0,80}\b(to|from|latest|last|recent|email|message|dm|text)\b/.test(
+			lower,
+		);
+	const mentionsMailOrMessageTarget =
+		/\b(e-?mail|inbox|message|dm|direct message|text|sms|slack|discord|telegram|signal|whatsapp|imessage|from\s+[a-z][\w'-]*)\b/.test(
+			lower,
+		);
+	if (targetLookupReplyIntent && mentionsMailOrMessageTarget) {
+		const contexts = (
+			["email", "messaging", "connectors"] as AgentContext[]
+		).filter((context) =>
+			contextAvailableForRepair(context, args.availableContexts),
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			contexts,
+			candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
+			parentActionHints: ["MESSAGE"],
+		});
+	}
+
+	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (ownerPreferenceRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			ownerPreferenceRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: ownerPreferenceRepair.candidateActions,
+			parentActionHints: ownerPreferenceRepair.parentActionHints,
+		});
+	}
+
+	const desktopScreenshotIntent =
+		/\b(screen\s*shot|screenshot|capture\s+(?:my\s+|the\s+|current\s+)?screen|see\s+(?:my\s+|the\s+)?screen)\b/.test(
+			lower,
+		) &&
+		!/\b(generate|create|draw|make)\b[\s\S]{0,40}\b(image|picture|art|graphic)\b/.test(
+			lower,
+		);
+	if (desktopScreenshotIntent) {
+		const contexts = (["browser", "automation"] as AgentContext[]).filter(
+			(context) => contextAvailableForRepair(context, args.availableContexts),
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			contexts,
+			candidateActions: ["take_screenshot", "capture_screen"],
+			parentActionHints: ["COMPUTER_USE"],
+		});
+	}
+}
+
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1435,9 +2248,8 @@ async function generateDirectReplyOnce(args: {
 
 /**
  * Format the role-filtered context catalog as a compact bullet list for the
- * Stage 1 prompt. Each line is `- <id>: <description>` (or just `- <id>` when
- * no description is available). Order is preserved from the registry, which
- * keeps the rendered prefix byte-stable across iterations.
+ * Stage 1 prompt. Each line includes the id plus compressed metadata that helps
+ * Stage 1 pick generously without inventing contexts.
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
@@ -1448,38 +2260,68 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
+			const metadata = [
+				definition.label && definition.label !== definition.id
+					? `label=${definition.label}`
+					: undefined,
+				definition.aliases?.length
+					? `aliases=${definition.aliases.join(",")}`
+					: undefined,
+				definition.parent
+					? `parent=${definition.parent}`
+					: definition.parents?.length
+						? `parents=${definition.parents.join(",")}`
+						: undefined,
+				definition.roleGate
+					? formatRoleGateForPrompt(definition.roleGate)
+					: undefined,
+				definition.sensitivity
+					? `sensitivity=${definition.sensitivity}`
+					: undefined,
+				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
+			].filter(Boolean);
+			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
 			return description
-				? `- ${definition.id}: ${description}`
-				: `- ${definition.id}`;
+				? `- ${definition.id}${suffix}: ${description}`
+				: `- ${definition.id}${suffix}`;
 		})
 		.join("\n");
 }
 
-function renderV5MessageHandlerInstructions(
+function formatRoleGateForPrompt(
+	roleGate: ContextDefinition["roleGate"],
+): string | undefined {
+	if (!roleGate) {
+		return undefined;
+	}
+	if (roleGate.minRole) {
+		return `role>=${roleGate.minRole}`;
+	}
+	const anyOf = [...(roleGate.roles ?? []), ...(roleGate.anyOf ?? [])];
+	if (anyOf.length > 0) {
+		return `role=${anyOf.join("|")}`;
+	}
+	if (roleGate.allOf?.length) {
+		return `role_all=${roleGate.allOf.join("+")}`;
+	}
+	return undefined;
+}
+
+function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
 ): string {
-	const template = options?.directMessage
-		? v5MessageHandlerTemplate
-				.replace(
-					"task: Decide processMessage and the plan for this message.",
-					"task: Decide the plan for this direct message.",
-				)
-				.replace(
-					"- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n",
-					"- this is a direct message, so processMessage is already hardcoded to RESPOND\n- do not include processMessage; only choose plan and thought\n",
-				)
-		: v5MessageHandlerTemplate;
-	return template
-		.replace("context:\n{{contextObject}}\n\n", "")
-		.replace(
-			"{{availableContexts}}",
-			formatAvailableContextsForPrompt(availableContexts),
-		)
-		.trim();
+	return composePrompt({
+		state: {
+			directMessage: options?.directMessage ? "true" : "",
+			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
+		},
+		template: messageHandlerTemplate,
+	}).trim();
 }
 
-function renderV5MessageHandlerModelInput(
+function renderMessageHandlerModelInput(
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: { directMessage?: boolean },
@@ -1488,7 +2330,7 @@ function renderV5MessageHandlerModelInput(
 	promptSegments: PromptSegment[];
 } {
 	const rendered = renderContextObject(context);
-	const instructions = renderV5MessageHandlerInstructions(
+	const instructions = renderMessageHandlerInstructions(
 		availableContexts,
 		options,
 	);
@@ -1546,22 +2388,38 @@ function parseMessageHandlerNativeToolCall(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const record = entry as unknown as Record<string, unknown>;
 		const name = String(
-			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
 		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
 		const args = parseToolArguments(
-			record.arguments ?? record.args ?? record.input ?? record.params,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
-		if (!args) {
-			return null;
+		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
+			continue;
 		}
 		return parseMessageHandlerOutput(JSON.stringify(args));
 	}
 	return null;
+}
+
+function looksLikeMessageHandlerToolArguments(
+	args: Record<string, unknown>,
+): boolean {
+	if (Object.keys(args).length === 0) {
+		return false;
+	}
+	return (
+		args.plan !== undefined ||
+		args.processMessage !== undefined ||
+		args.action !== undefined ||
+		args.contexts !== undefined ||
+		args.reply !== undefined ||
+		args.thought !== undefined ||
+		args.extract !== undefined
+	);
 }
 
 function parseMessageHandlerModelOutput(
@@ -1570,10 +2428,45 @@ function parseMessageHandlerModelOutput(
 	if (typeof raw !== "string") {
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(getV5ModelText(raw))
+			parseMessageHandlerOutput(getV5ModelText(raw)) ??
+			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
 		);
 	}
-	return parseMessageHandlerOutput(raw);
+	return (
+		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
+	);
+}
+
+/**
+ * Tolerant fallback: when the model returns plain text instead of the
+ * expected JSON / native tool-call format, wrap the text as a simple
+ * reply. This keeps the conversation alive on cold-start turns where
+ * weaker / smaller models occasionally skip the structured-output
+ * scaffold. Without this, the runtime threw `v5 messageHandler returned
+ * invalid MessageHandlerResult` and the user saw the failure-template.
+ *
+ * Returns null only when the text is genuinely empty — that's a real
+ * failure that should still propagate.
+ */
+function synthesizeSimpleReplyFromPlainText(
+	raw: string | undefined | null,
+): MessageHandlerResult | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	// Strip <think>...</think> blocks emitted by reasoning models.
+	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+	const replyText = cleaned || trimmed;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: replyText,
+			simple: true,
+		},
+	};
 }
 
 /**
@@ -1889,9 +2782,10 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	toolCall: PlannerToolCall,
 	message: Memory,
 ): boolean {
+	const normalizedName = normalizeActionIdentifier(toolCall.name);
 	if (
-		normalizeActionIdentifier(toolCall.name) !==
-		normalizeActionIdentifier("ADD_CONTACT")
+		normalizedName !== normalizeActionIdentifier("ADD_CONTACT") &&
+		normalizedName !== normalizeActionIdentifier("RELATIONSHIP")
 	) {
 		return false;
 	}
@@ -1909,11 +2803,232 @@ function messageTextMatches(message: Memory, pattern: RegExp): boolean {
 	return pattern.test((getUserMessageText(message) ?? "").toLowerCase());
 }
 
+function plannerErrorLooksTransient(error: unknown): boolean {
+	const message =
+		error instanceof Error
+			? `${error.name} ${error.message} ${String(error.cause ?? "")}`
+			: String(error ?? "");
+	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts)\b/i.test(
+		message,
+	);
+}
+
+function trimExtractedUrl(value: string): string {
+	return value.replace(/[),.;:!?]+$/u, "");
+}
+
+function extractCalendlyAvailabilityFallbackParams(
+	message: Memory,
+): Record<string, unknown> | null {
+	const text = getUserMessageText(message) ?? "";
+	const lower = text.toLowerCase();
+	if (
+		!/\bcalendly\b|api\.calendly\.com/u.test(lower) ||
+		!/\b(?:availability|available|open|slots?|times?)\b/u.test(lower)
+	) {
+		return null;
+	}
+	const eventTypeUri =
+		/https?:\/\/api\.calendly\.com\/event_types\/[^\s),.;:!?]+/iu.exec(
+			text,
+		)?.[0];
+	const dates = Array.from(text.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)).map(
+		(match) => match[0],
+	);
+	return {
+		subaction: "calendly_availability",
+		intent: text,
+		...(eventTypeUri ? { eventTypeUri: trimExtractedUrl(eventTypeUri) } : {}),
+		...(dates[0] ? { startDate: dates[0] } : {}),
+		...(dates[1] ? { endDate: dates[1] } : {}),
+	};
+}
+
+function buildDeterministicPlannerFallbackToolCall(args: {
+	message: Memory;
+	actions: readonly Action[];
+}): PlannerToolCall | null {
+	const calendlyParams = extractCalendlyAvailabilityFallbackParams(
+		args.message,
+	);
+	if (!calendlyParams) {
+		return null;
+	}
+	const hasCalendarAction = args.actions.some(
+		(action) =>
+			normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier("CALENDAR"),
+	);
+	if (!hasCalendarAction) {
+		return null;
+	}
+	return {
+		id: `deterministic-calendar-${Date.now()}`,
+		name: "CALENDAR",
+		params: calendlyParams,
+	};
+}
+
+async function runDeterministicPlannerFallback(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	plannerState: State;
+	selectedContexts: AgentContext[];
+	senderRole: RoleGateRole;
+	plannerContext: ContextObject;
+	plannerRuntime: PlannerRuntime;
+	actions: readonly Action[];
+	evaluatorEffects: EvaluatorEffects;
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	plannerLoopConfig?: PlannerLoopParams["config"];
+	plannerError: unknown;
+}): Promise<PlannerLoopResult | null> {
+	if (!plannerErrorLooksTransient(args.plannerError)) {
+		return null;
+	}
+	const toolCall = buildDeterministicPlannerFallbackToolCall({
+		message: args.message,
+		actions: args.actions,
+	});
+	if (!toolCall) {
+		return null;
+	}
+
+	const queuedAt = Date.now();
+	const serializedParams = JSON.stringify(toolCall.params ?? {});
+	const queuedContext = appendContextEvent(
+		{
+			...args.plannerContext,
+			plannedQueue: [
+				...(args.plannerContext.plannedQueue ?? []),
+				{
+					id: toolCall.id,
+					name: toolCall.name,
+					args: serializedParams,
+					status: "queued" as const,
+					sourceStageId: "planner:fallback",
+				},
+			],
+		},
+		{
+			id: `queue:${toolCall.id ?? toolCall.name}:fallback`,
+			type: "planned_tool_call",
+			source: "message-service",
+			createdAt: queuedAt,
+			metadata: {
+				iteration: 1,
+				toolCallId: toolCall.id,
+				name: toolCall.name,
+				params: serializedParams,
+				status: "queued",
+				reason: "deterministic_fallback_after_transient_planner_error",
+			},
+		},
+	);
+	const trajectory: PlannerTrajectory = {
+		context: queuedContext,
+		steps: [],
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	};
+
+	args.runtime.logger?.warn?.(
+		{
+			src: "service:message",
+			action: toolCall.name,
+			error:
+				args.plannerError instanceof Error
+					? args.plannerError.message
+					: String(args.plannerError),
+		},
+		"Planner hit a transient model error; using deterministic Calendly fallback",
+	);
+
+	const result = await executeV5PlannedToolCall({
+		runtime: args.runtime,
+		toolCall,
+		plannerContext: trajectory.context,
+		executorCtx: {
+			message: args.message,
+			state: args.plannerState,
+			activeContexts: args.selectedContexts,
+			userRoles: [args.senderRole],
+			previousResults: [],
+		},
+		plannerRuntime: args.plannerRuntime,
+		executorOptions: { actions: args.actions },
+		evaluatorEffects: args.evaluatorEffects,
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		plannerLoopConfig: args.plannerLoopConfig,
+	});
+	trajectory.steps.push({
+		iteration: 1,
+		thought: "Deterministic fallback executed after transient planner error.",
+		toolCall,
+		result,
+	});
+	trajectory.context = appendContextEvent(
+		{
+			...trajectory.context,
+			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+				entry.id === toolCall.id
+					? { ...entry, status: result.success ? "completed" : "failed" }
+					: entry,
+			),
+		},
+		{
+			id: `tool-result:${toolCall.id ?? toolCall.name}:fallback`,
+			type: "tool_result",
+			source: "message-service",
+			createdAt: Date.now(),
+			metadata: {
+				iteration: 1,
+				toolCallId: toolCall.id,
+				name: toolCall.name,
+				params: serializedParams,
+				result: JSON.stringify({
+					success: result.success,
+					text: result.text,
+					error:
+						result.error instanceof Error ? result.error.message : result.error,
+				}),
+				status: result.success ? "completed" : "failed",
+			},
+		},
+	);
+	const fallbackMessage =
+		result.text ??
+		(result.success
+			? "Done."
+			: "I tried to check that Calendly availability, but the calendar action failed.");
+	const evaluator: EvaluatorOutput = {
+		success: result.success,
+		decision: "FINISH",
+		thought: result.success
+			? "Deterministic Calendly fallback completed."
+			: "Deterministic Calendly fallback failed.",
+		messageToUser: fallbackMessage,
+	};
+	trajectory.evaluatorOutputs.push(evaluator);
+	return {
+		status: "finished",
+		trajectory,
+		evaluator,
+		finalMessage: fallbackMessage,
+	};
+}
+
 function shouldTreatPlannerLifeAsDeviceIntent(
 	resolvedName: string,
 	message: Memory,
 ): boolean {
-	if (normalizeActionIdentifier(resolvedName) !== normalizeActionIdentifier("LIFE")) {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("LIFE")
+	) {
 		return false;
 	}
 	return (
@@ -1992,6 +3107,50 @@ function shouldTreatPlannerConnectorAsPost(
 	);
 }
 
+function shouldTreatPlannerConnectorAsMessage(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("CONNECTOR")
+	) {
+		return false;
+	}
+	const text = getUserMessageText(message) ?? "";
+	return (
+		/\b(?:email|gmail|mail|inbox|unread|draft reply|reply to|unsubscribe)\b/i.test(
+			text,
+		) ||
+		(/\b(?:x|twitter)\b/i.test(text) &&
+			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
+		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
+			/\b(?:post|send|message|dm|channel)\b/i.test(text))
+	);
+}
+
+function shouldTreatPlannerDeviceIntentAsLifeReminder(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("DEVICE_INTENT")
+	) {
+		return false;
+	}
+	const text = getUserMessageText(message) ?? "";
+	if (
+		/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)
+	) {
+		return false;
+	}
+	return (
+		/\b(?:remember|remind|reminder)\b/i.test(text) &&
+		/\b(?:call|phone|text|message|email)\b/i.test(text)
+	);
+}
+
 function inferPostSearchQuery(message: Memory): string | undefined {
 	const text = getUserMessageText(message) ?? "";
 	return (
@@ -2039,14 +3198,13 @@ function normalizePostPlannerParams(
 			: {};
 	const rawSubaction = stringParam(params.subaction);
 	const source = stringParam(params.source);
-	const op =
-		/^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-			rawSubaction ?? "",
-		)
-			? "read"
-			: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
-				? "search"
-				: stringParam(params.op) ?? stringParam(params.operation);
+	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
+		rawSubaction ?? "",
+	)
+		? "read"
+		: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
+			? "search"
+			: (stringParam(params.op) ?? stringParam(params.operation));
 	return {
 		...(op ? { op } : {}),
 		...(source
@@ -2059,8 +3217,11 @@ function normalizePostPlannerParams(
 			: stringParam(params.searchTerm)
 				? { query: params.searchTerm }
 				: op === "search" || messageTextMatches(message, /\bsearch\b/)
-					? { query: inferPostSearchQuery(message) ?? getUserMessageText(message) }
-				: {}),
+					? {
+							query:
+								inferPostSearchQuery(message) ?? getUserMessageText(message),
+						}
+					: {}),
 		...(stringParam(params.feed) ? { feed: params.feed } : {}),
 		...(stringParam(params.target) ? { target: params.target } : {}),
 	};
@@ -2074,7 +3235,7 @@ function normalizeMessagePlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const operation =
+	const rawOperation =
 		stringParam(params.operation) ??
 		stringParam(params.subaction) ??
 		stringParam(params.subAction) ??
@@ -2083,16 +3244,83 @@ function normalizeMessagePlannerParams(
 		stringParam(params.manageOperation) ??
 		stringParam(params.command) ??
 		stringParam(params.action);
-	const source = stringParam(params.source);
+	const rawSource =
+		stringParam(params.source) ??
+		stringParam(params.platform) ??
+		stringParam(params.connector);
+	const source =
+		rawSource === "twitter"
+			? "x"
+			: /^(?:google|email|mail)$/i.test(rawSource ?? "")
+				? "gmail"
+				: rawSource;
+	const sender = stringParam(params.sender) ?? stringParam(params.from);
 	const target =
 		stringParam(params.target) ??
+		stringParam(params.recipient) ??
+		stringParam(params.channel) ??
+		stringParam(params.channelName) ??
+		stringParam(params.room) ??
 		stringParam(params.email) ??
 		stringParam(params.emailAddress) ??
 		stringParam(params.address);
+	const id = stringParam(params.id);
+	const messageId =
+		stringParam(params.messageId) ??
+		stringParam(params.inReplyToId) ??
+		(rawOperation !== "send_draft" ? id : undefined);
+	const inReplyToId = stringParam(params.inReplyToId);
+	const draftId =
+		stringParam(params.draftId) ??
+		(rawOperation === "send_draft" ? id : undefined);
+	const messageBody =
+		stringParam(params.message) ??
+		stringParam(params.text) ??
+		stringParam(params.content) ??
+		stringParam(params.body);
+	const text = getUserMessageText(message) ?? "";
+	const directChatSend =
+		/\b(?:post|send|message|dm)\b/i.test(text) &&
+		/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text);
+	const operation =
+		rawOperation === "send_draft" &&
+		!stringParam(params.draftId) &&
+		(directChatSend || source || target || messageBody)
+			? "send"
+			: rawOperation;
+	const inferredOperation = operation
+		? undefined
+		: directChatSend
+			? "send"
+			: /\bdraft\b.*\breply\b/i.test(text)
+				? "draft_reply"
+				: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
+							text,
+						) ||
+						/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
+							text,
+						)
+					? "list_inbox"
+					: /\b(?:x|twitter)\b/i.test(text) &&
+							/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
+						? "read_channel"
+						: undefined;
 	return {
-		...(operation ? { operation } : {}),
-		...(source ? { source: source === "twitter" ? "x" : source } : {}),
-		...(target ? { target, sender: target } : {}),
+		...((inferredOperation ?? operation)
+			? { operation: inferredOperation ?? operation }
+			: {}),
+		...(source
+			? { source: source === "twitter" ? "x" : source }
+			: /\b(?:x|twitter)\b/i.test(text)
+				? { source: "x" }
+				: {}),
+		...(target ? { target } : {}),
+		...(sender || target ? { sender: sender ?? target } : {}),
+		...(messageId ? { messageId } : {}),
+		...(inReplyToId ? { inReplyToId } : {}),
+		...(draftId ? { draftId } : {}),
+		...(messageBody ? { message: messageBody, body: messageBody } : {}),
+		...(target && stringParam(params.channel) ? { targetKind: "channel" } : {}),
 		...(manageIntent
 			? {
 					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
@@ -2102,6 +3330,14 @@ function normalizeMessagePlannerParams(
 			: {}),
 		...(stringParam(params.query) ? { query: params.query } : {}),
 		...(stringParam(params.channel) ? { channel: params.channel } : {}),
+		...(params.sources !== undefined ? { sources: params.sources } : {}),
+		...(params.worldIds !== undefined ? { worldIds: params.worldIds } : {}),
+		...(params.channelIds !== undefined
+			? { channelIds: params.channelIds }
+			: {}),
+		...(params.limit !== undefined ? { limit: params.limit } : {}),
+		...(params.since !== undefined ? { since: params.since } : {}),
+		...(params.until !== undefined ? { until: params.until } : {}),
 	};
 }
 
@@ -2133,9 +3369,13 @@ function normalizePasswordManagerPlannerParams(
 			? (toolCall.params as Record<string, unknown>)
 			: {};
 	const rawSubaction = stringParam(params.subaction);
-	const wantsCopy = messageTextMatches(message, /\b(?:copy|clipboard|inject|fill)\b/);
+	const wantsCopy = messageTextMatches(
+		message,
+		/\b(?:copy|clipboard|inject|fill)\b/,
+	);
 	const subaction =
-		rawSubaction && /^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
+		rawSubaction &&
+		/^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
 			? rawSubaction
 			: wantsCopy
 				? "inject_password"
@@ -2150,7 +3390,9 @@ function normalizePasswordManagerPlannerParams(
 		subaction,
 		...(query ? { query, intent: query } : {}),
 		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
-		...(typeof params.confirmed === "boolean" ? { confirmed: params.confirmed } : {}),
+		...(typeof params.confirmed === "boolean"
+			? { confirmed: params.confirmed }
+			: {}),
 	};
 }
 
@@ -2171,7 +3413,12 @@ function normalizeAutofillPlannerParams(
 	return {
 		subaction: stringParam(params.subaction) ?? "fill",
 		field: stringParam(params.field) ?? "password",
-		...(domain ? { domain, url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}` } : {}),
+		...(domain
+			? {
+					domain,
+					url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}`,
+				}
+			: {}),
 	};
 }
 
@@ -2181,9 +3428,7 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	if (
-		normalizedResolvedName !== normalizeActionIdentifier("LIFE")
-	) {
+	if (normalizedResolvedName !== normalizeActionIdentifier("LIFE")) {
 		if (normalizedResolvedName === normalizeActionIdentifier("WEBSITE_BLOCK")) {
 			return {
 				...toolCall,
@@ -2205,14 +3450,18 @@ function normalizeAliasedPlannerToolCall(
 				params: normalizeMessagePlannerParams(toolCall, message),
 			};
 		}
-		if (normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")) {
+		if (
+			normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")
+		) {
 			return {
 				...toolCall,
 				name: resolvedName,
 				params: normalizeResolveRequestPlannerParams(toolCall, message),
 			};
 		}
-		if (normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")) {
+		if (
+			normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")
+		) {
 			return {
 				...toolCall,
 				name: resolvedName,
@@ -2290,9 +3539,17 @@ async function executeV5PlannedToolCall(
 			resolvedName,
 			args.executorCtx.message,
 		);
+	const forceDeviceIntentToLife =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		shouldTreatPlannerDeviceIntentAsLifeReminder(
+			resolvedName,
+			args.executorCtx.message,
+		);
 	const forceWebToCalendlyCalendar =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		shouldTreatPlannerWebAsCalendlyCalendar(
 			resolvedName,
 			args.executorCtx.message,
@@ -2300,57 +3557,89 @@ async function executeV5PlannedToolCall(
 	const forceWebToBookTravel =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
 	const forceBrowserToAutofill =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
-		shouldTreatPlannerBrowserAsAutofill(
-			resolvedName,
-			args.executorCtx.message,
-		);
+		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
+		!shouldTreatPlannerConnectorAsMessage(
+			resolvedName,
+			args.executorCtx.message,
+		) &&
 		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
+	const forceConnectorToMessage =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
+		!forceWebToCalendlyCalendar &&
+		!forceWebToBookTravel &&
+		!forceBrowserToAutofill &&
+		shouldTreatPlannerConnectorAsMessage(
+			resolvedName,
+			args.executorCtx.message,
+		);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "LIFE"
 		: forceLifeToDeviceIntent
 			? "DEVICE_INTENT"
-			: forceWebToCalendlyCalendar
-				? "CALENDAR"
-				: forceWebToBookTravel
-					? "BOOK_TRAVEL"
-					: forceBrowserToAutofill
-						? "AUTOFILL"
-						: forceConnectorToPost
-							? "POST"
-							: resolvedName;
-	const toolCallForNormalization = forceContactReminderToLife
-		? {
-				...unwrappedToolCall,
-				params: {
-					intent: getUserMessageText(args.executorCtx.message),
-					details: {
-						contactName: stringParam(unwrappedToolCall.params?.name),
-						relationship: stringParam(unwrappedToolCall.params?.relationship),
-						originalPlannerAction: unwrappedToolCall.name,
+			: forceDeviceIntentToLife
+				? "LIFE"
+				: forceWebToCalendlyCalendar
+					? "CALENDAR"
+					: forceWebToBookTravel
+						? "BOOK_TRAVEL"
+						: forceBrowserToAutofill
+							? "AUTOFILL"
+							: forceConnectorToPost
+								? "POST"
+								: forceConnectorToMessage
+									? "MESSAGE"
+									: resolvedName;
+	const toolCallForNormalization =
+		forceContactReminderToLife || forceDeviceIntentToLife
+			? {
+					...unwrappedToolCall,
+					params: {
+						intent: getUserMessageText(args.executorCtx.message),
+						details: {
+							contactName: stringParam(unwrappedToolCall.params?.name),
+							relationship: stringParam(unwrappedToolCall.params?.relationship),
+							originalPlannerAction: unwrappedToolCall.name,
+						},
 					},
-				},
-			}
-		: unwrappedToolCall;
+				}
+			: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
 		args.executorCtx.message,
 	);
 
-	const action = actions.find((candidate) => candidate.name === toolCall.name);
+	const executionActions = actions.some(
+		(candidate) => candidate.name === toolCall.name,
+	)
+		? actions
+		: [
+				...actions,
+				...args.runtime.actions.filter(
+					(candidate) => candidate.name === toolCall.name,
+				),
+			];
+	const action = executionActions.find(
+		(candidate) => candidate.name === toolCall.name,
+	);
 
 	if (action && actionHasSubActions(action)) {
 		const subResult = await runSubPlanner({
@@ -2373,7 +3662,7 @@ async function executeV5PlannedToolCall(
 		args.runtime,
 		args.executorCtx,
 		toolCall,
-		args.executorOptions ?? {},
+		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
 }
@@ -2503,7 +3792,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
-		const messageHandlerInput = renderV5MessageHandlerModelInput(
+		const messageHandlerInput = renderMessageHandlerModelInput(
 			context,
 			availableContexts,
 			{ directMessage: directMessageChannel },
@@ -2523,7 +3812,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
 		const messageHandlerTools = [
-			createV5MessageHandlerTool({
+			createHandleResponseTool({
 				directMessage: directMessageChannel,
 			}),
 		];
@@ -2567,7 +3856,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
-		const messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		if (!messageHandler) {
+			messageHandler = buildFallbackStage1PlanForKnownToolRequest({
+				message: args.message,
+				availableContexts,
+			});
+		}
 		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
@@ -2639,6 +3934,33 @@ export async function runV5MessageRuntimeStage1(args: {
 				}));
 		}
 
+		// Persist `addressedTo` as relationship edges from the speaker to each
+		// addressee. No LLM call: UUIDs pass through verbatim, names resolve
+		// against the room's participants. Fire-and-forget like the facts task;
+		// failures land in the logger but never block the reply.
+		const addressedTo = messageHandler.extract?.addressedTo ?? [];
+		if (addressedTo.length > 0) {
+			void applyAddressedTo({
+				runtime: args.runtime,
+				message: args.message,
+				addressedTo,
+			}).catch((error) => {
+				args.runtime.logger?.warn?.(
+					{
+						err: error,
+						messageId: args.message.id,
+						addressedToCount: addressedTo.length,
+					},
+					"[message] applyAddressedTo failed",
+				);
+			});
+		}
+
+		repairStage1PlanForKnownToolRequests({
+			message: args.message,
+			messageHandler,
+			availableContexts,
+		});
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -2689,9 +4011,43 @@ export async function runV5MessageRuntimeStage1(args: {
 						true,
 					)
 				: args.state;
-		const plannerState = attachAvailableContexts(
-			recomposedPlannerState,
-			args.runtime,
+		const selectedContextRoutingState =
+			selectedContexts.length > 0
+				? {
+						[CONTEXT_ROUTING_STATE_KEY]: {
+							primaryContext: selectedContexts[0],
+							secondaryContexts: selectedContexts.slice(1),
+						},
+					}
+				: undefined;
+		const plannerState = withContextRoutingValues(
+			attachAvailableContexts(recomposedPlannerState, args.runtime),
+			selectedContextRoutingState,
+		);
+		const plannerCandidateActions = await collectV5PlannerCandidateActions({
+			runtime: args.runtime,
+			message: args.message,
+			state: plannerState,
+			selectedContexts,
+			userRoles: [senderRole],
+		});
+		const actionSurface = buildV5PlannerActionSurface({
+			actions: plannerCandidateActions,
+			message: args.message,
+			state: plannerState,
+			messageHandler,
+		});
+		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
+			actionSurface.exposedActionNames.has(
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		args.runtime.logger.debug?.(
+			{
+				src: "service:message",
+				actionSurface: actionSurface.summary,
+			},
+			"Built v5 planner action surface",
 		);
 		const plannerContext = await createV5MessageContextObject({
 			...args,
@@ -2700,6 +4056,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			includeTools: true,
 			userRoles: [senderRole],
 			availableContexts,
+			preselectedActions: exposedPlannerActions,
+			actionSurface,
 		});
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
@@ -2710,9 +4068,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
+					...(messageHandler.plan.requiresTool !== undefined
+						? { requiresTool: messageHandler.plan.requiresTool }
+						: {}),
+					candidateActions: getMessageHandlerCandidateActions(messageHandler),
+					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
+					actionSurface: actionSurface.summary,
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},
@@ -2727,6 +4091,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
 		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const requireNonTerminalToolCall =
+			messageHandler.plan.requiresTool === true && plannerTools.length > 0;
+		const effectivePlannerContext = requireNonTerminalToolCall
+			? appendContextEvent(plannerContextWithDecision, {
+					id: `tool-required:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: messageHandlerEndedAt,
+					content:
+						"The Stage 1 router marked this current turn as requiring a tool. " +
+						"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
+						"Call at least one exposed non-terminal tool that can attempt the current request.",
+				})
+			: plannerContextWithDecision;
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
@@ -2747,42 +4125,67 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 			.catch(() => {});
 
-		const plannerResult = await runPlannerLoop({
-			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
-			config: args.plannerLoopConfig,
-			tools: plannerTools.length > 0 ? plannerTools : undefined,
-			evaluatorEffects,
-			recorder,
-			trajectoryId,
-			executeToolCall: (toolCall, ctx) =>
-				executeV5PlannedToolCall({
-					runtime: args.runtime,
-					toolCall,
-					plannerContext: plannerContextWithDecision,
-					executorCtx: {
-						message: args.message,
-						state: plannerState,
-						activeContexts: selectedContexts,
-						userRoles: [senderRole],
-						previousResults: collectPreviousActionResults(ctx.trajectory),
-					},
-					plannerRuntime,
-					evaluatorEffects,
-					recorder,
-					trajectoryId,
-					plannerLoopConfig: args.plannerLoopConfig,
-				}),
-			evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
-				runEvaluator({
-					runtime: plannerRuntimeForEval,
-					context,
-					trajectory,
-					effects: evaluatorEffects,
-					recorder,
-					trajectoryId,
-				}),
-		});
+		let plannerResult: PlannerLoopResult;
+		try {
+			plannerResult = await runPlannerLoop({
+				runtime: plannerRuntime,
+				context: effectivePlannerContext,
+				config: args.plannerLoopConfig,
+				tools: plannerTools.length > 0 ? plannerTools : undefined,
+				requireNonTerminalToolCall,
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				executeToolCall: (toolCall, ctx) =>
+					executeV5PlannedToolCall({
+						runtime: args.runtime,
+						toolCall,
+						plannerContext: effectivePlannerContext,
+						executorCtx: {
+							message: args.message,
+							state: plannerState,
+							activeContexts: selectedContexts,
+							userRoles: [senderRole],
+							previousResults: collectPreviousActionResults(ctx.trajectory),
+						},
+						plannerRuntime,
+						executorOptions: { actions: exposedPlannerActions },
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						plannerLoopConfig: args.plannerLoopConfig,
+					}),
+				evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+					runEvaluator({
+						runtime: plannerRuntimeForEval,
+						context,
+						trajectory,
+						effects: evaluatorEffects,
+						recorder,
+						trajectoryId,
+					}),
+			});
+		} catch (error) {
+			const fallbackResult = await runDeterministicPlannerFallback({
+				runtime: args.runtime,
+				message: args.message,
+				plannerState,
+				selectedContexts,
+				senderRole,
+				plannerContext: effectivePlannerContext,
+				plannerRuntime,
+				actions: exposedPlannerActions,
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				plannerLoopConfig: args.plannerLoopConfig,
+				plannerError: error,
+			});
+			if (!fallbackResult) {
+				throw error;
+			}
+			plannerResult = fallbackResult;
+		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
 		// the response is delivered. Lets a context post-process planner
@@ -3043,19 +4446,18 @@ function extractMessageHandlerToolCalls(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const record = entry as unknown as Record<string, unknown>;
 		const name = String(
-			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
 		).trim();
 		const args = parseToolArguments(
-			record.arguments ?? record.args ?? record.input ?? record.params,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
 		toolCalls.push({
 			id:
-				typeof record.id === "string"
-					? record.id
-					: typeof record.toolCallId === "string"
-						? record.toolCallId
+				typeof entry.id === "string"
+					? entry.id
+					: typeof entry.toolCallId === "string"
+						? entry.toolCallId
 						: undefined,
 			name: name || undefined,
 			args: args ?? undefined,
@@ -3073,13 +4475,11 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			totalTokens: number;
 	  }
 	| undefined {
-	const usage = raw.usage as Record<string, unknown> | undefined;
+	const usage = raw.usage;
 	if (!usage) return undefined;
-	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
-	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
-	const totalTokens =
-		(usage.totalTokens as number | undefined) ??
-		promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens ?? 0;
+	const completionTokens = usage.completionTokens ?? 0;
+	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
 	const out: {
 		promptTokens: number;
 		completionTokens: number;
@@ -3089,8 +4489,12 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	} = { promptTokens, completionTokens, totalTokens };
 	if (typeof usage.cacheReadInputTokens === "number") {
 		out.cacheReadInputTokens = usage.cacheReadInputTokens;
-	} else if (typeof usage.cachedPromptTokens === "number") {
-		out.cacheReadInputTokens = usage.cachedPromptTokens;
+	} else {
+		const cachedPromptTokens =
+			"cachedPromptTokens" in usage ? usage.cachedPromptTokens : undefined;
+		if (typeof cachedPromptTokens === "number") {
+			out.cacheReadInputTokens = cachedPromptTokens;
+		}
 	}
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
@@ -3244,10 +4648,59 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SEARCH_TWITTER", "POST"],
 		["TWITTER_SEARCH", "POST"],
 		["X_SEARCH", "POST"],
+		["SEARCH_TWITTER_POSTS", "POST"],
+		["TWITTER_POST_SEARCH", "POST"],
+		["FETCH_X_TIMELINE", "POST"],
+		["VIEW_X_FEED", "POST"],
+		["FETCH_TWITTER_FEED", "POST"],
+		["FETCH_TWITTER_TIMELINE", "POST"],
+		["FETCH_TWITTER_DMS", "MESSAGE"],
+		["READ_TWITTER_DMS", "MESSAGE"],
+		["READ_TWITTER_DM", "MESSAGE"],
+		["FETCH_X_DMS", "MESSAGE"],
+		["READ_X_DMS", "MESSAGE"],
+		["READ_X_DM", "MESSAGE"],
+		["DISCORD_POST_MESSAGE", "MESSAGE"],
+		["DISCORD_SEND_MESSAGE", "MESSAGE"],
+		["SEND_DISCORD_MESSAGE", "MESSAGE"],
+		["SLACK_POST_MESSAGE", "MESSAGE"],
+		["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
+		["EMAIL_FETCH_LATEST", "MESSAGE"],
+		["EMAIL_DRAFT_REPLY", "MESSAGE"],
+		["EMAIL_FETCH_UNREAD", "MESSAGE"],
+		["FETCH_UNREAD_EMAIL", "MESSAGE"],
+		["LIST_UNREAD_EMAILS", "MESSAGE"],
+		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
+		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
+		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
+		["READ_UNREAD_EMAILS", "MESSAGE"],
 		["ADD_TODO", "LIFE"],
 		["CREATE_TODO", "LIFE"],
+		["TODO_ADD", "LIFE"],
+		["TODO_CREATE", "LIFE"],
+		["TODOS_ADD", "LIFE"],
+		["TODOS_CREATE", "LIFE"],
+		["TASK_ADD", "LIFE"],
+		["TASK_CREATE", "LIFE"],
+		["ADD_TASK", "LIFE"],
+		["CREATE_TASK", "LIFE"],
+		["TASKS_ADD_TODO", "LIFE"],
+		["TASKS_CREATE_TODO", "LIFE"],
+		["TASKS_CREATE_REMINDER", "LIFE"],
 		["LIST_TODOS", "LIFE"],
 		["GET_TODOS", "LIFE"],
+		["TODO_LIST", "LIFE"],
+		["TODO_LIST_TODAY", "LIFE"],
+		["TODOS_LIST", "LIFE"],
+		["TODO_GET", "LIFE"],
+		["TODOS_GET", "LIFE"],
+		["TODOS_REVIEW", "LIFE"],
+		["TASK_LIST", "LIFE"],
+		["TASK_LIST_TODAY", "LIFE"],
+		["TASKS_REVIEW", "LIFE"],
+		["TASKS_LIST_TODAY", "LIFE"],
+		["TASKS_LIST_TODOS", "LIFE"],
+		["LIST_TASKS", "LIFE"],
 		["LIFE_GET_TODOS", "LIFE"],
 		["LIFE_TODO", "LIFE"],
 		["ADD_HABIT", "LIFE"],
@@ -3255,6 +4708,8 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["LIST_HABITS", "LIFE"],
 		["ADD_GOAL", "LIFE"],
 		["CREATE_GOAL", "LIFE"],
+		["TASKS_SET_GOAL", "LIFE"],
+		["SET_GOAL", "LIFE"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
 		["CHECK_IN", "CHECKIN"],
@@ -3297,6 +4752,7 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
+		["DESKTOP", "COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
@@ -3314,6 +4770,46 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TODO_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODO_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODOS_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODOS_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"ADD_TASK",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"CREATE_TASK",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_HABIT",
 			{ subaction: "create", kind: "definition", definitionKind: "habit" },
 		],
@@ -3323,8 +4819,14 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 		],
 		["ADD_GOAL", { subaction: "create", kind: "goal" }],
 		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
+		["SET_GOAL", { subaction: "create", kind: "goal" }],
 		[
 			"CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_REMINDER",
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
@@ -3333,6 +4835,18 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 		],
 		["LIST_TODOS", { subaction: "review" }],
 		["GET_TODOS", { subaction: "review" }],
+		["TODO_LIST", { subaction: "review" }],
+		["TODO_LIST_TODAY", { subaction: "review" }],
+		["TODOS_LIST", { subaction: "review" }],
+		["TODO_GET", { subaction: "review" }],
+		["TODOS_GET", { subaction: "review" }],
+		["TODOS_REVIEW", { subaction: "review" }],
+		["TASK_LIST", { subaction: "review" }],
+		["TASK_LIST_TODAY", { subaction: "review" }],
+		["TASKS_REVIEW", { subaction: "review" }],
+		["TASKS_LIST_TODAY", { subaction: "review" }],
+		["TASKS_LIST_TODOS", { subaction: "review" }],
+		["LIST_TASKS", { subaction: "review" }],
 		["LIFE_GET_TODOS", { subaction: "review" }],
 		["LIFE_TODO", {}],
 		["LIST_HABITS", { subaction: "review" }],
@@ -3353,6 +4867,38 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TODO_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODO_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODOS_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODOS_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_TASK",
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
@@ -3369,6 +4915,10 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TASKS_CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_HABIT",
 			{ subaction: "create", kind: "definition", definitionKind: "habit" },
 		],
@@ -3378,8 +4928,22 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 		],
 		["ADD_GOAL", { subaction: "create", kind: "goal" }],
 		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
+		["SET_GOAL", { subaction: "create", kind: "goal" }],
 		["LIST_TODOS", { subaction: "review" }],
 		["GET_TODOS", { subaction: "review" }],
+		["TODO_LIST", { subaction: "review" }],
+		["TODO_LIST_TODAY", { subaction: "review" }],
+		["TODOS_LIST", { subaction: "review" }],
+		["TODO_GET", { subaction: "review" }],
+		["TODOS_GET", { subaction: "review" }],
+		["TODOS_REVIEW", { subaction: "review" }],
+		["TASK_LIST", { subaction: "review" }],
+		["TASK_LIST_TODAY", { subaction: "review" }],
+		["TASKS_REVIEW", { subaction: "review" }],
+		["TASKS_LIST_TODAY", { subaction: "review" }],
+		["TASKS_LIST_TODOS", { subaction: "review" }],
+		["LIST_TASKS", { subaction: "review" }],
 		["LIFE_GET_TODOS", { subaction: "review" }],
 		["LIFE_TODO", {}],
 		["LIST_TASKS", { subaction: "review" }],
@@ -3456,6 +5020,7 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SUMMARIZE_CONVERSATION",
 		"SERVER_INFO",
 		"WORKFLOW",
+		"TRIGGER",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
 		"SCHEDULE_TASK",
@@ -6152,7 +7717,7 @@ export class DefaultMessageService implements IMessageService {
 		let shouldRespondToMessage = true;
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		let routedDecision: ContextRoutingDecision | null = null;
-		let v5StrategyResult: StrategyResult | null = null;
+		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
 
 		const parallelJoin: { translatedUserText?: string } = {};
@@ -6179,7 +7744,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 			try {
-				const [v5Outcome] = await Promise.all([
+				const [outcome] = await Promise.all([
 					runV5MessageRuntimeStage1({
 						runtime,
 						message,
@@ -6191,7 +7756,7 @@ export class DefaultMessageService implements IMessageService {
 						parallelHookCtx,
 					),
 				]);
-				const routedContexts = v5Outcome.messageHandler.plan.contexts;
+				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
 						? {
@@ -6201,29 +7766,46 @@ export class DefaultMessageService implements IMessageService {
 						: {};
 				setContextRoutingMetadata(message, routedDecision);
 
-				if (v5Outcome.kind === "terminal") {
+				if (outcome.kind === "terminal") {
 					shouldRespondToMessage = false;
-					terminalDecision = v5Outcome.action;
-					state = v5Outcome.state;
+					terminalDecision = outcome.action;
+					state = outcome.state;
 				} else {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
-					v5StrategyResult = v5Outcome.result;
+					strategyResult = outcome.result;
 					_usedV5Runtime = true;
-					state = v5Outcome.result.state;
+					state = outcome.result.state;
 				}
 			} catch (error) {
+				const errMsg = error instanceof Error ? error.message : String(error);
+				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(
 					{
 						src: "service:message",
 						agentId: runtime.agentId,
-						error: error instanceof Error ? error.message : String(error),
+						error: errMsg,
+						stack: errStack,
 					},
 					"v5 message runtime failed; returning structured failure reply",
 				);
+				// Mirror to process.stderr so bench / orchestrator runs can see
+				// the underlying cause when runtime.logger output is buffered or
+				// silenced. The previous behavior swallowed the stack and only
+				// the user-facing "something flaked" template appeared in
+				// trajectories — making the cold-start failure-fallback issue
+				// invisible in bench server logs.
+				try {
+					process.stderr.write(
+						`[v5-runtime-failed] agentId=${runtime.agentId} ` +
+							`error=${errMsg}\n${errStack ?? ""}\n`,
+					);
+				} catch {
+					// stderr write must never throw the runtime.
+				}
 				shouldRespondToMessage = true;
 				terminalDecision = null;
-				v5StrategyResult = await this.buildStructuredFailureReply(
+				strategyResult = await this.buildStructuredFailureReply(
 					runtime,
 					message,
 					state,
@@ -6231,7 +7813,7 @@ export class DefaultMessageService implements IMessageService {
 					"running the native tool message runtime",
 				);
 				_usedV5Runtime = true;
-				state = v5StrategyResult.state;
+				state = strategyResult.state;
 			}
 		} else if (!hasTextGenerationHandler(runtime)) {
 			await runtime.applyPipelineHooks(
@@ -6272,7 +7854,7 @@ export class DefaultMessageService implements IMessageService {
 			}
 			terminalDecision = null;
 			if (shouldRespondToMessage) {
-				v5StrategyResult = this.buildNoModelProviderReply(
+				strategyResult = this.buildNoModelProviderReply(
 					runtime,
 					message,
 					state,
@@ -6324,8 +7906,8 @@ export class DefaultMessageService implements IMessageService {
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
-			if (v5StrategyResult) {
-				result = v5StrategyResult;
+			if (strategyResult) {
+				result = strategyResult;
 			} else {
 				_usedV5Runtime = true;
 				result = await this.buildStructuredFailureReply(
@@ -6585,52 +8167,21 @@ export class DefaultMessageService implements IMessageService {
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
-		// ALWAYS_AFTER (blocking): replaces the legacy evaluator path. Fires
-		// after the response is delivered (or the routing decision is final
-		// for IGNORE/STOP). The legacy `runtime.evaluate()` runs alongside
-		// during the migration; once all evaluators are ported to actions,
-		// the evaluator subsystem will be deleted.
+		// Post-turn evaluation runs first as one structured call over registered
+		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
+		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
-		const runAlwaysAfterActions = () =>
-			runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+		await runPostTurnEvaluators(runtime, message, state, {
+			didRespond: didRespondGate,
+			responses: responseMessages,
+		});
+		await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+			didRespond: didRespondGate,
+			responses: responseMessages,
+		});
 
-		const runEvaluate = () =>
-			runtime.evaluate(
-				message,
-				state,
-				didRespondGate,
-				async (content) => {
-					runtime.logger.debug(
-						{ src: "service:message", content },
-						"Evaluate callback",
-					);
-					if (responseContent) {
-						responseContent.evalCallbacks = content;
-					}
-					if (callback) {
-						await runtime.applyPipelineHooks(
-							"outgoing_before_deliver",
-							outgoingPipelineHookContext(content, {
-								source: "evaluate",
-								roomId: message.roomId,
-								message,
-								responseId: content.responseId,
-							}),
-						);
-						return callback(content);
-					}
-					return [];
-				},
-				responseMessages,
-			);
-
-		await Promise.all([runEvaluate(), runAlwaysAfterActions()]);
-
-		// Flush the deferred simple-mode reply after evaluators have had a chance
+		// Flush the deferred simple-mode reply after hooks have had a chance
 		// to attach callbacks. Chaining is handled inside the v5 planner loop.
 		if (pendingSimpleEmit && callback) {
 			await callback(pendingSimpleEmit);

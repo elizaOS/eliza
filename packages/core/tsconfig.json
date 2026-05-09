@@ -27,10 +27,30 @@
 		"paths": {
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/core/*": ["./src/*"],
-			"@elizaos/app-core": ["../app-core/src/index.ts"],
-			"@elizaos/app-core/*": ["../app-core/src/*"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../shared/src/*"]
+			"@elizaos/shared/*": ["../shared/src/*"],
+			"@elizaos/plugin-elizacloud": ["../../plugins/plugin-elizacloud/src/index.node.ts"],
+			"@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+			"@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+			"@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+			"@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+			"@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
+			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-computeruse": [
+				"../../plugins/plugin-computeruse/src/index.ts"
+			],
+			"@elizaos/plugin-computeruse/*": [
+				"../../plugins/plugin-computeruse/src/*"
+			],
+			"@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
+			"@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
+			"@elizaos/app-task-coordinator": [
+				"../../plugins/app-task-coordinator/src/api/coordinator-types.ts"
+			],
+			"@elizaos/app-task-coordinator/api/*": [
+				"../../plugins/app-task-coordinator/src/api/*"
+			]
 		}
 	},
 	"include": [

@@ -9,6 +9,10 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../facts-and-relationships";
 
+type FactsRuntime = IAgentRuntime & {
+	useModel: ReturnType<typeof vi.fn>;
+};
+
 function makeMessage(): Memory {
 	return {
 		id: "00000000-0000-0000-0000-00000000aaaa" as UUID,
@@ -36,8 +40,8 @@ function makeState(): State {
 	};
 }
 
-function makeRuntime(modelResponse: unknown): IAgentRuntime {
-	return {
+function makeRuntime(modelResponse: unknown): FactsRuntime {
+	const runtime = {
 		agentId: "00000000-0000-0000-0000-000000000002" as UUID,
 		character: { name: "Eliza", system: "You are concise.", bio: "" },
 		actions: [],
@@ -67,7 +71,8 @@ function makeRuntime(modelResponse: unknown): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	};
+	return runtime as FactsRuntime;
 }
 
 describe("parseFactsAndRelationshipsOutput", () => {
@@ -174,9 +179,7 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 
 		// Validation model call uses messages, not prompt
-		const validationCall = (
-			runtime.useModel as unknown as { mock: { calls: unknown[][] } }
-		).mock.calls.find(
+		const validationCall = runtime.useModel.mock.calls.find(
 			(call) =>
 				typeof call[0] === "string" &&
 				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),

@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-shell.
+ * Auto-generated canonical action/provider docs for plugin-shell.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 export type ActionDoc = {
@@ -14,13 +14,6 @@ export type ProviderDoc = {
   description: string;
   position?: number;
   dynamic?: boolean;
-};
-export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly unknown[];
 };
 export declare const coreActionsSpec: {
   readonly version: "1.0.0";
@@ -74,17 +67,7 @@ export declare const allProvidersSpec: {
     },
   ];
 };
-export declare const coreEvaluatorsSpec: {
-  readonly version: "1.0.0";
-  readonly evaluators: readonly [];
-};
-export declare const allEvaluatorsSpec: {
-  readonly version: "1.0.0";
-  readonly evaluators: readonly [];
-};
 export declare const coreActionDocs: readonly ActionDoc[];
 export declare const allActionDocs: readonly ActionDoc[];
 export declare const coreProviderDocs: readonly ProviderDoc[];
 export declare const allProviderDocs: readonly ProviderDoc[];
-export declare const coreEvaluatorDocs: readonly EvaluatorDoc[];
-export declare const allEvaluatorDocs: readonly EvaluatorDoc[];

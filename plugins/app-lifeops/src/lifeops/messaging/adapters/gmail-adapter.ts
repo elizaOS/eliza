@@ -35,6 +35,15 @@ function lifeOpsId(messageId: string): string {
   return messageId.startsWith("gmail:") ? messageId.slice("gmail:".length) : messageId;
 }
 
+function externalMessageId(messageId: string): string {
+  const marker = ":gmail:";
+  const markerIndex = messageId.lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    return messageId.slice(markerIndex + marker.length);
+  }
+  return lifeOpsId(messageId);
+}
+
 function asReceivedAtMs(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Date.now();
@@ -198,7 +207,10 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
     if (!draft.inReplyToId) {
       throw new Error("[LifeOpsGmailAdapter] Gmail replies require inReplyToId");
     }
-    const messageId = lifeOpsId(draft.inReplyToId);
+    const cached =
+      this.messageCache.get(draft.inReplyToId) ??
+      this.messageCache.get(lifeOpsId(draft.inReplyToId));
+    const messageId = cached?.externalId ?? externalMessageId(draft.inReplyToId);
     const service = new LifeOpsService(runtime);
     const rendered = await service.createGmailReplyDraft(INTERNAL_URL, {
       messageId,
@@ -219,7 +231,11 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
     if (!draft?.request.inReplyToId) {
       throw new Error(`[LifeOpsGmailAdapter] no cached draft for ${draftId}`);
     }
-    const messageId = lifeOpsId(draft.request.inReplyToId);
+    const cached =
+      this.messageCache.get(draft.request.inReplyToId) ??
+      this.messageCache.get(lifeOpsId(draft.request.inReplyToId));
+    const messageId =
+      cached?.externalId ?? externalMessageId(draft.request.inReplyToId);
     const service = new LifeOpsService(runtime);
     await service.sendGmailReply(INTERNAL_URL, {
       messageId,

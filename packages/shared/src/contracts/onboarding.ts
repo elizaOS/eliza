@@ -2,7 +2,7 @@
  * Shared onboarding contracts.
  */
 
-import { isTruthyEnvValue } from "../env-utils.impl.js";
+import { isTruthyEnvValue } from "../env-utils.js";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,

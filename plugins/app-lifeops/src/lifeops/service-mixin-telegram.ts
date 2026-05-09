@@ -8,7 +8,6 @@
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
   type LifeOpsConnectorDegradation,
-  type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
@@ -129,30 +128,10 @@ function telegramPluginIdentity(
   };
 }
 
-function stripLegacyTokenRef(
-  grant: LifeOpsConnectorGrant | null,
-): LifeOpsConnectorGrant | null {
-  if (!grant) {
-    return null;
-  }
-  if (!grant.tokenRef) {
-    return grant;
-  }
-  return {
-    ...grant,
-    tokenRef: null,
-    metadata: {
-      ...grant.metadata,
-      legacyTokenRefIgnored: true,
-    },
-  };
-}
-
 function telegramStatusDegradations(args: {
   connected: boolean;
   readReady: boolean;
   sendReady: boolean;
-  hasLegacyTokenRef: boolean;
 }): LifeOpsConnectorDegradation[] {
   const degradations: LifeOpsConnectorDegradation[] = [];
   if (!args.connected) {
@@ -179,15 +158,6 @@ function telegramStatusDegradations(args: {
       message:
         "Telegram is connected, but @elizaos/plugin-telegram does not expose a send path.",
       retryable: true,
-    });
-  }
-  if (args.hasLegacyTokenRef) {
-    degradations.push({
-      axis: "auth-expired",
-      code: "legacy_lifeops_credentials_ignored",
-      message:
-        "Legacy LifeOps Telegram credentials are present but ignored. Migrate this account to @elizaos/plugin-telegram before sending or reading Telegram messages.",
-      retryable: false,
     });
   }
   return degradations;
@@ -282,26 +252,10 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
       const connected = telegramPluginConnected(pluginService);
       const readReady = telegramPluginCanRead(pluginService);
       const sendReady = telegramPluginCanSend(pluginService);
-      const legacyGrant = await this.repository
-        .getConnectorGrant(this.agentId(), "telegram", "local", side)
-        .catch((error) => {
-          this.logLifeOpsWarn(
-            "telegram_legacy_grant_status_failed",
-            error instanceof Error ? error.message : String(error),
-            { provider: "telegram", side },
-          );
-          return null;
-        });
-      const grant = stripLegacyTokenRef(legacyGrant);
-      const legacyMetadata =
-        legacyGrant?.metadata && typeof legacyGrant.metadata === "object"
-          ? legacyGrant.metadata
-          : {};
       const degradations = telegramStatusDegradations({
         connected,
         readReady,
         sendReady,
-        hasLegacyTokenRef: Boolean(legacyGrant?.tokenRef),
       });
       const grantedCapabilities = connected
         ? telegramReadyCapabilities({ readReady, sendReady })
@@ -311,33 +265,15 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         provider: "telegram",
         side,
         connected,
-        reason: connected
-          ? "connected"
-          : legacyGrant?.tokenRef
-            ? "auth_expired"
-            : "disconnected",
-        identity: connected
-          ? (telegramPluginIdentity(pluginService) ??
-            (legacyGrant?.identity as LifeOpsTelegramConnectorStatus["identity"]) ??
-            null)
-          : legacyGrant?.identity &&
-              Object.keys(legacyGrant.identity).length > 0
-            ? (legacyGrant.identity as LifeOpsTelegramConnectorStatus["identity"])
-            : null,
+        reason: connected ? "connected" : "disconnected",
+        identity: connected ? telegramPluginIdentity(pluginService) : null,
         grantedCapabilities,
-        authState: connected
-          ? "connected"
-          : legacyGrant?.tokenRef
-            ? "error"
-            : "idle",
+        authState: connected ? "connected" : "idle",
         authError: connected ? null : TELEGRAM_PLUGIN_SETUP_MESSAGE,
-        phone:
-          typeof legacyMetadata.phone === "string"
-            ? legacyMetadata.phone
-            : null,
+        phone: null,
         managedCredentialsAvailable: false,
-        storedCredentialsAvailable: Boolean(legacyGrant?.tokenRef),
-        grant,
+        storedCredentialsAvailable: false,
+        grant: null,
         ...(degradations.length > 0 ? { degradations } : {}),
       };
     }
@@ -359,30 +295,6 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsTelegramConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      const legacyGrant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "telegram",
-        "local",
-        side,
-      );
-      if (legacyGrant) {
-        await this.repository.deleteConnectorGrant(
-          this.agentId(),
-          "telegram",
-          "local",
-          side,
-        );
-        await this.recordConnectorAudit(
-          `telegram:${side}`,
-          "legacy telegram connector grant disconnected",
-          { side },
-          {
-            disconnected: true,
-            tokenRefIgnored: Boolean(legacyGrant.tokenRef),
-          },
-        );
-      }
-
       return {
         provider: "telegram",
         side,

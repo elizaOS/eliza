@@ -21,7 +21,7 @@ function createFakeWalletProvider(sendTransaction = vi.fn(async () => HASH)) {
       account: { address: ACCOUNT },
       sendTransaction,
     }),
-  } as unknown as WalletProvider;
+  } as WalletProvider;
 }
 
 const context = {

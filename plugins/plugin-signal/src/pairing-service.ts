@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const LOG_PREFIX = "[signal-pairing]";
 const SIGNAL_NATIVE_MODULE_ID = "@elizaos/signal-native";
@@ -36,7 +37,7 @@ const ELIZA_SIGNAL_CLI_AUTO_INSTALL_ENV = "ELIZA_SIGNAL_CLI_AUTO_INSTALL";
 type ExecFileAsync = (
   file: string,
   args?: readonly string[],
-  options?: { env?: NodeJS.ProcessEnv }
+  options?: { env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout: string; stderr: string }>;
 
 interface ExecutableResolutionDeps {
@@ -46,12 +47,20 @@ interface ExecutableResolutionDeps {
   platform: NodeJS.Platform;
 }
 
+type SignalNativeModule = {
+  linkDevice: (authDir: string, deviceName: string) => Promise<string>;
+  finishLink: (authDir: string) => Promise<void>;
+  getProfile: (
+    authDir: string,
+  ) => Promise<{ uuid: string; phoneNumber?: string | null }>;
+};
+
 /** Validate accountId to prevent path traversal. */
 export function sanitizeAccountId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
   if (!cleaned || cleaned !== raw) {
     throw new Error(
-      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`
+      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`,
     );
   }
   return cleaned;
@@ -91,7 +100,10 @@ export interface SignalPairingOptions {
 }
 
 interface QrCodeModule {
-  toDataURL: (text: string, options?: Record<string, unknown>) => Promise<string>;
+  toDataURL: (
+    text: string,
+    options?: Record<string, unknown>,
+  ) => Promise<string>;
 }
 
 export function extractSignalCliProvisioningUrl(text: string): string | null {
@@ -139,7 +151,7 @@ export function parseSignalCliAccountsOutput(output: string): string | null {
 }
 
 function createExecutableResolutionDeps(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
 ): ExecutableResolutionDeps {
   return {
     env,
@@ -151,7 +163,7 @@ function createExecutableResolutionDeps(
 
 async function resolveExecutablePath(
   binary: string,
-  deps: ExecutableResolutionDeps = createExecutableResolutionDeps()
+  deps: ExecutableResolutionDeps = createExecutableResolutionDeps(),
 ): Promise<string | null> {
   const trimmed = binary.trim();
   if (!trimmed) {
@@ -182,7 +194,8 @@ async function resolveExecutablePath(
 }
 
 function autoInstallSignalCliEnabled(env: NodeJS.ProcessEnv): boolean {
-  const raw = env[ELIZA_SIGNAL_CLI_AUTO_INSTALL_ENV] ?? env[SIGNAL_CLI_AUTO_INSTALL_ENV];
+  const raw =
+    env[ELIZA_SIGNAL_CLI_AUTO_INSTALL_ENV] ?? env[SIGNAL_CLI_AUTO_INSTALL_ENV];
   if (typeof raw !== "string") {
     return true;
   }
@@ -193,7 +206,9 @@ function canAutoInstallSignalCli(platform: NodeJS.Platform): boolean {
   return platform === "darwin" || platform === "linux";
 }
 
-async function resolveHomebrewPath(deps: ExecutableResolutionDeps): Promise<string | null> {
+async function resolveHomebrewPath(
+  deps: ExecutableResolutionDeps,
+): Promise<string | null> {
   try {
     const { stdout } = await deps.execFile("/usr/bin/which", ["brew"]);
     const resolved = stdout.trim();
@@ -210,7 +225,9 @@ async function resolveHomebrewPath(deps: ExecutableResolutionDeps): Promise<stri
   return null;
 }
 
-async function installSignalCliWithHomebrew(deps: ExecutableResolutionDeps): Promise<boolean> {
+async function installSignalCliWithHomebrew(
+  deps: ExecutableResolutionDeps,
+): Promise<boolean> {
   const brewPath = await resolveHomebrewPath(deps);
   if (!brewPath) {
     return false;
@@ -221,7 +238,7 @@ async function installSignalCliWithHomebrew(deps: ExecutableResolutionDeps): Pro
   } catch (error) {
     throw new Error(
       `Failed to auto-install signal-cli with Homebrew. ${signalCliInstallInstructions(deps.platform)}`,
-      { cause: error }
+      { cause: error },
     );
   }
   return true;
@@ -230,7 +247,7 @@ async function installSignalCliWithHomebrew(deps: ExecutableResolutionDeps): Pro
 function isDefaultSignalCliRequest(
   requestedBinary: string,
   options: Pick<SignalPairingOptions, "cliPath">,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): boolean {
   return (
     requestedBinary === DEFAULT_SIGNAL_CLI_NAME &&
@@ -246,7 +263,7 @@ export async function resolveSignalCliExecutable(
     execFile?: ExecFileAsync;
     existsSync?: (path: string) => boolean;
     platform?: NodeJS.Platform;
-  } = {}
+  } = {},
 ): Promise<string | null> {
   const deps: ExecutableResolutionDeps = {
     ...createExecutableResolutionDeps(options.env),
@@ -255,7 +272,9 @@ export async function resolveSignalCliExecutable(
     ...(options.platform ? { platform: options.platform } : {}),
   };
   const requestedBinary =
-    options.cliPath?.trim() || deps.env.SIGNAL_CLI_PATH?.trim() || DEFAULT_SIGNAL_CLI_NAME;
+    options.cliPath?.trim() ||
+    deps.env.SIGNAL_CLI_PATH?.trim() ||
+    DEFAULT_SIGNAL_CLI_NAME;
 
   const existingPath = await resolveExecutablePath(requestedBinary, deps);
   if (existingPath) {
@@ -277,7 +296,9 @@ export async function resolveSignalCliExecutable(
   return resolveExecutablePath(DEFAULT_SIGNAL_CLI_NAME, deps);
 }
 
-export function signalCliInstallInstructions(platform: NodeJS.Platform): string {
+export function signalCliInstallInstructions(
+  platform: NodeJS.Platform,
+): string {
   if (platform === "darwin") {
     return "Eliza can auto-install the default Signal CLI on macOS when Homebrew is available (`brew install signal-cli`). Fallback: install signal-cli from https://github.com/AsamK/signal-cli/releases and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
   }
@@ -293,9 +314,10 @@ export function signalCliInstallInstructions(platform: NodeJS.Platform): string 
 export function missingSignalCliMessage(
   cliPath: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = os.platform()
+  platform: NodeJS.Platform = os.platform(),
 ): string {
-  const requestedBinary = cliPath?.trim() || env.SIGNAL_CLI_PATH?.trim() || DEFAULT_SIGNAL_CLI_NAME;
+  const requestedBinary =
+    cliPath?.trim() || env.SIGNAL_CLI_PATH?.trim() || DEFAULT_SIGNAL_CLI_NAME;
   const installHint =
     requestedBinary === DEFAULT_SIGNAL_CLI_NAME
       ? signalCliInstallInstructions(platform)
@@ -308,7 +330,10 @@ function resolveSignalCliJavaHome(): string | null {
     return BREW_OPENJDK_HOME;
   }
 
-  if (typeof process.env.JAVA_HOME === "string" && process.env.JAVA_HOME.trim().length > 0) {
+  if (
+    typeof process.env.JAVA_HOME === "string" &&
+    process.env.JAVA_HOME.trim().length > 0
+  ) {
     return process.env.JAVA_HOME.trim();
   }
 
@@ -328,8 +353,12 @@ function buildSignalCliEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-export function classifySignalPairingErrorStatus(errorMessage: string): SignalPairingStatus {
-  return /(timed?\s*out|timeout|expired)/i.test(errorMessage) ? "timeout" : "error";
+export function classifySignalPairingErrorStatus(
+  errorMessage: string,
+): SignalPairingStatus {
+  return /(timed?\s*out|timeout|expired)/i.test(errorMessage)
+    ? "timeout"
+    : "error";
 }
 
 export class SignalPairingSession {
@@ -383,7 +412,7 @@ export class SignalPairingSession {
       if (this.aborted) return;
 
       const errMsg = String(err);
-      console.error(`${LOG_PREFIX} Linking failed:`, errMsg);
+      logger.error(`${LOG_PREFIX} Linking failed: ${errMsg}`);
 
       this.qrDataUrl = null;
       this.lastError = errMsg;
@@ -426,25 +455,27 @@ export class SignalPairingSession {
     });
   }
 
-  private async loadSignalNativeModule(): Promise<typeof import("@elizaos/signal-native") | null> {
+  private async loadSignalNativeModule(): Promise<SignalNativeModule | null> {
     try {
-      return await import(/* @vite-ignore */ SIGNAL_NATIVE_MODULE_ID);
+      const moduleSpecifier: string = SIGNAL_NATIVE_MODULE_ID;
+      const imported = await import(/* @vite-ignore */ moduleSpecifier);
+      return imported as SignalNativeModule;
     } catch (error) {
-      console.info(
-        `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`
+      logger.info(
+        `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`,
       );
       return null;
     }
   }
 
   private async startWithSignalNative(
-    native: typeof import("@elizaos/signal-native"),
-    qrCode: QrCodeModule
+    native: SignalNativeModule,
+    qrCode: QrCodeModule,
   ): Promise<void> {
-    console.info(`${LOG_PREFIX} Starting device linking with signal-native...`);
+    logger.info(`${LOG_PREFIX} Starting device linking with signal-native...`);
     const provisioningUrl = await native.linkDevice(
       this.options.authDir,
-      DEFAULT_SIGNAL_DEVICE_NAME
+      DEFAULT_SIGNAL_DEVICE_NAME,
     );
 
     if (this.aborted) return;
@@ -464,7 +495,7 @@ export class SignalPairingSession {
       qrDataUrl,
     });
 
-    console.info(`${LOG_PREFIX} QR code generated, waiting for user to scan...`);
+    logger.info(`${LOG_PREFIX} QR code generated, waiting for user to scan...`);
 
     await native.finishLink(this.options.authDir);
     if (this.aborted) return;
@@ -476,7 +507,9 @@ export class SignalPairingSession {
       uuid = profile.uuid;
       phoneNumber = profile.phoneNumber ?? "";
     } catch (error) {
-      console.warn(`${LOG_PREFIX} Failed to read Signal profile after linking: ${String(error)}`);
+      logger.warn(
+        `${LOG_PREFIX} Failed to read Signal profile after linking: ${String(error)}`,
+      );
     }
 
     this.finishConnected(phoneNumber || null, uuid || undefined);
@@ -492,15 +525,21 @@ export class SignalPairingSession {
       throw new Error(missingSignalCliMessage(this.options.cliPath));
     }
 
-    console.info(`${LOG_PREFIX} Starting device linking with signal-cli...`);
+    logger.info(`${LOG_PREFIX} Starting device linking with signal-cli...`);
 
     const child = spawn(
       cliPath,
-      ["--config", this.options.authDir, "link", "-n", DEFAULT_SIGNAL_DEVICE_NAME],
+      [
+        "--config",
+        this.options.authDir,
+        "link",
+        "-n",
+        DEFAULT_SIGNAL_DEVICE_NAME,
+      ],
       {
         env: buildSignalCliEnv(),
         stdio: ["ignore", "pipe", "pipe"],
-      }
+      },
     );
     this.activeChild = child;
 
@@ -510,8 +549,8 @@ export class SignalPairingSession {
       const timer = setTimeout(() => {
         reject(
           new Error(
-            `signal-cli link did not emit a provisioning URL within ${DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS}ms`
-          )
+            `signal-cli link did not emit a provisioning URL within ${DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS}ms`,
+          ),
         );
       }, DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS);
 
@@ -617,29 +656,36 @@ export class SignalPairingSession {
       phoneNumber: this.phoneNumber ?? undefined,
     });
 
-    console.info(
-      `${LOG_PREFIX} Device linked successfully${phoneNumber ? ` (${phoneNumber})` : ""}`
+    logger.info(
+      `${LOG_PREFIX} Device linked successfully${phoneNumber ? ` (${phoneNumber})` : ""}`,
     );
   }
 
-  private async readLinkedSignalAccount(cliPath: string): Promise<string | null> {
+  private async readLinkedSignalAccount(
+    cliPath: string,
+  ): Promise<string | null> {
     try {
       const { stdout } = await execFileAsync(
         cliPath,
         ["--config", this.options.authDir, "-o", "json", "listAccounts"],
         {
           env: buildSignalCliEnv(),
-        }
+        },
       );
       return parseSignalCliAccountsOutput(stdout);
     } catch (error) {
-      console.warn(`${LOG_PREFIX} Failed to read linked Signal account: ${String(error)}`);
+      logger.warn(
+        `${LOG_PREFIX} Failed to read linked Signal account: ${String(error)}`,
+      );
       return null;
     }
   }
 }
 
-export function signalAuthExists(workspaceDir: string, accountId = "default"): boolean {
+export function signalAuthExists(
+  workspaceDir: string,
+  accountId = "default",
+): boolean {
   const authDir = path.join(workspaceDir, "signal-auth", accountId);
   if (!fs.existsSync(authDir)) {
     return false;
@@ -660,7 +706,10 @@ export function signalAuthExists(workspaceDir: string, accountId = "default"): b
   }
 }
 
-export function signalLogout(workspaceDir: string, accountId = "default"): void {
+export function signalLogout(
+  workspaceDir: string,
+  accountId = "default",
+): void {
   const authDir = path.join(workspaceDir, "signal-auth", accountId);
   fs.rmSync(authDir, { recursive: true, force: true });
 }

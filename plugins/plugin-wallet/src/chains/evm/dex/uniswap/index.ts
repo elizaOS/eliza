@@ -11,7 +11,6 @@ export const uniswapPlugin: Plugin = {
   description: "Uniswap V3 liquidity pool management plugin",
   services: [UniswapV3LpService],
   actions: [],
-  evaluators: [],
   providers: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     console.info("Uniswap V3 Plugin initialized");

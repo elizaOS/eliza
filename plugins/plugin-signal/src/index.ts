@@ -9,14 +9,21 @@ import { signalSetupRoutes } from "./setup-routes";
 
 // Types
 import { normalizeE164 } from "./types";
+import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
-  services: [SignalService],
+  services: [SignalService, SignalWorkflowCredentialProvider],
   actions: [],
   providers: [],
   routes: signalSetupRoutes,
+  // Self-declared auto-enable: activate when the "signal" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["signal"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register the Signal provider with the ConnectorAccountManager so the
     // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
@@ -126,6 +133,9 @@ export {
 } from "./connector-account-provider";
 // Pairing service (device linking via QR code / signal-cli)
 export {
+  classifySignalPairingErrorStatus,
+  extractSignalCliProvisioningUrl,
+  parseSignalCliAccountsOutput,
   type SignalPairingEvent,
   type SignalPairingOptions,
   SignalPairingSession,

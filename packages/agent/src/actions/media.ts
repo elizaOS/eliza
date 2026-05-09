@@ -17,80 +17,6 @@ import {
   createVisionProvider,
   type MediaProviderFactoryOptions,
 } from "../providers/media-provider.js";
-import {
-  hasSelectedContextOrSignalSync,
-  messageText,
-} from "./context-signal.js";
-
-const MEDIA_ACTION_CONTEXTS = ["general", "media", "files"] as const;
-const ANALYZE_IMAGE_STRONG_TERMS = [
-  "analyze image",
-  "describe image",
-  "what is in this image",
-  "what's in this image",
-  "read image",
-  "read screenshot",
-  "read receipt",
-  "ocr",
-  "vision",
-  "screenshot",
-  "photo",
-  "image",
-  "分析图片",
-  "描述图片",
-  "识别图片",
-  "截图",
-  "이미지 분석",
-  "사진 설명",
-  "스크린샷",
-  "analiza imagen",
-  "describe imagen",
-  "leer imagen",
-  "captura de pantalla",
-  "analise imagem",
-  "descreva imagem",
-  "ler imagem",
-  "ảnh chụp màn hình",
-  "anh chup man hinh",
-  "phân tích ảnh",
-  "phan tich anh",
-  "ilarawan ang larawan",
-  "basahin ang larawan",
-  "screenshot",
-];
-
-function hasMediaActionSignal(
-  message: Parameters<NonNullable<Action["validate"]>>[1],
-  state: Parameters<NonNullable<Action["validate"]>>[2],
-  strongTerms: readonly string[],
-  weakTerms: readonly string[] = [],
-): boolean {
-  return hasSelectedContextOrSignalSync(
-    message,
-    state,
-    MEDIA_ACTION_CONTEXTS,
-    strongTerms,
-    weakTerms,
-    8,
-  );
-}
-
-function messageHasImageAttachment(
-  message: Parameters<NonNullable<Action["validate"]>>[1],
-): boolean {
-  const content = message.content as Record<string, unknown> | undefined;
-  const attachments = content?.attachments;
-  if (!Array.isArray(attachments)) return false;
-  return attachments.some((attachment) => {
-    if (!attachment || typeof attachment !== "object") return false;
-    const record = attachment as Record<string, unknown>;
-    return (
-      record.type === "image" ||
-      (typeof record.mimeType === "string" &&
-        record.mimeType.toLowerCase().startsWith("image/"))
-    );
-  });
-}
 
 function getMediaProviderOptions(): MediaProviderFactoryOptions {
   const config = loadElizaConfig();
@@ -127,10 +53,15 @@ export const analyzeImageAction: Action = {
   descriptionCompressed:
     "analyze image use AI vision describe content, identify object, read text, answer question image",
 
-  validate: async (_runtime: IAgentRuntime, message, state) =>
-    messageHasImageAttachment(message) ||
-    hasMediaActionSignal(message, state, ANALYZE_IMAGE_STRONG_TERMS) ||
-    /\b(image|photo|screenshot|receipt|ocr)\b/i.test(messageText(message)),
+  validate: async (_runtime: IAgentRuntime) => {
+    try {
+      const config = loadElizaConfig();
+      createVisionProvider(config.media?.vision, getMediaProviderOptions());
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as

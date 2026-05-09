@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { type Component, Editor, type Focusable, type TUI } from "@elizaos/tui";
+import { Editor, type Focusable, type TUI } from "@elizaos/tui";
 import chalk from "chalk";
+import { createEditorTheme } from "../lib/editor-theme.js";
 import { getCodeTaskService } from "../lib/get-code-task-service.js";
 import { useStore } from "../lib/store.js";
 import type {
@@ -121,10 +122,9 @@ function formatTraceLines(events: TaskTraceEvent[]): string[] {
   return lines;
 }
 
-export class TaskPane implements Component, Focusable {
+export class TaskPane implements Focusable {
+  focused = false;
   private props: TaskPaneProps;
-  private width = 40;
-  private focused = false;
   private selectedIndex = 0;
   private detailView: "output" | "trace" = "output";
   private detailScrollOffset = 0;
@@ -138,21 +138,28 @@ export class TaskPane implements Component, Focusable {
   }
 
   resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
+    void width;
+    void height;
   }
 
-  setFocused(focused: boolean): void {
+  syncFocus(focused: boolean): void {
     this.focused = focused;
     if (!focused) {
       this.editMode = false;
       this.isRenaming = false;
+      this.renameEditor = null;
       this.confirm = null;
     }
   }
 
   isFocused(): boolean {
     return this.focused;
+  }
+
+  invalidate(): void {
+    if (this.renameEditor) {
+      this.renameEditor.invalidate();
+    }
   }
 
   private getTaskService(): CodeTaskService | null {
@@ -208,26 +215,31 @@ export class TaskPane implements Component, Focusable {
 
     // Handle confirmation dialog
     if (this.confirm) {
+      const confirmSnapshot = this.confirm;
       if (char === "y" || char === "Y") {
         if (taskService) {
-          if (this.confirm.type === "cancel") {
-            taskService.cancelTask(this.confirm.taskId).catch((err: Error) => {
-              reportTaskServiceError(
-                taskService,
-                this.confirm?.taskId,
-                "cancelTask",
-                err,
-              );
-            });
+          if (confirmSnapshot.type === "cancel") {
+            taskService
+              .cancelTask(confirmSnapshot.taskId)
+              .catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  confirmSnapshot.taskId,
+                  "cancelTask",
+                  err,
+                );
+              });
           } else {
-            taskService.deleteTask(this.confirm.taskId).catch((err: Error) => {
-              reportTaskServiceError(
-                taskService,
-                this.confirm?.taskId,
-                "deleteTask",
-                err,
-              );
-            });
+            taskService
+              .deleteTask(confirmSnapshot.taskId)
+              .catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  confirmSnapshot.taskId,
+                  "deleteTask",
+                  err,
+                );
+              });
           }
         }
         this.confirm = null;
@@ -348,13 +360,12 @@ export class TaskPane implements Component, Focusable {
 
     // Rename
     if (char === "r") {
-      this.renameDraft = currentTask.name;
-      this.renameEditor = new Editor({
-        width: Math.max(1, this.width - 12),
-        maxHeight: 1,
-        initialText: currentTask.name,
+      const ed = new Editor(this.props.tui, createEditorTheme(), {
+        paddingX: 0,
       });
-      this.renameEditor.setFocused(true);
+      ed.setText(currentTask.name);
+      ed.focused = true;
+      this.renameEditor = ed;
       this.isRenaming = true;
       this.props.tui.requestRender();
       return;
@@ -401,10 +412,7 @@ export class TaskPane implements Component, Focusable {
     }
   }
 
-  render(width: number, height: number): string[] {
-    this.width = width;
-    this.height = height;
-
+  renderContent(width: number, height: number): string[] {
     const state = useStore.getState();
     const tasks = state.tasks;
     const currentTaskId = state.currentTaskId;
@@ -586,7 +594,7 @@ export class TaskPane implements Component, Focusable {
     if (this.isRenaming && this.renameEditor) {
       const borderColor = chalk.cyan;
       output.push(borderColor(`┌${"─".repeat(innerWidth)}┐`));
-      const editorLines = this.renameEditor.render(innerWidth - 2, 1);
+      const editorLines = this.renameEditor.render(Math.max(1, innerWidth - 2));
       output.push(
         `${borderColor("│")} ${chalk.dim("Rename: ")}${(editorLines[0] || "").padEnd(innerWidth - 10)}${borderColor("│")}`,
       );

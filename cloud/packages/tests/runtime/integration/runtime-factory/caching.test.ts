@@ -64,7 +64,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
-      characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+      characterData: { ...mcpTestCharacter },
       characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
     });
     console.log("Test data created");
@@ -159,7 +159,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
-      characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+      characterData: { ...mcpTestCharacter },
       characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
     });
     console.log("Test data created");

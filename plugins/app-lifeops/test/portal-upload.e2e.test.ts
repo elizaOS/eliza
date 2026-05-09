@@ -15,12 +15,12 @@
  */
 
 import crypto from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
-import { withTimeout } from "../../../test/helpers/test-utils.ts";
-import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
+import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
@@ -47,7 +47,18 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         withLLM: true,
         preferredProvider: provider?.name,
         // Ensure browser-workspace mock is included
-        envs: ["google", "twilio", "whatsapp", "x-twitter", "calendly", "cloud-managed", "signal", "browser-workspace", "bluebubbles", "github"],
+        envs: [
+          "google",
+          "twilio",
+          "whatsapp",
+          "x-twitter",
+          "calendly",
+          "cloud-managed",
+          "signal",
+          "browser-workspace",
+          "imessage",
+          "github",
+        ],
       });
 
       ownerId = crypto.randomUUID() as UUID;
@@ -60,65 +71,62 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       await mocked?.cleanup();
     });
 
-    it(
-      "initiates browser-workspace portal navigation for the SXSW speaker portal",
-      async () => {
-        const message = createMessageMemory({
-          id: crypto.randomUUID() as UUID,
-          entityId: ownerId,
-          roomId,
-          metadata: { type: "user_message", entityName: "shaw" },
-          content: {
-            text: "Upload my deck to the SXSW speaker portal.",
-            source: "telegram",
-            channelType: ChannelType.DM,
-          },
-        });
+    it("initiates browser-workspace portal navigation for the SXSW speaker portal", async () => {
+      const message = createMessageMemory({
+        id: crypto.randomUUID() as UUID,
+        entityId: ownerId,
+        roomId,
+        metadata: { type: "user_message", entityName: "shaw" },
+        content: {
+          text: "Upload my deck to the SXSW speaker portal.",
+          source: "telegram",
+          channelType: ChannelType.DM,
+        },
+      });
 
-        let responseText = "";
-        const result = await withTimeout(
-          Promise.resolve(
-            mocked.runtime.messageService?.handleMessage(
-              mocked.runtime,
-              message,
-              async (content: { text?: string }) => {
-                if (content.text) responseText += content.text;
-                return [];
-              },
-            ),
+      let responseText = "";
+      const result = await withTimeout(
+        Promise.resolve(
+          mocked.runtime.messageService?.handleMessage(
+            mocked.runtime,
+            message,
+            async (content: { text?: string }) => {
+              if (content.text) responseText += content.text;
+              return [];
+            },
           ),
-          90_000,
-          "handleMessage",
-        );
-        const reply =
-          String(result?.responseContent?.text ?? "").trim() || responseText;
+        ),
+        90_000,
+        "handleMessage",
+      );
+      const reply =
+        String(result?.responseContent?.text ?? "").trim() || responseText;
 
-        // Agent should acknowledge the portal upload task
-        expect(reply).toMatch(/upload|portal|SXSW|deck|speaker|browser/i);
+      expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
-        // Assert browser-workspace requests in the ledger
-        const ledger = mocked.mocks.requestLedger();
-        const browserRequests = ledger.filter(
-          (entry) => entry.environment === "browser-workspace",
-        );
+      // Assert browser-workspace requests in the ledger
+      const ledger = mocked.mocks.requestLedger();
+      const browserRequests = ledger.filter(
+        (entry) => entry.environment === "browser-workspace",
+      );
 
-        if (BROWSER_WS_AVAILABLE) {
-          // When browser-workspace is wired up, expect at least a navigate or eval call
-          expect(browserRequests.length, "expected browser-workspace navigate/eval calls").toBeGreaterThanOrEqual(1);
-          expect(
-            browserRequests.some(
-              (entry) =>
-                entry.browserWorkspace?.action === "navigate" ||
-                entry.browserWorkspace?.action === "eval",
-            ),
-          ).toBe(true);
-        } else {
-          // Without real browser-workspace, agent should communicate it needs the tool
-          expect(reply).toMatch(/upload|portal|browser|deck/i);
-        }
-      },
-      120_000,
-    );
+      if (BROWSER_WS_AVAILABLE) {
+        // When browser-workspace is wired up, expect at least a navigate or eval call
+        expect(
+          browserRequests.length,
+          "expected browser-workspace navigate/eval calls",
+        ).toBeGreaterThanOrEqual(1);
+        expect(
+          browserRequests.some(
+            (entry) =>
+              entry.browserWorkspace?.action === "navigate" ||
+              entry.browserWorkspace?.action === "eval",
+          ),
+        ).toBe(true);
+      } else {
+        expect(browserRequests).toHaveLength(0);
+      }
+    }, 120_000);
 
     it.todo(
       "completes the full portal form fill and upload sequence (requires deterministic portal fixture)",

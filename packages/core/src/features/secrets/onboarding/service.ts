@@ -39,6 +39,26 @@ import {
 
 export const ONBOARDING_SERVICE_TYPE = "SECRETS_ONBOARDING" as ServiceTypeName;
 
+interface TelegramDeepLinkService {
+	messageManager: {
+		sendMessage(chatId: string | number, msg: { text: string }): Promise<void>;
+	};
+}
+
+function isTelegramDeepLinkService(
+	service: unknown,
+): service is TelegramDeepLinkService {
+	return (
+		typeof service === "object" &&
+		service !== null &&
+		"messageManager" in service &&
+		typeof service.messageManager === "object" &&
+		service.messageManager !== null &&
+		"sendMessage" in service.messageManager &&
+		typeof service.messageManager.sendMessage === "function"
+	);
+}
+
 /**
  * Extended WorldMetadata for onboarding
  */
@@ -371,16 +391,9 @@ export class OnboardingService extends Service {
 		}
 
 		// Send deep link message to group
-		const telegramService = this.runtime.getService("telegram") as unknown as {
-			messageManager: {
-				sendMessage: (
-					chatId: string | number,
-					msg: { text: string },
-				) => Promise<void>;
-			};
-		} | null;
+		const telegramService = this.runtime.getService("telegram");
 
-		if (telegramService?.messageManager) {
+		if (isTelegramDeepLinkService(telegramService)) {
 			const deepLinkMessage = [
 				`Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
 				`Please click this link to start chatting with me: https://t.me/${botUsername}?start=onboarding`,

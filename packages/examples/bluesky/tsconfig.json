@@ -10,17 +10,9 @@
     "resolveJsonModule": true,
     "declaration": false,
     "noEmit": true,
-    "types": [
-      "bun-types",
-      "node"
-    ]
+    "types": ["bun-types", "node"]
   },
-  "include": [
-    "*.ts",
-    "__tests__/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "include": ["*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

@@ -298,6 +298,7 @@ export type LifeOpsConnectorExecutionTarget =
 export const LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH = [
   "local_storage",
   "cloud_connection",
+  "connector_account",
 ] as const;
 export type LifeOpsConnectorSourceOfTruth =
   (typeof LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH)[number];
@@ -962,7 +963,7 @@ export type LifeOpsWorkflowAction =
       request?: GetLifeOpsHealthSummaryRequest;
     })
   | (LifeOpsWorkflowActionBase & {
-      kind: "dispatch_n8n_workflow";
+      kind: "dispatch_workflow";
       workflowId: string;
       payload?: Record<string, unknown>;
     })

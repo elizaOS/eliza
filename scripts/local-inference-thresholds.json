@@ -1,0 +1,54 @@
+{
+  "_comment": "Per-(backend, variant) minimum tok/s floors for the local-inference ablation gate. Floors are intentionally generous on first-pass CI to avoid false-fails on shared/cold runners; tighten over time as we collect baselines per runner class. Use `default` as the per-backend fallback when a variant-specific floor is not listed.",
+  "cpu": {
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "cuda": {
+    "default": 50,
+    "baseline_f16_kv": 80,
+    "turbo4_polar_kv": 70,
+    "turbo3_polar_kv": 70,
+    "qjl_tcq_forced": 50,
+    "dflash_only": 80,
+    "dflash_turbo4_polar": 70,
+    "all_dflash_qjl_tcq": 50
+  },
+  "rocm": {
+    "default": 30,
+    "baseline_f16_kv": 50,
+    "turbo4_polar_kv": 40,
+    "turbo3_polar_kv": 40,
+    "qjl_tcq_forced": 30,
+    "dflash_only": 50,
+    "dflash_turbo4_polar": 40,
+    "all_dflash_qjl_tcq": 30
+  },
+  "metal": {
+    "default": 20,
+    "baseline_f16_kv": 30,
+    "turbo4_polar_kv": 25,
+    "turbo3_polar_kv": 25,
+    "qjl_tcq_forced": 20,
+    "dflash_only": 30,
+    "dflash_turbo4_polar": 25,
+    "all_dflash_qjl_tcq": 20
+  },
+  "vulkan": {
+    "_comment": "Vulkan thresholds depend heavily on the device — discrete dGPU vs Mali/Adreno mobile chips have orders-of-magnitude different floors. Floors here target a low-end discrete GPU baseline; tighten per-device when concrete runners come online. Mobile-class Adreno/Mali should be benched separately under android-vulkan and given their own threshold block once we have data.",
+    "default": 25,
+    "baseline_f16_kv": 40,
+    "turbo4_polar_kv": 35,
+    "turbo3_polar_kv": 35,
+    "qjl_tcq_forced": 25,
+    "dflash_only": 40,
+    "dflash_turbo4_polar": 35,
+    "all_dflash_qjl_tcq": 25
+  }
+}

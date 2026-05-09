@@ -8,8 +8,53 @@ const CODEX_APPROVAL_FLAGS = {
   permissive: ["-s", "workspace-write"],
   autonomous: ["--yolo"],
 };
+const CODEX_WEB_SEARCH_BY_PRESET = {
+  readonly: false,
+  standard: true,
+  permissive: true,
+  autonomous: true,
+};
+const CODEX_SANDBOX_MODES = new Set([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+]);
 
 const CODEX_TASK_AGENT_REASONING_EFFORT = "xhigh";
+
+function settingIsOff(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return /^(?:off|false|0|none|disabled)$/i.test(value.trim());
+}
+
+function resolveCodexApprovalFlags(approvalPreset) {
+  const sandboxMode =
+    typeof process.env.CODEX_EXEC_SANDBOX_MODE === "string"
+      ? process.env.CODEX_EXEC_SANDBOX_MODE.trim().toLowerCase()
+      : "";
+
+  if (sandboxMode) {
+    if (settingIsOff(sandboxMode)) {
+      return ["--dangerously-bypass-approvals-and-sandbox"];
+    }
+
+    if (CODEX_SANDBOX_MODES.has(sandboxMode)) {
+      return ["-s", sandboxMode];
+    }
+
+    return ["-s", "read-only"];
+  }
+
+  if (settingIsOff(process.env.CODING_AGENT_SANDBOX)) {
+    return ["--dangerously-bypass-approvals-and-sandbox"];
+  }
+
+  return (
+    CODEX_APPROVAL_FLAGS[approvalPreset] ?? CODEX_APPROVAL_FLAGS.autonomous
+  );
+}
 
 function patchCodexAdapter(adapter) {
   if (!adapter || adapter.adapterType !== "codex") {
@@ -36,6 +81,10 @@ function patchCodexAdapter(adapter) {
     args.push(
       "-c",
       `model_reasoning_effort=${CODEX_TASK_AGENT_REASONING_EFFORT}`,
+      "-c",
+      `tools.web_search=${
+        CODEX_WEB_SEARCH_BY_PRESET[approvalPreset] === false ? "false" : "true"
+      }`,
     );
 
     const model =
@@ -46,10 +95,7 @@ function patchCodexAdapter(adapter) {
       args.push("--model", model);
     }
 
-    args.push(
-      ...(CODEX_APPROVAL_FLAGS[approvalPreset] ??
-        CODEX_APPROVAL_FLAGS.autonomous),
-    );
+    args.push(...resolveCodexApprovalFlags(approvalPreset));
 
     if (config.workdir) {
       args.push("-C", config.workdir);

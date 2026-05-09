@@ -49,6 +49,7 @@ export interface EvaluatorEffects {
 
 export type EvaluatorOutput = EvaluationResult & {
 	nextTool?: PlannerToolCall;
+	parseError?: string;
 	raw?: Record<string, unknown>;
 };
 
@@ -131,6 +132,11 @@ export interface PlannerLoopParams {
 	tools?: ToolDefinition[];
 	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
 	toolChoice?: ToolChoice;
+	/**
+	 * When true, terminal planner output is only valid after at least one
+	 * non-terminal tool has executed for the current turn.
+	 */
+	requireNonTerminalToolCall?: boolean;
 	/**
 	 * Trajectory recorder for v5 observability. When supplied, the planner
 	 * loop records one stage per planner call, tool execution, and evaluator

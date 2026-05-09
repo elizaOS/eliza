@@ -1,5 +1,5 @@
 /**
- * Repository helpers for T8d `life_activity_events`.
+ * Repository helpers for T8d `app_lifeops.life_activity_events`.
  *
  * Writes are append-only (one row per `activate` / `deactivate`). Reads
  * derive per-app dwell time by pairing consecutive `activate` events (the
@@ -59,7 +59,7 @@ export async function insertActivityEvent(
   const createdAt = new Date().toISOString();
   await executeRawSql(
     runtime,
-    `INSERT INTO life_activity_events (
+    `INSERT INTO app_lifeops.life_activity_events (
       id, agent_id, observed_at, event_kind, bundle_id, app_name,
       window_title, metadata_json, created_at
     ) VALUES (
@@ -85,7 +85,7 @@ export async function listActivityEvents(
   const rows = await executeRawSql(
     runtime,
     `SELECT id, agent_id, observed_at, event_kind, bundle_id, app_name, window_title
-     FROM life_activity_events
+     FROM app_lifeops.life_activity_events
      WHERE agent_id = ${sqlQuote(agentId)}
        AND observed_at >= ${sqlQuote(sinceIso)}
      ORDER BY observed_at ASC`,

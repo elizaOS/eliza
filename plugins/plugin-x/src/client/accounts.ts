@@ -19,6 +19,7 @@ export interface XAccountCredentials {
 }
 
 export interface XConnectorAccountRecord {
+  [key: string]: unknown;
   accountId: string;
   source?: "x" | "twitter";
   credentials?: XAccountCredentials;
@@ -190,9 +191,7 @@ async function readRuntimeAccountRecord(
         },
       };
     }
-  } catch {
-    // Fall back to legacy runtime connector account hooks.
-  }
+  } catch {}
 
   try {
     const store = accountRuntime.getConnectorAccountStore?.("x");
@@ -214,7 +213,9 @@ async function readRuntimeAccountRecord(
   }
 }
 
-function readMetadataRecord(record: RawAccountRecord | undefined): RawAccountRecord {
+function readMetadataRecord(
+  record: RawAccountRecord | undefined,
+): RawAccountRecord {
   return record?.metadata && typeof record.metadata === "object"
     ? (record.metadata as RawAccountRecord)
     : {};
@@ -228,7 +229,8 @@ function readMetadataStringArray(
   const value = metadata[key];
   if (Array.isArray(value)) {
     return value.filter(
-      (item): item is string => typeof item === "string" && item.trim().length > 0,
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
     );
   }
   const text = nonEmptyString(value);
@@ -261,7 +263,9 @@ function buildStateFromRecord(
       : readRawField(record, ["TWITTER_AUTH_MODE", "authMode", "mode"]);
   const grantedScopes = readMetadataStringArray(record, "grantedScopes");
   const metadataScopes =
-    grantedScopes.length > 0 ? grantedScopes.join(" ") : readMetadataField(record, ["scope"]);
+    grantedScopes.length > 0
+      ? grantedScopes.join(" ")
+      : readMetadataField(record, ["scope"]);
 
   return {
     accountId,
@@ -350,11 +354,14 @@ export async function resolveTwitterAccountConfig(
   if (record) {
     return {
       ...options.state,
-      ...buildStateFromRecord(accountId, record as unknown as RawAccountRecord),
+      ...buildStateFromRecord(accountId, record),
     };
   }
 
-  if (accountId === defaultAccountId || !hasExplicitDefaultXAccountId(runtime, options.state)) {
+  if (
+    accountId === defaultAccountId ||
+    !hasExplicitDefaultXAccountId(runtime, options.state)
+  ) {
     return buildDefaultState(runtime, options.state, accountId);
   }
 

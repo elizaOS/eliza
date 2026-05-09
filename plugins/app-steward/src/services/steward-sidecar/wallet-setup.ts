@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/services/steward-sidecar/wallet-setup";
+export * from "@elizaos/app-core";

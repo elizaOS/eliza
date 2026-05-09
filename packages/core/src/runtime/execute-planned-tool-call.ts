@@ -44,6 +44,43 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	onStreamChunk?: StreamChunkCallback;
 };
 
+function isContentRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toContentValue(value: unknown): ContentValue {
+	if (
+		value === undefined ||
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value as ContentValue;
+	}
+	if (Array.isArray(value)) {
+		return value.map(toContentValue);
+	}
+	if (isContentRecord(value)) {
+		const record: Record<string, ContentValue> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			record[key] = toContentValue(entry);
+		}
+		return record;
+	}
+	return String(value);
+}
+
+function actionResultToContentRecord(
+	result: ActionResult,
+): Record<string, ContentValue> {
+	const record: Record<string, ContentValue> = {};
+	for (const [key, value] of Object.entries(result)) {
+		record[key] = toContentValue(value);
+	}
+	return record;
+}
+
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -78,25 +115,6 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
-	const accountPolicy = await evaluateConnectorAccountPolicies(
-		runtime,
-		action,
-		{
-			message: executorCtx.message,
-			parameters: validation.args as Record<string, unknown>,
-		},
-	);
-	if (!accountPolicy.allowed) {
-		return emitToolResult(
-			toolCall,
-			failureResult(
-				action.name,
-				accountPolicy.reason ??
-					`Action ${action.name} is not allowed for the selected connector account`,
-			),
-		);
-	}
-
 	const previousResults = [...(executorCtx.previousResults ?? [])];
 	const parameters =
 		action.parameters && action.parameters.length > 0
@@ -115,6 +133,51 @@ export async function executePlannedToolCall(
 				),
 		},
 	};
+
+	if (action.validate) {
+		let valid = false;
+		try {
+			valid = await action.validate(
+				runtime,
+				executorCtx.message,
+				executorCtx.state,
+				handlerOptions,
+			);
+		} catch (error) {
+			return emitToolResult(
+				toolCall,
+				failureResult(action.name, stringifyError(error), { error }),
+			);
+		}
+		if (!valid) {
+			return emitToolResult(
+				toolCall,
+				failureResult(
+					action.name,
+					`Action ${action.name} is not available for the current state`,
+				),
+			);
+		}
+	}
+
+	const accountPolicy = await evaluateConnectorAccountPolicies(
+		runtime,
+		action,
+		{
+			message: executorCtx.message,
+			parameters: validation.args as Record<string, unknown>,
+		},
+	);
+	if (!accountPolicy.allowed) {
+		return emitToolResult(
+			toolCall,
+			failureResult(
+				action.name,
+				accountPolicy.reason ??
+					`Action ${action.name} is not allowed for the selected connector account`,
+			),
+		);
+	}
 
 	const messageId = executorCtx.message.id as UUID | undefined;
 	const roomId = executorCtx.message.roomId as UUID;
@@ -175,9 +238,7 @@ export async function executePlannedToolCall(
 					text: resultForEvent.text ?? `Action ${action.name} completed`,
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: resultForEvent as unknown as {
-						[key: string]: ContentValue;
-					},
+					actionResult: actionResultToContentRecord(resultForEvent),
 					source: executorCtx.message.content?.source,
 					error:
 						typeof resultForEvent.error === "string"

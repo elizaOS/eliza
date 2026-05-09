@@ -16,7 +16,7 @@ type MockSlackService = SlackService & {
 };
 
 function createRuntime() {
-  return {
+  const runtime = {
     agentId: "agent-1",
     registerMessageConnector: vi.fn(),
     registerSendHandler: vi.fn(),
@@ -24,7 +24,9 @@ function createRuntime() {
     getRoom: vi.fn(),
     getEntityById: vi.fn(),
     getRelationships: vi.fn().mockResolvedValue([]),
-  } as unknown as IAgentRuntime & {
+  };
+
+  return runtime as IAgentRuntime & {
     registerMessageConnector: ReturnType<typeof vi.fn>;
     registerSendHandler: ReturnType<typeof vi.fn>;
   };

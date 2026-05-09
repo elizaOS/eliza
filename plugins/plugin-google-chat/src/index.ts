@@ -9,6 +9,7 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createGoogleChatConnectorAccountProvider } from "./connector-account-provider.js";
 import { GoogleChatService } from "./service.js";
+import { GoogleChatWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 export * from "./accounts.js";
 // Message, space listing, and reaction operations route through MESSAGE via
@@ -25,13 +26,20 @@ const googleChatPlugin: Plugin = {
   name: "google-chat",
   description: "Google Chat integration plugin for ElizaOS agents",
 
-  services: [GoogleChatService],
+  services: [GoogleChatService, GoogleChatWorkflowCredentialProvider],
 
   actions: [],
 
   providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "googlechat" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["googlechat"],
+  },
 
   /**
    * Plugin initialization hook

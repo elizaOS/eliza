@@ -41,7 +41,7 @@ app.post("/", async (c) => {
       fallbackPath: defaultRedirectPath,
       allowedAbsoluteOrigins: [
         ...getDefaultPlatformRedirectOrigins(),
-        ...(LOOPBACK_REDIRECT_ORIGINS as unknown as string[]),
+        ...LOOPBACK_REDIRECT_ORIGINS,
       ],
     });
     if (rejected) {

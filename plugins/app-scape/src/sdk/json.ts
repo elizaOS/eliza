@@ -25,6 +25,51 @@ export interface CodecError {
 
 export type CodecResult<T> = CodecOk<T> | CodecError;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasString(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === "string";
+}
+
+function hasNumber(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === "number" && Number.isFinite(value[key]);
+}
+
+function isPerceptionFrame(value: Record<string, unknown>): boolean {
+  const snapshot = value.snapshot;
+  return isRecord(snapshot) && isRecord(snapshot.self);
+}
+
+function isServerFrame(value: Record<string, unknown>): value is ServerFrame {
+  switch (value.kind) {
+    case "authOk":
+      return hasString(value, "server") && hasNumber(value, "version");
+    case "error":
+      return hasString(value, "code") && hasString(value, "message");
+    case "spawnOk":
+      return (
+        hasNumber(value, "playerId") &&
+        hasNumber(value, "x") &&
+        hasNumber(value, "z") &&
+        hasNumber(value, "level")
+      );
+    case "ack":
+      return hasString(value, "correlationId") && typeof value.success === "boolean";
+    case "perception":
+      return isPerceptionFrame(value);
+    case "operatorCommand":
+      return (
+        (value.source === "chat" || value.source === "admin") &&
+        hasString(value, "text") &&
+        hasNumber(value, "timestamp")
+      );
+    default:
+      return false;
+  }
+}
+
 /** Encode a client → server frame as a JSON string. Never throws. */
 export function encodeClientFrame(frame: ClientFrame): string {
   return JSON.stringify(frame);
@@ -44,12 +89,14 @@ export function decodeServerFrame(raw: string): CodecResult<ServerFrame> {
       error: `json decode failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return { ok: false, error: "frame root is not an object" };
   }
-  const obj = value as Record<string, unknown>;
-  if (typeof obj.kind !== "string") {
+  if (typeof value.kind !== "string") {
     return { ok: false, error: "missing or non-string `kind` field" };
   }
-  return { ok: true, value: obj as unknown as ServerFrame };
+  if (!isServerFrame(value)) {
+    return { ok: false, error: `invalid server frame: ${value.kind}` };
+  }
+  return { ok: true, value };
 }

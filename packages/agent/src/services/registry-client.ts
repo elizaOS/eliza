@@ -28,7 +28,10 @@ import {
   applyLocalWorkspaceApps,
   applyNodeModulePlugins,
 } from "./registry-client-local.js";
-import { fetchFromNetwork as fetchRegistryFromNetwork } from "./registry-client-network.js";
+import {
+  fetchFromNetwork as fetchRegistryFromNetwork,
+  isExpectedRegistryNetworkFallback,
+} from "./registry-client-network.js";
 import {
   getPluginInfoFromRegistry,
   normalizePluginLookupAlias,
@@ -91,8 +94,9 @@ let memoryCache: {
   fetchedAt: number;
   ttlMs?: number;
 } | null = null;
+let registryLoadPromise: Promise<Map<string, RegistryPluginInfo>> | null = null;
 
-const LOCAL_FALLBACK_CACHE_TTL_MS = 60_000;
+const LOCAL_FALLBACK_CACHE_TTL_MS = 5 * 60_000;
 
 // ---------------------------------------------------------------------------
 // Network fetch + parse (inlined wire types — not exported)
@@ -108,9 +112,11 @@ async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
       sanitizeSandbox,
     });
   } catch (err) {
-    logger.warn(
-      `[registry-client] generated-registry/index fallback failed: ${String(err)}`,
-    );
+    if (!isExpectedRegistryNetworkFallback(err)) {
+      logger.warn(
+        `[registry-client] generated-registry/index fallback failed: ${String(err)}`,
+      );
+    }
     throw err;
   }
 }
@@ -320,36 +326,53 @@ export async function getRegistryPlugins(): Promise<
     return fromFile;
   }
 
-  logger.info("[registry-client] Fetching plugin registry from next branch...");
-  let plugins: Map<string, RegistryPluginInfo>;
-  let usedLocalFallback = false;
-  try {
-    plugins = await fetchFromNetwork();
-  } catch (err) {
-    logger.warn(
-      `[registry-client] Falling back to local registry discovery: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    plugins = await buildLocalRegistrySnapshot();
-    usedLocalFallback = true;
-  }
-  await mergeCustomEndpoints(plugins, getConfiguredEndpoints());
-  filterBlockedRegistryPlugins(plugins);
-  logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
-
-  memoryCache = {
-    plugins,
-    fetchedAt: Date.now(),
-    ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
-  };
-  if (!usedLocalFallback) {
-    writeFileCache(plugins).catch((err) =>
-      logger.warn(`[registry-client] Cache write failed: ${String(err)}`),
-    );
+  if (registryLoadPromise) {
+    return registryLoadPromise;
   }
 
-  return plugins;
+  registryLoadPromise = (async () => {
+    logger.info(
+      "[registry-client] Fetching plugin registry from next branch...",
+    );
+    let plugins: Map<string, RegistryPluginInfo>;
+    let usedLocalFallback = false;
+    try {
+      plugins = await fetchFromNetwork();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isExpectedRegistryNetworkFallback(err)) {
+        logger.debug(
+          `[registry-client] Remote registry unavailable; using local registry discovery: ${message}`,
+        );
+      } else {
+        logger.warn(
+          `[registry-client] Falling back to local registry discovery: ${message}`,
+        );
+      }
+      plugins = await buildLocalRegistrySnapshot();
+      usedLocalFallback = true;
+    }
+    await mergeCustomEndpoints(plugins, getConfiguredEndpoints());
+    filterBlockedRegistryPlugins(plugins);
+    logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
+
+    memoryCache = {
+      plugins,
+      fetchedAt: Date.now(),
+      ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
+    };
+    if (!usedLocalFallback) {
+      writeFileCache(plugins).catch((err) =>
+        logger.warn(`[registry-client] Cache write failed: ${String(err)}`),
+      );
+    }
+
+    return plugins;
+  })().finally(() => {
+    registryLoadPromise = null;
+  });
+
+  return registryLoadPromise;
 }
 
 /** Force-refresh from network. */

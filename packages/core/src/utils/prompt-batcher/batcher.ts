@@ -1195,15 +1195,14 @@ export class PromptBatcher {
 		]
 			.filter(Boolean)
 			.join("\n\n");
+		const params = {
+			prompt,
+			...(resolvedSection.execOptions ?? {}),
+		} satisfies Omit<GenerateTextParams, "prompt"> & { prompt: string };
 
 		const response = await this.runtime.dynamicPromptExecFromState({
 			state: createMinimalState(resolvedSection.resolvedContext),
-			params: {
-				prompt,
-				...(resolvedSection.execOptions ?? {}),
-			} as unknown as Omit<GenerateTextParams, "prompt"> & {
-				prompt: string;
-			},
+			params,
 			schema: resolvedSection.section.schema,
 			options: {
 				modelSize: resolvedSection.preferredModel,

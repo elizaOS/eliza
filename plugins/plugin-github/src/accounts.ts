@@ -54,10 +54,7 @@ export function resolveGitHubAccountSelection(
   const requestedRole = normalizeRole(options?.as);
   return {
     accountId: requestedAccountId,
-    role:
-      requestedRole ??
-      normalizeRole(requestedAccountId) ??
-      defaultRole,
+    role: requestedRole ?? normalizeRole(requestedAccountId) ?? defaultRole,
   };
 }
 
@@ -107,7 +104,9 @@ function readRawField(
   return undefined;
 }
 
-function accountFromRecord(record: RawAccountRecord): GitHubAccountConfig | null {
+function accountFromRecord(
+  record: RawAccountRecord,
+): GitHubAccountConfig | null {
   const accountId = normalizeGitHubAccountId(
     record.accountId ?? record.id ?? record.name,
   );
@@ -144,7 +143,9 @@ function addAccount(
   }
 }
 
-export function readGitHubAccounts(runtime: IAgentRuntime): GitHubAccountConfig[] {
+export function readGitHubAccounts(
+  runtime: IAgentRuntime,
+): GitHubAccountConfig[] {
   const accounts = new Map<string, GitHubAccountConfig>();
   const characterConfig = runtime.character?.settings?.github as
     | { accounts?: unknown }
@@ -213,7 +214,10 @@ export async function readGitHubAccountsWithConnectorCredentials(
     accounts.set(account.accountId, account);
   }
 
-  const connectorAccounts = await listConnectorAccounts(runtime, GITHUB_SERVICE_TYPE);
+  const connectorAccounts = await listConnectorAccounts(
+    runtime,
+    GITHUB_SERVICE_TYPE,
+  );
   for (const account of connectorAccounts) {
     if (account.status !== "connected") continue;
     const token = await loadConnectorOAuthAccessToken({
@@ -241,13 +245,16 @@ function legacyAccount(
   primaryKey: string,
   fallbackKey: string,
 ): GitHubAccountConfig | null {
-  const token = readSetting(runtime, primaryKey) ?? readSetting(runtime, fallbackKey);
+  const token =
+    readSetting(runtime, primaryKey) ?? readSetting(runtime, fallbackKey);
   if (!token) return null;
   return { accountId, role, token };
 }
 
 function connectorRoleToIdentity(role: unknown): GitHubIdentity {
-  return typeof role === "string" && role.toUpperCase() === "AGENT" ? "agent" : "user";
+  return typeof role === "string" && role.toUpperCase() === "AGENT"
+    ? "agent"
+    : "user";
 }
 
 export function resolveGitHubAccount(
@@ -259,6 +266,7 @@ export function resolveGitHubAccount(
       (account) => account.accountId === selection.accountId,
     );
     if (exact) return exact;
+    return null;
   }
 
   const legacyId = defaultGitHubAccountIdForRole(selection.role);

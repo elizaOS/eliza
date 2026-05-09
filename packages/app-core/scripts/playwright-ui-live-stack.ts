@@ -11,8 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildOnboardingRuntimeConfig } from "../src/onboarding-config";
-import { selectLiveProvider } from "../test/helpers/live-provider";
+import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
+import { selectLiveProvider } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 

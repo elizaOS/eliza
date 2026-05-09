@@ -22,6 +22,19 @@ export interface ProvisionAgentOptions {
 	runMigrations?: boolean;
 }
 
+type AgentProvisioningRuntime = IAgentRuntime & {
+	ensureAgentExists(agent: Partial<Agent>): Promise<Agent | null>;
+};
+
+function hasAgentProvisioningRuntime(
+	runtime: IAgentRuntime,
+): runtime is AgentProvisioningRuntime {
+	return (
+		"ensureAgentExists" in runtime &&
+		typeof runtime.ensureAgentExists === "function"
+	);
+}
+
 /**
  * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
  * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
@@ -103,11 +116,11 @@ export async function ensureAgentInfrastructure(
 	const agentId = runtime.agentId;
 	const character = runtime.character;
 
-	const existingAgent = await (
-		runtime as unknown as {
-			ensureAgentExists(a: Partial<Agent>): Promise<Agent | null>;
-		}
-	).ensureAgentExists({
+	if (!hasAgentProvisioningRuntime(runtime)) {
+		throw new Error("Runtime does not support agent provisioning");
+	}
+
+	const existingAgent = await runtime.ensureAgentExists({
 		...character,
 		id: agentId,
 	} as Partial<Agent>);

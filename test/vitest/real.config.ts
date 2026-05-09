@@ -116,16 +116,64 @@ const liveSetupFile = [
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
+const elizaCoreSourceRoot = path.join(elizaWorkspaceRoot, "packages", "core", "src");
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
-const uiSourceRoot = getUiSourceRoot(repoRoot);
+const vaultSourceRoot = path.join(elizaWorkspaceRoot, "packages", "vault", "src");
+const cloudSdkSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "cloud",
+  "packages",
+  "sdk",
+  "src",
+);
+const workspaceUiSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "ui",
+  "src",
+);
+const uiSourceRoot = fs.existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
+  ? workspaceUiSourceRoot
+  : getUiSourceRoot(repoRoot);
 const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
+const pluginGoogleRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-google",
+  "src",
+);
 const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
+const pluginDiscordRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-discord");
+const pluginBrowserRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-browser",
+  "src",
+);
+const pluginElizaCloudRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-elizacloud",
+  "src",
+);
 const appCompanionSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "apps",
+  "plugins",
   "app-companion",
+  "src",
+);
+const appStewardSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "app-steward",
+  "src",
+);
+const appTrainingSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "app-training",
   "src",
 );
 const liveRetryCount = process.env.ELIZA_LIVE_TEST === "1" ? 1 : 0;
@@ -136,6 +184,10 @@ const realResolveAlias: ModuleAlias[] = [
   {
     find: "@elizaos/core/roles",
     replacement: elizaCoreRolesEntry,
+  },
+  {
+    find: /^@elizaos\/core\/(.+)/,
+    replacement: path.join(elizaCoreSourceRoot, "$1"),
   },
   ...(elizaCoreEntry
     ? [
@@ -150,6 +202,22 @@ const realResolveAlias: ModuleAlias[] = [
   }),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
+  {
+    find: /^@elizaos\/vault\/(.+)/,
+    replacement: path.join(vaultSourceRoot, "$1"),
+  },
+  {
+    find: "@elizaos/vault",
+    replacement: path.join(vaultSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/cloud-sdk\/(.+)/,
+    replacement: path.join(cloudSdkSourceRoot, "$1"),
+  },
+  {
+    find: "@elizaos/cloud-sdk",
+    replacement: path.join(cloudSdkSourceRoot, "index.ts"),
+  },
   {
     find: "@elizaos/app-lifeops/plugin",
     replacement: path.join(
@@ -169,6 +237,14 @@ const realResolveAlias: ModuleAlias[] = [
     replacement: path.join(pluginOpenAiRoot, "$1"),
   },
   {
+    find: /^@elizaos\/plugin-google$/,
+    replacement: path.join(pluginGoogleRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-google\/(.+)$/,
+    replacement: path.join(pluginGoogleRoot, "$1"),
+  },
+  {
     find: /^@elizaos\/plugin-imessage$/,
     replacement: path.join(pluginIMessageRoot, "src", "index.ts"),
   },
@@ -176,11 +252,40 @@ const realResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-imessage\/(.+)$/,
     replacement: path.join(pluginIMessageRoot, "src", "$1"),
   },
+  {
+    find: /^@elizaos\/plugin-browser$/,
+    replacement: path.join(pluginBrowserRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-browser\/(.+)$/,
+    replacement: path.join(pluginBrowserRoot, "$1"),
+  },
+  {
+    find: /^@elizaos\/plugin-elizacloud$/,
+    replacement: path.join(pluginElizaCloudRoot, "index.node.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
+    replacement: path.join(pluginElizaCloudRoot, "$1"),
+  },
+  {
+    find: /^@elizaos\/plugin-discord$/,
+    replacement: path.join(pluginDiscordRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-discord\/(.+)$/,
+    replacement: path.join(pluginDiscordRoot, "$1"),
+  },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-lifeops",
     "app-documents",
     "app-task-coordinator",
+    "app-companion",
+    "app-shopify",
+    "app-steward",
+    "app-training",
     "app-vincent",
+    "app-wallet",
   ]),
   {
     find: /^@elizaos\/app-companion\/(.*)/,
@@ -196,120 +301,51 @@ const realResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/app-steward\/routes\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-steward",
-      "src",
-      "routes",
-      "$1.ts",
-    ),
+    replacement: path.join(appStewardSourceRoot, "routes", "$1.ts"),
   },
   {
     find: /^@elizaos\/app-steward\/api\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-steward",
-      "src",
-      "api",
-      "$1.ts",
-    ),
+    replacement: path.join(appStewardSourceRoot, "api", "$1.ts"),
   },
   {
     find: /^@elizaos\/app-steward\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-steward",
-      "src",
-      "$1",
-    ),
+    replacement: path.join(appStewardSourceRoot, "$1"),
   },
   {
     find: "@elizaos/app-steward",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-steward",
-      "src",
-      "index.ts",
-    ),
+    replacement: path.join(appStewardSourceRoot, "index.ts"),
   },
   {
     find: "@elizaos/app-training/routes/training",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "routes",
-      "training-routes.ts",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "routes", "training-routes.ts"),
   },
   {
     find: "@elizaos/app-training/routes/trajectory",
     replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
+      appTrainingSourceRoot,
       "routes",
       "trajectory-routes.ts",
     ),
   },
   {
     find: /^@elizaos\/app-training\/services\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "services",
-      "$1.ts",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "services", "$1.ts"),
   },
   {
     find: "@elizaos/app-training/services",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "services",
-      "index.ts",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "services", "index.ts"),
   },
   {
     find: /^@elizaos\/app-training\/core\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "core",
-      "$1.ts",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "core", "$1.ts"),
   },
   {
     find: /^@elizaos\/app-training\/(.*)/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "$1",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "$1"),
   },
   {
     find: "@elizaos/app-training",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "apps",
-      "app-training",
-      "src",
-      "index.ts",
-    ),
+    replacement: path.join(appTrainingSourceRoot, "index.ts"),
   },
   {
     find: "@elizaos/app-documents/routes",
@@ -384,7 +420,7 @@ const realResolveAlias: ModuleAlias[] = [
       elizaWorkspaceRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
+      "src",
       "schema",
       "index.ts",
     ),
@@ -395,7 +431,7 @@ const realResolveAlias: ModuleAlias[] = [
       elizaWorkspaceRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
+      "src",
       "types.ts",
     ),
   },
@@ -405,7 +441,7 @@ const realResolveAlias: ModuleAlias[] = [
       elizaWorkspaceRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
+      "src",
       "drizzle",
       "index.ts",
     ),
@@ -420,7 +456,7 @@ const realResolveAlias: ModuleAlias[] = [
       elizaWorkspaceRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
+      "src",
       "index.ts",
     ),
   },
@@ -474,9 +510,8 @@ const realResolveAlias: ModuleAlias[] = [
           elizaWorkspaceRoot,
           "plugins",
           "plugin-sql",
-          "typescript",
           "src",
-          "index",
+          "index.ts",
         ),
       },
     },

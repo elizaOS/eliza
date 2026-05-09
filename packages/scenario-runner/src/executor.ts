@@ -1193,11 +1193,11 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = await import(
-    "@elizaos/app-lifeops/lifeops/runtime"
+    "@elizaos/app-lifeops"
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
-      ...toRecord(options),
+      ...(toRecord(options) ?? {}),
       ...(now ? { now } : {}),
     }),
     typeof args.turn.timeoutMs === "number"
@@ -1385,10 +1385,8 @@ export async function runScenario(
     id: scenario.id,
     title: scenario.title,
     domain: scenario.domain,
-    tags: Array.isArray((scenario as unknown as { tags?: unknown }).tags)
-      ? ((scenario as unknown as { tags: unknown[] }).tags.filter(
-          (t): t is string => typeof t === "string",
-        ) as readonly string[])
+    tags: Array.isArray(scenario.tags)
+      ? scenario.tags.filter((t): t is string => typeof t === "string")
       : [],
     status: "passed",
     durationMs: 0,
@@ -1470,9 +1468,7 @@ export async function runScenario(
           typeof (candidate as { name?: unknown }).name === "string"
         ) {
           await runtime.registerPlugin(
-            candidate as unknown as Parameters<
-              AgentRuntime["registerPlugin"]
-            >[0],
+            candidate as Parameters<AgentRuntime["registerPlugin"]>[0],
           );
         }
       } catch (err) {

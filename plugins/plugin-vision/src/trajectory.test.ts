@@ -14,7 +14,7 @@ function createRuntime() {
       llmCalls.push(call);
     }),
   };
-  const runtime = {
+  const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent-vision",
     character: {},
     getSetting: vi.fn(() => undefined),
@@ -24,7 +24,7 @@ function createRuntime() {
     getServicesByType: vi.fn((type: string) =>
       type === "trajectories" ? [trajectoryLogger] : [],
     ),
-  } as unknown as IAgentRuntime;
+  });
 
   return { runtime, trajectoryLogger, llmCalls };
 }
@@ -34,12 +34,20 @@ describe("vision trajectory capture", () => {
     const { runtime, trajectoryLogger, llmCalls } = createRuntime();
     const service = new VisionService(runtime);
     const analyzeImage = vi.fn(async () => ({ caption: "A tidy desk." }));
-    (service as any).florence2 = {
-      isInitialized: () => true,
-      analyzeImage,
-    };
+    Object.defineProperty(service, "florence2", {
+      configurable: true,
+      value: {
+        isInitialized: () => true,
+        analyzeImage,
+      },
+    });
 
-    const description = await (service as any).describeSceneWithVLM(
+    const describeSceneWithVLM = Reflect.get(
+      service,
+      "describeSceneWithVLM",
+    ) as (imageUrl: string) => Promise<string>;
+    const description = await describeSceneWithVLM.call(
+      service,
       `data:image/jpeg;base64,${Buffer.from("image").toString("base64")}`,
     );
 
@@ -62,8 +70,13 @@ describe("vision trajectory capture", () => {
       purpose: "background",
       actionType: "florence2.analyzeImage",
     });
-    expect(String(llmCalls[0]?.userPrompt)).toContain(
-      "task: describe_visual_scene",
-    );
+    expect(JSON.parse(String(llmCalls[0]?.userPrompt))).toEqual({
+      task: "describe_visual_scene",
+      image: {
+        source: "camera_frame",
+        mimeType: "image/jpeg",
+        bytes: Buffer.from("image").byteLength,
+      },
+    });
   });
 });

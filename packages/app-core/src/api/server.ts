@@ -1,4 +1,4 @@
-import "../utils/namespace-defaults.js";
+import "@elizaos/shared";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -11,6 +11,7 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
+  type ElizaConfig,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -18,6 +19,7 @@ import {
   initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
+  loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
   resolveDefaultAgentWorkspaceDir,
@@ -25,15 +27,11 @@ import {
   resolvePluginConfigMutationRejections,
   resolveUserPath,
   routeAutonomyTextToUser,
+  saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
 } from "@elizaos/agent";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";
@@ -55,7 +53,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -108,17 +106,15 @@ export {
 };
 
 import {
+  ensureRuntimeSqlCompatibility,
+  executeRawSql,
   isElizaSettingsDebugEnabled,
+  sanitizeIdentifier,
   settingsDebugCloudSummary,
+  sqlLiteral,
 } from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { deviceBridge } from "../services/local-inference/device-bridge";
-import {
-  ensureRuntimeSqlCompatibility,
-  executeRawSql,
-  sanitizeIdentifier,
-  sqlLiteral,
-} from "../utils/sql-compat";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -143,7 +139,7 @@ import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -151,10 +147,7 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import {
-  clearCloudSecrets,
-  getCloudSecret,
-} from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
@@ -168,7 +161,7 @@ import {
   handleCloudTtsPreviewRoute as _handleCloudTtsPreviewRoute,
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -632,8 +625,8 @@ async function handleCompatRoute(
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // n8n routes — extracted to plugins/plugin-n8n-workflow/src/plugin-routes.ts.
-  // Now served via n8nWorkflowRoutePlugin.routes (rawPath) on the runtime
+  // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
+  // Now served via workflowRoutePlugin.routes (rawPath) on the runtime
   // plugin route system.
 
   // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.
@@ -768,9 +761,7 @@ async function handleCompatRoute(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import(
-      "../config/plugin-ui-spec"
-    );
+    const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);

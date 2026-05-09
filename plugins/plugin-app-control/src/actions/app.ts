@@ -4,7 +4,7 @@
  * Unified APP action with sub-modes (`launch`, `relaunch`,
  * `load_from_directory`, `list`, `create`).
  *
- * Validate gates on owner role + a keyword heuristic + a lookup against
+ * Validate gates on owner role + structured context + a lookup against
  * any pending APP_CREATE intent task in the same room (so the multi-turn
  * choice reply still resolves).
  *
@@ -117,9 +117,6 @@ function inferMode(
 
 	return null;
 }
-
-const KEYWORD_HEURISTIC =
-	/\b(launch|open|start|stop|close|relaunch|restart|create|build|make|new|scaffold|list|show|running)\b.*\b(app|application|mini)\b|\b(create|build|make|scaffold)\b.*\b(app|game|tool|application)\b|\b(load|register|import).*\b(directory|folder)\b/i;
 
 // `defaultOwnerAccessFn` is the real `hasOwnerAccess` from ./security.js
 // (imported above), which uses `checkSenderRole` from `@elizaos/core`.
@@ -247,8 +244,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				if (await hasPendingIntent(runtime, roomId)) return true;
 			}
 
-			// First-turn intent.
-			return KEYWORD_HEURISTIC.test(text);
+			return true;
 		},
 
 		handler: async (

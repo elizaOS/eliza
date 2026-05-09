@@ -101,6 +101,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function commandParameters<TParams extends object>(
+  parameters: Record<string, unknown>,
+): Omit<TParams, "action"> {
+  return parameters as Omit<TParams, "action">;
+}
+
 function stringifyData(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -203,7 +209,7 @@ export class ComputerUseService extends Service {
       case "detect_elements":
       case "ocr":
         return this.executeDesktopAction({
-          ...(parameters as unknown as DesktopActionParams),
+          ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
         });
       case "browser_open":
@@ -228,7 +234,7 @@ export class ComputerUseService extends Service {
       case "browser_close_tab":
       case "browser_switch_tab":
         return this.executeBrowserAction({
-          ...(parameters as unknown as BrowserActionParams),
+          ...commandParameters<BrowserActionParams>(parameters),
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
@@ -240,7 +246,7 @@ export class ComputerUseService extends Service {
       case "restore_window":
       case "close_window":
         return this.executeWindowAction({
-          ...(parameters as unknown as WindowActionParams),
+          ...commandParameters<WindowActionParams>(parameters),
           action: this.mapWindowCommandToAction(command),
         });
       case "file_read":
@@ -255,7 +261,7 @@ export class ComputerUseService extends Service {
       case "file_download":
       case "file_list_downloads":
         return this.executeFileAction({
-          ...(parameters as unknown as FileActionParams),
+          ...commandParameters<FileActionParams>(parameters),
           action: this.mapFileCommandToAction(command),
         });
       case "terminal_connect":
@@ -266,7 +272,7 @@ export class ComputerUseService extends Service {
       case "terminal_close":
       case "execute_command":
         return this.executeTerminalAction({
-          ...(parameters as unknown as TerminalActionParams),
+          ...commandParameters<TerminalActionParams>(parameters),
           action: this.mapTerminalCommandToAction(command),
         });
       default:

@@ -61,7 +61,10 @@ export const readAction: Action = {
     },
   ],
   validate: async (runtime: IAgentRuntime) => {
-    return true;
+    return Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(FILE_STATE_SERVICE),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

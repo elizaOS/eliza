@@ -17,7 +17,8 @@ export interface BlockRuleTestHarness {
 }
 
 const BOOTSTRAP_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS life_task_definitions (
+  `CREATE SCHEMA IF NOT EXISTS app_lifeops`,
+  `CREATE TABLE IF NOT EXISTS app_lifeops.life_task_definitions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     domain TEXT NOT NULL DEFAULT 'user_lifeops',
@@ -43,7 +44,7 @@ const BOOTSTRAP_STATEMENTS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS life_task_occurrences (
+  `CREATE TABLE IF NOT EXISTS app_lifeops.life_task_occurrences (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     definition_id TEXT NOT NULL,
@@ -52,7 +53,7 @@ const BOOTSTRAP_STATEMENTS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS life_block_rules (
+  `CREATE TABLE IF NOT EXISTS app_lifeops.life_block_rules (
     id UUID PRIMARY KEY,
     agent_id UUID NOT NULL,
     profile TEXT NOT NULL,
@@ -135,7 +136,7 @@ export async function createBlockRuleHarness(
     createTask: async () => `00000000-0000-0000-0000-0000000000aa` as UUID,
     updateTask: async () => undefined,
     deleteTask: async () => undefined,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   return {
     runtime,
@@ -158,7 +159,7 @@ export async function seedTodo(
   const agentId = String(harness.runtime.agentId);
   const now = new Date().toISOString();
   await harness.execute(
-    `INSERT INTO life_task_definitions (
+    `INSERT INTO app_lifeops.life_task_definitions (
        id, agent_id, subject_id, kind, title, created_at, updated_at
      ) VALUES (
        '${options.id}', '${agentId}', '${agentId}', 'todo',
@@ -166,7 +167,7 @@ export async function seedTodo(
      )`,
   );
   await harness.execute(
-    `INSERT INTO life_task_occurrences (
+    `INSERT INTO app_lifeops.life_task_occurrences (
        id, agent_id, definition_id, state, created_at, updated_at
      ) VALUES (
        '${options.id}', '${agentId}', '${options.id}',
@@ -181,7 +182,7 @@ export async function completeTodo(
 ): Promise<void> {
   const now = new Date().toISOString();
   await harness.execute(
-    `UPDATE life_task_occurrences
+    `UPDATE app_lifeops.life_task_occurrences
        SET state = 'completed', updated_at = '${now}'
      WHERE id = '${id}'`,
   );

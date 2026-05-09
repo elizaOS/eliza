@@ -17,7 +17,7 @@ import type {
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
 	OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/plugin-browser/workspace/browser-workspace-types";
+} from "@elizaos/plugin-browser";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
@@ -516,6 +516,10 @@ export type ElizaDesktopRPCSchema = {
 			agentInspectExistingInstall: {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
+			};
+			agentPostReset: {
+				params: { apiBase?: string; bearerToken?: string } | undefined | null;
+				response: { ok: boolean; error?: string };
 			};
 			agentPostCloudDisconnect: {
 				params: { apiBase?: string; bearerToken?: string } | undefined | null;
@@ -1469,6 +1473,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:restartClearLocalDb": "agentRestartClearLocalDb",
 	"agent:status": "agentStatus",
 	"agent:inspectExistingInstall": "agentInspectExistingInstall",
+	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
 

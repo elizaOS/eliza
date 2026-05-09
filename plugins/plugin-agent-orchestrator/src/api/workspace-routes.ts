@@ -12,14 +12,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 /**
  * Handle workspace routes (/api/workspace/*)
  * Returns true if the route was handled, false otherwise
@@ -59,7 +51,7 @@ export async function handleWorkspaceRoutes(
           path: workspace.path,
           branch: workspace.branch,
           isWorktree: workspace.isWorktree,
-        } as unknown as JsonValue,
+        },
         201,
       );
     } catch (error) {
@@ -85,7 +77,7 @@ export async function handleWorkspaceRoutes(
     try {
       const workspaceId = workspaceMatch[1];
       const status = await ctx.workspaceService.getStatus(workspaceId);
-      sendJson(res, status as unknown as JsonValue);
+      sendJson(res, status);
     } catch (error) {
       sendError(
         res,
@@ -114,7 +106,7 @@ export async function handleWorkspaceRoutes(
         all: true,
       });
 
-      sendJson(res, result as unknown as JsonValue);
+      sendJson(res, result);
     } catch (error) {
       sendError(
         res,
@@ -142,7 +134,7 @@ export async function handleWorkspaceRoutes(
         setUpstream: body.setUpstream as boolean,
       });
 
-      sendJson(res, result as unknown as JsonValue);
+      sendJson(res, result);
     } catch (error) {
       sendError(
         res,
@@ -172,7 +164,7 @@ export async function handleWorkspaceRoutes(
         draft: body.draft as boolean,
       });
 
-      sendJson(res, result as unknown as JsonValue, 201);
+      sendJson(res, result, 201);
     } catch (error) {
       sendError(
         res,

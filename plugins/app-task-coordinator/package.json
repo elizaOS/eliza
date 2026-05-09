@@ -6,32 +6,32 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./pty-status-dots": {
-      "types": "./src/pty-status-dots.ts",
+      "types": "./dist/pty-status-dots.d.ts",
       "import": "./dist/pty-status-dots.js",
       "default": "./dist/pty-status-dots.js"
     },
     "./register-slots": {
-      "types": "./src/register-slots.ts",
+      "types": "./dist/register-slots.d.ts",
       "import": "./dist/register-slots.js",
       "default": "./dist/register-slots.js"
     },
     "./api/*": {
-      "types": "./src/api/*.ts",
+      "types": "./dist/api/*.d.ts",
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
     "./evals/*": {
-      "types": "./src/evals/*.ts",
+      "types": "./dist/evals/*.d.ts",
       "import": "./dist/evals/*.js",
       "default": "./dist/evals/*.js"
     },
     "./*": {
-      "types": "./src/*",
+      "types": "./dist/*",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -51,10 +51,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p tsconfig.build.json"
   },
   "files": [
     "dist"

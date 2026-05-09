@@ -21,8 +21,8 @@ import {
   getNestedValue,
   resolveRequestedScopes,
 } from "../provider-registry";
-import { normalizeOAuthConnectionRole } from "../types";
 import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
+import { normalizeOAuthConnectionRole } from "../types";
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
 type PlatformCredentialSourceContext = (typeof platformCredentials.$inferSelect)["source_context"];
@@ -95,10 +95,15 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
 function connectionSourceContext(
   connectionRole: OAuthStandardConnectionRole,
 ): PlatformCredentialSourceContext {
-  return {
-    agentGoogleSide: connectionRole,
+  const sourceContext: PlatformCredentialSourceContext = {
     connectionRole,
-  } as unknown as PlatformCredentialSourceContext;
+  };
+  if (connectionRole === "OWNER") {
+    sourceContext.agentGoogleSide = "owner";
+  } else if (connectionRole === "AGENT") {
+    sourceContext.agentGoogleSide = "agent";
+  }
+  return sourceContext;
 }
 
 function oauthSecretName(

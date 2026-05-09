@@ -7,10 +7,10 @@
  */
 
 import fs from "node:fs";
-import type http from "node:http";
+import * as http from "node:http";
+import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
@@ -47,7 +47,7 @@ async function open(): Promise<Harness> {
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as AdapterWithDb;
+  ) as AdapterWithDb;
   if (typeof adapter.initialize === "function") await adapter.initialize();
   else if (typeof adapter.init === "function") await adapter.init();
   if (!adapter.db) throw new Error("test harness: adapter has no .db");
@@ -63,7 +63,7 @@ async function open(): Promise<Harness> {
   const state: CompatRuntimeState = {
     current: {
       adapter: { db },
-    } as unknown as CompatRuntimeState["current"],
+    } as CompatRuntimeState["current"],
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
@@ -95,30 +95,31 @@ function fakeRes(): FakeRes {
   let bodyText = "";
   const headers: Record<string, string> = {};
   const cookies: string[] = [];
-  const res = {
-    headersSent: false,
-    statusCode: 200,
-    setHeader(name: string, value: string | string[]) {
-      const key = name.toLowerCase();
-      if (key === "set-cookie") {
-        if (Array.isArray(value)) cookies.push(...value);
-        else cookies.push(value);
-        return;
-      }
-      headers[key] = Array.isArray(value) ? value.join(", ") : value;
-    },
-    end(chunk?: string | Buffer) {
-      if (typeof chunk === "string") bodyText += chunk;
-      else if (chunk) bodyText += chunk.toString("utf8");
-    },
-  } as unknown as http.ServerResponse;
+  const req = new http.IncomingMessage(new Socket());
+  const res = new http.ServerResponse(req);
+  res.statusCode = 200;
+  res.setHeader = (name: string, value: number | string | string[]) => {
+    const key = name.toLowerCase();
+    if (key === "set-cookie") {
+      if (Array.isArray(value)) cookies.push(...value.map(String));
+      else cookies.push(String(value));
+      return res;
+    }
+    headers[key] = Array.isArray(value) ? value.join(", ") : String(value);
+    return res;
+  };
+  res.end = ((chunk?: string | Buffer) => {
+    if (typeof chunk === "string") bodyText += chunk;
+    else if (chunk) bodyText += chunk.toString("utf8");
+    return res;
+  }) as typeof res.end;
   return {
     res,
     body() {
       return bodyText.length > 0 ? JSON.parse(bodyText) : null;
     },
     status() {
-      return (res as unknown as { statusCode: number }).statusCode;
+      return res.statusCode;
     },
     cookies() {
       return cookies;
@@ -139,19 +140,20 @@ function fakeReq(opts: {
   headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
   const bodyStr = opts.body === undefined ? "" : JSON.stringify(opts.body);
-  const stream = Readable.from([bodyStr]) as unknown as http.IncomingMessage;
+  const req = new http.IncomingMessage(new Socket());
   const headers: http.IncomingHttpHeaders = { ...(opts.headers ?? {}) };
   if (opts.cookie) headers.cookie = opts.cookie;
   if (opts.bearer) headers.authorization = `Bearer ${opts.bearer}`;
-  Object.assign(stream, {
-    method: opts.method,
-    url: opts.pathname,
-    headers,
-    socket: {
-      remoteAddress: opts.ip ?? "127.0.0.1",
-    },
+  req.method = opts.method;
+  req.url = opts.pathname;
+  req.headers = headers;
+  req.push(bodyStr);
+  req.push(null);
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: opts.ip ?? "127.0.0.1",
+    configurable: true,
   });
-  return stream;
+  return req;
 }
 
 function extractSessionCookieValue(cookies: string[]): string | null {

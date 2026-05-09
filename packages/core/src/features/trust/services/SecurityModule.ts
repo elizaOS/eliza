@@ -1005,9 +1005,7 @@ export class SecurityModule {
 				username,
 				mostSimilar,
 			);
-			const impersonatedMessages = this.messageHistory.get(
-				mostSimilar as unknown as UUID,
-			);
+			const impersonatedMessages = this.messageHistory.get(mostSimilar);
 			const hasRecentActivity = impersonatedMessages?.some(
 				(m) => Date.now() - m.timestamp < 24 * 60 * 60 * 1000,
 			);

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, promises as fsp } from "node:fs";
 import path from "node:path";
 
 function resolvePackageRoot(): string {
@@ -36,7 +36,7 @@ function collectSrcEntries(srcRoot: string): string[] {
         ) {
           continue;
         }
-        out.push(path.relative(resolvePackageRoot(), full));
+        out.push(path.relative(resolvePackageRoot(), full).split(path.sep).join("/"));
       }
     }
   };
@@ -48,6 +48,31 @@ function collectSrcEntries(srcRoot: string): string[] {
   }
   return out;
 }
+
+/**
+ * esbuild plugin that rewrites relative `.ts` / `.tsx` import specifiers to
+ * `.js` before esbuild compiles. With `bundle: false`, esbuild does per-file
+ * transpilation and leaves import specifiers unchanged in the emitted code —
+ * so source like `from "./foo.tsx"` becomes a literal `from "./foo.tsx"` in
+ * the dist `.js` file, which Node ESM and Vite both refuse to resolve.
+ */
+const rewriteRelativeTsExtensions = {
+  name: "rewrite-relative-ts-extensions",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setup(build: any) {
+    build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args: { path: string }) => {
+      const source = await fsp.readFile(args.path, "utf8");
+      const transformed = source.replace(
+        /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)\.(tsx?)(["'])/g,
+        "$1$2.js$4",
+      );
+      return {
+        contents: transformed,
+        loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
+      };
+    });
+  },
+};
 
 /** Transpile workspace plugins/apps under `plugins/*` without bundling deps. */
 export default {
@@ -61,7 +86,8 @@ export default {
   splitting: false,
   treeshake: false,
   external: [/^@elizaos\//, /^node:/],
-  esbuildOptions(options) {
+  esbuildPlugins: [rewriteRelativeTsExtensions],
+  esbuildOptions(options: { jsx?: string; packages?: string }) {
     options.jsx ??= "automatic";
     options.packages = "external";
     return options;

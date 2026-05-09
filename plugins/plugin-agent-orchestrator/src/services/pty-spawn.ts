@@ -65,37 +65,6 @@ const CODEX_ADAPTER_RULE_OVERRIDES: NonNullable<SpawnConfig["ruleOverrides"]> =
   };
 
 /**
- * Symbol-keyed shim contract installed by app-core's AccountPool. The
- * orchestrator queries it before spawning a Claude Code subprocess so each
- * spawn can run under a chosen Anthropic subscription account when
- * multi-account routing is configured. Returns `null` when no shim is
- * installed or no eligible account exists — callers fall back to the
- * subprocess's own credential-file lookup.
- */
-const ORCHESTRATOR_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.orchestrator.v1",
-);
-
-interface OrchestratorPoolShim {
-  pickAnthropicTokenForSpawn(opts: {
-    sessionKey: string;
-  }): Promise<{ accessToken: string; accountId: string } | null>;
-  markRateLimited(accountId: string, untilMs: number, detail?: string): void;
-  markInvalid(accountId: string, detail?: string): void;
-  markNeedsReauth(accountId: string, detail?: string): void;
-}
-
-export function getOrchestratorAccountPoolShim():
-  | OrchestratorPoolShim
-  | undefined {
-  if (typeof globalThis === "undefined") return undefined;
-  const slot = (globalThis as Record<symbol, unknown>)[
-    ORCHESTRATOR_POOL_SHIM_SYMBOL
-  ];
-  return slot as OrchestratorPoolShim | undefined;
-}
-
-/**
  * Inspect a chunk of session output for auth-related failure signatures.
  * Returns the kind of failure detected (or null) so the caller can mark
  * the supplied `accountId` via the pool. Pattern matching is best-effort

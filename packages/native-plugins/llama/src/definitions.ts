@@ -21,6 +21,22 @@ export interface LoadOptions {
   useGpu?: boolean;
   /** Cap on native thread count; native layer picks a reasonable default otherwise. */
   maxThreads?: number;
+  /** Optional draft GGUF for native speculative decoding builds. */
+  draftModelPath?: string;
+  /** Context window for the draft model when supported by the native build. */
+  draftContextSize?: number;
+  /** Lower/upper speculative draft bounds for fork builds that expose them. */
+  draftMin?: number;
+  draftMax?: number;
+  /** Number of draft tokens/samples when the native runtime supports it. */
+  speculativeSamples?: number;
+  /** Mobile runtimes may enable a lower-memory speculative path. */
+  mobileSpeculative?: boolean;
+  /** Optional KV cache types for fork builds such as TurboQuant. */
+  cacheTypeK?: string;
+  cacheTypeV?: string;
+  /** Qwen DFlash drafters are trained for non-thinking outputs. */
+  disableThinking?: boolean;
 }
 
 export interface GenerateOptions {
@@ -31,6 +47,13 @@ export interface GenerateOptions {
   stopSequences?: string[];
   /** When true, token events fire on the "token" listener. */
   stream?: boolean;
+  /**
+   * Forwarded promptCacheKey from `ProviderCachePlan`. Native plugins
+   * that support prefix caching should derive a slot id from this and
+   * keep KV warm for repeated calls with the same key. Plugins without
+   * cache support ignore the field; behavior is unchanged.
+   */
+  cacheKey?: string;
 }
 
 export interface GenerateResult {
@@ -44,8 +67,13 @@ export interface HardwareInfo {
   platform: "ios" | "android" | "web";
   /** Human-readable device model when the OS exposes one. */
   deviceModel: string;
+  /** Stable OS machine identifier when available, e.g. iPhone16,2. */
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
   totalRamGb: number;
   availableRamGb: number | null;
+  freeStorageGb?: number | null;
   cpuCores: number;
   gpu: {
     backend: "metal" | "vulkan" | "gpu-delegate";
@@ -53,6 +81,25 @@ export interface HardwareInfo {
   } | null;
   /** True when the underlying llama.cpp build has GPU support compiled in. */
   gpuSupported: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  /** True only when the native build can load a drafter and run DFlash/spec decode. */
+  dflashSupported?: boolean;
+  dflashReason?: string;
+  source?: "native" | "adapter-fallback";
+  /**
+   * Names of fork-specific kernels compiled into the loaded native library
+   * (e.g. "turbo3", "turbo4", "turbo3_tcq", "dflash", "qjl_full"). Empty
+   * when the loaded build is stock llama.cpp or when no native lib is loaded.
+   * Surfaced from the native bridge via a `kernels.json` manifest shipped
+   * alongside the .so.
+   */
+  nativeKernels?: string[];
+  /**
+   * Which native llama.cpp variant is loaded. `null` when the plugin
+   * isn't loaded at all (web fallback or native lib failed to load).
+   */
+  forkVariant?: "buun-llama-cpp" | "stock-llama-cpp" | null;
 }
 
 export interface EmbedOptions {
@@ -77,6 +124,17 @@ export interface EmbedResult {
   tokens: number;
 }
 
+export interface SetSpecTypeArgs {
+  /** Path to the target (large) GGUF. */
+  target: string;
+  /** Path to the drafter (small) GGUF. */
+  drafter: string;
+  /** Currently only "dflash" is honoured by the buun fork. */
+  specType: "dflash";
+  draftMin: number;
+  draftMax: number;
+}
+
 export interface LlamaAdapter {
   getHardwareInfo(): Promise<HardwareInfo>;
   isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }>;
@@ -93,4 +151,16 @@ export interface LlamaAdapter {
    * does not expose an embedding method on the active platform.
    */
   embed(options: EmbedOptions): Promise<EmbedResult>;
+  /**
+   * Configure the KV cache types used by the next loaded context. Only
+   * the buun-llama-cpp fork honours TurboQuant cache types like
+   * `q4_tq3` / `q4_tq4`. Stock builds will warn-and-no-op when the
+   * underlying plugin doesn't expose the bridge method.
+   */
+  setCacheType?(typeK: string, typeV: string): Promise<void>;
+  /**
+   * Configure DFlash speculative decoding for the next loaded context.
+   * Stock builds without speculative bridge methods warn-and-no-op.
+   */
+  setSpecType?(args: SetSpecTypeArgs): Promise<void>;
 }

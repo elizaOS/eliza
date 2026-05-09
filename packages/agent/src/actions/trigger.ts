@@ -15,6 +15,7 @@
  * carry a {@link TriggerConfig} in their metadata. Workbench tasks (TASK
  * action) and trigger tasks share a table but are kept distinct via tag.
  */
+import crypto from "node:crypto";
 import {
   type Action,
   type ActionExample,
@@ -33,7 +34,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
+
 import {
   executeTriggerTask,
   readTriggerConfig,
@@ -46,7 +47,18 @@ import {
   parseCronExpression,
   parseScheduledAtIso,
 } from "../triggers/scheduling.js";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
 import type { TriggerTaskMetadata } from "../triggers/types.js";
+
+type AutonomyRoomService = {
+  getAutonomousRoomId?(): UUID;
+};
+
+function isAutonomyRoomService(
+  service: unknown,
+): service is AutonomyRoomService {
+  return typeof service === "object" && service !== null;
+}
 
 const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
@@ -273,7 +285,23 @@ async function opCreate(
     });
   }
 
-  const triggerId = stringToUuid(uuidv4());
+  // Phase 2E: every trigger persisted to disk is `kind: "workflow"`.
+  // Materialize a single-node `respondToEvent` workflow that wraps the
+  // user's instructions, then bind the trigger to it.
+  const deployedWorkflow = await deployTextTriggerWorkflow(
+    runtime,
+    { displayName, instructions, wakeMode },
+    creatorId,
+  );
+  if (!deployedWorkflow) {
+    return failed(
+      "create",
+      "Workflow plugin is not loaded; cannot create text triggers.",
+      "WORKFLOW_SERVICE_UNAVAILABLE",
+    );
+  }
+
+  const triggerId = stringToUuid(crypto.randomUUID());
   const triggerConfig: TriggerConfig = {
     version: TRIGGER_SCHEMA_VERSION,
     triggerId,
@@ -289,6 +317,9 @@ async function opCreate(
     cronExpression: triggerType === "cron" ? cronExpression : undefined,
     maxRuns,
     dedupeKey,
+    kind: "workflow",
+    workflowId: deployedWorkflow.id,
+    workflowName: deployedWorkflow.name,
   };
 
   const metadata = buildTriggerMetadata({
@@ -303,9 +334,8 @@ async function opCreate(
     );
   }
 
-  const autonomyService = runtime.getService("AUTONOMY") as unknown as {
-    getAutonomousRoomId?(): UUID;
-  } | null;
+  const service = runtime.getService("AUTONOMY");
+  const autonomyService = isAutonomyRoomService(service) ? service : null;
   const roomId = autonomyService?.getAutonomousRoomId?.() ?? message.roomId;
 
   const taskId = await runtime.createTask({
@@ -319,8 +349,17 @@ async function opCreate(
   return ok(
     "create",
     `Created trigger "${displayName}" (${describeSchedule(triggerConfig)}).`,
-    { triggerId, taskId, triggerType, wakeMode, dedupeKey },
-    { triggerId, taskId },
+    {
+      triggerId,
+      taskId,
+      triggerType,
+      wakeMode,
+      dedupeKey,
+      kind: "workflow",
+      workflowId: deployedWorkflow.id,
+      workflowName: deployedWorkflow.name,
+    },
+    { triggerId, taskId, workflowId: deployedWorkflow.id },
   );
 }
 

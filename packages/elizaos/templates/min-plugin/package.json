@@ -4,7 +4,8 @@
   "private": false,
   "type": "module",
   "description": "TODO: replace with a one-line description of __PLUGIN_DISPLAY_NAME__",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -13,14 +14,21 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.6",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "elizaos": {

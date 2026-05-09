@@ -143,7 +143,6 @@ export const COMMON_CONNECTOR_KEYWORDS = [
 	"xai",
 	"solana",
 	"evm",
-	"n8n",
 	"mcp",
 	"rss",
 	"s3",

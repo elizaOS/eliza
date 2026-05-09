@@ -329,9 +329,7 @@ export async function resolveActionArgs<
     }
   }
 
-  // TODO(native-parameters): delete this legacy extractor fallback once
-  // LifeOps planners reliably populate options.parameters for umbrella actions.
-  // 2. LLM extraction path.
+  // 2. LLM extraction path for natural-language umbrella actions.
   const intent = asTrimmedString(intentHint) || getMessageText(message);
   const recentConversation = recentConversationTextsFromState(
     state,

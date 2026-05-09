@@ -1,5 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = zod.z ?? zod;
 
 export const BLUESKY_SERVICE_URL = "https://bsky.social";
 export const BLUESKY_MAX_POST_LENGTH = 300;
@@ -46,7 +48,7 @@ export const BlueSkyConfigSchema = z.object({
 	enableDMs: z.boolean().default(true),
 });
 
-export type BlueSkyConfig = z.infer<typeof BlueSkyConfigSchema>;
+export type BlueSkyConfig = zod.infer<typeof BlueSkyConfigSchema>;
 
 export interface BlueSkyProfile {
 	did: string;

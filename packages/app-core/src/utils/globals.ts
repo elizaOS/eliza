@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { theme } from "../terminal/theme";
+import { theme } from "@elizaos/shared";
 
 const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,

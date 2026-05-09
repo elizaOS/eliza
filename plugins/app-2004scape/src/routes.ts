@@ -1,7 +1,5 @@
 import { randomInt } from "node:crypto";
 import type http from "node:http";
-import { Readable } from "node:stream";
-import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
@@ -1524,6 +1522,49 @@ function filterProxyRequestHeaders(
   return next;
 }
 
+function incomingMessageBody(req: http.IncomingMessage): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      req.on("data", (chunk: Buffer | string) => {
+        controller.enqueue(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      req.on("end", () => controller.close());
+      req.on("error", (error) => controller.error(error));
+    },
+    cancel() {
+      req.destroy();
+    },
+  });
+}
+
+function waitForDrain(res: http.ServerResponse): Promise<void> {
+  return new Promise((resolve, reject) => {
+    res.once("drain", resolve);
+    res.once("error", reject);
+  });
+}
+
+async function pipeResponseBody(
+  body: ReadableStream<Uint8Array>,
+  res: http.ServerResponse,
+): Promise<void> {
+  const reader = body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value && !res.write(value)) {
+        await waitForDrain(res);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+    res.end();
+  }
+}
+
 async function proxyViewerRequest(
   ctx: RouteContext,
   proxyPathname: string,
@@ -1541,7 +1582,7 @@ async function proxyViewerRequest(
   };
 
   if (ctx.method !== "GET" && ctx.method !== "HEAD") {
-    requestInit.body = ctx.req as unknown as BodyInit;
+    requestInit.body = incomingMessageBody(ctx.req);
     requestInit.duplex = "half";
   }
 
@@ -1563,9 +1604,7 @@ async function proxyViewerRequest(
     return true;
   }
 
-  Readable.fromWeb(
-    upstream.body as unknown as NodeReadableStream<Uint8Array>,
-  ).pipe(ctx.res);
+  await pipeResponseBody(upstream.body, ctx.res);
   return true;
 }
 

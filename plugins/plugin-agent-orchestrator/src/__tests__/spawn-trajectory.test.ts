@@ -18,7 +18,7 @@ function makeRuntime() {
       name === "trajectories" ? trajectoryLogger : undefined,
     ),
     getServicesByType: vi.fn(() => []),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   return { runtime, annotateStep };
 }

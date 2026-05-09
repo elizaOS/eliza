@@ -3,6 +3,7 @@ import { createFarcasterConnectorAccountProvider } from "./connector-account-pro
 import { farcasterProviders } from "./providers";
 import { farcasterWebhookRoutes } from "./routes/webhook";
 import { FarcasterService } from "./services/FarcasterService";
+import { FarcasterWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 export { FarcasterClient } from "./client/FarcasterClient";
 export {
@@ -37,10 +38,16 @@ export {
 export const farcasterPlugin: Plugin = {
   name: "farcaster",
   description: "Farcaster client plugin for sending and receiving casts",
-  services: [FarcasterService],
+  services: [FarcasterService, FarcasterWorkflowCredentialProvider],
   actions: [],
   providers: farcasterProviders,
   routes: farcasterWebhookRoutes,
+  // Self-declared auto-enable: activate when the "farcaster" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["farcaster"],
+  },
   async init(_config, runtime) {
     try {
       const manager = getConnectorAccountManager(runtime);

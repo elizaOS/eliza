@@ -6,6 +6,7 @@
  * context (signal strength, security state) when relevant.
  */
 
+import type { WiFiNetwork } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import type {
   IAgentRuntime,
@@ -46,7 +47,7 @@ export const wifiNetworksProvider: Provider = {
       const { networks } = await WiFi.listAvailableNetworks({
         limit: WIFI_NETWORKS_LIMIT,
       });
-      const entries: WifiNetworkEntry[] = networks.map((n) => ({
+      const entries: WifiNetworkEntry[] = networks.map((n: WiFiNetwork) => ({
         ssid: n.ssid,
         bssid: n.bssid,
         rssi: n.rssi,

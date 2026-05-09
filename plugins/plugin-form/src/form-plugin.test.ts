@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import formPlugin, { FormService } from "./index";
 import { formRestoreAction } from "./actions/restore";
@@ -9,10 +9,11 @@ import type { FormDefinition, FormSession } from "./types";
 const entityId = "00000000-0000-4000-8000-000000000001" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000002" as UUID;
 const agentId = "00000000-0000-4000-8000-000000000003" as UUID;
+const messageId = "00000000-0000-4000-8000-000000000004" as UUID;
 
 function makeMessage(text: string): Memory {
   return {
-    id: "00000000-0000-4000-8000-000000000004" as UUID,
+    id: messageId,
     entityId,
     roomId,
     content: { text },
@@ -95,11 +96,13 @@ function makeRuntime(formService: unknown, modelResponse?: string) {
       warn: vi.fn(),
       info: vi.fn(),
     },
-  } as unknown as IAgentRuntime & { useModel: typeof useModel };
+  } as IAgentRuntime & { useModel: typeof useModel };
 }
 
+const EMPTY_STATE: State = { values: {}, data: {}, text: "" };
+
 describe("plugin-form registration", () => {
-  it("registers the FORM service, context provider, evaluator, and restore action", async () => {
+  it("registers the FORM service, context provider, restore action, and form evaluator", async () => {
     expect(formPlugin.name).toBe("form");
     expect(formPlugin.services?.map((service) => service.serviceType)).toEqual([
       "FORM",
@@ -107,11 +110,14 @@ describe("plugin-form registration", () => {
     expect(formPlugin.providers?.map((provider) => provider.name)).toContain(
       "FORM_CONTEXT",
     );
-    expect(formPlugin.evaluators?.map((evaluator) => evaluator.name)).toContain(
-      "form_evaluator",
-    );
     expect(formPlugin.actions?.map((action) => action.name)).toContain(
       "FORM_RESTORE",
+    );
+    expect(formPlugin.actions?.map((action) => action.name)).not.toContain(
+      "form_extractor",
+    );
+    expect(formPlugin.evaluators?.map((ev) => ev.name)).toContain(
+      "form_extractor",
     );
 
     const runtime = makeRuntime(null);
@@ -178,6 +184,24 @@ describe("FORM_CONTEXT provider", () => {
 });
 
 describe("FORM_RESTORE action", () => {
+  it("validates only when stashed sessions exist and no active session", async () => {
+    const stashed = makeSession({ id: "stashed", status: "stashed" });
+    const formService = {
+      getActiveSession: vi.fn(async () => null),
+      getStashedSessions: vi.fn(async () => [stashed]),
+    };
+    const runtime = makeRuntime(formService);
+
+    await expect(
+      formRestoreAction.validate(runtime, makeMessage("anything"), {}),
+    ).resolves.toBe(true);
+
+    formService.getStashedSessions = vi.fn(async () => []);
+    await expect(
+      formRestoreAction.validate(runtime, makeMessage("anything"), {}),
+    ).resolves.toBe(false);
+  });
+
   it("restores the newest stashed form and invokes the callback", async () => {
     const stashed = makeSession({ id: "stashed", status: "stashed" });
     const restored = makeSession({ id: "restored", status: "active" });
@@ -230,50 +254,105 @@ describe("FORM_RESTORE action", () => {
   });
 });
 
-describe("form_evaluator", () => {
-  it("extracts values from JSON model output and updates the active session", async () => {
+describe("form_extractor evaluator", () => {
+  it("shouldRun returns true with active session", async () => {
+    const session = makeSession();
+    const formService = {
+      getActiveSession: vi.fn(async () => session),
+      getStashedSessions: vi.fn(async () => []),
+    };
+    const runtime = makeRuntime(formService);
+    const message = makeMessage("my email is jane@example.com");
+    await expect(
+      formEvaluator.shouldRun({ runtime, message, options: {} }),
+    ).resolves.toBe(true);
+  });
+
+  it("shouldRun returns false with no active or stashed sessions", async () => {
+    const formService = {
+      getActiveSession: vi.fn(async () => null),
+      getStashedSessions: vi.fn(async () => []),
+    };
+    const runtime = makeRuntime(formService);
+    const message = makeMessage("hi there");
+    await expect(
+      formEvaluator.shouldRun({ runtime, message, options: {} }),
+    ).resolves.toBe(false);
+  });
+
+  it("prompt section emits intent_options and field descriptions", async () => {
     const session = makeSession();
     const formService = {
       getActiveSession: vi.fn(async () => session),
       getStashedSessions: vi.fn(async () => []),
       getForm: vi.fn(() => signupForm),
+    };
+    const runtime = makeRuntime(formService);
+    const message = makeMessage("my email is jane@example.com");
+    const prepared = await formEvaluator.prepare!({
+      runtime,
+      message,
+      state: EMPTY_STATE,
+      options: {},
+    });
+    const promptText = formEvaluator.prompt({
+      runtime,
+      message,
+      state: EMPTY_STATE,
+      options: {},
+      prepared,
+    });
+    expect(promptText).toContain('"intent_options"');
+    expect(promptText).toContain('"key": "email"');
+    expect(promptText).toContain('"formIntent"');
+    expect(promptText).toContain('"formExtractions"');
+  });
+
+  it("formExtractions processor updates simple fields", async () => {
+    const session = makeSession();
+    const refreshed = makeSession();
+    const formService = {
+      getActiveSession: vi.fn(async () => refreshed),
+      getStashedSessions: vi.fn(async () => []),
+      getForm: vi.fn(() => signupForm),
       updateField: vi.fn(async () => undefined),
       saveSession: vi.fn(async () => undefined),
+      isExternalType: vi.fn(() => false),
     };
-    const runtime = makeRuntime(
-      formService,
-      JSON.stringify({
-        intent: "fill_form",
-        extractions: [
+    const runtime = makeRuntime(formService);
+    const message = makeMessage("my email is jane@example.com");
+    const prepared = {
+      formService: formService as FormService,
+      session,
+      form: signupForm,
+      templateValues: {},
+      entityId,
+    };
+
+    const extractionsProcessor = formEvaluator.processors!.find(
+      (p) => p.name === "formExtractions",
+    )!;
+    const result = await extractionsProcessor.process({
+      runtime,
+      message,
+      state: EMPTY_STATE,
+      options: {},
+      prepared,
+      output: {
+        formIntent: "fill_form",
+        formExtractions: [
           {
-            key: "email",
+            field: "email",
             value: "jane@example.com",
             confidence: 0.95,
-            reasoning: "user gave email",
-            is_correction: false,
+            isCorrection: false,
           },
         ],
-      }),
-    );
-    const message = makeMessage("my email is jane@example.com");
+      },
+      evaluatorName: "form_extractor",
+    });
 
-    await expect(formEvaluator.validate(runtime, message, {})).resolves.toBe(
-      true,
-    );
-    await formEvaluator.handler(runtime, message, {});
-
-    expect(runtime.useModel).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        prompt: expect.stringContaining(
-          '"fields": [',
-        ),
-      }),
-    );
-    const prompt = runtime.useModel.mock.calls[0]?.[1]?.prompt as string;
-    expect(prompt).toContain("Return only a valid JSON object");
-    expect(prompt).not.toContain("```json");
-    expect(prompt).not.toContain("FIELDS TO EXTRACT");
+    expect(result?.success).toBe(true);
     expect(formService.updateField).toHaveBeenCalledWith(
       "session-1",
       entityId,
@@ -283,5 +362,42 @@ describe("form_evaluator", () => {
       "extraction",
       message.id,
     );
+    expect(formService.saveSession).toHaveBeenCalled();
+  });
+
+  it("formIntent processor routes to FormService.submit on submit intent", async () => {
+    const session = makeSession();
+    const formService = {
+      getActiveSession: vi.fn(async () => session),
+      getStashedSessions: vi.fn(async () => []),
+      getForm: vi.fn(() => signupForm),
+      submit: vi.fn(async () => undefined),
+      saveSession: vi.fn(async () => undefined),
+    };
+    const runtime = makeRuntime(formService);
+    const message = makeMessage("submit");
+    const prepared = {
+      formService: formService as FormService,
+      session,
+      form: signupForm,
+      templateValues: {},
+      entityId,
+    };
+
+    const intentProcessor = formEvaluator.processors!.find(
+      (p) => p.name === "formIntent",
+    )!;
+    const result = await intentProcessor.process({
+      runtime,
+      message,
+      state: EMPTY_STATE,
+      options: {},
+      prepared,
+      output: { formIntent: "submit", formExtractions: [] },
+      evaluatorName: "form_extractor",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(formService.submit).toHaveBeenCalledWith("session-1", entityId);
   });
 });

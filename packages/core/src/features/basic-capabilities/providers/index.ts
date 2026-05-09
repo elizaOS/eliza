@@ -12,7 +12,6 @@ export { choiceProvider } from "./choice.ts";
 export { contextBenchProvider } from "./contextBench.ts";
 export { currentTimeProvider } from "./currentTime.ts";
 export { entitiesProvider } from "./entities.ts";
-export { evaluatorsProvider } from "./evaluators.ts";
 export {
 	PLATFORM_CHAT_CONTEXT_PROVIDER_NAME,
 	PLATFORM_USER_CONTEXT_PROVIDER_NAME,

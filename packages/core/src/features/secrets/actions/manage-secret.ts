@@ -18,7 +18,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -113,6 +113,10 @@ export const manageSecretAction: Action = {
 		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
 			return false;
 		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
+			return false;
+		}
 		const params =
 			_options?.parameters && typeof _options.parameters === "object"
 				? (_options.parameters as Record<string, unknown>)
@@ -120,34 +124,12 @@ export const manageSecretAction: Action = {
 		const hasStructuredOperation =
 			typeof params.operation === "string" &&
 			params.operation.trim().length > 0;
-		const text = message.content.text?.toLowerCase() ?? "";
-		const patterns = [
-			/\b(get|show|what|retrieve)\b.*\b(secret|key|token|credential)/i,
-			/\b(delete|remove|clear)\b.*\b(secret|key|token|credential)/i,
-			/\b(list|show)\b.*\b(secrets|keys|tokens|credentials)/i,
-			/\bdo i have\b.*\b(secret|key|token)/i,
-			/\b(check|is)\b.*\b(secret|key|token)\b.*\b(set|configured)/i,
-			/\bmy secrets\b/i,
-			/\bwhat secrets\b/i,
-		];
-		const hasPatternIntent = patterns.some((pattern) => pattern.test(text));
-		if (!hasPatternIntent) {
-			return (
-				hasStructuredOperation ||
-				hasActionContextOrKeyword(message, _state, {
-					contexts: ["secrets", "settings", "connectors"],
-					keywords: [
-						"manage secret",
-						"list secrets",
-						"delete secret",
-						"check secret",
-						"show keys",
-					],
-				})
-			);
-		}
-
-		return hasStructuredOperation || hasPatternIntent;
+		return (
+			hasStructuredOperation ||
+			hasActionContext(message, _state, {
+				contexts: ["secrets", "settings", "connectors"],
+			})
+		);
 	},
 
 	handler: async (

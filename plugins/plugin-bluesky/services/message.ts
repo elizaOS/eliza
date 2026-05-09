@@ -13,7 +13,7 @@ import {
 	type TargetInfo,
 } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
-import { generateDmTemplate } from "../generated/prompts/typescript/prompts.js";
+import { generateDmTemplate } from "../prompts.js";
 import type { BlueSkyConversation, BlueSkyMessage } from "../types";
 import {
 	normalizeBlueSkyAccountId,
@@ -382,7 +382,7 @@ export class BlueSkyMessageService {
 					rev: message.rev,
 					senderDid,
 				},
-			} as unknown as Memory["metadata"],
+			} as Memory["metadata"],
 		};
 	}
 

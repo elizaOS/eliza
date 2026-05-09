@@ -9,10 +9,11 @@ import { withSignal } from "./service-mixin-signal.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withX } from "./service-mixin-x.js";
+import { withXRead } from "./service-mixin-x-read.js";
 
-const TestMessagingService = withX(withWhatsApp(
-  withSignal(withTelegram(LifeOpsServiceBase)),
-));
+const TestMessagingService = withX(
+  withXRead(withWhatsApp(withSignal(withTelegram(LifeOpsServiceBase)))),
+);
 
 function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
   const settings = new Map<string, unknown>();
@@ -28,15 +29,15 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
         settings.set(key, value);
       }
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
-function legacyGrant(
+function connectorGrant(
   provider: "telegram" | "signal" | "x",
   overrides: Partial<LifeOpsConnectorGrant> = {},
 ): LifeOpsConnectorGrant {
   return {
-    id: `${provider}-legacy-grant`,
+    id: `${provider}-stored-grant`,
     agentId: "11111111-1111-4111-8111-111111111111",
     provider,
     connectorAccountId: `acct-${provider}-owner`,
@@ -44,7 +45,7 @@ function legacyGrant(
     identity:
       provider === "signal"
         ? { phoneNumber: "+15551234567" }
-        : { id: "12345", username: "legacy_user", phone: "+15551234567" },
+        : { id: "12345", username: "stored_user", phone: "+15551234567" },
     identityEmail: null,
     grantedScopes: [],
     capabilities:
@@ -52,8 +53,8 @@ function legacyGrant(
         ? ["signal.read", "signal.send"]
         : provider === "x"
           ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
-        : ["telegram.read", "telegram.send"],
-    tokenRef: `${provider}-legacy-token`,
+          : ["telegram.read", "telegram.send"],
+    tokenRef: `${provider}-stored-token`,
     mode: "local",
     executionTarget: "local",
     sourceOfTruth: "local_storage",
@@ -67,7 +68,7 @@ function legacyGrant(
   } as LifeOpsConnectorGrant;
 }
 
-function serviceWithLegacyGrants(args: {
+function serviceWithConnectorGrants(args: {
   services?: Record<string, unknown>;
   grants?: Record<string, LifeOpsConnectorGrant | null>;
 }) {
@@ -87,22 +88,19 @@ function serviceWithLegacyGrants(args: {
 }
 
 describe("LifeOps messaging mixin runtime delegation", () => {
-  it("does not connect Telegram from legacy LifeOps token refs", async () => {
-    const service = serviceWithLegacyGrants({
-      grants: { telegram: legacyGrant("telegram") },
+  it("does not connect Telegram from LifeOps-stored token refs", async () => {
+    const service = serviceWithConnectorGrants({
+      grants: { telegram: connectorGrant("telegram") },
     });
 
     const status = await service.getTelegramConnectorStatus("owner");
 
     expect(status.connected).toBe(false);
     expect(status.grantedCapabilities).toEqual([]);
-    expect(status.storedCredentialsAvailable).toBe(true);
-    expect(status.grant?.tokenRef).toBeNull();
+    expect(status.storedCredentialsAvailable).toBe(false);
+    expect(status.grant).toBeNull();
     expect(status.degradations?.map((item) => item.code)).toEqual(
-      expect.arrayContaining([
-        "telegram_plugin_unavailable",
-        "legacy_lifeops_credentials_ignored",
-      ]),
+      expect.arrayContaining(["telegram_plugin_unavailable"]),
     );
     await expect(
       service.sendTelegramMessage({
@@ -117,7 +115,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
 
   it("delegates Telegram sends through the runtime service account id", async () => {
     const handleSendMessage = vi.fn(async () => undefined);
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         telegram: {
           messageManager: {},
@@ -125,7 +123,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
           bot: { botInfo: { id: 100, username: "agent_bot" } },
         },
       },
-      grants: { telegram: legacyGrant("telegram") },
+      grants: { telegram: connectorGrant("telegram") },
     });
 
     await expect(
@@ -139,25 +137,25 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       service.runtime,
       expect.objectContaining({
         source: "telegram",
-        accountId: "acct-telegram-owner",
+        accountId: "default",
         channelId: "12345",
       }),
       expect.objectContaining({
         text: "hello",
-        metadata: { accountId: "acct-telegram-owner" },
+        metadata: { accountId: "default" },
       }),
     );
   });
 
   it("reports Telegram read capability only when the runtime service exposes search", async () => {
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         telegram: {
           connected: true,
           handleSendMessage: vi.fn(async () => undefined),
         },
       },
-      grants: { telegram: legacyGrant("telegram") },
+      grants: { telegram: connectorGrant("telegram") },
     });
 
     await expect(
@@ -171,7 +169,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
-  it("keeps the CONNECTOR action off legacy Telegram API credential auth", async () => {
+  it("keeps the CONNECTOR action off LifeOps-owned Telegram API credential auth", async () => {
     const source = await readFile(
       fileURLToPath(new URL("../actions/connector.ts", import.meta.url)),
       "utf8",
@@ -202,10 +200,10 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       id: "memory-post-1",
       metadata: {
         messageIdFull: "tweet-123",
-        x: { tweetId: "tweet-fallback" },
+        x: { tweetId: "tweet-runtime" },
       },
     }));
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         x: {
           getAccountStatus,
@@ -215,7 +213,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         },
       },
       grants: {
-        x: legacyGrant("x", {
+        x: connectorGrant("x", {
           connectorAccountId: "acct-x-secondary",
           metadata: {
             accountId: "acct-x-secondary",
@@ -291,7 +289,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       id: "tweet-requested",
       metadata: { messageIdFull: "tweet-requested" },
     }));
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         x: {
           fetchDirectMessagesForAccount,
@@ -299,7 +297,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
           createPostForAccount,
         },
       },
-      grants: { x: legacyGrant("x") },
+      grants: { x: connectorGrant("x") },
     });
     service.repository.listXDms = vi.fn(async () => []);
     service.repository.upsertXDm = vi.fn(async () => undefined);
@@ -330,21 +328,101 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     expect(createPostForAccount.mock.calls[0]?.[0]).toBe("acct-x-requested");
   });
 
-  it("does not read or send Signal from legacy LifeOps token refs", async () => {
-    const service = serviceWithLegacyGrants({
-      grants: { signal: legacyGrant("signal") },
+  it("translates X DM memories from the plugin runtime service", async () => {
+    const runtimeMessages = [
+      {
+        id: "memory-x-dm-1",
+        roomId: "conversation-1",
+        entityId: "x-user-1",
+        content: { text: "plugin managed hello" },
+        metadata: {
+          x: {
+            dmEventId: "dm-1",
+            conversationId: "conversation-1",
+            senderId: "x-user-1",
+            senderUsername: "alice",
+            isInbound: true,
+          },
+        },
+        createdAt: Date.now() - 2_000,
+      },
+      {
+        id: "memory-x-dm-2",
+        roomId: "conversation-1",
+        entityId: "owner",
+        content: { text: "plugin managed reply" },
+        metadata: {
+          x: {
+            dmEventId: "dm-2",
+            conversationId: "conversation-1",
+            senderId: "owner",
+            senderUsername: "owner",
+            isInbound: false,
+          },
+        },
+        createdAt: Date.now() - 1_000,
+      },
+    ];
+    const fetchDirectMessagesForAccount = vi.fn(async () => runtimeMessages);
+    const service = serviceWithConnectorGrants({
+      services: { x: { fetchDirectMessagesForAccount } },
+      grants: { x: connectorGrant("x") },
+    });
+    const stored = [];
+    service.repository.upsertXDm = vi.fn(async (dm) => {
+      const index = stored.findIndex(
+        (existing) => existing.externalDmId === dm.externalDmId,
+      );
+      if (index >= 0) {
+        stored[index] = dm;
+      } else {
+        stored.push(dm);
+      }
+    });
+    service.repository.listXDms = vi.fn(async (_agentId, opts = {}) =>
+      stored.slice(0, opts.limit ?? stored.length),
+    );
+
+    await expect(service.syncXDms({ limit: 10 })).resolves.toEqual({
+      synced: 2,
+    });
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("acct-x-owner", {
+      participantId: undefined,
+      limit: 10,
+    });
+    expect(stored).toHaveLength(2);
+    expect(stored[0]).toMatchObject({
+      externalDmId: "dm-1",
+      conversationId: "conversation-1",
+      senderHandle: "alice",
+      text: "plugin managed hello",
+      isInbound: true,
+      metadata: { source: "plugin-x-runtime" },
+    });
+
+    await expect(service.readXInboundDms({ limit: 10 })).resolves.toMatchObject(
+      [
+        {
+          externalDmId: "dm-1",
+          isInbound: true,
+          text: "plugin managed hello",
+        },
+      ],
+    );
+  });
+
+  it("does not read or send Signal from LifeOps-stored token refs", async () => {
+    const service = serviceWithConnectorGrants({
+      grants: { signal: connectorGrant("signal") },
     });
 
     const status = await service.getSignalConnectorStatus("owner");
 
     expect(status.connected).toBe(false);
     expect(status.inbound).toBe(false);
-    expect(status.grant?.tokenRef).toBeNull();
+    expect(status.grant).toBeNull();
     expect(status.degradations?.map((item) => item.code)).toEqual(
-      expect.arrayContaining([
-        "signal_plugin_unavailable",
-        "legacy_lifeops_credentials_ignored",
-      ]),
+      expect.arrayContaining(["signal_plugin_unavailable"]),
     );
     await expect(service.readSignalInbound()).rejects.toMatchObject({
       status: 503,
@@ -376,7 +454,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       },
     ]);
     const sendMessage = vi.fn(async () => ({ timestamp: 5678 }));
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         signal: {
           isServiceConnected: () => true,
@@ -385,13 +463,13 @@ describe("LifeOps messaging mixin runtime delegation", () => {
           sendMessage,
         },
       },
-      grants: { signal: legacyGrant("signal") },
+      grants: { signal: connectorGrant("signal") },
     });
 
     await expect(service.readSignalInbound(10)).resolves.toMatchObject([
       { id: "signal-1", text: "recent", isInbound: true },
     ]);
-    expect(getRecentMessages).toHaveBeenCalledWith(10, "acct-signal-owner");
+    expect(getRecentMessages).toHaveBeenCalledWith(10, "default");
 
     await expect(
       service.sendSignalMessage({
@@ -404,19 +482,19 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       timestamp: 5678,
     });
     expect(sendMessage).toHaveBeenCalledWith("+15550000001", "hello", {
-      accountId: "acct-signal-owner",
+      accountId: "default",
     });
   });
 
   it("reports Signal capabilities from partial runtime service methods", async () => {
     const sendMessage = vi.fn(async () => ({ timestamp: 5678 }));
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         signal: {
           sendMessage,
         },
       },
-      grants: { signal: legacyGrant("signal") },
+      grants: { signal: connectorGrant("signal") },
     });
 
     await expect(
@@ -431,12 +509,12 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
-  it("does not send WhatsApp through env credential fallbacks", async () => {
+  it("does not send WhatsApp through env credentials", async () => {
     const previousAccessToken = process.env.ELIZA_WHATSAPP_ACCESS_TOKEN;
     const previousPhoneNumberId = process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID;
-    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "legacy-token";
-    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "legacy-phone-number-id";
-    const service = serviceWithLegacyGrants({});
+    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "stale-token";
+    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "stale-phone-number-id";
+    const service = serviceWithConnectorGrants({});
 
     try {
       await expect(
@@ -464,7 +542,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
 
   it("delegates WhatsApp sends to the runtime service", async () => {
     const sendMessage = vi.fn(async () => ({ messages: [{ id: "wamid.1" }] }));
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         whatsapp: {
           connected: true,
@@ -496,8 +574,90 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
+  it("delegates WhatsApp recent message pulls to the runtime service", async () => {
+    const fetchConnectorMessages = vi.fn(async () => [
+      {
+        id: "memory-whatsapp-1",
+        roomId: "+15550000001",
+        entityId: "+15550000001",
+        createdAt: 1_780_000_000_000,
+        content: { text: "hello from whatsapp" },
+        metadata: {
+          messageIdFull: "wamid.1",
+          whatsapp: {
+            from: "+15550000001",
+            chatId: "+15550000001",
+            type: "text",
+          },
+        },
+      },
+    ]);
+    const service = serviceWithConnectorGrants({
+      services: {
+        whatsapp: {
+          connected: true,
+          sendMessage: vi.fn(async () => ({
+            messages: [{ id: "wamid.sent" }],
+          })),
+          fetchConnectorMessages,
+        },
+      },
+    });
+
+    await expect(service.pullWhatsAppRecent(5)).resolves.toMatchObject({
+      count: 1,
+      messages: [
+        {
+          id: "wamid.1",
+          from: "+15550000001",
+          channelId: "+15550000001",
+          type: "text",
+          text: "hello from whatsapp",
+        },
+      ],
+    });
+    expect(fetchConnectorMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "whatsapp",
+        accountId: "default",
+      }),
+      expect.objectContaining({ accountId: "default", limit: 5 }),
+    );
+  });
+
+  it("delegates WhatsApp webhooks to plugin-whatsapp and rejects LifeOps parsing", async () => {
+    const handleWebhook = vi.fn(async () => undefined);
+    const service = serviceWithConnectorGrants({
+      services: {
+        whatsapp: {
+          connected: true,
+          handleWebhook,
+        },
+      },
+    });
+
+    await expect(
+      service.ingestWhatsAppWebhook({ object: "whatsapp_business_account" }),
+    ).resolves.toEqual({ ingested: 0, messages: [] });
+    expect(handleWebhook).toHaveBeenCalledWith({
+      object: "whatsapp_business_account",
+    });
+
+    const withoutWebhook = serviceWithConnectorGrants({
+      services: { whatsapp: { connected: true } },
+    });
+    await expect(
+      withoutWebhook.ingestWhatsAppWebhook({
+        object: "whatsapp_business_account",
+      }),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
+    });
+  });
+
   it("reports WhatsApp missing hooks when the runtime service is connected but incomplete", async () => {
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         whatsapp: {
           connected: true,
@@ -519,7 +679,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
   });
 
   it("reports WhatsApp send-only plugin services without requiring a connected flag", async () => {
-    const service = serviceWithLegacyGrants({
+    const service = serviceWithConnectorGrants({
       services: {
         whatsapp: {
           sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.2" }] })),

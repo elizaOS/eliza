@@ -22,12 +22,9 @@ import {
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
-import { taskAction } from "../actions/task.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { triggerAction } from "../actions/trigger.js";
-import { workflowAction } from "../actions/workflow/index.js";
-import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.js";
@@ -61,6 +58,23 @@ export type ElizaPluginConfig = {
   sessionStorePath?: string;
   agentId?: string;
 };
+
+type AgentSkillsService = {
+  getLoadedSkills: () => Array<{
+    slug: string;
+    name: string;
+    description: string;
+  }>;
+};
+
+function isAgentSkillsService(value: unknown): value is AgentSkillsService {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { getLoadedSkills?: unknown }).getLoadedSkills ===
+      "function"
+  );
+}
 
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
@@ -108,18 +122,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // after this init() returns.
       const registerSkillsAsCommands = () => {
         try {
-          const skillsService = runtime.getService(
-            "AGENT_SKILLS_SERVICE",
-          ) as unknown as
-            | {
-                getLoadedSkills: () => Array<{
-                  slug: string;
-                  name: string;
-                  description: string;
-                }>;
-              }
-            | undefined;
-          if (!skillsService) return false;
+          const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
+          if (!isAgentSkillsService(skillsService)) return false;
 
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
@@ -197,12 +201,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       escalationTriggerProvider,
     ],
 
-    evaluators: [lateJoinWhitelistEvaluator],
-
     actions: [
       terminalAction,
-      workflowAction,
-      taskAction,
       triggerAction,
       ...pageActionGroupActions,
       skillCommandAction,

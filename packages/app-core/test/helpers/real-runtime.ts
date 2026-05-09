@@ -109,7 +109,7 @@ async function importPluginSql(): Promise<Plugin> {
   } catch (packageError) {
     const fallbackPath = path.resolve(
       helperDir,
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     try {
       const { default: pluginSql } = await import(
@@ -214,14 +214,31 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     process.env.ELIZA_LIVE_TEST_LARGE_MODEL?.trim() ||
     process.env.OPENAI_LARGE_MODEL?.trim() ||
     "gpt-oss-120b";
+  const mediumModel =
+    process.env.OPENAI_MEDIUM_MODEL?.trim() ||
+    process.env.MEDIUM_MODEL?.trim() ||
+    largeModel;
+  const actionPlannerModel =
+    process.env.OPENAI_ACTION_PLANNER_MODEL?.trim() ||
+    process.env.OPENAI_PLANNER_MODEL?.trim() ||
+    process.env.ACTION_PLANNER_MODEL?.trim() ||
+    process.env.PLANNER_MODEL?.trim() ||
+    largeModel;
   const env = {
     CEREBRAS_API_KEY: apiKey,
+    OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
     MILADY_PROVIDER: "cerebras",
     OPENAI_SMALL_MODEL: smallModel,
+    OPENAI_MEDIUM_MODEL: mediumModel,
     OPENAI_LARGE_MODEL: largeModel,
+    OPENAI_ACTION_PLANNER_MODEL: actionPlannerModel,
+    OPENAI_PLANNER_MODEL: actionPlannerModel,
     SMALL_MODEL: smallModel,
+    MEDIUM_MODEL: mediumModel,
     LARGE_MODEL: largeModel,
+    ACTION_PLANNER_MODEL: actionPlannerModel,
+    PLANNER_MODEL: actionPlannerModel,
   };
 
   return {
@@ -318,7 +335,7 @@ export async function createRealTestRuntime(
     let providerConfig: LiveProviderConfig | null = null;
 
     if (options?.withLLM) {
-      const { selectLiveProvider } = await import("./live-provider");
+      const { selectLiveProvider } = await import("./live-provider.ts");
       providerConfig = selectLiveProvider(options.preferredProvider);
       if (!providerConfig && options.preferredProvider) {
         providerConfig = selectLiveProvider();

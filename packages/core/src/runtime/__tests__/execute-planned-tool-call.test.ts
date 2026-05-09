@@ -11,6 +11,10 @@ import type {
 } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
+type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> & {
+	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
+};
+
 function makeAction(overrides: Partial<Action>): Action {
 	return {
 		name: "TEST_ACTION",
@@ -22,14 +26,15 @@ function makeAction(overrides: Partial<Action>): Action {
 }
 
 function makeRuntime(actions: Action[]): IAgentRuntime {
-	return {
+	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	};
+	return runtime as IAgentRuntime;
 }
 
 function makeMessage(): Memory {
@@ -125,6 +130,51 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("re-runs validate with extracted parameters before invoking the handler", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const validate = vi.fn(
+			async (
+				_runtime: unknown,
+				_message: unknown,
+				_state: unknown,
+				options: unknown,
+			) => {
+				const params = (options as { parameters?: Record<string, unknown> })
+					.parameters;
+				return params?.op === "unmute";
+			},
+		);
+		const action = makeAction({
+			name: "UNMUTE_ROOM",
+			parameters: [
+				{
+					name: "op",
+					description: "Operation",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			validate,
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "UNMUTE_ROOM", params: { op: "mute" } },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("not available");
+		expect(validate).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({ parameters: { op: "mute" } }),
+		);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("converts thrown handler errors into failure ActionResults", async () => {
 		const action = makeAction({
 			name: "BOOM",
@@ -212,9 +262,7 @@ describe("executePlannedToolCall", () => {
 		);
 
 		expect(result.success).toBe(false);
-		expect(String(result.error)).toContain(
-			"No account member-account satisfies",
-		);
+		expect(String(result.error)).toContain("role TEAM is not allowed");
 		expect(handler).not.toHaveBeenCalled();
 	});
 

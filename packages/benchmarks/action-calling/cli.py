@@ -43,6 +43,7 @@ OPENAI_COMPAT_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "vllm": "http://127.0.0.1:8001/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
 }
 
 # Per the eliza_bench.py taxonomy: planner-style buckets emit `actions[N]`.
@@ -52,7 +53,7 @@ PLANNER_TYPES = {"message_handler", "agent_trace", "tool_call", "mcp_tool_call"}
 def _import_helpers():
     sys.path.insert(0, str(TRAINING_ROOT / "scripts"))
     sys.path.insert(0, str(TRAINING_ROOT / "scripts" / "benchmark"))
-    from benchmark import toon_parser  # type: ignore[import-not-found]
+    import toon_parser  # type: ignore[import-not-found]
     from format_for_training import format_record  # type: ignore[import-not-found]
     return toon_parser, format_record
 
@@ -121,12 +122,51 @@ def _load_planner_records(test_file: Path, limit: int) -> list[dict]:
     return out
 
 
+def _fallback_format_record(record: dict[str, Any]) -> dict[str, list[dict[str, str]]] | None:
+    expected = str(record.get("expectedResponse") or "").strip()
+    current = record.get("currentMessage") or {}
+    user_text = current.get("content") if isinstance(current, dict) else None
+    if not expected or not isinstance(user_text, str) or not user_text.strip():
+        return None
+
+    available_actions = record.get("availableActions") or []
+    tool_specs = (record.get("metadata") or {}).get("toolSpecs") or []
+    system = (
+        "You are an elizaOS action planner. Respond only with the planner TOON "
+        "envelope below. Do not write a title, markdown fence, JSON, or prose "
+        "outside the document.\n\n"
+        "Required shape:\n"
+        "thought: <brief rationale>\n"
+        "actions[1]:\n"
+        "  - name: <ACTION_NAME>\n"
+        "    params:\n"
+        "      tool: <tool name when the action calls a tool>\n"
+        "      arguments:\n"
+        "        <required parameter>: <value>\n"
+        "providers[0]:\n"
+        "text: null\n"
+        "simple: false"
+    )
+    prompt = {
+        "message": user_text,
+        "availableActions": available_actions,
+        "toolSpecs": tool_specs,
+    }
+    return {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=True)},
+            {"role": "assistant", "content": expected},
+        ],
+    }
+
+
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="action-calling")
     p.add_argument(
         "--provider",
         default="vllm",
-        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "mock"),
+        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "cerebras", "mock"),
     )
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
@@ -163,11 +203,12 @@ def _make_client(args: argparse.Namespace):
     if not base_url:
         raise SystemExit(f"--base-url required for {provider} provider")
     api_key_env = args.api_key_env
-    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic"}:
+    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic", "cerebras"}:
         api_key_env = {
             "anthropic": "ANTHROPIC_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
         }[provider]
     api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
@@ -241,6 +282,8 @@ def main() -> int:
 
     for i, rec in enumerate(records):
         formatted = format_record(rec)
+        if not formatted:
+            formatted = _fallback_format_record(rec)
         if not formatted:
             continue
         msgs = formatted["messages"]
@@ -333,6 +376,8 @@ def main() -> int:
     args_ok = rate(n_args_parse_ok)
     keys = rate(n_required_keys_ok)
     score = _geometric_mean([fmt, name, args_ok, keys])
+    if n == 0:
+        raise SystemExit("no examples were formatted/evaluated")
 
     summary = {
         "model": args.model,

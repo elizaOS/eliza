@@ -12,6 +12,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { stringToUuid } from "@elizaos/core";
 import { mcpTestCharacter } from "../../../fixtures/mcp-test-character";
 import {
   _testing,
@@ -75,7 +76,7 @@ async function setupTestEnvironment(): Promise<void> {
     creditBalance: 1000.0,
     includeCharacter: true,
     characterName: "Mira",
-    characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+    characterData: { ...mcpTestCharacter },
     characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
   });
   console.log("Test data created");
@@ -150,7 +151,7 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Invalidation During Operations", () =>
       const simulateEvaluatorOperations = async (label: string): Promise<void> => {
         try {
           console.log(`${label}: Starting simulated evaluator operations...`);
-          const selfRoomId = chatRuntime.agentId as any;
+          const selfRoomId = chatRuntime.agentId;
 
           // Simulate runtime.countMemories()
           await ignoreExpectedProbeFailure(
@@ -402,7 +403,11 @@ describe.skipIf(!hasDatabaseUrl)("Service Access During Invalidation", () => {
 
             // Simulate memory operations
             await runtime
-              .countMemories("00000000-0000-0000-0000-000000000001" as any, false, "messages")
+              .countMemories(
+                stringToUuid("00000000-0000-0000-0000-000000000001"),
+                false,
+                "messages",
+              )
               .catch(() => {}); // Room may not exist
 
             // Real DB query

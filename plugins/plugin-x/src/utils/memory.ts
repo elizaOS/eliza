@@ -9,6 +9,10 @@ import {
 import type { Tweet as ClientTweet } from "../client";
 import { getEpochMs } from "./time";
 
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Options for ensuring Twitter context exists
  */
@@ -70,7 +74,7 @@ export function buildTwitterMessageMetadata(
       tweetId: tweet.id,
       conversationId: tweet.conversationId,
     },
-  } as unknown as Memory["metadata"];
+  } satisfies Memory["metadata"];
 }
 
 /**
@@ -125,7 +129,7 @@ export async function ensureTwitterContext(
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userId: userId as unknown as UUID,
+      userId,
       userName: username,
       name: name,
       source: "twitter",
@@ -139,9 +143,10 @@ export async function ensureTwitterContext(
       entityId,
     };
   } catch (error) {
-    logger.error("Failed to ensure Twitter context:", error);
+    const message = errorDetail(error);
+    logger.error("Failed to ensure Twitter context:", message);
     throw new Error(
-      `Failed to create Twitter context for user ${username}: ${error.message}`,
+      `Failed to create Twitter context for user ${username}: ${message}`,
     );
   }
 }
@@ -165,14 +170,12 @@ export async function createMemorySafe(
       lastError = error instanceof Error ? error : new Error(String(error));
       logger.warn(
         `Failed to create memory (attempt ${attempt + 1}/${maxRetries}):`,
-        error,
+        errorDetail(error),
       );
 
       // Don't retry on certain errors
-      if (
-        error.message?.includes("duplicate") ||
-        error.message?.includes("constraint")
-      ) {
+      const message = errorDetail(error);
+      if (message.includes("duplicate") || message.includes("constraint")) {
         logger.debug("Memory already exists, skipping");
         return;
       }
@@ -205,7 +208,10 @@ export async function isTweetProcessed(
     const memory = await runtime.getMemoryById(memoryId);
     return !!memory;
   } catch (error) {
-    logger.debug(`Error checking if tweet ${tweetId} is processed:`, error);
+    logger.debug(
+      `Error checking if tweet ${tweetId} is processed:`,
+      errorDetail(error),
+    );
     return false;
   }
 }
@@ -229,7 +235,7 @@ export async function getRecentTweets(
     // If no cache, return empty array
     return [];
   } catch (error) {
-    logger.debug("Error getting recent tweets from cache:", error);
+    logger.debug("Error getting recent tweets from cache:", errorDetail(error));
     return [];
   }
 }
@@ -255,7 +261,7 @@ export async function addToRecentTweets(
 
     await runtime.setCache(cacheKey, trimmed);
   } catch (error) {
-    logger.debug("Error updating recent tweets cache:", error);
+    logger.debug("Error updating recent tweets cache:", errorDetail(error));
   }
 }
 
@@ -297,7 +303,7 @@ export async function isDuplicateTweet(
 
     return false;
   } catch (error) {
-    logger.debug("Error checking for duplicate tweets:", error);
+    logger.debug("Error checking for duplicate tweets:", errorDetail(error));
     return false;
   }
 }

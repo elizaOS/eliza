@@ -1,4 +1,8 @@
-import { type Character, mergeCharacterDefaults } from "@elizaos/core";
+import {
+  type Character,
+  defaultCharacterSystemTemplate,
+  mergeCharacterDefaults,
+} from "@elizaos/core";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
@@ -52,7 +56,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const systemPrompt =
     agentEntry?.system ??
     bundledPreset?.system ??
-    "You are {{name}}, an autonomous AI agent powered by elizaOS.";
+    defaultCharacterSystemTemplate;
   const style = agentEntry?.style ?? bundledPreset?.style;
   const adjectives = agentEntry?.adjectives ?? bundledPreset?.adjectives;
   const topics =
@@ -144,9 +148,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
-    // n8n workflow plugin (resolved by applyN8nConfigToEnv)
-    "N8N_HOST",
-    "N8N_API_KEY",
     // GitHub access for coding agent plugin
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",
@@ -194,20 +195,12 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // the user to hand-edit the system prompt. Kept terse (one sentence per
   // capability) to stay out of the way of the preset's voice.
   const capabilityHints: string[] = [];
-  const n8nMasterEnabled = config.n8n?.enabled !== false;
-  const n8nExplicitlyDisabled =
-    config.plugins?.entries?.["n8n-workflow"]?.enabled === false;
-  const n8nCloudAuthed = Boolean(
-    config.cloud?.apiKey && config.cloud?.enabled !== false,
-  );
-  const n8nLocalEnabled = config.n8n?.localEnabled !== false;
-  if (
-    n8nMasterEnabled &&
-    !n8nExplicitlyDisabled &&
-    (n8nCloudAuthed || n8nLocalEnabled)
-  ) {
+  const workflowMasterEnabled = config.workflow?.enabled !== false;
+  const workflowExplicitlyDisabled =
+    config.plugins?.entries?.workflow?.enabled === false;
+  if (workflowMasterEnabled && !workflowExplicitlyDisabled) {
     capabilityHints.push(
-      "You can create, activate, deactivate, and delete n8n workflows via natural language using the n8n workflow actions.",
+      "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.",
     );
   }
   capabilityHints.push(

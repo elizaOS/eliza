@@ -148,7 +148,6 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   const view = params.view === "counts" ? "counts" : "summary";
   const actionCount = runtime.actions?.length ?? 0;
   const providerCount = runtime.providers?.length ?? 0;
-  const evaluatorCount = runtime.evaluators?.length ?? 0;
   const services = runtime.services as Map<string, unknown[]> | undefined;
   let serviceCount = 0;
   if (services) {
@@ -163,7 +162,7 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
     (character?.settings?.model as string | undefined) ??
     null;
   const generatedAt = new Date().toISOString();
-  const countLine = `Actions: ${actionCount}, Providers: ${providerCount}, Evaluators: ${evaluatorCount}, Services: ${serviceCount}`;
+  const countLine = `Actions: ${actionCount}, Providers: ${providerCount}, Services: ${serviceCount}`;
   const lines =
     view === "counts"
       ? [countLine]
@@ -176,7 +175,7 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   return {
     success: true,
     text: lines.join("\n"),
-    values: { actionCount, providerCount, evaluatorCount, serviceCount },
+    values: { actionCount, providerCount, serviceCount },
     data: {
       actionName: "RUNTIME",
       op: "status",
@@ -187,7 +186,6 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
         model,
         actionCount,
         providerCount,
-        evaluatorCount,
         serviceCount,
         generatedAt,
       },
@@ -449,7 +447,7 @@ export const runtimeAction: Action = {
     "CHECK_SELF",
   ],
   description:
-    "Polymorphic runtime control. op=status snapshots registered actions/providers/evaluators/services; op=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); op=describe_actions lists registered actions, optionally filtered; op=reload_config re-applies hot-reloadable fields from eliza.json; op=restart bounces the process via the registered RestartHandler.",
+    "Polymorphic runtime control. op=status snapshots registered actions/providers/services; op=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); op=describe_actions lists registered actions, optionally filtered; op=reload_config re-applies hot-reloadable fields from eliza.json; op=restart bounces the process via the registered RestartHandler.",
   descriptionCompressed:
     "polymorphic runtime control: status, self_status, describe_actions, reload_config, restart",
   validate: async () => true,

@@ -2,8 +2,12 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { XService } from "./x.service";
 
+function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
+  return runtime as IAgentRuntime & T;
+}
+
 function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
-  return {
+  return asRuntime({
     agentId: "agent-1",
     getSetting: (key: string) => settings[key],
     logger: {
@@ -12,13 +16,11 @@ function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
-  } as unknown as IAgentRuntime;
+  });
 }
 
 function serviceWithRuntime(settings: Record<string, string>): XService {
-  const service = new XService();
-  service.runtime = runtimeWithSettings(settings);
-  return service;
+  return new XService(runtimeWithSettings(settings));
 }
 
 describe("XService account status", () => {
@@ -63,7 +65,9 @@ describe("XService account status", () => {
       TWITTER_SCOPES: "tweet.read users.read dm.read",
     });
 
-    await expect(service.getAccountStatus("oauth-account")).resolves.toMatchObject({
+    await expect(
+      service.getAccountStatus("oauth-account"),
+    ).resolves.toMatchObject({
       accountId: "oauth-account",
       configured: true,
       connected: true,

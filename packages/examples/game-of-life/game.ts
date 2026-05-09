@@ -191,7 +191,7 @@ const GAME_OF_LIFE_SUB_ACTIONS = [
   "WANDER",
 ] as const;
 
-const moveTowardFoodAction: Action = {
+const _moveTowardFoodAction: Action = {
   name: "MOVE_TOWARD_FOOD",
   description: "Move toward the nearest visible food",
   contexts: [...GAME_CONTEXTS],
@@ -266,7 +266,7 @@ const moveTowardFoodAction: Action = {
   examples: [],
 };
 
-const eatAction: Action = {
+const _eatAction: Action = {
   name: "EAT",
   description: "Eat food at current position",
   contexts: [...GAME_CONTEXTS],
@@ -310,7 +310,7 @@ const eatAction: Action = {
   examples: [],
 };
 
-const fleeAction: Action = {
+const _fleeAction: Action = {
   name: "FLEE",
   description: "Run away from nearby aggressive agents",
   contexts: [...GAME_CONTEXTS],
@@ -389,7 +389,7 @@ const fleeAction: Action = {
   examples: [],
 };
 
-const attackAction: Action = {
+const _attackAction: Action = {
   name: "ATTACK",
   description: "Attack a nearby weaker agent to steal energy",
   contexts: [...GAME_CONTEXTS],
@@ -470,7 +470,7 @@ const attackAction: Action = {
   examples: [],
 };
 
-const reproduceAction: Action = {
+const _reproduceAction: Action = {
   name: "REPRODUCE",
   description: "Create offspring when energy is high enough",
   contexts: [...GAME_CONTEXTS],
@@ -538,7 +538,7 @@ const reproduceAction: Action = {
   examples: [],
 };
 
-const wanderAction: Action = {
+const _wanderAction: Action = {
   name: "WANDER",
   description: "Move in a random direction when nothing else to do",
   contexts: [...GAME_CONTEXTS],

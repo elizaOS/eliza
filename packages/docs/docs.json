@@ -762,7 +762,6 @@
               "plugin-registry/webhooks",
               "plugin-registry/obsidian",
               "plugin-registry/linear",
-              "plugin-registry/n8n-workflow",
               "plugin-registry/shopify",
               "plugin-registry/rss",
               "plugin-registry/s3-storage"

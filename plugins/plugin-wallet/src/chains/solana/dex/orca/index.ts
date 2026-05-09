@@ -10,7 +10,6 @@ import { OrcaService } from "./services/srv_orca.ts";
 export const orcaPlugin: Plugin = {
   name: "@elizaos/plugin-lp-manager/orca",
   description: "Orca Whirlpool LP management plugin for Solana",
-  evaluators: [],
   providers: [positionProvider],
   actions: [],
   services: [OrcaService],

@@ -1,10 +1,8 @@
 /**
- * AES-256-GCM encryption helpers for Google OAuth tokens at rest.
+ * AES-256-GCM encryption helpers for LifeOps connector tokens at rest.
  *
- * Tokens used to be persisted as plaintext JSON files (mode 0600). That meant
- * any process or backup with read access to the credentials directory could
- * lift live OAuth refresh tokens. We now encrypt the JSON payload with a
- * symmetric key sourced from one of:
+ * Connector tokens are encrypted at rest with AES-256-GCM using a symmetric
+ * key sourced from one of:
  *
  *   1. `ELIZA_TOKEN_ENCRYPTION_KEY` env var (32 raw bytes, base64- or
  *      hex-encoded). Preferred — operators who manage their own secret
@@ -13,11 +11,8 @@
  *      the first time we need to write a token and no env var is configured.
  *      The agent reuses this key on subsequent boots.
  *
- * The on-disk format is intentionally minimal so we can detect legacy
- * plaintext tokens during the transition: encrypted blobs are JSON objects
- * with a top-level `__enc` discriminator. Any file without `__enc` is treated
- * as legacy plaintext, decoded once with the legacy reader, then re-encrypted
- * on the next write.
+ * The on-disk format is intentionally minimal: encrypted blobs are JSON
+ * objects with a top-level `__enc` discriminator.
  */
 
 import crypto from "node:crypto";
@@ -141,9 +136,7 @@ export function decryptTokenEnvelope(
 }
 
 /**
- * Returns true when the parsed JSON value looks like an encrypted envelope
- * (has the `__enc` discriminator). Used to detect legacy plaintext token
- * files during the migration window.
+ * Returns true when the parsed JSON value looks like an encrypted envelope.
  */
 export function isEncryptedTokenEnvelope(
   value: unknown,

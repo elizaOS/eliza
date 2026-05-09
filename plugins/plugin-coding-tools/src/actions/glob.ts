@@ -42,7 +42,7 @@ interface NodeFsGlobModule {
 }
 
 function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
-  const candidate = (fs as unknown as Partial<NodeFsGlobModule>).glob;
+  const candidate = (fs as Partial<NodeFsGlobModule>).glob;
   return typeof candidate === "function" ? candidate : undefined;
 }
 
@@ -165,7 +165,10 @@ export const globAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    return true;
+    return Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(SESSION_CWD_SERVICE),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

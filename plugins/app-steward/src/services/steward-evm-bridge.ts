@@ -13,7 +13,7 @@
  * initialization, before plugins are loaded.
  */
 
-import { setStewardEvmBridgeActive } from "@elizaos/agent/services/external-bridge-state";
+import { setStewardEvmBridgeActive } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   initStewardEvmAccount,

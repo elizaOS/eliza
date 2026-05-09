@@ -33,9 +33,8 @@ describeIntegration("BinaryResolver integration", () => {
   it("resolves an ffmpeg binary path on the host", async () => {
     const r = new BinaryResolver();
     const ffmpegPath = await r.getFfmpegPath();
-    expect(Boolean(ffmpegPath)).toBe(true);
-    if (!ffmpegPath) return;
-    const stat = await fsp.stat(ffmpegPath);
+    expect(ffmpegPath).toBeTruthy();
+    const stat = await fsp.stat(ffmpegPath as string);
     expect(stat.isFile()).toBe(true);
   });
 

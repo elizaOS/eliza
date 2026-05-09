@@ -31,6 +31,38 @@ export interface BenchmarkOutboxEntry {
   ts: number;
 }
 
+/**
+ * Per-LLM-call usage record captured from a MODEL_USED event during a turn.
+ * Optional cachedTokens reflects provider-reported prompt-cache hits
+ * (OpenAI-style `prompt_tokens_details.cached_tokens`,
+ *  Anthropic-style `cache_read_input_tokens`,
+ *  Cerebras-compat `prompt_tokens_details.cached_tokens`).
+ */
+export interface BenchmarkLlmCallUsage {
+  modelType: string;
+  provider?: string;
+  source?: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens?: number;
+}
+
+/**
+ * Aggregated usage for a single benchmark turn (sum across every LLM call
+ * that fired between handleMessage start and finish). cacheHitRatio is
+ * cachedTokens / promptTokens when promptTokens > 0, else 0.
+ */
+export interface BenchmarkTurnUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  cacheHitRatio: number;
+  callCount: number;
+  calls: BenchmarkLlmCallUsage[];
+}
+
 export interface BenchmarkTrajectoryStep {
   step: number;
   startedAt: number;
@@ -42,6 +74,11 @@ export interface BenchmarkTrajectoryStep {
   responseText: string;
   actions: string[];
   params: Record<string, unknown>;
+  /**
+   * Optional usage roll-up for this turn. Added 2026 to support
+   * cache-hit and token analysis. Older trajectory readers ignore it.
+   */
+  usage?: BenchmarkTurnUsage;
 }
 
 export interface CuaServiceLike {

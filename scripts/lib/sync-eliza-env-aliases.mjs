@@ -7,7 +7,7 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-github/register-routes",
   "@elizaos/plugin-computeruse/register-routes",
   "@elizaos/plugin-elizacloud/register-routes",
-  "@elizaos/plugin-n8n-workflow/register-routes",
+  "@elizaos/plugin-workflow/register-routes",
 ];
 
 function normalizeBrandedPrefix(prefix) {

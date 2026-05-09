@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/components/pages/browser-workspace-wallet";
+export * from "@elizaos/ui";

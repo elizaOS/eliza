@@ -322,13 +322,13 @@ function createConnectorAccountHarness(options: {
   const req = {
     url: options.pathname,
     on: vi.fn(),
-  } as unknown as IncomingMessage;
+  } as IncomingMessage;
   const res = {
     statusCode: 200,
     setHeader: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
-  } as unknown as ServerResponse;
+  } as ServerResponse;
   const pathname = options.pathname.split("?")[0];
   const ctx: ConnectorAccountRouteContext = {
     req,

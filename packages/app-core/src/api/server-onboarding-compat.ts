@@ -21,9 +21,9 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
+  PREMADE_VOICES,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import { PREMADE_VOICES } from "../voice/types";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------

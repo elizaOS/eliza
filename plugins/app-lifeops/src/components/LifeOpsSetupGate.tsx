@@ -10,10 +10,10 @@
  */
 import {
   Button,
+  dispatchFocusConnector,
   Input,
-  isCloudStatusAuthenticated,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
@@ -67,13 +67,7 @@ interface LifeOpsSetupGateProps {
 }
 
 export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
-  const {
-    elizaCloudConnected,
-    elizaCloudLoginBusy,
-    elizaCloudStatusReason,
-    handleCloudLogin,
-    t,
-  } = useApp();
+  const { setActionNotice, setTab, t } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({
     includeAccounts: false,
     side: "owner",
@@ -88,10 +82,6 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
 
   const calendarConnected = ownerConnector.status?.connected === true;
   const xConnected = xConnector.status?.connected === true;
-  const cloudAuthenticated = isCloudStatusAuthenticated(
-    elizaCloudConnected,
-    elizaCloudStatusReason,
-  );
 
   const canContinue =
     name.trim().length > 0 &&
@@ -103,12 +93,18 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
   }, [ownerConnector]);
 
   const handleConnectX = useCallback(() => {
-    if (!cloudAuthenticated) {
-      void handleCloudLogin();
+    if (xConnected) {
+      void xConnector.refresh();
       return;
     }
-    void xConnector.connect("cloud_managed");
-  }, [cloudAuthenticated, handleCloudLogin, xConnector]);
+    setTab("connectors");
+    dispatchFocusConnector("x");
+    setActionNotice(
+      "X account setup is managed in Connectors. Configure plugin-x there, then refresh LifeOps.",
+      "info",
+      4200,
+    );
+  }, [setActionNotice, setTab, xConnected, xConnector]);
 
   const handleSkip = useCallback(() => {
     setSkipped(true);
@@ -210,7 +206,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
             <button
               type="button"
               onClick={handleConnectX}
-              disabled={xConnector.actionPending || elizaCloudLoginBusy}
+              disabled={xConnector.actionPending}
               className={[
                 "flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors",
                 xConnected
@@ -230,30 +226,13 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
                     ? t("lifeopssetup.connected", {
                         defaultValue: "Connected",
                       })
-                    : !elizaCloudConnected
-                      ? t("lifeopssetup.cloudRequired", {
-                          defaultValue: "Connect Eliza Cloud first",
-                        })
-                      : t("lifeopssetup.messagingHint", {
-                          defaultValue: "Read and reply to incoming DMs",
-                        })}
+                    : t("lifeopssetup.messagingHint", {
+                        defaultValue: "Read and reply to incoming DMs",
+                      })}
                 </div>
               </div>
             </button>
           </div>
-
-          {xConnector.pendingAuthUrl ? (
-            <a
-              href={xConnector.pendingAuthUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-accent hover:underline"
-            >
-              {t("lifeopssetup.openXAuth", {
-                defaultValue: "Open X authorization",
-              })}
-            </a>
-          ) : null}
 
           {!calendarConnected && !xConnected && !skipped ? (
             <button

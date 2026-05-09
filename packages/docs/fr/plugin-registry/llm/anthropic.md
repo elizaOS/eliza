@@ -85,8 +85,6 @@ export ANTHROPIC_API_KEY=sk-ant-...
 |------------------------|-----------------|
 | `TEXT_SMALL` | `claude-haiku-4-5-20251001` |
 | `TEXT_LARGE` | `claude-sonnet-4-6` |
-| `OBJECT_SMALL` | `claude-haiku-4-5-20251001` |
-| `OBJECT_LARGE` | `claude-sonnet-4-6` |
 
 <div id="features">
 

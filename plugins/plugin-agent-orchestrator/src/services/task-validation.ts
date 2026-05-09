@@ -642,7 +642,7 @@ function buildValidationPrompt(
     JSON.stringify(
       {
         verdict: "pass",
-        summary: "short summary",
+        summary: "concise user-facing result",
         followUpPrompt: "only if verdict=revise",
         checklist: ["optional evidence note", "optional evidence note"],
       },
@@ -682,6 +682,7 @@ function buildValidationPrompt(
     "",
     "Rules:",
     "- Pass only if the task appears complete and the available evidence supports that claim.",
+    "- When passing, write summary as the final result that can be shown to the requester. Use concrete facts from the transcript, artifacts, workspace evidence, screenshots, and trajectories. Preserve exact URLs and source links from the evidence when they are part of the result. Include important limitations or uncertainty. Do not describe the validation process.",
     "- Revise if the agent should keep working. In that case, provide a direct follow-up prompt.",
     "- Escalate if the task cannot be validated from available evidence and needs human review.",
     "- For information / question-answering / research tasks (no repo, no files expected), the completion summary IS the deliverable. Pass if the summary directly answers the original request with concrete content. Empty workspace evidence is expected for these and is not a failure signal.",

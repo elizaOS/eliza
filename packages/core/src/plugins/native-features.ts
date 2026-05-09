@@ -3,9 +3,8 @@ import {
 	postAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
-	factExtractorAction,
-	reflectionAction,
-	relationshipExtractionAction,
+	reflectionItems,
+	skillItems,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
@@ -49,19 +48,14 @@ export const relationshipsPlugin: Plugin = {
 		// MESSAGE and POST use umbrella `operation`/`op` parameters instead of
 		// registering per-operation leaves. The planner unwraps those compact
 		// calls at benchmark/report time.
-		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
-		factExtractorAction,
-		reflectionAction,
-		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
-		relationshipExtractionAction,
 	],
+	evaluators: [...reflectionItems, ...skillItems],
 	providers: [
 		contactsProvider,
 		factsProvider,
 		followUpsProvider,
 		relationshipsProvider,
 	],
-	evaluators: [],
 	services: [RelationshipsService, FollowUpService],
 };
 

@@ -80,7 +80,7 @@ export const agentInboxAction: Action = {
   descriptionCompressed:
     "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong MESSAGE AGENT_INBOX apply subject be triage AGENT's account",
 
-  validate: async () => true,
+  validate: async (runtime) => Boolean(runtime.getService("AGENT_INBOX")),
 
   parameters: [
     {

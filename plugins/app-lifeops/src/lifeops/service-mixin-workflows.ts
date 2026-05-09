@@ -6,7 +6,7 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { computeNextCronRunAtMs } from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,
@@ -893,20 +893,20 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
             );
           } else if (step.kind === "get_health_summary") {
             value = await this.getHealthSummary(step.request ?? {});
-          } else if (step.kind === "dispatch_n8n_workflow") {
-            const n8n = this.runtime.getService("N8N_DISPATCH") as {
+          } else if (step.kind === "dispatch_workflow") {
+            const workflow = this.runtime.getService("WORKFLOW_DISPATCH") as {
               execute?: (
                 workflowId: string,
                 payload?: Record<string, unknown>,
               ) => Promise<unknown>;
             } | null;
-            if (!n8n || typeof n8n.execute !== "function") {
+            if (!workflow || typeof workflow.execute !== "function") {
               value = {
                 ok: false,
-                error: "N8N_DISPATCH service not registered",
+                error: "WORKFLOW_DISPATCH service not registered",
               };
             } else {
-              value = await n8n.execute(step.workflowId, {
+              value = await workflow.execute(step.workflowId, {
                 ...(step.payload ?? {}),
                 request: args.request,
                 outputs,

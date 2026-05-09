@@ -161,6 +161,20 @@ export const commandsPlugin: Plugin = {
 
 	providers: [commandRegistryProvider],
 
+	// Self-declared auto-enable: activate when features.commands is enabled.
+	autoEnable: {
+		shouldEnable: (_env, config) => {
+			const f = (config?.features as Record<string, unknown> | undefined)
+				?.commands;
+			return (
+				f === true ||
+				(typeof f === "object" &&
+					f !== null &&
+					(f as { enabled?: unknown }).enabled !== false)
+			);
+		},
+	},
+
 	config: {
 		COMMANDS_ENABLED: "true",
 		COMMANDS_CONFIG_ENABLED: "false",

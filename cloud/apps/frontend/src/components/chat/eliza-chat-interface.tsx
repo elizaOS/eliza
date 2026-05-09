@@ -64,8 +64,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@elizaos/cloud-ui";
-import type { Voice as CustomVoice } from "@elizaos/cloud-ui/components/voice/types";
-import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui/types/chat-media";
+import type { Voice as CustomVoice } from "@elizaos/cloud-ui";
+import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui";
 import {
   ADDITIONAL_IMAGE_MODELS,
   ADDITIONAL_MODELS,

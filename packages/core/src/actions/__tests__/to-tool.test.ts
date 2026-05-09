@@ -102,7 +102,7 @@ describe("actionToTool", () => {
 							title: {
 								type: "string",
 								required: true,
-							} as unknown as ActionParameterSchema,
+							} as ActionParameterSchema,
 							metadata: {
 								type: "object",
 								properties: {

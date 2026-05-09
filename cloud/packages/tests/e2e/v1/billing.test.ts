@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson, type JsonValue } from "../helpers/json-body";
 
 /**
  * Billing & Payments API E2E Tests
@@ -24,7 +25,7 @@ describe("Billing API", () => {
       authenticated: true,
     });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
+    const body = await readJson<JsonValue>(response);
     expect(body).toBeTruthy();
   });
 });

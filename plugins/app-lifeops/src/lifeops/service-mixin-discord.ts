@@ -24,9 +24,9 @@ import type {
   LifeOpsOwnerBrowserAuthState,
   LifeOpsOwnerBrowserNextAction,
   LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared/contracts/lifeops";
-import { asRecord } from "@elizaos/shared/type-guards";
+} from "@elizaos/shared";
+import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
+import { asRecord } from "@elizaos/shared";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
@@ -235,7 +235,7 @@ function sleep(ms: number): Promise<void> {
 
 function identityFromProbe(
   probe: DiscordTabProbe | null,
-  fallback: Record<string, unknown> | null,
+  pluginIdentity: Record<string, unknown> | null,
 ): LifeOpsDiscordConnectorStatus["identity"] {
   if (probe?.loggedIn && probe.identity.username) {
     return {
@@ -244,8 +244,8 @@ function identityFromProbe(
       discriminator: probe.identity.discriminator ?? undefined,
     };
   }
-  if (fallback && Object.keys(fallback).length > 0) {
-    return fallback as LifeOpsDiscordConnectorStatus["identity"];
+  if (pluginIdentity && Object.keys(pluginIdentity).length > 0) {
+    return pluginIdentity as LifeOpsDiscordConnectorStatus["identity"];
   }
   return null;
 }
@@ -1377,10 +1377,6 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
-      // TODO(lifeops): per-side accountId mapping. Until LifeOps wires owner
-      // vs agent grants to distinct ConnectorAccount IDs, scope the browser
-      // partition by `lifeops-${agentId}-${side}`-shaped accountId so cookies
-      // remain isolated between owner and agent flows.
       const sideAccountId = `${this.agentId()}-${normalizedSide}`;
       const { tabId } = await ensureDiscordTab({
         accountId: sideAccountId,
@@ -1465,7 +1461,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (delegated.error) {
         this.logLifeOpsWarn(
-          "runtime_service_delegation_fallback",
+          "runtime_service_delegation_unavailable",
           delegated.reason,
           {
             provider: "discord",
@@ -1600,7 +1596,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         if (delegated.status !== "handled") {
           if (delegated.error) {
             this.logLifeOpsWarn(
-              "runtime_service_delegation_fallback",
+              "runtime_service_delegation_unavailable",
               delegated.reason,
               {
                 provider: "discord",

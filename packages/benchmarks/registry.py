@@ -808,15 +808,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
-        if model.provider:
-            args.extend(["--provider", model.provider])
-        if model.model:
-            model_name = model.model
-            provider_name = (model.provider or "").strip().lower()
-            if provider_name == "groq" and not model_name.startswith("groq/"):
-                model_name = f"groq/{model_name}"
-            args.extend(["--model", model_name])
         provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge so the
+        # ElizaBFCLAgent + registered runtime is exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            args.extend(["--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
+        else:
+            if model.provider:
+                args.extend(["--provider", model.provider])
+            if model.model:
+                model_name = model.model
+                if provider_name == "groq" and not model_name.startswith("groq/"):
+                    model_name = f"groq/{model_name}"
+                args.extend(["--model", model_name])
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         sample = extra.get("sample")
@@ -860,10 +868,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
-        # caller asks for the eliza agent (either via model.provider or the
-        # explicit "agent": "eliza" extra).
+        # caller asks for the eliza agent or any LLM-backed provider.
         agent = extra.get("agent")
-        if agent == "eliza" or provider_name == "eliza":
+        if agent == "eliza" or provider_name in {
+            "eliza",
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+        }:
             args.extend(["--provider", "eliza"])
         return args
 
@@ -891,6 +905,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--provider", provider_name])
             if model.model:
                 args.extend(["--model", model.model])
+            base_url = extra.get("base_url")
+            if isinstance(base_url, str) and base_url.strip():
+                args.extend(["--base-url", base_url.strip()])
         elif model.provider:
             raise ValueError(f"mint: unsupported provider '{model.provider}'")
         if extra.get("no_ablation") is True:
@@ -964,11 +981,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 provider_name = provider.strip().lower()
             elif model.provider:
                 provider_name = model.provider.strip().lower()
+            # Route all OpenAI-compatible LLM providers (including cerebras)
+            # through the eliza TS bridge instead of falling back to mock.
             provider_map: dict[str, str] = {
-                "openai": "eliza-openai",
-                "groq": "eliza-openai",
-                "openrouter": "eliza-openai",
-                "vllm": "eliza-openai",
+                "openai": "eliza",
+                "groq": "eliza",
+                "openrouter": "eliza",
+                "vllm": "eliza",
+                "cerebras": "eliza",
+                "eliza": "eliza",
                 "anthropic": "anthropic",
             }
             provider_str = provider_map.get(provider_name, "mock")
@@ -1004,7 +1025,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _terminalbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         # Run module from its python project root.
-        _ = extra
         args = [
             python,
             "-m",
@@ -1012,13 +1032,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output-dir",
             str(output_dir),
         ]
-        if model.model:
-            model_name = model.model
-            if model.provider and "/" not in model_name:
-                model_name = f"{model.provider}/{model_name}"
-            args.extend(["--model", model_name])
-        if model.provider:
-            args.extend(["--model-provider", model.provider])
+        provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent + plugins are exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            if model.model:
+                args.extend(["--model", model.model])
+            args.extend(["--model-provider", "eliza"])
+        else:
+            if model.model:
+                model_name = model.model
+                if model.provider and "/" not in model_name:
+                    model_name = f"{model.provider}/{model_name}"
+                args.extend(["--model", model_name])
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
@@ -1027,7 +1057,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        if extra.get("dry_run") is True:
+        if extra.get("dry_run") is True or extra.get("no_docker") is True:
             args.append("--dry-run")
         if extra.get("oracle") is True:
             args.append("--oracle")
@@ -1051,7 +1081,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         provider_name = (model.provider or "").strip().lower()
-        if provider_name == "mock":
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge.
+        bridge_providers = {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+            "mock",
+        }
+        if agent == "eliza" or provider_name in bridge_providers:
             args.extend(["--provider", "eliza"])
         elif model.provider:
             args.extend(["--provider", model.provider])
@@ -1094,7 +1135,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent is exercised, not python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--model-provider", "eliza"])
         else:
             real = extra.get("real_llm")
@@ -1135,11 +1186,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             runs = extra.get("num_runs")
         if isinstance(runs, int) and runs > 0:
             args.extend(["--runs", str(runs)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--runs", "1"])
         days = extra.get("days")
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
         if isinstance(days, int) and days > 0:
             args.extend(["--days", str(days)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--days", "1"])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -1275,6 +1330,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--seed", str(seed)])
         if extra.get("strict") is True:
             args.append("--strict")
+        # Default to bridge mode (real eliza TS agent) for any LLM-backed
+        # provider; explicit `--extra '{"mode":"simulate"}'` opts into the
+        # deterministic simulator for offline smoke-testing only.
+        provider_name = (model.provider or "").strip().lower()
+        mode_override = extra.get("mode")
+        if isinstance(mode_override, str) and mode_override.strip() in {
+            "bridge",
+            "simulate",
+        }:
+            args.extend(["--mode", mode_override.strip()])
+        elif provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm", "anthropic", "google", "eliza"}:
+            args.extend(["--mode", "bridge"])
+        else:
+            args.extend(["--mode", "simulate"])
         return args
 
     def _orchestrator_lifecycle_result(output_dir: Path) -> Path:
@@ -1283,10 +1352,21 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # Route LLM-backed providers through the eliza TS bridge so the actual
+        # registered eliza agent + plugins are exercised, not the python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
         else:
-            provider_name = (model.provider or "").strip().lower()
             if model.provider and provider_name != "mock":
                 args.extend(["--provider", model.provider])
             real_llm = extra.get("real_llm")
@@ -1539,6 +1619,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         seed = extra.get("seed")
         if isinstance(seed, int) and seed > 0:
             args.extend(["--seed", str(seed)])
+        max_scenarios = extra.get("max_scenarios")
+        if not isinstance(max_scenarios, int):
+            max_scenarios = extra.get("max_tasks")
+        if isinstance(max_scenarios, int) and max_scenarios > 0:
+            args.extend(["--max-scenarios", str(max_scenarios)])
         return args
 
     def _gauntlet_result(output_dir: Path) -> Path:
@@ -1611,7 +1696,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
             args.extend(["--mode", mode.strip()])
         else:
-            args.extend(["--mode", "conceptual"])
+            # Default to execution: real file/exec validation, not keyword matching.
+            args.extend(["--mode", "execution"])
         task = extra.get("task")
         if isinstance(task, str) and task.strip():
             args.extend(["--task", task.strip()])
@@ -1700,6 +1786,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = profile_raw.strip().lower()
         elif (model.provider or "").strip().lower() == "mock":
             profile = "mock"
+        elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
+            Path("benchmarks/voicebench/shared/audio/default.wav").exists()
+            or Path("agent-town/public/assets/background.mp3").exists()
+        ):
+            profile = "mock"
         else:
             profile = "groq"
         if profile not in {"groq", "elevenlabs", "mock"}:
@@ -1750,6 +1841,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             provider_lower = (model.provider or "").strip().lower()
             if provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
                 system = "eliza-bridge"
+            elif provider_lower in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+                system = "full"
             else:
                 system = "baseline"
         args.extend(["--system", system])
@@ -1981,7 +2074,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and not isinstance(temperature, bool):
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2025,7 +2118,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2064,7 +2157,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 

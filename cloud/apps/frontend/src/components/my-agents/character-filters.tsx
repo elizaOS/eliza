@@ -22,7 +22,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/cloud-ui/primitives";
+} from "@elizaos/cloud-ui";
 import { LayoutGrid, List, Search } from "lucide-react";
 import type { SortOption, ViewMode } from "./types";
 

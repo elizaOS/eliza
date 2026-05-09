@@ -14,8 +14,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
   "publishConfig": {
     "access": "public"
   },

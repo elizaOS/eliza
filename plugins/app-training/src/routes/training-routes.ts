@@ -1,9 +1,6 @@
-import type {
-  RouteHelpers,
-  RouteRequestContext,
-} from "@elizaos/agent/api/route-helpers";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
-import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
+import type { Trajectory } from "@elizaos/agent";
+import { parsePositiveInteger } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
 import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
@@ -58,7 +55,7 @@ function getTriggerEntry(
 ): RegisteredTrainingTriggerEntry | null {
   if (!runtime) return null;
   const services = (
-    runtime as unknown as {
+    runtime as {
       services?: Map<string, unknown[]>;
     }
   ).services;

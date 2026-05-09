@@ -94,14 +94,15 @@ export class UserSessionsRepository {
    * Creates a new user session.
    */
   async create(data: NewUserSession): Promise<UserSession> {
-    const values = {
-      ...data,
-      // NOTE: When using Neon serverless driver, binding raw JS objects as query
-      // params for jsonb can fail. Bind JSONB explicitly as a JSON string and cast.
-      device_info: jsonbParam(data.device_info),
-    } as unknown as NewUserSession;
-
-    const [session] = await dbWrite.insert(userSessions).values(values).returning();
+    const [session] = await dbWrite
+      .insert(userSessions)
+      .values({
+        ...data,
+        // NOTE: When using Neon serverless driver, binding raw JS objects as query
+        // params for jsonb can fail. Bind JSONB explicitly as a JSON string and cast.
+        device_info: jsonbParam(data.device_info),
+      })
+      .returning();
     return session;
   }
 
@@ -112,16 +113,14 @@ export class UserSessionsRepository {
    * If session_token already exists, updates last_activity_at and returns existing session.
    */
   async getOrCreate(data: NewUserSession): Promise<UserSession> {
-    const values = {
-      ...data,
-      // NOTE: When using Neon serverless driver, binding raw JS objects as query
-      // params for jsonb can fail. Bind JSONB explicitly as a JSON string and cast.
-      device_info: jsonbParam(data.device_info),
-    } as unknown as NewUserSession;
-
     const [session] = await dbWrite
       .insert(userSessions)
-      .values(values)
+      .values({
+        ...data,
+        // NOTE: When using Neon serverless driver, binding raw JS objects as query
+        // params for jsonb can fail. Bind JSONB explicitly as a JSON string and cast.
+        device_info: jsonbParam(data.device_info),
+      })
       .onConflictDoUpdate({
         target: userSessions.session_token,
         set: {

@@ -49,9 +49,41 @@
       "@elizaos/app-vincent/*": ["../../plugins/app-vincent/src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/dist/*"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],

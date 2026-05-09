@@ -13,7 +13,7 @@ import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
 import type { NodePgDatabase, NodePgTransaction } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
+import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglite";
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
 import ws from "ws";
@@ -89,7 +89,8 @@ function createPGliteClient(dataDir: string): Database {
     dataDir: dataDir === "memory://" ? undefined : dataDir,
     extensions: { vector },
   });
-  return drizzlePGlite({ client, schema }) as unknown as Database;
+  const database: PgliteDatabase<typeof schema> = drizzlePGlite({ client, schema });
+  return database as Database;
 }
 
 function isLocalTcpPostgresUrl(url: string): boolean {
@@ -153,11 +154,11 @@ function createConnection(url: string): Database {
       neonConfig.webSocketConstructor = ws;
     }
     const pool = new NeonPool({ connectionString: url });
-    return drizzleNeon(pool, { schema }) as unknown as Database;
+    return drizzleNeon(pool, { schema }) as Database;
   }
 
   const pool = createPgPool(url);
-  return drizzleNode(pool, { schema }) as unknown as Database;
+  return drizzleNode(pool, { schema }) as Database;
 }
 
 // ============================================================================

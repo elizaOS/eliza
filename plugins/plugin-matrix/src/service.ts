@@ -17,8 +17,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
+import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events";
 import {
   DEFAULT_MATRIX_ACCOUNT_ID,
+  listMatrixAccountIds,
   normalizeMatrixAccountId,
   readMatrixAccountId,
   resolveDefaultMatrixAccountId,
@@ -146,6 +148,14 @@ type ExtendedMessageConnectorRegistration = Parameters<
 >[0] &
   AdditiveMessageConnectorHooks;
 
+type MatrixAccountState = {
+  accountId: string;
+  settings: MatrixSettings;
+  client: sdk.MatrixClient;
+  connected: boolean;
+  syncing: boolean;
+};
+
 function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
   if (!Number.isFinite(limit) || !limit || limit <= 0) {
     return fallback;
@@ -221,10 +231,8 @@ export class MatrixService extends Service implements IMatrixService {
   capabilityDescription = "Matrix messaging service for chat communication";
 
   protected declare runtime: IAgentRuntime;
-  private settings!: MatrixSettings;
-  private client!: sdk.MatrixClient;
-  private connected: boolean = false;
-  private syncing: boolean = false;
+  private states = new Map<string, MatrixAccountState>();
+  private defaultAccountId = DEFAULT_MATRIX_ACCOUNT_ID;
 
   /**
    * Start the Matrix service.
@@ -245,8 +253,12 @@ export class MatrixService extends Service implements IMatrixService {
     }
   }
 
-  static registerSendHandlers(runtime: IAgentRuntime, service: MatrixService): void {
-    const accountId = service.getAccountId(runtime);
+  static registerSendHandlers(
+    runtime: IAgentRuntime,
+    service: MatrixService,
+    accountId = service.getAccountId(runtime)
+  ): void {
+    accountId = normalizeMatrixAccountId(accountId);
     const sendHandler = async (
       handlerRuntime: IAgentRuntime,
       target: TargetInfo,
@@ -279,7 +291,7 @@ export class MatrixService extends Service implements IMatrixService {
         },
         sendHandler,
         resolveTargets: async (query) => {
-          const rooms = await service.getJoinedRooms();
+          const rooms = await service.getJoinedRooms(accountId);
           return rooms
             .map((room) => ({ room, score: scoreMatrixRoom(room, query) }))
             .filter(({ score }) => score > 0)
@@ -288,11 +300,11 @@ export class MatrixService extends Service implements IMatrixService {
             .map(({ room, score }) => matrixRoomToConnectorTarget(room, score, accountId));
         },
         listRecentTargets: async () =>
-          (await service.getJoinedRooms())
+          (await service.getJoinedRooms(accountId))
             .slice(0, 10)
             .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
         listRooms: async () =>
-          (await service.getJoinedRooms()).map((room) =>
+          (await service.getJoinedRooms(accountId)).map((room) =>
             matrixRoomToConnectorTarget(room, 0.5, accountId)
           ),
         fetchMessages: async (context, params) => {
@@ -301,7 +313,7 @@ export class MatrixService extends Service implements IMatrixService {
           if (target?.roomId) {
             return readStoredMessageMemories(context.runtime, target.roomId, limit);
           }
-          const targets = (await service.getJoinedRooms())
+          const targets = (await service.getJoinedRooms(accountId))
             .slice(0, 10)
             .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId));
           return readStoredMessagesForTargets(context.runtime, targets, limit);
@@ -313,7 +325,7 @@ export class MatrixService extends Service implements IMatrixService {
             ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
             : await readStoredMessagesForTargets(
                 context.runtime,
-                (await service.getJoinedRooms())
+                (await service.getJoinedRooms(accountId))
                   .slice(0, 10)
                   .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
                 Math.max(limit, 100)
@@ -330,7 +342,7 @@ export class MatrixService extends Service implements IMatrixService {
           if (!roomId || !eventId || !emoji) {
             throw new Error("Matrix reactHandler requires room, event id, and emoji");
           }
-          const result = await service.sendReaction(roomId, eventId, emoji);
+          const result = await service.sendReaction(roomId, eventId, emoji, accountId);
           if (!result.success) {
             throw new Error(result.error || "Matrix reaction failed");
           }
@@ -348,7 +360,7 @@ export class MatrixService extends Service implements IMatrixService {
           if (!roomIdOrAlias) {
             throw new Error("Matrix joinHandler requires a room ID or alias");
           }
-          await service.joinRoom(roomIdOrAlias);
+          await service.joinRoom(roomIdOrAlias, accountId);
         },
         leaveHandler: async (handlerRuntime, params) => {
           const target = params.target ?? ({ source: MATRIX_SERVICE_NAME } as TargetInfo);
@@ -359,12 +371,12 @@ export class MatrixService extends Service implements IMatrixService {
           if (!roomId) {
             throw new Error("Matrix leaveHandler requires a room ID");
           }
-          await service.leaveRoom(roomId);
+          await service.leaveRoom(roomId, accountId);
         },
         getChatContext: async (target, context) => {
           const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
           const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
-          const joinedRoom = (await service.getJoinedRooms()).find(
+          const joinedRoom = (await service.getJoinedRooms(accountId)).find(
             (candidate) => candidate.roomId === channelId || candidate.canonicalAlias === channelId
           );
           if (!joinedRoom) {
@@ -419,52 +431,64 @@ export class MatrixService extends Service implements IMatrixService {
    */
   private async initialize(runtime: IAgentRuntime): Promise<void> {
     this.runtime = runtime;
+    this.defaultAccountId = normalizeMatrixAccountId(resolveDefaultMatrixAccountId(runtime));
 
-    // Load configuration
-    this.settings = this.loadSettings();
+    const accountIds = listMatrixAccountIds(runtime);
+    for (const accountId of accountIds) {
+      const settings = this.loadSettings(accountId);
+      if (settings.enabled === false) {
+        continue;
+      }
 
-    // Validate configuration
-    this.validateSettings();
+      this.validateSettings(settings);
 
-    // Create Matrix client
-    this.client = sdk.createClient({
-      baseUrl: this.settings.homeserver,
-      userId: this.settings.userId,
-      accessToken: this.settings.accessToken,
-      deviceId: this.settings.deviceId,
-    });
+      const state: MatrixAccountState = {
+        accountId: normalizeMatrixAccountId(settings.accountId),
+        settings,
+        client: sdk.createClient({
+          baseUrl: settings.homeserver,
+          userId: settings.userId,
+          accessToken: settings.accessToken,
+          deviceId: settings.deviceId,
+        }),
+        connected: false,
+        syncing: false,
+      };
 
-    // Set up event handlers
-    this.setupEventHandlers();
+      this.states.set(state.accountId, state);
+      this.setupEventHandlers(state);
+      await this.connect(state);
+      MatrixService.registerSendHandlers(runtime, this, state.accountId);
 
-    // Start client
-    await this.connect();
+      logger.info(`Matrix service initialized for ${settings.userId} on ${settings.homeserver}`);
+    }
 
-    logger.info(
-      `Matrix service initialized for ${this.settings.userId} on ${this.settings.homeserver}`
-    );
+    if (this.states.size === 0) {
+      const settings = this.loadSettings(this.defaultAccountId);
+      this.validateSettings(settings);
+    }
   }
 
   /**
    * Load settings from runtime.
    */
-  private loadSettings(): MatrixSettings {
-    return resolveMatrixAccountSettings(this.runtime);
+  private loadSettings(accountId?: string): MatrixSettings {
+    return resolveMatrixAccountSettings(this.runtime, accountId);
   }
 
   /**
    * Validate the settings.
    */
-  private validateSettings(): void {
-    if (!this.settings.homeserver) {
+  private validateSettings(settings: MatrixSettings): void {
+    if (!settings.homeserver) {
       throw new MatrixConfigurationError("MATRIX_HOMESERVER is required", "MATRIX_HOMESERVER");
     }
 
-    if (!this.settings.userId) {
+    if (!settings.userId) {
       throw new MatrixConfigurationError("MATRIX_USER_ID is required", "MATRIX_USER_ID");
     }
 
-    if (!this.settings.accessToken) {
+    if (!settings.accessToken) {
       throw new MatrixConfigurationError("MATRIX_ACCESS_TOKEN is required", "MATRIX_ACCESS_TOKEN");
     }
   }
@@ -472,37 +496,37 @@ export class MatrixService extends Service implements IMatrixService {
   /**
    * Set up event handlers for the Matrix client.
    */
-  private setupEventHandlers(): void {
+  private setupEventHandlers(state: MatrixAccountState): void {
     // Sync events
-    this.client.on(sdk.ClientEvent.Sync, (state) => {
-      if (state === "PREPARED") {
-        this.syncing = true;
+    state.client.on(sdk.ClientEvent.Sync, (syncState) => {
+      if (syncState === "PREPARED") {
+        state.syncing = true;
         logger.info("Matrix sync complete");
         this.runtime.emitEvent(MatrixEventTypes.SYNC_COMPLETE, {
           runtime: this.runtime,
-          accountId: this.getAccountId(),
+          accountId: state.accountId,
         } as EventPayload);
       }
     });
 
     // Room timeline events (messages)
-    this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
+    state.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
       if (toStartOfTimeline) return;
       if (event.getType() !== "m.room.message") return;
-      if (event.getSender() === this.settings.userId) return;
+      if (event.getSender() === state.settings.userId) return;
 
-      this.handleRoomMessage(event, room);
+      this.handleRoomMessage(state, event, room);
     });
 
     // Room membership events
-    this.client.on(sdk.RoomMemberEvent.Membership, (event, member) => {
-      if (member.userId !== this.settings.userId) return;
+    state.client.on(sdk.RoomMemberEvent.Membership, (event, member) => {
+      if (member.userId !== state.settings.userId) return;
 
-      if (member.membership === "invite" && this.settings.autoJoin) {
+      if (member.membership === "invite" && state.settings.autoJoin) {
         const roomId = event.getRoomId();
         if (roomId) {
           logger.info(`Auto-joining room ${roomId}`);
-          this.client.joinRoom(roomId).catch((err) => {
+          state.client.joinRoom(roomId).catch((err) => {
             logger.error(`Failed to auto-join room: ${err.message}`);
           });
         }
@@ -513,7 +537,11 @@ export class MatrixService extends Service implements IMatrixService {
   /**
    * Handle an incoming room message.
    */
-  private handleRoomMessage(event: sdk.MatrixEvent, room: sdk.Room | undefined): void {
+  private handleRoomMessage(
+    state: MatrixAccountState,
+    event: sdk.MatrixEvent,
+    room: sdk.Room | undefined
+  ): void {
     const content = event.getContent();
     const msgType = content.msgtype;
 
@@ -524,9 +552,9 @@ export class MatrixService extends Service implements IMatrixService {
     if (!roomId || !room) return;
 
     // Check mention requirement
-    if (this.settings.requireMention) {
+    if (state.settings.requireMention) {
       const body = content.body || "";
-      const localpart = getMatrixLocalpart(this.settings.userId);
+      const localpart = getMatrixLocalpart(state.settings.userId);
       const mentionPattern = new RegExp(`@?${localpart}`, "i");
       if (!mentionPattern.test(body)) {
         return;
@@ -570,7 +598,7 @@ export class MatrixService extends Service implements IMatrixService {
       canonicalAlias: room.getCanonicalAlias() || undefined,
       isEncrypted: room.hasEncryptionStateEvent(),
       isDirect:
-        this.client
+        state.client
           .getAccountData(sdk.EventType.Direct)
           ?.getContent()
           ?.[sender || ""]?.includes(roomId) || false,
@@ -585,32 +613,32 @@ export class MatrixService extends Service implements IMatrixService {
       message,
       room: matrixRoom,
       runtime: this.runtime,
-      accountId: this.getAccountId(),
+      accountId: state.accountId,
     } as EventPayload);
   }
 
   /**
    * Connect to Matrix.
    */
-  private async connect(): Promise<void> {
-    await this.client.startClient({ initialSyncLimit: 10 });
-    this.connected = true;
+  private async connect(state: MatrixAccountState): Promise<void> {
+    await state.client.startClient({ initialSyncLimit: 10 });
+    state.connected = true;
 
     // Wait for initial sync
     await new Promise<void>((resolve) => {
-      const listener = (state: string) => {
-        if (state === "PREPARED") {
-          this.client.removeListener(sdk.ClientEvent.Sync, listener);
+      const listener = (syncState: string) => {
+        if (syncState === "PREPARED") {
+          state.client.removeListener(sdk.ClientEvent.Sync, listener);
           resolve();
         }
       };
-      this.client.on(sdk.ClientEvent.Sync, listener);
+      state.client.on(sdk.ClientEvent.Sync, listener);
     });
 
     // Join configured rooms
-    for (const room of this.settings.rooms) {
+    for (const room of state.settings.rooms) {
       try {
-        await this.joinRoom(room);
+        await this.joinRoom(room, state.accountId);
       } catch (err) {
         logger.warn(`Failed to join room ${room}: ${err}`);
       }
@@ -621,10 +649,11 @@ export class MatrixService extends Service implements IMatrixService {
    * Shutdown the service.
    */
   async stop(): Promise<void> {
-    if (this.client) {
-      this.client.stopClient();
+    for (const state of this.states.values()) {
+      state.client.stopClient();
+      state.connected = false;
+      state.syncing = false;
     }
-    this.connected = false;
     logger.info("Matrix service stopped");
   }
 
@@ -633,25 +662,40 @@ export class MatrixService extends Service implements IMatrixService {
   // ============================================================================
 
   isConnected(): boolean {
-    return this.connected && this.syncing;
+    const legacy = this as { connected?: boolean; syncing?: boolean };
+    const states = this.states ?? new Map<string, MatrixAccountState>();
+    if (states.size === 0 && typeof legacy.connected === "boolean") {
+      return legacy.connected && (legacy.syncing ?? true);
+    }
+    return Array.from(states.values()).some((state) => state.connected && state.syncing);
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
+    const legacy = this as { settings?: MatrixSettings };
+    const states = this.states ?? new Map<string, MatrixAccountState>();
+    if (states.size === 0 && legacy.settings?.accountId) {
+      return normalizeMatrixAccountId(legacy.settings.accountId);
+    }
     return normalizeMatrixAccountId(
-      this.settings?.accountId ?? (runtime ? resolveDefaultMatrixAccountId(runtime) : undefined)
+      this.defaultAccountId !== DEFAULT_MATRIX_ACCOUNT_ID
+        ? this.defaultAccountId
+        : runtime
+          ? resolveDefaultMatrixAccountId(runtime)
+          : this.defaultAccountId
     );
   }
 
   getUserId(): string {
-    return this.settings.userId;
+    return this.getState().settings.userId;
   }
 
   getHomeserver(): string {
-    return this.settings.homeserver;
+    return this.getState().settings.homeserver;
   }
 
-  async getJoinedRooms(): Promise<MatrixRoom[]> {
-    const rooms = this.client.getRooms();
+  async getJoinedRooms(accountId?: string): Promise<MatrixRoom[]> {
+    const state = this.getState(accountId);
+    const rooms = state.client.getRooms();
     return rooms
       .filter((room) => room.getMyMembership() === "join")
       .map((room) => ({
@@ -666,7 +710,8 @@ export class MatrixService extends Service implements IMatrixService {
   }
 
   async sendMessage(text: string, options?: MatrixMessageSendOptions): Promise<MatrixSendResult> {
-    if (!this.isConnected()) {
+    const state = this.getState(options?.accountId);
+    if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
 
@@ -678,13 +723,25 @@ export class MatrixService extends Service implements IMatrixService {
     // Resolve room ID from alias if needed
     let resolvedRoomId = roomId;
     if (isValidMatrixRoomAlias(roomId)) {
-      const resolved = await this.client.getRoomIdForAlias(roomId);
+      const resolved = await state.client.getRoomIdForAlias(roomId);
       resolvedRoomId = resolved.room_id;
     }
 
     // Build content
-    const content: Record<string, unknown> = {
-      msgtype: "m.text",
+    const content: {
+      body: string;
+      format?: "org.matrix.custom.html";
+      formatted_body?: string;
+      msgtype: sdk.MsgType.Text;
+      "m.relates_to"?: {
+        event_id?: string;
+        rel_type?: sdk.RelationType.Thread;
+        "m.in_reply_to"?: {
+          event_id: string;
+        };
+      };
+    } = {
+      msgtype: sdk.MsgType.Text,
       body: text,
     };
 
@@ -698,24 +755,20 @@ export class MatrixService extends Service implements IMatrixService {
       content["m.relates_to"] = {};
 
       if (options.threadId) {
-        (content["m.relates_to"] as Record<string, unknown>).rel_type = "m.thread";
-        (content["m.relates_to"] as Record<string, unknown>).event_id = options.threadId;
+        content["m.relates_to"].rel_type = sdk.RelationType.Thread;
+        content["m.relates_to"].event_id = options.threadId;
       }
 
       if (options.replyTo) {
-        (content["m.relates_to"] as Record<string, unknown>)["m.in_reply_to"] = {
+        content["m.relates_to"]["m.in_reply_to"] = {
           event_id: options.replyTo,
         };
       }
     }
 
-    // sendMessage's content parameter is typed RoomMessageEventContent, which is
-    // not re-exported from matrix-js-sdk's main barrel. The runtime check is the
-    // structural shape of `content` (msgtype + body); skip the unreachable type.
-    const response = await this.client.sendMessage(
+    const response = await state.client.sendMessage(
       resolvedRoomId,
-      // biome-ignore lint/suspicious/noExplicitAny: type not exported from main entry
-      content as any
+      content as RoomMessageEventContent
     );
     const eventId = response.event_id;
 
@@ -724,7 +777,7 @@ export class MatrixService extends Service implements IMatrixService {
       eventId,
       content: text,
       runtime: this.runtime,
-      accountId: this.getAccountId(),
+      accountId: state.accountId,
     } as EventPayload);
 
     return {
@@ -734,8 +787,14 @@ export class MatrixService extends Service implements IMatrixService {
     };
   }
 
-  async sendReaction(roomId: string, eventId: string, emoji: string): Promise<MatrixSendResult> {
-    if (!this.isConnected()) {
+  async sendReaction(
+    roomId: string,
+    eventId: string,
+    emoji: string,
+    accountId?: string
+  ): Promise<MatrixSendResult> {
+    const state = this.getState(accountId);
+    if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
 
@@ -747,7 +806,7 @@ export class MatrixService extends Service implements IMatrixService {
       },
     };
 
-    const response = await this.client.sendEvent(roomId, sdk.EventType.Reaction, content);
+    const response = await state.client.sendEvent(roomId, sdk.EventType.Reaction, content);
 
     return {
       success: true,
@@ -756,52 +815,61 @@ export class MatrixService extends Service implements IMatrixService {
     };
   }
 
-  async joinRoom(roomIdOrAlias: string): Promise<string> {
-    if (!this.isConnected()) {
+  async joinRoom(roomIdOrAlias: string, accountId?: string): Promise<string> {
+    const state = this.getState(accountId);
+    if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
 
-    const response = await this.client.joinRoom(roomIdOrAlias);
+    const response = await state.client.joinRoom(roomIdOrAlias);
     const roomId = response.roomId;
 
     logger.info(`Joined room ${roomId}`);
     this.runtime.emitEvent(MatrixEventTypes.ROOM_JOINED, {
       room: { roomId },
       runtime: this.runtime,
-      accountId: this.getAccountId(),
+      accountId: state.accountId,
     } as EventPayload);
 
     return roomId;
   }
 
-  async leaveRoom(roomId: string): Promise<void> {
-    if (!this.isConnected()) {
+  async leaveRoom(roomId: string, accountId?: string): Promise<void> {
+    const state = this.getState(accountId);
+    if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
 
-    await this.client.leave(roomId);
+    await state.client.leave(roomId);
     logger.info(`Left room ${roomId}`);
     this.runtime.emitEvent(MatrixEventTypes.ROOM_LEFT, {
       roomId,
       runtime: this.runtime,
-      accountId: this.getAccountId(),
+      accountId: state.accountId,
     } as EventPayload);
   }
 
-  async sendTyping(roomId: string, typing: boolean, timeout: number = 30000): Promise<void> {
-    if (!this.isConnected()) {
+  async sendTyping(
+    roomId: string,
+    typing: boolean,
+    timeout: number = 30000,
+    accountId?: string
+  ): Promise<void> {
+    const state = this.getState(accountId);
+    if (!state.connected || !state.syncing) {
       return;
     }
 
-    await this.client.sendTyping(roomId, typing, timeout);
+    await state.client.sendTyping(roomId, typing, timeout);
   }
 
-  async sendReadReceipt(roomId: string, eventId: string): Promise<void> {
-    if (!this.isConnected()) {
+  async sendReadReceipt(roomId: string, eventId: string, accountId?: string): Promise<void> {
+    const state = this.getState(accountId);
+    if (!state.connected || !state.syncing) {
       return;
     }
 
-    await this.client.sendReadReceipt(new sdk.MatrixEvent({ event_id: eventId, room_id: roomId }));
+    await state.client.sendReadReceipt(new sdk.MatrixEvent({ event_id: eventId, room_id: roomId }));
   }
 
   async sendRoomMessage(roomIdOrAlias: string, content: Content): Promise<void> {
@@ -809,7 +877,10 @@ export class MatrixService extends Service implements IMatrixService {
     if (!text) {
       return;
     }
-    await this.sendMessage(text, { roomId: roomIdOrAlias });
+    await this.sendMessage(text, {
+      accountId: readMatrixAccountId(content) ?? this.getAccountId(),
+      roomId: roomIdOrAlias,
+    });
   }
 
   async sendDirectMessage(roomIdOrAlias: string, content: Content): Promise<void> {
@@ -824,11 +895,7 @@ export class MatrixService extends Service implements IMatrixService {
     const requestedAccountId = normalizeMatrixAccountId(
       target.accountId ?? readMatrixAccountId(content, target) ?? this.getAccountId()
     );
-    if (requestedAccountId !== this.getAccountId()) {
-      throw new Error(
-        `Matrix account '${requestedAccountId}' is not available in this service instance`
-      );
-    }
+    this.getState(requestedAccountId);
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
     if (!text) {
@@ -850,8 +917,36 @@ export class MatrixService extends Service implements IMatrixService {
     }
 
     await this.sendMessage(text, {
+      accountId: requestedAccountId,
       roomId: roomIdOrAlias,
       ...extractMatrixSendOptions(content, target),
     });
+  }
+
+  private getState(accountId = this.defaultAccountId): MatrixAccountState {
+    const normalized = normalizeMatrixAccountId(accountId);
+    const states = this.states ?? new Map<string, MatrixAccountState>();
+    const state = states.get(normalized);
+    if (state) {
+      return state;
+    }
+
+    const legacy = this as {
+      settings?: MatrixSettings;
+      client?: sdk.MatrixClient;
+      connected?: boolean;
+      syncing?: boolean;
+    };
+    if (legacy.settings) {
+      return {
+        accountId: normalizeMatrixAccountId(legacy.settings.accountId ?? normalized),
+        settings: legacy.settings,
+        client: legacy.client ?? ({} as sdk.MatrixClient),
+        connected: legacy.connected ?? true,
+        syncing: legacy.syncing ?? true,
+      };
+    }
+
+    throw new Error(`Matrix account '${normalized}' is not available in this service instance`);
   }
 }

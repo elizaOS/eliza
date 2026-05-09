@@ -81,7 +81,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Plugin Loading - Production Flow", () =
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
-      characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+      characterData: { ...mcpTestCharacter },
       characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
     });
     console.log("Test data created");
@@ -246,7 +246,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Chat - Trending Tokens Query", () => {
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
-      characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+      characterData: { ...mcpTestCharacter },
       characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
     });
     console.log("Test data created");

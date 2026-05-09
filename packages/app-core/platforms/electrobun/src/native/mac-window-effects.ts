@@ -18,9 +18,10 @@ type MacEffectsSymbols = {
 	isWindowKey(ptr: Pointer): boolean;
 };
 
-type MacEffectsLib = { symbols: MacEffectsSymbols; close(): void } | null;
+type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
+type MacEffectsLib = LoadedMacEffectsLib | null;
 
-let _lib: MacEffectsLib = undefined as unknown as MacEffectsLib;
+let _lib: MacEffectsLib | undefined;
 
 function loadLib(): MacEffectsLib {
 	const dylibPath = join(import.meta.dir, "../libMacWindowEffects.dylib");
@@ -58,9 +59,9 @@ function loadLib(): MacEffectsLib {
 	}
 }
 
-function getLib(): NonNullable<MacEffectsLib> | null {
+function getLib(): LoadedMacEffectsLib | null {
 	if (process.platform !== "darwin") return null;
-	if (_lib === (undefined as unknown as MacEffectsLib)) {
+	if (_lib === undefined) {
 		_lib = loadLib();
 	}
 	return _lib;

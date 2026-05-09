@@ -454,6 +454,9 @@
         "MORNING_CHECK_IN",
         "NIGHT_CHECKIN",
         "NIGHT_CHECK_IN",
+        "RUN_CHECKIN",
+        "RUN_MORNING_CHECKIN",
+        "RUN_NIGHT_CHECKIN",
         "DAILY_BRIEF"
       ],
       "exampleCalls": [
@@ -1339,6 +1342,17 @@
       ]
     },
     {
+      "name": "GET_TUNNEL_STATUS",
+      "description": "Get the current status of the ngrok tunnel including URL, port, and uptime information. Supports action chaining by providing tunnel metadata for monitoring workflows, health checks, or conditional tunnel management.",
+      "parameters": [],
+      "similes": [
+        "TUNNEL_STATUS",
+        "CHECK_TUNNEL",
+        "NGROK_STATUS",
+        "TUNNEL_INFO"
+      ]
+    },
+    {
       "name": "GLOB",
       "description": "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
       "parameters": [
@@ -2101,6 +2115,151 @@
               "platform": "example",
               "limit": 1,
               "offset": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MUSIC",
+      "description": "Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
+      "parameters": [
+        {
+          "name": "op",
+          "description": "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "playlist",
+              "play_query",
+              "search_youtube",
+              "download",
+              "pause",
+              "resume",
+              "skip",
+              "stop",
+              "queue",
+              "play_audio",
+              "routing",
+              "zones"
+            ]
+          }
+        },
+        {
+          "name": "subaction",
+          "description": "Playlist subaction when op=playlist (save, load, delete, add, …).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Search/play/queue query depending on op.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "description": "Direct media URL when using play_audio.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "playlistName",
+          "description": "Playlist name for playlist ops.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "song",
+          "description": "Song query for playlist add.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Search result limit (YouTube / library helpers).",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true when the underlying operation requires confirmation.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        {
+          "name": "operation",
+          "description": "Structured routing operation when using routing (set_mode, start_route, …).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "description": "Routing mode for routing operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sourceId",
+          "description": "Stream/source id for routing.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "targetIds",
+          "description": "Routing target ids.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
+      "exampleCalls": [
+        {
+          "user": "Use MUSIC with the provided parameters.",
+          "actions": ["MUSIC"],
+          "params": {
+            "MUSIC": {
+              "op": "playlist",
+              "subaction": "example",
+              "query": "example",
+              "url": "example",
+              "playlistName": "example",
+              "song": "example",
+              "limit": 1,
+              "confirmed": false,
+              "operation": "example",
+              "mode": "example",
+              "sourceId": "example",
+              "targetIds": "example"
             }
           }
         }
@@ -3048,6 +3207,23 @@
       ]
     },
     {
+      "name": "START_TUNNEL",
+      "description": "Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.",
+      "parameters": [],
+      "similes": ["OPEN_TUNNEL", "CREATE_TUNNEL", "NGROK_START", "TUNNEL_UP"]
+    },
+    {
+      "name": "STOP_TUNNEL",
+      "description": "Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment actions for automated service management.",
+      "parameters": [],
+      "similes": [
+        "CLOSE_TUNNEL",
+        "SHUTDOWN_TUNNEL",
+        "NGROK_STOP",
+        "TUNNEL_DOWN"
+      ]
+    },
+    {
       "name": "TAILSCALE",
       "description": "Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
       "parameters": [
@@ -3225,6 +3401,88 @@
               "todos": "example",
               "includeCompleted": false,
               "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TUNNEL",
+      "description": "Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+      "parameters": [
+        {
+          "name": "op",
+          "description": "Which tunnel sub-operation to run. One of: start, stop, status.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "parameters",
+          "description": "Parameters forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no parameters.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "similes": [
+        "TAILSCALE",
+        "START_TAILSCALE",
+        "STOP_TAILSCALE",
+        "GET_TAILSCALE_STATUS",
+        "START_TUNNEL",
+        "OPEN_TUNNEL",
+        "CREATE_TUNNEL",
+        "TAILSCALE_UP",
+        "STOP_TUNNEL",
+        "CLOSE_TUNNEL",
+        "TAILSCALE_DOWN",
+        "TAILSCALE_STATUS",
+        "CHECK_TUNNEL",
+        "TUNNEL_INFO",
+        "TUNNEL_STATUS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TUNNEL with the provided parameters.",
+          "actions": ["TUNNEL"],
+          "params": {
+            "TUNNEL": {
+              "op": "example",
+              "parameters": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "UPDATE_LINEAR_ISSUE",
+      "description": "Update an existing Linear issue (title, priority, assignee, status, labels, team)",
+      "parameters": [
+        {
+          "name": "issueId",
+          "description": "Linear issue id or identifier to update.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "update Linear issue",
+      "similes": [
+        "update-linear-issue",
+        "edit-linear-issue",
+        "modify-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use UPDATE_LINEAR_ISSUE with the provided parameters.",
+          "actions": ["UPDATE_LINEAR_ISSUE"],
+          "params": {
+            "UPDATE_LINEAR_ISSUE": {
+              "issueId": "example"
             }
           }
         }

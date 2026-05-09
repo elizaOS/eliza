@@ -21,7 +21,7 @@ import type { ReferralMeResponse } from "@/lib/types/referral-me";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
 import { fetchReferralMe } from "@/lib/utils/referral-me-fetch";
-import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
+import { BrandButton } from "@elizaos/cloud-ui";
 
 export function HeaderInviteButton() {
   const [loading, setLoading] = useState(false);

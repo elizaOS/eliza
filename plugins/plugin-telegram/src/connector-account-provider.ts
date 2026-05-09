@@ -17,13 +17,13 @@ import type {
   ConnectorAccountPatch,
   ConnectorAccountProvider,
   IAgentRuntime,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledTelegramAccounts,
   resolveTelegramAccount,
-} from './accounts';
-import { TELEGRAM_SERVICE_NAME } from './constants';
+} from "./accounts";
+import { TELEGRAM_SERVICE_NAME } from "./constants";
 
 function nowMs(): number {
   return Date.now();
@@ -43,17 +43,17 @@ function synthesizeAccount(
     id: accountId,
     provider: TELEGRAM_SERVICE_NAME,
     label: name ?? `Telegram (${accountId})`,
-    role: 'AGENT',
-    purpose: ['messaging'],
-    accessGate: 'open',
-    status: 'connected',
+    role: "AGENT",
+    purpose: ["messaging"],
+    accessGate: "open",
+    status: "connected",
     externalId,
     displayHandle: name,
     createdAt: nowMs(),
     updatedAt: nowMs(),
     metadata: {
       synthesized: true,
-      source: 'env',
+      source: "env",
     },
   };
 }
@@ -63,7 +63,7 @@ export function createTelegramConnectorAccountProvider(
 ): ConnectorAccountProvider {
   return {
     provider: TELEGRAM_SERVICE_NAME,
-    label: 'Telegram',
+    label: "Telegram",
 
     listAccounts: async (
       manager: ConnectorAccountManager,
@@ -104,10 +104,10 @@ export function createTelegramConnectorAccountProvider(
       return {
         ...input,
         provider: TELEGRAM_SERVICE_NAME,
-        role: input.role ?? 'AGENT',
-        purpose: input.purpose ?? ['messaging'],
-        accessGate: input.accessGate ?? 'open',
-        status: input.status ?? 'connected',
+        role: input.role ?? "AGENT",
+        purpose: input.purpose ?? ["messaging"],
+        accessGate: input.accessGate ?? "open",
+        status: input.status ?? "connected",
       };
     },
 

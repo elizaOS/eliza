@@ -240,7 +240,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/typescript/index.node.ts",
+      "plugins/plugin-sql/src/index.node.ts",
     ),
   },
   {
@@ -258,14 +258,14 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-sql\/drizzle$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/typescript/drizzle/index.ts",
+      "plugins/plugin-sql/src/drizzle/index.ts",
     ),
   },
   {
     find: /^@elizaos\/plugin-sql\/(.+)$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/typescript/$1",
+      "plugins/plugin-sql/src/$1",
     ),
   },
   {
@@ -427,7 +427,7 @@ export default defineConfig({
       "eliza/plugins/app-wallet/src/**/*.test.tsx",
       "eliza/plugins/app-lifeops/src/**/*.test.ts",
       "packages/plugin-wechat/src/**/*.test.ts",
-      "eliza/plugins/plugin-music-player/src/**/*.test.ts",
+      "eliza/plugins/plugin-music/src/**/*.test.ts",
       "eliza/plugins/plugin-discord/__tests__/**/*.test.ts",
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",

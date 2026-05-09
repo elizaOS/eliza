@@ -11,8 +11,8 @@
  * Implements the OverlayApp Component contract.
  */
 
-import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, PagePanel, Spinner, useApp } from "@elizaos/app-core";
+import type { OverlayAppContext } from "@elizaos/ui";
+import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";

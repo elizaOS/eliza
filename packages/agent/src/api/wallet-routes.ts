@@ -1,19 +1,18 @@
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
 import {
   type CloudWalletDescriptor,
   type CloudWalletProvider,
   ElizaCloudClient,
-} from "@elizaos/plugin-elizacloud/cloud/bridge-client";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
-import {
   getOrCreateClientAddressKey,
+  normalizeCloudSiteUrl,
   persistCloudWalletCache,
   provisionCloudWalletsBestEffort,
-} from "@elizaos/plugin-elizacloud/cloud/cloud-wallet";
+  resolveCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import type {
+  RouteHelpers,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
 } from "@elizaos/shared";
@@ -26,7 +25,6 @@ import type { ElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { persistConfigEnv } from "./config-env.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 import {
   fetchEvmBalances,
   fetchSolanaBalances,

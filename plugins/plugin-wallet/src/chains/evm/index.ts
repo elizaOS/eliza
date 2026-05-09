@@ -21,7 +21,6 @@ export const evmPlugin: Plugin = {
   name: "evm",
   description: "EVM blockchain integration plugin",
   providers: [evmWalletProvider, tokenBalanceProvider],
-  evaluators: [],
   services: [EVMService] as ServiceClass[],
   actions: [walletRouterAction as Action],
 };

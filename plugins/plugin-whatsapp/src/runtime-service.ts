@@ -323,7 +323,9 @@ function registerMessageConnectorIfAvailable(
     withRegistry.registerMessageConnector(registration);
     return;
   }
-  runtime.registerSendHandler(registration.source, registration.sendHandler);
+  if (registration.sendHandler) {
+    runtime.registerSendHandler(registration.source, registration.sendHandler);
+  }
 }
 
 function normalizeBaileysSendTarget(target: string): string {
@@ -390,7 +392,7 @@ function knownWhatsAppTargetToConnectorTarget(
       {
         source: "whatsapp",
         channelId: known.chatId,
-        entityId: known.senderId as unknown as UUID,
+        entityId: known.senderId,
         roomId: known.roomId,
       },
       accountId
@@ -420,7 +422,7 @@ function directWhatsAppTarget(
       {
         source: "whatsapp",
         channelId: normalized,
-        entityId: normalized as unknown as UUID,
+        entityId: normalized,
       },
       accountId
     ),
@@ -553,7 +555,7 @@ export class WhatsAppConnectorService extends Service {
   private configs: Map<string, RuntimeServiceConfig> = new Map();
   private phoneNumbers: Map<string, string> = new Map();
   private client: BaileysClient | WhatsAppClient | null = null;
-  config: RuntimeServiceConfig | null = null;
+  config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -579,7 +581,7 @@ export class WhatsAppConnectorService extends Service {
     const normalizedAccountId = this.resolveAccountId(accountId);
     return (
       this.configs.get(normalizedAccountId) ??
-      (normalizedAccountId === this.defaultAccountId ? this.config : null)
+      (normalizedAccountId === this.defaultAccountId ? (this.config ?? null) : null)
     );
   }
 
@@ -854,7 +856,7 @@ export class WhatsAppConnectorService extends Service {
     this.configs.clear();
     this.phoneNumbers.clear();
     this.client = null;
-    this.config = null;
+    this.config = undefined;
     this.connected = false;
     this.phoneNumber = null;
   }
@@ -1085,7 +1087,7 @@ export class WhatsAppConnectorService extends Service {
     await this.runtime.ensureConnection({
       entityId,
       roomId,
-      userId: normalizedSender as unknown as UUID,
+      userId: normalizedSender,
       userName: normalizedSender,
       name: normalizedSender,
       source: "whatsapp",
@@ -1175,18 +1177,12 @@ export class WhatsAppConnectorService extends Service {
           username: normalizedSender,
         },
         whatsapp: {
-          accountId,
-          id: normalizedSender,
-          userId: normalizedSender,
-          username: normalizedSender,
-          userName: normalizedSender,
-          name: normalizedSender,
-          chatId: params.chatId,
+          contactId: normalizedSender,
           messageId: params.externalMessageId,
         },
         rawChatId: params.chatId,
         rawSenderId: params.senderId,
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: params.createdAt,
     };
 
@@ -1238,13 +1234,12 @@ export class WhatsAppConnectorService extends Service {
             chatType: channelType,
             messageIdFull: externalResponseId,
             whatsapp: {
-              accountId,
-              chatId: params.chatId,
+              contactId: params.chatId,
               messageId: externalResponseId,
             },
             rawChatId: params.chatId,
             externalMessageId: externalResponseId,
-          } as unknown as Memory["metadata"],
+          } satisfies Memory["metadata"],
           createdAt: Date.now(),
         });
       }

@@ -172,20 +172,22 @@ export class ActivityTrackerService extends Service {
     if (!runtime) return;
     const agentId = String(runtime.agentId);
     const observedAt = new Date(event.ts).toISOString();
-    const eventKind = isSystemInactivityApp({
+    const rawEventKind = isSystemInactivityApp({
       bundleId: event.bundleId,
       appName: event.appName,
       platform: process.platform,
     })
       ? "deactivate"
       : event.event;
+    const eventKind: "activate" | "deactivate" =
+      rawEventKind === "activate" ? "activate" : "deactivate";
     try {
       await insertActivityEvent(runtime, {
         agentId,
         observedAt,
         eventKind,
-        bundleId: event.bundleId,
-        appName: event.appName,
+        bundleId: event.bundleId ?? "",
+        appName: event.appName ?? "",
         windowTitle: event.windowTitle ?? null,
       });
       this.writeFailures = 0;

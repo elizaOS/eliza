@@ -42,37 +42,6 @@ const BINARY_EXTENSIONS = new Set([
   ".dll",
   ".so",
 ]);
-const UPSTREAM_COMPATIBILITY_FILES = [
-  {
-    path: "packages/shared/src/env-utils.impl.d.ts",
-    sourceSibling: "packages/shared/src/env-utils.impl.ts",
-    contents:
-      "export declare function isTruthyEnvValue(value: string | undefined | null): boolean;\n",
-  },
-  {
-    path: "packages/shared/src/env-utils.impl.js",
-    sourceSibling: "packages/shared/src/env-utils.impl.ts",
-    contents: `/**
- * Shared environment variable utilities (JavaScript module so Node ESM can resolve
- * \`./env-utils.impl.js\` when workspace packages load TypeScript sources directly).
- */
-
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
-
-/**
- * Returns true when value is a commonly-accepted truthy env string
- * (\`1\`, \`true\`, \`yes\`, \`on\` — case-insensitive, trimmed).
- * @param {string | undefined | null} value
- * @returns {boolean}
- */
-export function isTruthyEnvValue(value) {
-  if (value == null) return false;
-  return TRUTHY.has(String(value).trim().toLowerCase());
-}
-`,
-  },
-] as const;
-
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -156,6 +125,45 @@ function replaceAll(
   }
   return next;
 }
+
+function requireStringKeys<T extends Record<string, string>>(
+  values: Record<string, string>,
+  keys: readonly (keyof T & string)[],
+  templateId: TemplateDefinition["id"],
+): T {
+  const missing = keys.filter((key) => typeof values[key] !== "string");
+  if (missing.length > 0) {
+    throw new Error(
+      `Template "${templateId}" values missing required keys: ${missing.join(", ")}`,
+    );
+  }
+  return values as T;
+}
+
+const PLUGIN_TEMPLATE_VALUE_KEYS = [
+  "displayName",
+  "elizaVersion",
+  "githubUsername",
+  "pluginBaseName",
+  "pluginDescription",
+  "pluginSnake",
+  "repoUrl",
+] as const satisfies readonly (keyof PluginTemplateValues & string)[];
+
+const FULLSTACK_TEMPLATE_VALUE_KEYS = [
+  "appName",
+  "appUrl",
+  "bugReportUrl",
+  "bundleId",
+  "docsUrl",
+  "fileExtension",
+  "hashtag",
+  "orgName",
+  "packageScope",
+  "projectSlug",
+  "releaseBaseUrl",
+  "repoName",
+] as const satisfies readonly (keyof FullstackTemplateValues & string)[];
 
 function normalizeKebabCase(value: string): string {
   const normalized = value
@@ -267,11 +275,19 @@ export function getTemplateReplacementEntries(options: {
 }): Array<[string, string]> {
   if (options.templateId === "plugin") {
     return getPluginReplacementEntries(
-      options.values as unknown as PluginTemplateValues,
+      requireStringKeys<PluginTemplateValues>(
+        options.values,
+        PLUGIN_TEMPLATE_VALUE_KEYS,
+        options.templateId,
+      ),
     );
   }
   return getFullstackReplacementEntries(
-    options.values as unknown as FullstackTemplateValues,
+    requireStringKeys<FullstackTemplateValues>(
+      options.values,
+      FULLSTACK_TEMPLATE_VALUE_KEYS,
+      options.templateId,
+    ),
   );
 }
 
@@ -401,30 +417,6 @@ export function ensurePackageJsonWorkspaces(
     "utf8",
   );
   return true;
-}
-
-export function ensureUpstreamCompatibilityFiles(
-  submoduleRoot: string,
-): string[] {
-  const created: string[] = [];
-
-  for (const file of UPSTREAM_COMPATIBILITY_FILES) {
-    const targetPath = path.join(submoduleRoot, file.path);
-    if (fs.existsSync(targetPath)) {
-      continue;
-    }
-
-    const sourceSiblingPath = path.join(submoduleRoot, file.sourceSibling);
-    if (!fs.existsSync(sourceSiblingPath)) {
-      continue;
-    }
-
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, file.contents, "utf8");
-    created.push(file.path);
-  }
-
-  return created;
 }
 
 export function buildMetadata(options: {
@@ -598,7 +590,6 @@ export function hydrateGitSubmoduleWorkspace(options: {
     path.join(submoduleRoot, "package.json"),
     options.upstream.requiredWorkspaces ?? [],
   );
-  ensureUpstreamCompatibilityFiles(submoduleRoot);
 }
 
 export function initializeGitSubmodule(options: {

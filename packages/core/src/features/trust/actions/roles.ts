@@ -14,7 +14,7 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const canModifyRole = (
 	currentRole: Role,
@@ -163,7 +163,7 @@ export const updateRoleAction: ElizaAction = {
 			extractRoleAssignments(params.roleAssignments).length > 0;
 		return (
 			hasStructuredAssignments ||
-			hasActionContextOrKeyword(message, state, {
+			hasActionContext(message, state, {
 				contexts: ["admin", "settings"],
 				keywords: [
 					"update role",

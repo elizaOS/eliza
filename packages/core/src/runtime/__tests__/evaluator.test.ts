@@ -21,6 +21,36 @@ describe("v5 evaluator skeleton", () => {
 		});
 	});
 
+	it("rejects evaluator text that contains multiple JSON objects", () => {
+		const output = parseEvaluatorOutput(`{
+  "action": "OPEN_URL",
+  "url": "https://example.test"
+}{
+  "success": false,
+  "decision": "CONTINUE",
+  "thought": "Need one more grounded tool result."
+}`);
+
+		expect(output.success).toBe(false);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.parseError).toBe("response is not a single JSON object");
+		expect(output.thought).toContain("Invalid evaluator output");
+	});
+
+	it("does not salvage claimed success from malformed evaluator text", () => {
+		const output = parseEvaluatorOutput(`{
+  "content": "pretend document body"
+}{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Saved the document."
+}`);
+
+		expect(output.success).toBe(false);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.parseError).toBe("response is not a single JSON object");
+	});
+
 	it("applies message and clipboard effects through injected callbacks", async () => {
 		const copyToClipboard = vi.fn();
 		const messageToUser = vi.fn();

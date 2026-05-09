@@ -64,11 +64,11 @@ function errorMessage(err: unknown): string {
 }
 
 function getRuntimeCaptureHooks(
-  runtime: IAgentRuntime,
+	runtime: IAgentRuntime,
 ): RuntimeCaptureHooks | null {
-  const hooks = (runtime as unknown as Record<PropertyKey, unknown>)[
-    RUNTIME_CAPTURE_HOOK
-  ];
+	const hooks = (runtime as { [RUNTIME_CAPTURE_HOOK]?: unknown })[
+		RUNTIME_CAPTURE_HOOK
+	];
   if (!hooks || typeof hooks !== "object") {
     return null;
   }
@@ -516,7 +516,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
 
-  (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK] = {
+  (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[RUNTIME_CAPTURE_HOOK] = {
     approvalRequests,
     connectorDispatches,
     stateTransitions,
@@ -603,7 +603,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     };
     wrapped[INTERCEPTOR_MARKER] = true;
 
-    action.handler = wrapped as unknown as Action["handler"];
+    action.handler = wrapped as Action["handler"];
     restoreFns.push(() => {
       action.handler = original;
     });
@@ -616,18 +616,14 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     unique?: boolean,
   ) => Promise<unknown>;
 
-  const rt = runtime as unknown as {
-    createMemory?: CreateMemoryFn;
-    [k: string]: unknown;
-  };
-  if (isCallable(rt.createMemory)) {
-    const originalCreateMemory = rt.createMemory as CreateMemoryFn & {
-      [INTERCEPTOR_MARKER]?: true;
-    };
-    if (!originalCreateMemory[INTERCEPTOR_MARKER]) {
-      const wrappedCreate: CreateMemoryFn & {
-        [INTERCEPTOR_MARKER]?: true;
-      } = async (memory: Memory, tableName: string, unique?: boolean) => {
+  const originalCreateMemory = Reflect.get(runtime, "createMemory");
+  if (isCallable(originalCreateMemory)) {
+    if (Reflect.get(originalCreateMemory, INTERCEPTOR_MARKER) !== true) {
+      const wrappedCreate: CreateMemoryFn = async (
+        memory: Memory,
+        tableName: string,
+        unique?: boolean,
+      ) => {
         memoryWrites.push({
           table: tableName,
           entityId:
@@ -638,27 +634,22 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
           content: memory.content,
           createdAt: new Date().toISOString(),
         });
-        return originalCreateMemory.call(rt, memory, tableName, unique);
+        return originalCreateMemory(memory, tableName, unique);
       };
-      wrappedCreate[INTERCEPTOR_MARKER] = true;
-      rt.createMemory = wrappedCreate;
+      Reflect.set(wrappedCreate, INTERCEPTOR_MARKER, true);
+      Reflect.set(runtime, "createMemory", wrappedCreate);
       restoreFns.push(() => {
-        rt.createMemory = originalCreateMemory;
+        Reflect.set(runtime, "createMemory", originalCreateMemory);
       });
     }
   }
 
   type CreateTaskFn = (task: Task) => Promise<unknown>;
-  if (isCallable((rt as { createTask?: CreateTaskFn }).createTask)) {
-    const originalCreateTask = (rt as { createTask: CreateTaskFn })
-      .createTask as CreateTaskFn & {
-      [INTERCEPTOR_MARKER]?: true;
-    };
-    if (!originalCreateTask[INTERCEPTOR_MARKER]) {
-      const wrappedCreateTask: CreateTaskFn & {
-        [INTERCEPTOR_MARKER]?: true;
-      } = async (task: Task) => {
-        const createdTaskId = await originalCreateTask.call(rt, task);
+  const originalCreateTask = Reflect.get(runtime, "createTask");
+  if (isCallable(originalCreateTask)) {
+    if (Reflect.get(originalCreateTask, INTERCEPTOR_MARKER) !== true) {
+      const wrappedCreateTask: CreateTaskFn = async (task: Task) => {
+        const createdTaskId = await originalCreateTask(task);
         if (typeof createdTaskId === "string") {
           const captured = inferApprovalRequest(createdTaskId, task);
           if (captured) {
@@ -674,10 +665,10 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         }
         return createdTaskId;
       };
-      wrappedCreateTask[INTERCEPTOR_MARKER] = true;
-      (rt as { createTask: CreateTaskFn }).createTask = wrappedCreateTask;
+      Reflect.set(wrappedCreateTask, INTERCEPTOR_MARKER, true);
+      Reflect.set(runtime, "createTask", wrappedCreateTask);
       restoreFns.push(() => {
-        (rt as { createTask: CreateTaskFn }).createTask = originalCreateTask;
+        Reflect.set(runtime, "createTask", originalCreateTask);
       });
     }
   }
@@ -698,7 +689,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       artifacts.length = 0;
     },
     detach(): void {
-      delete (runtime as unknown as Record<PropertyKey, unknown>)[
+      delete (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[
         RUNTIME_CAPTURE_HOOK
       ];
       for (const restore of restoreFns) restore();

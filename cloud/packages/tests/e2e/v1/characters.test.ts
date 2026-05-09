@@ -1,6 +1,9 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
 import { NONEXISTENT_UUID } from "../helpers/test-data";
+
+type AppsResponse = { apps?: unknown[] } | unknown[];
 
 /**
  * Characters, Apps & Gallery API E2E Tests
@@ -32,8 +35,9 @@ describe("Apps API", () => {
   test("GET /api/v1/apps returns app list", async () => {
     const response = await api.get("/api/v1/apps", { authenticated: true });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
-    expect(Array.isArray(body.apps || body)).toBe(true);
+    const body = await readJson<AppsResponse>(response);
+    const apps = Array.isArray(body) ? body : (body.apps ?? []);
+    expect(Array.isArray(apps)).toBe(true);
   });
 
   test("POST /api/v1/apps requires auth", async () => {

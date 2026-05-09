@@ -14,10 +14,13 @@ vi.mock("@elizaos/core", () => {
     EventType: {
       MODEL_USED: "MODEL_USED",
     },
+    buildCanonicalSystemPrompt: ({
+      character,
+    }: {
+      character?: { system?: string | null } | null;
+    }) => character?.system?.trim() || "",
     ModelType: {
       ACTION_PLANNER: "ACTION_PLANNER",
-      OBJECT_LARGE: "OBJECT_LARGE",
-      OBJECT_SMALL: "OBJECT_SMALL",
       RESPONSE_HANDLER: "RESPONSE_HANDLER",
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_MEGA: "TEXT_MEGA",
@@ -55,6 +58,26 @@ vi.mock("@elizaos/core", () => {
       }
       return result;
     },
+    renderChatMessagesForPrompt: (
+      messages?: Array<{ role?: string; content?: unknown }>,
+      options?: { omitDuplicateSystem?: string }
+    ) => {
+      if (!Array.isArray(messages) || messages.length === 0) return undefined;
+      return messages
+        .filter(
+          (message) =>
+            !(
+              message.role === "system" &&
+              typeof message.content === "string" &&
+              message.content.trim() === options?.omitDuplicateSystem?.trim()
+            )
+        )
+        .map((message) =>
+          typeof message.content === "string" ? `${message.role ?? "user"}: ${message.content}` : ""
+        )
+        .filter(Boolean)
+        .join("\n");
+    },
     runWithTrajectoryContext: async (
       context: { trajectoryStepId?: string },
       fn: () => Promise<unknown>
@@ -66,6 +89,22 @@ vi.mock("@elizaos/core", () => {
       } finally {
         trajectoryContext = previous;
       }
+    },
+    resolveEffectiveSystemPrompt: ({
+      params,
+      fallback,
+    }: {
+      params?: { system?: unknown; messages?: Array<{ role?: string; content?: string }> };
+      fallback?: string | null;
+    }) => {
+      if (params && Object.hasOwn(params, "system")) {
+        return typeof params.system === "string" ? params.system.trim() : undefined;
+      }
+      const first = params?.messages?.[0];
+      if (first?.role === "system" && typeof first.content === "string") {
+        return first.content.trim() || undefined;
+      }
+      return fallback?.trim() || undefined;
     },
   };
 });

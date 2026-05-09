@@ -103,7 +103,7 @@ jobs:
             # /opt/eliza/cloud so the worker's deps end up in cloud/node_modules.
             #
             # No --frozen-lockfile: cloud/bun.lock currently has a duplicate
-            # package path for @elizaos/plugin-n8n-workflow (workspace + registry
+            # package path for @elizaos/plugin-workflow (workspace + registry
             # entries for the same name) that bun rejects under frozen mode.
             # Cloud-CF deploys hit the same upstream bug; until the lockfile is
             # cleaned at source, allow bun to recompute the deps tree.

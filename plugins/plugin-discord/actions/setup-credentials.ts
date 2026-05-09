@@ -52,6 +52,14 @@ interface SetupSession {
 	startedAt: number;
 }
 
+function readRoomChannelId(room: unknown): string | undefined {
+	if (!room || typeof room !== "object" || !("channelId" in room)) {
+		return undefined;
+	}
+	const channelId = room.channelId;
+	return typeof channelId === "string" ? channelId : undefined;
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -445,12 +453,6 @@ function detectSetupIntent(text: string): string | null | undefined {
 	return undefined;
 }
 
-function isSetupTrigger(text: string): boolean {
-	return TRIGGER_PATTERNS.some((pattern) =>
-		pattern.test(text.toLowerCase().trim()),
-	);
-}
-
 function buildServiceListMessage(): string {
 	const services = listPresets()
 		.filter((presetName) => presetName !== "generic")
@@ -534,9 +536,8 @@ export const setupCredentials: Action = {
 		if (message.content.source !== "discord") {
 			return false;
 		}
-		const text = message.content.text?.trim() ?? "";
 		const userId = message.entityId as string;
-		return activeSessions.has(userId) || isSetupTrigger(text);
+		return activeSessions.has(userId) || Boolean(userId);
 	},
 	handler: async (
 		runtime: IAgentRuntime,
@@ -562,10 +563,7 @@ export const setupCredentials: Action = {
 		const text = message.content.text?.trim() ?? "";
 		const userId = message.entityId as string;
 		const room = state?.data?.room || (await runtime.getRoom(message.roomId));
-		const channelId =
-			((room as unknown as Record<string, unknown> | undefined)?.channelId as
-				| string
-				| undefined) || (message.roomId as string);
+		const channelId = readRoomChannelId(room) || (message.roomId as string);
 
 		cleanExpiredSessions();
 

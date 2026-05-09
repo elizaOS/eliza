@@ -19,6 +19,7 @@
 import fs from "node:fs/promises";
 import { getDefaultAccountPool } from "../account-pool";
 import { deviceBridge } from "./device-bridge";
+import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
 import type { AgentModelSlot } from "./types";
@@ -84,7 +85,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Local llama.cpp",
   kind: "local",
   description:
-    "On-device inference using node-llama-cpp. Free, private, runs on your machine's CPU/GPU.",
+    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed.",
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the
@@ -97,9 +98,12 @@ const LOCAL_PROVIDER: ProviderDefinition = {
       const hasModel = entries.some(
         (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
       );
-      return hasModel
-        ? { enabled: true, reason: "GGUF model installed" }
-        : { enabled: false, reason: "No local model installed" };
+      if (!hasModel)
+        return { enabled: false, reason: "No local model installed" };
+      const dflash = getDflashRuntimeStatus();
+      return dflash.enabled
+        ? { enabled: true, reason: "GGUF model installed; DFlash available" }
+        : { enabled: true, reason: "GGUF model installed" };
     } catch {
       return { enabled: false, reason: "No local model installed" };
     }
@@ -168,7 +172,7 @@ const ANTHROPIC_PROVIDER: ProviderDefinition = {
   label: "Anthropic API",
   kind: "cloud-api",
   description: "Claude models via the Anthropic API. Requires an API key.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.ANTHROPIC_API_KEY?.trim();
     return key
@@ -183,13 +187,7 @@ const OPENAI_PROVIDER: ProviderDefinition = {
   label: "OpenAI API",
   kind: "cloud-api",
   description: "GPT models via the OpenAI API. Requires an API key.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-    "OBJECT_SMALL",
-    "OBJECT_LARGE",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.OPENAI_API_KEY?.trim();
     return key
@@ -221,13 +219,7 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   kind: "cloud-subscription",
   description:
     "Eliza-hosted inference routed through your subscription. No API key to manage.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-    "OBJECT_SMALL",
-    "OBJECT_LARGE",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const token =
       process.env.ELIZA_CLOUD_TOKEN?.trim() ??
@@ -250,7 +242,7 @@ const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
   // subscription path (Anthropic does not ship an embeddings endpoint), so
   // TEXT_EMBEDDING is intentionally omitted — that slot needs a separate
   // API-key provider.
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return subscriptionEnableState("anthropic-subscription");
   },
@@ -262,7 +254,7 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
   label: "Codex subscription",
   kind: "cloud-subscription",
   description: "Codex and ChatGPT subscription access through linked accounts.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return subscriptionEnableState("openai-codex");
   },
@@ -274,7 +266,7 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
   label: "Google (Gemini)",
   kind: "cloud-api",
   description: "Gemini models via Google Generative AI. Requires an API key.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key =
       process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim();
@@ -305,7 +297,7 @@ const DEEPSEEK_PROVIDER: ProviderDefinition = {
   label: "DeepSeek API",
   kind: "cloud-api",
   description: "DeepSeek models via API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("deepseek-api", ["DEEPSEEK_API_KEY"]);
   },
@@ -317,7 +309,7 @@ const ZAI_PROVIDER: ProviderDefinition = {
   label: "z.ai API",
   kind: "cloud-api",
   description: "GLM models via z.ai API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("zai-api", [
       "ZAI_API_KEY",
@@ -332,7 +324,7 @@ const MOONSHOT_PROVIDER: ProviderDefinition = {
   label: "Kimi / Moonshot API",
   kind: "cloud-api",
   description: "Kimi models via Moonshot API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("moonshot-api", [
       "MOONSHOT_API_KEY",

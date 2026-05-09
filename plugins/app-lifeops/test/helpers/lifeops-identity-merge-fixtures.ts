@@ -2,7 +2,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import {
   type AgentRuntime,
   ChannelType,
@@ -331,7 +331,7 @@ export async function getCanonicalIdentityGraph(
 ): Promise<RelationshipsGraphService> {
   const graph = runtime.getService(
     "relationships",
-  ) as unknown as RelationshipsGraphService | null;
+  ) as RelationshipsGraphService | null;
   if (!graph) {
     throw new Error("relationships graph service unavailable");
   }

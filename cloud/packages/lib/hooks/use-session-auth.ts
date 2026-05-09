@@ -28,8 +28,13 @@ type ImportMetaEnvLike = {
   env?: Record<string, string | undefined>;
 };
 
+function hasViteEnv(meta: ImportMeta): meta is ImportMeta & ImportMetaEnvLike {
+  const env = (meta as ImportMetaEnvLike).env;
+  return typeof env === "object" && env !== null;
+}
+
 function getViteEnvFlag(name: string): string | undefined {
-  return (import.meta as unknown as ImportMetaEnvLike).env?.[name];
+  return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
@@ -151,7 +156,7 @@ export function useSessionAuth(): SessionAuthState {
   const stewardAuthenticated =
     providerAuth.isAuthenticated || storageUser !== null || playwrightTestUser !== null;
 
-  const ready = !providerAuth.isLoading;
+  const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
   const authenticated = stewardAuthenticated;
   const authSource: SessionAuthSource = stewardAuthenticated ? "steward" : "none";
 

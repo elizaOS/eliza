@@ -330,7 +330,7 @@ function buildBrokerMessage(args: {
     entityId,
     roomId,
     ...(worldId ? { worldId } : {}),
-  } as unknown as Memory;
+  } as Memory;
 }
 
 function extractResultText(

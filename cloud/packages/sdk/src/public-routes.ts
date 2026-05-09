@@ -9,7 +9,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/elevenlabs/voices/{id}": { method: "DELETE", path: "/api/elevenlabs/voices/{id}", methodName: "deleteApiElevenlabsVoicesById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/elevenlabs/voices/[id]/route.ts" },
   "DELETE /api/v1/advertising/accounts/{id}": { method: "DELETE", path: "/api/v1/advertising/accounts/{id}", methodName: "deleteApiV1AdvertisingAccountsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/[id]/route.ts" },
   "DELETE /api/v1/advertising/campaigns/{id}": { method: "DELETE", path: "/api/v1/advertising/campaigns/{id}", methodName: "deleteApiV1AdvertisingCampaignsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/[id]/route.ts" },
-  "DELETE /api/v1/agents/{agentId}/n8n/{path}": { method: "DELETE", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "deleteApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "DELETE /api/v1/agents/{agentId}/publish": { method: "DELETE", path: "/api/v1/agents/{agentId}/publish", methodName: "deleteApiV1AgentsByAgentIdPublish", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/publish/route.ts" },
   "DELETE /api/v1/api-keys/{id}": { method: "DELETE", path: "/api/v1/api-keys/{id}", methodName: "deleteApiV1ApiKeysById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/route.ts" },
   "DELETE /api/v1/apis/storage/objects/{key}": { method: "DELETE", path: "/api/v1/apis/storage/objects/{key}", methodName: "deleteApiV1ApisStorageObjectsByKey", responseMode: "json", pathParams: ["key"], catchAllPathParams: ["key"], file: "apps/api/v1/apis/storage/objects/[...key]/route.ts" },
@@ -60,7 +59,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/agents/{agentId}": { method: "GET", path: "/api/v1/agents/{agentId}", methodName: "getApiV1AgentsByAgentId", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/route.ts" },
   "GET /api/v1/agents/{agentId}/logs": { method: "GET", path: "/api/v1/agents/{agentId}/logs", methodName: "getApiV1AgentsByAgentIdLogs", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/logs/route.ts" },
   "GET /api/v1/agents/{agentId}/monetization": { method: "GET", path: "/api/v1/agents/{agentId}/monetization", methodName: "getApiV1AgentsByAgentIdMonetization", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/monetization/route.ts" },
-  "GET /api/v1/agents/{agentId}/n8n/{path}": { method: "GET", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "getApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "GET /api/v1/agents/{agentId}/status": { method: "GET", path: "/api/v1/agents/{agentId}/status", methodName: "getApiV1AgentsByAgentIdStatus", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/status/route.ts" },
   "GET /api/v1/agents/{agentId}/usage": { method: "GET", path: "/api/v1/agents/{agentId}/usage", methodName: "getApiV1AgentsByAgentIdUsage", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/usage/route.ts" },
   "GET /api/v1/agents/by-token": { method: "GET", path: "/api/v1/agents/by-token", methodName: "getApiV1AgentsByToken", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/agents/by-token/route.ts" },
@@ -124,6 +122,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/discord/status": { method: "GET", path: "/api/v1/discord/status", methodName: "getApiV1DiscordStatus", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/status/route.ts" },
   "GET /api/v1/discovery": { method: "GET", path: "/api/v1/discovery", methodName: "getApiV1Discovery", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discovery/route.ts" },
   "GET /api/v1/documents": { method: "GET", path: "/api/v1/documents", methodName: "getApiV1Documents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/route.ts" },
+  "GET /api/v1/documents/{id}": { method: "GET", path: "/api/v1/documents/{id}", methodName: "getApiV1DocumentsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/documents/[id]/route.ts" },
   "GET /api/v1/documents/check": { method: "GET", path: "/api/v1/documents/check", methodName: "getApiV1DocumentsCheck", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/documents/check/route.ts" },
   "GET /api/v1/domains": { method: "GET", path: "/api/v1/domains", methodName: "getApiV1Domains", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/route.ts" },
   "GET /api/v1/domains/resolve": { method: "GET", path: "/api/v1/domains/resolve", methodName: "getApiV1DomainsResolve", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/resolve/route.ts" },
@@ -216,7 +215,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/x402": { method: "GET", path: "/api/v1/x402", methodName: "getApiV1X402", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/x402/route.ts" },
   "PATCH /api/elevenlabs/voices/{id}": { method: "PATCH", path: "/api/elevenlabs/voices/{id}", methodName: "patchApiElevenlabsVoicesById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/elevenlabs/voices/[id]/route.ts" },
   "PATCH /api/v1/advertising/campaigns/{id}": { method: "PATCH", path: "/api/v1/advertising/campaigns/{id}", methodName: "patchApiV1AdvertisingCampaignsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/[id]/route.ts" },
-  "PATCH /api/v1/agents/{agentId}/n8n/{path}": { method: "PATCH", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "patchApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "PATCH /api/v1/api-keys/{id}": { method: "PATCH", path: "/api/v1/api-keys/{id}", methodName: "patchApiV1ApiKeysById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/route.ts" },
   "PATCH /api/v1/apps/{id}": { method: "PATCH", path: "/api/v1/apps/{id}", methodName: "patchApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
   "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { method: "PATCH", path: "/api/v1/apps/{id}/domains/{domain}/dns/{recordId}", methodName: "patchApiV1AppsByIdDomainsByDomainDnsByRecordId", responseMode: "json", pathParams: ["id", "domain", "recordId"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts" },
@@ -243,7 +241,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/affiliates": { method: "POST", path: "/api/v1/affiliates", methodName: "postApiV1Affiliates", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/affiliates/route.ts" },
   "POST /api/v1/affiliates/link": { method: "POST", path: "/api/v1/affiliates/link", methodName: "postApiV1AffiliatesLink", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/affiliates/link/route.ts" },
   "POST /api/v1/agents": { method: "POST", path: "/api/v1/agents", methodName: "postApiV1Agents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/agents/route.ts" },
-  "POST /api/v1/agents/{agentId}/n8n/{path}": { method: "POST", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "postApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "POST /api/v1/agents/{agentId}/publish": { method: "POST", path: "/api/v1/agents/{agentId}/publish", methodName: "postApiV1AgentsByAgentIdPublish", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/publish/route.ts" },
   "POST /api/v1/agents/{agentId}/restart": { method: "POST", path: "/api/v1/agents/{agentId}/restart", methodName: "postApiV1AgentsByAgentIdRestart", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/restart/route.ts" },
   "POST /api/v1/agents/{agentId}/resume": { method: "POST", path: "/api/v1/agents/{agentId}/resume", methodName: "postApiV1AgentsByAgentIdResume", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/resume/route.ts" },
@@ -380,7 +377,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/x402/verify": { method: "POST", path: "/api/v1/x402/verify", methodName: "postApiV1X402Verify", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/x402/verify/route.ts" },
   "PUT /api/v1/affiliates": { method: "PUT", path: "/api/v1/affiliates", methodName: "putApiV1Affiliates", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/affiliates/route.ts" },
   "PUT /api/v1/agents/{agentId}/monetization": { method: "PUT", path: "/api/v1/agents/{agentId}/monetization", methodName: "putApiV1AgentsByAgentIdMonetization", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/monetization/route.ts" },
-  "PUT /api/v1/agents/{agentId}/n8n/{path}": { method: "PUT", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "putApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "PUT /api/v1/apis/storage/objects/{key}": { method: "PUT", path: "/api/v1/apis/storage/objects/{key}", methodName: "putApiV1ApisStorageObjectsByKey", responseMode: "json", pathParams: ["key"], catchAllPathParams: ["key"], file: "apps/api/v1/apis/storage/objects/[...key]/route.ts" },
   "PUT /api/v1/apps/{id}": { method: "PUT", path: "/api/v1/apps/{id}", methodName: "putApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
   "PUT /api/v1/apps/{id}/characters": { method: "PUT", path: "/api/v1/apps/{id}/characters", methodName: "putApiV1AppsByIdCharacters", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/characters/route.ts" },
@@ -418,7 +414,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/elevenlabs/voices/{id}": { "id": string | number };
   "DELETE /api/v1/advertising/accounts/{id}": { "id": string | number };
   "DELETE /api/v1/advertising/campaigns/{id}": { "id": string | number };
-  "DELETE /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "DELETE /api/v1/agents/{agentId}/publish": { "agentId": string | number };
   "DELETE /api/v1/api-keys/{id}": { "id": string | number };
   "DELETE /api/v1/apis/storage/objects/{key}": { "key": string | number | readonly (string | number)[] };
@@ -469,7 +464,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/agents/{agentId}": { "agentId": string | number };
   "GET /api/v1/agents/{agentId}/logs": { "agentId": string | number };
   "GET /api/v1/agents/{agentId}/monetization": { "agentId": string | number };
-  "GET /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "GET /api/v1/agents/{agentId}/status": { "agentId": string | number };
   "GET /api/v1/agents/{agentId}/usage": { "agentId": string | number };
   "GET /api/v1/agents/by-token": Record<never, never>;
@@ -533,6 +527,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/discord/status": Record<never, never>;
   "GET /api/v1/discovery": Record<never, never>;
   "GET /api/v1/documents": Record<never, never>;
+  "GET /api/v1/documents/{id}": { "id": string | number };
   "GET /api/v1/documents/check": Record<never, never>;
   "GET /api/v1/domains": Record<never, never>;
   "GET /api/v1/domains/resolve": Record<never, never>;
@@ -625,7 +620,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/x402": Record<never, never>;
   "PATCH /api/elevenlabs/voices/{id}": { "id": string | number };
   "PATCH /api/v1/advertising/campaigns/{id}": { "id": string | number };
-  "PATCH /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "PATCH /api/v1/api-keys/{id}": { "id": string | number };
   "PATCH /api/v1/apps/{id}": { "id": string | number };
   "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { "id": string | number; "domain": string | number; "recordId": string | number };
@@ -652,7 +646,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/affiliates": Record<never, never>;
   "POST /api/v1/affiliates/link": Record<never, never>;
   "POST /api/v1/agents": Record<never, never>;
-  "POST /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "POST /api/v1/agents/{agentId}/publish": { "agentId": string | number };
   "POST /api/v1/agents/{agentId}/restart": { "agentId": string | number };
   "POST /api/v1/agents/{agentId}/resume": { "agentId": string | number };
@@ -789,7 +782,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/x402/verify": Record<never, never>;
   "PUT /api/v1/affiliates": Record<never, never>;
   "PUT /api/v1/agents/{agentId}/monetization": { "agentId": string | number };
-  "PUT /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "PUT /api/v1/apis/storage/objects/{key}": { "key": string | number | readonly (string | number)[] };
   "PUT /api/v1/apps/{id}": { "id": string | number };
   "PUT /api/v1/apps/{id}/characters": { "id": string | number };
@@ -938,12 +930,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/advertising/campaigns/{id}">
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/advertising/campaigns/{id}", TResponse>("DELETE /api/v1/advertising/campaigns/{id}", options);
-  }
-
-  deleteApiV1AgentsByAgentIdN8nByPath<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/agents/{agentId}/n8n/{path}">
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/agents/{agentId}/n8n/{path}", TResponse>("DELETE /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   deleteApiV1AgentsByAgentIdPublish<TResponse = unknown>(
@@ -1244,12 +1230,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/agents/{agentId}/monetization">
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/agents/{agentId}/monetization", TResponse>("GET /api/v1/agents/{agentId}/monetization", options);
-  }
-
-  getApiV1AgentsByAgentIdN8nByPath<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/agents/{agentId}/n8n/{path}">
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/agents/{agentId}/n8n/{path}", TResponse>("GET /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   getApiV1AgentsByAgentIdStatus<TResponse = unknown>(
@@ -1628,6 +1608,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/documents"> = {}
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/documents", TResponse>("GET /api/v1/documents", options);
+  }
+
+  getApiV1DocumentsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/documents/{id}">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/documents/{id}", TResponse>("GET /api/v1/documents/{id}", options);
   }
 
   getApiV1DocumentsCheck<TResponse = unknown>(
@@ -2182,12 +2168,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PATCH /api/v1/advertising/campaigns/{id}", TResponse>("PATCH /api/v1/advertising/campaigns/{id}", options);
   }
 
-  patchApiV1AgentsByAgentIdN8nByPath<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/agents/{agentId}/n8n/{path}">
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/agents/{agentId}/n8n/{path}", TResponse>("PATCH /api/v1/agents/{agentId}/n8n/{path}", options);
-  }
-
   patchApiV1ApiKeysById<TResponse = unknown>(
     options: PublicRouteCallOptions<"PATCH /api/v1/api-keys/{id}">
   ): Promise<TResponse> {
@@ -2342,12 +2322,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/agents"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/agents", TResponse>("POST /api/v1/agents", options);
-  }
-
-  postApiV1AgentsByAgentIdN8nByPath<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/agents/{agentId}/n8n/{path}">
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/agents/{agentId}/n8n/{path}", TResponse>("POST /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   postApiV1AgentsByAgentIdPublish<TResponse = unknown>(
@@ -3166,12 +3140,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PUT /api/v1/agents/{agentId}/monetization", TResponse>("PUT /api/v1/agents/{agentId}/monetization", options);
   }
 
-  putApiV1AgentsByAgentIdN8nByPath<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/agents/{agentId}/n8n/{path}">
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/agents/{agentId}/n8n/{path}", TResponse>("PUT /api/v1/agents/{agentId}/n8n/{path}", options);
-  }
-
   putApiV1ApisStorageObjectsByKey<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">
   ): Promise<TResponse> {
@@ -3254,10 +3222,6 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1AdvertisingCampaignsByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/advertising/campaigns/{id}">): Promise<Response> {
     return this.callRaw("DELETE /api/v1/advertising/campaigns/{id}", options);
-  }
-
-  deleteApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"DELETE /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   deleteApiV1AgentsByAgentIdPublishRaw(options: PublicRouteCallOptions<"DELETE /api/v1/agents/{agentId}/publish">): Promise<Response> {
@@ -3458,10 +3422,6 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1AgentsByAgentIdMonetizationRaw(options: PublicRouteCallOptions<"GET /api/v1/agents/{agentId}/monetization">): Promise<Response> {
     return this.callRaw("GET /api/v1/agents/{agentId}/monetization", options);
-  }
-
-  getApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"GET /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
-    return this.callRaw("GET /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   getApiV1AgentsByAgentIdStatusRaw(options: PublicRouteCallOptions<"GET /api/v1/agents/{agentId}/status">): Promise<Response> {
@@ -3714,6 +3674,10 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1DocumentsRaw(options: PublicRouteCallOptions<"GET /api/v1/documents"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/documents", options);
+  }
+
+  getApiV1DocumentsByIdRaw(options: PublicRouteCallOptions<"GET /api/v1/documents/{id}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/documents/{id}", options);
   }
 
   getApiV1DocumentsCheckRaw(options: PublicRouteCallOptions<"GET /api/v1/documents/check"> = {}): Promise<Response> {
@@ -4084,10 +4048,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("PATCH /api/v1/advertising/campaigns/{id}", options);
   }
 
-  patchApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"PATCH /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/agents/{agentId}/n8n/{path}", options);
-  }
-
   patchApiV1ApiKeysByIdRaw(options: PublicRouteCallOptions<"PATCH /api/v1/api-keys/{id}">): Promise<Response> {
     return this.callRaw("PATCH /api/v1/api-keys/{id}", options);
   }
@@ -4190,10 +4150,6 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1AgentsRaw(options: PublicRouteCallOptions<"POST /api/v1/agents"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/agents", options);
-  }
-
-  postApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"POST /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
-    return this.callRaw("POST /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   postApiV1AgentsByAgentIdPublishRaw(options: PublicRouteCallOptions<"POST /api/v1/agents/{agentId}/publish">): Promise<Response> {
@@ -4738,10 +4694,6 @@ export class ElizaCloudPublicRoutesClient {
 
   putApiV1AgentsByAgentIdMonetizationRaw(options: PublicRouteCallOptions<"PUT /api/v1/agents/{agentId}/monetization">): Promise<Response> {
     return this.callRaw("PUT /api/v1/agents/{agentId}/monetization", options);
-  }
-
-  putApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"PUT /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
-    return this.callRaw("PUT /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
   putApiV1ApisStorageObjectsByKeyRaw(options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">): Promise<Response> {

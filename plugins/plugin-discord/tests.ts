@@ -19,7 +19,7 @@ import {
 	ChannelType,
 	Events,
 	type Guild,
-	type Message,
+	Message,
 	type TextChannel,
 } from "discord.js";
 import type { DiscordService } from "./service";
@@ -319,8 +319,10 @@ export class DiscordTestSuite implements TestSuite {
 		try {
 			const channel = await this.getTestChannel(runtime);
 
-			// Create a mock message that satisfies the Message interface requirements
+			// Minimal fixture for the fields MessageManager reads in this smoke test.
 			interface MockMessage {
+				_cacheType: boolean;
+				_patch: () => void;
 				content: string;
 				author: {
 					id: string;
@@ -337,7 +339,9 @@ export class DiscordTestSuite implements TestSuite {
 				attachments: unknown[];
 				interaction?: unknown;
 			}
-			const fakeMessage: MockMessage = {
+			const fakeMessageFields = {
+				_cacheType: true,
+				_patch: () => undefined,
 				content: `Hello, ${runtime.character.name}! How are you?`,
 				author: {
 					id: "mock-user-id",
@@ -352,16 +356,17 @@ export class DiscordTestSuite implements TestSuite {
 				},
 				reference: null,
 				attachments: [],
-			};
+			} satisfies MockMessage;
+			const fakeMessage = Object.assign(
+				Object.create(Message.prototype),
+				fakeMessageFields,
+			) as Message<boolean>;
 			if (!this.discordClient.messageManager) {
 				throw new Error(
 					"MessageManager is not available on the Discord client.",
 				);
 			}
-			// Type assertion through unknown is needed because MockMessage is a minimal test stub
-			await this.discordClient.messageManager.handleMessage(
-				fakeMessage as unknown as Message<boolean>,
-			);
+			await this.discordClient.messageManager.handleMessage(fakeMessage);
 		} catch (error) {
 			throw new Error(`Error in handling message test: ${error}`);
 		}

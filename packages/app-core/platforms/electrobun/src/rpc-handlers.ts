@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
+import { postAgentResetFromMain } from "./agent-reset-from-main";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
@@ -189,6 +190,22 @@ export function registerRpcHandlers(
 		},
 		agentStatus: async () => agent.getStatus(),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
+		/** Renderer `fetch` after native dialogs can stall; main POST matches menu reset pattern. */
+		agentPostReset: async (
+			params?: { apiBase?: string; bearerToken?: string } | null,
+		) => {
+			try {
+				return await postAgentResetFromMain({
+					apiBaseOverride: params?.apiBase ?? null,
+					bearerTokenOverride: params?.bearerToken ?? null,
+				});
+			} catch (err) {
+				logger.error(
+					`[RPC] agentPostReset failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				throw err;
+			}
+		},
 		/** Renderer `fetch` after native dialogs can stall; main POST matches menu reset pattern. */
 		agentPostCloudDisconnect: async (
 			params?: { apiBase?: string; bearerToken?: string } | null,

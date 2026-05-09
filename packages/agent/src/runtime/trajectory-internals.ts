@@ -14,9 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  composePrompt,
   logger as coreLogger,
   type IAgentRuntime,
   ModelType,
+  observationExtractionTemplate,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -52,6 +54,20 @@ export type TrajectoryLoggerLike = {
   providerAccess?: unknown[];
 };
 
+type OrchestratorTrajectoryContext = {
+  source: "orchestrator";
+  decisionType: string;
+  sessionId?: string;
+  taskLabel?: string;
+  repo?: string;
+  workdir?: string;
+  originalTask?: string;
+};
+
+type RuntimeWithOrchestratorTrajectoryContext = {
+  __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
+};
+
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -85,9 +101,9 @@ export type PersistedStep = TrajectoryStep & {
    * `"llm"` by readers.
    */
   kind?: TrajectoryStepKind;
-  /** Step IDs of nested steps (used by `executeCode`). */
+  /** Step IDs of nested trajectory steps. */
   childSteps?: string[];
-  /** Inline script source for `executeCode` steps (capped). */
+  /** Inline script source for script-backed steps (capped). */
   script?: string;
   /** sha256 hex digest of the original script when it exceeded the cap. */
   scriptHash?: string;
@@ -304,16 +320,13 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   };
 }
 
-export function hasEvaluatorNamed(
-  runtime: IAgentRuntime,
-  name: string,
-): boolean {
-  const evaluators = runtime.evaluators;
-  if (!Array.isArray(evaluators)) return false;
+export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
+  const actions = runtime.actions;
+  if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();
-  return evaluators.some((evaluator) => {
-    const evaluatorName = evaluator?.name?.trim().toUpperCase() ?? "";
-    return evaluatorName === target;
+  return actions.some((action) => {
+    const actionName = action?.name?.trim().toUpperCase() ?? "";
+    return actionName === target;
   });
 }
 
@@ -429,7 +442,7 @@ export function truncateRecord(
 }
 
 // ---------------------------------------------------------------------------
-// Script capture helpers (used by executeCode trajectory steps)
+// Script capture helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -508,10 +521,7 @@ export function shouldRunObservationExtraction(
   const explicitValue = toOptionalBoolean(explicitSetting);
   if (explicitValue !== undefined) return explicitValue;
 
-  if (
-    hasEvaluatorNamed(runtime, "REFLECTION") ||
-    hasEvaluatorNamed(runtime, "RELATIONSHIP_EXTRACTION")
-  ) {
+  if (hasActionNamed(runtime, "REFLECTION")) {
     return false;
   }
   return true;
@@ -545,22 +555,6 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   }
   return buffer;
 }
-
-const OBSERVATION_EXTRACTION_PROMPT = `You are analyzing recent conversation exchanges between a user and an AI assistant.
-Extract any durable observations about the user that would be useful across future sessions.
-
-Categories to look for:
-- Preferences (tools, languages, workflows, communication style)
-- Facts (role, location, projects they work on, tech stack)
-- Standing instructions (things they always/never want)
-- Patterns (recurring topics, how they like to work)
-
-Return ONLY a JSON array of short observation strings (max 150 chars each).
-If nothing meaningful is found, return an empty array [].
-Do NOT include observations about the conversation itself, only about the user.
-
-Recent exchanges:
-`;
 
 export function pushChatExchange(
   runtime: IAgentRuntime,
@@ -620,9 +614,13 @@ export async function flushObservationBuffer(
     )
     .join("\n\n");
 
-  const prompt = OBSERVATION_EXTRACTION_PROMPT + exchangeText;
+  const prompt = composePrompt({
+    state: { exchanges: exchangeText },
+    template: observationExtractionTemplate,
+  });
 
-  const runtimeRecord = runtime as unknown as Record<string, unknown>;
+  const runtimeRecord = runtime as IAgentRuntime &
+    RuntimeWithOrchestratorTrajectoryContext;
   try {
     // Tag the call to prevent recursion
     runtimeRecord.__orchestratorTrajectoryCtx = {
@@ -723,7 +721,9 @@ export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
   const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
   const fallbackDb = (
-    runtime as unknown as { databaseAdapter?: { db?: RuntimeDb } }
+    runtime as IAgentRuntime & {
+      databaseAdapter?: { db?: RuntimeDb };
+    }
   ).databaseAdapter?.db;
   const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
@@ -1609,19 +1609,11 @@ export async function saveTrajectory(
 /**
  * Read orchestrator trajectory context from the runtime, if set.
  */
-export function readOrchestratorTrajectoryContext(runtime: unknown):
-  | {
-      source: "orchestrator";
-      decisionType: string;
-      sessionId?: string;
-      taskLabel?: string;
-      repo?: string;
-      workdir?: string;
-      originalTask?: string;
-    }
-  | undefined {
+export function readOrchestratorTrajectoryContext(
+  runtime: unknown,
+): OrchestratorTrajectoryContext | undefined {
   if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as unknown as Record<string, unknown>)
+  const ctx = (runtime as RuntimeWithOrchestratorTrajectoryContext)
     .__orchestratorTrajectoryCtx;
   if (!ctx || typeof ctx !== "object") return undefined;
   const candidate = ctx as Record<string, unknown>;
@@ -1630,15 +1622,7 @@ export function readOrchestratorTrajectoryContext(runtime: unknown):
     typeof candidate.decisionType !== "string"
   )
     return undefined;
-  return candidate as {
-    source: "orchestrator";
-    decisionType: string;
-    sessionId?: string;
-    taskLabel?: string;
-    repo?: string;
-    workdir?: string;
-    originalTask?: string;
-  };
+  return candidate as OrchestratorTrajectoryContext;
 }
 
 // ---------------------------------------------------------------------------

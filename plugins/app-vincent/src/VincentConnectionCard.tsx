@@ -6,7 +6,7 @@
  * the full PKCE-based OAuth flow.
  */
 
-import { Button, StatusDot } from "@elizaos/app-core";
+import { Button, StatusDot } from "@elizaos/ui";
 import { LogIn, LogOut, RefreshCw } from "lucide-react";
 import { useVincentState } from "./useVincentState";
 

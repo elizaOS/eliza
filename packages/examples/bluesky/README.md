@@ -9,7 +9,7 @@ A full-featured AI agent running on Bluesky, implemented in TypeScript, Python, 
   - `shouldRespond` evaluation (LLM-powered decision making)
   - Action planning and execution
   - Response generation via `messageHandlerTemplate`
-  - Evaluator execution
+  - Post-message hooks via `runtime.runActionsByMode("ALWAYS_AFTER", ...)`
   - Memory persistence
 - **basicCapabilities Enabled**: Default actions (REPLY, IGNORE, NONE) work out of the box
 - **Mention Handling**: Automatically responds to @mentions
@@ -46,7 +46,7 @@ Bluesky Notification → Create Memory → messageService.handleMessage()
                                     └─────────────────────┘
                                               ↓
                                     ┌─────────────────────┐
-                                    │ Evaluators          │ (run post-response)
+                                    │ ALWAYS_AFTER hooks  │ (run post-response)
                                     └─────────────────────┘
 ```
 
@@ -182,7 +182,7 @@ The `messageService.handleMessage()` call automatically:
    - Selects actions to execute
    - Generates appropriate text
 6. **Calls your callback** with the generated content
-7. **Runs evaluators** post-response
+7. **Runs ALWAYS_AFTER hook actions** post-response
 
 ## Configuration Options
 

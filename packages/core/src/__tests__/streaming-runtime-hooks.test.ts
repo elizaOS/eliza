@@ -45,7 +45,7 @@ function makeRuntime(responses: unknown[], actions: Action[]): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 describe("v5 runtime streaming hooks", () => {

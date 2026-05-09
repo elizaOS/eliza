@@ -6,7 +6,7 @@
  */
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
-import { documentsPlugin } from "@elizaos/app-documents/setup-routes";
+import { documentsPlugin } from "@elizaos/app-documents";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
@@ -84,7 +84,7 @@ async function startDocumentServer(): Promise<StartedDocumentServer> {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" }), documentsPlugin],
   });
-  const { startApiServer } = await import("@elizaos/agent/api/server");
+  const { startApiServer } = await import("@elizaos/agent");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,

@@ -1,22 +1,20 @@
 import type http from "node:http";
-import { persistConfigEnv } from "@elizaos/agent/api/config-env";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/agent/api/route-helpers";
-import type { ElizaConfig } from "@elizaos/agent/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { RouteRequestMeta } from "@elizaos/core";
+import { persistConfigEnv } from "@elizaos/agent";
+import type { RouteHelpers } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import {
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import {
   fetchEvmBalances,
   fetchSolanaBalances,
@@ -84,6 +82,40 @@ const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "BSC_RPC_URL",
   "SOLANA_RPC_URL",
 ]);
+
+type StewardAgentWalletPayload = {
+  walletAddress?: string;
+  walletAddresses?: { evm?: string; solana?: string };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readStewardAgentWalletPayload(
+  value: unknown,
+): StewardAgentWalletPayload {
+  const envelope = isRecord(value) ? value : {};
+  const payload = isRecord(envelope.data) ? envelope.data : envelope;
+  const walletAddresses = isRecord(payload.walletAddresses)
+    ? {
+        evm: readStringField(payload.walletAddresses, "evm"),
+        solana: readStringField(payload.walletAddresses, "solana"),
+      }
+    : undefined;
+  return {
+    walletAddress: readStringField(payload, "walletAddress"),
+    walletAddresses,
+  };
+}
 
 function resolveWalletConfigUpdateRequest(
   body: unknown,
@@ -449,14 +481,9 @@ export async function handleWalletRoutes(
           );
           if (agentRes.ok) {
             agentExists = true;
-            const agentBody = (await agentRes.json()) as {
-              data?: {
-                walletAddress?: string;
-                walletAddresses?: { evm?: string; solana?: string };
-              };
-            };
-            const agent =
-              agentBody.data ?? (agentBody as unknown as typeof agentBody.data);
+            const agent = readStewardAgentWalletPayload(
+              await agentRes.json(),
+            );
             agentEvm =
               agent?.walletAddresses?.evm?.trim() ||
               agent?.walletAddress?.trim() ||
@@ -482,16 +509,9 @@ export async function handleWalletRoutes(
             return true;
           }
 
-          const createBody = (await createRes.json()) as {
-            ok?: boolean;
-            data?: {
-              walletAddress?: string;
-              walletAddresses?: { evm?: string; solana?: string };
-            };
-          };
-          const created =
-            createBody.data ??
-            (createBody as unknown as typeof createBody.data);
+          const created = readStewardAgentWalletPayload(
+            await createRes.json(),
+          );
           agentEvm =
             created?.walletAddresses?.evm?.trim() ||
             created?.walletAddress?.trim() ||

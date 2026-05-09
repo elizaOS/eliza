@@ -36,11 +36,11 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
+import { cacheDiscordAvatarUrl } from "@elizaos/plugin-discord";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
 } from "@elizaos/shared";
-import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
 import type { RouteHelpers } from "./route-helpers.js";
 
 /**
@@ -200,10 +200,15 @@ function parseSourceFilter(raw: string | null): Set<string> | null {
   return expandConnectorSourceFilter(tags);
 }
 
+function getRuntimeSendHandlers(
+  runtime: AgentRuntime,
+): Map<string, unknown> | null {
+  const sendHandlers = Reflect.get(runtime, "sendHandlers") as unknown;
+  return sendHandlers instanceof Map ? sendHandlers : null;
+}
+
 function runtimeHasSendHandler(runtime: AgentRuntime, source: string): boolean {
-  const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
-    .sendHandlers;
-  return sendHandlers instanceof Map && sendHandlers.has(source);
+  return getRuntimeSendHandlers(runtime)?.has(source) ?? false;
 }
 
 /**

@@ -2054,9 +2054,7 @@ X-GNOME-Autostart-enabled=true
 			path: cookie.path,
 			secure: cookie.secure,
 			httpOnly: cookie.httpOnly,
-			session: (cookie as unknown as Record<string, unknown>).session as
-				| boolean
-				| undefined,
+			session: (cookie as typeof cookie & { session?: boolean }).session,
 			expirationDate: cookie.expirationDate,
 		}));
 

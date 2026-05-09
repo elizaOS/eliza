@@ -10,6 +10,19 @@ export const shellPlugin: Plugin = {
   services: [ShellService, ExecApprovalService],
   actions: [clearHistory],
   providers: [shellHistoryProvider],
+  // Self-declared auto-enable: activate when features.shell is enabled.
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const f = (config?.features as Record<string, unknown> | undefined)
+        ?.shell;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
 };
 
 export default shellPlugin;

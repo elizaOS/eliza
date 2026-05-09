@@ -156,9 +156,15 @@ const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
 const NON_SELECTION_ACTION_NAMES = new Set([
-  "RELATIONSHIP_EXTRACTION",
+  "CONTACT_LOOKUP",
+  "CONTACT_SEARCH",
+  "CONTACTS_LOOKUP",
+  "CONTACTS_SEARCH",
+  "FIND_CONTACT",
   "FACT_EXTRACTOR",
+  "LOOKUP_CONTACT",
   "REFLECTION",
+  "SKILL_LEARNING",
 ]);
 const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["GOOGLE_CALENDAR", "CALENDAR"],
@@ -172,8 +178,25 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["CALENDAR_FEED", "CALENDAR"],
   ["ADD_TODO", "LIFE"],
   ["CREATE_TODO", "LIFE"],
+  ["TODO_ADD", "LIFE"],
+  ["TODO_CREATE", "LIFE"],
+  ["TODOS_ADD", "LIFE"],
+  ["TODOS_CREATE", "LIFE"],
+  ["TASK_ADD", "LIFE"],
+  ["TASK_CREATE", "LIFE"],
+  ["ADD_TASK", "LIFE"],
+  ["CREATE_TASK", "LIFE"],
   ["LIST_TODOS", "LIFE"],
   ["GET_TODOS", "LIFE"],
+  ["TODO_LIST", "LIFE"],
+  ["TODO_LIST_TODAY", "LIFE"],
+  ["TODOS_LIST", "LIFE"],
+  ["TODO_GET", "LIFE"],
+  ["TODOS_GET", "LIFE"],
+  ["TODOS_REVIEW", "LIFE"],
+  ["TASK_LIST", "LIFE"],
+  ["TASK_LIST_TODAY", "LIFE"],
+  ["TASKS_REVIEW", "LIFE"],
   ["LIFE_GET_TODOS", "LIFE"],
   ["LIFE_TODO", "LIFE"],
   ["ADD_HABIT", "LIFE"],
@@ -206,6 +229,35 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["SEARCH_TWITTER", "POST"],
   ["TWITTER_SEARCH", "POST"],
   ["X_SEARCH", "POST"],
+  ["SEARCH_TWITTER_POSTS", "POST"],
+  ["TWITTER_POST_SEARCH", "POST"],
+  ["FETCH_X_TIMELINE", "POST"],
+  ["VIEW_X_FEED", "POST"],
+  ["FETCH_TWITTER_FEED", "POST"],
+  ["FETCH_TWITTER_TIMELINE", "POST"],
+  ["FETCH_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DM", "MESSAGE"],
+  ["FETCH_X_DMS", "MESSAGE"],
+  ["READ_X_DMS", "MESSAGE"],
+  ["READ_X_DM", "MESSAGE"],
+  ["DISCORD_POST_MESSAGE", "MESSAGE"],
+  ["DISCORD_SEND_MESSAGE", "MESSAGE"],
+  ["SEND_DISCORD_MESSAGE", "MESSAGE"],
+  ["SLACK_POST_MESSAGE", "MESSAGE"],
+  ["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
+  ["EMAIL_FETCH_LATEST", "MESSAGE"],
+  ["EMAIL_SEARCH_LATEST_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH", "MESSAGE"],
+  ["EMAIL_DRAFT_REPLY", "MESSAGE"],
+  ["EMAIL_FETCH_UNREAD", "MESSAGE"],
+  ["FETCH_UNREAD_EMAIL", "MESSAGE"],
+  ["LIST_UNREAD_EMAILS", "MESSAGE"],
+  ["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
+  ["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
+  ["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
+  ["READ_UNREAD_EMAILS", "MESSAGE"],
   ["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
   ["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
   ["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
@@ -227,6 +279,15 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["TERMINAL_ACTION", "COMPUTER_USE"],
   ["BROWSER_ACTION", "COMPUTER_USE"],
   ["MANAGE_WINDOW", "COMPUTER_USE"],
+  ["DESKTOP", "COMPUTER_USE"],
+  ["TASKS_ADD_TODO", "LIFE"],
+  ["TASKS_CREATE_TODO", "LIFE"],
+  ["TASKS_CREATE_REMINDER", "LIFE"],
+  ["TASKS_LIST_TODAY", "LIFE"],
+  ["TASKS_LIST_TODOS", "LIFE"],
+  ["TASKS_SET_GOAL", "LIFE"],
+  ["LIST_TASKS", "LIFE"],
+  ["SET_GOAL", "LIFE"],
 ]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
@@ -384,6 +445,13 @@ export function normalizeActionName(
   const compoundMatch = normalized.match(/^([A-Z0-9_]+)\.[A-Z0-9_]+$/);
   if (compoundMatch?.[1]) {
     return ACTION_CANONICAL_NAMES.get(compoundMatch[1]) ?? compoundMatch[1];
+  }
+  if (
+    /^EMAIL_(?:FETCH|SEARCH|READ|LIST|SUMMARIZE|SUMMARISE|DRAFT|REPLY|RESPOND|SEND|UNREAD)/.test(
+      normalized,
+    )
+  ) {
+    return "MESSAGE";
   }
   return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
@@ -737,6 +805,85 @@ function parseRecordValue(value: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
+function parseArrayValueFromText(value: string): unknown[] | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const candidates: string[] = [];
+  const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  candidates.push(fullFence?.[1]?.trim() ?? trimmed);
+  for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
+    const candidate = match[1]?.trim();
+    if (candidate) candidates.push(candidate);
+  }
+  const start = trimmed.indexOf("[");
+  const end = trimmed.lastIndexOf("]");
+  if (start >= 0 && end > start) {
+    candidates.push(trimmed.slice(start, end + 1));
+  }
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+function extractFirstJsonObjectText(value: string): string | undefined {
+  const start = value.indexOf("{");
+  if (start < 0) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}") continue;
+    depth -= 1;
+    if (depth === 0) {
+      return value.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function parseObjectValueFromText(
+  value: string,
+): Record<string, unknown> | undefined {
+  const objectText = extractFirstJsonObjectText(value);
+  if (!objectText) return undefined;
+  try {
+    const parsed = JSON.parse(objectText);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isPlannerWrapperAction(name: string | null): boolean {
   return name === "CALL_ACTION" || name === "PLAN_ACTIONS";
 }
@@ -746,18 +893,7 @@ function isPlannerProtocolAction(name: string | null): boolean {
   return canonical === "HANDLE_RESPONSE" || isPlannerWrapperAction(canonical);
 }
 
-export function parsePlannedActionsFromResponse(response: string): string[] {
-  const parsed = parseJSONObjectFromText(response);
-  if (!parsed) {
-    return [];
-  }
-  const rawActions =
-    parsed.toolCalls ??
-    parsed.tool_calls ??
-    parsed.actions ??
-    parsed.action ??
-    parsed.name ??
-    parsed.actionName;
+function parseActionNamesFromValue(rawActions: unknown): string[] {
   const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
   const names = actionValues
     .flatMap((action) => {
@@ -776,6 +912,7 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
           record.action ??
           record.actionName ??
           record.toolName ??
+          record.tool ??
           rawFunction?.name;
         const canonicalRawName =
           typeof rawName === "string" ? canonicalActionName(rawName) : null;
@@ -800,6 +937,37 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
   return [...new Set(names)];
 }
 
+export function parsePlannedActionsFromResponse(response: string): string[] {
+  const parsed =
+    parseJSONObjectFromText(response) ??
+    parseObjectValueFromText(response) ??
+    parseArrayValueFromText(response);
+  if (!parsed) {
+    return [];
+  }
+  const rawActions =
+    Array.isArray(parsed)
+      ? parsed
+      : parsed.toolCalls ??
+        parsed.tool_calls ??
+        parsed.actions ??
+        parsed.action ??
+        parsed.actionName ??
+        parsed.name ??
+        parsed.tool ??
+        parsed.function;
+  const names = parseActionNamesFromValue(rawActions);
+  if (
+    names.length === 0 &&
+    !Array.isArray(parsed) &&
+    typeof parsed.text === "string" &&
+    parsed.text.trim() !== response.trim()
+  ) {
+    return parsePlannedActionsFromResponse(parsed.text);
+  }
+  return names;
+}
+
 function extractPlannerDecision(
   trajectory: TrajectoryRecord | undefined,
   registeredActions: readonly string[] = [],
@@ -816,6 +984,9 @@ function extractPlannerDecision(
     };
   }
   let fallback: PlannerDecision | null = null;
+  let latestPlanned: PlannerDecision | null = null;
+  let latestMeaningful: PlannerDecision | null = null;
+  const allPlannedActions: string[] = [];
   for (const plannerCall of plannerCalls) {
     const rawAvailableActions = parseAvailableActionsFromPrompt(
       plannerCall.prompt,
@@ -834,17 +1005,35 @@ function extractPlannerDecision(
     const plannedActions = parsePlannedActionsFromResponse(
       plannerCall.response,
     );
+    for (const action of plannedActions) {
+      if (!allPlannedActions.includes(action)) {
+        allPlannedActions.push(action);
+      }
+    }
     const decision = {
       availableActions,
-      plannedActions,
+      plannedActions: [...allPlannedActions],
       plannedAction: plannedActions[0] ?? null,
     };
     fallback ??= decision;
     if (plannedActions.length > 0) {
-      return decision;
+      latestPlanned = decision;
+      const meaningfulAction = plannedActions.find(
+        (action) =>
+          !isGenericActionName(action) && !isNonSelectionActionName(action),
+      );
+      if (meaningfulAction) {
+        latestMeaningful = {
+          availableActions,
+          plannedActions: [...allPlannedActions],
+          plannedAction: meaningfulAction,
+        };
+      }
     }
   }
   return (
+    latestMeaningful ??
+    latestPlanned ??
     fallback ?? {
       availableActions: [],
       plannedActions: [],
@@ -874,8 +1063,7 @@ async function seedBenchmarkCaseFixtures(
   //    call even when the runtime already ran plugin migrations at boot.
   try {
     const { LifeOpsRepository } = (await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/app-lifeops/lifeops/repository"
+      "@elizaos/app-lifeops"
     )) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
@@ -895,21 +1083,14 @@ async function seedBenchmarkCaseFixtures(
   try {
     const now = new Date().toISOString();
     const { LifeOpsRepository } = await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/app-lifeops/lifeops/repository"
+      "@elizaos/app-lifeops"
     );
     const repo = new LifeOpsRepository(runtime);
-    if (
-      typeof (repo as unknown as { upsertRelationship?: unknown })
-        .upsertRelationship === "function"
-    ) {
-      const upsert = (
-        repo as unknown as {
-          upsertRelationship: (
-            rel: Record<string, unknown>,
-          ) => Promise<unknown>;
-        }
-      ).upsertRelationship.bind(repo);
+    const relationshipRepo = repo as typeof repo & {
+      upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
+    };
+    if (typeof relationshipRepo.upsertRelationship === "function") {
+      const upsert = relationshipRepo.upsertRelationship.bind(repo);
 
       // Generic personal contact (used by rel-* and follow-up cases).
       await upsert({
@@ -1124,8 +1305,7 @@ async function seedBenchmarkCaseFixtures(
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
         const approvalModule = await import(
-          // @ts-expect-error — workspace package resolved at runtime
-          "@elizaos/app-lifeops/lifeops/approval-queue"
+          "@elizaos/app-lifeops"
         );
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })

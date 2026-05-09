@@ -13,9 +13,23 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
+import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { listScenarioMetadata, loadAllScenarios } from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
+
+type ExecutorModule = typeof import("./executor.ts");
+type ReporterModule = typeof import("./reporter.ts");
+type LiveProviderModule = {
+  availableProviderNames: () => readonly string[];
+};
+type ScenarioRuntimeFactoryModule = {
+  createScenarioRuntime: () => Promise<{
+    runtime: AgentRuntime;
+    providerName: string;
+    cleanup: () => Promise<void>;
+  }>;
+};
 
 interface ParsedArgs {
   command: "run" | "list";
@@ -114,21 +128,25 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const liveProviderSpecifier = "@elizaos/core" as string;
+  const runtimeFactorySpecifier: string = "./runtime-factory.ts";
   const [
     { availableProviderNames },
     { runScenario },
     { buildAggregate, printStdoutSummary, writeReport, writeReportBundle },
     { createScenarioRuntime },
-    // Cast to `string` so TypeScript does not statically resolve the module paths
-    // for files that live outside this package's rootDir. The runtime paths are
-    // correct — only the type-checker resolution is suppressed.
+    // Keep out-of-root imports behind widened specifiers so TypeScript does not
+    // pull those modules into this package's rootDir validation graph.
+  ]: [
+    LiveProviderModule,
+    ExecutorModule,
+    ReporterModule,
+    ScenarioRuntimeFactoryModule,
   ] = await Promise.all([
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic import outside rootDir
-    import("../../app-core/test/helpers/live-provider.ts" as string) as any,
+    import(liveProviderSpecifier),
     import("./executor.ts"),
     import("./reporter.ts"),
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic import outside rootDir
-    import("./runtime-factory.ts" as string) as any,
+    import(runtimeFactorySpecifier),
   ]);
 
   if (availableProviderNames().length === 0) {

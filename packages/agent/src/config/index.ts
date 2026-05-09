@@ -5,14 +5,10 @@ export * from "./includes.js";
 export * from "./model-metadata.js";
 export * from "./owner-contacts.js";
 export * from "./paths.js";
-export * from "./plugin-auto-enable.js";
 export * from "./schema.js";
 export * from "./telegram-custom-commands.js";
-export * from "./types.agent-defaults.js";
-export * from "./types.agents.js";
-export * from "./types.eliza.js";
-export * from "./types.gateway.js";
-export * from "./types.hooks.js";
-export * from "./types.js";
-export * from "./types.messages.js";
-export * from "./types.tools.js";
+export type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+} from "./types.eliza.js";

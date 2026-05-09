@@ -27,7 +27,7 @@ function makeRuntime(): IAgentRuntime {
     useModel: vi.fn(() => {
       throw new Error("legacy extractor should not be called");
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function makeMessage(text = "reject req-1"): Memory {
@@ -119,6 +119,8 @@ describe("LifeOps native options.parameters migration", () => {
       "calendar",
       "contacts",
       "tasks",
+      "connectors",
+      "web",
     ]);
     expect(
       calendarAction.subActions?.map((action) =>

@@ -93,14 +93,3 @@ export function resolveEvmSigningCapability(
 
   return NONE;
 }
-
-/**
- * Shortcut for auto-enable callers: returns the reason when plugin-wallet
- * should be auto-enabled (signing available), or null otherwise.
- */
-export function evmAutoEnableReasonFromCapability(
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
-  const capability = resolveEvmSigningCapability(env);
-  return capability.canSign ? capability.reason : null;
-}

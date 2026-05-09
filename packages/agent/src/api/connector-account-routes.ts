@@ -11,9 +11,9 @@ import {
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 const z = zod.z ?? zod;
 
@@ -570,10 +570,25 @@ function serializeAuditEvent(
   };
 }
 
+function isConnectorAccountAuditEventLike(
+  event: unknown,
+): event is ConnectorAccountAuditEventLike {
+  if (typeof event !== "object" || event === null || Array.isArray(event)) {
+    return false;
+  }
+  const record = event as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.provider === "string" &&
+    typeof record.action === "string" &&
+    typeof record.outcome === "string"
+  );
+}
+
 async function executeRawAuditQuery(
   adapter: ConnectorAccountAuditReader,
   query: string,
-): Promise<Record<string, unknown>[]> {
+): Promise<unknown[]> {
   const db = adapter.db ?? adapter.getDatabase?.();
   if (!db?.execute) return [];
   const { sql } = (await import("drizzle-orm")) as {
@@ -629,7 +644,7 @@ async function listConnectorAuditEvents(args: {
       ORDER BY created_at DESC, id DESC
       LIMIT ${args.limit}`,
   );
-  return rows as unknown as ConnectorAccountAuditEventLike[];
+  return rows.filter(isConnectorAccountAuditEventLike);
 }
 
 export async function handleConnectorAccountRoutes(

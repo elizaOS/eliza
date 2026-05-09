@@ -28,50 +28,64 @@
       "default": "./dist/node/index.node.js"
     },
     "./plugin": {
-      "types": "./plugin.ts",
-      "import": "./plugin.ts",
-      "default": "./plugin.ts"
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
     },
     "./register-routes": {
-      "types": "./register-routes.ts",
-      "import": "./register-routes.ts",
-      "default": "./register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./routes/*.ts",
-      "import": "./routes/*.ts",
-      "default": "./routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./lib/*.ts",
-      "import": "./lib/*.ts",
-      "default": "./lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     },
     "./cloud": {
-      "types": "./cloud/index.ts",
-      "import": "./cloud/index.ts",
-      "default": "./cloud/index.ts"
+      "types": "./dist/cloud/index.d.ts",
+      "import": "./dist/cloud/index.js",
+      "default": "./dist/cloud/index.js"
     },
     "./cloud/*": {
-      "types": "./cloud/*.ts",
-      "import": "./cloud/*.ts",
-      "default": "./cloud/*.ts"
+      "types": "./dist/cloud/*.d.ts",
+      "import": "./dist/cloud/*.js",
+      "default": "./dist/cloud/*.js"
     },
     "./onboarding": {
-      "types": "./onboarding.ts",
-      "import": "./onboarding.ts",
-      "default": "./onboarding.ts"
+      "types": "./dist/onboarding.d.ts",
+      "import": "./dist/onboarding.js",
+      "default": "./dist/onboarding.js"
     }
   },
   "files": [
     "dist",
-    "types"
+    "src",
+    "types",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    }
+  },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.30",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
@@ -82,19 +96,17 @@
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "zod": "^4.4.3"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",

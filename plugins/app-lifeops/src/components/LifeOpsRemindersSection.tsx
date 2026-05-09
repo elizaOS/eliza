@@ -1,4 +1,4 @@
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,

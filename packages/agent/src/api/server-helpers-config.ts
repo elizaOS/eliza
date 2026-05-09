@@ -4,7 +4,7 @@
 
 import type http from "node:http";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, sendJsonError } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   getStylePresets,
@@ -13,7 +13,6 @@ import {
   ONBOARDING_PROVIDER_CATALOG,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
-import { sendJsonError } from "./http-helpers.js";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 
 // ---------------------------------------------------------------------------

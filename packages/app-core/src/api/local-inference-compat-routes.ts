@@ -46,6 +46,26 @@ import {
   sendJson as sendJsonResponse,
 } from "./response";
 
+function isCatalogModel(value: unknown): value is CatalogModel {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Partial<CatalogModel>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.displayName === "string" &&
+    typeof record.hfRepo === "string" &&
+    typeof record.ggufFile === "string" &&
+    typeof record.params === "string" &&
+    typeof record.quant === "string" &&
+    typeof record.sizeGb === "number" &&
+    typeof record.minRamGb === "number" &&
+    typeof record.category === "string" &&
+    typeof record.bucket === "string" &&
+    typeof record.blurb === "string"
+  );
+}
+
 function isStreamAuthorized(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -228,10 +248,12 @@ export async function handleLocalInferenceCompatRoutes(
     const rawSpec = body.spec;
     try {
       let job: Awaited<ReturnType<typeof localInferenceService.startDownload>>;
-      if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)) {
-        job = await localInferenceService.startDownload(
-          rawSpec as unknown as CatalogModel,
-        );
+      if (rawSpec) {
+        if (!isCatalogModel(rawSpec)) {
+          sendJsonErrorResponse(res, 400, "Invalid model spec");
+          return true;
+        }
+        job = await localInferenceService.startDownload(rawSpec);
       } else if (modelId) {
         job = await localInferenceService.startDownload(modelId);
       } else {

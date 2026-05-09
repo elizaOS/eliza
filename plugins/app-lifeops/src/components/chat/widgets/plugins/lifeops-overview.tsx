@@ -6,7 +6,7 @@ import {
   isApiError,
   useApp,
   WidgetSection,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,

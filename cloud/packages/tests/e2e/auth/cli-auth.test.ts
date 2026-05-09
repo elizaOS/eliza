@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type CliSessionResponse = {
+  sessionId?: string;
+  id?: string;
+};
 
 /**
  * CLI Auth Session E2E Tests
@@ -19,7 +25,7 @@ describe("CLI Auth API", () => {
     expect([200, 201]).toContain(response.status);
 
     if (response.status === 200 || response.status === 201) {
-      const body = (await response.json()) as any;
+      const body = await readJson<CliSessionResponse>(response);
       expect(body.sessionId || body.id).toBeTruthy();
     }
   });

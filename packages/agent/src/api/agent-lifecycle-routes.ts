@@ -1,6 +1,6 @@
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import { detectRuntimeModel } from "./agent-model.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 type AgentStateStatus =
   | "not_started"
@@ -23,6 +23,24 @@ export interface AgentLifecycleRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "error" | "json" | "readJsonBody"> {
   state: AgentLifecycleRouteState;
+}
+
+type AutonomyToggleService = {
+  enableAutonomy(): Promise<void>;
+  disableAutonomy(): Promise<void>;
+};
+
+function isAutonomyToggleService(
+  service: unknown,
+): service is AutonomyToggleService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { enableAutonomy?: unknown }).enableAutonomy ===
+      "function" &&
+    typeof (service as { disableAutonomy?: unknown }).disableAutonomy ===
+      "function"
+  );
 }
 
 export async function handleAgentLifecycleRoutes(
@@ -115,14 +133,11 @@ export async function handleAgentLifecycleRoutes(
     // section is actually registered/unregistered.
     const autonomySvc =
       runtime.getService?.("AUTONOMY") ?? runtime.getService?.("autonomy");
-    const svcAny = autonomySvc as unknown as
-      | { enableAutonomy(): Promise<void>; disableAutonomy(): Promise<void> }
-      | undefined;
-    if (svcAny && typeof svcAny.enableAutonomy === "function") {
+    if (isAutonomyToggleService(autonomySvc)) {
       if (body.enabled) {
-        await svcAny.enableAutonomy();
+        await autonomySvc.enableAutonomy();
       } else {
-        await svcAny.disableAutonomy();
+        await autonomySvc.disableAutonomy();
       }
     }
     // Always sync the property — enableAutonomy()/disableAutonomy() set it

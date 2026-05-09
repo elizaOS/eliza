@@ -5,7 +5,7 @@ import {
   isElectrobunRuntime,
   openExternalUrl,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,
@@ -463,6 +463,27 @@ function ConnectorManagementButton({
   );
 }
 
+function ManagedConnectorChip({
+  platform,
+  message,
+}: {
+  platform: string;
+  message: string | null | undefined;
+}) {
+  const title =
+    message ??
+    `${platform} setup is managed by its connector plugin, not by LifeOps.`;
+  return (
+    <span
+      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-semibold text-amber-600"
+      title={title}
+    >
+      <Plug2 className="h-3.5 w-3.5" aria-hidden />
+      Managed
+    </span>
+  );
+}
+
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
@@ -517,10 +538,10 @@ export function SignalConnectorCard() {
     >
       {showPluginManagedSetup ? (
         <div className="space-y-2">
-          <div className="rounded-xl border border-border/35 bg-bg/24 px-3 py-2 text-xs text-muted">
-            {signal.pluginManagedMessage} LifeOps no longer shows a local Signal
-            QR pairing flow here.
-          </div>
+          <ManagedConnectorChip
+            platform="Signal"
+            message={signal.pluginManagedMessage}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <ConnectorManagementButton
               provider="signal"
@@ -1112,10 +1133,10 @@ export function TelegramConnectorCard() {
 
       {!isConnected && setupManagedByPlugin ? (
         <div className="space-y-2">
-          <div className="rounded-xl border border-border/35 bg-bg/24 px-3 py-2 text-xs text-muted">
-            {telegram.pluginManagedMessage} LifeOps no longer asks for Telegram
-            phone numbers, login codes, or 2FA passwords here.
-          </div>
+          <ManagedConnectorChip
+            platform="Telegram"
+            message={telegram.pluginManagedMessage}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <ConnectorManagementButton
               provider="telegram"
@@ -1440,7 +1461,7 @@ function formatIMessageSendMode(
     case "cli":
       return "imsg CLI";
     case "private-api":
-      return "BlueBubbles Private API";
+      return "Plugin private API";
     case "apple-script":
       return "Messages.app AppleScript";
     default:
@@ -1456,11 +1477,8 @@ function formatIMessageDiagnostic(code: string): string {
       return "Eliza could not open Messages chat.db for incoming message reads.";
     case "native_bridge_not_connected":
       return "The native Messages bridge is loaded but not connected yet.";
-    case "bluebubbles_private_api_disabled":
-      return "BlueBubbles Private API is disabled, so sends rely on AppleScript.";
-    case "bluebubbles_helper_disconnected":
-      return "BlueBubbles helper is disconnected, which usually means the Mac-side send path is degraded.";
     case "no_backend_available":
+    case "imessage_plugin_unavailable":
       return "No local iMessage backend is available.";
     default:
       return code;
@@ -1479,25 +1497,16 @@ export function IMessageConnectorCard() {
   const nativeReadDegraded =
     status?.diagnostics.includes("full_disk_access_required") ||
     status?.diagnostics.includes("chat_db_unavailable");
-  const isDegraded =
-    Boolean(isConnected && nativeReadDegraded) ||
-    Boolean(
-      isConnected &&
-        status?.bridgeType === "bluebubbles" &&
-        (status.sendMode === "apple-script" ||
-          status.helperConnected === false),
-    );
+  const isDegraded = Boolean(isConnected && nativeReadDegraded);
   const needsFullDiskAccess = imessage.fullDiskAccess?.status === "revoked";
   const showFullDiskAccessControls =
     runningOnMacHost && (needsFullDiskAccess || nativeReadDegraded);
   const bridgeLabel =
     status?.bridgeType === "native"
       ? "Messages.app"
-      : status?.bridgeType === "bluebubbles"
-        ? "BlueBubbles"
-        : status?.bridgeType === "imsg"
-          ? "imsg"
-          : null;
+      : status?.bridgeType === "imsg"
+        ? "imsg"
+        : null;
   const statusLabel =
     busy && !status
       ? "Checking..."
@@ -1519,11 +1528,7 @@ export function IMessageConnectorCard() {
           : "muted";
   const bridgePips: ConnectorStatusVariant[] = [
     isConnected ? "ok" : "muted",
-    status?.privateApiEnabled === false || status?.helperConnected === false
-      ? "warning"
-      : isConnected
-        ? "ok"
-        : "muted",
+    nativeReadDegraded ? "warning" : isConnected ? "ok" : "muted",
     status?.sendMode === "apple-script"
       ? "warning"
       : isConnected
@@ -1564,11 +1569,7 @@ export function IMessageConnectorCard() {
               ? nativeReadDegraded
                 ? "Eliza can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
                 : "Eliza is using the native Mac Messages bridge for iMessage send and receive."
-              : bridgeLabel === "BlueBubbles"
-                ? status?.sendMode === "private-api"
-                  ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
-                  : "LifeOps is using the Mac-side BlueBubbles bridge. Sends are currently using the AppleScript fallback."
-                : "LifeOps is using the Mac-side imsg bridge for iMessage access."
+              : "LifeOps is using the plugin-managed iMessage bridge."
             : iosRuntime
               ? "iMessage access must run through a paired Mac or a remote Mac backend that has iMessage configured."
               : runningOnMacHost
@@ -1613,18 +1614,7 @@ export function IMessageConnectorCard() {
               <div>
                 Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
               </div>
-              {status?.privateApiEnabled !== null ? (
-                <div>
-                  Private API:{" "}
-                  {status.privateApiEnabled ? "enabled" : "disabled"}
-                </div>
-              ) : null}
-              {status?.helperConnected !== null ? (
-                <div>
-                  Helper:{" "}
-                  {status.helperConnected ? "connected" : "disconnected"}
-                </div>
-              ) : null}
+              <div>Read path: {nativeReadDegraded ? "limited" : "ready"}</div>
             </div>
           </details>
         ) : null}

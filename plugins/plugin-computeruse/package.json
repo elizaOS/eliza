@@ -33,14 +33,16 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "4.1.5"
   },
   "dependencies": {
@@ -97,7 +99,10 @@
         "description": "Cross-platform input driver: 'nutjs' (default; uses @nut-tree-fork/nut-js native bindings, works on macOS/Linux/Windows) or 'legacy' (per-OS shell tools: cliclick/xdotool/PowerShell).",
         "required": false,
         "default": "nutjs",
-        "enum": ["nutjs", "legacy"],
+        "enum": [
+          "nutjs",
+          "legacy"
+        ],
         "sensitive": false
       }
     }

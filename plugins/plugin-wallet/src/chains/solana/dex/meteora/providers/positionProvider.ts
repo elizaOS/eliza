@@ -159,7 +159,7 @@ const fetchPositions = async (
     for (const poolAddress of POOL_ADDRESSES) {
       // Connection type compatibility - DLMM may expect a different Connection version
       const dlmmPool = await DLMM.create(
-        connection as unknown as Parameters<typeof DLMM.create>[0],
+        connection as Parameters<typeof DLMM.create>[0],
         new PublicKey(poolAddress)
       );
       const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(ownerAddress);

@@ -1,0 +1,32 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2022", "DOM"],
+		"outDir": "dist",
+		"strict": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"jsx": "react-jsx",
+		"allowImportingTsExtensions": true,
+		"types": ["node"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx"],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"**/node_modules/**",
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"cypress/**/*",
+		"vitest.config.ts"
+	]
+}

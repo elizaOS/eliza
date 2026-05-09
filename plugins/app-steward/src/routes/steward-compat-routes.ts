@@ -1,15 +1,15 @@
 import type http from "node:http";
-import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
   getConfiguredCompatAgentName,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
+} from "@elizaos/app-core";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import { getWalletAddresses } from "../api/wallet";
 import {
@@ -155,7 +155,7 @@ export async function handleStewardCompatRoutes(
     try {
       await stewardClient.setPolicies(
         agentId,
-        policies as unknown as import("@stwd/sdk").PolicyRule[],
+        policies as import("@stwd/sdk").PolicyRule[],
       );
       sendJsonResponse(res, 200, { ok: true });
     } catch (err) {

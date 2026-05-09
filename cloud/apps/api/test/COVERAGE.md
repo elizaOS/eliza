@@ -223,7 +223,6 @@ Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.
 - `/api/v1/agents/by-token` — group-c-agents.test.ts
 - `/api/v1/agents/:agentId/logs` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
 - `/api/v1/agents/:agentId/monetization` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
-- `/api/v1/agents/:agentId/n8n/:*{.+}` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
 - `/api/v1/agents/:agentId/publish` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
 - `/api/v1/agents/:agentId/restart` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
 - `/api/v1/agents/:agentId/resume` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts

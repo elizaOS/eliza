@@ -11,7 +11,7 @@ This page documents proven patterns for building reliable, maintainable Eliza pl
 Use a module-level variable to ensure only one instance of a resource exists, even if the plugin is initialized multiple times.
 
 ```typescript
-import type { IAgentRuntime, Plugin, Service } from "@elizaos/core";
+import { Service, type IAgentRuntime, type Plugin } from "@elizaos/core";
 
 // Module-level singleton — shared across all calls to start()
 let _connection: DatabaseConnection | undefined;
@@ -23,23 +23,25 @@ async function getConnection(): Promise<DatabaseConnection> {
   return _connection;
 }
 
-const dbService = {
-  serviceType: "my_database",
-  start: async (_runtime: IAgentRuntime): Promise<Service> => {
+class DatabaseService extends Service {
+  static serviceType = "my_database";
+  capabilityDescription = "Maintains a shared database connection";
+
+  static async start(_runtime: IAgentRuntime): Promise<DatabaseService> {
     await getConnection(); // Warm up the connection
-    return {
-      stop: async () => {
-        await _connection?.disconnect();
-        _connection = undefined;
-      },
-    } as Service;
-  },
-};
+    return new DatabaseService(_runtime);
+  }
+
+  async stop(): Promise<void> {
+    await _connection?.disconnect();
+    _connection = undefined;
+  }
+}
 
 const myPlugin: Plugin = {
   name: "my-db-plugin",
   description: "Database plugin with singleton connection",
-  services: [dbService as any],
+  services: [DatabaseService],
 };
 ```
 
@@ -297,6 +299,7 @@ Structure tests by unit (isolated action/provider/service tests) and integration
 ```typescript
 // my-plugin.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { State } from "@elizaos/core";
 import myPlugin from "./index";
 
 // --- Mocks ---
@@ -337,7 +340,8 @@ describe("SAFE_OPERATION action", () => {
   const action = { /* your action */ validate: async () => true, handler: async () => ({ success: true }) };
 
   it("validates successfully", async () => {
-    const valid = await action.validate(runtime as any, message as any, undefined as any);
+    const state: State = { values: {}, data: {}, text: "" };
+    const valid = await action.validate(runtime, message, state);
     expect(valid).toBe(true);
   });
 });

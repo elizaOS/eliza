@@ -25,193 +25,156 @@ export const CONTEXT_TARGETS = {
 	},
 };
 
-export const SYSTEM_PROMPT =
-	"You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.";
+type ContentType = "default" | "code" | "pdf" | "math" | "technical";
 
-export const SYSTEM_PROMPTS = {
-	DEFAULT:
-		"You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.",
+const SYSTEM_BASE =
+	"Expand the given chunk with surrounding context. Keep the chunk verbatim. Output one coherent paragraph for semantic retrieval.";
 
-	CODE: "You are a precision code augmentation tool. Your task is to expand a given code chunk with necessary context from the larger codebase. You must: 1) Keep the original code chunk intact with exact syntax and indentation; 2) Add relevant imports, function signatures, or class definitions; 3) Include critical surrounding code context; 4) Create contextually rich output that maintains correct syntax.",
-
-	PDF: "You are a precision document augmentation tool. Your task is to expand a given PDF text chunk with its direct context from the larger document. You must: 1) Keep the original chunk intact; 2) Add section headings, references, or figure captions; 3) Include text that immediately precedes and follows the chunk; 4) Create contextually rich output that maintains the document's original structure.",
-
-	MATH_PDF:
-		"You are a precision mathematical content augmentation tool. Your task is to expand a given mathematical text chunk with essential context. You must: 1) Keep original mathematical notations and expressions exactly as they appear; 2) Add relevant definitions, theorems, or equations from elsewhere in the document; 3) Preserve all LaTeX or mathematical formatting; 4) Create contextually rich output for improved mathematical comprehension.",
-
-	TECHNICAL:
-		"You are a precision technical documentation augmentation tool. Your task is to expand a technical document chunk with critical context. You must: 1) Keep the original chunk intact including all technical terminology; 2) Add relevant configuration examples, parameter definitions, or API references; 3) Include any prerequisite information; 4) Create contextually rich output that maintains technical accuracy.",
+const SYSTEM_TYPE_NOTES: Record<ContentType, string> = {
+	default: "",
+	code: " Preserve exact syntax and indentation; add relevant imports, signatures, or class definitions.",
+	pdf: " Add section headings, references, or figure captions; preserve document structure.",
+	math: " Preserve all mathematical notation and LaTeX exactly; add relevant definitions, theorems, or equations.",
+	technical:
+		" Preserve technical terminology, parameters, and version numbers; add prerequisite info and API references.",
 };
 
-export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE = `
-<document>
-{doc_content}
-</document>
+const BASE_RULES = [
+	"Keep chunk verbatim",
+	"{min_tokens}–{max_tokens} tokens total",
+	"Single coherent paragraph",
+];
 
-Here is the chunk we want to situate within the whole document:
+const CONTENT_TYPE_RULES: Record<ContentType, string[]> = {
+	default: [
+		"Identify the document's topic and info needed to understand this chunk",
+		"2-3 sentences of preceding context",
+		"2-3 sentences of following context that complete thoughts",
+		"Include definitions of terms used in the chunk",
+		"For narrative content: character/setting info needed for the chunk",
+		'Present context directly; no "this chunk discusses" phrasing',
+	],
+	code: [
+		"Preserve syntax, indentation, and comments verbatim",
+		"Include imports, function/class definitions this code depends on",
+		"Add type definitions or interfaces referenced in the chunk",
+		"Include explanatory comments from elsewhere in the document",
+		"Include key variable declarations/initializations from earlier",
+		"Skip implementation of functions only called (not defined) here",
+	],
+	pdf: [
+		"Identify the document's topic and info needed to understand this chunk",
+		"Include section headings, references, or figure captions that situate it",
+		"Include immediately preceding and following text",
+	],
+	math: [
+		"Preserve mathematical notation verbatim",
+		"Include defining equations, variables, parameters from earlier that relate",
+		"Add section/subsection names or figure refs if they situate the chunk",
+		"Include definitions of variables or symbols defined elsewhere",
+		"For corrupted expressions, infer meaning from context",
+	],
+	technical: [
+		"Preserve terminology, product names, version numbers verbatim",
+		"Include prerequisites/requirements mentioned earlier",
+		"Add section headings or navigation path that situate the chunk",
+		"Include definitions of technical terms, acronyms, or jargon used",
+		"For referenced configurations: include relevant parameter explanations",
+	],
+};
+
+const CHUNK_LABEL: Record<ContentType, string> = {
+	default: "chunk",
+	code: "chunk of code",
+	pdf: "chunk",
+	math: "chunk",
+	technical: "chunk",
+};
+
+const OUTPUT_LABEL: Record<ContentType, string> = {
+	default: "enriched chunk text",
+	code: "enriched code chunk",
+	pdf: "enriched chunk text",
+	math: "enriched chunk text",
+	technical: "enriched chunk text",
+};
+
+interface BuildPromptArgs {
+	contentType: ContentType;
+	includeFullDocument: boolean;
+}
+
+export function buildEnrichmentSystemPrompt(args: {
+	contentType: ContentType;
+}): string {
+	return SYSTEM_BASE + SYSTEM_TYPE_NOTES[args.contentType];
+}
+
+export function buildEnrichmentPrompt(args: BuildPromptArgs): string {
+	const { contentType, includeFullDocument } = args;
+	const docBlock = includeFullDocument
+		? "\n<document>\n{doc_content}\n</document>\n\n"
+		: "\n";
+	const rules = [...CONTENT_TYPE_RULES[contentType], ...BASE_RULES];
+	const numbered = rules.map((r, i) => `${i + 1}. ${r}`).join("\n");
+	const chunkLabel = CHUNK_LABEL[contentType];
+	const outputLabel = OUTPUT_LABEL[contentType];
+
+	return `${docBlock}Situate this ${chunkLabel} within the document by adding surrounding context.
+
 <chunk>
 {chunk_content}
 </chunk>
 
-Create an enriched version of this chunk by adding critical surrounding context. Follow these guidelines:
+Guidelines:
+${numbered}
 
-1. Identify the document's main topic and key information relevant to understanding this chunk
-2. Include 2-3 sentences before the chunk that provide essential context
-3. Include 2-3 sentences after the chunk that complete thoughts or provide resolution
-4. For technical documents, include any definitions or explanations of terms used in the chunk
-5. For narrative content, include character or setting information needed to understand the chunk
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. Do not use phrases like "this chunk discusses" - directly present the context
-8. The total length should be between {min_tokens} and {max_tokens} tokens
-9. Format the response as a single coherent paragraph
+Output: ${outputLabel} only.`;
+}
 
-Provide ONLY the enriched chunk text in your response:`;
+// Back-compat shim exports — all derived from the builders above.
+export const SYSTEM_PROMPT = buildEnrichmentSystemPrompt({
+	contentType: "default",
+});
 
-export const CACHED_CHUNK_PROMPT_TEMPLATE = `
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
+export const SYSTEM_PROMPTS = {
+	DEFAULT: buildEnrichmentSystemPrompt({ contentType: "default" }),
+	CODE: buildEnrichmentSystemPrompt({ contentType: "code" }),
+	PDF: buildEnrichmentSystemPrompt({ contentType: "pdf" }),
+	MATH_PDF: buildEnrichmentSystemPrompt({ contentType: "math" }),
+	TECHNICAL: buildEnrichmentSystemPrompt({ contentType: "technical" }),
+};
 
-Create an enriched version of this chunk by adding critical surrounding context. Follow these guidelines:
-
-1. Identify the document's main topic and key information relevant to understanding this chunk
-2. Include 2-3 sentences before the chunk that provide essential context
-3. Include 2-3 sentences after the chunk that complete thoughts or provide resolution
-4. For technical documents, include any definitions or explanations of terms used in the chunk
-5. For narrative content, include character or setting information needed to understand the chunk
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. Do not use phrases like "this chunk discusses" - directly present the context
-8. The total length should be between {min_tokens} and {max_tokens} tokens
-9. Format the response as a single coherent paragraph
-
-Provide ONLY the enriched chunk text in your response:`;
-
-export const CACHED_CODE_CHUNK_PROMPT_TEMPLATE = `
-Here is the chunk of code we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this code chunk by adding critical surrounding context. Follow these guidelines:
-
-1. Preserve ALL code syntax, indentation, and comments exactly as they appear
-2. Include any import statements, function definitions, or class declarations that this code depends on
-3. Add necessary type definitions or interfaces that are referenced in this chunk
-4. Include any crucial comments from elsewhere in the document that explain this code
-5. If there are key variable declarations or initializations earlier in the document, include those
-6. Keep the original chunk COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Do NOT include implementation details for functions that are only called but not defined in this chunk
-
-Provide ONLY the enriched code chunk in your response:`;
-
-export const CACHED_MATH_PDF_PROMPT_TEMPLATE = `
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this chunk by adding critical surrounding context. This document contains mathematical content that requires special handling. Follow these guidelines:
-
-1. Preserve ALL mathematical notation exactly as it appears in the chunk
-2. Include any defining equations, variables, or parameters mentioned earlier in the document that relate to this chunk
-3. Add section/subsection names or figure references if they help situate the chunk
-4. If variables or symbols are defined elsewhere in the document, include these definitions
-5. If mathematical expressions appear corrupted, try to infer their meaning from context
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Format the response as a coherent mathematical explanation
-
-Provide ONLY the enriched chunk text in your response:`;
-
-export const CACHED_TECHNICAL_PROMPT_TEMPLATE = `
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this chunk by adding critical surrounding context. This appears to be technical documentation that requires special handling. Follow these guidelines:
-
-1. Preserve ALL technical terminology, product names, and version numbers exactly as they appear
-2. Include any prerequisite information or requirements mentioned earlier in the document
-3. Add section/subsection headings or navigation path to situate this chunk within the document structure
-4. Include any definitions of technical terms, acronyms, or jargon used in this chunk
-5. If this chunk references specific configurations, include relevant parameter explanations
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Format the response maintaining any hierarchical structure present in the original
-
-Provide ONLY the enriched chunk text in your response:`;
-
-export const MATH_PDF_PROMPT_TEMPLATE = `
-<document>
-{doc_content}
-</document>
-
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this chunk by adding critical surrounding context. This document contains mathematical content that requires special handling. Follow these guidelines:
-
-1. Preserve ALL mathematical notation exactly as it appears in the chunk
-2. Include any defining equations, variables, or parameters mentioned earlier in the document that relate to this chunk
-3. Add section/subsection names or figure references if they help situate the chunk
-4. If variables or symbols are defined elsewhere in the document, include these definitions
-5. If mathematical expressions appear corrupted, try to infer their meaning from context
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Format the response as a coherent mathematical explanation
-
-Provide ONLY the enriched chunk text in your response:`;
-
-export const CODE_PROMPT_TEMPLATE = `
-<document>
-{doc_content}
-</document>
-
-Here is the chunk of code we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this code chunk by adding critical surrounding context. Follow these guidelines:
-
-1. Preserve ALL code syntax, indentation, and comments exactly as they appear
-2. Include any import statements, function definitions, or class declarations that this code depends on
-3. Add necessary type definitions or interfaces that are referenced in this chunk
-4. Include any crucial comments from elsewhere in the document that explain this code
-5. If there are key variable declarations or initializations earlier in the document, include those
-6. Keep the original chunk COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Do NOT include implementation details for functions that are only called but not defined in this chunk
-
-Provide ONLY the enriched code chunk in your response:`;
-
-export const TECHNICAL_PROMPT_TEMPLATE = `
-<document>
-{doc_content}
-</document>
-
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{chunk_content}
-</chunk>
-
-Create an enriched version of this chunk by adding critical surrounding context. This appears to be technical documentation that requires special handling. Follow these guidelines:
-
-1. Preserve ALL technical terminology, product names, and version numbers exactly as they appear
-2. Include any prerequisite information or requirements mentioned earlier in the document
-3. Add section/subsection headings or navigation path to situate this chunk within the document structure
-4. Include any definitions of technical terms, acronyms, or jargon used in this chunk
-5. If this chunk references specific configurations, include relevant parameter explanations
-6. Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response
-7. The total length should be between {min_tokens} and {max_tokens} tokens
-8. Format the response maintaining any hierarchical structure present in the original
-
-Provide ONLY the enriched chunk text in your response:`;
+export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE =
+	buildEnrichmentPrompt({ contentType: "default", includeFullDocument: true });
+export const CACHED_CHUNK_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "default",
+	includeFullDocument: false,
+});
+export const CACHED_CODE_CHUNK_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "code",
+	includeFullDocument: false,
+});
+export const CACHED_MATH_PDF_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "math",
+	includeFullDocument: false,
+});
+export const CACHED_TECHNICAL_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "technical",
+	includeFullDocument: false,
+});
+export const MATH_PDF_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "math",
+	includeFullDocument: true,
+});
+export const CODE_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "code",
+	includeFullDocument: true,
+});
+export const TECHNICAL_PROMPT_TEMPLATE = buildEnrichmentPrompt({
+	contentType: "technical",
+	includeFullDocument: true,
+});
 
 export function getContextualizationPrompt(
 	docContent: string,
@@ -415,14 +378,12 @@ function containsMathematicalContent(content: string): boolean {
 		}
 	}
 
-	// Test for general math patterns
 	for (const pattern of generalMathPatterns) {
 		if (pattern.test(content)) {
 			return true;
 		}
 	}
 
-	// Keyword analysis
 	const mathKeywords = [
 		"theorem",
 		"lemma",

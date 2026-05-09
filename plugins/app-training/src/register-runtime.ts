@@ -7,14 +7,29 @@ import {
   registerTrainingTriggerService,
 } from "./services/training-trigger";
 
+function trainingCronRegistrationDisabled(): boolean {
+  const raw = process.env.ELIZA_DISABLE_TRAINING_CRONS;
+  if (!raw) {
+    return false;
+  }
+  return ["1", "true", "yes"].includes(raw.trim().toLowerCase());
+}
+
 export async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
 ): Promise<void> {
-  await registerTrajectoryExportCron(runtime);
-  await registerSkillScoringCron(runtime);
+  const skipCronRegistration = trainingCronRegistrationDisabled();
+  if (skipCronRegistration) {
+    logger.info("[eliza] Training cron registration skipped");
+  } else {
+    await registerTrajectoryExportCron(runtime);
+    await registerSkillScoringCron(runtime);
+  }
   const triggerService = registerTrainingTriggerService(runtime);
   logger.info(
-    "[eliza] Registered Track C training crons + auto-train trigger service",
+    skipCronRegistration
+      ? "[eliza] Registered Track C auto-train trigger service"
+      : "[eliza] Registered Track C training crons + auto-train trigger service",
   );
 
   void bootstrapOptimizationFromAccumulatedTrajectories(runtime, triggerService)

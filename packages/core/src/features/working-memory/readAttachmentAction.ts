@@ -19,8 +19,6 @@ import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
 const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
-const ATTACHMENT_REQUEST_PATTERN =
-	/\b(?:attachment|file|document|doc|pdf|image|screenshot|picture|photo|audio|voice|recording|song|video|media|transcript|url|link|webpage|website|page|article)\b/i;
 type AttachmentRecord = Awaited<
 	ReturnType<typeof readAttachmentRecords>
 >[number];
@@ -202,17 +200,13 @@ export const readAttachmentAction: Action = {
 	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
 		const params = message.content as Record<string, unknown>;
-		const isAttachmentRequest =
+		const hasExplicitAttachment =
 			readAttachmentId(params) !== null ||
 			typeof message.content.attachmentId === "string" ||
-			(message.content.attachments?.length ?? 0) > 0 ||
-			ATTACHMENT_REQUEST_PATTERN.test(String(message.content.text ?? ""));
-		if (!isAttachmentRequest) {
-			return false;
-		}
+			(message.content.attachments?.length ?? 0) > 0;
 
 		const attachments = await listConversationAttachments(runtime, message);
-		return attachments.length > 0;
+		return hasExplicitAttachment || attachments.length > 0;
 	},
 	handler: async (
 		runtime: IAgentRuntime,

@@ -36,14 +36,6 @@ const execFileAsync = promisify(execFile);
 const PREFLIGHT_DONE = new Set<string>();
 const PREFLIGHT_INFLIGHT = new Map<string, Promise<void>>();
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 function shouldAutoPreflight(): boolean {
   if (process.env.PARALLAX_BENCHMARK_PREFLIGHT_AUTO === "1") return true;
   return false;
@@ -252,7 +244,7 @@ export async function handleAgentRoutes(
 
     try {
       const results = await ctx.ptyService.checkAvailableAgents();
-      sendJson(res, results as unknown as JsonValue);
+      sendJson(res, results);
     } catch (error) {
       sendError(
         res,
@@ -292,7 +284,7 @@ export async function handleAgentRoutes(
       if (!result) {
         sendError(res, `No auth flow available for ${agentType}`, 400);
       } else {
-        sendJson(res, result as unknown as JsonValue);
+        sendJson(res, result);
       }
     } catch (error) {
       const msg =
@@ -314,7 +306,7 @@ export async function handleAgentRoutes(
       sendError(res, "PTY Service not available", 503);
       return true;
     }
-    sendJson(res, ctx.ptyService.getAgentMetrics() as unknown as JsonValue);
+    sendJson(res, ctx.ptyService.getAgentMetrics());
     return true;
   }
 
@@ -325,10 +317,7 @@ export async function handleAgentRoutes(
       sendError(res, "Workspace Service not available", 503);
       return true;
     }
-    sendJson(
-      res,
-      ctx.workspaceService.listScratchWorkspaces() as unknown as JsonValue,
-    );
+    sendJson(res, ctx.workspaceService.listScratchWorkspaces());
     return true;
   }
 
@@ -347,7 +336,7 @@ export async function handleAgentRoutes(
       if (action === "keep") {
         const scratch =
           await ctx.workspaceService.keepScratchWorkspace(sessionId);
-        sendJson(res, { success: true, scratch } as unknown as JsonValue);
+        sendJson(res, { success: true, scratch });
         return true;
       }
       if (action === "delete") {
@@ -356,7 +345,7 @@ export async function handleAgentRoutes(
           success: true,
           deleted: true,
           sessionId,
-        } as unknown as JsonValue);
+        });
         return true;
       }
       const body = await parseBody(req);
@@ -365,7 +354,7 @@ export async function handleAgentRoutes(
         sessionId,
         promoteName,
       );
-      sendJson(res, { success: true, scratch } as unknown as JsonValue);
+      sendJson(res, { success: true, scratch });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = message.includes("not found") ? 404 : 500;
@@ -399,7 +388,7 @@ export async function handleAgentRoutes(
           agentType: "pi",
           memoryFilePath: ".pi/agent/settings.json",
           files: [],
-        } as unknown as JsonValue);
+        });
         return true;
       }
 
@@ -413,7 +402,7 @@ export async function handleAgentRoutes(
         agentType,
         memoryFilePath,
         files,
-      } as unknown as JsonValue);
+      });
     } catch (error) {
       sendError(
         res,
@@ -432,7 +421,7 @@ export async function handleAgentRoutes(
     try {
       const { listPresets } = await import("coding-agent-adapters");
       const presets = listPresets();
-      sendJson(res, presets as unknown as JsonValue);
+      sendJson(res, presets);
     } catch (error) {
       sendError(
         res,
@@ -462,7 +451,7 @@ export async function handleAgentRoutes(
       configuredSubscriptionProvider:
         frameworkState.configuredSubscriptionProvider,
       frameworks: frameworkState.frameworks,
-    } as unknown as JsonValue);
+    });
     return true;
   }
 
@@ -486,7 +475,7 @@ export async function handleAgentRoutes(
         agentType as import("coding-agent-adapters").AdapterType,
         preset as import("coding-agent-adapters").ApprovalPreset,
       );
-      sendJson(res, config as unknown as JsonValue);
+      sendJson(res, config);
     } catch (error) {
       sendError(
         res,
@@ -507,7 +496,7 @@ export async function handleAgentRoutes(
 
     try {
       const sessions = await ctx.ptyService.listSessions();
-      sendJson(res, sessions as unknown as JsonValue);
+      sendJson(res, sessions);
     } catch (error) {
       sendError(
         res,
@@ -708,7 +697,7 @@ export async function handleAgentRoutes(
           agentType: session.agentType,
           workdir: session.workdir,
           status: session.status,
-        } as unknown as JsonValue,
+        },
         201,
       );
     } catch (error) {
@@ -738,7 +727,7 @@ export async function handleAgentRoutes(
       return true;
     }
 
-    sendJson(res, session as unknown as JsonValue);
+    sendJson(res, session);
     return true;
   }
 

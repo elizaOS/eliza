@@ -953,6 +953,94 @@
         "thiet ke"
       ],
       "tl": ["larawan", "biswal", "sining", "disenyo", "sketch", "retrato"]
+    },
+    "action.generateMedia.request": {
+      "base": [
+        "generate media",
+        "create media",
+        "make media",
+        "generate image",
+        "create image",
+        "generate video",
+        "create video",
+        "animate",
+        "animation",
+        "generate audio",
+        "create audio",
+        "generate music",
+        "sound effect",
+        "text to speech",
+        "tts",
+        "voiceover"
+      ],
+      "zh-CN": [
+        "生成媒体",
+        "创建媒体",
+        "生成图片",
+        "生成视频",
+        "动画",
+        "生成音频",
+        "音乐",
+        "文字转语音"
+      ],
+      "ko": [
+        "미디어 생성",
+        "이미지 생성",
+        "비디오 생성",
+        "영상 생성",
+        "애니메이션",
+        "오디오 생성",
+        "음악 생성",
+        "텍스트 음성 변환"
+      ],
+      "es": [
+        "generar media",
+        "crear media",
+        "generar imagen",
+        "crear imagen",
+        "generar video",
+        "crear video",
+        "animar",
+        "generar audio",
+        "crear audio",
+        "texto a voz"
+      ],
+      "pt": [
+        "gerar mídia",
+        "gerar midia",
+        "criar mídia",
+        "criar midia",
+        "gerar imagem",
+        "criar imagem",
+        "gerar vídeo",
+        "gerar video",
+        "animar",
+        "gerar áudio",
+        "gerar audio",
+        "texto para fala"
+      ],
+      "vi": [
+        "tạo media",
+        "tao media",
+        "tạo ảnh",
+        "tao anh",
+        "tạo video",
+        "tao video",
+        "hoạt hình",
+        "hoat hinh",
+        "tạo âm thanh",
+        "tao am thanh",
+        "văn bản thành giọng nói"
+      ],
+      "tl": [
+        "gumawa ng media",
+        "lumikha ng media",
+        "gumawa ng larawan",
+        "gumawa ng video",
+        "i-animate",
+        "gumawa ng audio",
+        "text to speech"
+      ]
     }
   }
 }

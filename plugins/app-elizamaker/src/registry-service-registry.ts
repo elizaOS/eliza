@@ -1,4 +1,4 @@
-import type { RegistryService } from "@elizaos/agent/api/registry-service";
+import type { RegistryService } from "@elizaos/agent";
 
 let activeRegistryService: RegistryService | null = null;
 

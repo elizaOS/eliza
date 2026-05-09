@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/services/steward-sidecar/process-management";
+export * from "@elizaos/app-core";

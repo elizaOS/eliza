@@ -21,6 +21,12 @@ export type DiscordMessageWithCoalescedMetadata = DiscordMessage & {
 	__discordCoalescedMessageIds?: string[];
 };
 
+export type DiscordMessageMetadata = Record<string, unknown> & {
+	coalescedDiscordMessageIds?: string[];
+	coalescedDiscordMessages?: CoalescedDiscordMessageMeta[];
+	coalescedDiscordMessageCount?: number;
+};
+
 const DEFAULT_WINDOW_MS = 8_000;
 const DEFAULT_MAX_BATCH = 5;
 
@@ -131,7 +137,7 @@ export function makeCoalescedDiscordMessage(
 export function appendCoalescedDiscordMetadata(
 	message: DiscordMessage,
 	extraMetadata: Record<string, unknown> = {},
-): any {
+): DiscordMessageMetadata {
 	const coalesced = message as DiscordMessageWithCoalescedMetadata;
 	const ids = coalesced.__discordCoalescedMessageIds;
 	const messages = coalesced.__discordCoalescedMessages;

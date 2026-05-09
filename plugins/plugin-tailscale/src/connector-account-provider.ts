@@ -17,39 +17,39 @@ import type {
   ConnectorAccountProvider,
   ConnectorAccountPurpose,
   IAgentRuntime,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
-  type TailscaleAccountConfig,
   normalizeTailscaleAccountId,
   readTailscaleAccounts,
   resolveTailscaleAccountId,
-} from './accounts';
+  type TailscaleAccountConfig,
+} from "./accounts";
 
-export const TAILSCALE_PROVIDER_ID = 'tailscale';
+export const TAILSCALE_PROVIDER_ID = "tailscale";
 
 const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
-  'admin' as ConnectorAccountPurpose,
-  'automation' as ConnectorAccountPurpose,
+  "admin" as ConnectorAccountPurpose,
+  "automation" as ConnectorAccountPurpose,
 ];
 
 function hasExplicitConfig(account: TailscaleAccountConfig): boolean {
   return Boolean(
     account.authKey ||
-    account.tags !== undefined ||
-    account.funnel !== undefined ||
-    account.defaultPort !== undefined ||
-    account.backend !== undefined ||
-    account.authKeyExpirySeconds !== undefined ||
-    account.cloudApiKey ||
-    account.cloudBaseUrl,
+      account.tags !== undefined ||
+      account.funnel !== undefined ||
+      account.defaultPort !== undefined ||
+      account.backend !== undefined ||
+      account.authKeyExpirySeconds !== undefined ||
+      account.cloudApiKey ||
+      account.cloudBaseUrl,
   );
 }
 
 function authMethodForAccount(account: TailscaleAccountConfig): string {
-  if (account.cloudApiKey) return 'cloud_api_key';
-  if (account.authKey) return 'auth_key';
-  if (account.backend === 'local') return 'local_cli';
-  return 'runtime';
+  if (account.cloudApiKey) return "cloud_api_key";
+  if (account.authKey) return "auth_key";
+  if (account.backend === "local") return "local_cli";
+  return "runtime";
 }
 
 function toConnectorAccount(
@@ -63,18 +63,18 @@ function toConnectorAccount(
     id: accountId,
     provider: TAILSCALE_PROVIDER_ID,
     label: account.label ?? `Tailscale (${accountId})`,
-    role: 'OWNER',
+    role: "OWNER",
     purpose: DEFAULT_PURPOSES,
-    accessGate: 'open',
-    status: configured ? 'connected' : 'disabled',
+    accessGate: "open",
+    status: configured ? "connected" : "disabled",
     displayHandle: account.label ?? accountId,
     createdAt: now,
     updatedAt: now,
     metadata: {
       authMethod: authMethodForAccount(account),
-      source: 'legacy',
+      source: "legacy",
       isDefault: accountId === defaultAccountId,
-      backend: account.backend ?? 'auto',
+      backend: account.backend ?? "auto",
       funnel: account.funnel ?? null,
       defaultPort: account.defaultPort ?? null,
       tags: account.tags ?? null,
@@ -87,11 +87,11 @@ function toConnectorAccount(
 }
 
 function normalizePurposes(
-  purpose: ConnectorAccountPatch['purpose'] | undefined,
+  purpose: ConnectorAccountPatch["purpose"] | undefined,
   fallback: ConnectorAccountPurpose[],
 ): ConnectorAccountPurpose[] {
   if (Array.isArray(purpose)) return purpose;
-  if (typeof purpose === 'string' && purpose.trim()) return [purpose];
+  if (typeof purpose === "string" && purpose.trim()) return [purpose];
   return fallback;
 }
 
@@ -106,7 +106,9 @@ function mergeStoredAccountPatch(
     id: account.id,
     purpose: normalizePurposes(patch.purpose, account.purpose),
     externalId:
-      patch.externalId === undefined ? account.externalId : (patch.externalId ?? undefined),
+      patch.externalId === undefined
+        ? account.externalId
+        : (patch.externalId ?? undefined),
     displayHandle:
       patch.displayHandle === undefined
         ? account.displayHandle
@@ -129,10 +131,14 @@ export function createTailscaleConnectorAccountProvider(
 ): ConnectorAccountProvider {
   return {
     provider: TAILSCALE_PROVIDER_ID,
-    label: 'Tailscale',
+    label: "Tailscale",
 
-    listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
-      const stored = await manager.getStorage().listAccounts(TAILSCALE_PROVIDER_ID);
+    listAccounts: async (
+      manager: ConnectorAccountManager,
+    ): Promise<ConnectorAccount[]> => {
+      const stored = await manager
+        .getStorage()
+        .listAccounts(TAILSCALE_PROVIDER_ID);
       const storedById = new Set(stored.map((account) => account.id));
       const defaultAccountId = resolveTailscaleAccountId(runtime);
       const synthesized = readTailscaleAccounts(runtime)
@@ -141,14 +147,17 @@ export function createTailscaleConnectorAccountProvider(
       return [...stored, ...synthesized];
     },
 
-    createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
+    createAccount: async (
+      input: ConnectorAccountPatch,
+      _manager: ConnectorAccountManager,
+    ) => {
       return {
         ...input,
         provider: TAILSCALE_PROVIDER_ID,
-        role: input.role ?? 'OWNER',
+        role: input.role ?? "OWNER",
         purpose: input.purpose ?? DEFAULT_PURPOSES,
-        accessGate: input.accessGate ?? 'open',
-        status: input.status ?? 'pending',
+        accessGate: input.accessGate ?? "open",
+        status: input.status ?? "pending",
       };
     },
 
@@ -157,14 +166,19 @@ export function createTailscaleConnectorAccountProvider(
       patch: ConnectorAccountPatch,
       manager: ConnectorAccountManager,
     ) => {
-      const existing = await manager.getStorage().getAccount(TAILSCALE_PROVIDER_ID, accountId);
+      const existing = await manager
+        .getStorage()
+        .getAccount(TAILSCALE_PROVIDER_ID, accountId);
       if (existing) {
         return mergeStoredAccountPatch(existing, patch);
       }
       return { ...patch, provider: TAILSCALE_PROVIDER_ID };
     },
 
-    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
+    deleteAccount: async (
+      _accountId: string,
+      _manager: ConnectorAccountManager,
+    ): Promise<void> => {
       // Runtime credentials live in env/character settings or the selected
       // backend; the manager removes only its account row.
     },

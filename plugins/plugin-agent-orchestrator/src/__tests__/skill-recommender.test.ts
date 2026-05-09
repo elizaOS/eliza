@@ -41,7 +41,7 @@ function createRuntime(options: {
     },
     getService: (name: string) =>
       name === "AGENT_SKILLS_SERVICE" ? service : undefined,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 const genericSkills: FakeSkill[] = [

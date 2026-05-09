@@ -10,7 +10,7 @@
  * use.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/shared";
+import { resolveServerOnlyPort } from "@elizaos/core";
 import type {
 	AppControlErrorPayload,
 	AppLaunchResult,

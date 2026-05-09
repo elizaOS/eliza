@@ -16,6 +16,7 @@ export * from "./types.js";
 // Import service for plugin
 import { createMatrixConnectorAccountProvider } from "./connector-account-provider.js";
 import { MatrixService } from "./service.js";
+import { MatrixWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Matrix plugin definition.
@@ -24,13 +25,20 @@ const matrixPlugin: Plugin = {
   name: "matrix",
   description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
 
-  services: [MatrixService],
+  services: [MatrixService, MatrixWorkflowCredentialProvider],
 
   actions: [],
 
   providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "matrix" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["matrix"],
+  },
 
   init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     // Register the Matrix provider with the ConnectorAccountManager.

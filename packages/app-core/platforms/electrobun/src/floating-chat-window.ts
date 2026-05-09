@@ -173,12 +173,12 @@ class FloatingChatWindowManager {
 	hide(): void {
 		if (!this.window) return;
 		try {
+			const window = this.window as typeof this.window & {
+				hide?: () => void;
+			};
 			// Electrobun uses minimize() as a hide fallback when hide() is absent.
-			if (
-				typeof (this.window as unknown as { hide?: () => void }).hide ===
-				"function"
-			) {
-				(this.window as unknown as { hide: () => void }).hide();
+			if (typeof window.hide === "function") {
+				window.hide();
 			} else {
 				this.window.minimize();
 			}

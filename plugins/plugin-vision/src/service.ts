@@ -44,13 +44,17 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
-const SCENE_DESCRIPTION_PROMPT = JSON.stringify({
-  task: "describe_visual_scene",
-  instructions: [
-    "Describe visible people, objects, UI, text, and notable scene changes.",
-    "Keep the answer concise and factual.",
-  ],
-}, null, 2);
+const SCENE_DESCRIPTION_PROMPT = JSON.stringify(
+  {
+    task: "describe_visual_scene",
+    instructions: [
+      "Describe visible people, objects, UI, text, and notable scene changes.",
+      "Keep the answer concise and factual.",
+    ],
+  },
+  null,
+  2,
+);
 
 interface CameraDevice {
   id: string;

@@ -17,9 +17,17 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { type Event, finalizeEvent, getPublicKey, SimplePool, verifyEvent } from "nostr-tools";
+import {
+  type Event,
+  type Filter,
+  finalizeEvent,
+  getPublicKey,
+  SimplePool,
+  verifyEvent,
+} from "nostr-tools";
 import { decrypt, encrypt } from "nostr-tools/nip04";
 import {
+  listNostrAccountIds,
   normalizeNostrAccountId,
   readNostrAccountId,
   resolveDefaultNostrAccountId,
@@ -102,9 +110,9 @@ function getNostrTargetMetadata(target: TargetInfo): Record<string, unknown> | u
     : undefined;
 }
 
-function clampLimit(value: number | undefined, fallback: number, max: number): number {
+function clampLimit(value: number | undefined, defaultValue: number, max: number): number {
   if (!Number.isFinite(value)) {
-    return fallback;
+    return defaultValue;
   }
   return Math.min(Math.max(1, Math.floor(value as number)), max);
 }
@@ -118,6 +126,7 @@ export class NostrService extends Service implements INostrService {
   private privateKey: Uint8Array | null = null;
   private connected = false;
   private seenEventIds = new Set<string>();
+  private accountServices = new Map<string, NostrService>();
 
   /**
    * Start the Nostr service.
@@ -134,46 +143,45 @@ export class NostrService extends Service implements INostrService {
       return;
     }
 
-    const accountId = serviceInstance.getAccountId(runtime);
-    serviceInstance.registerPostConnector(runtime);
+    for (const accountService of serviceInstance.getAccountServiceList()) {
+      const accountId = accountService.getAccountId(runtime);
+      accountService.registerPostConnector(runtime);
 
-    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
-    if (typeof runtime.registerMessageConnector === "function") {
-      const registration: NostrMessageConnectorRegistration = {
-        source: "nostr",
-        accountId,
-        label: "Nostr",
-        description: "Nostr encrypted DM connector using NIP-04.",
-        capabilities: [...NOSTR_CONNECTOR_CAPABILITIES],
-        supportedTargetKinds: ["user", "contact"],
-        contexts: [...NOSTR_CONNECTOR_CONTEXTS],
-        metadata: {
+      const sendHandler = accountService.handleSendMessage.bind(accountService);
+      if (typeof runtime.registerMessageConnector === "function") {
+        const registration: NostrMessageConnectorRegistration = {
+          source: "nostr",
           accountId,
-          service: NOSTR_SERVICE_NAME,
-        },
-        resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
-        listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
-        getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
-        fetchMessages: serviceInstance.fetchConnectorMessages.bind(serviceInstance),
-        contentShaping: {
-          systemPromptFragment:
-            "For Nostr encrypted DMs, keep messages concise. Long messages may be split by the connector for relay delivery.",
-          constraints: {
-            supportsMarkdown: false,
-            channelType: ChannelType.DM,
+          label: "Nostr",
+          description: "Nostr encrypted DM connector using NIP-04.",
+          capabilities: [...NOSTR_CONNECTOR_CAPABILITIES],
+          supportedTargetKinds: ["user", "contact"],
+          contexts: [...NOSTR_CONNECTOR_CONTEXTS],
+          metadata: {
+            accountId,
+            service: NOSTR_SERVICE_NAME,
           },
-        },
-        sendHandler,
-      };
-      runtime.registerMessageConnector(registration);
-      runtime.logger.info(
-        { src: "plugin:nostr", agentId: runtime.agentId },
-        "Registered Nostr DM connector"
-      );
-      return;
+          resolveTargets: accountService.resolveConnectorTargets.bind(accountService),
+          listRecentTargets: accountService.listRecentConnectorTargets.bind(accountService),
+          getUserContext: accountService.getConnectorUserContext.bind(accountService),
+          fetchMessages: accountService.fetchConnectorMessages.bind(accountService),
+          contentShaping: {
+            systemPromptFragment:
+              "For Nostr encrypted DMs, keep messages concise. Long messages may be split by the connector for relay delivery.",
+            constraints: {
+              supportsMarkdown: false,
+              channelType: ChannelType.DM,
+            },
+          },
+          sendHandler,
+        };
+        runtime.registerMessageConnector(registration);
+        runtime.logger.info(
+          { src: "plugin:nostr", agentId: runtime.agentId },
+          "Registered Nostr DM connector"
+        );
+      }
     }
-
-    runtime.registerSendHandler("nostr", sendHandler);
   }
 
   private registerPostConnector(runtime: IAgentRuntime): void {
@@ -218,7 +226,31 @@ export class NostrService extends Service implements INostrService {
    * Initialize the service.
    */
   private async initialize(): Promise<void> {
-    this.settings = this.loadSettings();
+    const startedAccounts: string[] = [];
+    for (const accountId of listNostrAccountIds(this.runtime)) {
+      const settings = resolveNostrAccountSettings(this.runtime, accountId);
+      if (settings.enabled === false) {
+        continue;
+      }
+
+      const accountService = new NostrService(this.runtime);
+      await accountService.initializeAccount(accountId);
+      this.accountServices.set(accountService.getAccountId(), accountService);
+      startedAccounts.push(accountService.getAccountId());
+    }
+
+    if (startedAccounts.length === 0) {
+      logger.warn("No enabled Nostr accounts configured");
+      return;
+    }
+
+    logger.info(
+      `Nostr service started ${startedAccounts.length} account(s): ${startedAccounts.join(", ")}`
+    );
+  }
+
+  private async initializeAccount(accountId?: string): Promise<void> {
+    this.settings = this.loadSettings(accountId);
     this.validateSettings();
 
     // Initialize private key
@@ -244,6 +276,13 @@ export class NostrService extends Service implements INostrService {
    */
   async stop(): Promise<void> {
     logger.info("Stopping Nostr service...");
+    if (this.accountServices?.size > 0) {
+      await Promise.all(Array.from(this.accountServices.values()).map((service) => service.stop()));
+      this.accountServices.clear();
+      logger.info("Nostr service stopped");
+      return;
+    }
+
     this.connected = false;
 
     if (this.pool) {
@@ -256,16 +295,48 @@ export class NostrService extends Service implements INostrService {
     logger.info("Nostr service stopped");
   }
 
+  private getAccountServiceList(): NostrService[] {
+    return this.accountServices?.size > 0 ? Array.from(this.accountServices.values()) : [this];
+  }
+
+  private getDefaultAccountService(): NostrService {
+    if (!this.accountServices || this.accountServices.size === 0) {
+      return this;
+    }
+
+    const defaultAccountId = normalizeNostrAccountId(resolveDefaultNostrAccountId(this.runtime));
+    return (
+      this.accountServices.get(defaultAccountId) ?? Array.from(this.accountServices.values())[0]
+    );
+  }
+
+  private getAccountService(accountId: string): NostrService {
+    if (!this.accountServices || this.accountServices.size === 0) {
+      const ownAccountId = this.getAccountId();
+      if (normalizeNostrAccountId(accountId) !== ownAccountId) {
+        throw new Error(`Nostr account '${accountId}' is not available in this service instance`);
+      }
+      return this;
+    }
+
+    const normalized = normalizeNostrAccountId(accountId);
+    const service = this.accountServices.get(normalized);
+    if (!service) {
+      throw new Error(`Nostr account '${normalized}' is not available`);
+    }
+    return service;
+  }
+
   /**
    * Load settings from runtime configuration.
    */
-  private loadSettings(): NostrSettings {
+  private loadSettings(accountId?: string): NostrSettings {
     const runtime = this.runtime;
     if (!runtime) {
       throw new NostrConfigurationError("Runtime not initialized");
     }
 
-    const resolved = resolveNostrAccountSettings(runtime);
+    const resolved = resolveNostrAccountSettings(runtime, accountId);
     const allowFrom = resolved.allowFrom.map((p: string) => {
       try {
         return normalizePubkey(p.trim());
@@ -340,19 +411,15 @@ export class NostrService extends Service implements INostrService {
     const since = Math.floor(Date.now() / 1000) - 120; // Last 2 minutes
 
     // Subscribe to DMs (kind:4)
-    const filter = { kinds: [4], "#p": [pk], since };
-    pool.subscribeMany(
-      settings.relays,
-      [filter] as unknown as Parameters<typeof pool.subscribeMany>[1],
-      {
-        onevent: async (event: Event) => {
-          await this.handleEvent(event);
-        },
-        oneose: () => {
-          logger.debug("Nostr EOSE received - initial sync complete");
-        },
-      }
-    );
+    const filter: Filter = { kinds: [4], "#p": [pk], since };
+    pool.subscribeMany(settings.relays, filter, {
+      onevent: async (event: Event) => {
+        await this.handleEvent(event);
+      },
+      oneose: () => {
+        logger.debug("Nostr EOSE received - initial sync complete");
+      },
+    });
 
     logger.info(`Subscribed to ${settings.relays.length} relay(s)`);
   }
@@ -448,6 +515,9 @@ export class NostrService extends Service implements INostrService {
    * Check if the service is connected.
    */
   isConnected(): boolean {
+    if (this.accountServices?.size > 0) {
+      return Array.from(this.accountServices.values()).some((service) => service.isConnected());
+    }
     return this.connected;
   }
 
@@ -455,10 +525,16 @@ export class NostrService extends Service implements INostrService {
    * Get the bot's public key in hex format.
    */
   getPublicKey(): string {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getPublicKey();
+    }
     return this.settings?.publicKey || "";
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getAccountId(runtime);
+    }
     return normalizeNostrAccountId(
       this.settings?.accountId ?? (runtime ? resolveDefaultNostrAccountId(runtime) : undefined)
     );
@@ -476,6 +552,9 @@ export class NostrService extends Service implements INostrService {
    * Get connected relays.
    */
   getRelays(): string[] {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getRelays();
+    }
     return this.settings?.relays || [];
   }
 
@@ -487,6 +566,11 @@ export class NostrService extends Service implements INostrService {
     const requestedAccountId = normalizeNostrAccountId(
       target.accountId ?? readNostrAccountId(content, target) ?? this.getAccountId()
     );
+    if (this.accountServices?.size > 0) {
+      await this.getAccountService(requestedAccountId).handleSendMessage(_runtime, target, content);
+      return;
+    }
+
     if (requestedAccountId !== this.getAccountId()) {
       throw new Error(
         `Nostr account '${requestedAccountId}' is not available in this service instance`
@@ -522,6 +606,10 @@ export class NostrService extends Service implements INostrService {
     const requestedAccountId = normalizeNostrAccountId(
       readNostrAccountId(content) ?? this.getAccountId()
     );
+    if (this.accountServices?.size > 0) {
+      return this.getAccountService(requestedAccountId).handleSendPost(runtime, content);
+    }
+
     if (requestedAccountId !== this.getAccountId()) {
       throw new Error(
         `Nostr account '${requestedAccountId}' is not available in this service instance`
@@ -538,7 +626,7 @@ export class NostrService extends Service implements INostrService {
       throw new Error(result.error ?? "Failed to publish Nostr note");
     }
 
-    return this.nostrEventToPostMemory(runtime, {
+    const event: Event = {
       id: result.eventId,
       pubkey: this.getPublicKey(),
       kind: 1,
@@ -546,7 +634,9 @@ export class NostrService extends Service implements INostrService {
       created_at: Math.floor(Date.now() / 1000),
       tags: [],
       sig: "",
-    } as unknown as Event);
+    };
+
+    return this.nostrEventToPostMemory(runtime, event);
   }
 
   async fetchConnectorFeed(
@@ -565,14 +655,14 @@ export class NostrService extends Service implements INostrService {
       (typeof metadata?.nostrPubkey === "string" ? metadata.nostrPubkey : undefined) ??
       (typeof target?.entityId === "string" ? target.entityId : undefined);
     const normalizedAuthor = author ? normalizePubkey(author) : undefined;
-    const filter = {
+    const filter: Filter = {
       kinds: [1],
       limit: clampLimit(params.limit, 25, 100),
       ...(normalizedAuthor ? { authors: [normalizedAuthor] } : {}),
       ...(params.cursor && Number.isFinite(Number(params.cursor))
         ? { until: Number(params.cursor) }
         : {}),
-    } as unknown as Parameters<SimplePool["querySync"]>[1];
+    };
 
     const events = await pool.querySync(settings.relays, filter, { maxWait: 3000 });
     return events
@@ -595,14 +685,14 @@ export class NostrService extends Service implements INostrService {
       return [];
     }
 
-    const filter = {
+    const filter: Filter = {
       kinds: [1],
       search: query,
       limit: clampLimit(params.limit, 25, 100),
       ...(params.cursor && Number.isFinite(Number(params.cursor))
         ? { until: Number(params.cursor) }
         : {}),
-    } as unknown as Parameters<SimplePool["querySync"]>[1];
+    };
 
     const events = await pool.querySync(settings.relays, filter, { maxWait: 3000 });
     return events
@@ -628,7 +718,7 @@ export class NostrService extends Service implements INostrService {
       (typeof target?.entityId === "string" ? target.entityId : undefined);
     const targetPubkey = targetPubkeyRaw ? normalizePubkey(targetPubkeyRaw) : undefined;
     const limit = clampLimit(params.limit, 25, 100);
-    const filters = [
+    const filters: Filter[] = [
       {
         kinds: [4],
         "#p": [settings.publicKey],
@@ -645,7 +735,7 @@ export class NostrService extends Service implements INostrService {
             },
           ]
         : []),
-    ] as unknown as Parameters<SimplePool["querySync"]>[1][];
+    ];
 
     const byId = new Map<string, Event>();
     for (const filter of filters) {
@@ -779,7 +869,7 @@ export class NostrService extends Service implements INostrService {
           kind: event.kind,
           tags: event.tags,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -831,7 +921,7 @@ export class NostrService extends Service implements INostrService {
           kind: event.kind,
           tags: event.tags,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -858,6 +948,13 @@ export class NostrService extends Service implements INostrService {
    * Send a DM to a pubkey.
    */
   async sendDm(options: NostrDmSendOptions): Promise<NostrSendResult> {
+    if (this.accountServices?.size > 0) {
+      const accountId = normalizeNostrAccountId(
+        (options as NostrDmSendOptions & { accountId?: string }).accountId ?? this.getAccountId()
+      );
+      return this.getAccountService(accountId).sendDm(options);
+    }
+
     const settings = this.settings;
     const pool = this.pool;
     const privateKey = this.privateKey;
@@ -953,6 +1050,13 @@ export class NostrService extends Service implements INostrService {
    * Publish profile (kind:0).
    */
   async publishProfile(profile: NostrProfile): Promise<NostrSendResult> {
+    if (this.accountServices?.size > 0) {
+      const accountId = normalizeNostrAccountId(
+        (profile as NostrProfile & { accountId?: string }).accountId ?? this.getAccountId()
+      );
+      return this.getAccountService(accountId).publishProfile(profile);
+    }
+
     const settings = this.settings;
     const pool = this.pool;
     const privateKey = this.privateKey;
@@ -1033,6 +1137,10 @@ export class NostrService extends Service implements INostrService {
    * Publish a text note (kind:1).
    */
   async publishNote(text: string, tags: string[][] = []): Promise<NostrSendResult> {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().publishNote(text, tags);
+    }
+
     const settings = this.settings;
     const pool = this.pool;
     const privateKey = this.privateKey;
@@ -1101,6 +1209,9 @@ export class NostrService extends Service implements INostrService {
    * Get the settings.
    */
   getSettings(): NostrSettings | null {
+    if (this.accountServices?.size > 0) {
+      return this.getDefaultAccountService().getSettings();
+    }
     return this.settings;
   }
 }

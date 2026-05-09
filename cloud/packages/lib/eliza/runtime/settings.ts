@@ -95,7 +95,7 @@ export function buildSettings(
     (charSettings.ELIZAOS_CLOUD_EMBEDDING_MODEL as string);
   const embeddingDimension = getStaticEmbeddingDimension(embeddingModel);
 
-  return {
+  const settings = {
     ...charSettings,
     POSTGRES_URL: process.env.DATABASE_URL!,
     DATABASE_URL: process.env.DATABASE_URL!,
@@ -197,7 +197,9 @@ export function buildSettings(
             : {}),
         }
       : {}),
-  } as unknown as NonNullable<Character["settings"]>;
+  } satisfies NonNullable<Character["settings"]>;
+
+  return settings;
 }
 
 export function applyUserContext(runtime: AgentRuntime, context: UserContext): void {

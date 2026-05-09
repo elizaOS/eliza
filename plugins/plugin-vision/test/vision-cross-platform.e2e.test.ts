@@ -23,16 +23,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  getTestImage,
-  getTestInputMode,
-} from "../src/test-input";
+import { getTestImage, getTestInputMode } from "../src/test-input";
 
-const FIXTURE = resolve(
-  __dirname,
-  "fixtures",
-  "sample-scene.png",
-);
+const FIXTURE = resolve(__dirname, "fixtures", "sample-scene.png");
 
 const HAS_MOCK = !!process.env.ELIZA_MOCK_VISION_BASE;
 const HAS_REAL =

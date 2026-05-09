@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
+import { ChannelType, stringToUuid, type Plugin } from "@elizaos/core";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
@@ -130,6 +130,92 @@ function restore(previous: Record<string, string | undefined>): void {
   }
 }
 
+function installMessageConnectionGuard(
+  runtime: RealTestRuntimeResult["runtime"],
+): () => void {
+  const originalCreateMemory = runtime.createMemory.bind(runtime);
+  const messageService = runtime.messageService as
+    | {
+        handleMessage?: (...args: unknown[]) => Promise<unknown>;
+      }
+    | undefined;
+  const ensureMessageConnection = async (message: {
+    entityId?: string;
+    roomId?: string;
+    metadata?: Record<string, unknown>;
+    content?: {
+      source?: string;
+      channelType?: ChannelType;
+      name?: string;
+    };
+  }) => {
+    if (!message?.entityId || !message.roomId) return;
+    const source = message.content?.source ?? "test";
+    const entityName =
+      typeof message.metadata?.entityName === "string"
+        ? message.metadata.entityName
+        : typeof message.content?.name === "string"
+          ? message.content.name
+          : "Test User";
+    await runtime.ensureConnection({
+      entityId: message.entityId,
+      roomId: message.roomId,
+      worldId: stringToUuid(`mocked-runtime:${source}:world`),
+      worldName: source,
+      userName: entityName,
+      name: entityName,
+      source,
+      type: message.content?.channelType ?? ChannelType.DM,
+      channelId: message.roomId,
+    });
+  };
+
+  runtime.createMemory = (async (memory: unknown, tableName: string) => {
+    const candidate = memory as {
+      entityId?: string;
+      roomId?: string;
+      metadata?: Record<string, unknown>;
+      content?: {
+        source?: string;
+        channelType?: ChannelType;
+        name?: string;
+      };
+    };
+    if (tableName === "messages") {
+      await ensureMessageConnection(candidate);
+    }
+    return await originalCreateMemory(memory as never, tableName);
+  }) as typeof runtime.createMemory;
+
+  if (typeof messageService?.handleMessage !== "function") {
+    return () => {
+      runtime.createMemory = originalCreateMemory;
+    };
+  }
+
+  const original = messageService.handleMessage.bind(messageService);
+  messageService.handleMessage = async (...args: unknown[]) => {
+    const message = args[1] as
+      | {
+          entityId?: string;
+          roomId?: string;
+          metadata?: Record<string, unknown>;
+          content?: {
+            source?: string;
+            channelType?: ChannelType;
+          };
+        }
+      | undefined;
+    await ensureMessageConnection(message ?? {});
+    return original(...args);
+  };
+
+  return () => {
+    messageService.handleMessage = original;
+    runtime.createMemory = originalCreateMemory;
+  };
+}
+
 function createMockRuntimeStateEnvironment(): MockRuntimeStateEnvironment {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-mock-state-"));
   const configPath = path.join(stateDir, "eliza.json");
@@ -194,6 +280,7 @@ export async function prepareMockedTestEnvironment(
     applyRuntimeFixtures: async (runtime) => {
       const cleanups: Array<(() => Promise<void> | void) | void> = [];
       try {
+        cleanups.push(installMessageConnectionGuard(runtime));
         cleanups.push(await benchmarkFixtures.applyRuntimeFixtures(runtime));
         if (simulatorFixtures) {
           cleanups.push(await simulatorFixtures.applyRuntimeFixtures(runtime));

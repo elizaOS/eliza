@@ -3,6 +3,8 @@ import {
   type Character,
   elizaLogger,
   type IDatabaseAdapter,
+  type JsonObject,
+  type JsonValue,
   type Plugin,
   stringToUuid,
   type UUID,
@@ -41,6 +43,31 @@ import {
  * Exported for use in other modules that need the same default.
  */
 export const DEFAULT_AGENT_ID_STRING = "b850bc30-45f8-0041-a00a-83df46d8555d";
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+
+  return isJsonObject(value);
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(isJsonValue);
+}
 
 function filterPlugins(plugins: Plugin[]): Plugin[] {
   return plugins.filter((p) => p.name !== "@elizaos/plugin-sql") as Plugin[];
@@ -182,15 +209,16 @@ export class RuntimeFactory {
     const baseSettings = buildSettings(character, context);
     const mcpSettings = buildMcpSettings(context);
 
-    const settingsWithMcp = mcpSettings.mcp
-      ? { ...baseSettings, mcp: mcpSettings.mcp }
-      : baseSettings;
+    const settingsWithMcp: NonNullable<Character["settings"]> =
+      mcpSettings.mcp && isJsonObject(mcpSettings.mcp)
+        ? { ...baseSettings, mcp: mcpSettings.mcp }
+        : baseSettings;
 
     const runtime = new AgentRuntime({
       character: {
         ...character,
         id: agentId,
-        settings: settingsWithMcp as any,
+        settings: settingsWithMcp,
       },
       plugins: filteredPlugins,
       agentId,
@@ -294,9 +322,7 @@ async function initializeRuntime(
 }
 
 function resolveInitPromise(runtime: AgentRuntime): void {
-  const runtimeAny = runtime as unknown as {
-    initResolver?: () => void;
-  };
+  const runtimeAny = runtime as AgentRuntime & { initResolver?: () => void };
   if (typeof runtimeAny.initResolver === "function") {
     runtimeAny.initResolver();
     runtimeAny.initResolver = undefined;

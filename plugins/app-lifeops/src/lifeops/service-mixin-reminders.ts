@@ -11,8 +11,8 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
-import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
+} from "@elizaos/agent";
+import { registerEscalationChannel } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   ModelType,

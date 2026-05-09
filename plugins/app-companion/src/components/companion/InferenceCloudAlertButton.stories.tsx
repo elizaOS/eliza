@@ -7,6 +7,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     notice: {
+      kind: "settings",
       variant: "warn",
       tooltip: "Cloud inference unavailable — using local fallback",
     },
@@ -22,6 +23,7 @@ export const Warning: Story = {};
 export const Danger: Story = {
   args: {
     notice: {
+      kind: "cloud",
       variant: "danger",
       tooltip: "No inference provider configured",
     },

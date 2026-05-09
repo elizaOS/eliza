@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import { readJsonFile } from "../utils/atomic-json.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 function emptyMerkleRoot(): string {
   return createHash("sha256").update("", "utf8").digest("hex");

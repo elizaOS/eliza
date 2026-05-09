@@ -7,9 +7,9 @@ export class StatusBar implements Component {
   private cwd = getCwd();
   private lastCwdCheck = Date.now();
 
-  render(width: number, _height: number): string[] {
-    this.width = width;
+  invalidate(): void {}
 
+  render(width: number): string[] {
     // Periodically update CWD
     const now = Date.now();
     if (now - this.lastCwdCheck > 500) {

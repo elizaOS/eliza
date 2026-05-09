@@ -53,7 +53,7 @@ export async function withModelRetry<T>({
 
     if (retryCount < maxRetries) {
       const feedback = createFeedbackPromptFn(input, error, state, message.content.text || "");
-      const retry = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      const retry = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: feedback,
       });
       return withModelRetry({

@@ -11,7 +11,6 @@ export const pancakeswapPlugin: Plugin = {
   description: "PancakeSwap V3 liquidity pool management plugin",
   services: [PancakeSwapV3LpService],
   actions: [],
-  evaluators: [],
   providers: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     console.info("PancakeSwap V3 Plugin initialized");

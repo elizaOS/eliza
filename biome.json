@@ -61,6 +61,19 @@
       }
     },
     {
+      "includes": ["packages/ui/src/styles/styles.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": [
         "packages/training/src/benchmark/BenchmarkRunner.ts",
         "packages/training/src/benchmark/MetricsVisualizer.ts",

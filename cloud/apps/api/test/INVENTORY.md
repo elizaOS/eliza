@@ -41,7 +41,6 @@ Generated router is in sync with the current generator and route tree.
 - `v1/admin/docker-nodes/[nodeId]/health-check/route.ts`
 - `v1/admin/infrastructure/containers/actions/route.ts`
 - `v1/admin/infrastructure/route.ts`
-- `v1/agents/[agentId]/n8n/[...path]/route.ts`
 - `v1/containers/[id]/logs/route.ts`
 - `v1/containers/[id]/metrics/route.ts`
 - `v1/containers/[id]/route.ts`

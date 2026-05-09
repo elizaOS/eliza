@@ -150,6 +150,13 @@ export function _clearDefaultBranchCache(): void {
   defaultBranchCache.clear();
 }
 
+export function getCodingWorkspaceService(
+  runtime: IAgentRuntime,
+): CodingWorkspaceService | null {
+  const service = runtime.getService("CODING_WORKSPACE_SERVICE");
+  return service instanceof CodingWorkspaceService ? service : null;
+}
+
 export class CodingWorkspaceService {
   static serviceType = "CODING_WORKSPACE_SERVICE";
   capabilityDescription = "Manages git workspaces for coding tasks";
@@ -194,9 +201,7 @@ export class CodingWorkspaceService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("CODING_WORKSPACE_SERVICE") as unknown as
-      | CodingWorkspaceService
-      | undefined;
+    const service = getCodingWorkspaceService(runtime);
     if (service) {
       await service.stop();
     }

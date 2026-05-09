@@ -8,7 +8,7 @@
  *   import "@elizaos/app-wifi/register";
  */
 
-import { isElizaOS } from "@elizaos/app-core";
+import { isElizaOS } from "@elizaos/ui";
 import { registerWifiApp } from "./components/wifi-app";
 
 if (isElizaOS()) {

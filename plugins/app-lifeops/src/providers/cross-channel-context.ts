@@ -15,7 +15,7 @@
  * than running a speculative search on every turn.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,

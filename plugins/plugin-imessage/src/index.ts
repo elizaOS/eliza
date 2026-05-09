@@ -108,6 +108,13 @@ const imessagePlugin: Plugin = {
   routes: imessageSetupRoutes,
   tests: [],
 
+  // Self-declared auto-enable: activate when the "imessage" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["imessage"],
+  },
+
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing iMessage plugin...");
 
@@ -151,13 +158,25 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
+export {
+  type BlueBubblesRouteState,
+  handleBlueBubblesRoute,
+  resolveBlueBubblesWebhookPath,
+} from "./api/bluebubbles-routes.js";
+
+// Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
+// These are the moved counterparts of the agent's old api/imessage-routes.ts
+// and api/bluebubbles-routes.ts files. Per the audit, BlueBubbles is treated
+// as part of iMessage, so both live here.
+export {
+  handleIMessageRoute,
+  type IMessageRouteState,
+  type ReadJsonBodyOptions as IMessageRouteReadJsonBodyOptions,
+  type RouteHelpers as IMessageRouteHelpers,
+  type RouteRequestMeta as IMessageRouteRequestMeta,
+} from "./api/imessage-routes.js";
 // Channel configuration types
 export type {
   IMessageConfig,
   IMessageReactionNotificationMode,
 } from "./config.js";
-// ConnectorAccountManager provider exports
-export {
-  createIMessageConnectorAccountProvider,
-  IMESSAGE_PROVIDER_ID,
-} from "./connector-account-provider.js";

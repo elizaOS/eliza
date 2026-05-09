@@ -1,4 +1,4 @@
-import { TooltipHint } from "@elizaos/app-core";
+import { TooltipHint } from "@elizaos/ui";
 import {
   Sidebar,
   SidebarContent,

@@ -39,7 +39,6 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
-import { migrateRuntimeLifeConnectorGrantsToConnectorAccounts } from "./lifeops/connector-account-migration.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -158,6 +157,30 @@ function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
   return null;
 }
 
+async function importGoogleConnectorPluginModule(): Promise<
+  Record<string, unknown>
+> {
+  try {
+    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    const stagedDependencyUrl = new URL(
+      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      import.meta.url,
+    );
+    try {
+      return (await import(stagedDependencyUrl.href)) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      throw error;
+    }
+  }
+}
+
 export async function ensureLifeOpsGooglePluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -165,10 +188,7 @@ export async function ensureLifeOpsGooglePluginRegistered(
     return;
   }
 
-  const module = (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
-    string,
-    unknown
-  >;
+  const module = await importGoogleConnectorPluginModule();
   const plugin = resolvePluginExport(module);
   if (!plugin) {
     throw new Error(
@@ -352,22 +372,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
-    scheduleTaskEnsureAfterRuntimeInit({
-      runtime,
-      prefix: "[lifeops]",
-      label: "connector account migration",
-      ensure: async () => {
-        const result =
-          await migrateRuntimeLifeConnectorGrantsToConnectorAccounts(runtime, {
-            dryRun: false,
-          });
-        if (result.scannedGrants > 0) {
-          runtime.logger?.info?.(
-            `[lifeops] Migrated connector grants: scanned=${result.scannedGrants}, created=${result.createdAccounts}, updated=${result.updatedAccounts}, linked=${result.linkedGrants}, tokenRefs=${result.preservedTokenRefs}`,
-          );
-        }
-      },
-    });
 
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,

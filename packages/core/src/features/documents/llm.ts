@@ -1,8 +1,9 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { google } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateText as aiGenerateText, embed, type ModelMessage } from "ai";
+import {
+	generateText as aiGenerateText,
+	type EmbeddingModel,
+	embed,
+	type ModelMessage,
+} from "ai";
 import { logger } from "../../logger";
 import {
 	logActiveTrajectoryLlmCall,
@@ -12,6 +13,7 @@ import { type IAgentRuntime, ModelType } from "../../types";
 import { BatchProcessor } from "../../utils/batch-queue";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
+type AIEmbeddingModel = EmbeddingModel;
 
 interface TextGenerationResult {
 	text: string;
@@ -29,6 +31,29 @@ interface TextGenerationResult {
 
 import { validateModelConfig } from "./config";
 import type { ModelConfig, TextGenerationOptions } from "./types";
+
+function importAiProvider<T>(specifier: string): Promise<T> {
+	return import(/* @vite-ignore */ specifier) as Promise<T>;
+}
+
+type CreateAnthropic = (settings: {
+	apiKey: string;
+	baseURL?: string;
+}) => (modelName: string) => AIModel;
+
+type CreateOpenAI = (settings: { apiKey: string; baseURL?: string }) => {
+	chat: (modelName: string) => AIModel;
+	embedding: (modelName: string) => AIEmbeddingModel;
+};
+
+type GoogleProvider = {
+	(modelName: string): AIModel;
+	textEmbeddingModel(modelName: string): AIEmbeddingModel;
+};
+
+type CreateOpenRouter = (settings: { apiKey: string; baseURL?: string }) => {
+	chat: (modelName: string) => AIModel;
+};
 
 type LoggedTextGenerationOptions = {
 	runtime: IAgentRuntime;
@@ -223,6 +248,9 @@ async function generateOpenAIEmbedding(
 	config: ModelConfig,
 	dimensions: number,
 ): Promise<{ embedding: number[] }> {
+	const { createOpenAI } = await importAiProvider<{
+		createOpenAI: CreateOpenAI;
+	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
 		apiKey: config.OPENAI_API_KEY as string,
 		baseURL: config.OPENAI_BASE_URL,
@@ -262,7 +290,9 @@ async function generateGoogleEmbedding(
 	text: string,
 	config: ModelConfig,
 ): Promise<{ embedding: number[] }> {
-	const googleProvider = google;
+	const { google: googleProvider } = await importAiProvider<{
+		google: GoogleProvider;
+	}>("@ai-sdk/google");
 	if (config.GOOGLE_API_KEY) {
 		process.env.GOOGLE_GENERATIVE_AI_API_KEY = config.GOOGLE_API_KEY;
 	}
@@ -371,6 +401,9 @@ async function generateAnthropicText(
 	modelName: string,
 	maxTokens: number,
 ): Promise<TextGenerationResult> {
+	const { createAnthropic } = await importAiProvider<{
+		createAnthropic: CreateAnthropic;
+	}>("@ai-sdk/anthropic");
 	const anthropic = createAnthropic({
 		apiKey: config.ANTHROPIC_API_KEY as string,
 		baseURL: config.ANTHROPIC_BASE_URL,
@@ -426,6 +459,9 @@ async function generateOpenAIText(
 	modelName: string,
 	maxTokens: number,
 ): Promise<TextGenerationResult> {
+	const { createOpenAI } = await importAiProvider<{
+		createOpenAI: CreateOpenAI;
+	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
 		apiKey: config.OPENAI_API_KEY as string,
 		baseURL: config.OPENAI_BASE_URL,
@@ -463,7 +499,9 @@ async function generateGoogleText(
 	maxTokens: number,
 	config: ModelConfig,
 ): Promise<TextGenerationResult> {
-	const googleProvider = google;
+	const { google: googleProvider } = await importAiProvider<{
+		google: GoogleProvider;
+	}>("@ai-sdk/google");
 	if (config.GOOGLE_API_KEY) {
 		process.env.GOOGLE_GENERATIVE_AI_API_KEY = config.GOOGLE_API_KEY;
 	}
@@ -503,6 +541,9 @@ async function generateOpenRouterText(
 	_cacheOptions?: { type: "ephemeral" },
 	autoCacheContextualRetrieval = true,
 ): Promise<TextGenerationResult> {
+	const { createOpenRouter } = await importAiProvider<{
+		createOpenRouter: CreateOpenRouter;
+	}>("@openrouter/ai-sdk-provider");
 	const openrouter = createOpenRouter({
 		apiKey: config.OPENROUTER_API_KEY as string,
 		baseURL: config.OPENROUTER_BASE_URL,

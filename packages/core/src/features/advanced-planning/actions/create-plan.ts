@@ -8,7 +8,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import type { JsonValue } from "../types.ts";
 
 type PlanningActionOptions = HandlerOptions & {
@@ -60,7 +60,7 @@ export const createPlanAction: Action = {
 	],
 
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: ["tasks", "automation", "code", "agent_internal"],
 			keywordKeys: ["action.createPlan.request"],
 		});

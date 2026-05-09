@@ -70,15 +70,7 @@ describe("runActionsByMode", () => {
 		});
 		// Register the runtime with a no-op composeState so we don't need a
 		// model provider.
-		(
-			runtime as unknown as {
-				composeState: () => Promise<{
-					values: Record<string, unknown>;
-					data: Record<string, unknown>;
-					text: string;
-				}>;
-			}
-		).composeState = async () => ({ values: {}, data: {}, text: "" });
+		runtime.composeState = async () => ({ values: {}, data: {}, text: "" });
 	});
 
 	it("filters actions by mode and ignores PLANNER actions", async () => {

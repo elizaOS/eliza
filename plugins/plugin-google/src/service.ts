@@ -16,7 +16,17 @@ import {
   type GoogleCalendarEventPatchInput,
   type GoogleCalendarListEntry,
   type GoogleCredentialResolver,
+  type GoogleDocContent,
+  type GoogleDriveCreateFileInput,
   type GoogleDriveFile,
+  type GoogleDriveFileList,
+  type GoogleGmailBulkOperation,
+  type GoogleGmailFilterCreateResult,
+  type GoogleGmailMessageDetail,
+  type GoogleGmailMessageSummary,
+  type GoogleGmailSendResult,
+  type GoogleGmailSubscriptionMessageHeaders,
+  type GoogleGmailUnrespondedThread,
   type GoogleMeetConferenceRecord,
   type GoogleMeetConferenceRecordInput,
   type GoogleMeetCreateMeetingInput,
@@ -34,7 +44,10 @@ import {
   type GoogleMessageSummary,
   type GoogleOAuthProviderConfig,
   type GoogleOAuthProviderMetadata,
+  type GoogleParsedMailto,
   type GoogleSendEmailInput,
+  type GoogleSheetContent,
+  type GoogleSheetUpdateResult,
   type IGoogleWorkspaceService,
 } from "./types.js";
 
@@ -103,6 +116,113 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.gmailClient.sendEmail(params);
   }
 
+  listGmailTriageMessages(
+    params: GoogleAccountRef & { selfEmail?: string | null; maxResults?: number }
+  ): Promise<GoogleGmailMessageSummary[]> {
+    return this.gmailClient.listGmailTriageMessages(params);
+  }
+
+  searchGmailMessages(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      maxResults?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailMessageSummary[]> {
+    return this.gmailClient.searchGmailMessages(params);
+  }
+
+  getGmailMessage(
+    params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
+  ): Promise<GoogleGmailMessageSummary | null> {
+    return this.gmailClient.getGmailMessage(params);
+  }
+
+  getGmailMessageDetail(
+    params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
+  ): Promise<GoogleGmailMessageDetail | null> {
+    return this.gmailClient.getGmailMessageDetail(params);
+  }
+
+  listGmailUnrespondedThreads(
+    params: GoogleAccountRef & {
+      selfEmail?: string | null;
+      olderThanDays?: number;
+      maxResults?: number;
+      now?: Date;
+    }
+  ): Promise<GoogleGmailUnrespondedThread[]> {
+    return this.gmailClient.listGmailUnrespondedThreads(params);
+  }
+
+  modifyGmailMessages(
+    params: GoogleAccountRef & {
+      messageIds: readonly string[];
+      operation: GoogleGmailBulkOperation;
+      labelIds?: readonly string[];
+    }
+  ): Promise<void> {
+    return this.gmailClient.modifyGmailMessages(params);
+  }
+
+  sendGmailReply(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      subject: string;
+      bodyText: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailSendResult> {
+    return this.gmailClient.sendGmailReply(params);
+  }
+
+  sendGmailMessage(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+    }
+  ): Promise<GoogleGmailSendResult> {
+    return this.gmailClient.sendGmailMessage(params);
+  }
+
+  getGmailSubscriptionHeaders(
+    params: GoogleAccountRef & { query?: string; maxMessages?: number }
+  ): Promise<GoogleGmailSubscriptionMessageHeaders[]> {
+    return this.gmailClient.getGmailSubscriptionHeaders(params);
+  }
+
+  createGmailFilterForSender(
+    params: GoogleAccountRef & { fromAddress: string; trash?: boolean }
+  ): Promise<GoogleGmailFilterCreateResult> {
+    return this.gmailClient.createGmailFilterForSender(params);
+  }
+
+  trashGmailThread(params: GoogleAccountRef & { threadId: string }): Promise<void> {
+    return this.gmailClient.trashGmailThread(params);
+  }
+
+  modifyGmailMessageLabels(
+    params: GoogleAccountRef & {
+      messageId: string;
+      addLabelIds?: string[];
+      removeLabelIds?: string[];
+    }
+  ): Promise<void> {
+    return this.gmailClient.modifyGmailMessageLabels(params);
+  }
+
+  sendMailtoUnsubscribeEmail(
+    params: GoogleAccountRef & { mailto: GoogleParsedMailto }
+  ): Promise<void> {
+    return this.gmailClient.sendMailtoUnsubscribeEmail(params);
+  }
+
   listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]> {
     return this.calendarClient.listCalendars(params);
   }
@@ -116,6 +236,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     }
   ): Promise<GoogleCalendarEvent[]> {
     return this.calendarClient.listEvents(params);
+  }
+
+  getEvent(
+    params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent> {
+    return this.calendarClient.getEvent(params);
   }
 
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
@@ -138,6 +264,46 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
 
   getFile(params: GoogleAccountRef & { fileId: string }): Promise<GoogleDriveFile> {
     return this.driveClient.getFile(params);
+  }
+
+  listDriveFiles(
+    params: GoogleAccountRef & { folderId?: string; maxResults?: number; pageToken?: string }
+  ): Promise<GoogleDriveFileList> {
+    return this.driveClient.listDriveFiles(params);
+  }
+
+  searchDriveFiles(
+    params: GoogleAccountRef & { query: string; maxResults?: number; pageToken?: string }
+  ): Promise<GoogleDriveFileList> {
+    return this.driveClient.searchDriveFiles(params);
+  }
+
+  getDocContent(params: GoogleAccountRef & { documentId: string }): Promise<GoogleDocContent> {
+    return this.driveClient.getDocContent(params);
+  }
+
+  getSheetContent(
+    params: GoogleAccountRef & { spreadsheetId: string; range?: string }
+  ): Promise<GoogleSheetContent> {
+    return this.driveClient.getSheetContent(params);
+  }
+
+  createDriveFile(params: GoogleDriveCreateFileInput): Promise<GoogleDriveFile> {
+    return this.driveClient.createDriveFile(params);
+  }
+
+  appendToDoc(params: GoogleAccountRef & { documentId: string; text: string }): Promise<void> {
+    return this.driveClient.appendToDoc(params);
+  }
+
+  updateSheetCells(
+    params: GoogleAccountRef & {
+      spreadsheetId: string;
+      range: string;
+      values: ReadonlyArray<ReadonlyArray<string | number>>;
+    }
+  ): Promise<GoogleSheetUpdateResult> {
+    return this.driveClient.updateSheetCells(params);
   }
 
   createMeeting(params: GoogleMeetCreateMeetingInput): Promise<GoogleMeetMeeting> {

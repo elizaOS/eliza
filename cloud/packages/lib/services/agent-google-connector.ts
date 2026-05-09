@@ -239,7 +239,7 @@ type GoogleGmailMetadataResponse = {
   internalDate?: string;
   historyId?: string;
   sizeEstimate?: number;
-  payload?: {
+  payload?: Record<string, unknown> & {
     headers?: GoogleGmailMetadataHeader[];
     mimeType?: string;
     body?: {
@@ -1751,9 +1751,7 @@ export async function readManagedGoogleGmailMessage(args: {
   if (!message) {
     fail(502, "Google Gmail returned an incomplete message payload.");
   }
-  const rawBody = parsed.payload
-    ? extractBody(parsed.payload as unknown as Record<string, unknown>)
-    : "";
+  const rawBody = parsed.payload ? extractBody(parsed.payload) : "";
   return {
     message,
     bodyText: normalizeManagedGmailBodyText(rawBody) || message.snippet,
