@@ -114,6 +114,12 @@ const workflowRouteList: Route[] = [
     rawPath: true,
     handler: workflowHandler,
   },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/executions',
+    rawPath: true,
+    handler: workflowHandler,
+  },
 ];
 
 export const workflowRoutePlugin: Plugin = {
