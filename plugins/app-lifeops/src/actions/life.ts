@@ -2246,11 +2246,11 @@ export const lifeAction: Action & {
         let windowPolicy:
           | CreateLifeOpsDefinitionRequest["windowPolicy"]
           | undefined = editingDeferredDefinitionDraft
-          ? ((detailObject(details, "windowPolicy") as
+          ? ((detailObject(details, "windowPolicy") as unknown as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
           : (deferredDefinitionDraft?.request.windowPolicy ??
-            (detailObject(details, "windowPolicy") as
+            (detailObject(details, "windowPolicy") as unknown as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined));
         const explicitPriority = detailNumber(details, "priority");
@@ -2494,7 +2494,7 @@ export const lifeAction: Action & {
             metadata: definitionMetadata,
             windowPolicy,
             websiteAccess:
-              (detailObject(details, "websiteAccess") as
+              (detailObject(details, "websiteAccess") as unknown as
                 | CreateLifeOpsDefinitionRequest["websiteAccess"]
                 | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
           },
@@ -2866,7 +2866,7 @@ export const lifeAction: Action & {
           windowPolicy: detailObject(
             details,
             "windowPolicy",
-          ) as UpdateLifeOpsDefinitionRequest["windowPolicy"],
+          ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
           reminderPlan: detailObject(
             details,
             "reminderPlan",

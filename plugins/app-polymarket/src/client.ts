@@ -1,4 +1,4 @@
-import { ElizaClient } from "@elizaos/app-core";
+import { ElizaClient } from "@elizaos/ui";
 import type {
   PolymarketDisabledResponse,
   PolymarketMarketResponse,
@@ -18,7 +18,7 @@ export interface PolymarketMarketsRequest {
   tagId?: string;
 }
 
-declare module "@elizaos/app-core" {
+declare module "@elizaos/ui" {
   interface ElizaClient {
     polymarketStatus(): Promise<PolymarketStatusResponse>;
     polymarketMarkets(
@@ -32,11 +32,26 @@ declare module "@elizaos/app-core" {
   }
 }
 
-ElizaClient.prototype.polymarketStatus = async function () {
+type PolymarketClientPrototype = ElizaClient & {
+  polymarketStatus(): Promise<PolymarketStatusResponse>;
+  polymarketMarkets(
+    request?: PolymarketMarketsRequest,
+  ): Promise<PolymarketMarketsResponse>;
+  polymarketMarketById(id: string): Promise<PolymarketMarketResponse>;
+  polymarketMarketBySlug(slug: string): Promise<PolymarketMarketResponse>;
+  polymarketOrderbook(tokenId: string): Promise<PolymarketOrderbookResponse>;
+  polymarketOrders(): Promise<PolymarketDisabledResponse>;
+  polymarketPositions(user: string): Promise<PolymarketPositionsResponse>;
+};
+
+const elizaClientPrototype =
+  ElizaClient.prototype as unknown as PolymarketClientPrototype;
+
+elizaClientPrototype.polymarketStatus = async function () {
   return this.fetch("/api/polymarket/status");
 };
 
-ElizaClient.prototype.polymarketMarkets = async function (
+elizaClientPrototype.polymarketMarkets = async function (
   request: PolymarketMarketsRequest = {},
 ) {
   const params = new URLSearchParams();
@@ -51,26 +66,26 @@ ElizaClient.prototype.polymarketMarkets = async function (
   return this.fetch(`/api/polymarket/markets${query ? `?${query}` : ""}`);
 };
 
-ElizaClient.prototype.polymarketMarketById = async function (id: string) {
+elizaClientPrototype.polymarketMarketById = async function (id: string) {
   const params = new URLSearchParams({ id });
   return this.fetch(`/api/polymarket/market?${params.toString()}`);
 };
 
-ElizaClient.prototype.polymarketMarketBySlug = async function (slug: string) {
+elizaClientPrototype.polymarketMarketBySlug = async function (slug: string) {
   const params = new URLSearchParams({ slug });
   return this.fetch(`/api/polymarket/market?${params.toString()}`);
 };
 
-ElizaClient.prototype.polymarketOrderbook = async function (tokenId: string) {
+elizaClientPrototype.polymarketOrderbook = async function (tokenId: string) {
   const params = new URLSearchParams({ token_id: tokenId });
   return this.fetch(`/api/polymarket/orderbook?${params.toString()}`);
 };
 
-ElizaClient.prototype.polymarketOrders = async function () {
+elizaClientPrototype.polymarketOrders = async function () {
   return this.fetch("/api/polymarket/orders");
 };
 
-ElizaClient.prototype.polymarketPositions = async function (user: string) {
+elizaClientPrototype.polymarketPositions = async function (user: string) {
   const params = new URLSearchParams({ user });
   return this.fetch(`/api/polymarket/positions?${params.toString()}`);
 };

@@ -24,7 +24,7 @@
     "capabilities": ["vincent", "delegated-trading", "wallet"],
     "curatedSlug": "vincent",
     "routePlugin": {
-      "specifier": "@elizaos/app-vincent/plugin",
+      "specifier": "@elizaos/app-vincent",
       "exportName": "vincentPlugin"
     }
   }

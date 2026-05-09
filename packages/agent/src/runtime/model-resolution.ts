@@ -3,7 +3,7 @@ import {
   normalizeOnboardingProviderId,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 function trimEnvString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

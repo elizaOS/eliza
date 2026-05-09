@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
-import { readJsonFile } from "../utils/atomic-json.js";
+import { readJsonFile } from "../utils/atomic-json.ts";
 
 function emptyMerkleRoot(): string {
   return createHash("sha256").update("", "utf8").digest("hex");

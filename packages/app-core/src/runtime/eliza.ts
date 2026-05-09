@@ -79,7 +79,7 @@ const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
 const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
-  "@elizaos/plugin-sql/global-singletons",
+  "elizaos.plugin-sql.global-singletons",
 );
 const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
 
@@ -402,8 +402,7 @@ interface RuntimeHookModule {
   registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
 }
 
-const TRAINING_RUNTIME_HOOKS_SPECIFIER =
-  "@elizaos/app-training/register-runtime";
+const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/app-training";
 
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,

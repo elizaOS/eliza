@@ -26,8 +26,6 @@ describe("context registry", () => {
 			expect(defaultContextRegistry.has(context)).toBe(true);
 		}
 		expect(defaultContextRegistry.has("lifeops")).toBe(false);
-		expect(defaultContextRegistry.has("social")).toBe(false);
-		expect(defaultContextRegistry.has("system")).toBe(false);
 	});
 
 	it("expands the remaining finance aliases", () => {

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
+import { resolveOAuthDir } from "@elizaos/core";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

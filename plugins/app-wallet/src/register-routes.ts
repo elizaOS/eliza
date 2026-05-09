@@ -2,8 +2,8 @@
  * Side-effect module: registers the wallet UI plugin (route loader + bundled
  * shell page + bundled chat sidebar widget) with @elizaos/app-core.
  *
- * Hosts that bundle @elizaos/app-wallet should `import "@elizaos/app-wallet/register"`
- * exactly once at boot so the registry entries are seeded before the shell mounts.
+ * Hosts that bundle @elizaos/app-wallet should load this module exactly once
+ * at boot so the registry entries are seeded before the shell mounts.
  */
 
 import { registerAppRoutePluginLoader } from "@elizaos/core";

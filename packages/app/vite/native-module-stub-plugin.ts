@@ -415,7 +415,7 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/plugin-sql/schema") {
+      if (strippedId === "@elizaos/plugin-sql") {
         return [
           "const handler = { get: () => table, apply: () => table };",
           "const table = new Proxy(function table() {}, handler);",
@@ -455,14 +455,6 @@ export function nativeModuleStubPlugin(
             "taskTable",
             "worldTable",
           ].map((name) => `export const ${name} = table;`),
-          "export default table;",
-        ].join("\n");
-      }
-
-      if (strippedId === "@elizaos/plugin-sql/drizzle") {
-        return [
-          "const handler = { get: () => expr, apply: () => expr };",
-          "const expr = new Proxy(function expr() { return expr; }, handler);",
           ...[
             "and",
             "asc",
@@ -478,8 +470,9 @@ export function nativeModuleStubPlugin(
             "ne",
             "or",
             "sql",
-          ].map((name) => `export const ${name} = expr;`),
-          "export default expr;",
+          ].map((name) => `export const ${name} = table;`),
+          "export const schema = table;",
+          "export default table;",
         ].join("\n");
       }
 
@@ -491,9 +484,9 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/plugin-telegram/account-auth-service") {
+      if (strippedId === "@elizaos/plugin-telegram") {
         return [
-          "function serverOnly() { throw new Error('@elizaos/plugin-telegram/account-auth-service is server-only'); }",
+          "function serverOnly() { throw new Error('Telegram account auth is server-only'); }",
           "export function defaultTelegramAccountDeviceModel() { return 'Eliza Desktop'; }",
           "export function defaultTelegramAccountSystemVersion() { return 'browser'; }",
           "export function loadTelegramAccountSessionString() { return serverOnly(); }",

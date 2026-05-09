@@ -1,11 +1,8 @@
 /**
  * Side-effect entry point — registers the WiFi overlay app on ElizaOS only.
  *
- * Stock Android, web, iOS, and desktop register a no-op so importing
- * `@elizaos/app-wifi/register` never throws on those platforms.
- *
- * Usage:
- *   import "@elizaos/app-wifi/register";
+ * Stock Android, web, iOS, and desktop register a no-op so loading this
+ * module never throws on those platforms.
  */
 
 import { isElizaOS } from "@elizaos/ui";

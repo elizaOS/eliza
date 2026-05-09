@@ -44,6 +44,10 @@ export interface DexTokenMeta {
   logoUrl?: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export async function fetchDexScreenerPrices(
   chainId: number,
   addresses: string[],
@@ -66,8 +70,9 @@ export async function fetchDexScreenerPrices(
           { signal: AbortSignal.timeout(DEX_PRICE_TIMEOUT_MS) },
         );
         if (!res.ok) return;
-        const pairs: DexScreenerPair[] = await res.json();
-        if (!Array.isArray(pairs)) return;
+        const rawPairs = await res.json();
+        if (!Array.isArray(rawPairs)) return;
+        const pairs = rawPairs as DexScreenerPair[];
 
         const best = new Map<string, DexScreenerPair>();
         for (const pair of pairs) {
@@ -117,7 +122,8 @@ export async function fetchDexPaprikaPrices(
           { signal: AbortSignal.timeout(DEX_PRICE_TIMEOUT_MS) },
         );
         if (!res.ok) return;
-        const data: { price_usd?: number | string } = await res.json();
+        const data = await res.json();
+        if (!isRecord(data)) return;
         const price = Number(data.price_usd);
         if (Number.isFinite(price) && price > 0) {
           results.set(addr.toLowerCase(), { price: price.toString() });

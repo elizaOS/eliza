@@ -7,7 +7,7 @@
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import type { TrajectoryListResult } from "../types/trajectory.js";
+import type { TrajectoryListResult } from "../types/trajectory.ts";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;

@@ -9,10 +9,10 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { buildCharacterFromConfig } from "../runtime/build-character-config.js";
-import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import { applyCanonicalOnboardingConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -262,7 +262,7 @@ export async function handleConfigRoutes(
 
   // ── GET /api/config/schema ───────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/config/schema") {
-    const { buildConfigSchema } = await import("../config/schema.js");
+    const { buildConfigSchema } = await import("../config/schema.ts");
     const result = buildConfigSchema();
     json(res, result);
     return true;

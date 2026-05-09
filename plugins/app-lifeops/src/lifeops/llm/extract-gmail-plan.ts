@@ -55,8 +55,6 @@ export async function extractGmailPlanWithLlm(
   const first = String(
     await runtime.useModel("TEXT_SMALL", {
       prompt: intent,
-      message,
-      state,
     }),
   );
   const plan = parseGmailPlan(first);
@@ -65,8 +63,6 @@ export async function extractGmailPlanWithLlm(
     const fallback = String(
       await runtime.useModel("TEXT_SMALL", {
         prompt: `Extract Gmail search queries for: ${intent}`,
-        message,
-        state,
       }),
     );
     plan.queries = parseGmailPlan(fallback).queries;

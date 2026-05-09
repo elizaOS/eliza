@@ -64,6 +64,18 @@ const {
   useAppMock: vi.fn(),
 }));
 
+vi.mock("react", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  return require("react") as typeof import("react");
+});
+
+vi.mock("react/jsx-runtime", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  return require("react/jsx-runtime") as typeof import("react/jsx-runtime");
+});
+
 vi.mock("../../api", () => ({
   client: clientMock,
 }));
@@ -86,18 +98,24 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:android",
   MOBILE_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
   MOBILE_LOCAL_AGENT_LABEL: "On-device agent",
+  MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
   MOBILE_LOCAL_AGENT_SERVER_ID: "local:mobile",
   persistMobileRuntimeModeForServerTarget:
     persistMobileRuntimeModeForServerTargetMock,
 }));
 
 vi.mock("@capacitor/core", () => ({
+  registerPlugin: vi.fn(() => ({
+    start: agentStartMock,
+  })),
   Capacitor: {
     Plugins: {
       Agent: {
         start: agentStartMock,
       },
     },
+    getPlatform: vi.fn(() => "web"),
+    isNativePlatform: vi.fn(() => false),
     registerPlugin: vi.fn(() => ({
       start: agentStartMock,
     })),
@@ -131,6 +149,76 @@ vi.mock("../../utils", () => ({
 vi.mock("../shared/LanguageDropdown", () => ({
   LanguageDropdown: () => null,
 }));
+
+vi.mock("@elizaos/app-wallet", () => {
+  const noop = vi.fn();
+  return {
+    InventoryView: () => null,
+    TokenLogo: () => null,
+    buildWalletRpcUpdateRequest: vi.fn((value: unknown) => value),
+    resolveInitialWalletRpcSelections: vi.fn(() => ({})),
+    useInventoryData: vi.fn(() => ({ rows: [], loading: false })),
+    useWalletState: vi.fn(() => ({
+      state: {
+        browserEnabled: false,
+        computerUseEnabled: false,
+        walletEnabled: false,
+        walletAddresses: {},
+        walletConfig: null,
+        walletBalances: null,
+        walletNfts: [],
+        walletLoading: false,
+        walletNftsLoading: false,
+        inventoryView: "tokens",
+        walletExportData: null,
+        walletExportVisible: false,
+        walletApiKeySaving: false,
+        inventorySort: "value",
+        inventorySortDirection: "desc",
+        inventoryChainFilters: [],
+        walletError: null,
+        registryStatus: null,
+        registryLoading: false,
+        registryRegistering: false,
+        registryError: null,
+        dropStatus: null,
+        dropLoading: false,
+        mintInProgress: false,
+        mintResult: null,
+        mintError: null,
+        mintShiny: false,
+        whitelistStatus: null,
+        whitelistLoading: false,
+        wallets: [],
+        walletPrimary: null,
+        walletPrimaryRestarting: false,
+        walletPrimaryPending: false,
+        cloudRefreshing: false,
+      },
+      setBrowserEnabled: noop,
+      setComputerUseEnabled: noop,
+      setWalletEnabled: noop,
+      setWalletAddresses: noop,
+      setInventoryView: noop,
+      setInventorySort: noop,
+      setInventorySortDirection: noop,
+      setInventoryChainFilters: noop,
+      loadWalletConfig: noop,
+      loadBalances: noop,
+      loadNfts: noop,
+      handleWalletApiKeySave: noop,
+      handleExportKeys: noop,
+      loadRegistryStatus: noop,
+      registerOnChain: noop,
+      syncRegistryProfile: noop,
+      loadDropStatus: noop,
+      mintFromDrop: noop,
+      loadWhitelistStatus: noop,
+      setPrimary: noop,
+      refreshCloud: noop,
+    })),
+  };
+});
 
 import { RuntimeGate, resolveRuntimeChoices } from "./RuntimeGate";
 

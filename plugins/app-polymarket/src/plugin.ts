@@ -1,15 +1,39 @@
 import type http from "node:http";
-import type { Plugin, Route } from "@elizaos/core";
+import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { PredictionMarketService, polymarketActions } from "./actions";
 import { polymarketStatusProvider } from "./provider";
 import { handlePolymarketRoute } from "./routes";
+
+function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
+  if (
+    typeof req !== "object" ||
+    req === null ||
+    typeof req.method !== "string" ||
+    typeof req.headers !== "object"
+  ) {
+    throw new TypeError("Polymarket routes require a Node HTTP request");
+  }
+  return req as unknown as http.IncomingMessage;
+}
+
+function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
+  if (
+    typeof res !== "object" ||
+    res === null ||
+    typeof res.end !== "function" ||
+    typeof res.setHeader !== "function"
+  ) {
+    throw new TypeError("Polymarket routes require a Node HTTP response");
+  }
+  return res as unknown as http.ServerResponse;
+}
 
 function polymarketRouteHandler(
   pathname: string,
 ): NonNullable<Route["handler"]> {
   return async (req, res, _runtime) => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
+    const httpReq = toHttpIncomingMessage(req);
+    const httpRes = toHttpServerResponse(res);
     const method = (httpReq.method ?? "GET").toUpperCase();
     await handlePolymarketRoute(httpReq, httpRes, pathname, method);
   };

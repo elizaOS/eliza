@@ -6,6 +6,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  ProviderDataRecord,
   State,
 } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
@@ -663,7 +664,7 @@ export class PredictionMarketService extends Service {
           actionName: POLYMARKET_ACTION_NAME,
           error: "UNSUPPORTED_PROVIDER",
           providers: this.listProviders(),
-        },
+        } as any,
       });
       return {
         success: false,
@@ -672,7 +673,7 @@ export class PredictionMarketService extends Service {
         data: {
           actionName: POLYMARKET_ACTION_NAME,
           providers: this.listProviders(),
-        },
+        } as ProviderDataRecord,
       };
     }
     if (!provider.supportedSubactions.includes(args.op)) {

@@ -8,10 +8,10 @@ import net from "node:net";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
-} from "../security/network-policy.js";
-import { hasBlockedObjectKeyDeep } from "./server-helpers.js";
-import type { TerminalRunRejection } from "./server-helpers-auth.js";
-import { resolveTerminalRunRejection } from "./server-helpers-auth.js";
+} from "../security/network-policy.ts";
+import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
+import type { TerminalRunRejection } from "./server-helpers-auth.ts";
+import { resolveTerminalRunRejection } from "./server-helpers-auth.ts";
 
 const ALLOWED_MCP_CONFIG_TYPES = new Set([
   "stdio",

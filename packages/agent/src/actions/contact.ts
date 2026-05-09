@@ -58,10 +58,10 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-} from "../services/relationships-graph.js";
-import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
-import { hasContextSignalSyncForKey } from "./context-signal.js";
-import { extractActionParamsViaLlm } from "./extract-params.js";
+} from "../services/relationships-graph.ts";
+import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
+import { hasContextSignalSyncForKey } from "./context-signal.ts";
+import { extractActionParamsViaLlm } from "./extract-params.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch

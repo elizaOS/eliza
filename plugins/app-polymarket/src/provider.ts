@@ -1,4 +1,10 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderDataRecord,
+  State,
+} from "@elizaos/core";
 import { derivePolymarketStatusText } from "./provider-text";
 
 export const polymarketStatusProvider: Provider = {
@@ -14,7 +20,7 @@ export const polymarketStatusProvider: Provider = {
     const status = derivePolymarketStatusText(process.env);
     return {
       text: status.text,
-      data: status.data,
+      data: status.data as ProviderDataRecord,
     };
   },
 };

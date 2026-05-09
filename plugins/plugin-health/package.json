@@ -28,9 +28,7 @@
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

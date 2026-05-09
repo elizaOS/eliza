@@ -15,7 +15,7 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { readCurrentActivityFromJsonl } from "./subagent-output.js";
+import { readCurrentActivityFromJsonl } from "./subagent-output.ts";
 
 /** Time before the first heartbeat fires for a freshly-spawned session. */
 const HEARTBEAT_AFTER_MS = 45_000;

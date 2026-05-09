@@ -1,3 +1,3 @@
-export * from "./agent-skills.js";
-export * from "./config-like.js";
-export * from "./trajectory.js";
+export * from "./agent-skills.ts";
+export * from "./config-like.ts";
+export * from "./trajectory.ts";

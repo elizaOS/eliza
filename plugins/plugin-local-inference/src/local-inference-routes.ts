@@ -9,6 +9,7 @@ import path from "node:path";
 import {
 	type ContentValue,
 	logger,
+	readJsonBody,
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
@@ -17,7 +18,6 @@ import {
 	loadMobileDeviceBridgeModel,
 	unloadMobileDeviceBridgeModel,
 } from "@elizaos/plugin-capacitor-bridge";
-import { readJsonBody } from "@elizaos/shared";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =

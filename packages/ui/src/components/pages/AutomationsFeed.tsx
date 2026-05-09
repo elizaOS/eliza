@@ -85,6 +85,7 @@ const FILTER_LABELS: Record<FeedFilter, string> = {
   active: "Active",
   inactive: "Inactive",
 };
+const NEW_AUTOMATION_LINK_ID = "__new__";
 
 interface FeedRow {
   key: string;
@@ -148,23 +149,29 @@ export function AutomationsFeed({
   const editor: EditorState = useMemo(() => {
     if (link.kind === "list") return { kind: "none" };
     if (link.kind === "workflow")
-      return { kind: "workflow", workflowId: link.id };
-    return { kind: "task", taskId: link.id };
+      return {
+        kind: "workflow",
+        workflowId: link.id === NEW_AUTOMATION_LINK_ID ? null : link.id,
+      };
+    return {
+      kind: "task",
+      taskId: link.id === NEW_AUTOMATION_LINK_ID ? null : link.id,
+    };
   }, [link]);
 
   const setEditor = useCallback(
     (next: EditorState) => {
       if (next.kind === "none") setLink({ kind: "list" });
       else if (next.kind === "workflow")
-        setLink(
-          next.workflowId
-            ? { kind: "workflow", id: next.workflowId }
-            : { kind: "list" },
-        );
+        setLink({
+          kind: "workflow",
+          id: next.workflowId ?? NEW_AUTOMATION_LINK_ID,
+        });
       else
-        setLink(
-          next.taskId ? { kind: "task", id: next.taskId } : { kind: "list" },
-        );
+        setLink({
+          kind: "task",
+          id: next.taskId ?? NEW_AUTOMATION_LINK_ID,
+        });
     },
     [setLink],
   );
@@ -185,6 +192,11 @@ export function AutomationsFeed({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const automations = useMemo(
+    () => (Array.isArray(data?.automations) ? data.automations : []),
+    [data],
+  );
 
   // Behavior #4: external "show only failed runs" / chip filter dispatcher.
   useEffect(() => {
@@ -214,17 +226,19 @@ export function AutomationsFeed({
   }, [setLink]);
 
   const rows = useMemo(() => {
-    if (!data) return [];
-    return data.automations
+    return automations
       .map(automationToRow)
       .filter((r) => passesFilter(r, filter));
-  }, [data, filter]);
+  }, [automations, filter]);
 
   const tasksCount = useMemo(
-    () => data?.automations.filter((a) => a.type !== "workflow").length ?? 0,
-    [data],
+    () => automations.filter((a) => a.type !== "workflow").length,
+    [automations],
   );
-  const workflowsCount = data?.summary.workflowCount ?? 0;
+  const workflowsCount =
+    typeof data?.summary?.workflowCount === "number"
+      ? data.summary.workflowCount
+      : automations.filter((a) => a.type === "workflow").length;
 
   // Editor mode
   if (editor.kind === "task") {
@@ -266,6 +280,7 @@ export function AutomationsFeed({
 
   const feedContent = (
     <div
+      data-testid="automations-shell"
       className={`device-layout mx-auto flex w-full ${chatOpen ? "max-w-3xl" : "max-w-5xl"} flex-col gap-4 px-4 py-4 lg:px-6`}
     >
       {/* Header */}

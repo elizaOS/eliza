@@ -45,8 +45,8 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
-		}
-	},
+    }
+  },
   "files": [
     "dist"
   ],

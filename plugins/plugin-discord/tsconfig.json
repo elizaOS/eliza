@@ -1,41 +1,50 @@
 {
-	"compilerOptions": {
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
-			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"]
-		},
-		"ignoreDeprecations": "6.0",
-		"target": "ES2022",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"lib": ["ES2022", "DOM"],
-		"strict": false,
-		"noEmit": true,
-		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
-		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"allowImportingTsExtensions": true,
-		"declaration": true,
-		"declarationMap": true,
-		"noUnusedLocals": false,
-		"noUnusedParameters": false,
-		"noImplicitReturns": false,
-		"noImplicitAny": false,
-		"strictPropertyInitialization": false,
-		"useUnknownInCatchVariables": false,
-		"types": ["node", "bun-types"]
-	},
-	"include": ["./**/*.ts"],
-	"exclude": [
-		"node_modules",
-		"dist",
-		"test/**",
-		"**/__tests__/**",
-		"**/*.test.ts",
-		"build.ts",
-		"./generated/**"
-	]
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/plugin-browser": [
+        "../plugin-browser/src/index.ts"
+      ]
+    },
+    "ignoreDeprecations": "6.0",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "useUnknownInCatchVariables": false,
+    "types": [
+      "node",
+      "bun-types"
+    ]
+  },
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "build.ts",
+    "./generated/**"
+  ]
 }

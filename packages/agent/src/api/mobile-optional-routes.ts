@@ -5,7 +5,7 @@ import {
   writeStreamSettings,
 } from "@elizaos/plugin-streaming";
 import { isMobilePlatform } from "@elizaos/shared";
-import { readRequestBody, sendJson, sendJsonError } from "./http-helpers.js";
+import { readRequestBody, sendJson, sendJsonError } from "./http-helpers.ts";
 
 function mobileLocalCompatibilityEnabled(): boolean {
   return (
@@ -75,6 +75,11 @@ export async function handleMobileOptionalRoutes(
       shinyPrice: "0.1",
       userHasMinted: false,
     });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/coding-agents/preflight") {
+    sendJson(res, { installed: [], available: false });
     return true;
   }
 

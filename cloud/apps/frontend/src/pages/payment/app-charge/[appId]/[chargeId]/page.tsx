@@ -1,14 +1,3 @@
-import {
-  Alert,
-  AlertDescription,
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@elizaos/cloud-ui";
 import { AlertCircle, CheckCircle2, Coins, CreditCard, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -81,10 +70,6 @@ function normalizeError(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "Unable to complete the request.";
-}
-
-function providerLabel(provider: AppChargeProvider): string {
-  return provider === "stripe" ? "Card" : "Crypto";
 }
 
 export default function AppChargePaymentPage() {
@@ -215,161 +200,159 @@ export default function AppChargePaymentPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0A0A0A] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-cyan-200/70" />
       </div>
     );
   }
 
   if (!details || !charge) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0A0A0A] p-4">
-        <Card className="w-full max-w-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              Charge unavailable
-            </CardTitle>
-            <CardDescription>{error || "This payment link is unavailable."}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline" className="w-full">
-              <Link to="/">Return Home</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
+        <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-6 w-6 text-red-300" />
+            <div>
+              <h1 className="text-base font-semibold">Charge unavailable</h1>
+              <p className="mt-1 text-sm text-red-100/75">
+                {error || "This payment link is unavailable."}
+              </p>
+            </div>
+          </div>
+          <Link className="mt-5 inline-flex text-sm text-cyan-200 hover:text-cyan-100" to="/">
+            Return home
+          </Link>
+        </div>
       </div>
     );
   }
 
+  const statusIcon = isPaid ? (
+    <CheckCircle2 className="h-7 w-7 text-emerald-200" />
+  ) : isExpired ? (
+    <AlertCircle className="h-7 w-7 text-amber-200" />
+  ) : returnedFromPayment ? (
+    <Loader2 className="h-7 w-7 animate-spin text-cyan-200" />
+  ) : (
+    <CreditCard className="h-7 w-7 text-cyan-200" />
+  );
+  const statusText = isPaid
+    ? "Paid"
+    : isExpired
+      ? "Expired"
+      : returnedFromPayment
+        ? "Confirming"
+        : "Ready";
+  const statusClass = isPaid
+    ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+    : isExpired
+      ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
+      : "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
+  const shortId = charge.id.slice(0, 8);
+
   return (
-    <div className="min-h-screen bg-[#0A0A0A] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-3xl items-center">
-        <Card className="w-full">
-          <CardHeader className="gap-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-3">
-                <div className="flex items-center gap-3">
-                  {details.app.logo_url ? (
-                    <img
-                      src={details.app.logo_url}
-                      alt=""
-                      className="h-11 w-11 shrink-0 border border-white/10 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-sm font-semibold text-white/70">
-                      {details.app.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <CardTitle className="truncate text-xl">{details.app.name}</CardTitle>
-                    <CardDescription className="truncate">
-                      {charge.description || details.app.description || "App credit charge"}
-                    </CardDescription>
-                  </div>
+    <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
+        <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              {details.app.logo_url ? (
+                <img
+                  src={details.app.logo_url}
+                  alt=""
+                  className="h-12 w-12 shrink-0 border border-white/10 object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-sm font-semibold text-white/70">
+                  {details.app.name.slice(0, 2).toUpperCase()}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {isPaid ? (
-                    <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-                      Paid
-                    </Badge>
-                  ) : isExpired ? (
-                    <Badge variant="destructive">Expired</Badge>
-                  ) : (
-                    <Badge>Awaiting payment</Badge>
-                  )}
-                  {charge.providers.map((provider) => (
-                    <Badge key={provider} variant="outline">
-                      {providerLabel(provider)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div className="text-left sm:text-right">
-                <div className="text-4xl font-semibold leading-none">
-                  {formatAmount(charge.amountUsd)}
-                </div>
-                <div className="mt-2 text-xs text-white/50">
-                  Expires {formatDate(charge.expiresAt)}
-                </div>
+              )}
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold">{details.app.name}</h1>
+                <p className="truncate text-sm text-white/50">
+                  {charge.description || details.app.description || "App credit charge"}
+                </p>
               </div>
             </div>
-          </CardHeader>
+            <button
+              type="button"
+              aria-label="Refresh status"
+              title="Refresh status"
+              onClick={() => loadCharge()}
+              disabled={isLoading}
+              className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-white/55 transition hover:border-white/25 hover:text-white disabled:opacity-40"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          </div>
 
-          <CardContent className="space-y-5">
-            {error && (
-              <Alert className="border-red-500/30 bg-red-500/10">
-                <AlertCircle className="h-4 w-4 text-red-300" />
-                <AlertDescription className="text-red-100">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {isPaid && (
-              <Alert className="border-emerald-500/30 bg-emerald-500/10">
-                <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                <AlertDescription className="text-emerald-100">
-                  Payment confirmed{charge.paidAt ? ` on ${formatDate(charge.paidAt)}` : ""}.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {returnedFromPayment && !isPaid && !isExpired && (
-              <Alert className="border-white/15 bg-white/5">
-                <Loader2 className="h-4 w-4 animate-spin text-white/60" />
-                <AlertDescription className="text-white/70">
-                  Payment submitted. Waiting for provider confirmation.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!isPaid && isExpired && (
-              <Alert className="border-amber-500/30 bg-amber-500/10">
-                <AlertCircle className="h-4 w-4 text-amber-300" />
-                <AlertDescription className="text-amber-100">
-                  This charge link has expired.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Button
-                size="lg"
-                disabled={!canPay || !enabledProviders.has("stripe") || checkoutProvider !== null}
-                onClick={() => beginCheckout("stripe")}
-                className="h-12"
-              >
-                {checkoutProvider === "stripe" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="h-4 w-4" />
-                )}
-                Pay With Card
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                disabled={!canPay || !enabledProviders.has("oxapay") || checkoutProvider !== null}
-                onClick={() => beginCheckout("oxapay")}
-                className="h-12"
-              >
-                {checkoutProvider === "oxapay" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Coins className="h-4 w-4" />
-                )}
-                Pay With Crypto
-              </Button>
+          <div className="mt-10 flex flex-col items-center text-center">
+            <div className={`flex h-16 w-16 items-center justify-center border ${statusClass}`}>
+              {statusIcon}
             </div>
-
-            <div className="flex flex-col gap-3 border-t border-white/10 pt-5 text-xs text-white/45 sm:flex-row sm:items-center sm:justify-between">
-              <span>Charge ID {charge.id}</span>
-              <Button variant="ghost" size="sm" onClick={() => loadCharge()} disabled={isLoading}>
-                <RotateCcw className="h-3.5 w-3.5" />
-                Refresh
-              </Button>
+            <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
+              {formatAmount(charge.amountUsd)}
             </div>
-          </CardContent>
-        </Card>
+            <div className="mt-3 text-sm text-white/55">
+              {statusText} - expires {formatDate(charge.expiresAt)}
+            </div>
+            {charge.paidAt && (
+              <div className="mt-2 text-xs text-emerald-200/75">
+                Confirmed {formatDate(charge.paidAt)}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-7 flex items-center gap-3 border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-300" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {returnedFromPayment && !isPaid && !isExpired && (
+            <div className="mt-7 flex items-center gap-3 border border-cyan-300/25 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-cyan-200" />
+              <span>Waiting for confirmation.</span>
+            </div>
+          )}
+
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              aria-label="Pay with card"
+              disabled={!canPay || !enabledProviders.has("stripe") || checkoutProvider !== null}
+              onClick={() => beginCheckout("stripe")}
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-amber-300/25 bg-amber-400/10 text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:pointer-events-none disabled:opacity-30"
+            >
+              {checkoutProvider === "stripe" ? (
+                <Loader2 className="h-9 w-9 animate-spin" />
+              ) : (
+                <CreditCard className="h-9 w-9 transition group-hover:scale-105" />
+              )}
+              <span className="text-sm font-medium">Card</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Pay with crypto"
+              disabled={!canPay || !enabledProviders.has("oxapay") || checkoutProvider !== null}
+              onClick={() => beginCheckout("oxapay")}
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-emerald-300/25 bg-emerald-400/10 text-emerald-100 transition hover:border-emerald-200/60 hover:bg-emerald-300/15 disabled:pointer-events-none disabled:opacity-30"
+            >
+              {checkoutProvider === "oxapay" ? (
+                <Loader2 className="h-9 w-9 animate-spin" />
+              ) : (
+                <Coins className="h-9 w-9 transition group-hover:scale-105" />
+              )}
+              <span className="text-sm font-medium">Crypto</span>
+            </button>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">
+            <span>#{shortId}</span>
+            <span>{charge.providers.join(" / ")}</span>
+          </div>
+        </section>
       </main>
     </div>
   );

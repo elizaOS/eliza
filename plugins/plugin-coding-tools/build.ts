@@ -19,7 +19,7 @@ await build({
   format: "esm",
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core", "@elizaos/agent", "@vscode/ripgrep"],
+  external: ["@elizaos/core", "@vscode/ripgrep"],
 });
 
 console.log("Build complete.");

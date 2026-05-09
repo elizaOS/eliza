@@ -9,7 +9,7 @@ import {
   checkSenderRole,
   resolveCanonicalOwnerIdForMessage,
 } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 export const adminTrustProvider: Provider = createAdminTrustProvider();
 

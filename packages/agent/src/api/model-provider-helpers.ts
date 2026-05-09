@@ -12,7 +12,7 @@ import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
-import { resolveModelsCacheDir } from "../config/paths.js";
+import { resolveModelsCacheDir } from "../config/paths.ts";
 
 type ModelOption = {
   id: string;

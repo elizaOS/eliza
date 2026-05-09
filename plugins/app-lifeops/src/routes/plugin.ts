@@ -618,7 +618,7 @@ function scheduledTasksRouteHandler(): PluginRouteHandler {
   });
   return async (req, res, runtime): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
+    const httpRes = res as unknown as http.ServerResponse;
     const ctx = buildLifeOpsContext(
       httpReq,
       httpRes,

@@ -16,7 +16,7 @@
  * Instead, this file gives plugin-health (and any future cross-package
  * caller) a stable canonical alias to import from:
  *
- *   import type { LifeOpsHealthSignal } from "@elizaos/shared/contracts/health";
+ *   import type { LifeOpsHealthSignal } from "@elizaos/shared";
  *
  * The runtime semantics are identical to importing from `@elizaos/shared`
  * directly — these are pure type re-exports.

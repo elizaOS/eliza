@@ -8,23 +8,33 @@ import {
   validateActionKeywords,
   validateActionRegex,
 } from "@elizaos/core";
-import type { ClmmPoolInfo } from "@raydium-io/raydium-sdk";
 import { Connection, type PublicKey } from "@solana/web3.js";
 
 const POSITION_LIMIT = 20;
 
+type RaydiumClmmPoolInfo = {
+  currentPrice: number;
+  currentTickIndex: number;
+  tickArrayLower: number;
+  tickArrayUpper: number;
+};
+
 async function loadRaydiumPositionApi(): Promise<{
-  clmm: { getPool: (connection: Connection, poolId: PublicKey) => Promise<ClmmPoolInfo> };
+  clmm: {
+    getPool: (connection: Connection, poolId: PublicKey) => Promise<RaydiumClmmPoolInfo>;
+  };
   position: {
     getPositionsByOwner: (
       connection: Connection,
       ownerAddress: PublicKey
     ) => Promise<Array<Record<string, unknown>>>;
   };
-}> {
+} | null> {
   const sdk = (await import("@raydium-io/raydium-sdk")) as Record<string, unknown>;
   const clmm = sdk.Clmm as
-    | { getPool?: (connection: Connection, poolId: PublicKey) => Promise<ClmmPoolInfo> }
+    | {
+        getPool?: (connection: Connection, poolId: PublicKey) => Promise<RaydiumClmmPoolInfo>;
+      }
     | undefined;
   const position = sdk.Position as
     | {
@@ -36,7 +46,10 @@ async function loadRaydiumPositionApi(): Promise<{
     | undefined;
 
   if (typeof clmm?.getPool !== "function" || typeof position?.getPositionsByOwner !== "function") {
-    throw new Error("Raydium position helpers are unavailable in the installed Raydium SDK");
+    logger.warn(
+      "Raydium LP position helper is unavailable in the installed Raydium SDK; returning no Raydium LP positions."
+    );
+    return null;
   }
 
   return {
@@ -167,13 +180,15 @@ const fetchPositions = async (
   ownerAddress: PublicKey
 ): Promise<FetchedPositionStatistics[]> => {
   try {
-    const { clmm, position: positionApi } = await loadRaydiumPositionApi();
+    const api = await loadRaydiumPositionApi();
+    if (!api) return [];
+    const { clmm, position: positionApi } = api;
 
     // Get all positions for the owner
     const positions = await positionApi.getPositionsByOwner(connection, ownerAddress);
 
     // Fetch all unique pools
-    const poolsMap = new Map<string, ClmmPoolInfo>();
+    const poolsMap = new Map<string, RaydiumClmmPoolInfo>();
 
     // First pass: collect all pool addresses
     for (const position of positions) {

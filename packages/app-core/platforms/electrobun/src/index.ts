@@ -2407,4 +2407,5 @@ main().catch((err) => {
 });
 
 import { shutdownAfterFatalError } from "./fatal-shutdown";
+
 export { shutdownAfterFatalError };

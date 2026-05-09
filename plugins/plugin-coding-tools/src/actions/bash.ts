@@ -148,11 +148,7 @@ export const bashAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) =>
-    Boolean(
-      runtime.getService(SANDBOX_SERVICE) &&
-        runtime.getService(SESSION_CWD_SERVICE),
-    ),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -193,7 +189,7 @@ export const bashAction: Action = {
     let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
-      if (!v.ok) {
+      if (v.ok === false) {
         return failureToActionResult({
           reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
           message: v.message,

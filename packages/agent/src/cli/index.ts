@@ -43,13 +43,13 @@ export async function runAutonomousCli(
   }
 
   if (command === "runtime") {
-    const { bootElizaRuntime } = await import("../runtime/index.js");
+    const { bootElizaRuntime } = await import("../runtime/index.ts");
     await bootElizaRuntime();
     return;
   }
 
   if (command === "serve" || command === "start") {
-    const { startEliza } = await import("../runtime/index.js");
+    const { startEliza } = await import("../runtime/index.ts");
     const runtime = await startEliza({ serverOnly: true });
     console.log(
       `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, ELIZA_LOCAL_LLAMA=${process.env.ELIZA_LOCAL_LLAMA ?? "(unset)"}`,
@@ -90,7 +90,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "benchmark") {
-    const { runBenchmark } = await import("./benchmark.js");
+    const { runBenchmark } = await import("./benchmark.ts");
     // Parse benchmark-specific flags from argv
     const opts = {
       task: undefined as string | undefined,

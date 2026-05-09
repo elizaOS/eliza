@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "bun run server.ts",
-    "test": "bun run test-runner.ts",
+    "test": "cd ../../.. && bunx tsx packages/examples/a2a/test-runner.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"

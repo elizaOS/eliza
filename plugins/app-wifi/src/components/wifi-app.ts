@@ -1,7 +1,7 @@
 /**
  * WiFi overlay app definition + registration.
  *
- * Registered as a side-effect from `@elizaos/app-wifi/register` only on
+ * Registered by the WiFi side-effect entry only on
  * Android; other platforms intentionally skip registration so the app does
  * not appear in the catalog where it cannot function.
  */

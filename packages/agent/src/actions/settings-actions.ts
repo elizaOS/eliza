@@ -33,13 +33,13 @@ import {
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,
-} from "../api/provider-switch-config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+} from "../api/provider-switch-config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
-} from "../services/owner-name.js";
+} from "../services/owner-name.ts";
 
 // ── Op catalog ────────────────────────────────────────────────────────────
 

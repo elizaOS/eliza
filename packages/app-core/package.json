@@ -35,19 +35,17 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
+    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts"
   },
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
     "./package.json": "./package.json",
-    "./*": ["./dist/*.js", "./dist/*/index.js"],
-    "./*.js": ["./dist/*.js", "./dist/*/index.js"]
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -70,14 +68,6 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
-    "@elizaos/app-documents": "workspace:*",
-    "@elizaos/app-hyperliquid": "workspace:*",
-    "@elizaos/app-lifeops": "workspace:*",
-    "@elizaos/app-polymarket": "workspace:*",
-    "@elizaos/app-shopify": "workspace:*",
-    "@elizaos/app-steward": "workspace:*",
-    "@elizaos/app-training": "workspace:*",
-    "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",

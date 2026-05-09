@@ -8,7 +8,7 @@
     "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external",
     "build:watch": "bun run build --watch",
     "clean": "rm -rf dist",
-    "test": "bun run test-local.ts",
+    "test": "cd ../../.. && bunx tsx packages/examples/aws/test-local.ts",
     "start": "bun run server-local.ts",
     "test:client": "bun run test-client.ts",
     "deploy": "sam build && sam deploy",

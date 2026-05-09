@@ -12,8 +12,3 @@ declare module "@elizaos/agent" {
   export const resolveStateDir: (...args: unknown[]) => string;
   export const createIntegrationTelemetrySpan: (...args: unknown[]) => unknown;
 }
-
-declare module "@elizaos/agent/*" {
-  const value: unknown;
-  export default value;
-}

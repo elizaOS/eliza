@@ -6,11 +6,11 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { OAuthCredentials } from "./types.js";
+import type { OAuthCredentials } from "./types.ts";
 import {
   loginOpenAICodex,
   refreshOpenAICodexToken,
-} from "./vendor/pi-oauth/openai-codex-login.js";
+} from "./vendor/pi-oauth/openai-codex-login.ts";
 
 export interface CodexFlow {
   authUrl: string;

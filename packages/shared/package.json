@@ -38,7 +38,11 @@
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

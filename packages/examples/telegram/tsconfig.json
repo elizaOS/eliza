@@ -12,8 +12,7 @@
     "lib": ["ES2022"],
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["./../../core/dist/index.d.ts"],
-      "@elizaos/core/*": ["./../../core/dist/*"]
+      "@elizaos/core": ["./../../core/dist/index.d.ts"]
     }
   },
   "include": ["*.ts", "*.d.ts"],

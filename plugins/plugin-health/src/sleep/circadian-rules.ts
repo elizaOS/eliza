@@ -18,7 +18,7 @@ import type {
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,
   LifeOpsRegularityClass,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
 import { parseIsoMs } from "../util/time-util.js";
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
