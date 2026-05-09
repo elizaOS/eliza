@@ -18,6 +18,9 @@
       "@elizaos/agent": [
         "../agent/dist/packages/agent/src/index.d.ts"
       ],
+      "@elizaos/agent/*": [
+        "../agent/dist/packages/agent/src/*"
+      ],
       "@elizaos/core": [
         "../core/dist/index.node.d.ts"
       ],

@@ -172,3 +172,4 @@ export * from "./triggers/types.ts";
 export * from "./types/index.ts";
 export * from "./utils/number-parsing.ts";
 export * from "./version-resolver.ts";
+export * from "./services/plugin-installer";

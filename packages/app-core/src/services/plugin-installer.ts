@@ -19,7 +19,7 @@ import type {
   InstallResult,
   ProgressCallback,
   UninstallResult,
-} from "@elizaos/agent/services/plugin-installer";
+} from "@elizaos/agent";
 
 export type {
   InstallPhase,
@@ -29,21 +29,21 @@ export type {
   UninstallResult,
 };
 
-let cached: typeof import("@elizaos/agent/services/plugin-installer") | null =
+let cached: typeof import("@elizaos/agent") | null =
   null;
 
 async function load() {
   if (cached) return cached;
-  cached = await import("@elizaos/agent/services/plugin-installer");
+  cached = await import("@elizaos/agent");
   return cached;
 }
 
 export async function installPlugin(
   ...args: Parameters<
-    typeof import("@elizaos/agent/services/plugin-installer").installPlugin
+    typeof import("@elizaos/agent").installPlugin
   >
 ): ReturnType<
-  typeof import("@elizaos/agent/services/plugin-installer").installPlugin
+  typeof import("@elizaos/agent").installPlugin
 > {
   const mod = await load();
   return mod.installPlugin(...args);
@@ -51,10 +51,10 @@ export async function installPlugin(
 
 export async function installAndRestart(
   ...args: Parameters<
-    typeof import("@elizaos/agent/services/plugin-installer").installAndRestart
+    typeof import("@elizaos/agent").installAndRestart
   >
 ): ReturnType<
-  typeof import("@elizaos/agent/services/plugin-installer").installAndRestart
+  typeof import("@elizaos/agent").installAndRestart
 > {
   const mod = await load();
   return mod.installAndRestart(...args);
@@ -62,10 +62,10 @@ export async function installAndRestart(
 
 export async function uninstallPlugin(
   ...args: Parameters<
-    typeof import("@elizaos/agent/services/plugin-installer").uninstallPlugin
+    typeof import("@elizaos/agent").uninstallPlugin
   >
 ): ReturnType<
-  typeof import("@elizaos/agent/services/plugin-installer").uninstallPlugin
+  typeof import("@elizaos/agent").uninstallPlugin
 > {
   const mod = await load();
   return mod.uninstallPlugin(...args);
@@ -73,10 +73,10 @@ export async function uninstallPlugin(
 
 export async function uninstallAndRestart(
   ...args: Parameters<
-    typeof import("@elizaos/agent/services/plugin-installer").uninstallAndRestart
+    typeof import("@elizaos/agent").uninstallAndRestart
   >
 ): ReturnType<
-  typeof import("@elizaos/agent/services/plugin-installer").uninstallAndRestart
+  typeof import("@elizaos/agent").uninstallAndRestart
 > {
   const mod = await load();
   return mod.uninstallAndRestart(...args);
@@ -84,10 +84,10 @@ export async function uninstallAndRestart(
 
 export async function listInstalledPlugins(
   ...args: Parameters<
-    typeof import("@elizaos/agent/services/plugin-installer").listInstalledPlugins
+    typeof import("@elizaos/agent").listInstalledPlugins
   >
 ): ReturnType<
-  typeof import("@elizaos/agent/services/plugin-installer").listInstalledPlugins
+  typeof import("@elizaos/agent").listInstalledPlugins
 > {
   const mod = await load();
   return mod.listInstalledPlugins(...args);

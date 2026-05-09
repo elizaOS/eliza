@@ -484,12 +484,18 @@ export class MessageManager {
 			}
 		}
 
-		const isBotMentioned = !!(
+		const isBotPlatformMentioned = !!(
 			clientUser?.id && message.mentions.users?.has(clientUser.id)
 		);
 		const isReplyToBot =
 			!!message.reference?.messageId &&
 			message.mentions.repliedUser?.id === clientUser?.id;
+		const isBotAddressed = isDiscordUserAddressed({
+			text: getAddressingContent(message),
+			userId: clientUser?.id,
+			hasMessageReference: Boolean(message.reference?.messageId),
+			repliedUserId: message.mentions.repliedUser?.id,
+		});
 		const mentionedOtherUsers = message.mentions.users
 			? Array.from(message.mentions.users.values()).some(
 					(user) => user.id !== clientUser?.id && user.id !== message.author.id,
@@ -506,10 +512,8 @@ export class MessageManager {
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);
 		const outboundReplyToMessageId =
-			!isDM && replyToMode !== "off" && (isBotMentioned || isReplyToBot)
-				? message.id
-				: undefined;
-		const strictModeShouldProcess = isDM || isBotMentioned || isReplyToBot;
+			!isDM && replyToMode !== "off" && isBotAddressed ? message.id : undefined;
+		const strictModeShouldProcess = isDM || isBotAddressed;
 
 		const userName = message.author.bot
 			? `${message.author.username}#${message.author.discriminator}`
@@ -578,21 +582,8 @@ export class MessageManager {
 			// Users often mention a teammate and then ask the bot by name in the
 			// same message. Only short-circuit these messages when the bot is not
 			// also clearly addressed.
-			const explicitlyAddressesBotByName = textMentionsAnyName(
-				processedContent,
-				[
-					this.runtime.character.name,
-					this.runtime.character.username,
-					clientUser?.globalName,
-					clientUser?.username,
-				],
-			);
 			const ignoresOtherTarget =
-				!isDM &&
-				!isBotMentioned &&
-				!isReplyToBot &&
-				!explicitlyAddressesBotByName &&
-				(mentionedOtherUsers || isReplyToOtherUser);
+				!isDM && !isBotAddressed && (mentionedOtherUsers || isReplyToOtherUser);
 
 			// Use the service's buildMemoryFromMessage method with pre-processed content
 			const newMessage = await this.discordService.buildMemoryFromMessage(
@@ -602,16 +593,17 @@ export class MessageManager {
 					processedAttachments: attachments,
 					extraContent: {
 						mentionContext: {
-							isMention: isBotMentioned,
+							isMention: isBotPlatformMentioned && isBotAddressed,
 							isReply: isReplyToBot,
 							isThread: isInThread,
-							mentionType: isBotMentioned
-								? "platform_mention"
-								: isReplyToBot
-									? "reply"
-									: isInThread
-										? "thread"
-										: "none",
+							mentionType:
+								isBotPlatformMentioned && isBotAddressed
+									? "platform_mention"
+									: isReplyToBot
+										? "reply"
+										: isInThread
+											? "thread"
+											: "none",
 						},
 					},
 					extraMetadata: compactJsonObject(

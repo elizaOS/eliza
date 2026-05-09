@@ -112,7 +112,7 @@ import "@elizaos/app-vincent";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
 // page, and chat sidebar wallet-status widget) with the app shell registries.
 // Must precede the first shell render.
-import "@elizaos/app-wallet/register";
+import "@elizaos/app-wallet";
 import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,

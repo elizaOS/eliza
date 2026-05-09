@@ -47,8 +47,6 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./api/*": "./src/api/*.ts",
-    "./services/plugin-installer": "./src/services/plugin-installer.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {

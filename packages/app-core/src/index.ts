@@ -31,3 +31,7 @@ export * from "./services/steward-sidecar";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
 export * from "./ui-compat";
+export * from "./platform/empty-node-module";
+export * from "./runtime/app-route-plugin-registry";
+export * from "./services/plugin-installer";
+export * from "./services/steward-sidecar/helpers";

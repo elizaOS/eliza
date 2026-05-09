@@ -47,3 +47,4 @@ export * from "./widgets";
 export * from "./widgets";
 export * from "./widgets/registry-store";
 export * from "./widgets/registry-store";
+export * from "./platform/native-plugin-entrypoints";
