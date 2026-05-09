@@ -11,10 +11,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType } from "@elizaos/core";
+import {
+  composePromptFromState,
+  ModelType,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import type { TwitchService } from "../service.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
-import { parseJSONObjectFromText } from "@elizaos/core";
 
 type TwitchChannelOp = "join" | "leave";
 
@@ -76,7 +79,10 @@ async function extractChannelParams(
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
+    const parsed = parseJSONObjectFromText(String(response)) as Record<
+      string,
+      unknown
+    > | null;
     const op = normalizeOp(parsed?.op ? String(parsed.op) : null);
     if (op) {
       return {
@@ -139,7 +145,7 @@ export const twitchChannelAction: Action = {
     const twitchService =
       runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
 
-    if (!twitchService || !twitchService.isConnected()) {
+    if (!twitchService?.isConnected()) {
       callback?.({
         text: "Twitch service is not available.",
         source: "twitch",
@@ -158,9 +164,16 @@ export const twitchChannelAction: Action = {
 
     const op = optionOp ?? inferredOp ?? extracted?.op ?? null;
     const channel = optionChannel
-      ? normalizeChannel(truncateActionText(optionChannel, MAX_TWITCH_CHANNEL_NAME_CHARS))
+      ? normalizeChannel(
+          truncateActionText(optionChannel, MAX_TWITCH_CHANNEL_NAME_CHARS),
+        )
       : extracted?.channel
-        ? normalizeChannel(truncateActionText(extracted.channel, MAX_TWITCH_CHANNEL_NAME_CHARS))
+        ? normalizeChannel(
+            truncateActionText(
+              extracted.channel,
+              MAX_TWITCH_CHANNEL_NAME_CHARS,
+            ),
+          )
         : null;
 
     if (!op) {

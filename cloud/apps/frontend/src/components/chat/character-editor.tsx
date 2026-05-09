@@ -15,10 +15,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";
 import type { PreUploadedFile } from "@/lib/types/knowledge";
-import {
-  CharacterForm,
-  type FormTab,
-} from "../character-builder/character-form";
+import { CharacterForm, type FormTab } from "../character-builder/character-form";
 import { JsonEditor } from "../character-builder/json-editor";
 import { PluginsTab } from "./plugins-tab";
 import { UploadsTab } from "./uploads-tab";

@@ -143,7 +143,7 @@ function isOpus4Model(modelName: ModelName): boolean {
 }
 
 function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
-  const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
+  const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt ?? "" }];
 
   for (const attachment of params.attachments ?? []) {
     content.push({
@@ -283,7 +283,7 @@ function resolveTextParams(
   modelName: ModelName,
   cotBudget: number
 ): ResolvedTextParams {
-  const prompt = params.prompt;
+  const prompt = params.prompt ?? "";
   const stopSequences = params.stopSequences ?? [];
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
@@ -369,6 +369,7 @@ async function generateTextWithModel(
     params: paramsWithAttachments,
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
   });
+  const prompt = paramsWithAttachments.prompt ?? "";
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {
@@ -377,18 +378,11 @@ async function generateTextWithModel(
       );
     }
     if (params.stream) {
-      return streamViaCli(
-        runtime,
-        params.prompt,
-        modelName,
-        modelType,
-        params.maxTokens,
-        systemPrompt
-      );
+      return streamViaCli(runtime, prompt, modelName, modelType, params.maxTokens, systemPrompt);
     }
     const result = await generateViaCli(
       runtime,
-      params.prompt,
+      prompt,
       modelName,
       modelType,
       params.maxTokens,

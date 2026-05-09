@@ -140,8 +140,11 @@ export const containersEnv = {
   agentBridgePort(): string {
     const env = getCloudAwareEnv();
     return (
-      pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT, env.MILADY_BRIDGE_INTERNAL_PORT) ??
-      "31337"
+      pick(
+        env.ELIZA_AGENT_BRIDGE_PORT,
+        env.AGENT_BRIDGE_INTERNAL_PORT,
+        env.MILADY_BRIDGE_INTERNAL_PORT,
+      ) ?? "31337"
     );
   },
 

@@ -8,11 +8,11 @@
 
 "use client";
 
+import { CornerBrackets } from "@elizaos/cloud-ui/components/brand/corner-brackets";
 import { LogIn, Settings, UserPlus } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { cn } from "@/lib/utils";
-import { CornerBrackets } from "@elizaos/cloud-ui/components/brand/corner-brackets";
 
 interface SidebarBottomPanelProps {
   className?: string;

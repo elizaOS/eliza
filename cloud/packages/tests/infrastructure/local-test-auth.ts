@@ -15,6 +15,7 @@ const TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
 const TEST_USER_EMAIL = "local-live-test-user@agent.local";
 const TEST_USER_NAME = "Local Live Test User";
 const TEST_USER_WALLET = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const TEST_USER_STEWARD_ID = "test:local-live:user";
 
 const TEST_API_KEY_ID = "33333333-3333-4333-8333-333333333333";
 const TEST_API_KEY_NAME = "Local Live Test API Key";
@@ -25,6 +26,7 @@ const TEST_MEMBER_USER_ID = "55555555-5555-4555-8555-555555555555";
 const TEST_MEMBER_USER_EMAIL = "local-live-test-member@agent.local";
 const TEST_MEMBER_USER_NAME = "Local Live Test Member";
 const TEST_MEMBER_USER_WALLET = "0xdddddddddddddddddddddddddddddddddddddddd";
+const TEST_MEMBER_USER_STEWARD_ID = "test:local-live:member";
 const TEST_MEMBER_API_KEY_ID = "66666666-6666-4666-8666-666666666666";
 const TEST_MEMBER_API_KEY_NAME = "Local Live Test Member API Key";
 const TEST_MEMBER_API_KEY_VALUE = "eliza_test_local_live_member_key";
@@ -174,6 +176,7 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
               wallet_address = $5,
               wallet_chain_type = 'evm',
               wallet_verified = true,
+              steward_user_id = $6,
               updated_at = NOW()
         WHERE id = $1
         RETURNING id`,
@@ -183,6 +186,7 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
         TEST_USER_NAME,
         organizationId,
         TEST_USER_WALLET,
+        TEST_USER_STEWARD_ID,
       ],
     );
 
@@ -201,11 +205,19 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
        email_verified,
        wallet_address,
        wallet_chain_type,
-       wallet_verified
+       wallet_verified,
+       steward_user_id
      )
-     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, 'evm', true)
+     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, 'evm', true, $6)
      RETURNING id`,
-    [TEST_USER_ID, TEST_USER_EMAIL, TEST_USER_NAME, organizationId, TEST_USER_WALLET],
+    [
+      TEST_USER_ID,
+      TEST_USER_EMAIL,
+      TEST_USER_NAME,
+      organizationId,
+      TEST_USER_WALLET,
+      TEST_USER_STEWARD_ID,
+    ],
   );
 
   return result.rows[0]!.id;
@@ -255,6 +267,7 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
               wallet_address = $5,
               wallet_chain_type = 'evm',
               wallet_verified = true,
+              steward_user_id = $6,
               updated_at = NOW()
         WHERE id = $1
         RETURNING id`,
@@ -264,6 +277,7 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
         TEST_MEMBER_USER_NAME,
         organizationId,
         TEST_MEMBER_USER_WALLET,
+        TEST_MEMBER_USER_STEWARD_ID,
       ],
     );
 
@@ -282,9 +296,10 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
        email_verified,
        wallet_address,
        wallet_chain_type,
-       wallet_verified
+       wallet_verified,
+       steward_user_id
      )
-     VALUES ($1, $2, $3, $4, 'member', false, true, true, $5, 'evm', true)
+     VALUES ($1, $2, $3, $4, 'member', false, true, true, $5, 'evm', true, $6)
      RETURNING id`,
     [
       TEST_MEMBER_USER_ID,
@@ -292,6 +307,7 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
       TEST_MEMBER_USER_NAME,
       organizationId,
       TEST_MEMBER_USER_WALLET,
+      TEST_MEMBER_USER_STEWARD_ID,
     ],
   );
 

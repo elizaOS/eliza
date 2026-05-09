@@ -19,11 +19,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@elizaos/cloud-ui";
+import { VoiceAudioPlayer, VoiceEmptyState } from "@elizaos/cloud-ui/components/voice";
+import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { VoiceAudioPlayer, VoiceEmptyState } from "@elizaos/cloud-ui/components/voice";
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
 import { VoiceCard } from "./voice-card";
 import { VoiceCloneForm } from "./voice-clone-form";
 

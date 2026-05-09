@@ -18,16 +18,14 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 
 function extractId(message: Memory, options?: HandlerOptions): string | null {
 	const params = readParams(options);
-	const raw =
-		params.id ?? message.content.id ?? message.content.researchId;
+	const raw = params.id ?? message.content.id ?? message.content.researchId;
 	return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
 export const readResearchAction: Action = {
 	name: "READ_RESEARCH",
 	contexts: ["research", "agent_internal"],
-	description:
-		"Fetch a single research thread by id, including all findings.",
+	description: "Fetch a single research thread by id, including all findings.",
 	similes: ["GET_RESEARCH", "SHOW_RESEARCH", "FETCH_RESEARCH"],
 
 	validate: async (
@@ -106,7 +104,12 @@ export const readResearchAction: Action = {
 			return {
 				success: true,
 				text: successMsg,
-				data: { id: research.id, title: research.title, status: research.status, findingsCount: research.findings.length },
+				data: {
+					id: research.id,
+					title: research.title,
+					status: research.status,
+					findingsCount: research.findings.length,
+				},
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);

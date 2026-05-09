@@ -81,9 +81,13 @@ vi.mock("node-llama-cpp", () => {
   };
 
   class LlamaChatSession {
-    prompt = vi.fn(async (_prompt: string, options?: { maxTokens?: number }) =>
-      options?.maxTokens === 1 ? "" : "thought: ok\ntext: local result"
-    );
+    prompt = vi.fn(async (prompt: string, options?: { maxTokens?: number }) => {
+      if (options?.maxTokens === 1) return "";
+      if (prompt.includes("Respond with JSON only")) {
+        return JSON.stringify({ thought: "ok", text: "local result" });
+      }
+      return "thought: ok\ntext: local result";
+    });
   }
 
   return {

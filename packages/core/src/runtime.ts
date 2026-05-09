@@ -963,7 +963,9 @@ export class AgentRuntime implements IAgentRuntime {
 		return serviceType;
 	}
 
-	private nativeRuntimeFeatureSettingKey(feature: NativeRuntimeFeature): string {
+	private nativeRuntimeFeatureSettingKey(
+		feature: NativeRuntimeFeature,
+	): string {
 		return feature === "documents"
 			? "ENABLE_KNOWLEDGE"
 			: `ENABLE_${feature.toUpperCase()}`;

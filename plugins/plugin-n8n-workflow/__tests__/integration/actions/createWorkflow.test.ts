@@ -1,16 +1,16 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { createWorkflowAction } from "../../../src/actions/createWorkflow";
 import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../src/services/n8n-workflow-service";
+import type { WorkflowDraft } from "../../../src/types/index";
 import {
-  createMockRuntime,
-  createMockMessage,
-  createMockState,
   createMockCallback,
+  createMockMessage,
+  createMockRuntime,
+  createMockState,
   createUseModelMock,
   getLastCallbackResult,
 } from "../../helpers/mockRuntime";
 import { createMockService } from "../../helpers/mockService";
-import type { WorkflowDraft } from "../../../src/types/index";
 
 describe("CREATE_N8N_WORKFLOW action", () => {
   describe("validate", () => {
@@ -18,13 +18,27 @@ describe("CREATE_N8N_WORKFLOW action", () => {
       const runtime = createMockRuntime({
         services: { [N8N_WORKFLOW_SERVICE_TYPE]: createMockService() },
       });
-      const result = await createWorkflowAction.validate(runtime, {} as any);
+      const result = await createWorkflowAction.validate(
+        runtime,
+        createMockMessage({
+          content: {
+            text: "Create a workflow that sends Stripe summaries via Gmail",
+          },
+        }),
+        createMockState(),
+      );
       expect(result).toBe(true);
     });
 
     test("returns false when service is unavailable", async () => {
       const runtime = createMockRuntime();
-      const result = await createWorkflowAction.validate(runtime, {} as any);
+      const result = await createWorkflowAction.validate(
+        runtime,
+        createMockMessage({
+          content: { text: "Create a workflow that sends Stripe summaries" },
+        }),
+        createMockState(),
+      );
       expect(result).toBe(false);
     });
   });

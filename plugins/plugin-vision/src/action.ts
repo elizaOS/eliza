@@ -22,7 +22,10 @@ function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), VISION_ACTION_TIMEOUT_MS),
+      setTimeout(
+        () => reject(new Error(`${label} timed out`)),
+        VISION_ACTION_TIMEOUT_MS,
+      ),
     ),
   ]);
 }
@@ -542,7 +545,10 @@ export const captureImageAction: Action = {
       const imageBuffer = await Promise.race([
         visionService.captureImage(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("vision capture timed out")), timeoutMs),
+          setTimeout(
+            () => reject(new Error("vision capture timed out")),
+            timeoutMs,
+          ),
         ),
       ]);
       const cameraInfo = visionService.getCameraInfo();
@@ -851,7 +857,10 @@ export const setVisionModeAction: Action = {
       await Promise.race([
         visionService.setVisionMode(newMode),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("vision mode change timed out")), timeoutMs),
+          setTimeout(
+            () => reject(new Error("vision mode change timed out")),
+            timeoutMs,
+          ),
         ),
       ]);
 

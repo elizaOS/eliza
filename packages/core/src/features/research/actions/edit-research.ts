@@ -19,8 +19,7 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 
 function extractId(message: Memory, options?: HandlerOptions): string | null {
 	const params = readParams(options);
-	const raw =
-		params.id ?? message.content.id ?? message.content.researchId;
+	const raw = params.id ?? message.content.id ?? message.content.researchId;
 	return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
@@ -79,8 +78,7 @@ export const editResearchAction: Action = {
 		}
 
 		if (Object.keys(patch).length === 0) {
-			const msg =
-				"No changes provided. Supply at least one of: title, status.";
+			const msg = "No changes provided. Supply at least one of: title, status.";
 			if (callback) {
 				await callback({
 					text: msg,

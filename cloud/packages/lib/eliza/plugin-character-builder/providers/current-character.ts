@@ -1,6 +1,6 @@
 import {
-  logger,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Provider,
   type ProviderResult,

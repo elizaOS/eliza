@@ -1,15 +1,14 @@
-import { type Context, Hono } from "hono";
 import { userCharactersRepository } from "@elizaos/cloud-db/repositories/characters";
 import {
   type DockerNode,
   dockerNodesRepository,
 } from "@elizaos/cloud-db/repositories/docker-nodes";
+import { containersEnv } from "@elizaos/cloud-lib/config/containers-env";
 import {
   envelope,
   errorEnvelope,
   toCompatOpResult,
 } from "@elizaos/cloud-lib/internal/api/compat-envelope";
-import { containersEnv } from "@elizaos/cloud-lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-lib/internal/runtime/cloud-bindings";
 import { WarmPoolManager } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool";
 import { getHetznerPoolContainerCreator } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool-creator";
@@ -25,6 +24,7 @@ import type { BridgeRequest } from "@elizaos/cloud-lib/internal/services/eliza-s
 import { elizaSandboxService } from "@elizaos/cloud-lib/internal/services/eliza-sandbox";
 import { provisioningJobService } from "@elizaos/cloud-lib/internal/services/provisioning-jobs";
 import { logger } from "@elizaos/cloud-lib/utils/logger";
+import { type Context, Hono } from "hono";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {
@@ -567,7 +567,12 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       "x-accel-buffering": "no",
     };
 
-    if (!body || typeof body !== "object" || body.jsonrpc !== "2.0" || body.method !== "message.send") {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      body.jsonrpc !== "2.0" ||
+      body.method !== "message.send"
+    ) {
       return new Response(
         `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
         { status: 400, headers: streamHeaders },

@@ -11,6 +11,9 @@ vi.mock("@elizaos/core", () => {
   };
 
   return {
+    buildCanonicalSystemPrompt: vi.fn(({ character }: { character?: { system?: string } }) =>
+      typeof character?.system === "string" ? character.system : ""
+    ),
     EventType: {
       MODEL_USED: "MODEL_USED",
     },
@@ -28,6 +31,16 @@ vi.mock("@elizaos/core", () => {
       TRANSCRIPTION: "TRANSCRIPTION",
     },
     logger,
+    renderChatMessagesForPrompt: vi.fn(() => undefined),
+    resolveEffectiveSystemPrompt: vi.fn(
+      ({
+        params,
+        fallback,
+      }: {
+        params?: { system?: string; systemPrompt?: string };
+        fallback?: string;
+      }) => params?.system ?? params?.systemPrompt ?? fallback
+    ),
     recordLlmCall: async (
       runtime: {
         getService?: (name: string) => {

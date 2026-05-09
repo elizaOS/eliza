@@ -20,10 +20,7 @@ import type { ElizaCharacter } from "@/lib/types";
 
 // Dynamic import Monaco editor to reduce initial bundle size (~500KB savings)
 const MonacoJsonEditor = dynamic(
-  () =>
-    import("../chat/monaco-json-editor").then(
-      (mod) => mod.MonacoJsonEditor,
-    ),
+  () => import("../chat/monaco-json-editor").then((mod) => mod.MonacoJsonEditor),
   {
     ssr: false,
     loading: () => <MonacoEditorSkeleton />,

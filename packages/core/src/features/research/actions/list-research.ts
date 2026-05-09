@@ -17,9 +17,7 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 		: {};
 }
 
-function resolveStatusFilter(
-	value: unknown,
-): ResearchStatus | "all" {
+function resolveStatusFilter(value: unknown): ResearchStatus | "all" {
 	if (value === "resolved" || value === "archived" || value === "all") {
 		return value;
 	}
@@ -69,7 +67,8 @@ export const listResearchAction: Action = {
 			const threads = await service.list(agentId, userId, listOpts);
 
 			if (threads.length === 0) {
-				const statusLabel = listOpts.status === "all" ? "" : `${listOpts.status} `;
+				const statusLabel =
+					listOpts.status === "all" ? "" : `${listOpts.status} `;
 				const emptyMsg = `No ${statusLabel}research threads found.`;
 				if (callback) {
 					await callback({

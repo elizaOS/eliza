@@ -1,21 +1,23 @@
-import { describe, test, expect, mock } from "bun:test";
-import { activateWorkflowAction } from "../../../src/actions/activateWorkflow";
-import { deactivateWorkflowAction } from "../../../src/actions/deactivateWorkflow";
-import { deleteWorkflowAction } from "../../../src/actions/deleteWorkflow";
+import { describe, expect, mock, test } from "bun:test";
+import type { ModelType } from "@elizaos/core";
+import { workflowAction } from "../../../src/actions/workflow";
 import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../src/services/n8n-workflow-service";
-import {
-  createMockRuntime,
-  createMockMessage,
-  createMockState,
-  createMockCallback,
-  getLastCallbackResult,
-} from "../../helpers/mockRuntime";
-import { createMockService } from "../../helpers/mockService";
 import {
   createMatchResult,
   createNoMatchResult,
 } from "../../fixtures/workflows";
-import type { ModelType } from "@elizaos/core";
+import {
+  createMockCallback,
+  createMockMessage,
+  createMockRuntime,
+  createMockState,
+  getLastCallbackResult,
+} from "../../helpers/mockRuntime";
+import { createMockService } from "../../helpers/mockService";
+
+const activateWorkflowAction = workflowAction;
+const deactivateWorkflowAction = workflowAction;
+const deleteWorkflowAction = workflowAction;
 
 function createRuntimeWithMatchingWorkflow(
   matchResult = createMatchResult(),
@@ -55,16 +57,24 @@ describe("ACTIVATE_N8N_WORKFLOW action", () => {
       const runtime = createMockRuntime({
         services: { [N8N_WORKFLOW_SERVICE_TYPE]: createMockService() },
       });
-      expect(await activateWorkflowAction.validate(runtime, {} as any)).toBe(
-        true,
-      );
+      expect(
+        await activateWorkflowAction.validate(
+          runtime,
+          createMockMessage({ content: { text: "Activate the workflow" } }),
+          createMockState(),
+        ),
+      ).toBe(true);
     });
 
     test("returns false when service is unavailable", async () => {
       const runtime = createMockRuntime();
-      expect(await activateWorkflowAction.validate(runtime, {} as any)).toBe(
-        false,
-      );
+      expect(
+        await activateWorkflowAction.validate(
+          runtime,
+          createMockMessage({ content: { text: "Activate the workflow" } }),
+          createMockState(),
+        ),
+      ).toBe(false);
     });
   });
 
@@ -109,8 +119,9 @@ describe("ACTIVATE_N8N_WORKFLOW action", () => {
       );
 
       expect(result.success).toBe(false);
-      const callText = (callback as any).mock.calls[0][0].text;
-      expect(callText).toContain("No workflows available");
+      expect(getLastCallbackResult(callback)?.text).toContain(
+        "No workflows available",
+      );
     });
 
     test("fails when no match found", async () => {
@@ -223,7 +234,7 @@ describe("DELETE_N8N_WORKFLOW action", () => {
       runtime,
       createMockMessage({ content: { text: "yes" } }),
       createStateWithWorkflows(),
-      {},
+      { parameters: { op: "delete" } },
       callback,
     );
 
@@ -313,6 +324,14 @@ describe("Callback success status", () => {
       createMockMessage({ content: { text: "Delete Stripe" } }),
       createStateWithWorkflows(),
       {},
+      callback,
+    );
+
+    await deleteWorkflowAction.handler(
+      runtime,
+      createMockMessage({ content: { text: "yes" } }),
+      createStateWithWorkflows(),
+      { parameters: { op: "delete" } },
       callback,
     );
 

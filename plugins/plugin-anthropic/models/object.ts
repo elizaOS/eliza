@@ -175,10 +175,11 @@ async function generateObjectByModelType(
   let usage: AnthropicUsageWithCache | undefined;
 
   try {
-    const promptOrMessages: NativePrompt = (params as ObjectGenerationParamsWithProviderOptions)
-      .messages
-      ? { messages: (params as ObjectGenerationParamsWithProviderOptions).messages }
-      : { messages: [{ role: "user" as const, content: jsonPrompt }] };
+    const messages = (params as ObjectGenerationParamsWithProviderOptions).messages;
+    const promptOrMessages: NativePrompt =
+      messages && messages.length > 0
+        ? { messages }
+        : { messages: [{ role: "user" as const, content: jsonPrompt }] };
     const generateParams: NativeGenerateTextParams = {
       model: anthropic(modelName),
       ...promptOrMessages,

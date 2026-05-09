@@ -22,12 +22,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@elizaos/cloud-ui";
+import { EarningsSimulator, RevenueFlowDiagram } from "@elizaos/cloud-ui/components/monetization";
 import { ChevronRight, Coins, DollarSign, Info, Loader2, Save, Server } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { EarningsSimulator, RevenueFlowDiagram } from "@elizaos/cloud-ui/components/monetization";
 
 interface MonetizationSettings {
   monetizationEnabled: boolean;

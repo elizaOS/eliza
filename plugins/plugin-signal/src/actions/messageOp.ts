@@ -5,11 +5,11 @@ import {
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	parseJSONObjectFromText,
-	type State,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  parseJSONObjectFromText,
+  type State,
 } from "@elizaos/core";
 import { isValidGroupId, normalizeE164 } from "../types";
 import {
@@ -62,9 +62,10 @@ Respond with JSON only, with no prose or fences:
 }`;
 
 function parseInfo(raw: unknown): SignalOpInfo | null {
-  const parsed = parseJSONObjectFromText(
-    typeof raw === "string" ? raw : String(raw)
-  ) as Record<string, unknown> | null;
+  const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : String(raw)) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) {
     return null;
   }
@@ -120,7 +121,7 @@ async function handleSend(
   info: SignalOpInfo,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
-  if (!info.text || !info.text.trim()) {
+  if (!info.text?.trim()) {
     await callback?.({
       text: "I couldn't understand what message you want me to send. Please try again with a clearer request.",
       source: "signal",
@@ -304,7 +305,7 @@ export const messageOp: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     const service = getSignalService(runtime);
-    if (!service || !service.isServiceConnected()) {
+    if (!service?.isServiceConnected()) {
       await callback?.({
         text: "Signal service is not available.",
         source: "signal",

@@ -8,6 +8,17 @@
 
 "use client";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@elizaos/cloud-ui/components/avatar";
+import { Badge } from "@elizaos/cloud-ui/components/badge";
+import { Button } from "@elizaos/cloud-ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@elizaos/cloud-ui/components/dropdown-menu";
 import {
   BookOpen,
   Coins,
@@ -27,17 +38,6 @@ import {
 } from "@/lib/hooks/use-session-auth";
 import { useCredits } from "@/lib/providers/CreditsProvider";
 import { useChatStore } from "@/lib/stores/chat-store";
-import { Avatar, AvatarFallback, AvatarImage } from "@elizaos/cloud-ui/components/avatar";
-import { Badge } from "@elizaos/cloud-ui/components/badge";
-import { Button } from "@elizaos/cloud-ui/components/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@elizaos/cloud-ui/components/dropdown-menu";
 import { FeedbackModal } from "./feedback-modal";
 
 interface UserProfileResponse {

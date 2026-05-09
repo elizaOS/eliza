@@ -157,7 +157,8 @@ export class ElizaSandboxService {
 
   private getRuntimeAgentsFromBody(body: unknown): RuntimeAgentSummary[] {
     const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-    const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+    const data =
+      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
     const rawAgents = Array.isArray(root.agents)
       ? root.agents
       : Array.isArray(data.agents)
@@ -224,7 +225,9 @@ export class ElizaSandboxService {
     };
   }
 
-  private buildRuntimeBootstrapAgent(rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config">) {
+  private buildRuntimeBootstrapAgent(
+    rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config">,
+  ) {
     const rawConfig =
       rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
         ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<string, unknown>)
@@ -233,9 +236,10 @@ export class ElizaSandboxService {
       typeof rawConfig.name === "string" && rawConfig.name.trim()
         ? rawConfig.name.trim()
         : rec.agent_name?.trim() || `Cloud Agent ${rec.id.slice(0, 8)}`;
-    const plugins = Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
-      ? rawConfig.plugins
-      : ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"];
+    const plugins =
+      Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
+        ? rawConfig.plugins
+        : ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"];
 
     return {
       ...rawConfig,
@@ -243,8 +247,10 @@ export class ElizaSandboxService {
       username:
         typeof rawConfig.username === "string" && rawConfig.username.trim()
           ? rawConfig.username.trim()
-          : rawName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-            "cloud-agent",
+          : rawName
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "") || "cloud-agent",
       system:
         typeof rawConfig.system === "string" && rawConfig.system.trim()
           ? rawConfig.system
@@ -263,7 +269,9 @@ export class ElizaSandboxService {
           : ["helpful", "concise"],
       plugins,
       settings:
-        rawConfig.settings && typeof rawConfig.settings === "object" && !Array.isArray(rawConfig.settings)
+        rawConfig.settings &&
+        typeof rawConfig.settings === "object" &&
+        !Array.isArray(rawConfig.settings)
           ? rawConfig.settings
           : { secrets: {} },
     };
@@ -326,7 +334,8 @@ export class ElizaSandboxService {
     }
 
     const body = (await createRes.json().catch(() => ({}))) as Record<string, unknown>;
-    const data = body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
+    const data =
+      body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
     const runtimeAgentId = typeof data.id === "string" ? data.id : undefined;
     if (!runtimeAgentId) {
       throw new Error("Runtime agent create response was missing data.id");
@@ -360,7 +369,8 @@ export class ElizaSandboxService {
     await this.startRuntimeAgent(rec, runtimeAgentId);
 
     const afterStart = await this.listRuntimeAgents(rec);
-    const started = afterStart.agents.find((agent) => agent.id === runtimeAgentId) ?? afterStart.agents[0];
+    const started =
+      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ?? afterStart.agents[0];
     if (!this.isRuntimeAgentReady(started)) {
       throw new Error("Runtime agent did not become active after start");
     }
@@ -1222,7 +1232,9 @@ export class ElizaSandboxService {
           ? (params.metadata as Record<string, unknown>)
           : {}),
         source:
-          typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+          typeof params.source === "string" && params.source.trim()
+            ? params.source.trim()
+            : "cloud",
         bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
       },
     };
@@ -1233,9 +1245,12 @@ export class ElizaSandboxService {
     if (!body || typeof body !== "object") return [];
 
     const root = body as Record<string, unknown>;
-    const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+    const data =
+      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
     const result =
-      root.result && typeof root.result === "object" ? (root.result as Record<string, unknown>) : {};
+      root.result && typeof root.result === "object"
+        ? (root.result as Record<string, unknown>)
+        : {};
 
     for (const candidate of [
       root.messages,
@@ -1297,10 +1312,7 @@ export class ElizaSandboxService {
       : null;
   }
 
-  private isBridgeAgentMessage(
-    message: Record<string, unknown>,
-    runtimeAgentId?: string,
-  ): boolean {
+  private isBridgeAgentMessage(message: Record<string, unknown>, runtimeAgentId?: string): boolean {
     if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
       return true;
     }
@@ -1317,7 +1329,8 @@ export class ElizaSandboxService {
     for (const key of ["sender", "author", "from", "entity", "metadata"]) {
       const nested = this.nestedBridgeRecord(message[key]);
       if (!nested) continue;
-      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true) return true;
+      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true)
+        return true;
       if (nested.isAgent === false || nested.fromAgent === false || nested.isBot === false) {
         return false;
       }

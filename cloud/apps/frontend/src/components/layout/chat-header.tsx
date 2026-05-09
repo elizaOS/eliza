@@ -8,6 +8,14 @@
 
 "use client";
 
+import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@elizaos/cloud-ui/components/dropdown-menu";
 import {
   Check,
   ChevronDown,
@@ -29,14 +37,6 @@ import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { ElizaAvatar } from "../chat/eliza-avatar";
-import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@elizaos/cloud-ui/components/dropdown-menu";
 
 // ==========================================================================
 // SHARED COMPONENTS (defined at module scope to prevent re-creation on render)

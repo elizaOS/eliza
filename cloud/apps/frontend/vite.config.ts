@@ -171,6 +171,18 @@ export default defineConfig(({ mode }) => {
         // get rewritten to `…/index.ts/foo`.
         { find: /^@elizaos\/cloud-ui$/, replacement: r("../../packages/ui/src/index.ts") },
         {
+          find: /^@elizaos\/cloud-ui\/brand$/,
+          replacement: r("../../packages/ui/src/components/brand/index.ts"),
+        },
+        {
+          find: /^@elizaos\/cloud-ui\/layout$/,
+          replacement: r("../../packages/ui/src/components/layout/index.ts"),
+        },
+        {
+          find: /^@elizaos\/cloud-ui\/primitives$/,
+          replacement: r("../../packages/ui/src/components/primitives.ts"),
+        },
+        {
           find: /^@\/docs\/components$/,
           replacement: r("../../packages/ui/src/components/docs/mdx-components.tsx"),
         },

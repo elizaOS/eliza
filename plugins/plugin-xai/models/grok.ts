@@ -1,14 +1,14 @@
 import {
-  EventType,
   type EventPayload,
+  EventType,
   type GenerateTextParams,
   type IAgentRuntime,
   logger,
-  type ModelTypeName,
   ModelType,
+  type ModelTypeName,
+  recordLlmCall,
   type TextEmbeddingParams,
   type TextStreamResult,
-  recordLlmCall,
 } from "@elizaos/core";
 
 const XAI_API_BASE = "https://api.x.ai/v1";
@@ -364,7 +364,8 @@ async function generateText(
         runtime,
         modelType,
         data.model || model,
-        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt ?? "", text),
+        normalizeTokenUsage(data.usage) ??
+          estimateUsage(params.prompt ?? "", text),
       );
       return text;
     },

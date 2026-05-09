@@ -1,13 +1,13 @@
 import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import {
+  clearStoredAppAuthorizeReturnTo,
+  readStoredAppAuthorizeReturnTo,
+} from "@elizaos/cloud-ui/components/auth/authorize-return";
 import { useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  clearStoredAppAuthorizeReturnTo,
-  readStoredAppAuthorizeReturnTo,
-} from "@elizaos/cloud-ui/components/auth/authorize-return";
 import { syncStewardSessionCookie } from "../../../../lib/steward-session";
 
 type CallbackStatus = "verifying" | "success" | "error";

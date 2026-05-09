@@ -30,52 +30,52 @@ export const userAuthStatusProvider: Provider = {
     try {
       const user = await usersRepository.findWithOrganization(message.entityId as string);
 
-    if (!user || !user.organization_id) {
-      logger.debug(`[USER_AUTH_STATUS] No user/org for entityId: ${message.entityId}`);
-      return {
-        text: "# User Status\n- Status: Unknown user",
-        values: { userAuthenticated: false, hasOrganization: false },
-        data: { userAuthStatus: { authenticated: false, connections: [] } },
-      };
-    }
+      if (!user || !user.organization_id) {
+        logger.debug(`[USER_AUTH_STATUS] No user/org for entityId: ${message.entityId}`);
+        return {
+          text: "# User Status\n- Status: Unknown user",
+          values: { userAuthenticated: false, hasOrganization: false },
+          data: { userAuthStatus: { authenticated: false, connections: [] } },
+        };
+      }
 
-    const { organization_id: organizationId, id: userId } = user;
-    const connections = await oauthService.listConnections({
-      organizationId,
-      userId,
-    });
-    const active = connections.filter((c) => c.status === "active");
+      const { organization_id: organizationId, id: userId } = user;
+      const connections = await oauthService.listConnections({
+        organizationId,
+        userId,
+      });
+      const active = connections.filter((c) => c.status === "active");
 
-    const creditBalance = user.organization?.credit_balance
-      ? parseFloat(user.organization.credit_balance)
-      : 0;
+      const creditBalance = user.organization?.credit_balance
+        ? parseFloat(user.organization.credit_balance)
+        : 0;
 
-    const googleConnection = active.find((c) => c.platform === "google");
-    const connectionsList =
-      active.length > 0
-        ? active
-            .map((c) => {
-              const id = formatConnectionIdentifier(c);
-              return id ? `${capitalize(c.platform)} (${id})` : capitalize(c.platform);
-            })
-            .join(", ")
-        : "None";
+      const googleConnection = active.find((c) => c.platform === "google");
+      const connectionsList =
+        active.length > 0
+          ? active
+              .map((c) => {
+                const id = formatConnectionIdentifier(c);
+                return id ? `${capitalize(c.platform)} (${id})` : capitalize(c.platform);
+              })
+              .join(", ")
+          : "None";
 
-    const status =
-      active.length === 0
-        ? "Not authenticated - needs to connect Google"
-        : creditBalance <= 0
-          ? "Authenticated but no credits"
-          : "Fully authenticated";
+      const status =
+        active.length === 0
+          ? "Not authenticated - needs to connect Google"
+          : creditBalance <= 0
+            ? "Authenticated but no credits"
+            : "Fully authenticated";
 
-    const text = `# User Authentication Status
+      const text = `# User Authentication Status
 - Connections: ${connectionsList}
 - Credits: ${creditBalance.toFixed(2)}
 - Status: ${status}`;
 
-    logger.debug(
-      `[USER_AUTH_STATUS] User ${userId}: ${active.length} connections, ${creditBalance} credits`,
-    );
+      logger.debug(
+        `[USER_AUTH_STATUS] User ${userId}: ${active.length} connections, ${creditBalance} credits`,
+      );
 
       return {
         text,

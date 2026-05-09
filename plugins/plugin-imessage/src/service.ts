@@ -398,11 +398,7 @@ export class IMessageService extends Service implements IIMessageService {
         bridge: "macos-messages",
         status: statusMetadata(service.getStatus()),
       },
-      sendHandler: async (
-        _runtime: IAgentRuntime,
-        target: TargetInfo,
-        content: Content
-      ) => {
+      sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
         const text = typeof content.text === "string" ? content.text : "";
         const mediaUrl = firstAttachmentUrl(content);
         if (!text.trim() && !mediaUrl) {

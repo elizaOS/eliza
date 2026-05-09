@@ -107,6 +107,7 @@ function makeRuntime(opts: {
 		contexts: opts.contextRegistry,
 		composeState: vi.fn(async () => opts.state),
 		emitEvent: vi.fn(async () => undefined),
+		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });

@@ -1,18 +1,18 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { activeWorkflowsProvider } from "../../../src/providers/activeWorkflows";
-import { workflowStatusProvider } from "../../../src/providers/workflowStatus";
 import { pendingDraftProvider } from "../../../src/providers/pendingDraft";
+import { workflowStatusProvider } from "../../../src/providers/workflowStatus";
 import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../src/services/n8n-workflow-service";
 import {
-  createMockRuntime,
+  createExecution,
+  createWorkflowResponse,
+} from "../../fixtures/workflows";
+import {
   createMockMessage,
+  createMockRuntime,
   createMockState,
 } from "../../helpers/mockRuntime";
 import { createMockService } from "../../helpers/mockService";
-import {
-  createWorkflowResponse,
-  createExecution,
-} from "../../fixtures/workflows";
 
 // ============================================================================
 // activeWorkflowsProvider
@@ -303,7 +303,7 @@ describe("pendingDraftProvider", () => {
 
     expect(result.text).toContain("Gmail to Telegram");
     expect(result.text).toContain("CREATE_N8N_WORKFLOW");
-    expect(result.data).toEqual({ hasPendingDraft: true });
+    expect(result.data).toEqual({ hasPendingDraft: true, truncated: false });
     expect(result.values).toEqual({ hasPendingDraft: true });
   });
 

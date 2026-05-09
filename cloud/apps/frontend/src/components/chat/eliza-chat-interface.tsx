@@ -64,6 +64,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@elizaos/cloud-ui";
+import type { Voice as CustomVoice } from "@elizaos/cloud-ui/components/voice/types";
+import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui/types/chat-media";
 import {
   ADDITIONAL_IMAGE_MODELS,
   ADDITIONAL_MODELS,
@@ -71,8 +73,6 @@ import {
   formatSelectorProvider,
   IMAGE_TIERS,
 } from "@/lib/models";
-import type { Voice as CustomVoice } from "@elizaos/cloud-ui/components/voice/types";
-import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui/types/chat-media";
 import { useAvailableModels } from "./hooks/use-available-models";
 import { useModelAvailability } from "./hooks/use-model-availability";
 import { PendingKnowledgeProcessor } from "./pending-knowledge-processor";

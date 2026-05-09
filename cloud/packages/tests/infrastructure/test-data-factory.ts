@@ -18,6 +18,7 @@ export interface TestOrganization {
 
 export interface TestUser {
   id: string;
+  stewardUserId: string;
   email: string;
   name: string;
   organizationId: string;
@@ -100,15 +101,17 @@ export async function createTestDataSet(
 
     // Create user
     const userId = uuidv4();
+    const stewardUserId = `test:user:${userId}`;
 
     await client.query(
-      `INSERT INTO users (id, email, name, organization_id, role, is_anonymous, is_active)
-       VALUES ($1, $2, $3, $4, 'owner', false, true)`,
-      [userId, userEmail, userName, orgId],
+      `INSERT INTO users (id, steward_user_id, email, name, organization_id, role, is_anonymous, is_active)
+       VALUES ($1, $2, $3, $4, $5, 'owner', false, true)`,
+      [userId, stewardUserId, userEmail, userName, orgId],
     );
 
     const user: TestUser = {
       id: userId,
+      stewardUserId,
       email: userEmail,
       name: userName,
       organizationId: orgId,
@@ -232,6 +235,7 @@ export async function createAnonymousSession(
     const userId = uuidv4();
     const orgId = uuidv4();
     const sessionToken = `anon_${uuidv4().replace(/-/g, "")}`;
+    const stewardUserId = `test:anonymous:${userId}`;
 
     // Create org for anonymous user
     await client.query(
@@ -242,9 +246,9 @@ export async function createAnonymousSession(
 
     // Create anonymous user
     await client.query(
-      `INSERT INTO users (id, is_anonymous, organization_id, role, is_active, anonymous_session_id)
-       VALUES ($1, true, $2, 'member', true, $3)`,
-      [userId, orgId, sessionToken],
+      `INSERT INTO users (id, steward_user_id, is_anonymous, organization_id, role, is_active, anonymous_session_id)
+       VALUES ($1, $2, true, $3, 'member', true, $4)`,
+      [userId, stewardUserId, orgId, sessionToken],
     );
 
     // Create anonymous session

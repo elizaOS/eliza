@@ -9,12 +9,16 @@
 
 "use client";
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@elizaos/cloud-ui/components/collapsible";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 import { useAdmin } from "@/lib/hooks/use-admin";
 import { cn } from "@/lib/utils";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@elizaos/cloud-ui/components/collapsible";
 import type { SidebarItem, SidebarSection } from "./sidebar-data";
 import { SidebarNavigationItem } from "./sidebar-item";
 

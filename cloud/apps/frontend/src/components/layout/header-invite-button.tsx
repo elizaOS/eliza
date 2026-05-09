@@ -14,6 +14,7 @@
  */
 "use client";
 
+import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -21,7 +22,6 @@ import type { ReferralMeResponse } from "@/lib/types/referral-me";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
 import { fetchReferralMe } from "@/lib/utils/referral-me-fetch";
-import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
 
 export function HeaderInviteButton() {
   const [loading, setLoading] = useState(false);

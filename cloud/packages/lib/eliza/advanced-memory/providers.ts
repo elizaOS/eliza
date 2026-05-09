@@ -8,6 +8,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { MemoryService } from "./memory-service";
+
 const SUMMARY_TEXT_LIMIT = 1200;
 const TOPIC_LIMIT = 10;
 const LONG_TERM_MEMORY_LIMIT = 25;

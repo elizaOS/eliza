@@ -11,12 +11,12 @@
 
 "use client";
 
+import { ElizaCloudLockup } from "@elizaos/cloud-ui/components/brand/eliza-cloud-lockup";
+import { ScrollArea } from "@elizaos/cloud-ui/components/scroll-area";
 import { X } from "lucide-react";
 import { memo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { ElizaCloudLockup } from "@elizaos/cloud-ui/components/brand/eliza-cloud-lockup";
-import { ScrollArea } from "@elizaos/cloud-ui/components/scroll-area";
 import { SidebarBottomPanel } from "./sidebar-bottom-panel";
 import { sidebarSections } from "./sidebar-data";
 import { SidebarNavigationSection } from "./sidebar-section";

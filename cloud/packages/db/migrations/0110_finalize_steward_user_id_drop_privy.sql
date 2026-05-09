@@ -62,6 +62,14 @@
 
 BEGIN;
 
+-- CI and older environments may have the warm-pool sentinel user from
+-- 0107 before that migration started writing steward_user_id. Repair that
+-- system-only row before enforcing NOT NULL.
+UPDATE "users"
+  SET "steward_user_id" = 'system:warm-pool'
+  WHERE "id" = '00000000-0000-4000-8000-000000077002'
+    AND "steward_user_id" IS NULL;
+
 -- A. Defensive precondition check inside the transaction itself.
 DO $$
 DECLARE

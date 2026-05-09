@@ -22,14 +22,15 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO "users" ("id", "name", "organization_id", "role", "wallet_verified", "is_active")
+INSERT INTO "users" ("id", "name", "organization_id", "role", "wallet_verified", "is_active", "steward_user_id")
 VALUES (
   '00000000-0000-4000-8000-000000077002',
   'Warm Pool (system)',
   '00000000-0000-4000-8000-000000077001',
   'system',
   false,
-  false
+  false,
+  'system:warm-pool'
 )
 ON CONFLICT (id) DO NOTHING;
 

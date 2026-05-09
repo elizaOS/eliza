@@ -20,6 +20,8 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+const SKIP_DIRECTORY_NAMES = new Set(["node_modules", "dist", "build", ".turbo"]);
+
 interface CheckResult {
   directory: string;
   success: boolean;
@@ -42,6 +44,7 @@ async function splitIntoSubdirectories(dir: string): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true });
     const subdirs = entries
       .filter((entry) => entry.isDirectory())
+      .filter((entry) => !SKIP_DIRECTORY_NAMES.has(entry.name))
       .map((entry) => join(dir, entry.name))
       .sort();
 
@@ -87,6 +90,7 @@ async function createTempTsconfig(directory: string): Promise<string> {
     // Keep the same excludes (include __tests__ so bun:test files are not type-checked with node types)
     exclude: [
       resolve(workspaceRoot, "node_modules"),
+      resolve(workspaceRoot, "**/node_modules/**"),
       resolve(workspaceRoot, "ignore"),
       resolve(workspaceRoot, "e2e"),
       resolve(workspaceRoot, "scripts"),

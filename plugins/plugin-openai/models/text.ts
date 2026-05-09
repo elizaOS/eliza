@@ -141,7 +141,7 @@ function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserCont
         mediaType: string;
         filename?: string;
       }
-  > = [{ type: "text", text: params.prompt }];
+  > = [{ type: "text", text: params.prompt ?? "" }];
 
   for (const attachment of params.attachments ?? []) {
     content.push({
@@ -816,15 +816,14 @@ async function generateTextByModelType(
       ? { messages: wireMessages }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
-        : { prompt: params.prompt }
+        : { prompt: params.prompt ?? "" }
     : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: params.prompt };
+      : { prompt: params.prompt ?? "" };
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,
     system: systemPrompt,
-    allowSystemInMessages: true,
     maxOutputTokens: params.maxTokens ?? 8192,
     experimental_telemetry: telemetryConfig,
     ...(normalizedTools ? { tools: normalizedTools } : {}),

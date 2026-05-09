@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@elizaos/cloud-ui";
+import { MilestoneProgress } from "@elizaos/cloud-ui/components/monetization";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
@@ -31,7 +32,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { MilestoneProgress } from "@elizaos/cloud-ui/components/monetization";
 import {
   Bar,
   BarChart,

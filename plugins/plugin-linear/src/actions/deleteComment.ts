@@ -27,10 +27,7 @@ export const deleteCommentAction: Action = {
       schema: { type: "string" },
     },
   ],
-  similes: [
-    "remove-linear-comment",
-    "erase-linear-comment",
-  ],
+  similes: ["remove-linear-comment", "erase-linear-comment"],
 
   examples: [
     [
@@ -48,11 +45,7 @@ export const deleteCommentAction: Action = {
     ],
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> =>
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     validateLinearActionIntent(runtime, message, state, {
       keywords: ["delete", "remove", "linear", "comment"],
       regexAlternation: "delete|remove|linear|comment",
@@ -63,7 +56,7 @@ export const deleteCommentAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
       const linearService = runtime.getService<LinearService>("linear");
@@ -71,14 +64,11 @@ export const deleteCommentAction: Action = {
         throw new Error("Linear service not available");
       }
 
-      const params = _options?.parameters as
-        | DeleteCommentParameters
-        | undefined;
+      const params = _options?.parameters as DeleteCommentParameters | undefined;
       const commentId = params?.commentId?.trim() ?? "";
 
       if (!commentId) {
-        const errorMessage =
-          "Please provide a commentId to delete.";
+        const errorMessage = "Please provide a commentId to delete.";
         await callback?.({ text: errorMessage, source: message.content.source });
         return { text: errorMessage, success: false };
       }

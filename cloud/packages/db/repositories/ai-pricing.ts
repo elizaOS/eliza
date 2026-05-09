@@ -154,7 +154,15 @@ export class AiPricingRepository {
     model: string;
     productFamily: "language" | "embedding" | "image" | "video" | "tts" | "stt" | "voice_clone";
     chargeType: string;
-    unit: "token" | "image" | "request" | "second" | "minute" | "hour" | "character" | "1k_requests";
+    unit:
+      | "token"
+      | "image"
+      | "request"
+      | "second"
+      | "minute"
+      | "hour"
+      | "character"
+      | "1k_requests";
     unitPrice: number;
     dimensionKey: string;
     dimensions: Record<string, string | number | boolean | null>;

@@ -49,11 +49,7 @@ function sha1Bytes(message: string): Uint8Array {
   const dataView = new DataView(padded.buffer);
   const bitLength = messageLength * 8;
   dataView.setUint32(padded.length - 4, bitLength >>> 0, false);
-  dataView.setUint32(
-    padded.length - 8,
-    Math.floor(bitLength / 2 ** 32) >>> 0,
-    false,
-  );
+  dataView.setUint32(padded.length - 8, Math.floor(bitLength / 2 ** 32) >>> 0, false);
 
   let h0 = 0x67452301;
   let h1 = 0xefcdab89;
@@ -67,11 +63,7 @@ function sha1Bytes(message: string): Uint8Array {
       words[index] = dataView.getUint32(offset + index * 4, false);
     }
     for (let index = 16; index < 80; index += 1) {
-      const value =
-        words[index - 3] ^
-        words[index - 8] ^
-        words[index - 14] ^
-        words[index - 16];
+      const value = words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16];
       words[index] = (value << 1) | (value >>> 31);
     }
 
@@ -309,11 +301,7 @@ export function buildCanonicalSystemPrompt(args: {
       ? character.name.trim()
       : "the agent";
   const role = typeof args.userRole === "string" ? args.userRole.trim().toUpperCase() : "";
-  return [
-    system,
-    bio ? `# About ${name}\n${bio}` : "",
-    role ? `user_role: ${role}` : "",
-  ]
+  return [system, bio ? `# About ${name}\n${bio}` : "", role ? `user_role: ${role}` : ""]
     .filter(Boolean)
     .join("\n\n")
     .trim();

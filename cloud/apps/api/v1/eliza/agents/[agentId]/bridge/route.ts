@@ -83,7 +83,11 @@ async function sendMessageWithIngressWarmup(
   rpcRequest: BridgeRequest,
 ) {
   let latest = await elizaSandboxService.bridge(agentId, organizationId, rpcRequest);
-  for (let attempt = 1; attempt < MESSAGE_SEND_ATTEMPTS && isSandboxBridgeUnreachable(latest); attempt++) {
+  for (
+    let attempt = 1;
+    attempt < MESSAGE_SEND_ATTEMPTS && isSandboxBridgeUnreachable(latest);
+    attempt++
+  ) {
     await delay(MESSAGE_SEND_RETRY_DELAY_MS);
     latest = await elizaSandboxService.bridge(agentId, organizationId, rpcRequest);
   }
