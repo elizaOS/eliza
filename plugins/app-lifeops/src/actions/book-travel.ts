@@ -27,7 +27,7 @@ import {
 } from "../lifeops/x402-payment-handler.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -659,7 +659,7 @@ export const bookTravelAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Jill confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
+          text: "My partner confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
         },
       },
       {

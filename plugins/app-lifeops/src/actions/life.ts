@@ -77,8 +77,8 @@ import {
   formatOverviewForQuery,
   messageText,
   toActionData,
-} from "./lifeops-google-helpers.js";
-import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
+} from "../lifeops/google/format-helpers.js";
+import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -3513,7 +3513,7 @@ export const lifeAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'Puedo guardar el hábito "Brush teeth" para la mañana y la noche. Confirma y lo guardo.',
+          text: 'Puedo guardar ese hábito para la mañana y la noche. Confirma y lo guardo.',
           actions: ["LIFE"],
         },
       },

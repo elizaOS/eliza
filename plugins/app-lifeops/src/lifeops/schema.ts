@@ -1094,6 +1094,151 @@ export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// W1-E knowledge graph: entities + relationships
+// ---------------------------------------------------------------------------
+//
+// `life_entities` stores nodes (person, organization, place, project,
+// concept, ...). Per-connector identity claims are stored in
+// `life_entity_identities`; open-keyed extracted attributes in
+// `life_entity_attributes`. The `(agent_id, entity_id)` pair is unique;
+// `entityId === "self"` is the special user node.
+//
+// `life_relationships_v2` stores typed edges. `(agent_id, from_entity_id,
+// to_entity_id, type)` is unique for active edges (a retired edge of the
+// same triple may co-exist with a new active one). `cadence_days` is
+// surfaced as a column-level shortcut for the cadence-overdue filter
+// even though it also appears inside `metadata_json`.
+//
+// Legacy `life_relationships` is retained read-only until W2-D removes
+// the legacy reader.
+export const lifeEntities = appLifeopsPgSchema.table(
+  "life_entities",
+  {
+    entityId: text("entity_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    type: text("type").notNull(),
+    preferredName: text("preferred_name").notNull(),
+    fullName: text("full_name"),
+    tagsJson: text("tags_json").notNull().default("[]"),
+    visibility: text("visibility").notNull().default("owner_agent_admin"),
+    stateLastObservedAt: text("state_last_observed_at"),
+    stateLastInboundAt: text("state_last_inbound_at"),
+    stateLastOutboundAt: text("state_last_outbound_at"),
+    stateLastInteractionPlatform: text("state_last_interaction_platform"),
+    legacyRelationshipId: text("legacy_relationship_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId),
+    index("life_entities_agent_type_idx").on(t.agentId, t.type),
+    index("life_entities_agent_name_idx").on(t.agentId, t.preferredName),
+  ],
+);
+
+export const lifeEntityIdentities = appLifeopsPgSchema.table(
+  "life_entity_identities",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    entityId: text("entity_id").notNull(),
+    platform: text("platform").notNull(),
+    handle: text("handle").notNull(),
+    displayName: text("display_name"),
+    verified: boolean("verified").notNull().default(false),
+    confidence: real("confidence").notNull().default(0),
+    addedAt: text("added_at").notNull(),
+    addedVia: text("added_via").notNull(),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId, t.platform, t.handle),
+    index("life_entity_identities_lookup_idx").on(
+      t.agentId,
+      t.platform,
+      t.handle,
+    ),
+  ],
+);
+
+export const lifeEntityAttributes = appLifeopsPgSchema.table(
+  "life_entity_attributes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    entityId: text("entity_id").notNull(),
+    key: text("key").notNull(),
+    valueJson: text("value_json").notNull().default("null"),
+    confidence: real("confidence").notNull().default(0),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId, t.key),
+    index("life_entity_attributes_lookup_idx").on(t.agentId, t.entityId),
+  ],
+);
+
+export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
+  "life_relationships_v2",
+  {
+    relationshipId: text("relationship_id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    fromEntityId: text("from_entity_id").notNull(),
+    toEntityId: text("to_entity_id").notNull(),
+    type: text("type").notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    cadenceDays: integer("cadence_days"),
+    stateLastObservedAt: text("state_last_observed_at"),
+    stateLastInteractionAt: text("state_last_interaction_at"),
+    stateInteractionCount: integer("state_interaction_count")
+      .notNull()
+      .default(0),
+    stateSentimentTrend: text("state_sentiment_trend"),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    confidence: real("confidence").notNull().default(0),
+    source: text("source").notNull(),
+    status: text("status").notNull().default("active"),
+    retiredAt: text("retired_at"),
+    retiredReason: text("retired_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("life_relationships_v2_edge_idx").on(
+      t.agentId,
+      t.fromEntityId,
+      t.toEntityId,
+      t.type,
+    ),
+    index("life_relationships_v2_to_idx").on(t.agentId, t.toEntityId),
+    index("life_relationships_v2_cadence_idx").on(
+      t.agentId,
+      t.cadenceDays,
+      t.stateLastInteractionAt,
+    ),
+  ],
+);
+
+export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
+  "life_relationship_audit_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    relationshipId: text("relationship_id").notNull(),
+    kind: text("kind").notNull(),
+    detailsJson: text("details_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("life_relationship_audit_events_lookup_idx").on(
+      t.agentId,
+      t.relationshipId,
+    ),
+  ],
+);
+
 export const lifeXDms = appLifeopsPgSchema.table(
   "life_x_dms",
   {
@@ -1471,6 +1616,81 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
 });
 
 // ---------------------------------------------------------------------------
+// W1-A — ScheduledTask spine + state log (`docs/audit/IMPLEMENTATION_PLAN.md`
+// §3.1, `docs/audit/wave1-interfaces.md` §1).
+//
+// `life_scheduled_tasks` stores the typed ScheduledTask record. The
+// runner is the only writer; each row's `state_json` carries the
+// `ScheduledTaskState` fields (status, firedAt, …). `idempotency_key`
+// is unique per agent and dedupes schedule() calls.
+//
+// `life_scheduled_task_log` is the append-only state-log; the nightly
+// rollup pass folds expired raw rows into a daily summary row keyed by
+// (task, day, transition).
+// ---------------------------------------------------------------------------
+
+export const lifeScheduledTasks = appLifeopsPgSchema.table(
+  "life_scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind").notNull(),
+    promptInstructions: text("prompt_instructions").notNull(),
+    contextRequestJson: text("context_request_json"),
+    triggerJson: text("trigger_json").notNull(),
+    priority: text("priority").notNull().default("medium"),
+    shouldFireJson: text("should_fire_json"),
+    completionCheckJson: text("completion_check_json"),
+    escalationJson: text("escalation_json"),
+    outputJson: text("output_json"),
+    pipelineJson: text("pipeline_json"),
+    subjectKind: text("subject_kind"),
+    subjectId: text("subject_id"),
+    idempotencyKey: text("idempotency_key"),
+    respectsGlobalPause: boolean("respects_global_pause")
+      .notNull()
+      .default(true),
+    stateJson: text("state_json").notNull().default("{}"),
+    source: text("source").notNull().default("user_chat"),
+    createdBy: text("created_by").notNull().default(""),
+    ownerVisible: boolean("owner_visible").notNull().default(true),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.idempotencyKey),
+    index("idx_life_scheduled_tasks_agent_kind").on(t.agentId, t.kind),
+    index("idx_life_scheduled_tasks_subject").on(
+      t.agentId,
+      t.subjectKind,
+      t.subjectId,
+    ),
+  ],
+);
+
+export const lifeScheduledTaskLog = appLifeopsPgSchema.table(
+  "life_scheduled_task_log",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    taskId: text("task_id").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    transition: text("transition").notNull(),
+    reason: text("reason"),
+    rolledUp: boolean("rolled_up").notNull().default(false),
+    detailJson: text("detail_json"),
+  },
+  (t) => [
+    index("idx_life_scheduled_task_log_agent_task").on(t.agentId, t.taskId),
+    index("idx_life_scheduled_task_log_agent_time").on(
+      t.agentId,
+      t.occurredAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
 
@@ -1512,6 +1732,11 @@ export const lifeOpsSchema = {
   lifeRelationships,
   lifeRelationshipInteractions,
   lifeFollowUps,
+  lifeEntities,
+  lifeEntityIdentities,
+  lifeEntityAttributes,
+  lifeRelationshipsV2,
+  lifeRelationshipAuditEvents,
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
   lifeXDms,
@@ -1530,5 +1755,282 @@ export const lifeOpsSchema = {
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeBlockRules,
+  lifeScheduledTasks,
+  lifeScheduledTaskLog,
   lifeopsFeaturesTable,
 } as const;
+
+// ---------------------------------------------------------------------------
+// W1-A — Zod schemas for `ScheduledTask`
+//
+// These are runtime validators used at the REST boundary
+// (`src/routes/scheduled-tasks.ts`). The runtime types live in
+// `./scheduled-task/types.ts`; Zod is the validator at the
+// untyped-input edge.
+//
+// IMPLEMENTATION_PLAN.md §3.1 explicitly assigns this file as the home
+// for the ScheduledTask Zod schemas. The file's other content is the
+// drizzle-orm table catalog; the two coexist.
+// ---------------------------------------------------------------------------
+import { z } from "zod";
+
+const isoString = z
+  .string()
+  .min(1)
+  .refine(
+    (v) => !Number.isNaN(new Date(v).getTime()),
+    "must be an ISO timestamp",
+  );
+
+const terminalStateSchema = z.enum([
+  "completed",
+  "skipped",
+  "expired",
+  "failed",
+  "dismissed",
+]);
+
+const scheduledTaskKindSchema = z.enum([
+  "reminder",
+  "checkin",
+  "followup",
+  "approval",
+  "recap",
+  "watcher",
+  "output",
+  "custom",
+]);
+
+const scheduledTaskPrioritySchema = z.enum(["low", "medium", "high"]);
+
+const scheduledTaskSourceSchema = z.enum([
+  "default_pack",
+  "user_chat",
+  "first_run",
+  "plugin",
+]);
+
+const scheduledTaskSubjectSchema = z.object({
+  kind: z.enum([
+    "entity",
+    "relationship",
+    "thread",
+    "document",
+    "calendar_event",
+    "self",
+  ]),
+  id: z.string().min(1),
+});
+
+const scheduledTaskTriggerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("once"), atIso: isoString }),
+  z.object({
+    kind: z.literal("cron"),
+    expression: z.string().min(1),
+    tz: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("interval"),
+    everyMinutes: z.number().int().positive(),
+    from: isoString.optional(),
+    until: isoString.optional(),
+  }),
+  z.object({
+    kind: z.literal("relative_to_anchor"),
+    anchorKey: z.string().min(1),
+    offsetMinutes: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal("during_window"),
+    windowKey: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    eventKind: z.string().min(1),
+    filter: z.unknown().optional(),
+  }),
+  z.object({ kind: z.literal("manual") }),
+  z.object({
+    kind: z.literal("after_task"),
+    taskId: z.string().min(1),
+    outcome: terminalStateSchema,
+  }),
+]);
+
+const scheduledTaskShouldFireSchema = z.object({
+  compose: z.enum(["all", "any", "first_deny"]).optional(),
+  gates: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        params: z.unknown().optional(),
+      }),
+    )
+    .min(1),
+});
+
+const scheduledTaskCompletionCheckSchema = z.object({
+  kind: z.string().min(1),
+  params: z.unknown().optional(),
+  followupAfterMinutes: z.number().int().positive().optional(),
+});
+
+const escalationStepSchema = z.object({
+  delayMinutes: z.number().int().min(0),
+  channelKey: z.string().min(1),
+  intensity: z.enum(["soft", "normal", "urgent"]).optional(),
+});
+
+const scheduledTaskEscalationSchema = z.object({
+  ladderKey: z.string().min(1).optional(),
+  steps: z.array(escalationStepSchema).optional(),
+});
+
+const scheduledTaskOutputSchema = z.object({
+  destination: z.enum([
+    "in_app_card",
+    "channel",
+    "apple_notes",
+    "gmail_draft",
+    "memory",
+  ]),
+  target: z.string().min(1).optional(),
+  persistAs: z.enum(["task_metadata", "external_only"]).optional(),
+});
+
+const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([z.string().min(1), scheduledTaskInputBaseSchema]),
+);
+
+const scheduledTaskPipelineSchema = z.object({
+  onComplete: z.array(scheduledTaskRefSchema).optional(),
+  onSkip: z.array(scheduledTaskRefSchema).optional(),
+  onFail: z.array(scheduledTaskRefSchema).optional(),
+});
+
+const scheduledTaskContextRequestSchema = z.object({
+  includeOwnerFacts: z
+    .array(
+      z.enum([
+        "preferredName",
+        "timezone",
+        "morningWindow",
+        "eveningWindow",
+        "locale",
+      ]),
+    )
+    .optional(),
+  includeEntities: z
+    .object({
+      entityIds: z.array(z.string().min(1)),
+      fields: z
+        .array(
+          z.enum([
+            "preferredName",
+            "type",
+            "identities",
+            "state.lastInteractionPlatform",
+          ]),
+        )
+        .optional(),
+    })
+    .optional(),
+  includeRelationships: z
+    .object({
+      relationshipIds: z.array(z.string().min(1)).optional(),
+      forEntityIds: z.array(z.string().min(1)).optional(),
+      types: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  includeRecentTaskStates: z
+    .object({
+      kind: scheduledTaskKindSchema.optional(),
+      lookbackHours: z.number().int().positive().optional(),
+    })
+    .optional(),
+  includeEventPayload: z.boolean().optional(),
+});
+
+/**
+ * The "input shape" for `runner.schedule()` — omits server-managed
+ * `taskId` and `state` so callers cannot fabricate a state. The route
+ * layer accepts this shape; the runner generates the rest.
+ */
+const scheduledTaskInputBaseSchema = z.object({
+  kind: scheduledTaskKindSchema,
+  promptInstructions: z.string().min(1),
+  contextRequest: scheduledTaskContextRequestSchema.optional(),
+  trigger: scheduledTaskTriggerSchema,
+  priority: scheduledTaskPrioritySchema,
+  shouldFire: scheduledTaskShouldFireSchema.optional(),
+  completionCheck: scheduledTaskCompletionCheckSchema.optional(),
+  escalation: scheduledTaskEscalationSchema.optional(),
+  output: scheduledTaskOutputSchema.optional(),
+  pipeline: scheduledTaskPipelineSchema.optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  idempotencyKey: z.string().min(1).optional(),
+  respectsGlobalPause: z.boolean(),
+  source: scheduledTaskSourceSchema,
+  createdBy: z.string().min(1),
+  ownerVisible: z.boolean(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const scheduledTaskInputSchema = scheduledTaskInputBaseSchema;
+
+export const scheduledTaskStateSchema = z.object({
+  status: z.enum([
+    "completed",
+    "skipped",
+    "expired",
+    "failed",
+    "dismissed",
+    "scheduled",
+    "fired",
+    "acknowledged",
+  ]),
+  firedAt: isoString.optional(),
+  acknowledgedAt: isoString.optional(),
+  completedAt: isoString.optional(),
+  followupCount: z.number().int().min(0),
+  lastFollowupAt: isoString.optional(),
+  pipelineParentId: z.string().min(1).optional(),
+  lastDecisionLog: z.string().optional(),
+});
+
+export const scheduledTaskSchema = scheduledTaskInputBaseSchema.extend({
+  taskId: z.string().min(1),
+  state: scheduledTaskStateSchema,
+});
+
+export const scheduledTaskVerbSchema = z.enum([
+  "snooze",
+  "skip",
+  "complete",
+  "dismiss",
+  "escalate",
+  "acknowledge",
+  "edit",
+  "reopen",
+]);
+
+export const scheduledTaskSnoozePayloadSchema = z
+  .object({
+    minutes: z.number().int().positive().optional(),
+    untilIso: isoString.optional(),
+  })
+  .refine(
+    (v) => typeof v.minutes === "number" || typeof v.untilIso === "string",
+    "snooze: provide minutes or untilIso",
+  );
+
+export const scheduledTaskFilterSchema = z.object({
+  kind: scheduledTaskKindSchema.optional(),
+  status: z
+    .union([scheduledTaskStateSchema.shape.status, z.array(scheduledTaskStateSchema.shape.status)])
+    .optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  source: scheduledTaskSourceSchema.optional(),
+  firedSince: isoString.optional(),
+  ownerVisibleOnly: z.boolean().optional(),
+});

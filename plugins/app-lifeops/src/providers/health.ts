@@ -5,7 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { LifeOpsService } from "../lifeops/service.js";
 const HEALTH_DAILY_LIMIT = 4;
 

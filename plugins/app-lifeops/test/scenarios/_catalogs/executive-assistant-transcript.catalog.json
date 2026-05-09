@@ -1,0 +1,541 @@
+{
+  "catalogId": "executive-assistant-transcript",
+  "title": "Transcript-derived LifeOps executive assistant scenario catalog",
+  "source": {
+    "rawTranscript": "<redacted: source transcript path>",
+    "readableLog": "<redacted: research log path>",
+    "messageCount": 1925,
+    "dateRange": {
+      "start": "2025-01-01T06:09:47.514-07:00",
+      "end": "2026-04-15T14:46:51.109-06:00"
+    },
+    "notes": [
+      "Transcript evidence is literal and dated.",
+      "Actions, providers, and runner requirements are product inferences derived from the transcript plus current repo surfaces.",
+      "This file is a backlog and mapping artifact, not an executable scenario file."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "ea.schedule.recurring-relationship-block",
+      "title": "Reserve recurring daily decompression time with a relationship",
+      "suite": "calendar",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": [
+        "2025-01-04T09:43:27.678-07:00",
+        "2025-01-04T09:44:09.431-07:00"
+      ],
+      "existingScenarioRefs": [],
+      "integrations": ["google-calendar"],
+      "providers": ["Google Calendar API"],
+      "actions": [
+        "CALENDAR_FIND_AVAILABILITY",
+        "CALENDAR_CREATE_RECURRING_BLOCK",
+        "CALENDAR_CONFIRM_CHANGE"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": ["calendar seed", "recurring-event final check"],
+      "approvalMode": "autonomous if inside free time and standing preference",
+      "examplePrompt": "Need to book 1 hour per day for time with my partner."
+    },
+    {
+      "id": "ea.schedule.protect-sleep-window",
+      "title": "Protect sleep block but allow explicit overrides",
+      "suite": "calendar",
+      "priority": "P0",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-01-07T11:33:00.000-07:00",
+        "2025-01-07T15:56:00.000-07:00"
+      ],
+      "existingScenarioRefs": ["calendar.defend-time.protects-focus"],
+      "integrations": ["google-calendar", "user-preferences"],
+      "providers": ["Google Calendar API"],
+      "actions": [
+        "CALENDAR_PROTECT_WINDOW",
+        "CALENDAR_ALLOW_EXCEPTION",
+        "CALENDAR_RESCHEDULE_EVENT"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": ["calendar seed", "preference seed"],
+      "approvalMode": "ask when a meeting crosses a protected sleep window",
+      "examplePrompt": "No calls between 11pm and 8am unless I explicitly approve it."
+    },
+    {
+      "id": "ea.schedule.travel-blackout-reschedule",
+      "title": "Clear meeting load during travel crisis and reschedule in bulk",
+      "suite": "calendar",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": [
+        "2025-01-10T08:16:52.707-07:00",
+        "2025-01-10T08:19:58.755-07:00"
+      ],
+      "existingScenarioRefs": [
+        "calendar.reschedule.simple",
+        "calendar.reschedule.conflict-detection"
+      ],
+      "integrations": ["google-calendar", "gmail", "messaging-connectors"],
+      "providers": ["Google Calendar API", "Gmail API"],
+      "actions": [
+        "CALENDAR_CANCEL_EVENT",
+        "CALENDAR_RESCHEDULE_EVENT",
+        "MESSAGE_DRAFT_REPLY",
+        "MESSAGE_SEND_CONFIRMED"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": [
+        "calendar seed",
+        "multi-recipient outbound assertions"
+      ],
+      "approvalMode": "user-authorized bulk reschedule",
+      "examplePrompt": "We're gonna cancel some stuff and push everything back until next month. All partnership meetings."
+    },
+    {
+      "id": "ea.schedule.bundle-meetings-while-traveling",
+      "title": "Bundle related meetings while the user is temporarily in a city",
+      "suite": "calendar",
+      "priority": "P1",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-01-06T16:25:00.000-07:00"],
+      "existingScenarioRefs": ["calendar.scheduling-with-others.propose-times"],
+      "integrations": ["google-calendar", "contacts"],
+      "providers": ["Google Calendar API"],
+      "actions": ["CALENDAR_BUNDLE_MEETINGS", "CALENDAR_PROPOSE_TIMES"],
+      "backgroundJobs": [],
+      "runnerRequirements": ["calendar seed", "contact seed"],
+      "approvalMode": "ask if bundling changes a prior commitment",
+      "examplePrompt": "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible."
+    },
+    {
+      "id": "ea.followup.repair-missed-call-and-reschedule",
+      "title": "Repair a missed call with apology and fast reschedule",
+      "suite": "followup",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": [
+        "2026-03-04T23:05:52.960-07:00",
+        "2026-03-04T23:06:19.929-07:00"
+      ],
+      "existingScenarioRefs": [
+        "calendar.reschedule.simple",
+        "followup.draft-cross-platform.gmail"
+      ],
+      "integrations": ["gmail", "google-calendar"],
+      "providers": ["Gmail API", "Google Calendar API"],
+      "actions": [
+        "MESSAGE_DRAFT_REPLY",
+        "FOLLOWUP_CREATE_DRAFT",
+        "CALENDAR_PROPOSE_TIMES",
+        "CALENDAR_RESCHEDULE_EVENT"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": [
+        "inbound email seed",
+        "draft final check",
+        "calendar final check"
+      ],
+      "approvalMode": "ask before sending as the user",
+      "examplePrompt": "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap."
+    },
+    {
+      "id": "ea.followup.bump-unanswered-decision",
+      "title": "Keep bumping when a decision is blocking other people",
+      "suite": "followup",
+      "priority": "P0",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-02-11T13:30:17.362-07:00",
+        "2025-03-31T13:49:27.727-06:00"
+      ],
+      "existingScenarioRefs": [
+        "followup.track-overdue",
+        "followup.daily-digest"
+      ],
+      "integrations": ["followup-tracker", "inbox"],
+      "providers": ["internal"],
+      "actions": [
+        "FOLLOWUP_CREATE_RULE",
+        "FOLLOWUP_ESCALATE",
+        "INBOX_SUMMARIZE_CHANNEL"
+      ],
+      "backgroundJobs": ["decision nudger"],
+      "runnerRequirements": [
+        "clock advance",
+        "pending-decision seed",
+        "digest assertion"
+      ],
+      "approvalMode": "autonomous reminder generation",
+      "examplePrompt": "Bump me again if I still haven't answered about those three events."
+    },
+    {
+      "id": "ea.inbox.daily-brief-cross-channel",
+      "title": "Generate a daily brief across Telegram, email, drafts, and urgent actions",
+      "suite": "briefing",
+      "priority": "P0",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-12-09T12:37:48.199-07:00",
+        "2026-01-12T12:14:53.303-07:00"
+      ],
+      "existingScenarioRefs": [
+        "cross-platform.inbox",
+        "cross-platform.triage-priority-ranking",
+        "followup.daily-digest"
+      ],
+      "integrations": [
+        "gmail",
+        "telegram",
+        "discord",
+        "x-dm",
+        "draft-store",
+        "calendar"
+      ],
+      "providers": ["Gmail API", "connector bridges"],
+      "actions": [
+        "INBOX_LIST_UNREAD",
+        "INBOX_TRIAGE_PRIORITY",
+        "FOLLOWUP_GENERATE_DIGEST",
+        "CALENDAR_LIST_UPCOMING"
+      ],
+      "backgroundJobs": ["daily brief builder"],
+      "runnerRequirements": [
+        "clock advance",
+        "multi-channel seed",
+        "ordered brief assertion"
+      ],
+      "approvalMode": "autonomous",
+      "examplePrompt": "What's on my plate today? Give me the brief."
+    },
+    {
+      "id": "ea.inbox.daily-brief-includes-unsent-drafts",
+      "title": "Daily brief surfaces unsent drafts that still need approval",
+      "suite": "briefing",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2026-01-12T12:14:53.303-07:00"],
+      "existingScenarioRefs": [
+        "gmail.send-with-confirmation",
+        "followup.draft-cross-platform.gmail"
+      ],
+      "integrations": ["draft-store", "gmail", "x-dm"],
+      "providers": ["Gmail API", "connector bridges"],
+      "actions": ["MESSAGE_SEND_APPROVAL_REQUEST", "FOLLOWUP_GENERATE_DIGEST"],
+      "backgroundJobs": ["daily brief builder", "draft aging sweeper"],
+      "runnerRequirements": ["draft seed", "approval pending final check"],
+      "approvalMode": "autonomous draft surfacing; ask before send",
+      "examplePrompt": "Also tell me what drafts still need my sign-off."
+    },
+    {
+      "id": "ea.inbox.priority-ranks-urgent-before-low",
+      "title": "Rank urgent blockers ahead of informational noise",
+      "suite": "briefing",
+      "priority": "P0",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-12-16T01:33:56.919-07:00",
+        "2026-01-12T12:14:53.303-07:00"
+      ],
+      "existingScenarioRefs": [
+        "cross-platform.triage-priority-ranking",
+        "gmail.triage.high-priority-client"
+      ],
+      "integrations": ["inbox", "contacts", "draft-store"],
+      "providers": ["internal", "Gmail API", "connector bridges"],
+      "actions": ["INBOX_TRIAGE_PRIORITY", "FOLLOWUP_GENERATE_DIGEST"],
+      "backgroundJobs": ["daily brief builder"],
+      "runnerRequirements": [
+        "priority-tagged inbox seed",
+        "ordered brief assertion"
+      ],
+      "approvalMode": "autonomous",
+      "examplePrompt": "Show me the urgent stuff first and separate it from everything low priority."
+    },
+    {
+      "id": "ea.inbox.propose-group-chat-handoff",
+      "title": "Offer a group-chat handoff when coordination is better than direct reply",
+      "suite": "messaging",
+      "priority": "P2",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-03-23T23:27:30.482-06:00",
+        "2026-01-12T12:14:53.303-07:00"
+      ],
+      "existingScenarioRefs": [
+        "cross-platform.group-chat-gateway",
+        "x.dm.group-chat-gateway"
+      ],
+      "integrations": ["discord", "telegram", "x-dm"],
+      "providers": ["connector bridges"],
+      "actions": [
+        "MESSAGE_CREATE_GROUP_HANDOFF",
+        "MESSAGE_SEND_APPROVAL_REQUEST"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": ["connector room seed", "group-creation assertion"],
+      "approvalMode": "ask before creating or inviting external people",
+      "examplePrompt": "Would it be better if I make a group chat for this thread?"
+    },
+    {
+      "id": "ea.travel.capture-booking-preferences",
+      "title": "Ask once for flight and hotel preferences, then persist them",
+      "suite": "travel",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-03-29T08:35:49.398-06:00"],
+      "existingScenarioRefs": [
+        "calendar.scheduling-with-others.ask-preferences"
+      ],
+      "integrations": ["travel-preferences", "calendar"],
+      "providers": ["internal"],
+      "actions": ["TRAVEL_CAPTURE_PREFERENCES"],
+      "backgroundJobs": [],
+      "runnerRequirements": ["preference final check"],
+      "approvalMode": "ask once, then reuse",
+      "examplePrompt": "Set up a list of preferences for booking my flights and hotels so you don't have to ask every time."
+    },
+    {
+      "id": "ea.travel.book-after-approval",
+      "title": "Book flights and hotels only after approval",
+      "suite": "travel",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-04-23T11:41:33.559-06:00"],
+      "existingScenarioRefs": [],
+      "integrations": ["travel-booking", "calendar", "notifications"],
+      "providers": ["browser automation", "vendor APIs where available"],
+      "actions": [
+        "TRAVEL_BOOK_FLIGHT",
+        "TRAVEL_BOOK_HOTEL",
+        "TRAVEL_SYNC_ITINERARY_TO_CALENDAR",
+        "CALENDAR_CONFIRM_CHANGE"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": [
+        "approval queue",
+        "booking confirmation final check"
+      ],
+      "approvalMode": "always ask first",
+      "benchmarkPrompt": "My partner confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
+      "examplePrompt": "Your partner confirmed it would be just you for LA and Toronto. I can start booking flights and hotel today if that's good with you."
+    },
+    {
+      "id": "ea.travel.flight-conflict-rebooking",
+      "title": "Detect a meeting conflict before a flight and propose rebooking",
+      "suite": "travel",
+      "priority": "P0",
+      "currentCoverage": "partial",
+      "transcriptEvidence": ["2026-04-10T11:40:50.205-06:00"],
+      "existingScenarioRefs": [
+        "calendar.reschedule.conflict-detection",
+        "calendar.create.travel-time"
+      ],
+      "integrations": ["calendar", "travel-itinerary", "gmail"],
+      "providers": ["Google Calendar API", "browser automation"],
+      "actions": [
+        "TRAVEL_REBOOK_AFTER_CONFLICT",
+        "CALENDAR_RESCHEDULE_EVENT",
+        "MESSAGE_DRAFT_REPLY"
+      ],
+      "backgroundJobs": ["travel conflict detector"],
+      "runnerRequirements": [
+        "travel seed",
+        "clock advance",
+        "calendar final check"
+      ],
+      "approvalMode": "ask before rebooking paid travel",
+      "examplePrompt": "I wanted to flag a conflict before your flight later. Happy to handle the rebooking or book another flight if you're down."
+    },
+    {
+      "id": "ea.events.itinerary-brief-with-links",
+      "title": "Push a travel or event-day itinerary with exact links and timing",
+      "suite": "travel",
+      "priority": "P1",
+      "currentCoverage": "partial",
+      "transcriptEvidence": [
+        "2025-05-04T17:12:13.911-06:00",
+        "2025-05-16T10:14:08.212-06:00"
+      ],
+      "existingScenarioRefs": [
+        "calendar.reminder.1hr-before",
+        "calendar.reminder.10min-before",
+        "calendar.reminder.on-the-dot"
+      ],
+      "integrations": ["calendar", "travel-itinerary", "docs"],
+      "providers": ["Google Calendar API"],
+      "actions": ["EVENT_BUILD_ITINERARY_BRIEF", "CALENDAR_LIST_UPCOMING"],
+      "backgroundJobs": ["travel-day brief builder"],
+      "runnerRequirements": ["calendar seed", "link-rich response assertion"],
+      "approvalMode": "autonomous",
+      "examplePrompt": "Give me the itinerary and links for today."
+    },
+    {
+      "id": "ea.events.asset-deadline-checklist",
+      "title": "Track speaker assets and due dates before events",
+      "suite": "travel",
+      "priority": "P1",
+      "currentCoverage": "missing",
+      "transcriptEvidence": [
+        "2025-03-29T08:11:31.988-06:00",
+        "2026-03-13T06:53:10.868-06:00"
+      ],
+      "existingScenarioRefs": [],
+      "integrations": ["calendar", "docs", "task-store"],
+      "providers": ["Google Calendar API", "Google Docs API"],
+      "actions": [
+        "EVENT_SET_DECISION_DEADLINE",
+        "EVENT_TRACK_ASSET_DEADLINES",
+        "FOLLOWUP_ESCALATE"
+      ],
+      "backgroundJobs": ["event asset sweeper"],
+      "runnerRequirements": ["deadline seed", "clock advance"],
+      "approvalMode": "autonomous reminders; ask before outbound send",
+      "examplePrompt": "Remind me what slides, bio, or title I still owe before the event."
+    },
+    {
+      "id": "ea.docs.signature-before-appointment",
+      "title": "Chase signature forms before an appointment",
+      "suite": "docs",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-04-22T11:41:52.773-06:00"],
+      "existingScenarioRefs": [],
+      "integrations": ["docs", "calendar", "browser automation"],
+      "providers": ["browser automation"],
+      "actions": ["DOC_REQUEST_SIGNATURE", "FOLLOWUP_ESCALATE"],
+      "backgroundJobs": ["doc deadline sweeper"],
+      "runnerRequirements": ["document request seed", "clock advance"],
+      "approvalMode": "ask before completing form autofill",
+      "examplePrompt": "The clinic sent docs for you to sign before the appointment."
+    },
+    {
+      "id": "ea.docs.portal-upload-from-chat",
+      "title": "Upload a deck or asset to a portal from chat instructions",
+      "suite": "docs",
+      "priority": "P0",
+      "currentCoverage": "missing",
+      "transcriptEvidence": [
+        "2025-05-09T09:55:03.543-06:00",
+        "2025-05-12T14:02:11.663-06:00"
+      ],
+      "existingScenarioRefs": [
+        "1password-autofill.whitelisted-gmail",
+        "browser.computer-use.click-captcha-via-user"
+      ],
+      "integrations": ["browser automation", "1password", "protonpass", "docs"],
+      "providers": ["browser automation", "vault bridges"],
+      "actions": [
+        "DOC_UPLOAD_ASSET",
+        "BROWSER_OPEN_PORTAL",
+        "REMOTE_REQUEST_HELP"
+      ],
+      "backgroundJobs": [],
+      "runnerRequirements": [
+        "browser task assertions",
+        "uploaded asset final check"
+      ],
+      "approvalMode": "ask before login or upload",
+      "examplePrompt": "When I'm done with the PPT, upload it to the speaker portal for me."
+    },
+    {
+      "id": "ea.docs.collect-id-copy-for-workflow",
+      "title": "Collect missing ID or credential artifact to unblock a workflow",
+      "suite": "docs",
+      "priority": "P1",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-08-29T11:56:21.808-06:00"],
+      "existingScenarioRefs": [],
+      "integrations": ["docs", "approvals"],
+      "providers": ["internal"],
+      "actions": ["DOC_COLLECT_ID_OR_FORM", "DOC_REQUEST_APPROVAL"],
+      "backgroundJobs": ["doc deadline sweeper"],
+      "runnerRequirements": ["document request seed"],
+      "approvalMode": "ask before storing sensitive artifacts",
+      "examplePrompt": "Could you send over an updated driver's license copy? The only one on file is expired."
+    },
+    {
+      "id": "ea.calendar.meeting-dossier-before-event",
+      "title": "Generate a dossier before an upcoming meeting",
+      "suite": "calendar",
+      "priority": "P0",
+      "currentCoverage": "existing-related",
+      "transcriptEvidence": [
+        "2025-05-04T17:12:13.911-06:00",
+        "2025-12-15T11:00:52.639-07:00"
+      ],
+      "existingScenarioRefs": ["calendar.dossier.prep-briefing"],
+      "integrations": ["calendar", "contacts", "inbox"],
+      "providers": ["Google Calendar API", "Gmail API", "connector bridges"],
+      "actions": ["CALENDAR_BUILD_DOSSIER", "INBOX_SUMMARIZE_CHANNEL"],
+      "backgroundJobs": ["meeting prep builder"],
+      "runnerRequirements": ["calendar seed", "contact seed"],
+      "approvalMode": "autonomous",
+      "examplePrompt": "Give me the dossier for my next meeting."
+    },
+    {
+      "id": "ea.push.multi-device-meeting-ladder",
+      "title": "Remind across devices at 1 hour, 10 minutes, and start time",
+      "suite": "push",
+      "priority": "P0",
+      "currentCoverage": "existing-related",
+      "transcriptEvidence": ["2025-05-16T10:14:08.212-06:00"],
+      "existingScenarioRefs": [
+        "calendar.reminder.1hr-before",
+        "calendar.reminder.10min-before",
+        "calendar.reminder.on-the-dot",
+        "reminder.cross-platform.fires-on-mac-and-phone"
+      ],
+      "integrations": ["calendar", "desktop-notify", "mobile-notify"],
+      "providers": ["native notifications"],
+      "actions": [
+        "NOTIFY_DESKTOP",
+        "NOTIFY_MOBILE",
+        "NOTIFY_ESCALATION_LADDER"
+      ],
+      "backgroundJobs": ["meeting reminder ladder"],
+      "runnerRequirements": [
+        "clock advance",
+        "push assertions",
+        "ack sync assertions"
+      ],
+      "approvalMode": "autonomous",
+      "examplePrompt": "Make sure I get reminded an hour before, ten minutes before, and right when it's starting."
+    },
+    {
+      "id": "ea.push.cancellation-fee-warning",
+      "title": "Warn about cancellation fees before a missed appointment",
+      "suite": "push",
+      "priority": "P1",
+      "currentCoverage": "missing",
+      "transcriptEvidence": ["2025-04-15T12:14:10.087-06:00"],
+      "existingScenarioRefs": ["reminder.escalation.intensity-up"],
+      "integrations": ["calendar", "docs", "push-gateways"],
+      "providers": ["native notifications", "Twilio"],
+      "actions": ["NOTIFY_ESCALATION_LADDER", "MESSAGE_DRAFT_REPLY"],
+      "backgroundJobs": ["deadline sweeper"],
+      "runnerRequirements": ["clock advance", "push assertions"],
+      "approvalMode": "autonomous warning; ask before sending cancellation note",
+      "examplePrompt": "Warn me now if missing this will cost money."
+    },
+    {
+      "id": "ea.remote.stuck-agent-calls-user",
+      "title": "Agent escalates to a call when it gets stuck",
+      "suite": "remote",
+      "priority": "P0",
+      "currentCoverage": "existing-related",
+      "transcriptEvidence": ["2026-01-12T12:14:53.303-07:00"],
+      "existingScenarioRefs": [
+        "remote.agent-calls-for-help",
+        "twilio.call.outbound-with-confirmation"
+      ],
+      "integrations": ["remote-control", "twilio"],
+      "providers": ["Twilio", "remote session bridge"],
+      "actions": ["REMOTE_REQUEST_HELP", "NOTIFY_CALL"],
+      "backgroundJobs": ["stuck-agent escalator"],
+      "runnerRequirements": ["push assertions", "remote control assertion"],
+      "approvalMode": "user-configurable escalation policy",
+      "examplePrompt": "If you get stuck, call me and let me jump in."
+    }
+  ]
+}

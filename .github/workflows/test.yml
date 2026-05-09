@@ -190,6 +190,9 @@ jobs:
           install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
 
+      - name: Build workspace packages for Vitest resolution
+        run: bun run build:core
+
       - name: Run Electrobun contract tests
         working-directory: packages/app-core/platforms/electrobun
         run: bun run test
