@@ -77,6 +77,9 @@ class RevenueResult:
     payment_url: Optional[str] = None
     payment_transaction_hash: Optional[str] = None
     payment_error: Optional[str] = None
+    payment_action: Optional[str] = None
+    payment_action_source: Optional[str] = None
+    payment_checkout_url: Optional[str] = None
 
 
 @dataclass

@@ -6,7 +6,7 @@ import {
   resolveTailscaleAccountId,
 } from "./accounts";
 
-export const tailscaleEnvSchema = z.object({
+const tailscaleEnvSchema = z.object({
   TAILSCALE_AUTH_KEY: z.string().optional(),
   TAILSCALE_TAGS: z
     .union([z.string(), z.array(z.string())])
@@ -54,7 +54,7 @@ export const tailscaleEnvSchema = z.object({
     .default(3600),
 });
 
-export type TailscaleConfig = z.infer<typeof tailscaleEnvSchema>;
+type TailscaleConfig = z.infer<typeof tailscaleEnvSchema>;
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   const value = runtime.getSetting(key);

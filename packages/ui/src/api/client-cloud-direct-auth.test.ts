@@ -319,6 +319,51 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("launches Cloud agents directly on native and returns the runtime token", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 200,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          agentName: "My Agent",
+          appUrl: "https://app.elizacloud.ai/",
+          launchSessionId: "launch-1",
+          issuedAt: "2026-05-09T00:00:00.000Z",
+          connection: {
+            apiBase: "https://agent-1.elizacloud.ai",
+            token: "agent-token",
+          },
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const launch = await client.launchCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/compat/agents/agent-1/launch",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(launch).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          connection: {
+            apiBase: "https://agent-1.elizacloud.ai",
+            token: "agent-token",
+          },
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("fails hung native Cloud provisioning requests instead of waiting forever", async () => {
     vi.useFakeTimers();
     capacitorMocks.request.mockImplementation(

@@ -49,7 +49,9 @@ interface BrowserCaptureModule {
 }
 
 async function loadBrowserCapture(): Promise<BrowserCaptureModule> {
-  return (await import("@elizaos/plugin-browser")) as unknown as BrowserCaptureModule;
+  return (await import(
+    "@elizaos/plugin-browser"
+  )) as unknown as BrowserCaptureModule;
 }
 
 // ---------------------------------------------------------------------------

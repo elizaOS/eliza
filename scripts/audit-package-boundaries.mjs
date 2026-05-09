@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const args = new Set(process.argv.slice(2));
 const check = args.has("--check");
@@ -52,12 +53,6 @@ function packageOwnerForPath(absPath, packages) {
     }
   }
   return owner;
-}
-
-function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
 function getManifestDeps(manifest) {
@@ -177,8 +172,64 @@ const sourceFiles = shellLines("rg", [
   .filter((file) => packageOwnerForPath(file, packages))
   .filter((file) => includeTests || !isTestLikeFile(relative(file)));
 
-const importPattern =
-  /(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|require\s*\(\s*["']([^"']+)["']\s*\)/g;
+function scriptKindForFile(file) {
+  switch (path.extname(file)) {
+    case ".tsx":
+      return ts.ScriptKind.TSX;
+    case ".jsx":
+      return ts.ScriptKind.JSX;
+    case ".json":
+      return ts.ScriptKind.JSON;
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return ts.ScriptKind.JS;
+    case ".ts":
+    case ".mts":
+    case ".cts":
+    default:
+      return ts.ScriptKind.TS;
+  }
+}
+
+function literalText(node) {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : null;
+}
+
+function getImportSpecifiers(file, source) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForFile(file),
+  );
+  const specifiers = [];
+
+  function visit(node) {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      const specifier = literalText(node.moduleSpecifier);
+      if (specifier) specifiers.push(specifier);
+    } else if (ts.isCallExpression(node)) {
+      if (node.arguments.length === 1) {
+        const firstArg = node.arguments[0];
+        const specifier = literalText(firstArg);
+        if (
+          specifier &&
+          (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+            (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+        ) {
+          specifiers.push(specifier);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return specifiers;
+}
+
 
 const relativeCrossPackageImports = [];
 const relativeOutsidePackageImports = [];
@@ -188,10 +239,8 @@ const pluginDependencyViolations = [];
 for (const file of sourceFiles) {
   const owner = packageOwnerForPath(file, packages);
   if (!owner) continue;
-  const source = stripComments(fs.readFileSync(file, "utf8"));
-  let match;
-  while ((match = importPattern.exec(source))) {
-    const specifier = match[1] || match[2] || match[3];
+  const source = fs.readFileSync(file, "utf8");
+  for (const specifier of getImportSpecifiers(file, source)) {
     if (!specifier) continue;
 
     if (specifier.startsWith(".")) {

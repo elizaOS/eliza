@@ -36,6 +36,9 @@
       "@elizaos/agent": [
         "../../packages/agent/src/index.ts"
       ],
+      "@elizaos/app-task-coordinator": [
+        "../app-task-coordinator/src/api/coordinator-types.ts"
+      ],
       "@elizaos/core": [
         "../../packages/core/src/index.ts"
       ],

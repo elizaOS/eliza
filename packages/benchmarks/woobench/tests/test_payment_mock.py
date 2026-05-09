@@ -18,6 +18,7 @@ from packages.benchmarks.woobench.types import (
 class FakePaymentClient:
     def __init__(self):
         self.created_amounts: list[float] = []
+        self.created_charges: list[float] = []
 
     def create_payment_request(self, *, amount_usd, description, metadata):
         self.created_amounts.append(amount_usd)
@@ -31,7 +32,7 @@ class FakePaymentClient:
         )
 
     def pay_payment_request(self, payment_request_id, *, transaction_hash=None):
-        assert payment_request_id == "payreq_test"
+        assert payment_request_id in {"payreq_test", "charge_test"}
         return SimpleNamespace(
             id=payment_request_id,
             amount_usd=1.0,
@@ -50,6 +51,55 @@ class FakePaymentClient:
             accepted=True,
             payment_url="http://mock.test/checkout/payreq_test",
             transaction_hash="woobench_payment_test_1",
+        )
+
+    def create_app_charge(
+        self,
+        *,
+        app_id,
+        amount_usd,
+        description,
+        providers,
+        callback_channel,
+        metadata,
+    ):
+        assert app_id == "woobench-mock-app"
+        assert "oxapay" in providers
+        assert callback_channel["source"] == "woobench"
+        assert metadata["payment_action"] == "CREATE_APP_CHARGE"
+        self.created_charges.append(amount_usd)
+        return SimpleNamespace(
+            id="charge_test",
+            app_id=app_id,
+            amount_usd=amount_usd,
+            status="requested",
+            providers=providers,
+            payment_url="http://mock.test/payment/app-charge/woobench-mock-app/charge_test",
+            paid_at=None,
+        )
+
+    def create_app_charge_checkout(self, *, app_id, charge_id, provider="oxapay"):
+        assert app_id == "woobench-mock-app"
+        assert charge_id == "charge_test"
+        assert provider == "oxapay"
+        return SimpleNamespace(
+            provider="oxapay",
+            url="http://mock.test/checkout/charge_test?provider=oxapay",
+            provider_payment_id="charge_test",
+            track_id="charge_test",
+        )
+
+    def get_app_charge(self, app_id, charge_id):
+        assert app_id == "woobench-mock-app"
+        assert charge_id == "charge_test"
+        return SimpleNamespace(
+            id=charge_id,
+            app_id=app_id,
+            amount_usd=1.0,
+            status="confirmed",
+            providers=["stripe", "oxapay"],
+            payment_url="http://mock.test/payment/app-charge/woobench-mock-app/charge_test",
+            paid_at="2026-05-09T00:00:00Z",
         )
 
 
@@ -115,3 +165,37 @@ async def test_woobench_collects_mock_backed_payment():
     assert result.revenue.payment_url == "http://mock.test/checkout/payreq_test"
     assert result.revenue.payment_transaction_hash == "woobench_payment_test_1"
     assert payment_client.created_amounts == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_woobench_executes_structured_charge_action():
+    payment_client = FakePaymentClient()
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
+
+    async def agent(_history):
+        return {
+            "text": "I can continue once the $1.00 crypto charge is paid.",
+            "actions": ["BENCHMARK_ACTION"],
+            "params": {
+                "BENCHMARK_ACTION": {
+                    "command": "CREATE_APP_CHARGE",
+                    "amount_usd": 1,
+                    "provider": "oxapay",
+                    "description": "WooBench action charge",
+                }
+            },
+        }
+
+    result = await evaluator.run_scenario(payment_scenario(), agent)
+
+    assert result.revenue.payment_requested is True
+    assert result.revenue.payment_received is True
+    assert result.revenue.amount_earned == 1.0
+    assert result.revenue.payment_provider == "mock-app-charge:oxapay"
+    assert result.revenue.payment_request_id == "charge_test"
+    assert result.revenue.payment_status == "confirmed"
+    assert result.revenue.payment_action == "CREATE_APP_CHARGE"
+    assert result.revenue.payment_action_source == "action"
+    assert result.revenue.payment_checkout_url == "http://mock.test/checkout/charge_test?provider=oxapay"
+    assert result.revenue.payment_transaction_hash == "woobench_payment_mock_smoke_1"
+    assert payment_client.created_charges == [1.0]

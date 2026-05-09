@@ -26,7 +26,7 @@ export {
 } from "./inventory/constants.ts";
 export { TokenLogo } from "./inventory/TokenLogo.tsx";
 export { useInventoryData } from "./inventory/useInventoryData.ts";
-export { useWalletState } from "./state/useWalletState.ts";
+export { useWalletState } from "@elizaos/ui";
 export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,

@@ -43,7 +43,7 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
     "build": "tsc --noCheck -p tsconfig.build.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -334,5 +334,3 @@ export const tailscaleAction: Action = {
     ],
   ],
 };
-
-export default tailscaleAction;

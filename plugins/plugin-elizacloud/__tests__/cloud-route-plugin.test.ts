@@ -5,9 +5,7 @@ import { elizaCloudRoutePlugin } from "../src/plugin";
 describe("elizaCloudRoutePlugin", () => {
   it("registers the cloud startup and agent lifecycle routes", () => {
     const routes = new Set(
-      (elizaCloudRoutePlugin.routes ?? []).map(
-        (route) => `${route.type} ${route.path}`,
-      ),
+      (elizaCloudRoutePlugin.routes ?? []).map((route) => `${route.type} ${route.path}`)
     );
 
     for (const route of [

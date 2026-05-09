@@ -6,12 +6,6 @@ export * from "./api";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export * from "./bridge";
-// `capacitor-shell` is a side-effect-only module that registers Capacitor
-// plugins on a Capacitor / mobile host. It MUST NOT be in the shared barrel
-// because it pulls in @elizaos/capacitor-* packages that are not present
-// outside Capacitor / Android builds. Host entries that need it must import
-// it explicitly from the host-specific startup path.
-// export * from "./capacitor-shell";
 export * from "./character-catalog";
 export * from "./chat";
 export * from "./components";

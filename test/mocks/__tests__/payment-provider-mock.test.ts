@@ -99,6 +99,14 @@ function paymentRequest(body: Record<string, unknown>): Record<string, unknown> 
   return value as Record<string, unknown>;
 }
 
+function appCharge(body: Record<string, unknown>): Record<string, unknown> {
+  const value = body.charge;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("charge missing from response");
+  }
+  return value as Record<string, unknown>;
+}
+
 describe("payments mock provider", () => {
   it("creates a $1 payment request, marks it paid, and exposes ledger state", async () => {
     activeMocks = await startMocks({ envs: ["payments"] });
@@ -142,6 +150,66 @@ describe("payments mock provider", () => {
       .filter(Boolean);
     expect(requestActions).toContain("payment_requests.create");
     expect(requestActions).toContain("payment_requests.pay");
+  });
+
+  it("mirrors the Cloud app charge create, checkout, status, and pay flow", async () => {
+    activeMocks = await startMocks({ envs: ["payments"] });
+    const baseUrl = activeMocks.baseUrls.payments;
+    const appId = "app_mock_woobench";
+
+    const created = await jsonRequest(`${baseUrl}/api/v1/apps/${appId}/charges`, {
+      method: "POST",
+      body: JSON.stringify({
+        amount: 1,
+        description: "WooBench action charge",
+        providers: ["stripe", "oxapay"],
+        callback_channel: {
+          source: "woobench",
+          roomId: "room-1",
+          agentId: "agent-1",
+        },
+      }),
+    });
+
+    expect(created.response.status).toBe(201);
+    const createdCharge = appCharge(created.body);
+    expect(createdCharge.appId).toBe(appId);
+    expect(createdCharge.amountUsd).toBe(1);
+    expect(createdCharge.status).toBe("requested");
+    expect(createdCharge.paymentUrl).toContain(`/payment/app-charge/${appId}/`);
+    expect(createdCharge.providers).toEqual(["stripe", "oxapay"]);
+
+    const checkout = await jsonRequest(
+      `${baseUrl}/api/v1/apps/${appId}/charges/${createdCharge.id}/checkout`,
+      {
+        method: "POST",
+        body: JSON.stringify({ provider: "oxapay" }),
+      },
+    );
+    expect(checkout.response.status).toBe(200);
+    expect((checkout.body.checkout as Record<string, unknown>)?.provider).toBe("oxapay");
+    expect((checkout.body.checkout as Record<string, unknown>)?.payLink).toContain(
+      `/checkout/${createdCharge.id}`,
+    );
+
+    const paid = await jsonRequest(`${baseUrl}/__mock/app-charges/${createdCharge.id}/pay`, {
+      method: "POST",
+      body: JSON.stringify({ transactionHash: "mock_app_charge_tx" }),
+    });
+    expect(paid.response.status).toBe(200);
+    expect(paymentRequest(paid.body).status).toBe("paid");
+
+    const status = await jsonRequest(
+      `${baseUrl}/api/v1/apps/${appId}/charges/${createdCharge.id}`,
+    );
+    expect(status.response.status).toBe(200);
+    expect(appCharge(status.body).status).toBe("confirmed");
+    expect(appCharge(status.body).paidAt).toBeTruthy();
+
+    const ledger = await jsonRequest(`${baseUrl}/__mock/payments/requests`);
+    const appCharges = ledger.body.appCharges as Array<Record<string, unknown>>;
+    expect(appCharges).toHaveLength(1);
+    expect(appCharges[0]?.status).toBe("confirmed");
   });
 
   it("delivers signed paid callbacks", async () => {

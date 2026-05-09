@@ -1,4 +1,7 @@
-import type { CustomActionDef, CustomActionHandler } from "@elizaos/agent";
+import type {
+  CustomActionDef,
+  CustomActionHandler,
+} from "../../api/agent-client-type-shim";
 import {
   Banner,
   Button,

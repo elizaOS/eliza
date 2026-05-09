@@ -44,6 +44,7 @@ const {
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
     getCloudCompatAgentStatus: vi.fn(),
+    launchCloudCompatAgent: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -244,6 +245,24 @@ const STOPPED_AGENT = {
   bridge_url: null,
   web_ui_url: null,
   webUiUrl: null,
+};
+
+const FAILED_AGENT = {
+  ...RUNNING_AGENT,
+  agent_id: "agent-failed",
+  agent_name: "Failed Agent",
+  status: "failed",
+  bridge_url: null,
+  web_ui_url: null,
+  webUiUrl: null,
+  error_message: "Last startup failed",
+};
+
+const SECOND_RUNNING_AGENT = {
+  ...RUNNING_AGENT,
+  agent_id: "agent-2",
+  agent_name: "Second Agent",
+  bridge_url: "https://agent-2.elizacloud.ai",
 };
 
 function setupApp(
@@ -541,6 +560,21 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         suspendedReason: null,
       },
     });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-1",
+        agentName: "My Agent",
+        appUrl:
+          "https://app.elizacloud.ai/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+        launchSessionId: "launch-1",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://agent-1.elizacloud.ai",
+          token: "agent-token",
+        },
+      },
+    });
     clientMock.switchProvider.mockResolvedValue({
       success: true,
       provider: "elizacloud",
@@ -593,12 +627,14 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(addAgentProfileMock).toHaveBeenCalledWith({
       kind: "cloud",
       label: "My Agent",
       cloudAgentId: "agent-1",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
       "elizacloud",
@@ -640,6 +676,20 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       success: true,
       data: { ...RUNNING_AGENT, bridge_url: null, containerUrl: "" },
     });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-1",
+        agentName: "My Agent",
+        appUrl: "https://app.elizacloud.ai/",
+        launchSessionId: "launch-1",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://job-result-agent.elizacloud.ai",
+          token: "agent-token",
+        },
+      },
+    });
 
     render(<RuntimeGate />);
     await startCloudFromWelcome();
@@ -664,6 +714,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://job-result-agent.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
@@ -717,11 +768,12 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it("persists the backend-login cloud token when connecting to a provisioned agent", async () => {
+  it("uses the managed launch token when connecting to a provisioned agent", async () => {
     (
       globalThis as typeof globalThis & {
         __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
@@ -737,22 +789,65 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         "https://agent-1.elizacloud.ai",
       ),
     );
-    expect(clientMock.setToken).toHaveBeenCalledWith("cloud-token");
+    expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith("agent-1");
+    expect(clientMock.setToken).toHaveBeenCalledWith("agent-token");
     expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
       id: "cloud:agent-1",
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://agent-1.elizacloud.ai",
-      accessToken: "cloud-token",
+      accessToken: "agent-token",
     });
     expect(addAgentProfileMock).toHaveBeenCalledWith({
       kind: "cloud",
       label: "My Agent",
       cloudAgentId: "agent-1",
       apiBase: "https://agent-1.elizacloud.ai",
-      accessToken: "cloud-token",
+      accessToken: "agent-token",
     });
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-connects a usable existing agent instead of showing a connect list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [FAILED_AGENT, SECOND_RUNNING_AGENT],
+    });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-2",
+        agentName: "Second Agent",
+        appUrl: "https://app.elizacloud.ai/",
+        launchSessionId: "launch-2",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://agent-2.elizacloud.ai",
+          token: "agent-2-token",
+        },
+      },
+    });
+
+    render(<RuntimeGate />);
+    await startCloudFromWelcome();
+
+    await waitFor(() =>
+      expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-2",
+      ),
+    );
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-2.elizacloud.ai",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith("agent-2-token");
+    expect(screen.queryByText("Your cloud agents")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^connect$/i })).toBeNull();
+
+    vi.unstubAllGlobals();
   });
 
   it("surfaces provisioning API failures without completing onboarding", async () => {
@@ -772,6 +867,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^connect$/i })).toBeNull();
   });
 
   it("times out before the first provisioning response instead of hanging on startup", async () => {

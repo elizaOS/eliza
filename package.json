@@ -114,8 +114,8 @@
     "publish:dry-run": "bun scripts/publish-from-dist.mjs",
     "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
     "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json",
-    "knip": "knip --directory packages/core --no-exit-code --no-config-hints",
-    "knip:strict": "knip --directory packages/core"
+    "knip": "node scripts/knip-workspaces.mjs",
+    "knip:strict": "node scripts/knip-workspaces.mjs --fail-on-issues"
   },
   "packageManager": "bun@1.3.13",
   "workspaces": [

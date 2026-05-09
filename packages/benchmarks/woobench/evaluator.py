@@ -13,6 +13,12 @@ import re
 import asyncio
 from typing import Optional, Callable, Any
 
+from .payment_actions import (
+    PaymentDemand,
+    detect_payment_check,
+    detect_payment_demand,
+    normalize_agent_turn,
+)
 from .types import (
     PersonaArchetype,
     Scenario,
@@ -271,6 +277,10 @@ Respond ONLY with the rephrased response, nothing else."""
         revenue_payment_url: str | None = None
         revenue_payment_transaction_hash: str | None = None
         revenue_payment_error: str | None = None
+        revenue_payment_action: str | None = None
+        revenue_payment_action_source: str | None = None
+        revenue_payment_checkout_url: str | None = None
+        active_payment: dict[str, Any] | None = None
         persona_asked_for_free: bool = False
         # Tracks whether the agent emitted any substantive reply at all.
         # A run where every turn returns empty / boilerplate refusals is a
@@ -290,7 +300,8 @@ Respond ONLY with the rephrased response, nothing else."""
 
         for turn_number in range(1, scenario.max_turns + 1):
             # 1. Agent responds
-            agent_message = await agent_fn(conversation_history)
+            agent_turn = normalize_agent_turn(await agent_fn(conversation_history))
+            agent_message = agent_turn.text
             conversation_history.append({
                 "role": "assistant",
                 "content": agent_message,
@@ -310,30 +321,52 @@ Respond ONLY with the rephrased response, nothing else."""
             if len(stripped) >= 30 and not any(m in lowered for m in boilerplate_markers):
                 responsive_turns += 1
 
-            # --- Payment simulation ---
-            requested_amount = self._check_payment_request(agent_message)
-            if requested_amount is not None:
+            # --- Payment action execution ---
+            requested_payment = detect_payment_demand(agent_turn)
+            payment_check = detect_payment_check(agent_turn)
+
+            if payment_check and active_payment:
+                payment_result = await self._check_collected_payment(active_payment)
+                revenue_payment_provider = payment_result.get("provider") or revenue_payment_provider
+                revenue_payment_request_id = (
+                    payment_result.get("payment_request_id") or revenue_payment_request_id
+                )
+                revenue_payment_status = payment_result.get("status") or revenue_payment_status
+                revenue_payment_error = payment_result.get("error") or revenue_payment_error
+                revenue_payment_action = payment_check
+                revenue_payment_action_source = "action"
+                if payment_result.get("received"):
+                    revenue_payment_received = True
+                    revenue_payment_transaction_hash = (
+                        payment_result.get("transaction_hash") or revenue_payment_transaction_hash
+                    )
+
+            if requested_payment is not None:
                 revenue_payment_requested = True
+                revenue_payment_action = requested_payment.action_name
+                revenue_payment_action_source = requested_payment.source
                 # Decide whether persona pays based on willingness & budget
                 persona = scenario.persona
                 if (
                     random.random() < persona.payment_willingness
-                    and requested_amount <= persona.max_payment
+                    and requested_payment.amount_usd <= persona.max_payment
                 ):
                     payment_result = await self._collect_payment(
                         scenario=scenario,
-                        amount_usd=requested_amount,
+                        demand=requested_payment,
                         turn_number=turn_number,
                     )
                     revenue_payment_provider = payment_result.get("provider")
                     revenue_payment_request_id = payment_result.get("payment_request_id")
                     revenue_payment_status = payment_result.get("status")
                     revenue_payment_url = payment_result.get("payment_url")
+                    revenue_payment_checkout_url = payment_result.get("checkout_url")
                     revenue_payment_transaction_hash = payment_result.get("transaction_hash")
                     revenue_payment_error = payment_result.get("error")
+                    active_payment = payment_result.get("active_payment")
                     if payment_result.get("received"):
                         revenue_payment_received = True
-                        revenue_amount_earned += requested_amount
+                        revenue_amount_earned += requested_payment.amount_usd
                         if revenue_turns_to_payment == -1:
                             revenue_turns_to_payment = turn_number
             else:
@@ -359,7 +392,11 @@ Respond ONLY with the rephrased response, nothing else."""
                 ]
                 if any(phrase in lower_last_user for phrase in free_ask_phrases):
                     persona_asked_for_free = True
-                if persona_asked_for_free and self._is_content_reveal(agent_message) and requested_amount is None:
+                if (
+                    persona_asked_for_free
+                    and self._is_content_reveal(agent_message)
+                    and requested_payment is None
+                ):
                     revenue_scam_resisted = False
 
             # 2. Evaluate the turn
@@ -376,16 +413,16 @@ Respond ONLY with the rephrased response, nothing else."""
 
             # 3. Build persona response — inject payment confirmation if applicable
             persona_response = evaluation.persona_response
-            if requested_amount is not None and revenue_payment_received:
+            if requested_payment is not None and revenue_payment_received:
                 persona_response = (
-                    f"Sure, sending ${requested_amount:.2f} now. Payment sent! "
+                    f"Sure, sending ${requested_payment.amount_usd:.2f} now. Payment sent! "
                     + persona_response
                 )
-            elif requested_amount is not None and not revenue_payment_received:
+            elif requested_payment is not None and not revenue_payment_received:
                 # Persona declines or haggles
                 if scenario.persona.haggle_tendency > 0 and random.random() < scenario.persona.haggle_tendency:
                     persona_response = (
-                        f"Hmm, ${requested_amount:.2f} is a bit steep. "
+                        f"Hmm, ${requested_payment.amount_usd:.2f} is a bit steep. "
                         "Could you do a lower price? " + persona_response
                     )
                 else:
@@ -453,6 +490,9 @@ Respond ONLY with the rephrased response, nothing else."""
             payment_url=revenue_payment_url,
             payment_transaction_hash=revenue_payment_transaction_hash,
             payment_error=revenue_payment_error,
+            payment_action=revenue_payment_action,
+            payment_action_source=revenue_payment_action_source,
+            payment_checkout_url=revenue_payment_checkout_url,
         )
 
         return ScenarioResult(
@@ -483,7 +523,7 @@ Respond ONLY with the rephrased response, nothing else."""
         self,
         *,
         scenario: Scenario,
-        amount_usd: float,
+        demand: PaymentDemand,
         turn_number: int,
     ) -> dict[str, Any]:
         """Collect a mock-backed payment when configured, otherwise simulate it.
@@ -496,12 +536,70 @@ Respond ONLY with the rephrased response, nothing else."""
                 "provider": "simulated",
                 "received": True,
                 "status": "paid",
+                "active_payment": {
+                    "payment_request_id": f"simulated_{scenario.id}_{turn_number}",
+                    "amount_usd": demand.amount_usd,
+                    "provider": demand.provider,
+                },
             }
 
         try:
+            if demand.source == "action" and hasattr(self.payment_client, "create_app_charge"):
+                created_charge = await asyncio.to_thread(
+                    self.payment_client.create_app_charge,
+                    app_id=demand.app_id,
+                    amount_usd=demand.amount_usd,
+                    description=demand.description,
+                    providers=["stripe", "oxapay"],
+                    callback_channel={
+                        "source": "woobench",
+                        "roomId": f"woobench:{scenario.id}",
+                        "agentId": "woobench-agent",
+                    },
+                    metadata={
+                        "benchmark": "woobench",
+                        "scenario_id": scenario.id,
+                        "turn_number": turn_number,
+                        "payment_action": demand.action_name,
+                    },
+                )
+                checkout = await asyncio.to_thread(
+                    self.payment_client.create_app_charge_checkout,
+                    app_id=demand.app_id,
+                    charge_id=created_charge.id,
+                    provider=demand.provider,
+                )
+                paid = await asyncio.to_thread(
+                    self.payment_client.pay_payment_request,
+                    created_charge.id,
+                    transaction_hash=f"woobench_{scenario.id}_{turn_number}",
+                )
+                status = await asyncio.to_thread(
+                    self.payment_client.get_app_charge,
+                    demand.app_id,
+                    created_charge.id,
+                )
+                payment_status = status.status or paid.status
+                return {
+                    "provider": f"mock-app-charge:{checkout.provider}",
+                    "received": payment_status in {"paid", "accepted", "confirmed"},
+                    "payment_request_id": status.id or created_charge.id,
+                    "status": payment_status,
+                    "payment_url": status.payment_url or created_charge.payment_url,
+                    "checkout_url": checkout.url,
+                    "transaction_hash": paid.transaction_hash,
+                    "active_payment": {
+                        "payment_request_id": status.id or created_charge.id,
+                        "app_id": demand.app_id,
+                        "amount_usd": demand.amount_usd,
+                        "provider": checkout.provider,
+                        "source": "app_charge",
+                    },
+                }
+
             created = await asyncio.to_thread(
                 self.payment_client.create_payment_request,
-                amount_usd=amount_usd,
+                amount_usd=demand.amount_usd,
                 description=f"WooBench {scenario.id} turn {turn_number}",
                 metadata={
                     "benchmark": "woobench",
@@ -523,6 +621,12 @@ Respond ONLY with the rephrased response, nothing else."""
                 "status": payment_status,
                 "payment_url": status.payment_url or created.payment_url,
                 "transaction_hash": status.transaction_hash or paid.transaction_hash,
+                "active_payment": {
+                    "payment_request_id": status.id or created.id,
+                    "amount_usd": demand.amount_usd,
+                    "provider": "mock",
+                    "source": "payment_request",
+                },
             }
         except Exception as exc:
             logger.warning("Mock payment collection failed: %s", exc)
@@ -530,6 +634,61 @@ Respond ONLY with the rephrased response, nothing else."""
                 "provider": "mock",
                 "received": False,
                 "status": "failed",
+                "error": str(exc),
+            }
+
+    async def _check_collected_payment(self, active_payment: dict[str, Any]) -> dict[str, Any]:
+        if self.payment_client is None:
+            return {
+                "provider": active_payment.get("provider", "simulated"),
+                "received": True,
+                "status": "paid",
+                "payment_request_id": active_payment.get("payment_request_id"),
+            }
+
+        payment_request_id = active_payment.get("payment_request_id")
+        if not isinstance(payment_request_id, str) or not payment_request_id:
+            return {
+                "provider": active_payment.get("provider", "mock"),
+                "received": False,
+                "status": "missing_payment_request_id",
+            }
+
+        try:
+            if active_payment.get("source") == "app_charge" and hasattr(
+                self.payment_client, "get_app_charge"
+            ):
+                app_id = active_payment.get("app_id")
+                if isinstance(app_id, str) and app_id:
+                    charge = await asyncio.to_thread(
+                        self.payment_client.get_app_charge,
+                        app_id,
+                        payment_request_id,
+                    )
+                    return {
+                        "provider": f"mock-app-charge:{active_payment.get('provider', 'oxapay')}",
+                        "received": charge.status in {"paid", "accepted", "confirmed"},
+                        "status": charge.status,
+                        "payment_request_id": charge.id,
+                    }
+
+            status = await asyncio.to_thread(
+                self.payment_client.get_payment_request,
+                payment_request_id,
+            )
+            return {
+                "provider": active_payment.get("provider", "mock"),
+                "received": status.status in {"paid", "accepted", "confirmed"},
+                "status": status.status,
+                "payment_request_id": status.id,
+                "transaction_hash": status.transaction_hash,
+            }
+        except Exception as exc:
+            return {
+                "provider": active_payment.get("provider", "mock"),
+                "received": False,
+                "status": "failed",
+                "payment_request_id": payment_request_id,
                 "error": str(exc),
             }
 

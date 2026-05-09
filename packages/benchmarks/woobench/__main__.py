@@ -103,7 +103,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="eliza",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test only). "
-            "'dummy-charge' requests a $1 payment before continuing. "
+            "'dummy-charge' calls the WooBench charge action for a $1 payment. "
             "'eliza' (default) routes through the elizaOS TS benchmark server "
             "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
         ),
@@ -175,16 +175,27 @@ async def _create_dummy_agent(
 
 async def _create_dummy_charge_agent(
     conversation_history: list[dict[str, str]],
-) -> str:
-    """Smoke-test agent that requests one dollar before giving a reading."""
+) -> dict[str, object] | str:
+    """Smoke-test agent that calls the charge action before giving a reading."""
     user_text = "\n".join(
         turn["content"] for turn in conversation_history if turn.get("role") == "user"
     ).lower()
     if "payment sent" not in user_text and "went through" not in user_text:
-        return (
-            "I can do a focused reading for $1.00. Once that payment goes "
-            "through, I will continue with the full interpretation."
-        )
+        return {
+            "text": (
+                "I can do a focused reading for $1.00. Once that crypto "
+                "charge goes through, I will continue with the full interpretation."
+            ),
+            "actions": ["BENCHMARK_ACTION"],
+            "params": {
+                "BENCHMARK_ACTION": {
+                    "command": "CREATE_APP_CHARGE",
+                    "amount_usd": 1,
+                    "provider": "oxapay",
+                    "description": "WooBench one dollar reading",
+                }
+            },
+        }
     return (
         "Payment went through. I see a reading about growth, money, practical "
         "planning, and courage. The guidance is to honor the vision while "

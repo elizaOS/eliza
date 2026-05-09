@@ -130,6 +130,99 @@
       "responseMode": null,
       "streamingMode": null,
       "streamingInterval": 0
+    },
+    {
+      "uuid": "00000009-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST create Cloud-style app charge",
+      "method": "post",
+      "endpoint": "api/v1/apps/:appId/charges",
+      "responses": [
+        {
+          "uuid": "00000010-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"charge\":{\"id\":\"charge_static\",\"appId\":\"{{urlParam 'appId'}}\",\"amountUsd\":{{body 'amount'}},\"description\":\"{{body 'description'}}\",\"providers\":[\"stripe\",\"oxapay\"],\"paymentUrl\":\"http://127.0.0.1:3019/payment/app-charge/{{urlParam 'appId'}}/charge_static\",\"status\":\"requested\",\"paidAt\":null,\"expiresAt\":\"{{now 'iso' offset='+7d'}}\",\"createdAt\":\"{{now 'iso'}}\",\"metadata\":{\"kind\":\"app_charge_request\",\"app_id\":\"{{urlParam 'appId'}}\"}}}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "Created",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000011-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "GET Cloud-style app charge status",
+      "method": "get",
+      "endpoint": "api/v1/apps/:appId/charges/:chargeId",
+      "responses": [
+        {
+          "uuid": "00000012-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"charge\":{\"id\":\"{{urlParam 'chargeId'}}\",\"appId\":\"{{urlParam 'appId'}}\",\"amountUsd\":1,\"description\":\"Mock app charge\",\"providers\":[\"stripe\",\"oxapay\"],\"paymentUrl\":\"http://127.0.0.1:3019/payment/app-charge/{{urlParam 'appId'}}/{{urlParam 'chargeId'}}\",\"status\":\"requested\",\"paidAt\":null,\"expiresAt\":\"{{now 'iso' offset='+7d'}}\",\"createdAt\":\"{{now 'iso'}}\",\"metadata\":{\"kind\":\"app_charge_request\",\"app_id\":\"{{urlParam 'appId'}}\"}}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000013-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST Cloud-style app charge checkout",
+      "method": "post",
+      "endpoint": "api/v1/apps/:appId/charges/:chargeId/checkout",
+      "responses": [
+        {
+          "uuid": "00000014-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"checkout\":{\"provider\":\"oxapay\",\"paymentId\":\"{{urlParam 'chargeId'}}\",\"trackId\":\"{{urlParam 'chargeId'}}\",\"payLink\":\"http://127.0.0.1:3019/checkout/{{urlParam 'chargeId'}}?provider=oxapay\",\"expiresAt\":\"{{now 'iso' offset='+7d'}}\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
     }
   ]
 }
