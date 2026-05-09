@@ -10,7 +10,7 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "@elizaos/source": "./src/index.ts",
+        "@elizaos/source": "./dist/index.js",
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }

@@ -7,52 +7,52 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./schema": {
-      "types": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
       "import": "./dist/schema.js",
       "default": "./dist/schema.js"
     },
     "./contracts": {
-      "types": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
       "import": "./dist/contracts.js",
       "default": "./dist/contracts.js"
     },
     "./packaging": {
-      "types": "./src/packaging.ts",
+      "types": "./dist/packaging.d.ts",
       "import": "./dist/packaging.js",
       "default": "./dist/packaging.js"
     },
     "./routes": {
-      "types": "./src/routes.ts",
+      "types": "./dist/routes.d.ts",
       "import": "./dist/routes.js",
       "default": "./dist/routes.js"
     },
     "./service": {
-      "types": "./src/service.ts",
+      "types": "./dist/service.d.ts",
       "import": "./dist/service.js",
       "default": "./dist/service.js"
     },
     "./actions/*": {
-      "types": "./src/actions/*.ts",
+      "types": "./dist/actions/*.d.ts",
       "import": "./dist/actions/*.js",
       "default": "./dist/actions/*.js"
     },
     "./workspace": {
-      "types": "./src/workspace/index.ts",
+      "types": "./dist/workspace/index.d.ts",
       "import": "./dist/workspace/index.js",
       "default": "./dist/workspace/index.js"
     },
     "./workspace/*": {
-      "types": "./src/workspace/*.ts",
+      "types": "./dist/workspace/*.d.ts",
       "import": "./dist/workspace/*.js",
       "default": "./dist/workspace/*.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     }
@@ -81,7 +81,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ]

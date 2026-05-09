@@ -5,62 +5,62 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./src/ui.ts",
+      "types": "./dist/ui.d.ts",
       "import": "./dist/ui.js",
       "default": "./dist/ui.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./types": {
-      "types": "./src/types/index.ts",
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
       "default": "./dist/types/index.js"
     },
     "./types/*": {
-      "types": "./src/types/*.ts",
+      "types": "./dist/types/*.d.ts",
       "import": "./dist/types/*.js",
       "default": "./dist/types/*.js"
     },
     "./api/*": {
-      "types": "./src/api/*.ts",
+      "types": "./dist/api/*.d.ts",
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
     "./services/*": {
-      "types": "./src/services/*.ts",
+      "types": "./dist/services/*.d.ts",
       "import": "./dist/services/*.js",
       "default": "./dist/services/*.js"
     },
     "./security/*": {
-      "types": "./src/security/*.ts",
+      "types": "./dist/security/*.d.ts",
       "import": "./dist/security/*.js",
       "default": "./dist/security/*.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
+      "types": "./dist/routes/*.d.ts",
       "import": "./dist/routes/*.js",
       "default": "./dist/routes/*.js"
     },
     "./actions/*": {
-      "types": "./src/actions/*.ts",
+      "types": "./dist/actions/*.d.ts",
       "import": "./dist/actions/*.js",
       "default": "./dist/actions/*.js"
     },
     "./browser-workspace-wallet": {
-      "types": "./src/browser-workspace-wallet.ts",
+      "types": "./dist/browser-workspace-wallet.d.ts",
       "import": "./dist/browser-workspace-wallet.js",
       "default": "./dist/browser-workspace-wallet.js"
     },
     "./*": {
-      "types": "./src/*",
+      "types": "./dist/*",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -86,7 +86,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

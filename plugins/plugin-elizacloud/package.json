@@ -28,39 +28,39 @@
       "default": "./dist/node/index.node.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
-      "import": "./src/plugin.ts",
-      "default": "./src/plugin.ts"
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
     },
     "./register-routes": {
-      "types": "./src/register-routes.ts",
-      "import": "./src/register-routes.ts",
-      "default": "./src/register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./src/routes/*.ts",
-      "default": "./src/routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     },
     "./cloud": {
-      "types": "./src/cloud/index.ts",
-      "import": "./src/cloud/index.ts",
-      "default": "./src/cloud/index.ts"
+      "types": "./dist/cloud/index.d.ts",
+      "import": "./dist/cloud/index.js",
+      "default": "./dist/cloud/index.js"
     },
     "./cloud/*": {
-      "types": "./src/cloud/*.ts",
-      "import": "./src/cloud/*.ts",
-      "default": "./src/cloud/*.ts"
+      "types": "./dist/cloud/*.d.ts",
+      "import": "./dist/cloud/*.js",
+      "default": "./dist/cloud/*.js"
     },
     "./onboarding": {
-      "types": "./src/onboarding.ts",
-      "import": "./src/onboarding.ts",
-      "default": "./src/onboarding.ts"
+      "types": "./dist/onboarding.d.ts",
+      "import": "./dist/onboarding.js",
+      "default": "./dist/onboarding.js"
     }
   },
   "files": [

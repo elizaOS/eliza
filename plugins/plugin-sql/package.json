@@ -44,7 +44,8 @@
   },
   "files": [
     "typescript/dist",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "keywords": [],
   "author": "elizaOS",

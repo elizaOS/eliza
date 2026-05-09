@@ -26,24 +26,24 @@
       }
     },
     "./plugin": {
-      "types": "./src/routes/plugin.ts",
-      "import": "./src/routes/plugin.ts",
-      "default": "./src/routes/plugin.ts"
+      "types": "./dist/routes/plugin.d.ts",
+      "import": "./dist/routes/plugin.js",
+      "default": "./dist/routes/plugin.js"
     },
     "./register-routes": {
-      "types": "./src/register-routes.ts",
-      "import": "./src/register-routes.ts",
-      "default": "./src/register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./src/routes/*.ts",
-      "default": "./src/routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     },
     "./package.json": "./package.json"
   },

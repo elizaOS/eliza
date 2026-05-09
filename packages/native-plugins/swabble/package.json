@@ -27,7 +27,8 @@
     "ios/Sources/",
     "ios/Plugin.xcodeproj/",
     "electrobun/",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

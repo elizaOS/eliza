@@ -5,32 +5,32 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./client": {
-      "types": "./src/client.ts",
+      "types": "./dist/client.d.ts",
       "import": "./dist/client.js",
       "default": "./dist/client.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
     "./useHyperliquidState": {
-      "types": "./src/useHyperliquidState.ts",
+      "types": "./dist/useHyperliquidState.d.ts",
       "import": "./dist/useHyperliquidState.js",
       "default": "./dist/useHyperliquidState.js"
     },
     "./*": {
-      "types": "./src/*",
+      "types": "./dist/*",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -48,7 +48,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

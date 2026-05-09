@@ -5,57 +5,57 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./src/ui.ts",
+      "types": "./dist/ui.d.ts",
       "import": "./dist/ui.js",
       "default": "./dist/ui.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
     "./inventory/ChainIcon": {
-      "types": "./src/inventory/ChainIcon.tsx",
+      "types": "./dist/inventory/ChainIcon.d.ts",
       "import": "./dist/inventory/ChainIcon.js",
       "default": "./dist/inventory/ChainIcon.js"
     },
     "./inventory/TokenLogo": {
-      "types": "./src/inventory/TokenLogo.tsx",
+      "types": "./dist/inventory/TokenLogo.d.ts",
       "import": "./dist/inventory/TokenLogo.js",
       "default": "./dist/inventory/TokenLogo.js"
     },
     "./state/*": {
-      "types": "./src/state/*.ts",
+      "types": "./dist/state/*.d.ts",
       "import": "./dist/state/*.js",
       "default": "./dist/state/*.js"
     },
     "./inventory/*": {
-      "types": "./src/inventory/*.ts",
+      "types": "./dist/inventory/*.d.ts",
       "import": "./dist/inventory/*.js",
       "default": "./dist/inventory/*.js"
     },
     "./widgets/*": {
-      "types": "./src/widgets/*.tsx",
+      "types": "./dist/widgets/*.d.ts",
       "import": "./dist/widgets/*.js",
       "default": "./dist/widgets/*.js"
     },
     "./wallet-rpc": {
-      "types": "./src/wallet-rpc.ts",
+      "types": "./dist/wallet-rpc.d.ts",
       "import": "./dist/wallet-rpc.js",
       "default": "./dist/wallet-rpc.js"
     },
     "./*": {
-      "types": "./src/*",
+      "types": "./dist/*",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -79,7 +79,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

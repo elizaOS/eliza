@@ -8,29 +8,29 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./plugin-routes": {
-      "types": "./src/plugin-routes.ts",
-      "import": "./src/plugin-routes.ts",
-      "default": "./src/plugin-routes.ts"
+      "types": "./dist/plugin-routes.d.ts",
+      "import": "./dist/plugin-routes.js",
+      "default": "./dist/plugin-routes.js"
     },
     "./register-routes": {
-      "types": "./src/register-routes.ts",
-      "import": "./src/register-routes.ts",
-      "default": "./src/register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./src/routes/*.ts",
-      "default": "./src/routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     }
   },
   "files": [

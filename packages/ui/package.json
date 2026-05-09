@@ -16,7 +16,7 @@
     "react",
     "design-system"
   ],
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "files": [
     "dist"
   ],
@@ -37,20 +37,20 @@
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./components/*": "./src/components/*",
-    "./components/*/*": "./src/components/*/*",
-    "./components/*/*/*": "./src/components/*/*/*",
-    "./components/ui/*": "./src/components/ui/*.tsx",
-    "./components/composites/page-panel": "./src/components/composites/page-panel/index.ts",
-    "./components/composites/*": "./src/components/composites/*",
-    "./components/composites/*/*": "./src/components/composites/*/*.tsx",
-    "./hooks": "./src/hooks/index.ts",
-    "./hooks/*": "./src/hooks/*",
-    "./layouts": "./src/layouts/index.ts",
-    "./layouts/*": "./src/layouts/*",
-    "./lib/*": "./src/lib/*",
-    "./styles/*": "./src/styles/*"
+    ".": "./dist/index.js",
+    "./components/*": "./dist/components/*",
+    "./components/*/*": "./dist/components/*/*",
+    "./components/*/*/*": "./dist/components/*/*/*",
+    "./components/ui/*": "./dist/components/ui/*.js",
+    "./components/composites/page-panel": "./dist/components/composites/page-panel/index.js",
+    "./components/composites/*": "./dist/components/composites/*",
+    "./components/composites/*/*": "./dist/components/composites/*/*.js",
+    "./hooks": "./dist/hooks/index.js",
+    "./hooks/*": "./dist/hooks/*",
+    "./layouts": "./dist/layouts/index.js",
+    "./layouts/*": "./dist/layouts/*",
+    "./lib/*": "./dist/lib/*",
+    "./styles/*": "./dist/styles/*"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -85,5 +85,6 @@
   "publishConfig": {
     "access": "public",
     "directory": "dist"
-  }
+  },
+  "types": "./dist/index.d.ts"
 }

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Shared billing utilities for Eliza Cloud gateway services (platform markup arithmetic).",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./markup": "./src/markup.ts"
+    ".": "./dist/index.js",
+    "./markup": "./dist/markup.js"
   },
   "scripts": {
     "lint": "biome check .",
@@ -18,5 +18,9 @@
     "@types/node": "22.19.17",
     "typescript": "^6.0.0",
     "vitest": "^4.0.0"
-  }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ]
 }
