@@ -72,14 +72,14 @@ export const n8nWorkflowPlugin: Plugin = {
     );
 
     if (!embeddedEnabled && !apiKey) {
-      logger.warn(
+      logger.debug(
         'N8N_API_KEY not provided - plugin will not be functional. ' +
           'Please set N8N_API_KEY in your environment or character settings.'
       );
     }
 
     if (!embeddedEnabled && !host) {
-      logger.warn(
+      logger.debug(
         'N8N_HOST not provided - plugin will not be functional. ' +
           'Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).'
       );

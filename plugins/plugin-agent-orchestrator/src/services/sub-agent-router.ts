@@ -68,7 +68,7 @@ export class SubAgentRouter {
       "ACP_SUBPROCESS_SERVICE",
     ) as AcpService | null;
     if (!acp || typeof acp.onSessionEvent !== "function") {
-      this.log("warn", "AcpService unavailable; router idle");
+      this.log("debug", "AcpService unavailable; router idle");
       return;
     }
     this.acp = acp;

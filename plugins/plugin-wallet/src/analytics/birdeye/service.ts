@@ -915,49 +915,34 @@ export class BirdeyeService extends Service {
       });
 
     // Register Birdeye as a data provider with INTEL_DATAPROVIDER once
-    // both services have loaded.
-    Promise.all(
-      ["INTEL_DATAPROVIDER", BIRDEYE_SERVICE_NAME].map((p) =>
-        runtime.getServiceLoadPromise(p as ServiceTypeName),
-      ),
-    )
+    // Birdeye is loaded. INTEL_DATAPROVIDER is optional — probe it
+    // synchronously and skip registration if it's not present.
+    runtime
+      .getServiceLoadPromise(BIRDEYE_SERVICE_NAME as ServiceTypeName)
       .then(() => {
         const infoService = runtime.getService("INTEL_DATAPROVIDER") as
           | { registerDataProvder?: (provider: unknown) => void }
           | undefined;
 
-        if (!infoService) {
-          runtime.logger?.warn(
-            "INTEL_DATAPROVIDER service not available, skipping data provider registration",
+        if (!infoService || typeof infoService.registerDataProvder !== "function") {
+          runtime.logger?.debug(
+            "INTEL_DATAPROVIDER service not available, skipping Birdeye data provider registration",
           );
           return;
         }
 
-        if (typeof infoService.registerDataProvder !== "function") {
-          runtime.logger?.warn(
-            "INTEL_DATAPROVIDER service does not have registerDataProvder method",
-          );
-          return;
-        }
-
-        try {
-          infoService.registerDataProvder({
-            name: "Birdeye",
-            trendingService: BIRDEYE_SERVICE_NAME,
-            lookupService: BIRDEYE_SERVICE_NAME,
-          });
-          runtime.logger?.log(
-            "Birdeye data provider registered with INTEL_DATAPROVIDER",
-          );
-        } catch (error) {
-          runtime.logger?.error(
-            `Failed to register Birdeye data provider: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+        infoService.registerDataProvder({
+          name: "Birdeye",
+          trendingService: BIRDEYE_SERVICE_NAME,
+          lookupService: BIRDEYE_SERVICE_NAME,
+        });
+        runtime.logger?.log(
+          "Birdeye data provider registered with INTEL_DATAPROVIDER",
+        );
       })
       .catch((e) => {
-        runtime.logger?.error(
-          `Failed to load services for data provider registration: ${e instanceof Error ? e.message : String(e)}`,
+        runtime.logger?.debug(
+          `Birdeye service load failed; skipping data provider registration: ${e instanceof Error ? e.message : String(e)}`,
         );
       });
 
