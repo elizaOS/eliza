@@ -616,6 +616,31 @@ describe("validateNodeParameters", () => {
       'Node "Gmail": missing required parameter "Email Type"',
     );
   });
+
+  test("strips HTML tags from the catalog description", () => {
+    // The actionNetwork.tagId property (resource=personTag, operation=add)
+    // is required and its catalog description embeds an <a href="...">
+    // expression link. The clarification surface is plain text, so raw
+    // HTML must not leak through into the warning string.
+    const workflow = {
+      name: "Action Network Tag",
+      nodes: [
+        {
+          name: "Add Tag",
+          type: "n8n-nodes-base.actionNetwork",
+          typeVersion: 1,
+          position: [0, 0] as [number, number],
+          parameters: { resource: "personTag", operation: "add" },
+        },
+      ],
+      connections: {},
+    };
+    const warnings = validateNodeParameters(workflow);
+    const tagWarning = warnings.find((w) => w.includes('"Tag Name or ID"'));
+    expect(tagWarning).toBeDefined();
+    expect(tagWarning).toContain("specify an ID using an expression");
+    expect(tagWarning).not.toMatch(/<[^>]+>/);
+  });
 });
 
 // ============================================================================

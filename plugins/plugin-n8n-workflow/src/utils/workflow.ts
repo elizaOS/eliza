@@ -179,7 +179,13 @@ export function validateNodeParameters(workflow: N8nWorkflow): string[] {
         // and the user has no way to know what the parameter actually
         // governs. The description is the same hover-text n8n shows in
         // its own UI, so it carries real semantic information.
-        const description = prop.description?.trim();
+        // n8n catalog descriptions sometimes contain raw HTML
+        // (e.g. <a href="...">expression</a>) sourced from the upstream
+        // node-types definitions; strip tags before interpolation so the
+        // clarification surfaces in plain-text contexts cleanly.
+        const description = prop.description
+          ?.replace(/<[^>]*>/g, '')
+          .trim();
         const detail = description ? ` (${description})` : '';
         warnings.push(
           `Node "${node.name}": missing required parameter "${label}"${detail}`,
