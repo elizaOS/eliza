@@ -32,12 +32,12 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-function legacyGrant(
+function connectorGrant(
   provider: "telegram" | "signal" | "x",
   overrides: Partial<LifeOpsConnectorGrant> = {},
 ): LifeOpsConnectorGrant {
   return {
-    id: `${provider}-legacy-grant`,
+    id: `${provider}-stored-grant`,
     agentId: "11111111-1111-4111-8111-111111111111",
     provider,
     connectorAccountId: `acct-${provider}-owner`,
@@ -45,7 +45,7 @@ function legacyGrant(
     identity:
       provider === "signal"
         ? { phoneNumber: "+15551234567" }
-        : { id: "12345", username: "legacy_user", phone: "+15551234567" },
+        : { id: "12345", username: "stored_user", phone: "+15551234567" },
     identityEmail: null,
     grantedScopes: [],
     capabilities:
@@ -54,7 +54,7 @@ function legacyGrant(
         : provider === "x"
           ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
           : ["telegram.read", "telegram.send"],
-    tokenRef: `${provider}-legacy-token`,
+    tokenRef: `${provider}-stored-token`,
     mode: "local",
     executionTarget: "local",
     sourceOfTruth: "local_storage",
@@ -68,7 +68,7 @@ function legacyGrant(
   } as LifeOpsConnectorGrant;
 }
 
-function serviceWithLegacyGrants(args: {
+function serviceWithConnectorGrants(args: {
   services?: Record<string, unknown>;
   grants?: Record<string, LifeOpsConnectorGrant | null>;
 }) {

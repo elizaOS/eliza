@@ -23,6 +23,8 @@
  *   MODEL_REPO         — HF repo id of the GGUF.
  *   MODEL_FILE         — GGUF filename inside that repo.
  *   MODEL_ALIAS        — `--alias` for llama-server (also the catalog id).
+ *   DFLASH_DRAFTER_REPO / DFLASH_DRAFTER_FILE — optional drafter GGUF.
+ *   LLAMA_SERVER_BIN   — compatible llama-server binary (default: llama-server).
  *   HF_TOKEN_SECRET    — pass-through HuggingFace token for gated repos.
  *
  * The on_start script lives in services/vast-pyworker/onstart.sh and is
@@ -121,8 +123,25 @@ async function main(): Promise<void> {
     LLAMA_CONTEXT: readEnv("LLAMA_CONTEXT", "32768"),
     LLAMA_PARALLEL: readEnv("LLAMA_PARALLEL", "2"),
     LLAMA_NGL: readEnv("LLAMA_NGL", "99"),
+    LLAMA_SERVER_PORT: readEnv("LLAMA_SERVER_PORT", "8080"),
+    LLAMA_SERVER_BIN: readEnv("LLAMA_SERVER_BIN", "llama-server"),
     MODEL_DIR: readEnv("MODEL_DIR", "/workspace/models"),
   };
+  for (const optional of [
+    "DFLASH_DRAFTER_REPO",
+    "DFLASH_DRAFTER_FILE",
+    "DFLASH_SPEC_TYPE",
+    "LLAMA_DRAFT_NGL",
+    "LLAMA_DRAFT_CONTEXT",
+    "LLAMA_DRAFT_MIN",
+    "LLAMA_DRAFT_MAX",
+    "LLAMA_CACHE_TYPE_K",
+    "LLAMA_CACHE_TYPE_V",
+    "LLAMA_EXTRA_ARGS",
+  ]) {
+    const value = process.env[optional]?.trim();
+    if (value) env[optional] = value;
+  }
 
   const hfToken = process.env.HF_TOKEN_SECRET ?? process.env.HUGGING_FACE_HUB_TOKEN;
   if (hfToken && hfToken.trim().length > 0) {
@@ -131,9 +150,9 @@ async function main(): Promise<void> {
 
   const config: TemplateConfig = {
     name: readEnv("VAST_TEMPLATE_NAME", "eliza-cloud-qwen3.6-27b-neo-code"),
-    // Official llama.cpp CUDA server image — stable enough that we pin to
-    // `server-cuda` (a moving tag); upgrade by bumping `MODEL_FILE`'s repo
-    // and re-running this script. To pin harder, set `:server-cuda-master-<sha>`.
+    // Official llama.cpp CUDA server image for stock GGUF. DFlash/TurboQuant
+    // deployments must set VAST_IMAGE to a fork image built from
+    // spiritbuun/buun-llama-cpp or another compatible runtime.
     image: readEnv("VAST_IMAGE", "ghcr.io/ggml-org/llama.cpp:server-cuda"),
     disk: Number(readEnv("VAST_DISK_GB", "60")),
     onstart,

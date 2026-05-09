@@ -415,6 +415,42 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     type: "language",
     tags: ["self-hosted", "llama.cpp", "gguf"],
   },
+  {
+    id: "vast/qwen3.5-4b-dflash",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Qwen3.5 4B DFlash",
+    description:
+      "Qwen3.5 4B Q4_K_M target with Q4_K_M DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.5-4B-GGUF; drafter: psychopenguin/Qwen3.5-4B-DFlash-FP16-GGUF",
+    type: "language",
+    context_window: 8192,
+    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.5"],
+  },
+  {
+    id: "vast/qwen3.5-9b-dflash",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Qwen3.5 9B DFlash",
+    description:
+      "Qwen3.5 9B Q4_K_M target with Q4_K_M DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.5-9B-GGUF; drafter: psychopenguin/Qwen3.5-9B-DFlash-FP16-GGUF",
+    type: "language",
+    context_window: 8192,
+    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.5"],
+  },
+  {
+    id: "vast/qwen3.6-27b-dflash",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Qwen3.6 27B DFlash",
+    description:
+      "Qwen3.6 27B Q4_K_M target with recommended Q8_0 DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.6-27B-GGUF; drafter: spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+    type: "language",
+    context_window: 8192,
+    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.6"],
+  },
   // ─── eliza-1 series — Milady's own fine-tunes of Qwen3.5/3.6 ───────
   // Self-hosted on Vast.ai. Manifests live in
   // training/cloud/vast-pyworker/eliza-1-{2b,9b,27b}.json.
@@ -497,7 +533,10 @@ export function getGroqApiModelId(modelId: string): string {
 }
 
 export function isVastNativeModel(modelId: string): boolean {
-  return modelId in VAST_NATIVE_MODEL_ID_MAP;
+  return (
+    modelId in VAST_NATIVE_MODEL_ID_MAP ||
+    VAST_NATIVE_MODELS.some((model) => model.id === modelId)
+  );
 }
 
 export function getVastApiModelId(modelId: string): string {
