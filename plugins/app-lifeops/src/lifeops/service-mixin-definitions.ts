@@ -19,12 +19,7 @@ import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
 } from "../contracts/index.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
 import { createLifeOpsTaskDefinition } from "./repository.js";
-import {
-  ROUTINE_SEED_TEMPLATES,
-  type RoutineSeedTemplate,
-} from "./seed-routines.js";
 import {
   cloneRecord,
   computeSnoozedUntil,
@@ -53,18 +48,14 @@ import {
   normalizeWebsiteAccessPolicy,
 } from "./service-normalize-task.js";
 
-const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
-
-function resolveRoutineSeedKey(
-  metadata: Record<string, unknown> | null | undefined,
-): string | null {
-  const seedKey = metadata?.seedKey;
-  return typeof seedKey === "string" && seedKey.length > 0 ? seedKey : null;
-}
-
-function buildRoutineSeedKey(templateKey: string): string {
-  return `${ROUTINE_SEED_METADATA_PREFIX}:${templateKey}`;
-}
+// Wave-2 W2-A removed `applySeedRoutines`, `checkAndOfferSeeding`,
+// `markSeedingOffered`, the legacy `RoutineSeedTemplate` shape, and the
+// `load-test-user-profile:*` metadata prefix. Routine seeding is now a
+// FIRST_RUN customize-path concern — see
+// `src/lifeops/first-run/service.ts`. The migrator at
+// `src/lifeops/seed-routine-migration/migrator.ts` rewrites legacy
+// `seedKey: "load-test-user-profile:*"` definitions onto the new
+// `default-packs/habit-starters.ts` `ScheduledTask` records.
 
 export interface LifeOpsDefinitionService {
   listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
@@ -72,23 +63,6 @@ export interface LifeOpsDefinitionService {
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
   ): Promise<LifeOpsDefinitionRecord>;
-  /**
-   * @deprecated Use the FIRST_RUN action via `FirstRunService` instead. The
-   * mixin entry point is kept so existing callers (e.g. legacy onboarding
-   * messages) keep compiling, but new work should call into the first-run
-   * capability — `eliza/plugins/app-lifeops/src/lifeops/first-run/service.ts`.
-   */
-  checkAndOfferSeeding(): Promise<{
-    needsSeeding: boolean;
-    availableTemplates: RoutineSeedTemplate[];
-  }>;
-  /** @deprecated Tracked through the FIRST_RUN state machine going forward. */
-  markSeedingOffered(): Promise<void>;
-  /**
-   * @deprecated Routine seeding moves into the FIRST_RUN customize path
-   * ("habit starters" question). New code should not call this directly.
-   */
-  applySeedRoutines(keys: string[], timezone?: string): Promise<string[]>;
   updateDefinition(
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,
@@ -253,109 +227,6 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
           new Date(),
         ),
       };
-    }
-
-    async checkAndOfferSeeding(): Promise<{
-      needsSeeding: boolean;
-      availableTemplates: RoutineSeedTemplate[];
-    }> {
-      const existing = await this.repository.listActiveDefinitions(
-        this.agentId(),
-      );
-      if (existing.length > 0) {
-        return { needsSeeding: false, availableTemplates: [] };
-      }
-
-      // Check if seeding was already offered via audit trail
-      const audits = await this.repository.listAuditEvents(
-        this.agentId(),
-        "definition",
-        `seeding:${this.agentId()}`,
-      );
-      const seedingOffered = audits.some(
-        (event) => event.eventType === "seeding_offered",
-      );
-      if (seedingOffered) {
-        return { needsSeeding: false, availableTemplates: [] };
-      }
-
-      return { needsSeeding: true, availableTemplates: ROUTINE_SEED_TEMPLATES };
-    }
-
-    async markSeedingOffered(): Promise<void> {
-      await this.recordAudit(
-        "seeding_offered",
-        "definition",
-        `seeding:${this.agentId()}`,
-        "seed routines offered",
-        {},
-        {
-          offeredAt: new Date().toISOString(),
-        },
-      );
-    }
-
-    async applySeedRoutines(
-      keys: string[],
-      timezone?: string,
-    ): Promise<string[]> {
-      const effectiveTimezone = timezone
-        ? normalizeValidTimeZone(timezone, "timezone")
-        : resolveDefaultTimeZone();
-      const templates = ROUTINE_SEED_TEMPLATES.filter((t) =>
-        keys.includes(t.key),
-      );
-      if (templates.length === 0) {
-        fail(400, "no valid seed template keys provided");
-      }
-
-      const existingDefinitions = await this.repository.listDefinitions(
-        this.agentId(),
-      );
-      const existingBySeedKey = new Map(
-        existingDefinitions
-          .map((record) => {
-            const seedKey = resolveRoutineSeedKey(record.definition.metadata);
-            return seedKey ? [seedKey, record.definition.id] : null;
-          })
-          .filter((entry): entry is [string, string] => entry !== null),
-      );
-
-      const createdIds: string[] = [];
-      for (const template of templates) {
-        const seedKey = buildRoutineSeedKey(template.key);
-        const existingId = existingBySeedKey.get(seedKey);
-        if (existingId) {
-          continue;
-        }
-        const result = await this.createDefinition({
-          ...template.request,
-          timezone: effectiveTimezone,
-          source: "seed",
-          metadata: {
-            ...(template.request.metadata ?? {}),
-            seedKey,
-          },
-        });
-        createdIds.push(result.definition.id);
-      }
-
-      if (createdIds.length > 0) {
-        await this.recordAudit(
-          "seeding_offered",
-          "definition",
-          `seeding:${this.agentId()}`,
-          "seed routines applied",
-          { keys },
-          {
-            appliedKeys: keys,
-            timezone: effectiveTimezone,
-            createdIds,
-          },
-        );
-      }
-
-      return createdIds;
     }
 
     async updateDefinition(

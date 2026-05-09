@@ -148,16 +148,9 @@ import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-
 
 type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
 
-import type { RoutineSeedTemplate } from "../lifeops/seed-routines.js";
-
-type LifeOpsSeedRoutinesResponse = {
-  createdIds: string[];
-};
-
-type LifeOpsSeedTemplatesResponse = {
-  needsSeeding: boolean;
-  availableTemplates: RoutineSeedTemplate[];
-};
+// Wave-2 W2-A removed `RoutineSeedTemplate`, `LifeOpsSeedTemplatesResponse`,
+// and `LifeOpsSeedRoutinesResponse`. The legacy seed-routines surface is
+// retired in favour of the FIRST_RUN customize path.
 
 type LifeOpsXConnectorRequest = {
   side?: LifeOpsConnectorSide;
@@ -367,11 +360,6 @@ declare module "@elizaos/ui" {
     getLifeOpsPersonalBaseline(opts?: {
       windowDays?: number;
     }): Promise<LifeOpsPersonalBaselineResponse>;
-    getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
-    seedLifeOpsRoutines(data: {
-      keys: string[];
-      timezone?: string;
-    }): Promise<LifeOpsSeedRoutinesResponse>;
     getBrowserBridgeSettings(): Promise<{ settings: BrowserBridgeSettings }>;
     updateBrowserBridgeSettings(
       data: UpdateBrowserBridgeSettingsRequest,
@@ -1078,22 +1066,6 @@ ElizaClient.prototype.getLifeOpsPersonalBaseline = async function (
   return this.fetch<LifeOpsPersonalBaselineResponse>(
     `/api/lifeops/sleep/baseline${query ? `?${query}` : ""}`,
   );
-};
-
-ElizaClient.prototype.getLifeOpsSeedTemplates = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/seed-templates");
-};
-
-ElizaClient.prototype.seedLifeOpsRoutines = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch<LifeOpsSeedRoutinesResponse>("/api/lifeops/seed", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
 };
 
 ElizaClient.prototype.getBrowserBridgeSettings = async function (

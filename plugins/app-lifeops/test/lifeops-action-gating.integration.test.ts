@@ -95,7 +95,7 @@ describe("LifeOps plugin action gating", () => {
       "MESSAGE",
       "CALENDAR",
       "LIFE",
-      "RELATIONSHIP",
+      "ENTITY",
       "MESSAGE",
       "BOOK_TRAVEL",
       "RESOLVE_REQUEST",
@@ -116,6 +116,9 @@ describe("LifeOps plugin action gating", () => {
       "REGISTER_BROWSER_SESSION",
       "FETCH_BROWSER_ACTIVITY",
       "CHECKIN",
+      // Wave-2 W2-A: RELATIONSHIP umbrella renamed to ENTITY; old name
+      // remains a simile so the planner does not regress.
+      "RELATIONSHIP",
     ]) {
       expect(actionNames).not.toContain(removed);
     }
@@ -123,7 +126,7 @@ describe("LifeOps plugin action gating", () => {
 });
 
 describe.each([
-  "RELATIONSHIP",
+  "ENTITY",
 ])("%s owner-only access gate", (actionName) => {
   it("validate() rejects non-owner senders", async () => {
     const action = findAction(actionName);

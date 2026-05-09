@@ -1,9 +1,36 @@
 /**
- * LifeOps relationships action — Rolodex management.
+ * LifeOps `ENTITY` umbrella action.
  *
- * Subactions: list_contacts, add_contact, log_interaction, add_follow_up,
- * complete_follow_up, follow_up_list, days_since, list_overdue_followups,
- * mark_followup_done, set_followup_threshold.
+ * Wave-2 W2-A renamed the prior `RELATIONSHIP` umbrella. The action
+ * now exposes both entity CRUD and relationship-edge CRUD; the data
+ * layer remains two stores (`EntityStore` + `RelationshipStore`, see
+ * W1-E). `RELATIONSHIP` is kept as a simile for one release so the
+ * planner does not regress on prompts like "follow up with David" or
+ * "Pat is my manager".
+ *
+ * Canonical subactions (entity / relationship CRUD):
+ *   - `add` (new): add a person/entity to the contacts/Rolodex.
+ *     Legacy alias `add_contact` is preserved for one release.
+ *   - `list` (new): list known entities. Legacy alias `list_contacts`
+ *     is preserved for one release.
+ *   - `set_identity` (new): observe a (platform, handle) identity for
+ *     an entity via `EntityStore.observeIdentity` with `verified: true`.
+ *   - `set_relationship` (new): upsert a typed edge between two
+ *     entities via `RelationshipStore.upsert`.
+ *   - `log_interaction`: record an outbound/inbound interaction.
+ *   - `merge` (new): merge duplicate entities via
+ *     `EntityStore.merge(targetId, sourceIds)`.
+ *
+ * Transitional follow-up subactions (deprecated):
+ *   - `add_follow_up`, `complete_follow_up`, `follow_up_list`,
+ *     `days_since`, `list_overdue_followups`, `mark_followup_done`,
+ *     `set_followup_threshold` — these collapse onto `SCHEDULED_TASK`
+ *     queries (`list({ kind: "followup", subject: { kind:
+ *     "relationship", id } })`) per IMPL §5.1. The user-visible verbs
+ *     remain on `ENTITY` until a `SCHEDULED_TASK` umbrella action lands
+ *     in Wave 3 W3-C; the standalone `LIST_OVERDUE_FOLLOWUPS` /
+ *     `MARK_FOLLOWUP_DONE` / `SET_FOLLOWUP_THRESHOLD` actions are
+ *     similes of this umbrella for one release.
  */
 
 import type {
@@ -27,20 +54,30 @@ import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 
 type Subaction =
-  | "list_contacts"
-  | "add_contact"
+  // Canonical ENTITY subactions (W2-A).
+  | "add"
+  | "list"
   | "log_interaction"
+  | "set_identity"
+  | "set_relationship"
+  | "merge"
+  // Transitional follow-up subactions (deprecated; collapse to
+  // SCHEDULED_TASK queries when that umbrella ships in W3-C).
   | "add_follow_up"
   | "complete_follow_up"
   | "follow_up_list"
   | "days_since"
   | "list_overdue_followups"
   | "mark_followup_done"
-  | "set_followup_threshold";
+  | "set_followup_threshold"
+  // Legacy RELATIONSHIP subaction names (one-release back-compat).
+  | "list_contacts"
+  | "add_contact";
 
-type RelationshipParameters = {
+type EntityParameters = {
   subaction?: Subaction;
   intent?: string;
   name?: string;
@@ -55,7 +92,28 @@ type RelationshipParameters = {
   dueAt?: string;
   thresholdDays?: number | string;
   confirmed?: boolean;
+  // ENTITY-specific (W2-A) parameters.
+  /** Target entity id for set_identity/set_relationship/merge. */
+  entityId?: string;
+  /** Optional explicit platform when calling set_identity. */
+  platform?: string;
+  /** Display name shown for an observed identity. */
+  displayName?: string;
+  /** Edge target id when calling set_relationship. */
+  toEntityId?: string;
+  /** Edge source id when calling set_relationship. Defaults to "self". */
+  fromEntityId?: string;
+  /** Edge type label when calling set_relationship (e.g. "manages"). */
+  relationshipType?: string;
+  /** Source entity ids consumed when calling merge. */
+  sourceEntityIds?: string[];
+  /** Free-form evidence string for set_identity/set_relationship. */
+  evidence?: string;
 };
+
+// Backward-compat alias for any importer that still references the old type
+// name. Will be removed in Wave 3.
+type RelationshipParameters = EntityParameters;
 
 function getParams(
   options: HandlerOptions | undefined,
@@ -274,10 +332,16 @@ function normalizeFollowUpDueAt(rawDueAt: string): string | null {
   return null;
 }
 
-const RELATIONSHIP_SUBACTIONS: readonly Subaction[] = [
-  "list_contacts",
-  "add_contact",
+const ENTITY_SUBACTIONS: readonly Subaction[] = [
+  // Canonical (W2-A).
+  "add",
+  "list",
   "log_interaction",
+  "set_identity",
+  "set_relationship",
+  "merge",
+  // Transitional follow-up subactions (collapse onto SCHEDULED_TASK
+  // queries in W3-C).
   "add_follow_up",
   "complete_follow_up",
   "follow_up_list",
@@ -285,14 +349,25 @@ const RELATIONSHIP_SUBACTIONS: readonly Subaction[] = [
   "list_overdue_followups",
   "mark_followup_done",
   "set_followup_threshold",
+  // Legacy aliases preserved for one release.
+  "list_contacts",
+  "add_contact",
 ];
+
+/** Canonicalize legacy subaction names to the W2-A spelling. */
+function canonicalizeSubaction(value: Subaction): Subaction {
+  if (value === "list_contacts") return "list";
+  if (value === "add_contact") return "add";
+  return value;
+}
 
 function normalizeRelationshipSubaction(value: unknown): Subaction | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
-  return (RELATIONSHIP_SUBACTIONS as readonly string[]).includes(normalized)
-    ? (normalized as Subaction)
-    : null;
+  if (!(ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
+    return null;
+  }
+  return canonicalizeSubaction(normalized as Subaction);
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
@@ -351,8 +426,8 @@ function normalizeBooleanParam(value: unknown): boolean | undefined {
 
 function relationshipParamsFromJson(
   parsed: Record<string, unknown>,
-): Partial<RelationshipParameters> {
-  const params: Partial<RelationshipParameters> = {};
+): Partial<EntityParameters> {
+  const params: Partial<EntityParameters> = {};
   const channel = normalizeMessageChannel(parsed.channel);
   if (channel) params.channel = channel;
 
@@ -367,10 +442,28 @@ function relationshipParamsFromJson(
     "followUpId",
     "reason",
     "dueAt",
+    "entityId",
+    "platform",
+    "displayName",
+    "toEntityId",
+    "fromEntityId",
+    "relationshipType",
+    "evidence",
   ] as const) {
     const value = normalizeStringParam(parsed[key]);
     if (value !== undefined) {
       params[key] = value;
+    }
+  }
+
+  const sourceEntityIds = parsed.sourceEntityIds;
+  if (Array.isArray(sourceEntityIds)) {
+    const filtered = sourceEntityIds
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    if (filtered.length > 0) {
+      params.sourceEntityIds = filtered;
     }
   }
 
@@ -477,14 +570,14 @@ async function resolveRelationshipPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the RELATIONSHIP (Rolodex / follow-up) subaction for this request.",
+    "Plan the ENTITY (people / relationships / follow-ups) subaction for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "subaction: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
+    "subaction: add, list, log_interaction, set_identity, set_relationship, merge, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
-    "name: contact display name, or null",
+    "name: contact/entity display name, or null",
     "channel: email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, or null",
     "handle: primary channel handle/address, or null",
     "email: email address, or null",
@@ -496,11 +589,22 @@ async function resolveRelationshipPlanWithLlm(args: {
     "dueAt: due date/time in user wording or ISO, or null",
     "thresholdDays: positive integer cadence threshold, or null",
     "confirmed: true, false, or null",
-    'Example: {"subaction":"add_follow_up","shouldAct":true,"response":null,"intent":"follow up with Sam tomorrow","name":"Sam","channel":null,"handle":null,"email":null,"phone":null,"notes":null,"relationshipId":null,"followUpId":null,"reason":"follow up","dueAt":"tomorrow","thresholdDays":null,"confirmed":null}',
+    "entityId: explicit entity id (set_identity / set_relationship / merge), or null",
+    "platform: identity platform (set_identity), or null",
+    "displayName: identity display name (set_identity), or null",
+    "toEntityId: target entity id (set_relationship), or null",
+    "fromEntityId: source entity id (set_relationship; defaults to 'self' when omitted), or null",
+    "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
+    "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
+    "evidence: short evidence string for set_identity / set_relationship, or null",
+    'Example: {"subaction":"add_follow_up","shouldAct":true,"response":null,"intent":"follow up with Sam tomorrow","name":"Sam","channel":null,"handle":null,"email":null,"phone":null,"notes":null,"relationshipId":null,"followUpId":null,"reason":"follow up","dueAt":"tomorrow","thresholdDays":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
-    "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
-    "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
+    "Choose list when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
+    "Choose add when the user wants to remember a new person, store a handle, or add them to the contact list.",
     "Choose log_interaction when the user reports a past conversation, call, meeting, or message they had with a known contact.",
+    "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
+    "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
+    "Choose merge when the user says two contact entries are the same person and should be combined.",
     "Choose add_follow_up when the user wants to schedule a future reminder to reach out to a contact.",
     "Choose complete_follow_up when the user marks an existing follow-up as done or finished.",
     "Choose follow_up_list when the user asks what follow-ups are pending or due.",
@@ -508,10 +612,12 @@ async function resolveRelationshipPlanWithLlm(args: {
     "Choose list_overdue_followups when the user asks who is overdue, who they owe a follow-up to, or who they have not contacted in too long.",
     "Choose mark_followup_done when the user says they already followed up, closed the loop, or wants an overdue follow-up marked done for a contact.",
     "Choose set_followup_threshold when the user wants a durable cadence like every 14 days for a specific contact.",
-    "Set shouldAct=false only when the request is too vague to safely choose any of the ten subactions.",
+    "Set shouldAct=false only when the request is too vague to safely choose any of the subactions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, dates, or thresholds.",
-    "For add_contact, extract name plus channel and handle when present.",
+    "For add, extract name plus channel and handle when present.",
+    "For set_identity, extract entityId or name plus platform and handle.",
+    "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
     "For add_follow_up, extract name/relationshipId, reason, and dueAt when present.",
     "For set_followup_threshold, extract name/relationshipId and thresholdDays.",
     "",
@@ -526,9 +632,9 @@ async function resolveRelationshipPlanWithLlm(args: {
   const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
-    actionType: "RELATIONSHIP.plan",
-    failureMessage: "Relationship planning model call failed",
-    source: "action:relationships",
+    actionType: "ENTITY.plan",
+    failureMessage: "Entity planning model call failed",
+    source: "action:entity",
     modelType: ModelType.TEXT_SMALL,
     purpose: "planner",
   });
@@ -557,26 +663,37 @@ function formatRelationshipLine(rel: {
   return `- ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle})${last}`;
 }
 
-export const relationshipAction: Action & {
+export const entityAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "RELATIONSHIP",
+  name: "ENTITY",
   similes: [
+    // Wave-2 W2-A: RELATIONSHIP is preserved as a one-release simile so
+    // the planner does not regress on cached prompts.
+    "RELATIONSHIP",
     "CONTACTS",
     "ROLODEX",
     "FOLLOW_UPS",
     "LOG_INTERACTION",
     "ADD_CONTACT",
+    "ADD_ENTITY",
+    "ADD_PERSON",
+    "MERGE_ENTITIES",
+    "MERGE_CONTACTS",
+    "SET_IDENTITY",
+    "SET_RELATIONSHIP",
     "DAYS_SINCE",
     "OVERDUE_FOLLOWUPS",
+    "LIST_OVERDUE_FOLLOWUPS",
     "MARK_FOLLOWUP_DONE",
+    "SET_FOLLOWUP_THRESHOLD",
   ],
   description:
-    "Owner-only. Contacts / rolodex / follow-up tracker. The owner's people graph: list/add contacts, log interactions, ask how long since the owner talked to someone, create or complete a follow-up, list overdue follow-ups, tune the overdue threshold.",
+    "Owner-only. The ENTITY umbrella: people / organizations / projects / concepts the owner cares about, plus typed relationships between them. Subactions cover entity CRUD (add, list, set_identity, log_interaction, merge), edge CRUD (set_relationship), and transitional follow-up cadence (add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold). Replaces the prior RELATIONSHIP umbrella.",
   descriptionCompressed:
-    "contacts rolodex follow-ups: use for relationship cadence follow-ups and days-since-contact, even if contact is missing; one-off dated call/text reminders belong to LIFE. subactions list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold",
+    "ENTITY = people/relationships/follow-ups. subactions add list log_interaction set_identity set_relationship merge add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold; one-off dated call/text reminders belong to LIFE",
   routingHint:
-    "relationship cadence (\"follow up with David\", \"how long since I talked to X\") -> RELATIONSHIP; one-off dated reminders to call/text someone (\"remember to call mom Sunday\") -> LIFE",
+    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager", "follow up with David", "how long since I talked to X") -> ENTITY; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
   contexts: ["contacts", "tasks", "calendar", "messaging", "memory"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -612,7 +729,7 @@ export const relationshipAction: Action & {
       await callback?.({
         text,
         source: "action",
-        action: "RELATIONSHIP",
+        action: "ENTITY",
       });
       return {
         text,
@@ -676,7 +793,7 @@ export const relationshipAction: Action & {
     }
     const service = new LifeOpsService(runtime);
 
-    if (subaction === "list_contacts") {
+    if (subaction === "list") {
       const contacts = await service.listRelationships({ limit: 50 });
       const fallback =
         contacts.length === 0
@@ -684,14 +801,14 @@ export const relationshipAction: Action & {
           : `You have ${contacts.length} contact${contacts.length === 1 ? "" : "s"}:\n${contacts.map(formatRelationshipLine).join("\n")}`;
       return respond({
         success: true,
-        scenario: "relationship_list_contacts",
+        scenario: "entity_list",
         fallback,
         context: { contactCount: contacts.length },
         data: { subaction, contacts },
       });
     }
 
-    if (subaction === "add_contact") {
+    if (subaction === "add") {
       const name = params.name;
       const channel = params.channel;
       const handle = params.handle;
@@ -743,7 +860,7 @@ export const relationshipAction: Action & {
       if (!relationshipId) {
         return respond({
           success: false,
-          scenario: "relationship_log_missing_id",
+          scenario: "entity_log_missing_id",
           fallback: "I need a known contact to log an interaction.",
           data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
         });
@@ -752,7 +869,7 @@ export const relationshipAction: Action & {
       if (!rel) {
         return respond({
           success: false,
-          scenario: "relationship_log_not_found",
+          scenario: "entity_log_not_found",
           fallback: `No contact found with id ${relationshipId}.`,
           context: { relationshipId },
           data: { subaction, error: "NOT_FOUND" },
@@ -769,10 +886,136 @@ export const relationshipAction: Action & {
       });
       return respond({
         success: true,
-        scenario: "relationship_log_interaction",
+        scenario: "entity_log_interaction",
         fallback: `Logged interaction with ${rel.name} on ${channel}.`,
         context: { name: rel.name, channel },
         data: { subaction, interaction },
+      });
+    }
+
+    if (subaction === "set_identity") {
+      // Wave-2 W2-A: route directly through `EntityStore.observeIdentity`
+      // with `verified: true` so the user-asserted identity wins over any
+      // ambient platform observation.
+      const platform = normalizedNonEmpty(params.platform);
+      const handle = normalizedNonEmpty(params.handle);
+      if (!platform || !handle) {
+        return respond({
+          success: false,
+          scenario: "entity_set_identity_missing",
+          fallback:
+            "I need both the platform (e.g. telegram, slack, email) and the handle to record an identity.",
+          data: { subaction, error: "MISSING_FIELDS" },
+        });
+      }
+      const repository = new LifeOpsRepository(runtime);
+      const entityStore = await repository.entityStore(runtime.agentId);
+      const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
+      const observation = await entityStore.observeIdentity({
+        platform,
+        handle,
+        ...(normalizedNonEmpty(params.displayName)
+          ? { displayName: params.displayName as string }
+          : {}),
+        evidence: [evidence],
+        confidence: 1,
+        ...(normalizedNonEmpty(params.entityId)
+          ? { suggestedType: "person" }
+          : {}),
+      });
+      // Force-mark this identity as verified — the canonical surface for
+      // user-asserted identities per IMPL §5.1.
+      const verifiedIdentities = observation.entity.identities.map((identity) =>
+        identity.platform === platform && identity.handle === handle
+          ? { ...identity, verified: true }
+          : identity,
+      );
+      const merged = await entityStore.upsert({
+        ...observation.entity,
+        identities: verifiedIdentities,
+      });
+      return respond({
+        success: true,
+        scenario: "entity_set_identity",
+        fallback: `Recorded identity ${platform}:${handle} on ${merged.preferredName}.`,
+        context: {
+          entityId: merged.entityId,
+          platform,
+          handle,
+        },
+        data: {
+          subaction,
+          entity: merged,
+          mergedFrom: observation.mergedFrom ?? null,
+        },
+      });
+    }
+
+    if (subaction === "set_relationship") {
+      const toEntityId = normalizedNonEmpty(params.toEntityId);
+      const relationshipType = normalizedNonEmpty(params.relationshipType);
+      if (!toEntityId || !relationshipType) {
+        return respond({
+          success: false,
+          scenario: "entity_set_relationship_missing",
+          fallback:
+            "I need the target entity id and the relationship type (e.g. manages, colleague_of, works_at).",
+          data: { subaction, error: "MISSING_FIELDS" },
+        });
+      }
+      const repository = new LifeOpsRepository(runtime);
+      const relationshipStore = await repository.relationshipStore(
+        runtime.agentId,
+      );
+      const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
+      const fromEntityId = normalizedNonEmpty(params.fromEntityId) ?? "self";
+      const edge = await relationshipStore.upsert({
+        fromEntityId,
+        toEntityId,
+        type: relationshipType,
+        metadata: {},
+        state: {},
+        evidence: [evidence],
+        confidence: 1,
+        source: "user_chat",
+      });
+      return respond({
+        success: true,
+        scenario: "entity_set_relationship",
+        fallback: `Recorded ${fromEntityId} -[${relationshipType}]-> ${toEntityId}.`,
+        context: { fromEntityId, toEntityId, relationshipType },
+        data: { subaction, relationship: edge },
+      });
+    }
+
+    if (subaction === "merge") {
+      const targetEntityId = normalizedNonEmpty(params.entityId);
+      const sourceEntityIds = (params.sourceEntityIds ?? []).filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      );
+      if (!targetEntityId || sourceEntityIds.length === 0) {
+        return respond({
+          success: false,
+          scenario: "entity_merge_missing",
+          fallback:
+            "I need a target entityId and at least one sourceEntityId to merge duplicates.",
+          data: { subaction, error: "MISSING_FIELDS" },
+        });
+      }
+      const repository = new LifeOpsRepository(runtime);
+      const entityStore = await repository.entityStore(runtime.agentId);
+      const merged = await entityStore.merge(targetEntityId, sourceEntityIds);
+      return respond({
+        success: true,
+        scenario: "entity_merge",
+        fallback: `Merged ${sourceEntityIds.length} entit${
+          sourceEntityIds.length === 1 ? "y" : "ies"
+        } into ${merged.preferredName}.`,
+        context: {
+          targetEntityId,
+          sourceCount: sourceEntityIds.length,
+        },
+        data: { subaction, entity: merged, sourceEntityIds },
       });
     }
 
@@ -1028,7 +1271,7 @@ export const relationshipAction: Action & {
     {
       name: "subaction",
       description:
-        "Which relationship operation to run: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, or set_followup_threshold.",
+        "Which ENTITY operation to run. Canonical: add, list, log_interaction, set_identity, set_relationship, merge. Transitional follow-up subactions (collapse onto SCHEDULED_TASK in W3-C): add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold. Legacy aliases (one-release back-compat): list_contacts, add_contact.",
       schema: { type: "string" as const },
     },
     {
@@ -1101,6 +1344,56 @@ export const relationshipAction: Action & {
       description: "Optional explicit confirmation flag.",
       schema: { type: "boolean" as const },
     },
+    {
+      name: "entityId",
+      description:
+        "Target entity id. Used by set_identity (force a new identity onto a known entity), merge (target id), and any operation that needs a stable EntityStore id.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "platform",
+      description:
+        "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "displayName",
+      description:
+        "Display name shown alongside an observed identity (set_identity).",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "toEntityId",
+      description: "Target entity id for set_relationship.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "fromEntityId",
+      description:
+        "Source entity id for set_relationship. Defaults to 'self' when omitted.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "relationshipType",
+      description:
+        "Edge type label for set_relationship (e.g. manages, colleague_of, works_at).",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "sourceEntityIds",
+      description:
+        "Entity ids being folded into the target entity (merge). Provide as a JSON array of strings.",
+      schema: {
+        type: "array" as const,
+        items: { type: "string" as const },
+      },
+    },
+    {
+      name: "evidence",
+      description:
+        "Free-form evidence string captured alongside set_identity / set_relationship observations.",
+      schema: { type: "string" as const },
+    },
   ],
   examples: [
     [
@@ -1112,7 +1405,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 3 contacts: ...",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
@@ -1127,7 +1420,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Added Alice (telegram: @alice) to your Rolodex.",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
@@ -1142,7 +1435,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Logged interaction with Bob on telegram.",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
@@ -1157,7 +1450,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Scheduled follow-up for 2026-04-20T09:00:00Z: the contract.",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
@@ -1170,7 +1463,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 2 follow-ups due: ...",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
@@ -1183,9 +1476,16 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "It has been 14 days since you contacted Dan.",
-          action: "RELATIONSHIP",
+          action: "ENTITY",
         },
       },
     ],
   ],
 };
+
+/**
+ * Backward-compatibility alias for one release: `relationshipAction` is the
+ * old export name. Importers should migrate to `entityAction`. The alias is
+ * removed in Wave 3 W3-C.
+ */
+export const relationshipAction = entityAction;
