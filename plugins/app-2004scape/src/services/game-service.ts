@@ -12,7 +12,7 @@ import {
 import {
   formatRs2004RouterPrompt,
   resolveRs2004RouterAction,
-} from "../actions/router-definitions.js";
+} from "./autonomous-loop-prompt.js";
 import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";

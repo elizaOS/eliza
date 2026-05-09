@@ -1,11 +1,11 @@
 import type { Address, Hex, PublicClient, WalletClient } from "viem";
-import { TaskStatus } from "./types.js";
 import type {
   CreateEscrowParams,
   EscrowCreated,
   EscrowDetails,
   TxResult,
 } from "./types.js";
+import { TaskStatus } from "./types.js";
 import {
   encodeOptimisticVerifierData,
   resolveVerifierAddress,

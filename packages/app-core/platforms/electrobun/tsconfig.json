@@ -3,6 +3,7 @@
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
@@ -24,6 +25,8 @@
 			"@elizaos/core/*": ["../../../core/src/*"],
 			"@elizaos/shared": ["../../../shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../../shared/src/*"],
+			"@elizaos/ui": ["../../../ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../../ui/src/*"],
 			"@elizaos/plugin-signal": [
 				"../../../../plugins/plugin-signal/src/index.ts"
 			],

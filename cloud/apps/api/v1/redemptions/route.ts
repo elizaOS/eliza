@@ -9,7 +9,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { SUPPLY_SHOCK_PROTECTION } from "@/lib/config/redemption-security";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
@@ -23,11 +22,15 @@ const CreateRedemptionSchema = z.object({
     .int()
     .min(100, "Minimum redemption is 100 points ($1.00)")
     .max(100000, "Maximum redemption is 100,000 points ($1,000.00)"),
-  network: z.enum(["ethereum", "base", "bnb", "solana"]),
+  network: z.enum(["ethereum", "base", "bnb", "bsc", "solana"]),
   payoutAddress: z.string().min(20).max(100),
   signature: z.string().optional(),
   idempotencyKey: z.string().uuid().optional(),
 });
+
+function normalizeRedemptionNetwork(network: z.infer<typeof CreateRedemptionSchema>["network"]) {
+  return network === "bsc" ? "bnb" : network;
+}
 
 const app = new Hono<AppEnv>();
 
@@ -83,8 +86,9 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       );
     }
 
-    const { appId, pointsAmount, network, payoutAddress, signature, idempotencyKey } =
+    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } =
       validation.data;
+    const network = normalizeRedemptionNetwork(validation.data.network);
 
     const networkAvailability = await payoutStatusService.isNetworkAvailable(network);
     if (!networkAvailability.available) {
@@ -173,7 +177,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       quote: result.quote,
       warnings: result.warnings,
       message: result.quote?.requiresReview
-        ? `Redemption created. Requires admin review for amounts over $${SUPPLY_SHOCK_PROTECTION.LARGE_REDEMPTION_THRESHOLD_USD}.`
+        ? "Redemption created. An admin will review the payout request before tokens are sent."
         : "Redemption created and will be processed shortly.",
     });
   } catch (error) {

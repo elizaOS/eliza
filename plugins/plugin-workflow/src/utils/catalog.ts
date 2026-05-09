@@ -160,17 +160,22 @@ const STRIP_KEYS = new Set([
   'modes',
 ]);
 
+type NodePropertyOption = NonNullable<NodeProperty['options']>[number];
+
+function isPropertyCollectionOption(
+  option: NodePropertyOption
+): option is Extract<NodePropertyOption, { values: NodeProperty[] }> {
+  return Array.isArray(option.values);
+}
+
 function simplifyProperty(prop: NodeProperty): NodeProperty | null {
   if (NOISE_TYPES.has(prop.type)) {
     return null;
   }
 
-  const slim: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(prop)) {
-    if (STRIP_KEYS.has(key)) {
-      continue;
-    }
-    slim[key] = value;
+  const slim: NodeProperty = { ...prop };
+  for (const key of STRIP_KEYS) {
+    delete slim[key];
   }
 
   if (prop.type === 'resourceLocator') {
@@ -180,14 +185,12 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
   }
 
   if (prop.options && Array.isArray(prop.options)) {
-    slim.options = prop.options.map((opt: Record<string, unknown>) => {
-      if (opt.values && Array.isArray(opt.values)) {
+    slim.options = prop.options.map((opt) => {
+      if (isPropertyCollectionOption(opt)) {
         return {
           name: opt.name,
           displayName: opt.displayName,
-          values: (opt.values as NodeProperty[])
-            .map(simplifyProperty)
-            .filter((v): v is NodeProperty => v !== null),
+          values: opt.values.map(simplifyProperty).filter((v): v is NodeProperty => v !== null),
         };
       }
       const { description: _d, ...rest } = opt;
@@ -195,7 +198,7 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
     });
   }
 
-  return slim as unknown as NodeProperty;
+  return slim;
 }
 
 /**

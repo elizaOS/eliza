@@ -5,7 +5,7 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import type { BotState } from "../sdk/types.js";
+import { getRs2004scapeStateService } from "./service-access.js";
 
 const BANKS = [
   { name: "Lumbridge bank", x: 3208, z: 3220 },
@@ -99,9 +99,7 @@ export const worldKnowledgeProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> {
     try {
-      const service = runtime.getService("rs_2004scape") as {
-        getBotState(): BotState | null;
-      } | null;
+      const service = getRs2004scapeStateService(runtime);
       const state = service?.getBotState?.();
       if (!state?.connected || !state.inGame || !state.player) {
         return {

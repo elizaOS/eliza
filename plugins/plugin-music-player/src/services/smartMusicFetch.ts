@@ -23,7 +23,9 @@ interface TorrentSearchService {
   ): Promise<TorrentSearchResult[]>;
 }
 
-function isTorrentSearchService(service: unknown): service is TorrentSearchService {
+function isTorrentSearchService(
+  service: unknown,
+): service is TorrentSearchService {
   return (
     typeof service === "object" &&
     service !== null &&

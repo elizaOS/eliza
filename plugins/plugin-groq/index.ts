@@ -27,8 +27,21 @@ import {
   type ToolSet,
 } from "ai";
 
+type RuntimeProcess = {
+  env?: Record<string, string | undefined>;
+};
+
+type RuntimeBufferConstructor = {
+  from(input: string, encoding?: string): Uint8Array;
+  from(input: ArrayBufferLike | ArrayLike<number>): Uint8Array;
+  alloc(size: number): Uint8Array;
+  isBuffer(value: unknown): boolean;
+};
+
 const _globalThis = globalThis as typeof globalThis & {
   AI_SDK_LOG_WARNINGS?: boolean;
+  process?: RuntimeProcess;
+  Buffer?: RuntimeBufferConstructor;
 };
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 const DEFAULT_SMALL_MODEL = "openai/gpt-oss-20b";
@@ -177,6 +190,14 @@ function isBrowser(): boolean {
     typeof globalThis !== "undefined" &&
     typeof (globalThis as { document?: Document }).document !== "undefined"
   );
+}
+
+function env(name: string): string | null {
+  return _globalThis.process?.env?.[name] ?? null;
+}
+
+function getRuntimeBuffer(): RuntimeBufferConstructor | null {
+  return _globalThis.Buffer ?? null;
 }
 
 function getBaseURL(runtime: IAgentRuntime): string {
@@ -573,36 +594,26 @@ export const groqPlugin: Plugin = {
   },
 
   config: {
-    GROQ_API_KEY: typeof process !== "undefined" ? (process.env.GROQ_API_KEY ?? null) : null,
-    GROQ_BASE_URL: typeof process !== "undefined" ? (process.env.GROQ_BASE_URL ?? null) : null,
-    GROQ_NANO_MODEL: typeof process !== "undefined" ? (process.env.GROQ_NANO_MODEL ?? null) : null,
-    GROQ_MEDIUM_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_MEDIUM_MODEL ?? null) : null,
-    GROQ_SMALL_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_SMALL_MODEL ?? null) : null,
-    GROQ_LARGE_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_LARGE_MODEL ?? null) : null,
-    GROQ_MEGA_MODEL: typeof process !== "undefined" ? (process.env.GROQ_MEGA_MODEL ?? null) : null,
-    GROQ_RESPONSE_HANDLER_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_RESPONSE_HANDLER_MODEL ?? null) : null,
-    GROQ_SHOULD_RESPOND_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_SHOULD_RESPOND_MODEL ?? null) : null,
-    GROQ_ACTION_PLANNER_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_ACTION_PLANNER_MODEL ?? null) : null,
-    GROQ_PLANNER_MODEL:
-      typeof process !== "undefined" ? (process.env.GROQ_PLANNER_MODEL ?? null) : null,
-    NANO_MODEL: typeof process !== "undefined" ? (process.env.NANO_MODEL ?? null) : null,
-    MEDIUM_MODEL: typeof process !== "undefined" ? (process.env.MEDIUM_MODEL ?? null) : null,
-    SMALL_MODEL: typeof process !== "undefined" ? (process.env.SMALL_MODEL ?? null) : null,
-    LARGE_MODEL: typeof process !== "undefined" ? (process.env.LARGE_MODEL ?? null) : null,
-    MEGA_MODEL: typeof process !== "undefined" ? (process.env.MEGA_MODEL ?? null) : null,
-    RESPONSE_HANDLER_MODEL:
-      typeof process !== "undefined" ? (process.env.RESPONSE_HANDLER_MODEL ?? null) : null,
-    SHOULD_RESPOND_MODEL:
-      typeof process !== "undefined" ? (process.env.SHOULD_RESPOND_MODEL ?? null) : null,
-    ACTION_PLANNER_MODEL:
-      typeof process !== "undefined" ? (process.env.ACTION_PLANNER_MODEL ?? null) : null,
-    PLANNER_MODEL: typeof process !== "undefined" ? (process.env.PLANNER_MODEL ?? null) : null,
+    GROQ_API_KEY: env("GROQ_API_KEY"),
+    GROQ_BASE_URL: env("GROQ_BASE_URL"),
+    GROQ_NANO_MODEL: env("GROQ_NANO_MODEL"),
+    GROQ_MEDIUM_MODEL: env("GROQ_MEDIUM_MODEL"),
+    GROQ_SMALL_MODEL: env("GROQ_SMALL_MODEL"),
+    GROQ_LARGE_MODEL: env("GROQ_LARGE_MODEL"),
+    GROQ_MEGA_MODEL: env("GROQ_MEGA_MODEL"),
+    GROQ_RESPONSE_HANDLER_MODEL: env("GROQ_RESPONSE_HANDLER_MODEL"),
+    GROQ_SHOULD_RESPOND_MODEL: env("GROQ_SHOULD_RESPOND_MODEL"),
+    GROQ_ACTION_PLANNER_MODEL: env("GROQ_ACTION_PLANNER_MODEL"),
+    GROQ_PLANNER_MODEL: env("GROQ_PLANNER_MODEL"),
+    NANO_MODEL: env("NANO_MODEL"),
+    MEDIUM_MODEL: env("MEDIUM_MODEL"),
+    SMALL_MODEL: env("SMALL_MODEL"),
+    LARGE_MODEL: env("LARGE_MODEL"),
+    MEGA_MODEL: env("MEGA_MODEL"),
+    RESPONSE_HANDLER_MODEL: env("RESPONSE_HANDLER_MODEL"),
+    SHOULD_RESPOND_MODEL: env("SHOULD_RESPOND_MODEL"),
+    ACTION_PLANNER_MODEL: env("ACTION_PLANNER_MODEL"),
+    PLANNER_MODEL: env("PLANNER_MODEL"),
   },
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
@@ -647,18 +658,19 @@ export const groqPlugin: Plugin = {
         );
       }
 
-      const hasBuffer =
-        typeof Buffer !== "undefined" &&
-        typeof (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer === "function";
+      const buffer = getRuntimeBuffer();
+      if (!buffer) {
+        throw new Error("Groq TRANSCRIPTION requires Buffer support outside browsers.");
+      }
 
-      const audioBuffer: Buffer =
+      const audioBuffer: Uint8Array =
         typeof params === "string"
-          ? Buffer.from(params, "base64")
-          : hasBuffer && (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
-            ? (params as Buffer)
+          ? buffer.from(params, "base64")
+          : buffer.isBuffer(params)
+            ? (params as Uint8Array)
             : typeof params === "object" && params !== null && hasAudioData(params)
-              ? Buffer.from((params as AudioDataShape).audioData)
-              : Buffer.alloc(0);
+              ? buffer.from((params as AudioDataShape).audioData)
+              : buffer.alloc(0);
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append(

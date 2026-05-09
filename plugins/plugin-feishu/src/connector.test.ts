@@ -4,19 +4,15 @@ import { FeishuService } from "./service";
 
 describe("Feishu message connector", () => {
 	it("registers connector metadata and routes card sends", async () => {
-		const runtime = {
+		const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
 			registerMessageConnector: vi.fn(),
 			registerSendHandler: vi.fn(),
 			getRoom: vi.fn(),
-		} as IAgentRuntime;
-		type TestFeishuService = FeishuService & {
-			client: unknown;
-			messageManager: { sendMessage: typeof sendMessage };
-		};
-		const service = Object.create(FeishuService.prototype) as TestFeishuService;
+		});
 		const sendMessage = vi.fn();
-		service.client = {};
-		service.messageManager = { sendMessage };
+		const service = Object.create(FeishuService.prototype) as FeishuService;
+		Reflect.set(service, "client", {});
+		Reflect.set(service, "messageManager", { sendMessage });
 
 		FeishuService.registerSendHandlers(runtime, service);
 

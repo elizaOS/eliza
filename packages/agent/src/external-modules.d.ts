@@ -226,6 +226,70 @@ declare module "@elizaos/plugin-elizacloud" {
   export default plugin;
 }
 declare module "@elizaos/plugin-commands";
+declare module "@elizaos/plugin-signal" {
+  export type SignalPairingStatus =
+    | "idle"
+    | "initializing"
+    | "waiting_for_qr"
+    | "connected"
+    | "disconnected"
+    | "timeout"
+    | "error";
+
+  export interface SignalPairingEvent {
+    type: "signal-qr" | "signal-status";
+    accountId: string;
+    qrDataUrl?: string;
+    status?: SignalPairingStatus;
+    uuid?: string;
+    phoneNumber?: string;
+    error?: string;
+  }
+
+  export interface SignalPairingSnapshot {
+    status: SignalPairingStatus;
+    qrDataUrl: string | null;
+    phoneNumber: string | null;
+    error: string | null;
+  }
+
+  export interface SignalPairingOptions {
+    authDir: string;
+    accountId: string;
+    cliPath?: string;
+    onEvent: (event: SignalPairingEvent) => void;
+  }
+
+  export class SignalPairingSession {
+    constructor(options: SignalPairingOptions);
+    start(): Promise<void>;
+    stop(): void;
+    getStatus(): SignalPairingStatus;
+    getSnapshot(): SignalPairingSnapshot;
+  }
+
+  export function applySignalQrOverride(
+    plugins: {
+      id: string;
+      validationErrors: unknown[];
+      configured: boolean;
+      qrConnected?: boolean;
+    }[],
+    workspaceDir: string,
+  ): void;
+
+  export function classifySignalPairingErrorStatus(
+    errorMessage: string,
+  ): SignalPairingStatus;
+  export function extractSignalCliProvisioningUrl(text: string): string | null;
+  export function parseSignalCliAccountsOutput(output: string): string | null;
+  export function sanitizeSignalAccountId(raw: string): string;
+  export function signalAuthExists(
+    workspaceDir: string,
+    accountId?: string,
+  ): boolean;
+  export function signalLogout(workspaceDir: string, accountId?: string): void;
+}
 declare module "@elizaos/plugin-discord" {
   export interface DiscordProfileLike {
     displayName?: string | null;

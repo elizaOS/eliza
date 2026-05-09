@@ -302,9 +302,8 @@ async function tryRegisterCapacitorLoader(
     const { registerCapacitorLlamaLoader } = await import(
       "@elizaos/capacitor-llama"
     );
-    const capacitorRuntime: Parameters<
-      typeof registerCapacitorLlamaLoader
-    >[0] = Object.create(runtime);
+    const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
+      Object.create(runtime);
     registerCapacitorLlamaLoader(capacitorRuntime);
     logger.info(
       "[local-inference] Registered capacitor-llama loader for mobile on-device inference",

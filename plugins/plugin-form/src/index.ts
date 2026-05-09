@@ -8,7 +8,6 @@
  */
 
 import type {
-  Evaluator,
   IAgentRuntime,
   Plugin,
   ServiceClass,
@@ -125,7 +124,7 @@ export const formPlugin = {
   ],
 
   actions: [formRestoreAction],
-  evaluators: [formEvaluator as Evaluator],
+  evaluators: [formEvaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

@@ -20,8 +20,7 @@
  */
 
 import type http from "node:http";
-import { ensureRouteAuthorized } from "@elizaos/app-core";
-import type { CompatRuntimeState } from "@elizaos/app-core";
+import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { issueOpAction } from "./actions/issue-op.js";
@@ -32,6 +31,8 @@ import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
 
+type RouteAuthState = Parameters<typeof ensureRouteAuthorized>[2];
+
 function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   return async (
     req: unknown,
@@ -41,7 +42,7 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    const state = { current: runtime } as CompatRuntimeState;
+    const state = { current: runtime } as RouteAuthState;
     if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
     await handleGitHubRoutes({
       req: httpReq,

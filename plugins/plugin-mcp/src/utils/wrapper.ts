@@ -98,7 +98,11 @@ export async function withModelRetry<T>({
 function getMaxRetries(runtime: IAgentRuntime): number {
   const rawSettings = runtime.getSetting("mcp");
 
-  if (isMcpSettings(rawSettings) && typeof rawSettings.maxRetries === "number" && rawSettings.maxRetries >= 0) {
+  if (
+    isMcpSettings(rawSettings) &&
+    typeof rawSettings.maxRetries === "number" &&
+    rawSettings.maxRetries >= 0
+  ) {
     return rawSettings.maxRetries;
   }
 

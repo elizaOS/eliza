@@ -113,7 +113,9 @@ interface ReloadDiff {
   requiresRestart: string[];
 }
 
-function asConfigRecord<T extends object>(value: T): T & Record<string, unknown> {
+function asConfigRecord<T extends object>(
+  value: T,
+): T & Record<string, unknown> {
   return value as T & Record<string, unknown>;
 }
 
@@ -205,10 +207,10 @@ async function applyReloadedConfig(params: {
 
   // Re-derive character fields from the freshly-loaded config and apply
   // them to the live runtime. This propagates renames, system prompt
-	// edits, bio/style updates, and topic/adjective changes.
-	if (runtime) {
-		const rebuilt = buildCharacterFromConfig(next);
-		const character = asConfigRecord(runtime.character);
+  // edits, bio/style updates, and topic/adjective changes.
+  if (runtime) {
+    const rebuilt = buildCharacterFromConfig(next);
+    const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
       "name",
       "username",
@@ -220,8 +222,8 @@ async function applyReloadedConfig(params: {
       "messageExamples",
       "postExamples",
       "settings",
-		] as const;
-		const rebuiltRecord = asConfigRecord(rebuilt);
+    ] as const;
+    const rebuiltRecord = asConfigRecord(rebuilt);
     for (const field of HOT_CHARACTER_FIELDS) {
       const value = rebuiltRecord[field];
       if (value !== undefined) {
@@ -315,10 +317,7 @@ export async function handleConfigRoutes(
         `[eliza][settings][api] GET /api/config → respond (redacted) topKeys=${Object.keys(cfg).sort().join(",")} cloud=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
       );
     }
-    json(
-      res,
-      redactConfigSecrets(asConfigRecord(config)),
-    );
+    json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
   }
 
@@ -600,10 +599,7 @@ export async function handleConfigRoutes(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
       );
     }
-    json(
-      res,
-      redactConfigSecrets(asConfigRecord(config)),
-    );
+    json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
   }
 

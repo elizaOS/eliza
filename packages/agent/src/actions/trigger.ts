@@ -43,6 +43,7 @@ function isAutonomyRoomService(
 ): service is AutonomyRoomService {
   return typeof service === "object" && service !== null;
 }
+
 import { v4 as uuidv4 } from "uuid";
 import {
   executeTriggerTask,

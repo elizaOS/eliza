@@ -91,6 +91,16 @@ function asClarificationResolution(value: unknown): WorkflowClarificationResolut
   return { paramPath: value.paramPath, value: value.value };
 }
 
+function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every(isRecord) &&
+    isRecord(value.connections)
+  );
+}
+
 async function readJsonBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -126,17 +136,7 @@ async function readJsonBody(
 }
 
 function asWorkflow(value: unknown): WorkflowDefinition | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  if (
-    typeof value.name !== 'string' ||
-    !Array.isArray(value.nodes) ||
-    !isRecord(value.connections)
-  ) {
-    return null;
-  }
-  return value as unknown as WorkflowDefinition;
+  return isWorkflowDefinition(value) ? value : null;
 }
 
 async function readWorkflowPayload(
