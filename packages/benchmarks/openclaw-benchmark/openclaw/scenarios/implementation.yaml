@@ -110,7 +110,7 @@ scoring:
     - id: no_any_type
       type: file_excludes
       path: src/weather.ts
-      pattern: ':\\s*any\\b'
+      pattern: ':\s*any\b'
       points: 1
       category: correctness
       description: Code avoids 'any' type
@@ -118,7 +118,7 @@ scoring:
     - id: has_type_annotations
       type: file_contains
       path: src/weather.ts
-      pattern: '(:\\s*(string|number|boolean|interface|type))'
+      pattern: '(:\s*(string|number|boolean|interface|type))'
       points: 2
       category: correctness
       description: Code uses TypeScript type annotations
@@ -143,7 +143,7 @@ scoring:
     - id: no_hardcoded_secrets
       type: file_excludes
       path: src/weather.ts
-      pattern: '(api_key|apiKey|secret|password)\s*=\s*["\'][^"\']{10,}'
+      pattern: "(api_key|apiKey|secret|password)\\s*=\\s*[\"'][^\"']{10,}"
       points: 3
       category: safety
       description: Code does not contain hardcoded secrets

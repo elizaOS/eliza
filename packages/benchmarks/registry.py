@@ -1623,7 +1623,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
             args.extend(["--mode", mode.strip()])
         else:
-            args.extend(["--mode", "conceptual"])
+            # Default to execution: real file/exec validation, not keyword matching.
+            args.extend(["--mode", "execution"])
         task = extra.get("task")
         if isinstance(task, str) and task.strip():
             args.extend(["--task", task.strip()])
