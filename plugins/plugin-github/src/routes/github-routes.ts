@@ -19,14 +19,14 @@
  */
 
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import {
   buildCredentialsFromUserResponse,
   clearCredentials,
   type GitHubCredentialMetadata,
   loadMetadata,
   saveCredentials,
-} from "@elizaos/app-core";
-import { logger } from "@elizaos/core";
+} from "../github-credentials.js";
 
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 10_000;

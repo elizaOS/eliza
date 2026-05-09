@@ -13,7 +13,7 @@ import {
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 // Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,
 // `DEFAULT_CLOUD_API_BASE_URL`, `CloudApiKeyRuntimeLike`) live in

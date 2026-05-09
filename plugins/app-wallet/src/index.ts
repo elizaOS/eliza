@@ -37,5 +37,5 @@ export {
   WalletStatusSidebarWidget,
   WALLET_STATUS_WIDGET,
 } from "./widgets/wallet-status";
-export * from "./ui";
 export * from "./register";
+export * from "./ui";

@@ -2,8 +2,8 @@
  * Environment variable normalization helpers.
  *
  * Consolidates the `normalizeSecret` / `normalizeEnvValue` pattern that was
- * independently implemented in `cloud-connection.ts`, `steward-bridge.ts`,
- * and `@elizaos/plugin-wallet/lib/server-wallet-trade`.
+ * independently implemented in cloud connection, steward bridge, and wallet
+ * trade helpers.
  */
 
 /**

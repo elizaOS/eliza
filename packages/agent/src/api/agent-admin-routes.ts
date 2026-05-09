@@ -5,11 +5,11 @@ import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveUserPath } from "../config/paths.js";
-import type { AutonomousConfigLike } from "../types/config-like.js";
-import { detectRuntimeModel } from "./agent-model.js";
-import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveUserPath } from "../config/paths.ts";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
+import { clearPersistedOnboardingConfig } from "./provider-switch-config.ts";
 
 type AgentStateStatus =
   | "not_started"

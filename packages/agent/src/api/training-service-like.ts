@@ -1,4 +1,4 @@
-import type { Trajectory, TrajectoryListResult } from "../types/trajectory.js";
+import type { Trajectory, TrajectoryListResult } from "../types/trajectory.ts";
 
 export interface TrainingServiceLike {
   getStatus(): Record<string, unknown>;

@@ -105,22 +105,22 @@ import {
   resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
-import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "../config/config.js";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { CharacterSchema } from "../config/zod-schema.js";
+} from "../config/config.ts";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
+import { CharacterSchema } from "../config/zod-schema.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
-} from "../runtime/agent-event-service.js";
+} from "../runtime/agent-event-service.ts";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
-} from "../runtime/model-resolution.js";
+} from "../runtime/model-resolution.ts";
 import {
   type ClassifyContext,
   createColdStrategy,
@@ -130,30 +130,30 @@ import {
   getDefaultHealthChecker,
   getDefaultRepository,
   type RuntimeOperationManager,
-} from "../runtime/operations/index.js";
-import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.js";
+} from "../runtime/operations/index.ts";
+import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.ts";
 import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
   getAuditFeedSize,
   queryAuditFeed,
   subscribeAuditFeed,
-} from "../security/audit-log.js";
+} from "../security/audit-log.ts";
 import {
   AgentExportError,
   estimateExportSize,
   exportAgent,
   importAgent,
-} from "../services/agent-export.js";
-import { AppManager } from "../services/app-manager.js";
-import { registerClientChatSendHandler } from "../services/client-chat-sender.js";
-import { createConfigPluginManager } from "../services/config-plugin-manager.js";
+} from "../services/agent-export.ts";
+import { AppManager } from "../services/app-manager.ts";
+import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
+import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
   isPluginManagerLike,
   type PluginManagerLike,
-} from "../services/plugin-manager-types.js";
+} from "../services/plugin-manager-types.ts";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -169,65 +169,65 @@ import {
   TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
-} from "../triggers/runtime.js";
+} from "../triggers/runtime.ts";
 import {
   buildTriggerConfig,
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
-} from "../triggers/scheduling.js";
-import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
-import { handleAccountsRoutes } from "./accounts-routes.js";
-import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
-import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.js";
-import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
-import { handleAgentStatusRoutes } from "./agent-status-routes.js";
-import { handleAgentTransferRoutes } from "./agent-transfer-routes.js";
-import { handleAppPackageRoutes } from "./app-package-routes.js";
-import { handleAppsRoutes } from "./apps-routes.js";
-import { handleAuthRoutes } from "./auth-routes.js";
-import { handleAvatarRoutes } from "./avatar-routes.js";
-import { handleBugReportRoutes } from "./bug-report-routes.js";
-import { handleCharacterRoutes } from "./character-routes.js";
+} from "../triggers/scheduling.ts";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
+import { parseClampedInteger } from "../utils/number-parsing.ts";
+import { handleAccountsRoutes } from "./accounts-routes.ts";
+import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
+import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";
+import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
+import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
+import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
+import { handleAppPackageRoutes } from "./app-package-routes.ts";
+import { handleAppsRoutes } from "./apps-routes.ts";
+import { handleAuthRoutes } from "./auth-routes.ts";
+import { handleAvatarRoutes } from "./avatar-routes.ts";
+import { handleBugReportRoutes } from "./bug-report-routes.ts";
+import { handleCharacterRoutes } from "./character-routes.ts";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
-} from "./chat-routes.js";
-import { handleConfigRoutes } from "./config-routes.js";
-import { ConnectorHealthMonitor } from "./connector-health.js";
-import { handleConnectorRoutes } from "./connector-routes.js";
-import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
+} from "./chat-routes.ts";
+import { handleConfigRoutes } from "./config-routes.ts";
+import { ConnectorHealthMonitor } from "./connector-health.ts";
+import { handleConnectorRoutes } from "./connector-routes.ts";
+import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
-import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
-import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
-import { handleHealthRoutes } from "./health-routes.js";
+import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
+import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
+import { handleHealthRoutes } from "./health-routes.ts";
 import {
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
   readRequestBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
-import { pushWithBatchEvict } from "./memory-bounds.js";
-import { handleMemoryRoutes } from "./memory-routes.js";
-import { handleMiscRoutes } from "./misc-routes.js";
-import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
-import { handleModelsRoutes } from "./models-routes.js";
-import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
-import { handleOnboardingRoutes } from "./onboarding-routes.js";
-import { handlePermissionRoutes } from "./permissions-routes.js";
-import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
-import { handlePluginRoutes } from "./plugin-routes.js";
-import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
-import { handleRegistryRoutes } from "./registry-routes.js";
-import { RegistryService } from "./registry-service.js";
-import { handleRelationshipsRoutes } from "./relationships-routes.js";
+} from "./http-helpers.ts";
+import { pushWithBatchEvict } from "./memory-bounds.ts";
+import { handleMemoryRoutes } from "./memory-routes.ts";
+import { handleMiscRoutes } from "./misc-routes.ts";
+import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";
+import { handleModelsRoutes } from "./models-routes.ts";
+import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.ts";
+import { handleOnboardingRoutes } from "./onboarding-routes.ts";
+import { handlePermissionRoutes } from "./permissions-routes.ts";
+import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
+import { handlePluginRoutes } from "./plugin-routes.ts";
+import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
+import { handleRegistryRoutes } from "./registry-routes.ts";
+import { RegistryService } from "./registry-service.ts";
+import { handleRelationshipsRoutes } from "./relationships-routes.ts";
 import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,
-} from "./runtime-plugin-routes.js";
+} from "./runtime-plugin-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -235,7 +235,7 @@ import {
   hasPersistedOnboardingState,
   isUuidLike,
   patchTouchesProviderSelection,
-} from "./server-helpers.js";
+} from "./server-helpers.ts";
 import {
   handleCloudAndCoreRouteGroup,
   handleConversationRouteGroup,
@@ -243,28 +243,28 @@ import {
   handleInboxAndCloudRelayRouteGroup,
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
-} from "./server-route-dispatch.js";
+} from "./server-route-dispatch.ts";
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { discoverSkills } from "./skill-discovery-helpers.js";
-import { handleSkillsRoutes } from "./skills-routes.js";
-import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { handleUpdateRoutes } from "./update-routes.js";
+import { discoverSkills } from "./skill-discovery-helpers.ts";
+import { handleSkillsRoutes } from "./skills-routes.ts";
+import { handleSubscriptionRoutes } from "./subscription-routes.ts";
+import { handleUpdateRoutes } from "./update-routes.ts";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
   // generateWalletKeys, setSolanaWalletEnv moved to server-helpers-config.ts
   getWalletAddresses,
   initStewardWalletCache,
-} from "./wallet.js";
+} from "./wallet.ts";
 // Wallet BSC trade dispatch extracted to @elizaos/app-steward
 // (plugins/app-steward/src/api/wallet-bsc-routes.ts via Plugin.routes).
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
-} from "./wallet-capability.js";
-import { handleWalletRoutes } from "./wallet-routes.js";
-import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWorkbenchRoutes } from "./workbench-routes.js";
+} from "./wallet-capability.ts";
+import { handleWalletRoutes } from "./wallet-routes.ts";
+import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
+import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
   executeFallbackParsedActions,
@@ -274,7 +274,7 @@ export {
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
   shouldForceCheckBalanceFallback,
-} from "./binance-skill-helpers.js";
+} from "./binance-skill-helpers.ts";
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
@@ -290,7 +290,7 @@ export {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
   stripAssistantStageDirections,
-} from "./chat-text-helpers.js";
+} from "./chat-text-helpers.ts";
 
 // Re-export helper functions from server-helpers.ts for backwards compatibility
 export {
@@ -316,7 +316,7 @@ export {
   validateChatImages,
   WALLET_EXECUTION_INTENT_RE,
   WALLET_PROGRESS_ONLY_RE,
-} from "./server-helpers.js";
+} from "./server-helpers.ts";
 
 // NOTE: Internal usage of these functions is handled by individual `import`
 // statements placed where each function was originally defined (see below).
@@ -330,7 +330,7 @@ import {
   paramKeyToCategory,
   providerCachePath,
   readProviderCache,
-} from "./model-provider-helpers.js";
+} from "./model-provider-helpers.ts";
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   aggregateSecrets,
@@ -341,7 +341,7 @@ import {
   getReleaseBundledPluginIds,
   maskValue,
   type PluginEntry,
-} from "./plugin-discovery-helpers.js";
+} from "./plugin-discovery-helpers.ts";
 
 const _nodeRequire = createRequire(import.meta.url);
 
@@ -353,7 +353,7 @@ export {
   discoverPluginsFromManifest,
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,
-} from "./plugin-discovery-helpers.js";
+} from "./plugin-discovery-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -396,7 +396,7 @@ function wrapPluginManagerWithLocalFallback(
     }
 
     // Upstream registry missed it — check Eliza's own local discovery.
-    const { getPluginInfo } = await import("../services/registry-client.js");
+    const { getPluginInfo } = await import("../services/registry-client.ts");
     const localInfo = await getPluginInfo(pluginName);
     if (!localInfo?.localPath) {
       return result;
@@ -508,13 +508,13 @@ export type {
   SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
-} from "./server-types.js";
+} from "./server-types.ts";
 
 import type {
   AgentStartupDiagnostics,
   ServerState,
   StreamEventEnvelope,
-} from "./server-types.js";
+} from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
 // Package root resolution (for reading bundled plugins.json)
@@ -528,12 +528,12 @@ import {
   streamResponseBodyWithByteLimit as _streamResponseBodyWithByteLimit,
   isAbortError,
   responseContentLength,
-} from "./server-helpers-fetch.js";
+} from "./server-helpers-fetch.ts";
 
 export {
   fetchWithTimeoutGuard,
   streamResponseBodyWithByteLimit,
-} from "./server-helpers-fetch.js";
+} from "./server-helpers-fetch.ts";
 
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
@@ -764,6 +764,11 @@ async function handleBuiltinOptionalRoutes(
     return true;
   }
 
+  if (method === "GET" && pathname === "/api/coding-agents/preflight") {
+    json(res, { installed: [], available: false });
+    return true;
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/coding-agents/coordinator/status"
@@ -988,8 +993,7 @@ type StewardWalletCoreRoutesHandler = (
   state: unknown,
 ) => Promise<boolean>;
 
-const STEWARD_WALLET_CORE_ROUTES_MODULE: string =
-  "@elizaos/app-steward";
+const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/app-steward";
 
 // ---------------------------------------------------------------------------
 // Static UI serving — extracted to static-file-server.ts
@@ -998,7 +1002,7 @@ import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
   serveStaticUi,
-} from "./static-file-server.js";
+} from "./static-file-server.ts";
 
 export { injectApiBaseIntoHtml };
 
@@ -1020,7 +1024,7 @@ function coerce<T>(value: unknown): T {
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
 // and buildUserMessages moved to server-helpers.ts; re-exported in the top-level block
 // ChatAttachmentWithData re-exported from server-types.ts
-export type { ChatAttachmentWithData } from "./server-types.js";
+export type { ChatAttachmentWithData } from "./server-types.ts";
 
 // buildChatAttachments, buildUserMessages, etc. imported in the consolidated import at the top
 
@@ -1073,13 +1077,13 @@ const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 import {
   resolveMcpServersRejection as _resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
-} from "./server-helpers-mcp.js";
+} from "./server-helpers-mcp.ts";
 
 export {
   resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection,
   validateMcpServerConfig,
-} from "./server-helpers-mcp.js";
+} from "./server-helpers-mcp.ts";
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
 
@@ -1087,8 +1091,8 @@ const resolveMcpServersRejection = _resolveMcpServersRejection;
 // Onboarding / config helpers — extracted to server-helpers-config.ts
 // ---------------------------------------------------------------------------
 
-import { pickRandomNames } from "../runtime/onboarding-names.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
+import { pickRandomNames } from "../runtime/onboarding-names.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   applyOnboardingVoicePreset,
   ensureWalletKeysInEnvAndConfig,
@@ -1103,9 +1107,9 @@ import {
   resolveConfiguredCharacterLanguage,
   resolveDefaultAgentName,
   stripRedactedPlaceholderValuesDeep,
-} from "./server-helpers-config.js";
+} from "./server-helpers-config.ts";
 
-export { isSafeResetStateDir } from "./server-helpers-config.js";
+export { isSafeResetStateDir } from "./server-helpers-config.ts";
 
 // ---------------------------------------------------------------------------
 // Trade permission helpers (exported for use by awareness contributors)
@@ -1138,7 +1142,7 @@ export function resolveTradePermissionMode(
 import {
   canUseLocalTradeExecution,
   type TradePermissionMode,
-} from "./trade-safety.js";
+} from "./trade-safety.ts";
 
 export {
   AGENT_AUTO_MAX_DAILY_TRADES,
@@ -1149,13 +1153,13 @@ export {
   QUOTE_MAX_AGE_MS,
   recordAgentAutoTrade,
   type TradePermissionMode,
-} from "./trade-safety.js";
+} from "./trade-safety.ts";
 
 // ---------------------------------------------------------------------------
 // Automation & agent permission helpers
 // ---------------------------------------------------------------------------
 
-import type { AgentAutomationMode } from "./server-types.js";
+import type { AgentAutomationMode } from "./server-types.ts";
 
 const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
 const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
@@ -1263,25 +1267,25 @@ function buildPluginEvmDiagnosticEntry(
 }
 
 // Wallet intent/export helpers extracted to server-helpers-wallet.ts
-import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.js";
+import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
   hasUsableWalletFallbackParams,
   inferWalletExecutionFallback,
   resolveWalletExportRejection,
   type WalletExportRejection,
-} from "./server-helpers-wallet.js";
+} from "./server-helpers-wallet.ts";
 
 const resolveWalletExportRejection = _resolveWalletExportRejection;
 
 // Plugin config helpers extracted to server-helpers-plugin.ts
-import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.js";
+import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
 
 export {
   type PluginConfigMutationRejection,
   resolvePluginConfigMutationRejections,
   resolvePluginConfigReply,
-} from "./server-helpers-plugin.js";
+} from "./server-helpers-plugin.ts";
 
 const resolvePluginConfigMutationRejections =
   _resolvePluginConfigMutationRejections;
@@ -1295,7 +1299,7 @@ interface RequestContext {
   onRuntimeSwapped?: () => void;
 }
 
-import type { TrainingServiceWithRuntime } from "./server-types.js";
+import type { TrainingServiceWithRuntime } from "./server-types.ts";
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
@@ -1303,8 +1307,7 @@ type TrainingServiceCtor = new (options: {
   setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceWithRuntime;
 
-const TRAINING_SERVICE_REGISTRY_MODULE: string =
-  "@elizaos/app-training";
+const TRAINING_SERVICE_REGISTRY_MODULE: string = "@elizaos/app-training";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
@@ -1379,7 +1382,7 @@ import {
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
-} from "./server-helpers-auth.js";
+} from "./server-helpers-auth.ts";
 
 export {
   ensureApiTokenForBindHost,
@@ -1393,7 +1396,7 @@ export {
   resolveWebSocketUpgradeRejection,
   type TerminalRunRejection,
   type WebSocketUpgradeRejection,
-} from "./server-helpers-auth.js";
+} from "./server-helpers-auth.ts";
 
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
@@ -1467,14 +1470,14 @@ function getOrCreateRuntimeOperationManager(
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
-} from "./server-autonomy-helpers.js";
+} from "./server-autonomy-helpers.ts";
 import {
   getPtyConsoleBridge,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
   wireCoordinatorEventRouting,
-} from "./server-helpers-swarm.js";
+} from "./server-helpers-swarm.ts";
 
 import {
   asObject,
@@ -1483,12 +1486,12 @@ import {
   readTaskCompleted,
   readTaskMetadata,
   toWorkbenchTodo,
-} from "./workbench-helpers.js";
+} from "./workbench-helpers.ts";
 
 export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+} from "./server-helpers-swarm.ts";
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -1744,7 +1747,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("../auth/index.js")) as never,
+        (await import("../auth/index.ts")) as never,
     } as never)
   ) {
     return;
@@ -2870,7 +2873,7 @@ async function handleRequest(
 // the entire server dependency graph into lightweight consumers (e.g. the
 // headless `startEliza()` path).
 // ---------------------------------------------------------------------------
-import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs.js";
+import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs.ts";
 
 export type { captureEarlyLogs };
 
@@ -3674,7 +3677,7 @@ export async function startApiServer(opts?: {
               ? {
                   messages: {
                     tts: msgs.tts as
-                      | import("../config/types.messages.js").TtsConfig
+                      | import("../config/types.messages.ts").TtsConfig
                       | undefined,
                   },
                 }

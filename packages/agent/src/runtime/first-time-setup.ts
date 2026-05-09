@@ -28,17 +28,17 @@ import {
   getStylePresets,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
-import { persistConfigEnv } from "../api/config-env.js";
+import { persistConfigEnv } from "../api/config-env.ts";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
   CLOUD_SOLANA_ADDRESS_ENV_KEY,
   WALLET_SOURCE_EVM_ENV_KEY,
   WALLET_SOURCE_SOLANA_ENV_KEY,
-} from "../api/wallet.js";
-import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
-import { isCloudWalletEnabled } from "../config/feature-flags.js";
-import type { AgentConfig } from "../config/types.agents.js";
-import { pickRandomNames } from "./onboarding-names.js";
+} from "../api/wallet.ts";
+import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
+import type { AgentConfig } from "../config/types.agents.ts";
+import { pickRandomNames } from "./onboarding-names.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers (private)
@@ -593,7 +593,7 @@ export async function runFirstTimeSetup(
     // stored in config.env and process.env, making them available to
     // plugins at runtime.
     const { generateWalletKeys, importWallet, setSolanaWalletEnv } =
-      await import("../api/wallet.js");
+      await import("../api/wallet.ts");
 
     // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
     // so they're also available in the persistence section.

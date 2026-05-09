@@ -7,10 +7,10 @@
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
-import type { ElizaConfig } from "../config/config.js";
-import type { AppManager } from "../services/app-manager.js";
-import type { SandboxManager } from "../services/sandbox-manager.js";
-import type { ConnectorHealthMonitor } from "./connector-health.js";
+import type { ElizaConfig } from "../config/config.ts";
+import type { AppManager } from "../services/app-manager.ts";
+import type { SandboxManager } from "../services/sandbox-manager.ts";
+import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
@@ -18,9 +18,9 @@ import type { ConnectorHealthMonitor } from "./connector-health.js";
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
-} from "./training-service-like.js";
+} from "./training-service-like.ts";
 
-import type { TrainingServiceWithRuntime } from "./training-service-like.js";
+import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata
@@ -142,7 +142,7 @@ export type ConnectorRouteHandler = (
 export type AgentAutomationMode = "connectors-only" | "full";
 
 export type TradePermissionMode =
-  import("./trade-safety.js").TradePermissionMode;
+  import("./trade-safety.ts").TradePermissionMode;
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
@@ -267,8 +267,8 @@ export interface ServerState {
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.js").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
+  _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
+  _codexFlow?: import("../auth/openai-codex.ts").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
   permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;

@@ -18,7 +18,7 @@ const createCoreMockRuntime = (overrides: MockRuntimeOverrides = {}) => ({
   ...overrides,
 });
 
-const createCoreMockMemory = (overrides: any = {}) => ({
+const createCoreMockMemory = (overrides: Partial<Memory> = {}) => ({
   id: 'test-memory-id',
   entityId: 'test-entity-id',
   roomId: 'test-room-id',
@@ -27,7 +27,7 @@ const createCoreMockMemory = (overrides: any = {}) => ({
   ...overrides,
 });
 
-const createCoreMockState = (overrides: any = {}) => ({
+const createCoreMockState = (overrides: Partial<State> = {}) => ({
   text: 'test state',
   ...overrides,
 });
@@ -118,7 +118,11 @@ export function createMockState(overrides: Partial<State> = {}): State {
 /**
  * Sets up logger spies for common usage in tests
  */
-export function setupLoggerSpies(mockFn?: any) {
+type ConsoleMockFactory = (
+  implementation: (...args: unknown[]) => void
+) => (...args: unknown[]) => void;
+
+export function setupLoggerSpies(mockFn?: ConsoleMockFactory) {
   const originalConsole = {
     info: console.info,
     error: console.error,

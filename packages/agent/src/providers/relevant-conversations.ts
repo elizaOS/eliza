@@ -12,12 +12,12 @@ import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-} from "../api/conversation-metadata.js";
+} from "../api/conversation-metadata.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
-} from "../shared/conversation-format.js";
+} from "../shared/conversation-format.ts";
 
 const MAX_RELEVANT_RESULTS = 10;
 const MATCH_THRESHOLD = 0.7;

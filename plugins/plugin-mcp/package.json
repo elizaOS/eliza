@@ -52,8 +52,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "typescript": "^6.0.3"

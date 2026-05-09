@@ -39,7 +39,7 @@ function toAppSessionJsonValue(
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
-    return value;
+    return value as AppSessionJsonValue;
   }
   if (Array.isArray(value)) {
     return value

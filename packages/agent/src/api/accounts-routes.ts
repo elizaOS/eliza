@@ -7,8 +7,7 @@
  *   - on-disk credential records under `~/.eliza/auth/...`
  *     (`account-storage.ts`),
  *   - rich `LinkedAccountConfig` records (label / enabled / priority /
- *     health / usage) owned by `AccountPool` in
- *     `@elizaos/app-core/account-pool`,
+ *     health / usage) owned by `AccountPool` in `@elizaos/app-core`,
  *   - the in-flight OAuth flow registry (`auth/oauth-flow.ts`) used by
  *     the `oauth/start` + SSE `oauth/status` + `oauth/cancel` trio.
  *
@@ -42,8 +41,8 @@ import {
   listAccounts,
   loadAccount,
   saveAccount,
-} from "../auth/account-storage.js";
-import { getAccessToken } from "../auth/credentials.js";
+} from "../auth/account-storage.ts";
+import { getAccessToken } from "../auth/credentials.ts";
 import {
   cancelFlow,
   getFlowState,
@@ -51,7 +50,7 @@ import {
   startCodexOAuthFlow,
   submitFlowCode,
   subscribeFlow,
-} from "../auth/oauth-flow.js";
+} from "../auth/oauth-flow.ts";
 import {
   type AccountCredentialProvider,
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -59,13 +58,13 @@ import {
   isAccountCredentialProvider,
   isSubscriptionProvider,
   type SubscriptionProvider,
-} from "../auth/types.js";
-import type { ElizaConfig } from "../config/types.eliza.js";
+} from "../auth/types.ts";
+import type { ElizaConfig } from "../config/types.eliza.ts";
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //
 // All `LinkedAccountConfig` records (label / enabled / priority / health /
-// usage) are owned by `@elizaos/app-core/account-pool`. We hit
+// usage) are owned by `@elizaos/app-core`. We hit
 // it via dynamic import to avoid a cyclic package dep — app-core depends
 // on agent, not the other way around. The promise is cached at module
 // scope so we pay the import cost once per process.
@@ -89,9 +88,7 @@ async function getPool(): Promise<PoolFacade> {
     cachedPoolPromise = (async () => {
       // String-literal dynamic import — see comment in
       // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
-      const mod = (await import(
-        /* @vite-ignore */ "@elizaos/app-core/account-pool"
-      )) as {
+      const mod = (await import(/* @vite-ignore */ "@elizaos/app-core")) as {
         getDefaultAccountPool: () => PoolFacade;
       };
       return mod.getDefaultAccountPool();

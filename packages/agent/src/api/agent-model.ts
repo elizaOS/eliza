@@ -4,7 +4,7 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
 

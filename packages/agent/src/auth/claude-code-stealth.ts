@@ -8,12 +8,13 @@ const ANTHROPIC_BETA =
   "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24";
 
 type FetchWithPreconnect = typeof fetch & { preconnect?: unknown };
+type FetchInput = Parameters<typeof fetch>[0];
 
 function isSetupToken(value: string | null): value is string {
   return typeof value === "string" && value.startsWith("sk-ant-oat");
 }
 
-function getUrl(input: RequestInfo | URL): URL | null {
+function getUrl(input: FetchInput | URL): URL | null {
   try {
     if (typeof input === "string") {
       return new URL(input);
@@ -63,7 +64,7 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
   const originalFetch = globalThis.fetch.bind(globalThis);
 
   const stealthFetch = async function stealthFetch(
-    input: RequestInfo | URL,
+    input: FetchInput | URL,
     init?: RequestInit,
   ) {
     const url = getUrl(input);

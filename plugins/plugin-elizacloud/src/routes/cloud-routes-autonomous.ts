@@ -114,7 +114,7 @@ type CreateTelemetrySpanLike = (meta: {
   boundary: "cloud";
   operation: string;
   timeoutMs?: number;
-}) => IntegrationTelemetrySpanLike;
+}) => IntegrationTelemetrySpanLike | null | undefined;
 
 export interface CloudRouteState {
   config: CloudConfigLike;

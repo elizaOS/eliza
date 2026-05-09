@@ -6,7 +6,7 @@
 
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,8 +34,7 @@ interface ElizaMakerRegistryService {
   getChainId(): Promise<number>;
 }
 
-const ELIZAMAKER_REGISTRY_MODULE: string =
-  "@elizaos/app-elizamaker/registry-service-registry";
+const ELIZAMAKER_REGISTRY_MODULE: string = "@elizaos/app-elizamaker";
 
 async function getElizaMakerRegistryServiceIfAvailable(): Promise<ElizaMakerRegistryService | null> {
   try {

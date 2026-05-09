@@ -898,9 +898,14 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 			// Node.js environment
 			const os = require("node:os");
 			hostname = os.hostname();
-		} else if (typeof window !== "undefined" && window.location) {
+		} else {
 			// Browser environment
-			hostname = window.location.hostname || "browser";
+			const browserLocation = (
+				globalThis as { location?: { hostname?: string } }
+			).location;
+			if (browserLocation) {
+				hostname = browserLocation.hostname || "browser";
+			}
 		}
 		metaBase.hostname = hostname;
 	}

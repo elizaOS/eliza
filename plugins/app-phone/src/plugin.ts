@@ -32,7 +32,7 @@ export const appPhonePlugin: Plugin = {
         label: "Phone Companion",
         icon: "Smartphone",
         path: "/phone-companion",
-        componentExport: "@elizaos/app-phone/ui#PhoneCompanionApp",
+        componentExport: "@elizaos/app-phone#PhoneCompanionApp",
       },
     ],
   },

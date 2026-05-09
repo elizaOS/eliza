@@ -14,8 +14,8 @@ import {
   hasAppInterface,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-import { readJsonFile } from "../utils/atomic-json.js";
-import { getPluginInfo } from "./registry-client.js";
+import { readJsonFile } from "../utils/atomic-json.ts";
+import { getPluginInfo } from "./registry-client.ts";
 
 export type {
   AppLaunchSessionContext,

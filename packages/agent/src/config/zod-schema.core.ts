@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { isSafeExecutableValue } from "../utils/exec-safety.js";
+import { isSafeExecutableValue } from "../utils/exec-safety.ts";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
-} from "./model-metadata.js";
+} from "./model-metadata.ts";
 
 export const ModelApiSchema = z.union([
   z.literal("openai-completions"),

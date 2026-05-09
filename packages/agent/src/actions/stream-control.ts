@@ -26,7 +26,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasContextSignalSyncForKey } from "./context-signal.js";
+import { hasContextSignalSyncForKey } from "./context-signal.ts";
 
 const STREAM_ACTION = "STREAM";
 

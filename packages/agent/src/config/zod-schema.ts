@@ -3,7 +3,7 @@ import {
   AgentDefaultsSchema,
   AgentEntrySchema,
   ToolsSchema,
-} from "./zod-schema.agent-runtime.js";
+} from "./zod-schema.agent-runtime.ts";
 import {
   ChannelHeartbeatVisibilitySchema,
   GroupPolicySchema,
@@ -11,13 +11,13 @@ import {
   MediaConfigSchema,
   ModelsConfigSchema,
   TranscribeAudioSchema,
-} from "./zod-schema.core.js";
+} from "./zod-schema.core.ts";
 import {
   HookMappingSchema,
   HooksGmailSchema,
   InstallRecordSchema,
   InternalHooksSchema,
-} from "./zod-schema.hooks.js";
+} from "./zod-schema.hooks.ts";
 import {
   BlueBubblesConnectorConfigSchema,
   CustomRtmpConfigSchema,
@@ -38,13 +38,13 @@ import {
   WhatsAppConfigSchema,
   XStreamConfigSchema,
   YoutubeStreamConfigSchema,
-} from "./zod-schema.providers-core.js";
+} from "./zod-schema.providers-core.ts";
 import {
   CommandsSchema,
   MessagesSchema,
   SessionSchema,
   SessionSendPolicySchema,
-} from "./zod-schema.session.js";
+} from "./zod-schema.session.ts";
 
 // --- Agents (merged from zod-schema.agents.ts) ---
 

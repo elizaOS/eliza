@@ -1232,6 +1232,50 @@
       ]
     },
     {
+      "name": "FIRST_RUN",
+      "description": "Owner-only. Run the first-run capability with path = defaults | customize | replay. ",
+      "parameters": [
+        {
+          "name": "path",
+          "description": "defaults | customize | replay",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "partialAnswers",
+          "description": "Optional object carrying answers from prior turns (resume support).",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner first-run: defaults|customize|replay; defaults asks wake time once",
+      "similes": [
+        "RUN_FIRST_RUN",
+        "ONBOARDING",
+        "ONBOARD_USER",
+        "RUN_ONBOARDING",
+        "SETUP_DEFAULTS",
+        "RUN_SETUP",
+        "RESET_SETUP"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use FIRST_RUN with the provided parameters.",
+          "actions": ["FIRST_RUN"],
+          "params": {
+            "FIRST_RUN": {
+              "path": "example",
+              "partialAnswers": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "FORM_RESTORE",
       "description": "Restore a previously stashed form session",
       "parameters": [
@@ -1584,6 +1628,86 @@
               "metric": "example",
               "date": "example",
               "days": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIFEOPS",
+      "description": "Owner-only. Verbs: pause (vacation mode — skip respectsGlobalPause tasks until endIso or resume), ",
+      "parameters": [
+        {
+          "name": "verb",
+          "description": "pause | resume | wipe",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "startIso",
+          "description": "ISO-8601 start. Defaults to now when verb=pause and unset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "endIso",
+          "description": "ISO-8601 end (optional — open-ended pause if absent).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional reason ('vacation', 'sick', etc).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Required true for verb=wipe. Without it, wipe returns a confirmation prompt.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "confirmation",
+          "description": "Alternative confirmation token — must equal 'wipe' for verb=wipe.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner LIFEOPS verb: pause|resume|wipe; wipe requires confirmed:true",
+      "similes": [
+        "PAUSE_LIFEOPS",
+        "RESUME_LIFEOPS",
+        "WIPE_LIFEOPS",
+        "VACATION_MODE",
+        "LIFEOPS_PAUSE",
+        "LIFEOPS_RESUME",
+        "LIFEOPS_WIPE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LIFEOPS with the provided parameters.",
+          "actions": ["LIFEOPS"],
+          "params": {
+            "LIFEOPS": {
+              "verb": "example",
+              "startIso": "example",
+              "endIso": "example",
+              "reason": "example",
+              "confirmed": false,
+              "confirmation": "example"
             }
           }
         }
@@ -2115,6 +2239,86 @@
               "platform": "example",
               "limit": 1,
               "offset": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MESSAGE.handoff",
+      "description": "Multi-party room handoff control. verb=enter flips the current room into handoff mode (agent stops contributing until the resume condition fires); verb=resume exits handoff; verb=status reports state.",
+      "parameters": [
+        {
+          "name": "verb",
+          "description": "enter | resume | status",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Why the agent is stepping back (logged in HandoffStore).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "resumeKind",
+          "description": "mention | explicit_resume | silence_minutes | user_request_help",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "silenceMinutes",
+          "description": "Required when resumeKind=silence_minutes.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "userId",
+          "description": "Required when resumeKind=user_request_help.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "roomId",
+          "description": "Override the room to operate on; defaults to message.roomId.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "MESSAGE.handoff verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+      "similes": [
+        "HANDOFF",
+        "HAND_OFF",
+        "STEP_BACK",
+        "LET_HUMAN_TAKE_OVER",
+        "AGENT_STAND_DOWN",
+        "RESUME_AGENT",
+        "AGENT_COME_BACK"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MESSAGE.handoff with the provided parameters.",
+          "actions": ["MESSAGE.handoff"],
+          "params": {
+            "MESSAGE.handoff": {
+              "verb": "example",
+              "reason": "example",
+              "resumeKind": "example",
+              "silenceMinutes": 1,
+              "userId": "example",
+              "roomId": "example"
             }
           }
         }

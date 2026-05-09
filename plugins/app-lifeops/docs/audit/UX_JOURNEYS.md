@@ -1388,7 +1388,7 @@ Definitions, occurrences, goals, and workflows can be tagged with `domain ∈ {u
 
 ### 25.21 Browser companion routes (moved out)
 
-- `/api/browser-bridge/*` lives in `@elizaos/plugin-browser-bridge`. LifeOps requires that plugin to be loaded for the browser companion UI to function `[launchdocs/14 §P3]`.
+- `/api/browser-bridge/*` lives in `@elizaos/plugin-browser`. LifeOps requires that plugin to be loaded for the browser companion UI to function `[launchdocs/14 §P3]`.
 
 ### 25.22 Feature flag routes
 

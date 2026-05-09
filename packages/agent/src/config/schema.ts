@@ -1,4 +1,4 @@
-import { VERSION } from "../runtime/version.js";
+import { VERSION } from "../runtime/version.ts";
 
 /** Known connector IDs for config schema generation. Keep in sync with runtime/plugin maps. */
 export const CONNECTOR_IDS = [
@@ -24,7 +24,7 @@ export const CONNECTOR_IDS = [
   "googlechat",
 ] as const;
 
-import { ElizaSchema } from "./zod-schema.js";
+import { ElizaSchema } from "./zod-schema.ts";
 
 export type ShowIfCondition = {
   field: string;

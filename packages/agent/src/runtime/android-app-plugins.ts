@@ -21,8 +21,8 @@ import {
   appWifiPlugin as rawWifiPlugin,
   wifiNetworksProvider,
 } from "@elizaos/app-wifi";
-import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
-import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
+import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
+import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
 const WIFI_APP_NAME = "@elizaos/app-wifi";
 const CONTACTS_APP_NAME = "@elizaos/app-contacts";

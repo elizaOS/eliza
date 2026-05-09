@@ -374,7 +374,7 @@ function getLifeOpsSearchService(
 ): CrossChannelNativeSearchService | null {
   const service = runtime.getService("lifeops");
   return isObjectService(service)
-    ? (service as CrossChannelNativeSearchService)
+    ? (service as unknown as CrossChannelNativeSearchService)
     : null;
 }
 

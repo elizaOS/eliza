@@ -8,12 +8,12 @@ function ErrorPage({ statusCode }: ErrorProps) {
   return (
     <div
       style={{
+        alignItems: "center",
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
+        fontFamily: "system-ui, sans-serif",
         justifyContent: "center",
         minHeight: "100vh",
-        fontFamily: "system-ui, sans-serif",
       }}
     >
       <h1 style={{ fontSize: "4rem", margin: 0 }}>{statusCode}</h1>

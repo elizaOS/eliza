@@ -3,7 +3,7 @@
  *
  * Transport/domain types for the generic browser companion + packaging
  * surface. LifeOps workflow-bound browser session contracts live in this
- * plugin so runtime plugins do not depend on `@elizaos/shared`.
+ * plugin so runtime plugins do not depend on app/shared packages.
  */
 
 import type { LifeOpsBrowserSession } from "./lifeops-session-contracts.js";

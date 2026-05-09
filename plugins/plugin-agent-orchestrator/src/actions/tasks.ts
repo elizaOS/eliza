@@ -59,6 +59,7 @@ import {
   isAuthError,
   labelFor,
   listSessionsWithin,
+  looksLikeTaskAgentRequest,
   logger,
   messageText,
   newestSession,
@@ -167,6 +168,12 @@ function parseAgentPrefix(
 function labelFrom(task: string, index: number): string {
   const cleaned = task.replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+}
+
+function looksLikePersonalLifeOpsTask(text: string): boolean {
+  return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
+    text,
+  );
 }
 
 async function runPromptAndClose(
@@ -2460,7 +2467,9 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       ])
     )
       return true;
-    return true;
+    const text = messageText(message);
+    if (looksLikePersonalLifeOpsTask(text)) return false;
+    return looksLikeTaskAgentRequest(text);
   },
   handler: async (
     runtime: IAgentRuntime,

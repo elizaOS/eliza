@@ -17,14 +17,14 @@ import {
   type State,
 } from "@elizaos/core";
 import type { CodingAgentContext } from "@elizaos/plugin-coding-tools";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 import {
   filterInitFilesForSession,
   isDefaultBoilerplate,
   loadWorkspaceInitFiles,
   resolveDefaultAgentWorkspaceDir,
   type WorkspaceInitFile,
-} from "./workspace.js";
+} from "./workspace.ts";
 
 const DEFAULT_MAX_CHARS = 20_000;
 /** Hard cap on total workspace context to prevent prompt explosion. */
