@@ -632,8 +632,8 @@ async function handleCompatRoute(
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // n8n routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
-  // Now served via n8nWorkflowRoutePlugin.routes (rawPath) on the runtime
+  // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
+  // Now served via workflowRoutePlugin.routes (rawPath) on the runtime
   // plugin route system.
 
   // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.

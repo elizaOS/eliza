@@ -139,7 +139,7 @@ const GROUP_ICONS: Record<string, string> = {
   policies: "\u{1F4DC}",
   autonomy: "\u{1F916}",
   "background jobs": "\u{1F504}",
-  "n8n connection": "\u{1F517}",
+  "workflow connection": "\u{1F517}",
   app: "\u{1F4F1}",
 };
 

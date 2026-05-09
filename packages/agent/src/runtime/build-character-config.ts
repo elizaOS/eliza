@@ -148,9 +148,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
-    // workflow plugin (user override for external n8n; embedded mode ignores)
-    "WORKFLOW_HOST",
-    "WORKFLOW_API_KEY",
     // GitHub access for coding agent plugin
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",

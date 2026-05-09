@@ -437,7 +437,7 @@ async function repairRuntimeAfterBoot(
 
   // Mobile (Android / iOS) shortcut: the runtime is already serving from
   // PGlite + the AI provider plugin. The remaining boot steps either spawn
-  // subprocesses (n8n autostart, n8n auth bridge, telegram polling), shell
+  // subprocesses (workflow runtime, telegram polling), shell
   // out to platform-specific binaries (text-to-speech, local inference), or
   // dynamic-import optional packages that are not in the mobile bundle
   // (registered app route plugins and app runtime hooks). Skipping

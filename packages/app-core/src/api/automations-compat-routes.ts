@@ -699,7 +699,7 @@ async function buildAutomationListResponse(
 
   // Only synthesize workflow items from rooms when workflow runtime is offline
   // (`workflowFetchError` set) — in that case the room is the most-recent
-  // ground truth we have and should be surfaced. When n8n IS online and
+  // ground truth we have and should be surfaced. When workflow runtime is online and
   // returned a list, any workflowId in `workflowRooms` that isn't in the
   // current workflow list is an ORPHAN: the workflow was deleted but the chat
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
