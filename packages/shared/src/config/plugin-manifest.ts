@@ -36,35 +36,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type {
+  PluginAutoEnableContext,
+  PluginAutoEnableModule,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "./types.eliza";
 
-/** Runtime context passed to each plugin's `shouldEnable` check. */
-export interface PluginAutoEnableContext {
-  /** Process env. Read-only — predicates must not mutate. */
-  env: NodeJS.ProcessEnv;
-  /** The user's resolved Eliza config. Read-only. */
-  config: Partial<ElizaConfig>;
-  /** True when the runtime is hosted inside a Capacitor native shell (iOS / Android). */
-  isNativePlatform: boolean;
-}
-
-/**
- * Shape of the small check module each plugin ships. Plugins SHOULD keep this
- * module light — env reads, config-path lookups, maybe a quick capability
- * probe. No `pgTable`, no service init, no transitive plugin code; the engine
- * loads dozens of these per boot.
- */
-export interface PluginAutoEnableModule {
-  shouldEnable: (ctx: PluginAutoEnableContext) => boolean | Promise<boolean>;
-  /**
-   * Optional override predicate. When `shouldForce(ctx)` returns true, the
-   * plugin gets force-enabled regardless of `config.plugins.entries[X].enabled
-   * === false`. Used for cases like subscription-provider plugins that the
-   * user shouldn't be able to silently disable (since they explicitly chose
-   * the subscription).
-   */
-  shouldForce?: (ctx: PluginAutoEnableContext) => boolean;
-}
+// Re-export the runtime types so consumers that import from @elizaos/shared
+// keep working. The canonical home for these is @elizaos/core (plugin author
+// API surface) — they live there so plugin packages don't need to depend on
+// app/shared just to type a manifest predicate.
+export type { PluginAutoEnableContext, PluginAutoEnableModule };
 
 /** Subset of package.json the manifest reader cares about. */
 export interface PluginPackageManifestBlock {
@@ -95,8 +78,15 @@ export interface PluginPackageManifest {
   };
 }
 
-/** A candidate plugin discovered on disk. */
-export interface PluginCandidate {
+/**
+ * Minimal candidate shape for the autoEnable manifest evaluator.
+ *
+ * This is intentionally narrower than `PluginCandidate` in @elizaos/core —
+ * the manifest evaluator only needs the package name and root dir; the richer
+ * `PluginCandidate` shape with `idHint`, `source`, `origin`, etc. is for the
+ * full plugin discovery / loading pipeline.
+ */
+export interface PluginManifestCandidate {
   /** npm package name (e.g. "@elizaos/plugin-anthropic"). */
   packageName: string;
   /** Absolute path to the package root (the dir containing package.json). */
@@ -205,7 +195,7 @@ async function loadCheckModule(
  * verdict — caller decides how to apply it to the allow list / force overrides.
  */
 export async function evaluatePluginManifest(
-  candidate: PluginCandidate,
+  candidate: PluginManifestCandidate,
   ctx: PluginAutoEnableContext,
 ): Promise<PluginManifestVerdict | null> {
   const manifest = await readPluginPackageManifest(candidate.packageRoot);
@@ -308,7 +298,7 @@ export async function evaluatePluginManifest(
  * throws so a single bad manifest can't kill auto-enable for the rest.
  */
 export async function evaluatePluginManifests(
-  candidates: PluginCandidate[],
+  candidates: PluginManifestCandidate[],
   ctx: PluginAutoEnableContext,
 ): Promise<PluginManifestVerdict[]> {
   return Promise.all(
