@@ -342,12 +342,23 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
     setupApp();
     shouldShowLocalOptionMock.mockResolvedValue(false);
+    clientMock.getRestAuthToken.mockReturnValue(null);
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     resetPlatformState();
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it("offers Local on iOS through the in-process local agent", async () => {
@@ -467,6 +478,12 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
   beforeEach(() => {
     resetPlatformState();
     setupApp();
+    clientMock.getRestAuthToken.mockReturnValue(null);
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [STOPPED_AGENT],
@@ -535,6 +552,11 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     resetPlatformState();
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it.skip("polls an async provisioning job, connects to the running agent, and completes startup", async () => {
@@ -699,6 +721,40 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
+  it("persists the backend-login cloud token when connecting to a provisioned agent", async () => {
+    (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__ = "cloud-token";
+    clientMock.getRestAuthToken.mockReturnValue(null);
+
+    render(<RuntimeGate />);
+    await startCloudFromWelcome();
+
+    await waitFor(() =>
+      expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai",
+      ),
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith("cloud-token");
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "cloud:agent-1",
+      kind: "cloud",
+      label: "My Agent",
+      apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "cloud-token",
+    });
+    expect(addAgentProfileMock).toHaveBeenCalledWith({
+      kind: "cloud",
+      label: "My Agent",
+      cloudAgentId: "agent-1",
+      apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "cloud-token",
+    });
+    expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces provisioning API failures without completing onboarding", async () => {
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: false,
@@ -840,7 +896,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
+  it("provisions an async-created agent before a node is assigned", async () => {
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [],
@@ -854,14 +910,16 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     await startCloudFromWelcome();
 
     await waitFor(() =>
-      expect(
-        screen.getByText(
-          "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
-        ),
-      ).toBeTruthy(),
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
     );
-    expect(clientMock.provisionCloudCompatAgent).not.toHaveBeenCalled();
-    expect(completeOnboardingMock).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai",
+      ),
+    );
+    expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
   it("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {
