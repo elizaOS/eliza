@@ -107,7 +107,7 @@ import { applySignalQrOverride } from "@elizaos/plugin-signal";
 // WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
 import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
-import { isStreamingDestinationConfigured } from "@elizaos/shared";
+import { isStreamingDestinationConfigured } from "@elizaos/core";
 import {
   type ElizaConfig,
   loadElizaConfig,
