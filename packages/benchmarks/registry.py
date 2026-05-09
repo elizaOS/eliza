@@ -1097,7 +1097,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent is exercised, not python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--model-provider", "eliza"])
         else:
             real = extra.get("real_llm")
@@ -1290,10 +1300,21 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # Route LLM-backed providers through the eliza TS bridge so the actual
+        # registered eliza agent + plugins are exercised, not the python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
         else:
-            provider_name = (model.provider or "").strip().lower()
             if model.provider and provider_name != "mock":
                 args.extend(["--provider", model.provider])
             real_llm = extra.get("real_llm")
