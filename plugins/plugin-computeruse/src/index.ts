@@ -86,6 +86,28 @@ export const computerusePlugin = computerUsePlugin;
 export default computerUsePlugin;
 
 export { ComputerUseService } from "./services/computer-use-service.js";
+export {
+  captureDesktopScreenshot,
+  commandExists,
+  detectDesktopControlCapabilities,
+  getDesktopPlatformName,
+  isHeadfulGuiAvailable,
+  listDesktopWindows,
+  performDesktopClick,
+  performDesktopDoubleClick,
+  performDesktopKeypress,
+  performDesktopMouseMove,
+  performDesktopScroll,
+  performDesktopTextInput,
+} from "./services/desktop-control.js";
+export type {
+  DesktopControlCapabilities,
+  DesktopControlCapability,
+  DesktopInputButton,
+  DesktopScreenshotRegion,
+  DesktopWindowInfo,
+} from "./services/desktop-control.js";
+export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
 // Re-export types for consumers
 export type {
   ActionHistoryEntry,

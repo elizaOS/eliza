@@ -201,7 +201,9 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { handleComputerUseRoutes } from "./computer-use-routes.js";
+import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import { handleConfigRoutes } from "./config-routes.js";
 import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
