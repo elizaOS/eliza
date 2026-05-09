@@ -30,9 +30,24 @@
       "default": "./dist/platform/index.js"
     },
     "./components/*": {
-      "types": "./src/components/*.ts",
+      "types": "./src/components/*.tsx",
       "import": "./dist/components/*.js",
       "default": "./dist/components/*.js"
+    },
+    "./components/*/*": {
+      "types": "./src/components/*/*.tsx",
+      "import": "./dist/components/*/*.js",
+      "default": "./dist/components/*/*.js"
+    },
+    "./components/*/*/*": {
+      "types": "./src/components/*/*/*.tsx",
+      "import": "./dist/components/*/*/*.js",
+      "default": "./dist/components/*/*/*.js"
+    },
+    "./components/*/*/*/*": {
+      "types": "./src/components/*/*/*/*.tsx",
+      "import": "./dist/components/*/*/*/*.js",
+      "default": "./dist/components/*/*/*/*.js"
     },
     "./inbox/types": {
       "types": "./src/inbox/types.ts",
