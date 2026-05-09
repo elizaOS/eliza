@@ -168,7 +168,7 @@ import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
 } from "./local-inference-routes.js";
-import { handleMcpRoutes } from "./mcp-routes.js";
+import { handleMcpRoutes } from "@elizaos/plugin-mcp";
 import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
